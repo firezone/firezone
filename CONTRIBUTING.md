@@ -6,15 +6,17 @@ started.
 ## Table of Contents
 
 - [Overview](#overview)
-- [Developer Environment Setup](#developer-environment-setup)
+- [Quick Start](#quick-start)
   - [Docker Setup](#docker-setup)
     - [Docker Caveat](#docker-caveat)
-  - [Local HTTPS](#local-https)
-  - [asdf-vm](#asdf-vm)
-  - [Pre-commit](#pre-commit)
-  - [The .env File](#the-env-file)
   - [Bootstrapping](#bootstrapping)
   - [Ensure Everything Works](#ensure-everything-works)
+- [Developer Environment Setup](#developer-environment-setup)
+  - [Git Commit Signing](#git-commit-signing)
+  - [asdf-vm](#asdf-vm-setup)
+  - [Pre-commit](#pre-commit)
+  - [Elixir Development](#elixir-development)
+  - [Rust Development](#rust-development)
 - [Reporting Bugs](#reporting-bugs)
 - [Opening a Pull Request](#opening-a-pull-request)
   - [Run Tests](#run-tests)
@@ -22,7 +24,7 @@ started.
     - [End-to-end Tests](#end-to-end-tests)
   - [Use Detailed Commit Messages](#use-detailed-commit-messages)
   - [Ensure Static Analysis Checks Pass](#ensure-static-analysis-checks-pass)
-- [Code of Conduct](#code-of-conduct)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Asking for Help](#asking-for-help)
 
 ## Overview
@@ -41,11 +43,13 @@ the following general guidelines:
    follow responsible disclosure practices laid out in
    [SECURITY.md](SECURITY.md)
 
-## Developer Environment Setup
+## Quick Start
 
-Docker is the preferred method of development Firezone locally. It (mostly)
-works cross-platform, and can be used to develop Firezone on all three
-major desktop OS.
+The goal of the quick start guide is to get an environment up and running quickly
+to allow you to get a feel for all of the various components that make up Firezone.
+
+Once you've verified all components are running successfully, the detailed developer
+guides can help with getting you setup to develop on a specific Firezone component.
 
 ### Docker Setup
 
@@ -65,14 +69,14 @@ host](https://www.docker.com/blog/how-docker-desktop-networking-works-under-the-
 1. Packet originates on Host
 1. Enters WireGuard client tunnel
 1. Forwarding through the Docker bridge net
-1. Forward to the Firezone container, 127.0.0.1:51820
+1. Forward to the Firezone container `127.0.0.1:51820`
 1. Firezone sends packet back out
 1. Docker bridge net, Docker rewrites src IP to Host's LAN IP, (d'oh!)
 1. Docker sends packet out to Host ->
 1. Packet now has same src IP and dest IP as step 1 above, and the cycle
    continues
 
-However, packets destined for Firezone compose cluster IPs (172.28.0.0/16)
+However, packets destined for Firezone compose cluster IPs (`172.28.0.0/16`)
 reach their destination through the tunnel just fine. Because of this, it's
 recommended to use `172.28.0.0/16` for your `AllowedIPs` parameter when using
 host-based WireGuard clients with Firezone running under Docker Desktop.
@@ -80,14 +84,58 @@ host-based WireGuard clients with Firezone running under Docker Desktop.
 Routing packets from _another_ host on the local network, through your development
 machine, and out to the external Internet should work as well.
 
-### Local HTTPS
+### Bootstrapping
 
-We use Caddy as a development proxy. The `docker-compose.yml` is set up to link
-Caddy's local root cert into your `priv/pki/authorities/local/` directory.
+To start the local Firezone cluster, follow these steps:
 
-Simply add the `root.crt` file to your browser and/or OS certificate store in
-order to have working local HTTPS. This file is generated when Caddy launches for
-the first time and will be different for each developer.
+```
+docker compose build
+docker compose up -d postgres
+docker compose run --rm elixir /bin/sh -c "cd apps/domain && mix ecto.create && mix ecto.migrate && mix ecto.seed"
+
+# Before moving to the next step, copy the Firezone account UUID from the seed step
+# Here's an example of the output
+    Created accounts:
+    c89bcc8c-9392-4dae-a40d-888aef6d28e0: Firezone Account
+
+docker compose up -d api web vault gateway client relay
+```
+
+You should now be able to connect to `http://localhost:8080/<account-uuid-here>/sign_in`
+and sign in with the following credentials:
+```
+Email:    firezone@localhost
+Password: Firezone1234
+```
+
+The [`docker-compose.yml`](docker-compose.yml) file configures the Docker
+development environment. If you make any changes you feel would benefit
+all developers, feel free to open a PR to get them merged!
+
+### Ensure Everything Works
+
+```
+#TODO
+```
+
+## Developer Environment Setup
+
+### Git Commit Signing
+
+Firezone requires that all commits in the repository be signed.  If you need assistance
+setting up `git` to sign commits, please read over the Github pages for
+[Managing Commit signature verification](https://docs.github.com/en/authentication/managing-commit-signature-verification)
+
+### Docker Setup
+
+Docker is the preferred method of developing Firezone locally. It (mostly)
+works cross-platform, and can be used to develop Firezone on all three
+major desktop OS.
+
+If you have followed the [Docker Setup](#docker-setup) instructions in the Quick Start
+section, you can move along to the next step in the development environment setup.
+If you have not read the Docker Setup instructions we recommend following the directions
+listed there to get your Docker environment setup properly.
 
 ### asdf-vm Setup
 
@@ -96,6 +144,10 @@ language versions for Firezone. You'll need to install the language runtimes
 according to the versions laid out in the [.tool-versions](.tool-versions) file.
 
 If using asdf, simply run `asdf install` from the project root.
+* Note: For a fresh install of `asdf` you will need to install some
+  [asdf-plugins](https://asdf-vm.com/manage/plugins.html). Running `asdf install`
+  will show which `asdf` plugins need to be installed prior to installing the
+  required language runtimes.
 
 This is used to run static analysis checks during [pre-commit](#pre-commit) and
 for any local, non-Docker development or testing.
@@ -106,40 +158,15 @@ We use [pre-commit](https://pre-commit.com) to catch any static analysis issues
 before code is committed. Install with Homebrew: `brew install pre-commit` or
 pip: `pip install pre-commit`.
 
-### Bootstrapping
+### Elixir Development
 
-To start the local development cluster, follow these steps:
+If you are interested in contributing to the Web Application/API, please read the
+detailed info found in the [Elixir Developer Guide](elixir/README.md)
 
-```
-docker compose build
-docker compose up -d postgres
-docker compose run --rm firezone mix do ecto.setup, ecto.seed
-docker compose up
-```
+### Rust Development
 
-Now you should be able to connect to `https://localhost/`
-and sign in with email `firezone@localhost` and password `firezone1234`.
-
-The [`docker-compose.yml`](docker-compose.yml) file configures the Docker
-development environment. If you make any changes you feel would benefit
-all developers, feel free to open a PR to get them merged!
-
-### Ensure Everything Works
-
-There is a `client` container in the docker-compose configuration that
-can be used to simulate a WireGuard client connecting to Firezone. It's already
-provisioned in the Firezone development cluster and has a corresponding
-WireGuard configuration located at `priv/wg0.client.conf`.
-It's attached to the `isolation` Docker network which is isolated from the other
-Firezone Docker services. By connecting to Firezone from the `client`
-container, you can test the WireGuard tunnel is set up correctly by pinging the
-`caddy` container:
-
-- `docker compose exec client ping 172.28.0.99`
-- `docker compose exec client curl -k 172.28.0.99:8443/hello`: this
-  should return `HELLO` text.
-
-If the above commands indicate success, you should be good to go!
+If you are interested in contributing to the Gateway, Relay, or client library,
+please read the detailed info found in the [Rust Developer Guide](rust/README.md)
 
 ## Reporting Bugs
 

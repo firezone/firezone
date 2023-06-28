@@ -22,7 +22,7 @@ const statusUpdater = function () {
       }">${data.status.description}</span>`
     },
     error: function (data) {
-      console.error("An error occured while fetching status page data")
+      console.error("An error occurred while fetching status page data")
       self.el.innerHTML = `<span class="${statusIndicatorClassNames.minor}">Unable to fetch status</span>`
     },
   })
