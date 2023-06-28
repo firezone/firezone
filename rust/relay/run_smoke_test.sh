@@ -31,3 +31,5 @@ $client 2>&1 | sed "s/^/${RED}[ client]${NC} /" &
 $relay 2>&1 | sed "s/^/${GREEN}[  relay]${NC} /" &
 
 $gateway 2>&1 | sed "s/^/${BLUE}[gateway]${NC} /"
+
+exit "${PIPESTATUS[0]}"
