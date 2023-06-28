@@ -13,8 +13,14 @@ use tokio::{
     sync::mpsc::{Receiver, Sender},
 };
 use url::Url;
+use uuid::Uuid;
 
-use crate::{control::PhoenixChannel, error_type::ErrorType, messages::Key, Error, Result};
+use crate::{
+    control::PhoenixChannel,
+    error_type::ErrorType,
+    messages::{Key, ResourceDescription, ResourceDescriptionCidr},
+    Error, Result,
+};
 
 // TODO: Not the most tidy trait for a control-plane.
 /// Trait that represents a control-plane.
@@ -198,15 +204,30 @@ where
     }
 
     fn connect_mock(callbacks: CB) {
-        const DELAY: Duration = Duration::from_secs(3);
+        const DELAY: Duration = Duration::from_secs(1);
         std::thread::sleep(DELAY);
         callbacks.on_connect(TunnelAddresses {
-            address4: Ipv4Addr::UNSPECIFIED,
-            address6: Ipv6Addr::UNSPECIFIED,
+            address4: "100.100.111.2".parse().unwrap(),
+            address6: "fd00:0222:2021:1111::2".parse().unwrap(),
         });
         std::thread::spawn(move || {
             std::thread::sleep(DELAY);
-            callbacks.on_update_resources(ResourceList { resources: vec![] });
+            callbacks.on_update_resources(ResourceList {
+                resources: vec![
+                    serde_json::to_string(&ResourceDescription::Cidr(ResourceDescriptionCidr {
+                        id: Uuid::new_v4(),
+                        address: "8.8.4.4".parse::<Ipv4Addr>().unwrap().into(),
+                        name: "Google Public DNS IPv4".to_string(),
+                    }))
+                    .unwrap(),
+                    serde_json::to_string(&ResourceDescription::Cidr(ResourceDescriptionCidr {
+                        id: Uuid::new_v4(),
+                        address: "2001:4860:4860::8844".parse::<Ipv6Addr>().unwrap().into(),
+                        name: "Google Public DNS IPv6".to_string(),
+                    }))
+                    .unwrap(),
+                ],
+            });
         });
     }
 
