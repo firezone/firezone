@@ -17,9 +17,9 @@ use crate::{control::PhoenixChannel, error_type::ErrorType, messages::Key, Error
 // TODO: Not the most tidy trait for a control-plane.
 /// Trait that represents a control-plane.
 #[async_trait]
-pub trait ControlSession<T, U> {
+pub trait ControlSession<T, U, CB: Callbacks> {
     /// Start control-plane with the given private-key in the background.
-    async fn start(private_key: StaticSecret) -> Result<(Sender<T>, Receiver<U>)>;
+    async fn start(private_key: StaticSecret, callbacks: CB) -> Result<(Sender<T>, Receiver<U>)>;
 
     /// Either "gateway" or "client" used to get the control-plane URL.
     fn socket_path() -> &'static str;
@@ -31,9 +31,9 @@ pub trait ControlSession<T, U> {
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
-pub struct Session<T, U, V, R, M> {
+pub struct Session<T, U, V, R, M, CB: Callbacks> {
     runtime: Option<Runtime>,
-    _phantom: PhantomData<(T, U, V, R, M)>,
+    _phantom: PhantomData<(T, U, V, R, M, CB)>,
 }
 
 /// Resource list that will be displayed to the users.
@@ -51,38 +51,41 @@ pub struct TunnelAddresses {
 
 // Evaluate doing this not static
 /// Traits that will be used by connlib to callback the client upper layers.
-pub trait Callbacks {
+pub trait Callbacks: Clone + Send + Sync {
     /// Called when there's a change in the resource list.
-    fn on_update_resources(resource_list: ResourceList);
+    fn on_update_resources(&self, resource_list: ResourceList);
     /// Called when the tunnel address is set.
-    fn on_set_tunnel_adresses(tunnel_addresses: TunnelAddresses);
+    fn on_connect(&self, tunnel_addresses: TunnelAddresses);
+    /// Called when the tunnel is disconnected.
+    fn on_disconnect(&self);
     /// Called when there's an error.
     ///
     /// # Parameters
     /// - `error`: The actual error that happened.
     /// - `error_type`: Whether the error should terminate the session or not.
-    fn on_error(error: &Error, error_type: ErrorType);
+    fn on_error(&self, error: &Error, error_type: ErrorType);
 }
 
 macro_rules! fatal_error {
-    ($result:expr, $c:ty) => {
+    ($result:expr, $c:expr) => {
         match $result {
             Ok(res) => res,
             Err(e) => {
-                <$c>::on_error(&e, ErrorType::Fatal);
+                $c.on_error(&e, ErrorType::Fatal);
                 return;
             }
         }
     };
 }
 
-impl<T, U, V, R, M> Session<T, U, V, R, M>
+impl<T, U, V, R, M, CB> Session<T, U, V, R, M, CB>
 where
-    T: ControlSession<M, V>,
+    T: ControlSession<M, V, CB>,
     U: for<'de> serde::Deserialize<'de> + std::fmt::Debug + Send + 'static,
     R: for<'de> serde::Deserialize<'de> + std::fmt::Debug + Send + 'static,
     V: serde::Serialize + Send + 'static,
     M: From<U> + From<R> + Send + 'static + std::fmt::Debug,
+    CB: Callbacks + 'static,
 {
     /// Block on waiting for ctrl+c to terminate the runtime.
     /// (Used for the gateways).
@@ -103,11 +106,11 @@ where
     /// 2. Connect to the control plane to the portal
     /// 3. Start the tunnel in the background and forward control plane messages to it.
     ///
-    /// The generic parameter `C` should implement all the handlers and that's how errors will be surfaced.
+    /// The generic parameter `CB` should implement all the handlers and that's how errors will be surfaced.
     ///
     /// On a fatal error you should call `[Session::disconnect]` and start a new one.
     // TODO: token should be something like SecretString but we need to think about FFI compatibility
-    pub fn connect<C: Callbacks>(portal_url: impl TryInto<Url>, token: String) -> Result<Self> {
+    pub fn connect(portal_url: impl TryInto<Url>, token: String, callbacks: CB) -> Result<Self> {
         // TODO: We could use tokio::runtime::current() to get the current runtime
         // which could work with swif-rust that already runs a runtime. But IDK if that will work
         // in all pltaforms, a couple of new threads shouldn't bother none.
@@ -124,9 +127,9 @@ where
                 let private_key = StaticSecret::random_from_rng(OsRng);
                 let self_id = uuid::Uuid::new_v4();
 
-                let connect_url = fatal_error!(get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string()), C);
+                let connect_url = fatal_error!(get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string()), callbacks);
 
-                let (sender, mut receiver) = fatal_error!(T::start(private_key).await, C);
+                let (sender, mut receiver) = fatal_error!(T::start(private_key, callbacks.clone()).await, callbacks);
 
                 let mut connection = PhoenixChannel::<_, U, R, M>::new(connect_url, move |msg| {
                     let sender = sender.clone();
@@ -150,15 +153,15 @@ where
                         if let Some(t) = exponential_backoff.next_backoff() {
                             tracing::warn!("Error during connection to the portal, retrying in {} seconds", t.as_secs());
                             match result {
-                                Ok(()) => C::on_error(&tokio_tungstenite::tungstenite::Error::ConnectionClosed.into(), ErrorType::Recoverable),
-                                Err(e) => C::on_error(&e, ErrorType::Recoverable)
+                                Ok(()) => callbacks.on_error(&tokio_tungstenite::tungstenite::Error::ConnectionClosed.into(), ErrorType::Recoverable),
+                                Err(e) => callbacks.on_error(&e, ErrorType::Recoverable)
                             }
                             tokio::time::sleep(t).await;
                         } else {
                             tracing::error!("Connection to the portal error, check your internet or the status of the portal.\nDisconnecting interface.");
                             match result {
-                                Ok(()) => C::on_error(&crate::Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed), ErrorType::Fatal),
-                                Err(e) => C::on_error(&e, ErrorType::Fatal)
+                                Ok(()) => callbacks.on_error(&crate::Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed), ErrorType::Fatal),
+                                Err(e) => callbacks.on_error(&e, ErrorType::Fatal)
                             }
                             break;
                         }

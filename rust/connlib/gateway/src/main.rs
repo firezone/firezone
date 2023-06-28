@@ -6,18 +6,23 @@ use firezone_gateway_connlib::{
 };
 use url::Url;
 
-enum CallbackHandler {}
+#[derive(Clone)]
+pub struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
-    fn on_update_resources(_resource_list: ResourceList) {
+    fn on_update_resources(&self, _resource_list: ResourceList) {
         todo!()
     }
 
-    fn on_set_tunnel_adresses(_tunnel_addresses: TunnelAddresses) {
+    fn on_connect(&self, _tunnel_addresses: TunnelAddresses) {
         todo!()
     }
 
-    fn on_error(error: &Error, error_type: ErrorType) {
+    fn on_disconnect(&self) {
+        todo!()
+    }
+
+    fn on_error(&self, error: &Error, error_type: ErrorType) {
         match error_type {
             ErrorType::Recoverable => tracing::warn!("Encountered error: {error}"),
             ErrorType::Fatal => panic!("Encountered fatal error: {error}"),
@@ -33,8 +38,7 @@ fn main() -> Result<()> {
     // TODO: allow passing as arg vars
     let url = parse_env_var::<Url>(URL_ENV_VAR)?;
     let secret = parse_env_var::<String>(SECRET_ENV_VAR)?;
-    // TODO: This is disgusting
-    let mut session = Session::<CallbackHandler>::connect::<CallbackHandler>(url, secret).unwrap();
+    let mut session = Session::connect(url, secret, CallbackHandler).unwrap();
     session.wait_for_ctrl_c().unwrap();
     session.disconnect();
     Ok(())

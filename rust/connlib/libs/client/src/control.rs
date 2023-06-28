@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use crate::messages::{Connect, EgressMessages, InitClient, Messages, Relays};
 use boringtun::x25519::StaticSecret;
@@ -27,10 +27,9 @@ impl ControlSignal for ControlSignaler {
 }
 
 /// Implementation of [ControlSession] for clients.
-pub struct ControlPlane<C: Callbacks> {
-    tunnel: Arc<Tunnel<ControlSignaler, C>>,
+pub struct ControlPlane<CB: Callbacks> {
+    tunnel: Arc<Tunnel<ControlSignaler, CB>>,
     control_signaler: ControlSignaler,
-    _phantom: PhantomData<C>,
 }
 
 #[derive(Clone)]
@@ -38,10 +37,7 @@ struct ControlSignaler {
     internal_sender: Arc<Sender<EgressMessages>>,
 }
 
-impl<C: Callbacks> ControlPlane<C>
-where
-    C: Send + Sync + 'static,
-{
+impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn start(mut self, mut receiver: Receiver<Messages>) {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
@@ -64,7 +60,7 @@ where
     ) {
         if let Err(e) = self.tunnel.set_interface(&interface).await {
             tracing::error!("Couldn't initialize interface: {e}");
-            C::on_error(&e, Fatal);
+            self.tunnel.callbacks().on_error(&e, Fatal);
             return;
         }
 
@@ -89,7 +85,7 @@ where
             .recieved_offer_response(resource_id, rtc_sdp, gateway_public_key.0.into())
             .await
         {
-            C::on_error(&e, Recoverable);
+            self.tunnel.callbacks().on_error(&e, Recoverable);
         }
     }
 
@@ -127,12 +123,12 @@ where
                         .await
                     {
                         tunnel.cleanup_connection(resource_id);
-                        C::on_error(&err.into(), Recoverable);
+                        tunnel.callbacks().on_error(&err.into(), Recoverable);
                     }
                 }
                 Err(err) => {
                     tunnel.cleanup_connection(resource_id);
-                    C::on_error(&err, Recoverable);
+                    tunnel.callbacks().on_error(&err, Recoverable);
                 }
             }
         });
@@ -157,12 +153,11 @@ where
 }
 
 #[async_trait]
-impl<C: Callbacks + Sync + Send + 'static> ControlSession<Messages, EgressMessages>
-    for ControlPlane<C>
-{
-    #[tracing::instrument(level = "trace", skip(private_key))]
+impl<CB: Callbacks + 'static> ControlSession<Messages, EgressMessages, CB> for ControlPlane<CB> {
+    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     async fn start(
         private_key: StaticSecret,
+        callbacks: CB,
     ) -> Result<(Sender<Messages>, Receiver<EgressMessages>)> {
         // This is kinda hacky, the buffer size is 1 so that we make sure that we
         // process one message at a time, blocking if a previous message haven't been processed
@@ -172,12 +167,11 @@ impl<C: Callbacks + Sync + Send + 'static> ControlSession<Messages, EgressMessag
         let (internal_sender, internal_receiver) = channel(INTERNAL_CHANNEL_SIZE);
         let internal_sender = Arc::new(internal_sender);
         let control_signaler = ControlSignaler { internal_sender };
-        let tunnel = Arc::new(Tunnel::new(private_key, control_signaler.clone()).await?);
+        let tunnel = Arc::new(Tunnel::new(private_key, control_signaler.clone(), callbacks).await?);
 
-        let control_plane = ControlPlane::<C> {
+        let control_plane = ControlPlane {
             tunnel,
             control_signaler,
-            _phantom: PhantomData,
         };
 
         tokio::spawn(async move { control_plane.start(receiver).await });
