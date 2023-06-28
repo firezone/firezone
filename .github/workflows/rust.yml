@@ -61,9 +61,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    strategy:
-      matrix:
-        rust: [stable]
     steps:
       - uses: actions/checkout@v3
       - uses: Swatinem/rust-cache@v2
@@ -97,9 +94,6 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: read
-    strategy:
-      matrix:
-        rust: [stable]
     steps:
       - uses: actions/checkout@v3
       - uses: Swatinem/rust-cache@v2
