@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use boringtun::x25519::{PublicKey, StaticSecret};
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_core::OsRng;
 use std::{
     marker::PhantomData,
@@ -126,8 +127,9 @@ where
         runtime.spawn(async move {
                 let private_key = StaticSecret::random_from_rng(OsRng);
                 let self_id = uuid::Uuid::new_v4();
+                let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
 
-                let connect_url = fatal_error!(get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string()), callbacks);
+                let connect_url = fatal_error!(get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix), callbacks);
 
                 let (sender, mut receiver) = fatal_error!(T::start(private_key, callbacks.clone()).await, callbacks);
 
@@ -223,6 +225,7 @@ fn get_websocket_path(
     mode: &str,
     public_key: &Key,
     external_id: &str,
+    name_suffix: &str,
 ) -> Result<Url> {
     {
         let mut paths = url.path_segments_mut().map_err(|_| Error::UriError)?;
@@ -237,7 +240,7 @@ fn get_websocket_path(
         query_pairs.append_pair("token", &secret);
         query_pairs.append_pair("public_key", &public_key.to_string());
         query_pairs.append_pair("external_id", external_id);
-        query_pairs.append_pair("name_suffix", "todo");
+        query_pairs.append_pair("name_suffix", name_suffix);
     }
 
     Ok(url)

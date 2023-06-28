@@ -1549,6 +1549,7 @@ dependencies = [
  "futures-util",
  "ip_network",
  "os_info",
+ "rand",
  "rand_core 0.6.4",
  "rtnetlink",
  "serde",
