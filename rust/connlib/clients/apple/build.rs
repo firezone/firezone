@@ -1,6 +1,6 @@
 // Referenced from https://github.com/chinedufn/swift-bridge/blob/master/examples/rust-binary-calls-swift-package/build.rs
 
-#[cfg(any(target_os = "darwin", target_os = "ios", target_os = "ios-sim"))]
+#[cfg(target_vendor = "apple")]
 fn main() -> anyhow::Result<()> {
     use std::path::PathBuf;
     use walkdir::WalkDir;
@@ -141,7 +141,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(not(any(target_os = "darwin", target_os = "ios", target_os = "ios-sim")))]
+#[cfg(not(target_vendor = "apple"))]
 fn main() -> anyhow::Result<()> {
     Ok(())
 }
