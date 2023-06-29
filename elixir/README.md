@@ -191,6 +191,18 @@ identity = Domain.Repo.get_by(Domain.Auth.Identity, provider_id: provider.id, pr
 subject = Domain.Auth.build_subject(identity, nil, user_agent, remote_ip)
 ```
 
+Listing connected gateways, relays, devices for an account:
+
+```elixir
+account_id = "c89bcc8c-9392-4dae-a40d-888aef6d28e0"
+
+%{
+  gateways: Domain.Gateways.Presence.list("gateways:#{account_id}"),
+  relays: Domain.Relays.Presence.list("relays:#{account_id}"),
+  devices: Domain.Devices.Presence.list("devices:#{account_id}"),
+}
+```
+
 ## Connecting to a staging or production instances
 
 We use Google Cloud Platform for all our staging and production infrastructure. You'll need access to this env to perform the commands below; to get and access you need to add yourself to `project_owners` in `main.tf` for each of the [environments](../terraform/environments).
