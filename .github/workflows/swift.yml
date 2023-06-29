@@ -1,0 +1,40 @@
+name: Swift
+on:
+  pull_request:
+    paths:
+      - "swift/**"
+      - ".github/workflows/swift.yml"
+  workflow_call:
+
+# Cancel old workflow runs if new code is pushed
+concurrency:
+  group: "swift-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  draft-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.release_drafter.outputs.tag_name }}
+    steps:
+      - uses: release-drafter/release-drafter@v5
+        with:
+          commitish: cloud
+        id: release_drafter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # TODO: Add a basic CI for the Apple client
+  # See rust.yml how we build, package and release connlib as an example
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ./swift
+    needs:
+      - draft-release
+    steps:
+      - uses: actions/checkout@v3
+      # TODO: Build Apple client from the CLI

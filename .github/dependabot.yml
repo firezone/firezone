@@ -25,3 +25,13 @@ updates:
     directory: "rust/"
     schedule:
       interval: "weekly"
+  - package-ecosystem: "maven"
+    directory: "rust/connlib/clients/android"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "maven"
+    directory: "kotlin/"
+    schedule:
+      interval: "weekly"
+  # TODO: Apple package ecosystem
+
