@@ -134,9 +134,11 @@ defmodule Web.Router do
       # Settings
       live "/settings/account", SettingsLive.Account
       live "/settings/identity_providers", SettingsLive.IdentityProviders.Index
-      live "/settings/identity_providers/new", SettingsLive.NewIdentityProviders.New
-      live "/settings/identity_providers/:id", SettingsLive.NewIdentityProviders.Show
-      live "/settings/identity_providers/:id/edit", SettingsLive.NewIdentityProviders.Edit
+      live "/settings/identity_providers/new", SettingsLive.IdentityProviders.New
+      live "/settings/identity_providers/new/oidc", SettingsLive.IdentityProviders.New.OIDC
+      live "/settings/identity_providers/new/saml", SettingsLive.IdentityProviders.New.SAML
+      live "/settings/identity_providers/:id", SettingsLive.IdentityProviders.Show
+      live "/settings/identity_providers/:id/edit", SettingsLive.IdentityProviders.Edit
       live "/settings/dns", SettingsLive.Dns
       live "/settings/api_tokens", SettingsLive.ApiTokens.Index
       live "/settings/api_tokens/new", SettingsLive.ApiTokens.New
