@@ -20,7 +20,7 @@ You can build the server using: `cargo build --release --bin relay`
 
 ## Running
 
-For a detailed help text and available configuration options, run `cargo run --bin relay -- --help`.
+For an up-to-date documentation on the available configurations options and a detailed help text, run `cargo run --bin relay -- --help`.
 All command-line options can be overridden using environment variables.
 Those variables are listed in the `--help` output at the bottom of each command.
 
