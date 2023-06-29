@@ -87,7 +87,6 @@ defmodule Web.FormComponents do
               [value: "same_domain", key: "Allow from same email domain"],
               [value: "allow_all", key: "Allow any authenticated user"]
             ]}
-            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
           >
           </.input>
         </div>
@@ -97,7 +96,6 @@ defmodule Web.FormComponents do
               label="Email allowlist"
               autocomplete="off"
               field={@form[:jit_user_filter_value]}
-              class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
               placeholder="Comma-delimited list of email addresses"
               required
             />
@@ -115,7 +113,6 @@ defmodule Web.FormComponents do
             <.link
               class="text-blue-600 dark:text-blue-500 hover:underline"
               href="https://www.firezone.dev/docs/authenticate/jit-provisioning#extract-group-membership-information"
-              class="text-blue-500 dark:text-blue-400 hover:underline"
               target="_blank"
             >
               Read more about group extraction.

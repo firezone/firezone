@@ -78,6 +78,7 @@ defmodule Web.Router do
   scope "/:account_id/scim/v2", Web do
     pipe_through [:api]
 
+    get "/", ScimController, :index
     # TODO: SCIM endpoints
   end
 
