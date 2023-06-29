@@ -1,5 +1,6 @@
 // Referenced from https://github.com/chinedufn/swift-bridge/blob/master/examples/rust-binary-calls-swift-package/build.rs
 
+// TODO: Reconsider cfg's once https://github.com/rust-lang/cargo/issues/5220 lands.
 #[cfg(target_vendor = "apple")]
 fn main() -> anyhow::Result<()> {
     use std::path::PathBuf;
