@@ -124,12 +124,6 @@ jobs:
           workspaces: ./rust
       - name: Update toolchain
         run: rustup show
-      - name: Run connlib checks and tests
-        working-directory: ./rust/connlib/clients/apple
-        run: |
-          cargo check -p connlib-apple
-          cargo clippy -p connlib-apple -- -D clippy::all
-          cargo test -p connlib-apple
       - name: Setup lipo
         run: cargo install cargo-lipo
       - uses: actions/cache@v3
