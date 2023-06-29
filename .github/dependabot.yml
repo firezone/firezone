@@ -34,4 +34,3 @@ updates:
     schedule:
       interval: "weekly"
   # TODO: Apple package ecosystem
-
