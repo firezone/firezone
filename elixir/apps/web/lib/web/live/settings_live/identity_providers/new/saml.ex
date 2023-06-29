@@ -1,6 +1,6 @@
 defmodule Web.SettingsLive.IdentityProviders.New.SAML do
   use Web, :live_view
-  import Web.FormComponents
+  import Web.SettingsLive.IdentityProviders.New.Components
 
   # TODO: Use a changeset for this
   @form_initializer %{
