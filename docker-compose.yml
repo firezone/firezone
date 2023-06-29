@@ -132,7 +132,8 @@ services:
     devices:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
-      - api
+      api:
+        condition: 'service_healthy'
     networks:
       app:
         ipv4_address: 172.28.0.100
@@ -156,7 +157,8 @@ services:
     devices:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
-      - api
+      api:
+        condition: 'service_healthy'
     networks:
       - app
       - resources
@@ -247,11 +249,7 @@ services:
       postgres:
         condition: 'service_healthy'
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl -f localhost:8081/healthz"
-        ]
+      test: [ "CMD-SHELL", "curl -f localhost:8081/healthz" ]
       start_period: 20s
       interval: 30s
       retries: 5
