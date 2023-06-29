@@ -47,28 +47,6 @@ struct Args {
     rng_seed: Option<u64>,
 }
 
-// TODO: Code repetition from common
-fn get_websocket_path(mut url: Url, token: String, ipv4: Ipv4Addr) -> Result<Url> {
-    {
-        let mut paths = url
-            .path_segments_mut()
-            .map_err(|_| anyhow!("invalid url"))
-            .context("No url base found while trying to format the portal's URL")?;
-        paths.pop_if_empty();
-        paths.push("relay");
-        paths.push("websocket");
-    }
-
-    {
-        let mut query_pairs = url.query_pairs_mut();
-        query_pairs.clear();
-        query_pairs.append_pair("token", &token);
-        query_pairs.append_pair("ipv4", &ipv4.to_string());
-    }
-
-    Ok(url)
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -449,4 +427,26 @@ async fn forward_incoming_relay_data(
             }
         }
     }
+}
+
+// TODO: Code repetition from common
+fn get_websocket_path(mut url: Url, token: String, ipv4: Ipv4Addr) -> Result<Url> {
+    {
+        let mut paths = url
+            .path_segments_mut()
+            .map_err(|_| anyhow!("invalid url"))
+            .context("No url base found while trying to format the portal's URL")?;
+        paths.pop_if_empty();
+        paths.push("relay");
+        paths.push("websocket");
+    }
+
+    {
+        let mut query_pairs = url.query_pairs_mut();
+        query_pairs.clear();
+        query_pairs.append_pair("token", &token);
+        query_pairs.append_pair("ipv4", &ipv4.to_string());
+    }
+
+    Ok(url)
 }
