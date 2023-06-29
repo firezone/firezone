@@ -41,21 +41,21 @@ jobs:
         with:
           java-version: '17'
           distribution: 'adopt'
-      - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@v1
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-      - name: Assemble Release
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: build assembleRelease
       # TODO: Is this relevant for the Android client?
+      # - name: Validate Gradle wrapper
+      #   uses: gradle/wrapper-validation-action@v1
+      # - uses: actions/cache@v3
+      #   with:
+      #     path: |
+      #       ~/.gradle/caches
+      #       ~/.gradle/wrapper
+      #     key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+      #     restore-keys: |
+      #       ${{ runner.os }}-gradle-
+      # - name: Assemble Release
+      #   uses: gradle/gradle-build-action@v2
+      #   with:
+      #     arguments: build assembleRelease
       # - name: Move artifact
       #   run: |
       #     mv ./rust/connlib/clients/android/lib/build/outputs/aar/lib-release.aar ./connlib-${{ needs.draft-release.outputs.tag_name }}.aar
