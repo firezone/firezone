@@ -119,7 +119,7 @@ services:
     environment:
       FZ_URL: "ws://api:8081/"
       FZ_SECRET: "SFMyNTY.g2gDaANkAAhpZGVudGl0eW0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACAZ_F7tY7RZcWcaeGbwM9H9EBDdj2U4QPu2sBzD8Z_7R24GAMH8mfqIAWIB4TOA.2IZ089fjvNLoCsirq2PwNTfMHXf3285F6YcNquk6niU"
-      RUST_LOG: headless=trace,firezone_tunnel=trace,libs_common=trace,warn
+      RUST_LOG: headless=trace,firezone_client_connlib=trace,firezone_tunnel=trace,libs_common=trace,warn
     build:
       context: rust
       dockerfile: Dockerfile.dev
@@ -143,6 +143,7 @@ services:
     environment:
       FZ_URL: "ws://api:8081/"
       FZ_SECRET: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAFvAb_mIAWIAAVGA.1DaY3H3fKzW5sqcciJqlHyG0uFctzOewofsVRGS7NrQ"
+      RUST_LOG: gateway=trace,firezone_gateway_connlib=trace,firezone_tunnel=trace,libs_common=trace,warn
     build:
       context: rust
       dockerfile: Dockerfile.dev

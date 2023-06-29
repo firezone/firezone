@@ -52,7 +52,7 @@ defmodule API.Gateway.Channel do
 
     ref = Ecto.UUID.generate()
 
-    push(socket, "request_connection", %{
+    push(dbg(socket), "request_connection", %{
       ref: ref,
       actor: Views.Actor.render(device.actor),
       relays: Views.Relay.render_many(relays, authorization_expires_at),

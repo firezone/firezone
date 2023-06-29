@@ -73,12 +73,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 )
                 .await
             {
-                Ok(gateway_rtc_sdp) => {
+                Ok(gateway_rtc_session_description) => {
                     if let Err(err) = control_signaler
                         .control_signal
                         .send(EgressMessages::ConnectionReady(ConnectionReady {
-                            client_id: connection_request.device.id,
-                            gateway_rtc_sdp,
+                            reference: connection_request.reference,
+                            gateway_rtc_session_description,
                         }))
                         .await
                     {

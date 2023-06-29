@@ -177,7 +177,8 @@ where
                 tokio::spawn(async move {
                     let mut exponential_backoff = ExponentialBackoffBuilder::default().build();
                     loop {
-                        let result = connection.start(vec![topic.clone()]).await;
+                        // `connection.start` calls the callback only after connecting
+                        let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
                         if let Some(t) = exponential_backoff.next_backoff() {
                             tracing::warn!("Error during connection to the portal, retrying in {} seconds", t.as_secs());
                             match result {

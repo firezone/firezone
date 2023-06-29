@@ -18,13 +18,22 @@ impl FromStr for Key {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut key_bytes = [0u8; KEY_SIZE];
-        let bytes_decoded = STANDARD.decode_slice(s, &mut key_bytes)?;
-
-        if bytes_decoded != KEY_SIZE {
-            Err(base64::DecodeError::InvalidLength)?;
+        // decode_slice tries to estimate the size the decoded string before decoding
+        // if the passed buffer is smaller, it return an error.
+        // the problem is... the estimator is very bad! Meaning, decode_slice doesn't work
+        // we could use `decode_slice_unchecked`... or we could if we could trust the input, of course we can't
+        // (unless the portal sanitized the key beforehand which it doesn't) since someone could abuse this somehow
+        // to DoS a gateway by provinding a wrongly size public_key.
+        //:(
+        // so... we decode into a vec, check the length and convert to an array :)
+        // TODO: https://github.com/marshallpierce/rust-base64/issues/210
+        let bytes_decoded = STANDARD.decode(s)?;
+        if bytes_decoded.len() != KEY_SIZE {
+            Err(Error::Base64DecodeError(base64::DecodeError::InvalidLength))
+        } else {
+            key_bytes.copy_from_slice(&bytes_decoded);
+            Ok(Key(key_bytes))
         }
-
-        Ok(Self(key_bytes))
     }
 }
 
@@ -50,5 +59,31 @@ impl Serialize for Key {
         S: Serializer,
     {
         serializer.collect_str(&self)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use boringtun::x25519::{PublicKey, StaticSecret};
+    use rand_core::OsRng;
+
+    use super::Key;
+
+    #[test]
+    fn can_deserialize_public_key() {
+        let public_key_string = r#""S6REkbStSNMfn8hpLkVxibjR+zz3RO/Gq40TprHJE2U=""#;
+        let actual_key: Key = serde_json::from_str(&public_key_string).unwrap();
+        assert_eq!(actual_key.to_string(), public_key_string.trim_matches('"'));
+    }
+
+    #[test]
+    fn can_serialize_from_private_key_and_back() {
+        let private_key = StaticSecret::random_from_rng(OsRng);
+        let expected_public_key = PublicKey::from(&private_key);
+        let public_key = Key(expected_public_key.to_bytes());
+        let public_key_string = dbg!(serde_json::to_string(&public_key).unwrap());
+        let actual_key: Key = serde_json::from_str(&public_key_string).unwrap();
+        let actual_public_key = PublicKey::from(actual_key.0);
+        assert_eq!(actual_public_key, expected_public_key);
     }
 }

@@ -76,14 +76,19 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     async fn connect(
         &mut self,
         Connect {
-            rtc_sdp,
+            gateway_rtc_session_description,
             resource_id,
             gateway_public_key,
+            ..
         }: Connect,
     ) {
         if let Err(e) = self
             .tunnel
-            .recieved_offer_response(resource_id, rtc_sdp, gateway_public_key.0.into())
+            .recieved_offer_response(
+                resource_id,
+                gateway_rtc_session_description,
+                gateway_public_key.0.into(),
+            )
             .await
         {
             self.tunnel.callbacks().on_error(&e, Recoverable);

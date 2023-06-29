@@ -89,11 +89,15 @@ where
     /// Additionally, you can add a list of topic to join after connection ASAP.
     ///
     /// See [struct-level docs][PhoenixChannel] for more info.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn start(&mut self, topics: Vec<String>) -> Result<()> {
+    ///
+    // TODO: this is not very elegant but it was the easiest way to do reset the exponential backoff for now
+    /// Furthermore, it calls the given callback when passed.
+    #[tracing::instrument(level = "trace", skip(self, cb))]
+    pub async fn start(&mut self, topics: Vec<String>, cb: impl FnOnce() -> ()) -> Result<()> {
         tracing::trace!("Trying to connect to the portal...");
 
         let (ws_stream, _) = connect_async(make_request(&self.uri)?).await?;
+        cb();
 
         tracing::trace!("Successfully connected to portal");
 
