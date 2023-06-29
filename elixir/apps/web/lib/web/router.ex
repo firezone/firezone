@@ -75,6 +75,12 @@ defmodule Web.Router do
     end
   end
 
+  scope "/:account_id/scim/v2", Web do
+    pipe_through [:api]
+
+    # TODO: SCIM endpoints
+  end
+
   scope "/:account_id", Web do
     pipe_through [:browser]
 
