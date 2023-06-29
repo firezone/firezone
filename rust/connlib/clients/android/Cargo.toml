@@ -12,3 +12,4 @@ android_logger = "0.13"
 [lib]
 name = "connlib"
 crate-type = ["cdylib"]
+doc = false
