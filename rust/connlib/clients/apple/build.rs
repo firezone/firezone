@@ -131,6 +131,11 @@ fn link_swift(env: &Env) {
 }
 
 fn main() -> anyhow::Result<()> {
+    // Early exit build script to avoid errors on non-Apple platforms.
+    if !cfg!(target_vendor = "apple") {
+        return Ok(());
+    }
+
     println!("cargo:rerun-if-env-changed={XCODE_CONFIGURATION_ENV}");
     let env = Env::gather();
     gen_bridges(&env);
