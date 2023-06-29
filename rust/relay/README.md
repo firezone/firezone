@@ -28,6 +28,10 @@ The relay listens on port `3478`.
 This is the standard port for STUN/TURN and not configurable.
 Additionally, the relay needs to have access to the port range `49152` - `65535` for the allocations.
 
+## Portal connection
+
+When given a portal endpoint, the relay will connect to it and wait for an `init` message before commencing relay operations.
+
 ## Design
 
 The relay is designed in a sans-IO fashion, meaning the core components do not cause side effects but operate as pure, synchronous state machines.
