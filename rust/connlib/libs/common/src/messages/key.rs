@@ -72,7 +72,7 @@ mod test {
     #[test]
     fn can_deserialize_public_key() {
         let public_key_string = r#""S6REkbStSNMfn8hpLkVxibjR+zz3RO/Gq40TprHJE2U=""#;
-        let actual_key: Key = serde_json::from_str(&public_key_string).unwrap();
+        let actual_key: Key = serde_json::from_str(public_key_string).unwrap();
         assert_eq!(actual_key.to_string(), public_key_string.trim_matches('"'));
     }
 
