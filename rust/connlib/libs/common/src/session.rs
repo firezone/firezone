@@ -146,7 +146,7 @@ where
     fn connect_inner(runtime: &Runtime, portal_url: Url, token: String, callbacks: CB) {
         runtime.spawn(async move {
             let private_key = StaticSecret::random_from_rng(OsRng);
-            let self_id = uuid::Uuid::new_v4();
+            let self_id = Uuid::new_v4();
             let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
 
             let connect_url = fatal_error!(get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix), callbacks);
