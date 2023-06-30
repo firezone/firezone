@@ -97,22 +97,6 @@ promptContact() {
   esac
 }
 
-promptACME() {
-  read -p "Would you like to enable automatic SSL cert provisioning? Requires a valid DNS record and port 80 to be reachable. (Y/n): " acme
-  case $acme in
-    n|N)
-      tlsOpts="tls internal {
-                on_demand
-              }"
-      ;;
-    *)
-      tlsOpts="tls {
-                on_demand
-              }"
-      ;;
-  esac
-}
-
 promptTelemetry() {
   read -p "Firezone collects crash and performance logs to help us improve the product. Would you like to disable this? (N/y): " telem
   case $telem in
@@ -145,7 +129,6 @@ firezoneSetup() {
   sed -i.bak "s/DEFAULT_ADMIN_EMAIL=.*/DEFAULT_ADMIN_EMAIL=$1/" "$installDir/.env"
   sed -i.bak "s~EXTERNAL_URL=.*~EXTERNAL_URL=$2~" "$installDir/.env"
   sed -i.bak "s/DATABASE_PASSWORD=.*/DATABASE_PASSWORD=$db_pass/" "$installDir/.env"
-  echo "TLS_OPTS=\"$3\"" >> "$installDir/.env"
   echo "TELEMETRY_ENABLED=$telemEnabled" >> "$installDir/.env"
   echo "TID=$tid" >> "$installDir/.env"
 
@@ -220,18 +203,16 @@ main() {
   adminUser=""
   externalUrl=""
   defaultInstallDir="$HOME/.firezone"
-  tlsOpts=""
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance: "
   promptInstallDir "Enter the desired installation directory ($defaultInstallDir): "
   promptExternalUrl "Enter the external URL that will be used to access this instance. ($defaultExternalUrl): "
-  promptACME
   promptContact
   promptTelemetry
   read -p "Press <ENTER> to install or Ctrl-C to abort."
   if [ $telemEnabled = "true" ]; then
     capture "install" "email-not-collected@dummy.domain"
   fi
-  firezoneSetup $adminUser $externalUrl "$tlsOpts"
+  firezoneSetup $adminUser $externalUrl
 }
 
 dockerCheck
