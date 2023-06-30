@@ -59,6 +59,7 @@ pub enum IngressMessages {
 /// The replies that can arrive from the channel by a client
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 pub enum ReplyMessages {
     Relays(Relays),
     Connect(Connect),
@@ -225,7 +226,7 @@ mod test {
                 "topic": "device"
             }
         "#;
-        let egress_message = serde_json::from_str(message).unwrap();
+        let egress_message = serde_json::from_str(&message).unwrap();
         assert_eq!(m, egress_message);
     }
 
@@ -292,7 +293,7 @@ mod test {
                     "status":"ok"
                 }
             }"#;
-        let reply_message = serde_json::from_str(message).unwrap();
+        let reply_message = serde_json::from_str(&message).unwrap();
         assert_eq!(m, reply_message);
     }
 }

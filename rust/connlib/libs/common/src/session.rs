@@ -26,7 +26,7 @@ pub trait ControlSession<T, CB: Callbacks> {
     /// Start control-plane with the given private-key in the background.
     async fn start(
         private_key: StaticSecret,
-        reciever: Receiver<T>,
+        receiver: Receiver<T>,
         control_signal: PhoenixSenderWithTopic,
         callbacks: CB,
     ) -> Result<()>;

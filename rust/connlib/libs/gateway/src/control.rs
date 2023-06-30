@@ -83,7 +83,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         .await
                     {
                         tunnel.cleanup_peer_connection(connection_request.device.id);
-                        tunnel.callbacks().on_error(&err.into(), Recoverable);
+                        tunnel.callbacks().on_error(&err, Recoverable);
                     }
                 }
                 Err(err) => {

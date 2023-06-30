@@ -155,7 +155,7 @@ mod test {
                 ]
             }
         }"#;
-        // TODO: We are jsut testing we can deserialize for now.
+        // TODO: We are just testing we can deserialize for now.
         let _: PhoenixMessage<IngressMessages, ()> = serde_json::from_str(message).unwrap();
     }
     #[test]

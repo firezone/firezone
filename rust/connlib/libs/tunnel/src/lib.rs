@@ -369,13 +369,13 @@ where
                     }
                     TunnResult::WriteToTunnelV4(packet, addr) => {
                         if peer.is_allowed(addr) {
-                            tracing::trace!("Writing recieved peer packet to iface");
+                            tracing::trace!("Writing received peer packet to iface");
                             tunnel.write4_device_infallible(packet).await;
                         }
                     }
                     TunnResult::WriteToTunnelV6(packet, addr) => {
                         if peer.is_allowed(addr) {
-                            tracing::trace!("Writing recieved peer packet to iface");
+                            tracing::trace!("Writing received peer packet to iface");
                             tunnel.write6_device_infallible(packet).await;
                         }
                     }

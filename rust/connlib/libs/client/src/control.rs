@@ -130,7 +130,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         .await
                     {
                         tunnel.cleanup_connection(resource_id);
-                        tunnel.callbacks().on_error(&err.into(), Recoverable);
+                        tunnel.callbacks().on_error(&err, Recoverable);
                     }
                 }
                 Err(err) => {
