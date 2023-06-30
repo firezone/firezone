@@ -323,7 +323,7 @@ pub struct PhoenixSender {
 
 /// Like a [PhoenixSender] with a fixed topic for simplicity
 ///
-/// You can obtain it through [PhoenixChannel::sender_with_topc]
+/// You can obtain it through [PhoenixChannel::sender_with_topic]
 /// See [PhoenixSender] docs and use that if you need more control.
 #[derive(Clone, Debug)]
 pub struct PhoenixSenderWithTopic {
