@@ -145,7 +145,7 @@ mod test {
             }
         }"#;
         let _: PhoenixMessage<IngressMessages, ReplyMessages> =
-            serde_json::from_str(&message).unwrap();
+            serde_json::from_str(message).unwrap();
     }
     #[test]
     fn init_phoenix_message() {
@@ -226,7 +226,7 @@ mod test {
                 "topic": "device"
             }
         "#;
-        let egress_message = serde_json::from_str(&message).unwrap();
+        let egress_message = serde_json::from_str(message).unwrap();
         assert_eq!(m, egress_message);
     }
 
@@ -293,7 +293,7 @@ mod test {
                     "status":"ok"
                 }
             }"#;
-        let reply_message = serde_json::from_str(&message).unwrap();
+        let reply_message = serde_json::from_str(message).unwrap();
         assert_eq!(m, reply_message);
     }
 }
