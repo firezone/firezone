@@ -204,14 +204,13 @@ where
     }
 
     fn connect_mock(callbacks: CB) {
-        const DELAY: Duration = Duration::from_secs(1);
-        std::thread::sleep(DELAY);
+        std::thread::sleep(Duration::from_secs(1));
         callbacks.on_connect(TunnelAddresses {
             address4: "100.100.111.2".parse().unwrap(),
             address6: "fd00:0222:2021:1111::2".parse().unwrap(),
         });
         std::thread::spawn(move || {
-            std::thread::sleep(DELAY);
+            std::thread::sleep(Duration::from_secs(3));
             callbacks.on_update_resources(ResourceList {
                 resources: vec![
                     serde_json::to_string(&ResourceDescription::Cidr(ResourceDescriptionCidr {
