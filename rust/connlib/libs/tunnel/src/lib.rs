@@ -13,7 +13,7 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use libs_common::{
     error_type::ErrorType::{Fatal, Recoverable},
-    Callbacks,
+    Callbacks, TunnelAddresses,
 };
 
 use async_trait::async_trait;
@@ -244,6 +244,11 @@ where
 
         self.start_timers();
         self.start_iface_handler();
+
+        self.callbacks.on_connect(TunnelAddresses {
+            address4: config.ipv4,
+            address6: config.ipv6,
+        });
 
         tracing::trace!("Started background loops");
 
