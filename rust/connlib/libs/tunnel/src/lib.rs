@@ -219,7 +219,7 @@ where
         {
             let mut iface_config = self.iface_config.lock().await;
             for ip in resource_description.ips() {
-                if let Err(err) = iface_config.add_route(ip).await {
+                if let Err(err) = iface_config.add_route(&ip).await {
                     self.callbacks.on_error(&err, Fatal);
                 }
             }

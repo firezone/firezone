@@ -133,8 +133,7 @@ services:
     devices:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
-      api:
-        condition: 'service_healthy'
+      - api
     networks:
       app:
         ipv4_address: 172.28.0.100
@@ -159,8 +158,7 @@ services:
     devices:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
-      api:
-        condition: 'service_healthy'
+      - api
     networks:
       - app
       - resources
@@ -169,7 +167,8 @@ services:
     image: alpine:3.18
     command: tail -f /dev/null
     networks:
-      - resources
+      resources:
+        ipv4_address: 172.20.0.100
 
   relay:
     environment:
@@ -251,7 +250,11 @@ services:
       postgres:
         condition: 'service_healthy'
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f localhost:8081/healthz" ]
+      test:
+        [
+          "CMD-SHELL",
+          "curl -f localhost:8081/healthz"
+        ]
       start_period: 20s
       interval: 30s
       retries: 5
