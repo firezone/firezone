@@ -224,7 +224,17 @@ where
                 }
             }
         }
-        self.resources.write().insert(resource_description);
+        let resource_list = {
+            let mut resources = self.resources.write();
+            resources.insert(resource_description);
+            resources.resource_list()
+        };
+        match resource_list {
+            Ok(resource_list) => {
+                self.callbacks.on_update_resources(resource_list);
+            }
+            Err(err) => self.callbacks.on_error(&err.into(), Fatal),
+        }
     }
 
     /// Sets the interface configuration and starts background tasks.
