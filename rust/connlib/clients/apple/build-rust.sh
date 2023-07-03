@@ -45,16 +45,20 @@ else
   fi
 fi
 
+if [[ -n "$CONNLIB_MOCK" ]]; then
+  LIPO_ARGS="--features mock"
+fi
+
 # if [ $ENABLE_PREVIEWS == "NO" ]; then
 
   if [[ $CONFIGURATION == "Release" ]]; then
       echo "BUILDING FOR RELEASE ($TARGETS)"
 
-      cargo lipo --release --manifest-path ./Cargo.toml  --targets $TARGETS
+      cargo lipo --release --manifest-path ./Cargo.toml  --targets $TARGETS $LIPO_ARGS
   else
       echo "BUILDING FOR DEBUG ($TARGETS)"
 
-      cargo lipo --manifest-path ./Cargo.toml  --targets $TARGETS
+      cargo lipo --manifest-path ./Cargo.toml  --targets $TARGETS $LIPO_ARGS
   fi
 
 # else

@@ -85,6 +85,11 @@ cargo {
     module  = "../"
     libname = "connlib"
     targets = listOf("arm", "arm64", "x86", "x86_64")
+    features {
+        if (System.getenv("CONNLIB_MOCK") != null) {
+            defaultAnd(listOf("mock").toTypedArray())
+        }
+    }
 }
 
 tasks.whenTaskAdded {
