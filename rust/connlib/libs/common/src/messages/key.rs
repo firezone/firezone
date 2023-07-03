@@ -81,7 +81,7 @@ mod test {
         let private_key = StaticSecret::random_from_rng(OsRng);
         let expected_public_key = PublicKey::from(&private_key);
         let public_key = Key(expected_public_key.to_bytes());
-        let public_key_string = dbg!(serde_json::to_string(&public_key).unwrap());
+        let public_key_string = serde_json::to_string(&public_key).unwrap();
         let actual_key: Key = serde_json::from_str(&public_key_string).unwrap();
         let actual_public_key = PublicKey::from(actual_key.0);
         assert_eq!(actual_public_key, expected_public_key);
