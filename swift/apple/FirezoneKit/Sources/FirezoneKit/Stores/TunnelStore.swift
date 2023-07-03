@@ -1,0 +1,148 @@
+//
+//  TunnelStore.swift
+//  (c) 2023 Firezone, Inc.
+//  LICENSE: Apache-2.0
+//
+
+import Combine
+import Foundation
+import NetworkExtension
+import OSLog
+
+// TODO: Can this file be removed since we're managing the tunnel in connlib?
+
+@MainActor
+final class TunnelStore: ObservableObject {
+  private static let logger = Logger.make(for: TunnelStore.self)
+
+  var tunnel: NETunnelProviderManager {
+    didSet { setupTunnelObservers() }
+  }
+
+  @Published private(set) var status: NEVPNStatus = .invalid {
+    didSet { TunnelStore.logger.info("status changed: \(self.status.description)") }
+  }
+
+  @Published private(set) var isEnabled = false {
+    didSet { TunnelStore.logger.info("isEnabled changed: \(self.isEnabled.description)") }
+  }
+
+  private var tunnelObservingTasks: [Task<Void, Never>] = []
+
+  init(tunnel: NETunnelProviderManager) {
+    self.tunnel = tunnel
+    tunnel.isEnabled = true
+    setupTunnelObservers()
+  }
+
+  static func loadOrCreate() async throws -> NETunnelProviderManager {
+    logger.trace("\(#function)")
+
+    let managers = try await NETunnelProviderManager.loadAllFromPreferences()
+
+    if let tunnel = managers.first {
+      return tunnel
+    }
+
+    let tunnel = makeManager()
+    try await tunnel.saveToPreferences()
+    try await tunnel.loadFromPreferences()
+
+    return tunnel
+  }
+
+  func start(token: Token) async throws {
+    TunnelStore.logger.trace("\(#function)")
+
+    // make sure we have latest preferences before starting
+    try await tunnel.loadFromPreferences()
+
+    tunnel.protocolConfiguration = Self.makeProtocolConfiguration(token: token)
+    tunnel.isEnabled = true
+    try await tunnel.saveToPreferences()
+
+    let session = tunnel.connection as! NETunnelProviderSession
+    try session.startTunnel()
+  }
+
+  func stop() {
+    TunnelStore.logger.trace("\(#function)")
+    let session = tunnel.connection as! NETunnelProviderSession
+    session.stopTunnel()
+  }
+
+  private static func makeManager() -> NETunnelProviderManager {
+    logger.trace("\(#function)")
+
+    let manager = NETunnelProviderManager()
+    manager.localizedDescription = "Firezone"
+
+    let proto = makeProtocolConfiguration()
+    manager.protocolConfiguration = proto
+    manager.isEnabled = true
+
+    return manager
+  }
+
+  private static func makeProtocolConfiguration(token: Token? = nil) -> NETunnelProviderProtocol {
+    let proto = NETunnelProviderProtocol()
+
+    proto.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
+      "\($0).network-extension"
+    }
+    if let token = token {
+      proto.providerConfiguration = [
+        "portalURL": token.portalURL.absoluteString,
+        "token": token.string
+      ]
+    }
+    proto.serverAddress = "Firezone addresses"
+    return proto
+  }
+
+  private func setupTunnelObservers() {
+    TunnelStore.logger.trace("\(#function)")
+
+    tunnelObservingTasks.forEach { $0.cancel() }
+    tunnelObservingTasks.removeAll()
+
+    tunnelObservingTasks.append(
+      Task {
+        for await notification in NotificationCenter.default.notifications(
+          named: .NEVPNStatusDidChange,
+          object: nil
+        ) {
+          guard let session = notification.object as? NETunnelProviderSession,
+                let tunnelProvider = session.manager as? NETunnelProviderManager
+          else {
+            return
+          }
+          self.status = tunnelProvider.connection.status
+        }
+      }
+    )
+  }
+
+  func removeProfile() async throws {
+    TunnelStore.logger.trace("\(#function)")
+
+    try await tunnel.removeFromPreferences()
+  }
+}
+
+// MARK: - Extensions
+
+/// Make NEVPNStatus convertible to a string
+extension NEVPNStatus: CustomStringConvertible {
+  public var description: String {
+    switch self {
+    case .disconnected: return "Disconnected"
+    case .invalid: return "Invalid"
+    case .connected: return "Connected"
+    case .connecting: return "Connecting"
+    case .disconnecting: return "Disconnecting"
+    case .reasserting: return "Reconnecting"
+    @unknown default: return "Unknown"
+    }
+  }
+}
