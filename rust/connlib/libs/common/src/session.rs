@@ -147,11 +147,11 @@ where
 
     fn connect_inner(runtime: &Runtime, portal_url: Url, token: String, callbacks: CB) {
         runtime.spawn(async move {
-                let private_key = StaticSecret::random_from_rng(OsRng);
-                let self_id = uuid::Uuid::new_v4();
-                let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
+            let private_key = StaticSecret::random_from_rng(OsRng);
+            let self_id = uuid::Uuid::new_v4();
+            let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
 
-                let connect_url = fatal_error!(get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix), callbacks);
+            let connect_url = fatal_error!(get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix), callbacks);
 
 
             // This is kinda hacky, the buffer size is 1 so that we make sure that we
@@ -159,44 +159,44 @@ where
             // to force queue ordering.
             let (control_plane_sender, control_plane_receiver) = tokio::sync::mpsc::channel(1);
 
-                let mut connection = PhoenixChannel::<_, U, R, M>::new(connect_url, move |msg| {
-                    let control_plane_sender = control_plane_sender.clone();
-                    async move {
-                        tracing::trace!("Received message: {msg:?}");
-                        if let Err(e) = control_plane_sender.send(msg).await {
-                            tracing::warn!("Received a message after handler already closed: {e}. Probably message received during session clean up.");
-                        }
+            let mut connection = PhoenixChannel::<_, U, R, M>::new(connect_url, move |msg| {
+                let control_plane_sender = control_plane_sender.clone();
+                async move {
+                    tracing::trace!("Received message: {msg:?}");
+                    if let Err(e) = control_plane_sender.send(msg).await {
+                        tracing::warn!("Received a message after handler already closed: {e}. Probably message received during session clean up.");
                     }
-                });
+                }
+            });
 
-                // Used to send internal messages
-                let topic = T::socket_path().to_string();
-                let internal_sender = connection.sender_with_topic(topic.clone());
-                fatal_error!(T::start(private_key, control_plane_receiver, internal_sender, callbacks.clone()).await, callbacks);
+            // Used to send internal messages
+            let topic = T::socket_path().to_string();
+            let internal_sender = connection.sender_with_topic(topic.clone());
+            fatal_error!(T::start(private_key, control_plane_receiver, internal_sender, callbacks.clone()).await, callbacks);
 
-                tokio::spawn(async move {
-                    let mut exponential_backoff = ExponentialBackoffBuilder::default().build();
-                    loop {
-                        // `connection.start` calls the callback only after connecting
-                        let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
-                        if let Some(t) = exponential_backoff.next_backoff() {
-                            tracing::warn!("Error during connection to the portal, retrying in {} seconds", t.as_secs());
-                            match result {
-                                Ok(()) => callbacks.on_error(&tokio_tungstenite::tungstenite::Error::ConnectionClosed.into(), ErrorType::Recoverable),
-                                Err(e) => callbacks.on_error(&e, ErrorType::Recoverable)
-                            }
-                            tokio::time::sleep(t).await;
-                        } else {
-                            tracing::error!("Connection to the portal error, check your internet or the status of the portal.\nDisconnecting interface.");
-                            match result {
-                                Ok(()) => callbacks.on_error(&crate::Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed), ErrorType::Fatal),
-                                Err(e) => callbacks.on_error(&e, ErrorType::Fatal)
-                            }
-                            break;
+            tokio::spawn(async move {
+                let mut exponential_backoff = ExponentialBackoffBuilder::default().build();
+                loop {
+                    // `connection.start` calls the callback only after connecting
+                    let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
+                    if let Some(t) = exponential_backoff.next_backoff() {
+                        tracing::warn!("Error during connection to the portal, retrying in {} seconds", t.as_secs());
+                        match result {
+                            Ok(()) => callbacks.on_error(&tokio_tungstenite::tungstenite::Error::ConnectionClosed.into(), ErrorType::Recoverable),
+                            Err(e) => callbacks.on_error(&e, ErrorType::Recoverable)
                         }
+                        tokio::time::sleep(t).await;
+                    } else {
+                        tracing::error!("Connection to the portal error, check your internet or the status of the portal.\nDisconnecting interface.");
+                        match result {
+                            Ok(()) => callbacks.on_error(&crate::Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed), ErrorType::Fatal),
+                            Err(e) => callbacks.on_error(&e, ErrorType::Fatal)
+                        }
+                        break;
                     }
+                }
 
-                });
+            });
 
         });
     }
