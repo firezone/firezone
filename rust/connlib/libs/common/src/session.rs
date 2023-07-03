@@ -8,15 +8,12 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr},
     time::Duration,
 };
-use tokio::{
-    runtime::Runtime,
-    sync::mpsc::{Receiver, Sender},
-};
+use tokio::{runtime::Runtime, sync::mpsc::Receiver};
 use url::Url;
 use uuid::Uuid;
 
 use crate::{
-    control::PhoenixChannel,
+    control::{PhoenixChannel, PhoenixSenderWithTopic},
     error_type::ErrorType,
     messages::{Key, ResourceDescription, ResourceDescriptionCidr},
     Error, Result,
@@ -25,9 +22,14 @@ use crate::{
 // TODO: Not the most tidy trait for a control-plane.
 /// Trait that represents a control-plane.
 #[async_trait]
-pub trait ControlSession<T, U, CB: Callbacks> {
+pub trait ControlSession<T, CB: Callbacks> {
     /// Start control-plane with the given private-key in the background.
-    async fn start(private_key: StaticSecret, callbacks: CB) -> Result<(Sender<T>, Receiver<U>)>;
+    async fn start(
+        private_key: StaticSecret,
+        receiver: Receiver<T>,
+        control_signal: PhoenixSenderWithTopic,
+        callbacks: CB,
+    ) -> Result<()>;
 
     /// Either "gateway" or "client" used to get the control-plane URL.
     fn socket_path() -> &'static str;
@@ -88,7 +90,7 @@ macro_rules! fatal_error {
 
 impl<T, U, V, R, M, CB> Session<T, U, V, R, M, CB>
 where
-    T: ControlSession<M, V, CB>,
+    T: ControlSession<M, CB>,
     U: for<'de> serde::Deserialize<'de> + std::fmt::Debug + Send + 'static,
     R: for<'de> serde::Deserialize<'de> + std::fmt::Debug + Send + 'static,
     V: serde::Serialize + Send + 'static,
@@ -146,32 +148,37 @@ where
     fn connect_inner(runtime: &Runtime, portal_url: Url, token: String, callbacks: CB) {
         runtime.spawn(async move {
             let private_key = StaticSecret::random_from_rng(OsRng);
-            let self_id = Uuid::new_v4();
+            let self_id = uuid::Uuid::new_v4();
             let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
 
             let connect_url = fatal_error!(get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix), callbacks);
 
-            let (sender, mut receiver) = fatal_error!(T::start(private_key, callbacks.clone()).await, callbacks);
+
+            // This is kinda hacky, the buffer size is 1 so that we make sure that we
+            // process one message at a time, blocking if a previous message haven't been processed
+            // to force queue ordering.
+            let (control_plane_sender, control_plane_receiver) = tokio::sync::mpsc::channel(1);
 
             let mut connection = PhoenixChannel::<_, U, R, M>::new(connect_url, move |msg| {
-                let sender = sender.clone();
+                let control_plane_sender = control_plane_sender.clone();
                 async move {
                     tracing::trace!("Received message: {msg:?}");
-                    if let Err(e) = sender.send(msg).await {
+                    if let Err(e) = control_plane_sender.send(msg).await {
                         tracing::warn!("Received a message after handler already closed: {e}. Probably message received during session clean up.");
                     }
                 }
             });
 
             // Used to send internal messages
-            let mut internal_sender = connection.sender();
             let topic = T::socket_path().to_string();
-            let topic_send = topic.clone();
+            let internal_sender = connection.sender_with_topic(topic.clone());
+            fatal_error!(T::start(private_key, control_plane_receiver, internal_sender, callbacks.clone()).await, callbacks);
 
             tokio::spawn(async move {
                 let mut exponential_backoff = ExponentialBackoffBuilder::default().build();
                 loop {
-                    let result = connection.start(vec![topic.clone()]).await;
+                    // `connection.start` calls the callback only after connecting
+                    let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
                     if let Some(t) = exponential_backoff.next_backoff() {
                         tracing::warn!("Error during connection to the portal, retrying in {} seconds", t.as_secs());
                         match result {
@@ -191,15 +198,6 @@ where
 
             });
 
-            // TODO: Implement Sink for PhoenixEvent (created from a PhoenixSender event + topic)
-            // that way we can simply do receiver.forward(sender)
-            tokio::spawn(async move {
-                while let Some(message) = receiver.recv().await {
-                    if let Err(err) = internal_sender.send(&topic_send, message).await {
-                        tracing::error!("Channel already closed when trying to send message: {err}. Probably trying to send a message during session clean up.");
-                    }
-                }
-            });
         });
     }
 
