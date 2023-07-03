@@ -20,4 +20,5 @@ jobs:
       - name: Start docker compose in the background
         run: docker compose up -d
       - name: Test that client can ping resource
-        run: docker compose exec -it client ping 172.20.0.100 -c 4
+        # FIXME (sleep)
+        run: sleep 120 && docker compose ps && docker compose exec -it client ping 172.20.0.100 -c 4
