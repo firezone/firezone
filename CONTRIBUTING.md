@@ -61,7 +61,7 @@ comes with `compose` included.
 
 When you want to test every component together the ideal way to go is to use docker.
 
-To do this you first need a seeded database, for that follow the steps on the 
+To do this you first need a seeded database, for that follow the steps on the
 [Elixir's README](elixir/readme#running-control-plane-for-local-development).
 Then you can do:
 ```sh
