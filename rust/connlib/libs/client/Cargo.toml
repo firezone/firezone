@@ -3,6 +3,9 @@ name = "firezone-client-connlib"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+mock = ["libs-common/mock"]
+
 [dependencies]
 tokio = { version = "1.27", default-features = false, features = ["sync"] }
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }

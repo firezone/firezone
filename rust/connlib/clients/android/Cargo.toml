@@ -3,6 +3,9 @@ name = "connlib-android"
 version = "0.1.6"
 edition = "2021"
 
+[features]
+mock = ["firezone-client-connlib/mock"]
+
 [dependencies]
 jni = { version = "0.21.1", features = ["invocation"] }
 firezone-client-connlib = { path = "../../libs/client" }
