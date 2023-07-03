@@ -18,7 +18,7 @@ export default function Post({
 }) {
   return (
     <>
-      <div className="bg-violet-50 mx-auto w-screen text-center lg:mb-16 mb-8">
+      <div className="bg-accent-400 mx-auto w-screen text-center lg:mb-16 mb-8">
         <Image
           alt="Firezone logo"
           width={250}
@@ -28,12 +28,12 @@ export default function Post({
         />
       </div>
 
-      <main className="pb-16 lg:pb-24 bg-white dark:bg-gray-900">
+      <main className="pb-16 lg:pb-24 bg-white dark:bg-neutral-900">
         <div className="flex justify-between px-4 mx-auto max-w-screen-xl">
-          <article className="mx-auto w-full max-w-2xl format format-sm sm:format-base lg:format-lg format-blue dark:format-invert">
+          <article className="mx-auto w-full max-w-2xl format format-sm sm:format-base lg:format-lg dark:format-invert">
             <header className="mb-4 lg:mb-6 not-format">
               <address className="flex items-center mb-6 not-italic">
-                <div className="inline-flex items-center mr-3 text-sm text-gray-900 dark:text-white">
+                <div className="inline-flex items-center mr-3 text-sm text-neutral-900 dark:text-white">
                   <Image
                     width={64}
                     height={64}
@@ -45,14 +45,14 @@ export default function Post({
                     <a
                       href="#"
                       rel="author"
-                      className="text-xl font-bold text-gray-900 dark:text-white"
+                      className="text-xl font-bold text-neutral-900 dark:text-white"
                     >
                       {authorName}
                     </a>
-                    <p className="text-base font-light text-gray-500 dark:text-gray-400">
+                    <p className="text-base font-light text-neutral-800 dark:text-neutral-100">
                       {authorTitle}
                     </p>
-                    <p className="text-base font-light text-gray-500 dark:text-gray-400">
+                    <p className="text-base font-light text-neutral-800 dark:text-neutral-100">
                       <time dateTime="2022-02-08" title="February 8th, 2022">
                         {date}
                       </time>
@@ -60,7 +60,7 @@ export default function Post({
                   </div>
                 </div>
               </address>
-              <h1 className="mb-4 text-3xl font-extrabold leading-tight text-gray-900 lg:mb-6 lg:text-5xl dark:text-white">
+              <h1 className="mb-4 text-3xl font-extrabold leading-tight text-neutral-900 lg:mb-6 lg:text-5xl dark:text-white">
                 {title}
               </h1>
             </header>
@@ -70,7 +70,6 @@ export default function Post({
       </main>
 
       {/* TODO: Related articles (see flowbite blocks) */}
-
     </>
   );
 }

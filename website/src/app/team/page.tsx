@@ -5,10 +5,10 @@ import { LinkedInIcon, GitHubIcon, TwitterIcon } from "@/components/Icons";
 
 export default function Page() {
   return (
-    <section className="bg-white dark:bg-gray-900">
+    <section className="bg-white dark:bg-neutral-900">
       <div className="grid gap-16 py-8 px-4 mx-auto max-w-screen-xl lg:grid-cols-2 lg:py-16 lg:px-6">
-        <div className="text-gray-500 sm:text-lg dark:text-gray-400">
-          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-900 dark:text-white">
+        <div className="text-neutral-800 sm:text-lg dark:text-neutral-100">
+          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
             People are everything.
           </h2>
           <p className="mb-2 md:text-lg">
@@ -22,9 +22,9 @@ export default function Page() {
             think in new and creative ways.
           </p>
         </div>
-        <div className="divide-y divide-gray-200 dark:divide-gray-700">
-          <div className="text-gray-500 sm:text-lg dark:text-gray-400">
-            <h3 className="justify-center mb-4 text-xl tracking-tight font-bold text-gray-900 dark:text-white">
+        <div className="divide-y divide-neutral-200 dark:divide-neutral-700">
+          <div className="text-neutral-800 sm:text-lg dark:text-neutral-100">
+            <h3 className="justify-center mb-4 text-xl tracking-tight font-bold text-neutral-900 dark:text-white">
               CORE TEAM
             </h3>
           </div>
@@ -37,13 +37,13 @@ export default function Page() {
               alt="Jamil Avatar"
             />
             <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
                 Jamil Bou Kheir
               </h3>
-              <span className="text-gray-500 dark:text-gray-400">
+              <span className="text-neutral-800 dark:text-neutral-100">
                 CEO/Co-founder
               </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
+              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
                 {/* TODO: Bio
                   Before starting Firezone, Jamil battled cybersecurity threats at
                   Cisco for 8+ years in various roles from pentesting to incident
@@ -52,7 +52,7 @@ export default function Page() {
                   decided to take the plunge into the world of startups to start
                   Firezone. Because who needs sleep, right?
               </p>
-              <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
+              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
                 Jamil lives in sunny Mountain View, CA with his partner and
                 their terrier Charlie.
                 */}
@@ -80,13 +80,13 @@ export default function Page() {
               alt="Gabi Avatar"
             />
             <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
                 Gabriel Steinberg
               </h3>
-              <span className="text-gray-500 dark:text-gray-400">
+              <span className="text-neutral-800 dark:text-neutral-100">
                 Senior Backend Engineer
               </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
+              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
                 {/* TODO: bio */}
               </p>
               <ul className="flex justify-center space-x-4 sm:justify-start">
@@ -108,13 +108,13 @@ export default function Page() {
               alt="Andrew Avatar"
             />
             <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
                 Andrew Dryga
               </h3>
-              <span className="text-gray-500 dark:text-gray-400">
+              <span className="text-neutral-800 dark:text-neutral-100">
                 Founding Engineer
               </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
+              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
                 {/* TODO: bio */}
               </p>
               <ul className="flex justify-center space-x-4 sm:justify-start">
@@ -139,13 +139,13 @@ export default function Page() {
               alt="Francesca Avatar"
             />
             <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
                 Francesca Lovebloom
               </h3>
-              <span className="text-gray-500 dark:text-gray-400">
+              <span className="text-neutral-800 dark:text-neutral-100">
                 Senior Systems Engineer
               </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
+              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
                 {/* TODO: bio */}
               </p>
               <ul className="flex justify-center space-x-4 sm:justify-start">
@@ -170,13 +170,13 @@ export default function Page() {
               alt="Brian Avatar"
             />
             <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
                 Brian Manifold
               </h3>
-              <span className="text-gray-500 dark:text-gray-400">
+              <span className="text-neutral-800 dark:text-neutral-100">
                 Senior Fullstack Engineer
               </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
+              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
                 {/* TODO: bio */}
               </p>
               <ul className="flex justify-center space-x-4 sm:justify-start">
@@ -189,8 +189,8 @@ export default function Page() {
               </ul>
             </div>
           </div>
-          <div className="text-gray-500 sm:text-lg dark:text-gray-400">
-            <h3 className="justify-center py-8 text-xl tracking-tight font-bold text-gray-900 dark:text-white">
+          <div className="text-neutral-800 sm:text-lg dark:text-neutral-100">
+            <h3 className="justify-center py-8 text-xl tracking-tight font-bold text-neutral-900 dark:text-white">
               ADVISORS & CONSULTANTS
             </h3>
           </div>
@@ -203,13 +203,13 @@ export default function Page() {
               alt="Blake Avatar"
             />
             <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
                 Blake Hitchcock
               </h3>
-              <span className="text-gray-500 dark:text-gray-400">
+              <span className="text-neutral-800 dark:text-neutral-100">
                 Technical Advisor
               </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
+              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
                 {/* TODO: bio */}
               </p>
               <ul className="flex justify-center space-x-4 sm:justify-start">
@@ -231,13 +231,13 @@ export default function Page() {
               alt="Thomas Avatar"
             />
             <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
                 Thomas Eizinger
               </h3>
-              <span className="text-gray-500 dark:text-gray-400">
+              <span className="text-neutral-800 dark:text-neutral-100">
                 Technical Consultant
               </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
+              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
                 {/* TODO: bio
                   Thomas spent most of his professional life in the distributed systems space. He has a passion for Rust, OSS and sailing yachts.
                 */}
@@ -264,13 +264,13 @@ export default function Page() {
               alt="Roopesh Avatar"
             />
             <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
                 Roopesh Chander
               </h3>
-              <span className="text-gray-500 dark:text-gray-400">
+              <span className="text-neutral-800 dark:text-neutral-100">
                 Technical Consultant
               </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
+              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
                 {/* TODO: bio */}
               </p>
               <ul className="flex justify-center space-x-4 sm:justify-start">

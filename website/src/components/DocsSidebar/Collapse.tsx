@@ -14,8 +14,8 @@ export default function Collapse({
   const indent = "ml-3";
   const hidden = expanded ? "" : "hidden";
   const text = expanded
-    ? "bg-gray-100 dark:bg-gray-700"
-    : "text-gray-900 dark:text-white";
+    ? "bg-neutral-100 dark:bg-neutral-700"
+    : "text-neutral-900 dark:text-white";
   const [expandedState, setExpandedState] = useState(expanded);
 
   return (
@@ -24,7 +24,7 @@ export default function Collapse({
         type="button"
         className={
           text +
-          " flex items-center w-full transition duration-75 rounded-lg group hover:bg-gray-100 dark:hover:bg-gray-700"
+          " flex items-center w-full transition duration-75 rounded-lg group hover:bg-neutral-100 dark:hover:bg-neutral-700"
         }
         aria-controls={ctl}
         data-collapse-toggle={ctl}
