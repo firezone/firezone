@@ -8,7 +8,7 @@ started.
 - [Overview](#overview)
 - [Quick Start](#quick-start)
   - [Docker Setup](#docker-setup)
-    - [Docker Caveat](#docker-caveat)
+    - [Test With Docker](#test-with-docker)
   - [Bootstrapping](#bootstrapping)
   - [Ensure Everything Works](#ensure-everything-works)
 - [Developer Environment Setup](#developer-environment-setup)
@@ -57,32 +57,38 @@ We recommend [Docker Desktop](https://docs.docker.com/engine/install/#desktop)
 even if you're developing on Linux. This is what the Firezone core devs use and
 comes with `compose` included.
 
-#### Docker Caveat
+#### Test With Docker
 
-Routing packets from the host's WireGuard client through the Firezone compose
-cluster and out to the external network will not work. This is because Docker
-Desktop
-[rewrites the source address from containers to appear as if they originated the
-host](https://www.docker.com/blog/how-docker-desktop-networking-works-under-the-hood/)
-, causing a routing loop:
+When you want to test every component together the ideal way to go is to use docker.
 
-1. Packet originates on Host
-1. Enters WireGuard client tunnel
-1. Forwarding through the Docker bridge net
-1. Forward to the Firezone container `127.0.0.1:51820`
-1. Firezone sends packet back out
-1. Docker bridge net, Docker rewrites src IP to Host's LAN IP, (d'oh!)
-1. Docker sends packet out to Host ->
-1. Packet now has same src IP and dest IP as step 1 above, and the cycle
-   continues
+To do this you first need a seeded database, for that follow the steps on the 
+[Elixir's README](elixir/readme#running-control-plane-for-local-development).
+Then you can do:
+```sh
+# To start all the components
+docker compose up -d --build
 
-However, packets destined for Firezone compose cluster IPs (`172.28.0.0/16`)
-reach their destination through the tunnel just fine. Because of this, it's
-recommended to use `172.28.0.0/16` for your `AllowedIPs` parameter when using
-host-based WireGuard clients with Firezone running under Docker Desktop.
+# To check the logs
+docker compose logs -f
+```
 
-Routing packets from _another_ host on the local network, through your development
-machine, and out to the external Internet should work as well.
+After this you will have running:
+* A portal
+* A gateway connected to the portal
+* A client connected to the portal
+* A relay connected to the portal
+* A resource on a network only with the gateway
+  * The ip is `172.20.0.100`
+(And any other dependency for these to run)
+
+
+```sh
+# To test that a client can ping the resource
+docker compose exec -it client ping 172.20.0.100
+
+# You can also directly use the client
+docker compose exec -it client /bin/sh
+```
 
 ### Bootstrapping
 
