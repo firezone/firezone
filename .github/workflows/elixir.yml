@@ -39,8 +39,8 @@ jobs:
     steps:
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: "25"
-          elixir-version: "1.15"
+          otp-version: "26.0.2"
+          elixir-version: "1.15.2"
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
@@ -92,8 +92,8 @@ jobs:
       - uses: erlef/setup-beam@v1
         id: setup-beam
         with:
-          otp-version: "25"
-          elixir-version: "1.15"
+          otp-version: "26.0.2"
+          elixir-version: "1.15.2"
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
@@ -145,8 +145,8 @@ jobs:
     steps:
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: "25"
-          elixir-version: "1.15"
+          otp-version: "26.0.2"
+          elixir-version: "1.15.2"
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
@@ -214,8 +214,8 @@ jobs:
           sudo apt-get install -q -y postgresql-client
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: "25"
-          elixir-version: "1.15"
+          otp-version: "26.0.2"
+          elixir-version: "1.15.2"
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
@@ -316,8 +316,8 @@ jobs:
       - uses: nanasess/setup-chromedriver@v1
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: "25"
-          elixir-version: "1.15"
+          otp-version: "26.0.2"
+          elixir-version: "1.15.2"
       - uses: actions/setup-node@v3
         with:
           node-version: 18
