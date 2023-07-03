@@ -89,11 +89,15 @@ where
     /// Additionally, you can add a list of topic to join after connection ASAP.
     ///
     /// See [struct-level docs][PhoenixChannel] for more info.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn start(&mut self, topics: Vec<String>) -> Result<()> {
+    ///
+    // TODO: this is not very elegant but it was the easiest way to do reset the exponential backoff for now
+    /// Furthermore, it calls the given callback once it connects to the portal.
+    #[tracing::instrument(level = "trace", skip(self, cb))]
+    pub async fn start(&mut self, topics: Vec<String>, cb: impl FnOnce()) -> Result<()> {
         tracing::trace!("Trying to connect to the portal...");
 
         let (ws_stream, _) = connect_async(make_request(&self.uri)?).await?;
+        cb();
 
         tracing::trace!("Successfully connected to portal");
 
@@ -120,6 +124,7 @@ where
                     serde_json::to_string(&PhoenixMessage::<_, ()>::new(
                         topic,
                         EgressControlMessage::PhxJoin(Empty {}),
+                        None,
                     ))
                     .expect("we should always be able to serialize a join topic message"),
                 ))
@@ -197,6 +202,16 @@ where
         }
     }
 
+    /// Obtains a new sender that can be used to send message with this [PhoenixChannel] to the portal for a fixed topic.
+    ///
+    /// For more info see [PhoenixChannel::sender].
+    pub fn sender_with_topic(&self, topic: String) -> PhoenixSenderWithTopic {
+        PhoenixSenderWithTopic {
+            topic,
+            phoenix_sender: self.sender(),
+        }
+    }
+
     /// Creates a new [PhoenixChannel] not started yet.
     ///
     /// # Parameters:
@@ -237,11 +252,11 @@ pub struct PhoenixMessage<T, R> {
 }
 
 impl<T, R> PhoenixMessage<T, R> {
-    pub fn new(topic: impl Into<String>, payload: T) -> Self {
+    pub fn new(topic: impl Into<String>, payload: T, reference: Option<i32>) -> Self {
         Self {
             topic: topic.into(),
             payload: Payload::Message(payload),
-            reference: None,
+            reference,
         }
     }
 
@@ -301,21 +316,74 @@ enum PhxReply<T> {
 ///
 /// Messages won't be sent unless [PhoenixChannel::start] is running, internally
 /// this sends messages through a future channel that are forwrarded then in [PhoenixChannel] event loop
+#[derive(Clone, Debug)]
 pub struct PhoenixSender {
     sender: Sender<Message>,
 }
 
+/// Like a [PhoenixSender] with a fixed topic for simplicity
+///
+/// You can obtain it through [PhoenixChannel::sender_with_topic]
+/// See [PhoenixSender] docs and use that if you need more control.
+#[derive(Clone, Debug)]
+pub struct PhoenixSenderWithTopic {
+    phoenix_sender: PhoenixSender,
+    topic: String,
+}
+
+impl PhoenixSenderWithTopic {
+    /// Sends a message to the associated topic using a [PhoenixSender]
+    ///
+    /// See [PhoenixSender::send]
+    pub async fn send(&mut self, payload: impl Serialize) -> Result<()> {
+        self.phoenix_sender.send(&self.topic, payload).await
+    }
+
+    /// Sends a message to the associated topic using a [PhoenixSender] also setting the ref
+    ///
+    /// See [PhoenixSender::send]
+    pub async fn send_with_ref(&mut self, payload: impl Serialize, reference: i32) -> Result<()> {
+        self.phoenix_sender
+            .send_with_ref(&self.topic, payload, reference)
+            .await
+    }
+}
+
 impl PhoenixSender {
+    async fn send_internal(
+        &mut self,
+        topic: impl Into<String>,
+        payload: impl Serialize,
+        reference: Option<i32>,
+    ) -> Result<()> {
+        // We don't care about the reply type when serializing
+        let str = serde_json::to_string(&PhoenixMessage::<_, ()>::new(topic, payload, reference))?;
+        self.sender.send(Message::text(str)).await?;
+        Ok(())
+    }
+
     /// Sends a message upstream to a connected [PhoenixChannel].
     ///
     /// # Parameters
     /// - topic: Phoenix topic
     /// - payload: Message's payload
     pub async fn send(&mut self, topic: impl Into<String>, payload: impl Serialize) -> Result<()> {
-        // We don't care about the reply type when serializing
-        let str = serde_json::to_string(&PhoenixMessage::<_, ()>::new(topic, payload))?;
-        self.sender.send(Message::text(str)).await?;
-        Ok(())
+        self.send_internal(topic, payload, None).await
+    }
+
+    /// Sends a message upstream to a connected [PhoenixChannel] using the given ref number.
+    ///
+    /// # Parameters
+    /// - topic: Phoenix topic
+    /// - payload: Message's payload
+    /// - reference: Reference number used in the message, if the message has a response that same number will be used
+    pub async fn send_with_ref(
+        &mut self,
+        topic: impl Into<String>,
+        payload: impl Serialize,
+        reference: i32,
+    ) -> Result<()> {
+        self.send_internal(topic, payload, Some(reference)).await
     }
 
     /// Join a phoenix topic, meaning that after this method is invoked [PhoenixChannel] will

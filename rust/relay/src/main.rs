@@ -83,8 +83,6 @@ async fn main() -> Result<()> {
 
     let server = Server::new(args.public_ip4_addr, make_rng(args.rng_seed));
 
-    tracing::info!("Relay auth secret: {}", server.auth_secret());
-
     let channel = if let Some(mut portal_url) = args.portal_ws_url {
         if portal_url.scheme() == "ws" && !args.allow_insecure_ws {
             bail!("Refusing to connect to portal over insecure connection, pass --allow-insecure-ws to override")
@@ -113,7 +111,7 @@ async fn main() -> Result<()> {
             channel.join(
                 "relay",
                 JoinMessage {
-                    stamp_secret: hex::encode(server.auth_secret()),
+                    stamp_secret: server.auth_secret().to_string(),
                 },
             );
 
