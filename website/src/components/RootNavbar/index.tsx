@@ -11,7 +11,7 @@ export default function RootNavbar() {
 
   return (
     <header>
-      <nav className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
+      <nav className="fixed top-0 left-0 right-0 bg-white border-b border-neutral-200 z-50">
         <div className="w-full flex flex-wrap py-2 justify-between items-center">
           <div className="flex justify-start items-center">
             <SidebarToggle />
@@ -27,8 +27,8 @@ export default function RootNavbar() {
             <span className="p-2"></span>
             <Link
               className={
-                (p == "/" ? "text-gray-900 underline" : "text-gray-600") +
-                " p-1 mr-1 hover:text-gray-900 hover:underline rounded-lg"
+                (p == "/" ? "text-neutral-900 underline" : "text-neutral-800") +
+                " p-1 mr-1 hover:text-neutral-900 hover:underline rounded-lg"
               }
               href="/"
             >
@@ -38,9 +38,9 @@ export default function RootNavbar() {
             <Link
               className={
                 (p.startsWith("/docs")
-                  ? "text-gray-900 underline"
-                  : "text-gray-600") +
-                " p-1 mr-1 hover:text-gray-900 hover:underline rounded-lg"
+                  ? "text-neutral-900 underline"
+                  : "text-neutral-800") +
+                " p-1 mr-1 hover:text-neutral-900 hover:underline rounded-lg"
               }
               href="/docs"
             >
@@ -50,9 +50,9 @@ export default function RootNavbar() {
             <Link
               className={
                 (p.startsWith("/contact/sales")
-                  ? "text-gray-900 underline"
-                  : "text-gray-600") +
-                " p-1 mr-1 hover:text-gray-900 hover:underline rounded-lg"
+                  ? "text-neutral-900 underline"
+                  : "text-neutral-800") +
+                " p-1 mr-1 hover:text-neutral-900 hover:underline rounded-lg"
               }
               href="/contact/sales"
             >
@@ -62,9 +62,9 @@ export default function RootNavbar() {
             <Link
               className={
                 (p.startsWith("/contact/newsletter")
-                  ? "text-gray-900 underline"
-                  : "text-gray-600") +
-                " p-2 mr-2 hover:text-gray-900 hover:underline rounded-lg"
+                  ? "text-neutral-900 underline"
+                  : "text-neutral-800") +
+                " p-2 mr-2 hover:text-neutral-900 hover:underline rounded-lg"
               }
               href="/contact/newsletter"
             >

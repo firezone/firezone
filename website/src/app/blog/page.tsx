@@ -6,8 +6,8 @@ import NewsletterSignup from "@/components/NewsletterSignup";
 
 export default function Page() {
   return (
-    <section className="bg-white dark:bg-gray-900">
-      <div className="bg-violet-50 mx-auto w-screen text-center">
+    <section className="bg-white dark:bg-neutral-900">
+      <div className="bg-accent-400 mx-auto w-screen text-center">
         <Image
           alt="Firezone logo"
           width={250}
@@ -18,17 +18,17 @@ export default function Page() {
       </div>
       <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
         <div className="mx-auto max-w-screen-sm text-center lg:mb-16 mb-8">
-          <h2 className="justify-center mb-4 text-3xl lg:text-4xl tracking-tight font-extrabold text-gray-900 dark:text-white">
+          <h2 className="justify-center mb-4 text-3xl lg:text-6xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
             Firezone Blog
           </h2>
-          <p className="font-light text-gray-500 sm:text-xl dark:text-gray-400">
+          <p className="text-neutral-800 sm:text-xl dark:text-neutral-100">
             Announcements, tutorials, and more from the Firezone team.
           </p>
         </div>
         <div className="grid gap-8 lg:grid-cols-2">
-          <article className="p-6 bg-white rounded-lg border border-gray-200 shadow-md dark:bg-gray-800 dark:border-gray-700">
-            <div className="flex justify-between items-center mb-5 text-gray-500">
-              <span className="bg-primary-100 text-primary-800 text-xs font-medium inline-flex items-center px-2.5 py-0.5 rounded dark:bg-primary-200 dark:text-primary-800">
+          <article className="p-6 bg-white rounded-lg border border-neutral-200 shadow-md dark:bg-neutral-800 dark:border-neutral-700">
+            <div className="flex justify-between items-center mb-5">
+              <span className="bg-primary-450 text-white text-xs font-medium inline-flex items-center px-2.5 py-0.5 rounded dark:bg-primary-200 dark:text-primary-800">
                 <svg
                   className="mr-1 w-3 h-3"
                   fill="currentColor"
@@ -46,10 +46,10 @@ export default function Page() {
               </span>
               <span className="text-sm">October 17, 2022</span>
             </div>
-            <h2 className="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+            <h2 className="mb-2 text-2xl font-bold tracking-tight text-neutral-900 dark:text-white">
               <Link href="/blog/release-0-6-0">Release 0.6.0</Link>
             </h2>
-            <p className="mb-5 font-light text-gray-500 dark:text-gray-400">
+            <p className="mb-5 font-light text-neutral-800 dark:text-neutral-100">
               Today, I'm excited to announce we've closed the{" "}
               <Link href="https://github.com/firezone/firezone/issues/260">
                 first public issue{" "}
@@ -73,16 +73,16 @@ export default function Page() {
               </div>
               <Link
                 href="/blog/release-0-6-0"
-                className="inline-flex items-center font-medium text-primary-600 dark:text-primary-500 hover:underline"
+                className="inline-flex items-center font-medium text-primary-900 dark:text-primary-100 hover:underline"
               >
                 Read more
                 <ArrowRightIcon className="ml-2 w-4 h-4" />
               </Link>
             </div>
           </article>
-          <article className="p-6 bg-white rounded-lg border border-gray-200 shadow-md dark:bg-gray-800 dark:border-gray-700">
-            <div className="flex justify-between items-center mb-5 text-gray-500">
-              <span className="bg-primary-100 text-primary-800 text-xs font-medium inline-flex items-center px-2.5 py-0.5 rounded dark:bg-primary-200 dark:text-primary-800">
+          <article className="p-6 bg-white rounded-lg border border-neutral-200 shadow-md dark:bg-neutral-800 dark:border-neutral-700">
+            <div className="flex justify-between items-center mb-5 text-neutral-800">
+              <span className="bg-primary-450 text-white text-xs font-medium inline-flex items-center px-2.5 py-0.5 rounded dark:bg-primary-200 dark:text-primary-800">
                 <svg
                   className="mr-1 w-3 h-3"
                   fill="currentColor"
@@ -100,10 +100,10 @@ export default function Page() {
               </span>
               <span className="text-sm">July 25, 2022</span>
             </div>
-            <h2 className="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+            <h2 className="mb-2 text-2xl font-bold tracking-tight text-neutral-900 dark:text-white">
               <Link href="/blog/release-0-5-0">Release 0.5.0</Link>
             </h2>
-            <p className="mb-5 font-light text-gray-500 dark:text-gray-400">
+            <p className="mb-5 font-light text-neutral-800 dark:text-neutral-100">
               As the first post on our new blog, we thought it'd be fitting to
               kick things off with a release announcement. So without further
               ado, we're excited to announce: Firezone{" "}
@@ -128,7 +128,7 @@ export default function Page() {
               </div>
               <Link
                 href="/blog/release-0-5-0"
-                className="inline-flex items-center font-medium text-primary-600 dark:text-primary-500 hover:underline"
+                className="inline-flex items-center font-medium text-primary-900 dark:text-primary-100 hover:underline"
               >
                 Read more
                 <ArrowRightIcon className="ml-2 w-4 h-4" />
@@ -137,7 +137,7 @@ export default function Page() {
           </article>
         </div>
       </div>
-      <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
+      <div className="border-t border-neutral-200 dark:border-neutral-700 pt-8">
         <NewsletterSignup />
       </div>
     </section>

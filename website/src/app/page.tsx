@@ -22,12 +22,12 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-gray-50 pt-24 dark:bg-gray-900">
+      <section className="bg-neutral-100 pt-24 dark:bg-neutral-900">
         <div className="px-4 py-8 mx-auto max-w-screen-xl text-center lg:py-16 lg:px-12">
-          <h1 className="mb-4 text-4xl justify-center font-extrabold tracking-tight leading-none text-gray-900 md:text-5xl lg:text-6xl dark:text-white tracking-tight">
+          <h1 className="mb-4 text-4xl justify-center font-extrabold tracking-tight leading-none text-neutral-900 md:text-5xl lg:text-6xl dark:text-white tracking-tight">
             Fast, effortless secure access.
           </h1>
-          <p className="mb-8 font-normal text-gray-500 md:text-lg lg:text-xl sm:px-16 xl:px-48 dark:text-gray-400">
+          <p className="mb-8 font-normal text-neutral-800 md:text-lg lg:text-xl sm:px-16 xl:px-48 dark:text-neutral-100">
             Firezone is an open-source remote access platform built on
             WireGuard®, a modern VPN protocol that's 4-6x faster than OpenVPN.
             Deploy on your infrastructure and start onboarding users in minutes.
@@ -36,7 +36,7 @@ export default function Page() {
             <Link href="/docs/deploy">
               <button
                 type="button"
-                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg focus:outline-none bg-gradient-to-r from-purple-500 via-purple-600 to-purple-700 hover:bg-gradient-to-br hover:scale-105 duration-0 transform transition focus:ring-4 focus:ring-violet-300"
+                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-md focus:outline-none bg-gradient-to-r from-accent-500 via-accent-600 to-accent-700 hover:bg-gradient-to-br hover:scale-105 duration-0 transform transition focus:ring-4 focus:ring-accent-300"
               >
                 Deploy now
                 <ArrowLongRightIcon className="ml-2 -mr-1 w-6 h-6" />
@@ -59,7 +59,7 @@ export default function Page() {
             </video>
           </div>
           <div className="flex justify-center items-center p-8 mt-8">
-            <h3 className="text-2xl font-bold text-gray-500 dark:text-white">
+            <h3 className="text-2xl font-bold text-neutral-800 dark:text-white">
               Trusted by organizations like
             </h3>
           </div>
@@ -105,9 +105,9 @@ export default function Page() {
       </section>
 
       {/* Features sections */}
-      <section className="bg-white py-24 dark:bg-gray-800">
+      <section className="bg-white py-24 dark:bg-neutral-800">
         <div className="flex justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-900 dark:text-white">
+          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
             A modern alternative to legacy VPNs
           </h2>
         </div>
@@ -115,33 +115,33 @@ export default function Page() {
         {/* Feature section 1 */}
         <div className="gap-8 items-center py-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-16 sm:py-16 lg:px-6 ">
           <div>
-            <h4 className="mb-8 text-lg font-semibold tracking-tight text-orange-500 dark:text-white">
+            <h4 className="mb-8 text-lg font-semibold tracking-tight text-primary-450 dark:text-white">
               SIMPLE TO MANAGE
             </h4>
-            <h3 className="text-2xl font-bold tracking-tight text-gray-900">
+            <h3 className="text-2xl font-bold tracking-tight text-neutral-900">
               Streamline workflows. Reduce total cost of ownership.
             </h3>
-            <p className="text-lg text-gray-500 my-4">
+            <p className="text-lg text-neutral-800 my-4">
               Legacy VPNs are cumbersome to manage and take weeks to configure
               correctly. Firezone takes minutes to deploy and the Web GUI makes
               managing secure access effortless for admins.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Integrate any identity provider to enforce 2FA / MFA
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Define user-scoped access rules
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Manage access with a snappy admin dashboard
                 </span>
               </li>
@@ -166,30 +166,30 @@ export default function Page() {
               src="/images/feature-2.png"
             />
             <Link
-              className="mt-4 mx-auto text-violet-600 hover:underline"
+              className="mt-4 mx-auto text-accent-600 hover:underline"
               href="https://core.ac.uk/download/pdf/322886318.pdf"
             >
               Performance comparison of VPN solutions (Osswald et al.)
             </Link>
           </div>
           <div>
-            <h4 className="mb-8 text-lg font-semibold tracking-tight text-orange-500 dark:text-white">
+            <h4 className="mb-8 text-lg font-semibold tracking-tight text-primary-450 dark:text-white">
               FAST AND LIGHTWEIGHT
             </h4>
-            <h3 className="text-2xl font-bold tracking-tight text-gray-900">
+            <h3 className="text-2xl font-bold tracking-tight text-neutral-900">
               High throughput and low latency. Up to 4-6x faster than OpenVPN.
             </h3>
-            <p className="text-lg text-gray-500 my-4">
+            <p className="text-lg text-neutral-800 my-4">
               Increase productivity and decrease connection issues for your
               remote team. Firezone uses kernel WireGuard® to be efficient,
               reliable, and performant in any environment.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   <Link
-                    className="text-violet-600 hover:underline"
+                    className="text-accent-600 hover:underline"
                     href="https://www.wireguard.com/protocol/"
                   >
                     State-of-the-art cryptography
@@ -197,11 +197,11 @@ export default function Page() {
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Auditable and{" "}
                   <Link
-                    className="text-violet-600 hover:underline"
+                    className="text-accent-600 hover:underline"
                     href="https://www.wireguard.com/formal-verification/"
                   >
                     formally verified
@@ -209,10 +209,10 @@ export default function Page() {
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   <Link
-                    className="text-violet-600 hover:underline"
+                    className="text-accent-600 hover:underline"
                     href="https://www.wireguard.com/performance/"
                   >
                     Multi-threaded
@@ -227,38 +227,38 @@ export default function Page() {
         {/* Feature section 3 */}
         <div className="gap-8 items-center pt-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-16 sm:pt-16 lg:px-6 ">
           <div>
-            <h4 className="mb-8 text-lg font-semibold tracking-tight text-orange-500 dark:text-white">
+            <h4 className="mb-8 text-lg font-semibold tracking-tight text-primary-450 dark:text-white">
               RUN ANYWHERE
             </h4>
-            <h3 className="text-2xl font-bold tracking-tight text-gray-900">
+            <h3 className="text-2xl font-bold tracking-tight text-neutral-900">
               Firezone runs entirely on your infrastructure. No vendor lock-in.
             </h3>
-            <p className="text-lg text-gray-500 my-4">
+            <p className="text-lg text-neutral-800 my-4">
               Deploy Firezone on any platform that supports Docker. There's no
               need to risk breaches by sending data to third parties.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   VPC, data center, or on-prem
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Auto-renewing SSL certs from Let's Encrypt via ACME
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Flexible and configurable
                 </span>
               </li>
             </ul>
             <Link
-              className="inline-flex items-center text-violet-600 hover:underline text-lg mt-8"
+              className="inline-flex items-center text-accent-600 hover:underline text-lg mt-8"
               href="/docs/deploy"
             >
               Explore the deployment docs
@@ -275,12 +275,12 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="bg-gray-50 py-24 dark:bg-gray-800">
+      <section className="bg-neutral-100 py-24 dark:bg-neutral-800">
         <div className="flex flex-col justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-900 dark:text-white">
+          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
             Integrate your identity provider to enforce 2FA / MFA
           </h2>
-          <p className="my-4 text-xl max-w-screen-lg text-center text-primary-600 dark:text-gray-400">
+          <p className="my-4 text-xl max-w-screen-lg text-center text-primary-900 dark:text-neutral-100">
             Only allow connections from authenticated users and automatically
             disable access for employees who have left. Firezone integrates with
             any OIDC and SAML 2.0 compatible identity provider for single
@@ -339,12 +339,12 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="bg-white py-24 dark:bg-gray-800">
+      <section className="bg-white py-24 dark:bg-neutral-800">
         <div className="flex flex-col justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-900 dark:text-white">
+          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
             Who can benefit using Firezone?
           </h2>
-          <p className="my-4 text-xl max-w-screen-lg text-center text-primary-600 dark:text-gray-400">
+          <p className="my-4 text-xl max-w-screen-lg text-center text-primary-900 dark:text-neutral-100">
             Easy to deploy and manage for individuals and organizations alike.
             Only allow connections from authenticated users and automatically
             disable access for employees who have left. Firezone integrates with
@@ -353,174 +353,180 @@ export default function Page() {
           </p>
         </div>
         <div className="gap-4 items-center pt-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-8 sm:pt-16 lg:px-6 ">
-          <div className="bg-gray-50 p-8 rounded-md shadow-md">
+          <div className="bg-neutral-100 p-8 rounded-md shadow-md">
             <div className="flex items-center space-x-2.5">
-              <HomeIcon className="flex-shrink-0 w-5 h-5 text-orange-500" />
-              <h3 className="text-xl tracking-tight font-bold text-primary-600 dark:text-gray-400">
+              <HomeIcon className="flex-shrink-0 w-5 h-5 text-primary-450" />
+              <h3 className="text-xl tracking-tight font-bold text-primary-900 dark:text-neutral-100">
                 Individuals and homelab users
               </h3>
             </div>
-            <p className="mt-8 text-primary-600 text-xl">
+            <p className="mt-8 text-primary-900 text-xl">
               Lightweight and fast. Access your home network securely when on
               the road.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Effortless to deploy on any infrastructure
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Community plan supports unlimited devices
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
+                  Lightweight with minimal resource usage
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Open-source and self-hosted
                 </span>
               </li>
             </ul>
             <Link
-              className="inline-flex items-center text-violet-600 hover:underline text-lg mt-8"
+              className="inline-flex items-center text-accent-600 hover:underline text-lg mt-8"
               href="/docs"
             >
               Access your personal project
               <ArrowLongRightIcon className="flex-shrink-0 w-5 h-5 ml-2" />
             </Link>
           </div>
-          <div className="bg-gray-50 p-8 rounded-md shadow-md">
+          <div className="bg-neutral-100 p-8 rounded-md shadow-md">
             <div className="flex items-center space-x-2.5">
-              <RocketLaunchIcon className="flex-shrink-0 w-5 h-5 text-orange-500" />
-              <h3 className="text-xl tracking-tight font-bold text-primary-600 dark:text-gray-400">
+              <RocketLaunchIcon className="flex-shrink-0 w-5 h-5 text-primary-450" />
+              <h3 className="text-xl tracking-tight font-bold text-primary-900 dark:text-neutral-100">
                 Growing businesses
               </h3>
             </div>
-            <p className="mt-8 text-primary-600 text-xl">
+            <p className="mt-8 text-primary-900 text-xl">
               Keep up with increasing network and compliance demands as you
               scale your team and infrastructure.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Integrate your identity provider
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Quickly onboard/offboard employees{" "}
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Segment access for contractors
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   High performance, reduce bottlenecks
                 </span>
               </li>
             </ul>
             <Link
-              className="inline-flex items-center text-violet-600 hover:underline text-lg mt-8"
+              className="inline-flex items-center text-accent-600 hover:underline text-lg mt-8"
               href="/docs"
             >
               Scale your secure access
               <ArrowLongRightIcon className="flex-shrink-0 w-5 h-5 ml-2" />
             </Link>
           </div>
-          <div className="bg-gray-50 p-8 rounded-md shadow-md">
+          <div className="bg-neutral-100 p-8 rounded-md shadow-md">
             <div className="flex items-center space-x-2.5">
-              <HomeIcon className=" lex-shrink-0 w-5 h-5 text-orange-500" />
-              <h3 className="text-xl tracking-tight font-bold text-primary-600 dark:text-gray-400">
+              <GlobeAltIcon className=" lex-shrink-0 w-5 h-5 text-primary-450" />
+              <h3 className="text-xl tracking-tight font-bold text-primary-900 dark:text-neutral-100">
                 Remote organizations
               </h3>
             </div>
-            <p className="mt-8 text-primary-600 text-xl">
+            <p className="mt-8 text-primary-900 text-xl">
               Transitioning to remote? Perfect timing to replace the legacy VPN.
               Improve your security posture and reduce support tickets.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Require periodic re-authentication
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Enforce MFA / 2FA
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Self-serve user portal
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Export logs to your observability platform
                 </span>
               </li>
             </ul>
             <Link
-              className="inline-flex items-center text-violet-600 hover:underline text-lg mt-8"
+              className="inline-flex items-center text-accent-600 hover:underline text-lg mt-8"
               href="/docs"
             >
               Secure your remote workforce
               <ArrowLongRightIcon className="flex-shrink-0 w-5 h-5 ml-2" />
             </Link>
           </div>
-          <div className="bg-gray-50 p-8 rounded-md shadow-md">
+          <div className="bg-neutral-100 p-8 rounded-md shadow-md">
             <div className="flex items-center space-x-2.5">
-              <HomeIcon className=" lex-shrink-0 w-5 h-5 text-orange-500" />
-              <h3 className="text-xl tracking-tight font-bold text-primary-600 dark:text-gray-400">
+              <WrenchScrewdriverIcon className=" lex-shrink-0 w-5 h-5 text-primary-450" />
+              <h3 className="text-xl tracking-tight font-bold text-primary-900 dark:text-neutral-100">
                 Technical IT teams
               </h3>
             </div>
-            <p className="mt-8 text-primary-600 text-xl">
+            <p className="mt-8 text-primary-900 text-xl">
               Firezone runs on your infrastructure. Customize it to suit your
               needs and architecture.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Built on WireGuard®
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   No vendor lock-in
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Supports OIDC and SAML 2.0
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
-                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold dark:text-primary-100" />
+                <span className="leading-tight text-lg text-primary-900 dark:text-neutral-100">
                   Flexible and configurable
                 </span>
               </li>
             </ul>
             <Link
-              className="inline-flex items-center text-violet-600 hover:underline text-lg mt-8"
+              className="inline-flex items-center text-accent-600 hover:underline text-lg mt-8"
               href="/docs"
             >
               Explore the documentation
@@ -530,26 +536,26 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="py-24 bg-gray-50 dark:bg-gray-900">
+      <section className="py-24 bg-neutral-100 dark:bg-neutral-900">
         <div className="flex flex-col justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-900 dark:text-white">
+          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
             Join our community
           </h2>
-          <p className="my-4 text-xl max-w-screen-lg text-center text-primary-600 dark:text-gray-400">
+          <p className="my-4 text-xl max-w-screen-lg text-center text-primary-900 dark:text-neutral-100">
             Participate in Firezone's development, suggest new features, and
             collaborate with other Firezone users.
           </p>
         </div>
         <div className="gap-4 items-center pt-4 px-4 mx-auto max-w-screen-lg lg:grid lg:grid-cols-3 xl:gap-8 sm:pt-8 lg:px-6 ">
           <div className="py-8 rounded-md shadow-md text-center bg-white">
-            <UserGroupIcon className="flex-shrink-0 w-12 h-12 mx-auto text-orange-500 dark:text-gray-400" />
-            <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-600 dark:text-gray-400">
+            <UserGroupIcon className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 dark:text-neutral-100" />
+            <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 dark:text-neutral-100">
               30+
             </h3>
             <p className="mb-8 text-xl font-semibold">Contributors</p>
             <button
               type="button"
-              className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg hover:scale-105 duration-0 transform transition focus:outline-none bg-gradient-to-r from-purple-500 via-purple-600 to-purple-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-violet-300"
+              className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-md hover:scale-105 duration-0 transform transition focus:outline-none bg-gradient-to-r from-accent-500 via-accent-600 to-accent-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-accent-300"
             >
               <Link href="https://github.com/firezone/firezone/fork">
                 Fork us on GitHub
@@ -557,14 +563,14 @@ export default function Page() {
             </button>
           </div>
           <div className="py-8 rounded-md shadow-md text-center bg-white">
-            <StarIcon className="flex-shrink-0 w-12 h-12 mx-auto text-orange-500 dark:text-gray-400" />
-            <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-600 dark:text-gray-400">
+            <StarIcon className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 dark:text-neutral-100" />
+            <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 dark:text-neutral-100">
               4,300+
             </h3>
             <p className="mb-8 text-xl font-semibold">GitHub stars</p>
             <button
               type="button"
-              className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg hover:scale-105 duration-0 transform transition focus:outline-none bg-gradient-to-r from-purple-500 via-purple-600 to-purple-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-violet-300"
+              className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-md hover:scale-105 duration-0 transform transition focus:outline-none bg-gradient-to-r from-accent-500 via-accent-600 to-accent-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-accent-300"
             >
               <Link href="https://github.com/firezone/firezone">
                 Drop us a star
@@ -572,14 +578,14 @@ export default function Page() {
             </button>
           </div>
           <div className="py-8 rounded-md shadow-md text-center bg-white">
-            <ChatBubbleLeftRightIcon className="flex-shrink-0 w-12 h-12 mx-auto text-orange-500 dark:text-gray-400" />
-            <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-600 dark:text-gray-400">
+            <ChatBubbleLeftRightIcon className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 dark:text-neutral-100" />
+            <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 dark:text-neutral-100">
               250+
             </h3>
             <p className="mb-8 text-xl font-semibold">Members</p>
             <button
               type="button"
-              className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg hover:scale-105 duration-0 transform transition focus:outline-none bg-gradient-to-r from-purple-500 via-purple-600 to-purple-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-violet-300"
+              className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-md hover:scale-105 duration-0 transform transition focus:outline-none bg-gradient-to-r from-accent-500 via-accent-600 to-accent-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-accent-300"
             >
               <Link href="https://firezone-users.slack.com/join/shared_invite/zt-19jd956j4-rWcCqiKMh~ikPGsUFbvZiA#/shared-invite/email">
                 Join our Slack
@@ -589,12 +595,12 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="py-24 bg-violet-900 dark:bg-gray-900">
+      <section className="py-24 bg-accent-600 dark:bg-neutral-900">
         <div className="flex flex-col justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-50 dark:text-white">
+          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-50 dark:text-white">
             Ready to get started?
           </h2>
-          <p className="my-4 font-semibold text-xl max-w-screen-md text-center text-gray-200 dark:text-gray-400">
+          <p className="my-4 font-semibold text-xl max-w-screen-md text-center text-neutral-200 dark:text-neutral-100">
             Set up secure access and start onboarding users in minutes.
             <br />
             Copy and paste the command below on any Docker-supported host.
@@ -605,13 +611,13 @@ export default function Page() {
               codeString="bash <(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/install.sh)"
             />
           </div>
-          <p className="mt-8 border-y font-semibold text-xl w-12 max-w-screen-md text-center text-gray-200 dark:text-gray-400">
+          <p className="mt-8 border-y font-semibold text-xl w-12 max-w-screen-md text-center text-neutral-200 dark:text-neutral-100">
             OR
           </p>
           <div className="flex mt-8">
             <button
               type="button"
-              className="inline-flex hover:ring-2 shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg focus:outline-none bg-orange-500 hover:scale-105 duration-0 transform transition"
+              className="inline-flex hover:ring-2 shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-md focus:outline-none bg-primary-450 hover:scale-105 duration-0 transform transition"
             >
               <Link href="/contact/sales">Contact sales</Link>
               <ArrowLongRightIcon className="ml-2 -mr-1 w-6 h-6" />

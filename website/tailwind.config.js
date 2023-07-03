@@ -1,7 +1,6 @@
-const colors = require("tailwindcss/colors");
-
 const firezoneColors = {
-  // See our brand palette in Figma
+  // See our brand palette in Figma.
+  // These have been reversed to match Tailwind's default order.
 
   // primary: orange
   "heat-wave": {
@@ -10,6 +9,7 @@ const firezoneColors = {
     200: "#ffbc85",
     300: "#ff9a47",
     400: "#d2bab0",
+    450: "#ff7300",
     500: "#bfa094",
     600: "#a18072",
     700: "#977669",
@@ -23,6 +23,7 @@ const firezoneColors = {
     200: "#d2c2ff",
     300: "#a585ff",
     400: "#7847ff",
+    450: "#5e00d6",
     500: "#4805ff",
     600: "#3400c2",
     700: "#37007f",
@@ -52,13 +53,26 @@ module.exports = {
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
-  // TODO: Classes need to be updated for these to make sense.
-  // theme: {
-  //   colors: {
-  //     primary: firezoneColors["heat-wave"],
-  //     accent: firezoneColors["electric-violet"],
-  //     neutral: firezoneColors["night-rider"],
-  //   },
-  // },
+  theme: {
+    extend: {
+      typography: {
+        DEFAULT: {
+          css: {
+            a: {
+              color: firezoneColors["electric-violet"][500],
+              "&:hover": {
+                color: firezoneColors["electric-violet"][600],
+              },
+            },
+          },
+        },
+      },
+      colors: {
+        primary: firezoneColors["heat-wave"],
+        accent: firezoneColors["electric-violet"],
+        neutral: firezoneColors["night-rider"],
+      },
+    },
+  },
   plugins: [require("flowbite/plugin"), require("flowbite-typography")],
 };
