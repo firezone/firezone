@@ -1,5 +1,7 @@
 name: Terraform
 on:
+  merge_group:
+    type: [checks_requested]
   pull_request:
     paths:
       - "terraform/**"
