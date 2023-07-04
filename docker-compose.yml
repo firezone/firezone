@@ -252,11 +252,7 @@ services:
       postgres:
         condition: 'service_healthy'
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl -f localhost:8081/healthz"
-        ]
+      test: [ "CMD-SHELL", "curl -f localhost:8081/healthz" ]
       start_period: 20s
       interval: 30s
       retries: 5
