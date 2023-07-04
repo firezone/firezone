@@ -18,7 +18,7 @@ jobs:
           files: docker-compose.yml
           push: false
       - name: Seed database
-        run: docker compose run elixir /bin/sh -c "cd apps/domain && mix do ecto.reset, ecto.seed"
+        run: docker compose run elixir /bin/sh -c "cd apps/domain && mix ecto.seed"
       - name: Start docker compose in the background
         run: docker compose up -d
       - name: Test that client can ping resource
