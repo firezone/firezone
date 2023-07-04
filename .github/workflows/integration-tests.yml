@@ -30,4 +30,4 @@ jobs:
         # The fix next will be:
         # * If the relay list comes back as an error, retry a few times
         # * If the it still comes as an error try a direct connection(local network)
-        run: sleep 30 docker compose exec -it client ping 172.20.0.100 -c 5
+        run: sleep 30 && docker compose exec -it client ping 172.20.0.100 -c 5
