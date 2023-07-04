@@ -22,5 +22,12 @@ jobs:
       - name: Start docker compose in the background
         run: docker compose up -d
       - name: Test that client can ping resource
-        # FIXME
-        run: sleep 360 && docker compose logs && docker compose ps && docker compose exec -it client ping 172.20.0.100 -c 4 && docker compose logs
+        # FIXME: We sleep here since the client / relay start relatively at the same time
+        # when that happens the client sends the first packet trying to connect but there's no relay
+        # the portal responds with that and we don't try to continue the flow until we recieve a success
+        # response with all the relays, thus we just sleep here waiting for the relay to have its presence tracked
+        # by the portal.
+        # The fix next will be:
+        # * If the relay list comes back as an error, retry a few times
+        # * If the it still comes as an error try a direct connection(local network)
+        run: sleep 30 docker compose exec -it client ping 172.20.0.100 -c 5
