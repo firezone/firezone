@@ -20,12 +20,17 @@ You can build the server using: `cargo build --release --bin relay`
 
 ## Running
 
-For a detailed help text and available configuration options, run `cargo run --bin relay -- --help`.
+For an up-to-date documentation on the available configurations options and a detailed help text, run `cargo run --bin relay -- --help`.
+All command-line options can be overridden using environment variables.
+Those variables are listed in the `--help` output at the bottom of each command.
 
-## Docker
+The relay listens on port `3478`.
+This is the standard port for STUN/TURN and not configurable.
+Additionally, the relay needs to have access to the port range `49152` - `65535` for the allocations.
 
-There is a docker image one directory up from this README: [Dockerfile](../relay.Dockerfile).
-The Rust binary itself does not include any signal handling, thus you need to run the container with `--init` if you want to be able to CTRL+C the running container.
+## Portal connection
+
+When given a portal endpoint, the relay will connect to it and wait for an `init` message before commencing relay operations.
 
 ## Design
 
