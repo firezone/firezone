@@ -178,7 +178,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         self.tunnel.callbacks().on_error(&Error::ControlProtocolError, ErrorType::Recoverable);
                         return;
                     };
-                    // TODO: Rate limit the number of attemps of getting the relays before just trying a local network connection
+                    // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
                     self.tunnel.cleanup_connection(id);
                 }
                 None => {

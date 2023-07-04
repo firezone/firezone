@@ -239,7 +239,7 @@ where
 }
 
 /// A result type that is used to communicate to the client/gateway
-/// control loop the message recieved.
+/// control loop the message received.
 pub type MessageResult<M> = std::result::Result<M, ErrorReply>;
 
 /// This struct holds info about an error reply which will be passed
