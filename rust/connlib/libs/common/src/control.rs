@@ -68,7 +68,6 @@ fn make_request(uri: &Url) -> Result<Request> {
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
-        // TODO: Get OS Info here (os_info crate)
         .header("User-Agent", get_user_agent())
         .uri(uri.as_str())
         .body(())?;
@@ -80,7 +79,7 @@ where
     I: DeserializeOwned,
     R: DeserializeOwned,
     M: From<I> + From<R>,
-    F: Fn(M) -> Fut,
+    F: Fn(MessageResult<M>) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
 {
     /// Starts the tunnel with the parameters given in [Self::new].
@@ -169,16 +168,23 @@ where
         match message.into_text() {
             Ok(m_str) => match serde_json::from_str::<PhoenixMessage<I, R>>(&m_str) {
                 Ok(m) => match m.payload {
-                    Payload::Message(m) => handler(m.into()).await,
+                    Payload::Message(m) => handler(Ok(m.into())).await,
                     Payload::Reply(status) => match status {
                         ReplyMessage::PhxReply(phx_reply) => match phx_reply {
                             // TODO: Here we should pass error info to a subscriber
-                            PhxReply::Error(info) => tracing::error!("Portal error: {info:?}"),
+                            PhxReply::Error(info) => {
+                                tracing::warn!("Portal error: {info:?}");
+                                handler(Err(ErrorReply {
+                                    error: info,
+                                    reference: m.reference,
+                                }))
+                                .await
+                            }
                             PhxReply::Ok(reply) => match reply {
                                 OkReply::NoMessage(Empty {}) => {
                                     tracing::trace!("Phoenix status message")
                                 }
-                                OkReply::Message(m) => handler(m.into()).await,
+                                OkReply::Message(m) => handler(Ok(m.into())).await,
                             },
                         },
                         ReplyMessage::PhxError(Empty {}) => tracing::error!("Phoenix error"),
@@ -232,6 +238,20 @@ where
     }
 }
 
+/// A result type that is used to communicate to the client/gateway
+/// control loop the message recieved.
+pub type MessageResult<M> = std::result::Result<M, ErrorReply>;
+
+/// This struct holds info about an error reply which will be passed
+/// to connlib's control plane.
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+pub struct ErrorReply {
+    /// Information of the error
+    pub error: ErrorInfo,
+    /// Reference to the message that caused the error
+    pub reference: Option<String>,
+}
+
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 #[serde(untagged)]
 enum Payload<T, R> {
@@ -248,11 +268,11 @@ pub struct PhoenixMessage<T, R> {
     #[serde(flatten)]
     payload: Payload<T, R>,
     #[serde(rename = "ref")]
-    reference: Option<i32>,
+    reference: Option<String>,
 }
 
 impl<T, R> PhoenixMessage<T, R> {
-    pub fn new(topic: impl Into<String>, payload: T, reference: Option<i32>) -> Self {
+    pub fn new(topic: impl Into<String>, payload: T, reference: Option<String>) -> Self {
         Self {
             topic: topic.into(),
             payload: Payload::Message(payload),
@@ -298,9 +318,10 @@ enum OkReply<T> {
     NoMessage(Empty),
 }
 
+/// This represents the info we have about the error
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-enum ErrorInfo {
+pub enum ErrorInfo {
     Reason(String),
     Offline,
 }
@@ -342,7 +363,11 @@ impl PhoenixSenderWithTopic {
     /// Sends a message to the associated topic using a [PhoenixSender] also setting the ref
     ///
     /// See [PhoenixSender::send]
-    pub async fn send_with_ref(&mut self, payload: impl Serialize, reference: i32) -> Result<()> {
+    pub async fn send_with_ref(
+        &mut self,
+        payload: impl Serialize,
+        reference: impl Into<String>,
+    ) -> Result<()> {
         self.phoenix_sender
             .send_with_ref(&self.topic, payload, reference)
             .await
@@ -354,7 +379,7 @@ impl PhoenixSender {
         &mut self,
         topic: impl Into<String>,
         payload: impl Serialize,
-        reference: Option<i32>,
+        reference: Option<String>,
     ) -> Result<()> {
         // We don't care about the reply type when serializing
         let str = serde_json::to_string(&PhoenixMessage::<_, ()>::new(topic, payload, reference))?;
@@ -381,9 +406,10 @@ impl PhoenixSender {
         &mut self,
         topic: impl Into<String>,
         payload: impl Serialize,
-        reference: i32,
+        reference: impl Into<String>,
     ) -> Result<()> {
-        self.send_internal(topic, payload, Some(reference)).await
+        self.send_internal(topic, payload, Some(reference.into()))
+            .await
     }
 
     /// Join a phoenix topic, meaning that after this method is invoked [PhoenixChannel] will

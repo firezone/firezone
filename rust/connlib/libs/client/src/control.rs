@@ -3,10 +3,10 @@ use std::{sync::Arc, time::Duration};
 use crate::messages::{Connect, EgressMessages, InitClient, Messages, Relays};
 use boringtun::x25519::StaticSecret;
 use libs_common::{
-    control::PhoenixSenderWithTopic,
-    error_type::ErrorType::{Fatal, Recoverable},
+    control::{ErrorInfo, ErrorReply, MessageResult, PhoenixSenderWithTopic},
+    error_type::ErrorType::{self, Fatal, Recoverable},
     messages::{Id, ResourceDescription},
-    Callbacks, ControlSession, Result,
+    Callbacks, ControlSession, Error, Result,
 };
 
 use async_trait::async_trait;
@@ -19,9 +19,14 @@ impl ControlSignal for ControlSignaler {
         self.control_signal
             // It's easier if self is not mut
             .clone()
-            .send(EgressMessages::ListRelays {
-                resource_id: resource.id(),
-            })
+            .send_with_ref(
+                EgressMessages::ListRelays {
+                    resource_id: resource.id(),
+                },
+                // The resource id functions as the connection id since we can only have one connection
+                // outgoing for each resource.
+                resource.id().to_string(),
+            )
             .await?;
         Ok(())
     }
@@ -40,11 +45,16 @@ struct ControlSignaler {
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn start(mut self, mut receiver: Receiver<Messages>) {
+    async fn start(mut self, mut receiver: Receiver<MessageResult<Messages>>) {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
         loop {
             tokio::select! {
-                Some(msg) = receiver.recv() => self.handle_message(msg).await,
+                Some(msg) = receiver.recv() => {
+                    match msg {
+                        Ok(msg) => self.handle_message(msg).await,
+                        Err(msg_reply) => self.handle_error(msg_reply).await,
+                    }
+                },
                 _ = interval.tick() => self.stats_event().await,
                 else => break
             }
@@ -126,7 +136,10 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     if let Err(err) = control_signaler
                         .control_signal
                         // TODO: create a reference number and keep track for the response
-                        .send_with_ref(EgressMessages::RequestConnection(connection_request), 0)
+                        .send_with_ref(
+                            EgressMessages::RequestConnection(connection_request),
+                            resource_id.to_string(),
+                        )
                         .await
                     {
                         tunnel.cleanup_connection(resource_id);
@@ -154,6 +167,33 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
+    pub(super) async fn handle_error(&mut self, reply_error: ErrorReply) {
+        if matches!(reply_error.error, ErrorInfo::Offline) {
+            match reply_error.reference {
+                Some(reference) => {
+                    let Ok(id) = reference.parse() else {
+                        tracing::error!(
+                            "An offline error came back with a reference to a non-valid resource id"
+                        );
+                        self.tunnel.callbacks().on_error(&Error::ControlProtocolError, ErrorType::Recoverable);
+                        return;
+                    };
+                    // TODO: Rate limit the number of attemps of getting the relays before just trying a local network connection
+                    self.tunnel.cleanup_connection(id);
+                }
+                None => {
+                    tracing::error!(
+                    "An offline portal error came without a reference that originated the error"
+                );
+                    self.tunnel
+                        .callbacks()
+                        .on_error(&Error::ControlProtocolError, ErrorType::Recoverable);
+                }
+            }
+        }
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn stats_event(&mut self) {
         // TODO
     }
@@ -164,7 +204,7 @@ impl<CB: Callbacks + 'static> ControlSession<Messages, CB> for ControlPlane<CB> 
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     async fn start(
         private_key: StaticSecret,
-        receiver: Receiver<Messages>,
+        receiver: Receiver<MessageResult<Messages>>,
         control_signal: PhoenixSenderWithTopic,
         callbacks: CB,
     ) -> Result<()> {
