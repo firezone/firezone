@@ -135,6 +135,8 @@ services:
     depends_on:
       api:
         condition: 'service_healthy'
+      relay:
+        condition: 'service_healthy'
     networks:
       app:
         ipv4_address: 172.28.0.100
@@ -144,6 +146,7 @@ services:
       FZ_URL: "ws://api:8081/"
       FZ_SECRET: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAFvAb_mIAWIAAVGA.1DaY3H3fKzW5sqcciJqlHyG0uFctzOewofsVRGS7NrQ"
       RUST_LOG: gateway=trace,firezone_gateway_connlib=trace,firezone_tunnel=trace,libs_common=trace,warn
+      ENABLE_MASQUERADE: 1
     build:
       context: rust
       dockerfile: Dockerfile.dev
@@ -186,6 +189,12 @@ services:
       args:
         PACKAGE: relay
     image: firezone-relay
+    healthcheck:
+      test: [ "CMD-SHELL", "lsof -i UDP | grep relay" ]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
     depends_on:
       api:
         condition: 'service_healthy'
