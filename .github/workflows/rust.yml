@@ -54,6 +54,7 @@ jobs:
           workspaces: ./rust
           key: v2
           prefix-key: rust-${{ matrix.runs-on }}
+          save-if: ${{ github.ref == 'refs/heads/cloud' }}
 
       # TODO: Building *ring* from git requires us to install additional tools;
       # once we're not using a forked *ring* these 2 steps can be removed.
