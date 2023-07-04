@@ -17,10 +17,10 @@ jobs:
         with:
           files: docker-compose.yml
           push: false
-      - name: Seed docker
-        run:
+      - name: Seed database
+        run: docker compose run elixir /bin/sh -c "cd apps/domain && mix do ecto.reset, ecto.seed"
       - name: Start docker compose in the background
         run: docker compose up -d
       - name: Test that client can ping resource
         # FIXME
-        run: sleep 120 && docker compose logs && docker compose ps && docker compose exec -it client ping 172.20.0.100 -c 4 && docker compose logs
+        run: sleep 360 && docker compose logs && docker compose ps && docker compose exec -it client ping 172.20.0.100 -c 4 && docker compose logs
