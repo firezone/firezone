@@ -58,7 +58,7 @@ export default function Page() {
   const coreTeam = [
     {
       name: "Jamil Bou Kheir",
-      title: "CEO/Co-founder",
+      title: "CEO/Founder",
       imgSrc: gravatar("jamil@firezone.dev", 200),
       twitterUrl: "https://twitter.com/jamilbk",
       githubUrl: "https://github.com/jamilbk",
