@@ -1,40 +1,22 @@
 "use client";
-import React from "react";
+import { useHubspotForm } from "next-hubspot";
 
-const meta = {
-  title: "Firezone • Open Source Remote Access",
-  description: "Firezone • Newsletter Signup",
-};
-
-class HubspotForm extends React.Component<{
+export default function HubspotForm({
+  portalId,
+  formId,
+}: {
   portalId: string;
   formId: string;
-  region: string;
-}> {
-  componentDidMount() {
-    const script = document.createElement("script");
-    script.src = "https://js.hsforms.net/forms/v2.js";
-    document.body.appendChild(script);
+}) {
+  const { loaded, error, formCreated } = useHubspotForm({
+    portalId: portalId,
+    formId: formId,
+    target: "#hubspot-form",
+  });
 
-    script.addEventListener("load", () => {
-      // @ts-ignore
-      if (window.hbspt) {
-        // @ts-ignore
-        window.hbspt.forms.create({
-          target: "#hubspot-form",
-          ...this.props,
-        });
-      }
-    });
-  }
-
-  render() {
-    return (
-      <div className="bg-white shadow-md border border-neutral-200 dark:border-neutral-700 rounded-lg p-4">
-        <div id="hubspot-form" />
-      </div>
-    );
-  }
+  return (
+    <div className="bg-white shadow-md border border-neutral-200 dark:border-neutral-700 rounded-lg p-4">
+      <div id="hubspot-form" />
+    </div>
+  );
 }
-
-export default HubspotForm;

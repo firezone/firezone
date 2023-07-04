@@ -4,6 +4,7 @@ import Link from "next/link";
 import "@/app/globals.css";
 import "highlight.js/styles/a11y-dark.css";
 import RootNavbar from "@/components/RootNavbar";
+import Script from "next/script";
 import Banner from "@/components/Banner";
 import Providers from "@/components/Providers";
 import Footer from "@/components/Footer";
@@ -46,6 +47,12 @@ export default function RootLayout({
             {children}
             <Footer />
           </div>
+          <Script
+            id="hs-script-loader"
+            async
+            defer
+            src="//js.hs-scripts.com/23723443.js"
+          />
         </body>
       </Providers>
     </html>

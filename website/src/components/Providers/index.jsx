@@ -1,6 +1,7 @@
 "use client";
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
+import { HubspotProvider } from "next-hubspot";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 
@@ -26,5 +27,11 @@ export default function Provider({ children }) {
     }
   }, [pathname, searchParams]);
 
-  return <PostHogProvider client={posthog}>{children}</PostHogProvider>;
+  return (
+    <>
+      <PostHogProvider client={posthog}>
+        <HubspotProvider>{children}</HubspotProvider>
+      </PostHogProvider>
+    </>
+  );
 }
