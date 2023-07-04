@@ -14,7 +14,7 @@ pub(crate) struct ResourceTable {
     dns_name: HashMap<String, NonNull<ResourceDescription>>,
 }
 
-// SAFETY: We actually hold a the hashmap internally that the poitners points to
+// SAFETY: We actually hold a hashmap internally that the pointers points to
 unsafe impl Send for ResourceTable {}
 // SAFETY: we don't allow interior mutability of the pointers we hold, in fact we don't allow ANY mutability!
 // (this is part of the reason why the API is so limiting, it is easier to reason about.
