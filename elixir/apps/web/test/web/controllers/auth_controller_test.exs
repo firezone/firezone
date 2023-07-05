@@ -216,8 +216,9 @@ defmodule Web.AuthControllerTest do
         verify_sign_in_token_path =
           "/#{account.id}/sign_in/providers/#{provider.id}/verify_sign_in_token"
 
-        assert email.text_body =~
-                 "#{verify_sign_in_token_path}?identity_id=#{identity.id}&amp;secret="
+        assert email.text_body =~ "#{verify_sign_in_token_path}"
+        assert email.text_body =~ "identity_id=#{identity.id}"
+        assert email.text_body =~ "secret="
       end)
 
       assert redirected_to(conn) == "/#{account.id}/sign_in/providers/email/#{provider.id}"

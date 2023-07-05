@@ -1,0 +1,33 @@
+name: Integration Tests
+on:
+  merge_group:
+    types: [checks_requested]
+  pull_request:
+
+jobs:
+  test-basic-flow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build images
+        uses: docker/bake-action@v3
+        with:
+          files: docker-compose.yml
+          push: false
+      - name: Seed database
+        run: docker compose run elixir /bin/sh -c "cd apps/domain && mix ecto.seed"
+      - name: Start docker compose in the background
+        run: docker compose up -d
+      - name: Test that client can ping resource
+        # FIXME: When the client sends the first packet trying to connect but there's no relay
+        # the portal responds with that and we don't try to continue the flow until we receive a success
+        # response with all the relays, thus we just sleep here waiting for the relay to have its presence tracked
+        # by the portal.
+        # The fix next will be:
+        # * If the relay list comes back as an error, retry a few times
+        # * If the it still comes as an error try a direct connection(local network)
+        # Right now this is working because we wait for the relay to be up and running before starting the client
+        run: docker compose exec -it client ping 172.20.0.100 -c 5

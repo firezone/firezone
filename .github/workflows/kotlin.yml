@@ -1,0 +1,66 @@
+name: Kotlin
+on:
+  pull_request:
+    paths:
+      - "kotlin/**"
+      - ".github/workflows/kotlin.yml"
+  merge_group:
+    types: [checks_requested]
+  workflow_call:
+
+# Cancel old workflow runs if new code is pushed
+concurrency:
+  group: "kotlin-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  draft-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.release_drafter.outputs.tag_name }}
+    steps:
+      - uses: release-drafter/release-drafter@v5
+        with:
+          commitish: cloud
+        id: release_drafter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # TODO: Add a basic CI for the Android client
+  # See rust.yml how we build, package and release connlib as an example
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./kotlin
+    needs:
+      - draft-release
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+      # TODO: Is this relevant for the Android client?
+      # - name: Validate Gradle wrapper
+      #   uses: gradle/wrapper-validation-action@v1
+      # - uses: actions/cache@v3
+      #   with:
+      #     path: |
+      #       ~/.gradle/caches
+      #       ~/.gradle/wrapper
+      #     key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+      #     restore-keys: |
+      #       ${{ runner.os }}-gradle-
+      # - name: Assemble Release
+      #   uses: gradle/gradle-build-action@v2
+      #   with:
+      #     arguments: build assembleRelease
+      # - name: Move artifact
+      #   run: |
+      #     mv ./rust/connlib/clients/android/lib/build/outputs/aar/lib-release.aar ./connlib-${{ needs.draft-release.outputs.tag_name }}.aar
+      # - uses: actions/upload-artifact@v3
+      #   with:
+      #     name: connlib-android
+      #     path: |
+      #       ./connlib-${{ needs.draft-release.outputs.tag_name }}.aar

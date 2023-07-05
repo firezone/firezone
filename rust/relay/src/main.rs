@@ -61,8 +61,6 @@ async fn main() -> Result<()> {
 
     let server = Server::new(args.public_ip4_addr, make_rng(args.rng_seed));
 
-    tracing::info!("Relay auth secret: {}", server.auth_secret());
-
     let channel = if let Some(token) = args.portal_token {
         let mut url = args.portal_ws_url.clone();
         if url.scheme() == "ws" && !args.allow_insecure_ws {
@@ -90,7 +88,7 @@ async fn main() -> Result<()> {
             channel.join(
                 "relay",
                 JoinMessage {
-                    stamp_secret: hex::encode(server.auth_secret()),
+                    stamp_secret: server.auth_secret().to_string(),
                 },
             );
 

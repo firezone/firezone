@@ -91,7 +91,25 @@ Now you can verify that it's working by connecting to a websocket:
 
 # Here is what you will see in docker logs firezone-api-1
 # firezone-api-1  | {"domain":["elixir"],"erl_level":"info","logging.googleapis.com/sourceLocation":{"file":"lib/phoenix/logger.ex","line":306,"function":"Elixir.Phoenix.Logger.phoenix_socket_connected/4"},"message":"CONNECTED TO API.Device.Socket in 83ms\n  Transport: :websocket\n  Serializer: Phoenix.Socket.V1.JSONSerializer\n  Parameters: %{\"external_id\" => \"thisisrandomandpersistent\", \"name_suffix\" => \"kkX1\", \"public_key\" => \"[FILTERED]\", \"token\" => \"[FILTERED]\"}","severity":"INFO","time":"2023-06-23T21:01:49.566Z"}
+
+# After this you need to join the `device` topic and pass a `stamp_secret` in the payload.
+# For details on this structure see https://hexdocs.pm/phoenix/Phoenix.Socket.Message.html
+❯ {"event":"phx_join","topic":"device","payload":{},"ref":"unique_string_ref","join_ref":"unique_join_ref"}
+
+{"ref":"unique_string_ref","topic":"device","event":"phx_reply","payload":{"status":"ok","response":{}}}
+{"ref":null,"topic":"device","event":"init","payload":{"interface":{"ipv6":"fd00:2011:1111::11:f4bd","upstream_dns":[],"ipv4":"100.71.71.245"},"resources":[{"id":"4429d3aa-53ea-4c03-9435-4dee2899672b","name":"172.20.0.1/16","type":"cidr","address":"172.20.0.0/16"},{"id":"85a1cffc-70d3-46dd-aa6b-776192af7b06","name":"gitlab.mycorp.com","type":"dns","address":"gitlab.mycorp.com","ipv6":"fd00:2011:1111::5:b370","ipv4":"100.85.109.146"}]}}
+
+# List online relays for a Resource
+❯ {"event":"list_relays","topic":"device","payload":{"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b"},"ref":"unique_list_relays_ref"}
+
+{"ref":"unique_list_relays_ref","topic":"device","event":"phx_reply","payload":{"status":"ok","response":{"relays":[{"type":"stun","uri":"stun:172.28.0.101:3478"},{"type":"turn","username":"1719090081:UVxHhieTJWaD8_Sg","password":"Ml65XDZyYpuBiEIvk/q0Zy6EEJ1ZwGa4pWztXFP+tOo","uri":"turn:172.28.0.101:3478","expires_at":1719090081}],"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b"}}}
+
+# Initiate connection to a resource
+❯ {"event":"request_connection","topic":"device","payload":{"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b","device_rtc_session_description":"RTC_SD","device_preshared_key":"+HapiGI5UdeRjKuKTwk4ZPPYpCnlXHvvqebcIevL+2A="},"ref":"unique_request_connection_ref"}
+
 ```
+
+Note: when you run multiple commands it can hang because Phoenix expects a heartbeat packet every 5 seconds, so it can kill your websocket if you send commands slower than that.
 
 </details>
 <br />
@@ -171,6 +189,18 @@ remote_ip = {127, 0, 0, 1}
 provider = Domain.Repo.get_by(Domain.Auth.Provider, adapter: :userpass)
 identity = Domain.Repo.get_by(Domain.Auth.Identity, provider_id: provider.id, provider_identifier: "firezone@localhost")
 subject = Domain.Auth.build_subject(identity, nil, user_agent, remote_ip)
+```
+
+Listing connected gateways, relays, devices for an account:
+
+```elixir
+account_id = "c89bcc8c-9392-4dae-a40d-888aef6d28e0"
+
+%{
+  gateways: Domain.Gateways.Presence.list("gateways:#{account_id}"),
+  relays: Domain.Relays.Presence.list("relays:#{account_id}"),
+  devices: Domain.Devices.Presence.list("devices:#{account_id}"),
+}
 ```
 
 ## Connecting to a staging or production instances

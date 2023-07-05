@@ -3,6 +3,9 @@ name = "connlib-apple"
 version = "0.1.6"
 edition = "2021"
 
+[features]
+mock = ["firezone-client-connlib/mock"]
+
 [build-dependencies]
 anyhow = "1.0.71"
 diva = "0.1.0"
@@ -17,3 +20,4 @@ firezone-client-connlib = { path = "../../libs/client" }
 [lib]
 name = "connlib"
 crate-type = ["staticlib"]
+doc = false
