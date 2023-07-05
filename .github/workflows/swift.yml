@@ -68,8 +68,12 @@ jobs:
           xcode-version: latest-stable
       - name: Build app for macOS
         working-directory: ./swift/apple
-        run: xcodebuild build -scheme Firezone -sdk macosx -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+        run: |
+          cp Firezone/Developer.xcconfig.ci-macOS Firezone/Developer.xcconfig
+          xcodebuild build -scheme Firezone -sdk macosx -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
       - name: Build app for iOS
         working-directory: ./swift/apple
-        run: xcodebuild build -scheme Firezone -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO
+        run: |
+          cp Firezone/Developer.xcconfig.ci-iOS Firezone/Developer.xcconfig
+          xcodebuild build -scheme Firezone -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO
 
