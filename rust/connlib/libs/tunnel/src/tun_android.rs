@@ -69,7 +69,7 @@ impl IfaceDevice {
 }
 
 impl IfaceConfig {
-    pub async fn add_route(&mut self, route: IpNetwork) -> Result<()> {
+    pub async fn add_route(&mut self, route: &IpNetwork) -> Result<()> {
         tracing::error!("`add_route` unimplemented on Android: `{route:#?}`");
         Ok(())
     }

@@ -277,6 +277,14 @@ where
                 d.on_open(Box::new(move || {
                     tracing::trace!("new data channel opened!");
                     Box::pin(async move {
+                        {
+                            let mut iface_config = tunnel.iface_config.lock().await;
+                            for ip in &peer.ips {
+                                if let Err(e) = iface_config.add_route(ip).await {
+                                    tunnel.callbacks.on_error(&e, Recoverable);
+                                }
+                            }
+                        }
                         if let Err(e) = tunnel.handle_channel_open(data_channel, index, peer).await
                         {
                             tunnel.callbacks.on_error(&e, Recoverable);
