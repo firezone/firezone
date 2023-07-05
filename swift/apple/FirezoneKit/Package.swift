@@ -20,8 +20,7 @@ let package = Package(
   targets: [
     .binaryTarget(
       name: "Connlib",
-      url: "https://github.com/firezone/connlib/releases/download/0.1.6/Connlib-0.1.6.xcframework.zip",
-      checksum: "97d645642c7f506d5d074371aaa50d5b2bad88cb1f843786abe0c683ed988905"
+      path: "../../../rust/connlib/clients/apple/Connlib.xcframework"
     ),
     .target(
       name: "FirezoneKit",
