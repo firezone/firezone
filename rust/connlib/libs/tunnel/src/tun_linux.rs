@@ -177,7 +177,7 @@ fn get_last_error() -> Error {
 }
 
 impl IfaceConfig {
-    pub async fn add_route(&mut self, route: IpNetwork) -> Result<()> {
+    pub async fn add_route(&mut self, route: &IpNetwork) -> Result<()> {
         let req = self
             .0
             .handle

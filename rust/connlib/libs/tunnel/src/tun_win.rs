@@ -16,7 +16,7 @@ impl IfaceConfig {
         todo!()
     }
 
-    pub async fn add_route(&mut self, _route: IpNetwork) -> Result<()> {
+    pub async fn add_route(&mut self, _route: &IpNetwork) -> Result<()> {
         todo!()
     }
 }
