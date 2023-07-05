@@ -49,8 +49,6 @@ jobs:
         with:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
@@ -102,8 +100,6 @@ jobs:
         with:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
@@ -155,8 +151,6 @@ jobs:
         with:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
@@ -223,8 +217,6 @@ jobs:
         with:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
@@ -332,8 +324,6 @@ jobs:
         with:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
