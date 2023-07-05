@@ -113,7 +113,7 @@ jobs:
         with:
           name: connlib-android
           path: |
-            ./connlib-${{ needs.draft-release.outputs.tag_name }}.aar
+            ./rust/connlib-${{ needs.draft-release.outputs.tag_name }}.aar
 
   build-apple:
     needs:
