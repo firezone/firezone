@@ -3,283 +3,157 @@ import Image from "next/image";
 import gravatar from "@/lib/gravatar";
 import { LinkedInIcon, GitHubIcon, TwitterIcon } from "@/components/Icons";
 
-export default function Page() {
+function renderTeamMember({
+  name,
+  title,
+  imgSrc,
+  twitterUrl,
+  githubUrl,
+  linkedinUrl,
+}: {
+  name: string;
+  title: string;
+  imgSrc: string;
+  twitterUrl?: string;
+  githubUrl?: string;
+  linkedinUrl?: string;
+}) {
   return (
-    <section className="bg-white dark:bg-neutral-900">
-      <div className="grid gap-16 py-8 px-4 mx-auto max-w-screen-xl lg:grid-cols-2 lg:py-16 lg:px-6">
+    <div className="text-center">
+      <Image
+        width={144}
+        height={144}
+        className="shadow-lg hover:scale-105 duration-0 transform transition mx-auto mb-4 w-36 h-36 rounded-full"
+        src={imgSrc}
+        alt={`{name} Avatar`}
+      />
+      <div className="text-center">
+        <h3 className="justify-center text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
+          {name}
+        </h3>
+        <span className="text-neutral-800 dark:text-neutral-100">{title}</span>
+        <ul className="flex justify-center space-x-4 mt-4">
+          {twitterUrl && (
+            <li>
+              <TwitterIcon url={twitterUrl} />
+            </li>
+          )}
+          {githubUrl && (
+            <li>
+              <GitHubIcon url={githubUrl} />
+            </li>
+          )}
+          {linkedinUrl && (
+            <li>
+              <LinkedInIcon url={linkedinUrl} />
+            </li>
+          )}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+export default function Page() {
+  const coreTeam = [
+    {
+      name: "Jamil Bou Kheir",
+      title: "CEO/Founder",
+      imgSrc: gravatar("jamil@firezone.dev", 200),
+      twitterUrl: "https://twitter.com/jamilbk",
+      githubUrl: "https://github.com/jamilbk",
+      linkedinUrl: "https://linkedin.com/in/jamilbk",
+    },
+    {
+      name: "Gabriel Steinberg",
+      title: "Senior Backend Engineer",
+      imgSrc: "/images/avatars/gabriel.png",
+      twitterUrl: "https://twitter.com/tapingmemory",
+      githubUrl: "https://github.com/conectado",
+    },
+    {
+      name: "Andrew Dryga",
+      title: "Founding Engineer",
+      imgSrc: "/images/avatars/andrew.jpg",
+      twitterUrl: "https://twitter.com/andrew_dryga",
+      githubUrl: "https://github.com/andrewdryga",
+      linkedinUrl: "https://linkedin.com/in/andrew-dryga-bb382557",
+    },
+    {
+      name: "Francesca Lovebloom",
+      title: "Senior Systems Engineer",
+      imgSrc: gravatar("fran@firezone.dev", 200),
+      twitterUrl: "https://twitter.com/franlovebloom",
+      githubUrl: "https://github.com/francesca64",
+      linkedinUrl: "https://linkedin.com/in/francesca-lovebloom",
+    },
+    {
+      name: "Brian Manifold",
+      title: "Senior Full-stack Engineer",
+      imgSrc: "/images/avatars/brian.png",
+      githubUrl: "https://github.com/bmanifold",
+      linkedinUrl: "https://www.linkedin.com/in/brian-manifold-536a0a3a/",
+    },
+  ];
+
+  const advisors = [
+    {
+      name: "Blake Hitchcock",
+      title: "Technical Advisor",
+      imgSrc: "/images/avatars/blake.jpeg",
+      githubUrl: "https://github.com/rbhitchcock",
+      linkedinUrl: "https://www.linkedin.com/in/rblakehitchcock",
+    },
+    {
+      name: "Thomas Eizinger",
+      title: "Technical Consultant",
+      imgSrc: "/images/avatars/thomas.jpeg",
+      twitterUrl: "https://twitter.com/oetzn",
+      githubUrl: "https://github.com/thomaseizinger",
+      linkedinUrl: "https://www.linkedin.com/in/thomas-eizinger",
+    },
+    {
+      name: "Roopesh Chander",
+      title: "Technical Consultant",
+      imgSrc: gravatar("roop@roopc.net", 200),
+      twitterUrl: "https://twitter.com/roopcnet",
+      githubUrl: "https://github.com/roop",
+    },
+  ];
+
+  return (
+    <section className="bg-neutral-50 dark:bg-neutral-900">
+      <div className="py-8 px-4 mx-auto max-w-screen-lg text-center lg:py-16 lg:px-6">
         <div className="text-neutral-800 sm:text-lg dark:text-neutral-100">
-          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
+          <h2 className="mb-14 justify-center text-6xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
             People are everything.
           </h2>
-          <p className="mb-2 md:text-lg">
+          <p className="mb-4 sm:text-2xl">
             Here at Firezone we know that it's people who make all the
-            difference. We strive to hire the best and brightest and give them
-            the tools they need to succeed.
-          </p>
-          <p className="font-light md:text-lg">
-            Working here means you’ll interact with some of the most talented
-            folks in their craft, be challenged to solve difficult problems and
-            think in new and creative ways.
+            difference.
+            <br /> We strive to hire the best and brightest and give them the
+            tools they need to succeed.
           </p>
         </div>
-        <div className="divide-y divide-neutral-200 dark:divide-neutral-700">
-          <div className="text-neutral-800 sm:text-lg dark:text-neutral-100">
-            <h3 className="justify-center mb-4 text-xl tracking-tight font-bold text-neutral-900 dark:text-white">
-              CORE TEAM
-            </h3>
-          </div>
-          <div className="flex flex-col items-center py-8 sm:flex-row">
-            <Image
-              width={144}
-              height={144}
-              className="mx-auto mb-4 w-36 h-36 rounded-full sm:ml-0 sm:mr-6"
-              src={gravatar("jamil@firezone.dev", 200)}
-              alt="Jamil Avatar"
-            />
-            <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
-                Jamil Bou Kheir
-              </h3>
-              <span className="text-neutral-800 dark:text-neutral-100">
-                CEO/Co-founder
-              </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
-                {/* TODO: Bio
-                  Before starting Firezone, Jamil battled cybersecurity threats at
-                  Cisco for 8+ years in various roles from pentesting to incident
-                  response. After a particularly frustrating experience fighting
-                  his corporate VPN client over some routing table entries, he
-                  decided to take the plunge into the world of startups to start
-                  Firezone. Because who needs sleep, right?
-              </p>
-              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
-                Jamil lives in sunny Mountain View, CA with his partner and
-                their terrier Charlie.
-                */}
-              </p>
-              <ul className="flex justify-center space-x-4 sm:justify-start">
-                <li>
-                  <TwitterIcon url="https://twitter.com/jamilbk" />
-                </li>
-                <li>
-                  <GitHubIcon url="https://github.com/jamilbk" />
-                </li>
-                <li>
-                  <LinkedInIcon url="https://linkedin.com/in/jamilbk" />
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="flex flex-col items-center py-8 sm:flex-row">
-            <Image
-              width={144}
-              height={144}
-              className="mx-auto mb-4 w-36 h-36 rounded-full sm:ml-0 sm:mr-6"
-              src="/images/avatars/gabriel.png"
-              alt="Gabi Avatar"
-            />
-            <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
-                Gabriel Steinberg
-              </h3>
-              <span className="text-neutral-800 dark:text-neutral-100">
-                Senior Backend Engineer
-              </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
-                {/* TODO: bio */}
-              </p>
-              <ul className="flex justify-center space-x-4 sm:justify-start">
-                <li>
-                  <TwitterIcon url="https://twitter.com/tapingmemory" />
-                </li>
-                <li>
-                  <GitHubIcon url="https://github.com/conectado" />
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="flex flex-col items-center py-8 sm:flex-row">
-            <Image
-              width={144}
-              height={144}
-              className="mx-auto mb-4 w-36 h-36 rounded-full sm:ml-0 sm:mr-6"
-              src="/images/avatars/andrew.jpg"
-              alt="Andrew Avatar"
-            />
-            <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
-                Andrew Dryga
-              </h3>
-              <span className="text-neutral-800 dark:text-neutral-100">
-                Founding Engineer
-              </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
-                {/* TODO: bio */}
-              </p>
-              <ul className="flex justify-center space-x-4 sm:justify-start">
-                <li>
-                  <TwitterIcon url="https://twitter.com/andrew_dryga" />
-                </li>
-                <li>
-                  <GitHubIcon url="https://github.com/AndrewDryga" />
-                </li>
-                <li>
-                  <LinkedInIcon url="https://linkedin.com/in/andrew-dryga-bb382557" />
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="flex flex-col items-center py-8 sm:flex-row">
-            <Image
-              width={144}
-              height={144}
-              className="mx-auto mb-4 w-36 h-36 rounded-full sm:ml-0 sm:mr-6"
-              src={gravatar("fran@firezone.dev", 200)}
-              alt="Francesca Avatar"
-            />
-            <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
-                Francesca Lovebloom
-              </h3>
-              <span className="text-neutral-800 dark:text-neutral-100">
-                Senior Systems Engineer
-              </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
-                {/* TODO: bio */}
-              </p>
-              <ul className="flex justify-center space-x-4 sm:justify-start">
-                <li>
-                  <TwitterIcon url="https://twitter.com/franlovebloom" />
-                </li>
-                <li>
-                  <GitHubIcon url="https://github.com/francesca64" />
-                </li>
-                <li>
-                  <LinkedInIcon url="https://www.linkedin.com/in/francesca-lovebloom/" />
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="flex flex-col items-center py-8 sm:flex-row">
-            <Image
-              width={144}
-              height={144}
-              className="mx-auto mb-4 w-36 h-36 rounded-full sm:ml-0 sm:mr-6"
-              src="/images/avatars/brian.png"
-              alt="Brian Avatar"
-            />
-            <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
-                Brian Manifold
-              </h3>
-              <span className="text-neutral-800 dark:text-neutral-100">
-                Senior Fullstack Engineer
-              </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
-                {/* TODO: bio */}
-              </p>
-              <ul className="flex justify-center space-x-4 sm:justify-start">
-                <li>
-                  <GitHubIcon url="https://github.com/bmanifold" />
-                </li>
-                <li>
-                  <LinkedInIcon url="https://www.linkedin.com/in/brian-manifold-536a0a3a/" />
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="text-neutral-800 sm:text-lg dark:text-neutral-100">
-            <h3 className="justify-center py-8 text-xl tracking-tight font-bold text-neutral-900 dark:text-white">
-              ADVISORS & CONSULTANTS
-            </h3>
-          </div>
-          <div className="flex flex-col items-center py-8 sm:flex-row">
-            <Image
-              width={144}
-              height={144}
-              className="mx-auto mb-4 w-36 h-36 rounded-full sm:ml-0 sm:mr-6"
-              src="/images/avatars/blake.jpeg"
-              alt="Blake Avatar"
-            />
-            <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
-                Blake Hitchcock
-              </h3>
-              <span className="text-neutral-800 dark:text-neutral-100">
-                Technical Advisor
-              </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
-                {/* TODO: bio */}
-              </p>
-              <ul className="flex justify-center space-x-4 sm:justify-start">
-                <li>
-                  <GitHubIcon url="https://github.com/rbhitchcock" />
-                </li>
-                <li>
-                  <LinkedInIcon url="https://www.linkedin.com/in/rblakehitchcock" />
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="flex flex-col items-center py-8 sm:flex-row">
-            <Image
-              width={144}
-              height={144}
-              className="mx-auto mb-4 w-36 h-36 rounded-full sm:ml-0 sm:mr-6"
-              src="/images/avatars/thomas.jpeg"
-              alt="Thomas Avatar"
-            />
-            <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
-                Thomas Eizinger
-              </h3>
-              <span className="text-neutral-800 dark:text-neutral-100">
-                Technical Consultant
-              </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
-                {/* TODO: bio
-                  Thomas spent most of his professional life in the distributed systems space. He has a passion for Rust, OSS and sailing yachts.
-                */}
-              </p>
-              <ul className="flex justify-center space-x-4 sm:justify-start">
-                <li>
-                  <TwitterIcon url="https://twitter.com/oetzn" />
-                </li>
-                <li>
-                  <GitHubIcon url="https://github.com/thomaseizinger" />
-                </li>
-                <li>
-                  <LinkedInIcon url="https://www.linkedin.com/in/thomas-eizinger" />
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="flex flex-col items-center py-8 sm:flex-row">
-            <Image
-              width={144}
-              height={144}
-              className="mx-auto mb-4 w-36 h-36 rounded-full sm:ml-0 sm:mr-6"
-              src={gravatar("roop@roopc.net", 200)}
-              alt="Roopesh Avatar"
-            />
-            <div className="text-center sm:text-left">
-              <h3 className="justify-center sm:justify-start text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
-                Roopesh Chander
-              </h3>
-              <span className="text-neutral-800 dark:text-neutral-100">
-                Technical Consultant
-              </span>
-              <p className="mt-3 mb-4 max-w-sm font-light text-neutral-800 dark:text-neutral-100">
-                {/* TODO: bio */}
-              </p>
-              <ul className="flex justify-center space-x-4 sm:justify-start">
-                <li>
-                  <GitHubIcon url="https://github.com/roop" />
-                </li>
-              </ul>
-            </div>
-          </div>
+        <div className="text-neutral-800 sm:text-lg dark:text-neutral-100">
+          <h3 className="justify-center pb-4 pt-14 text-2xl tracking-tight font-bold text-neutral-900 dark:text-white border-b border-neutral-300">
+            CORE TEAM
+          </h3>
+        </div>
+        <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 lg:gap-16">
+          {coreTeam.map((person) => {
+            return renderTeamMember(person);
+          })}
+        </div>
+        <div className="text-neutral-800 sm:text-lg dark:text-neutral-100">
+          <h3 className="justify-center pb-4 pt-14 text-2xl tracking-tight font-bold text-neutral-900 dark:text-white border-b border-neutral-300">
+            ADVISORS & CONSULTANTS
+          </h3>
+        </div>
+        <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 lg:gap-16">
+          {advisors.map((person) => {
+            return renderTeamMember(person);
+          })}
         </div>
       </div>
     </section>
