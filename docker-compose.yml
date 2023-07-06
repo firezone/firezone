@@ -135,8 +135,6 @@ services:
     depends_on:
       api:
         condition: 'service_healthy'
-      relay:
-        condition: 'service_healthy'
     networks:
       app:
         ipv4_address: 172.28.0.100
