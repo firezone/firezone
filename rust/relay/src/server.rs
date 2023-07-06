@@ -13,6 +13,9 @@ use crate::TimeEvents;
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
 use rand::Rng;
 use std::collections::{HashMap, VecDeque};
@@ -65,6 +68,10 @@ pub struct Server<R> {
     nonces: Nonces,
 
     time_events: TimeEvents<TimedAction>,
+
+    allocations_gauge: Gauge,
+    responses_counter: Family<ResponsesTotalLabels, Counter>,
+    data_relayed_counter: Counter,
 }
 
 /// The commands returned from a [`Server`].
@@ -129,8 +136,29 @@ impl<R> Server<R>
 where
     R: Rng,
 {
-    pub fn new(public_ip4_address: Ipv4Addr, mut rng: R, _: &mut Registry) -> Self {
+    pub fn new(public_ip4_address: Ipv4Addr, mut rng: R, registry: &mut Registry) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
+
+        let allocations_gauge = Gauge::default();
+        registry.register(
+            "allocations_total",
+            "The number of active allocations",
+            allocations_gauge.clone(),
+        );
+
+        let responses_counter = Family::<ResponsesTotalLabels, Counter>::default();
+        registry.register(
+            "responses",
+            "The number of responses",
+            responses_counter.clone(),
+        );
+
+        let data_relayed_counter = Counter::default();
+        registry.register(
+            "data_relayed_bytes",
+            "The number of bytes relayed",
+            data_relayed_counter.clone(),
+        );
 
         Self {
             decoder: Default::default(),
@@ -147,6 +175,9 @@ where
             rng,
             time_events: TimeEvents::default(),
             nonces: Default::default(),
+            allocations_gauge,
+            responses_counter,
+            data_relayed_counter,
         }
     }
 
@@ -282,6 +313,8 @@ where
             bytes.len()
         );
 
+        self.data_relayed_counter.inc_by(bytes.len() as u64);
+
         let recipient = *client;
         let data = ChannelData::new(*channel_number, bytes).to_bytes();
 
@@ -414,6 +447,7 @@ where
 
         self.clients_by_allocation.insert(allocation.id, sender);
         self.allocations.insert(sender, allocation);
+        self.allocations_gauge.inc();
 
         Ok(())
     }
@@ -438,20 +472,12 @@ where
         let effective_lifetime = request.effective_lifetime();
 
         if effective_lifetime.lifetime().is_zero() {
-            let port = allocation.port;
+            let id = allocation.id;
 
-            self.pending_commands
-                .push_back(Command::FreeAddresses { id: allocation.id });
-            self.allocations.remove(&sender);
-            self.allocations_by_port.remove(&port);
+            self.delete_allocation(id);
             self.send_message(
                 refresh_success_response(effective_lifetime, request.transaction_id()),
                 sender,
-            );
-
-            tracing::info!(
-                target: "relay",
-                "Deleted allocation for {sender} on port {port}"
             );
 
             return Ok(());
@@ -603,6 +629,8 @@ where
 
         tracing::debug!(target: "relay", "Relaying {} bytes from {sender} to {recipient} via channel {channel_number}", data.len());
 
+        self.data_relayed_counter.inc_by(data.len() as u64);
+
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(data);
             tracing::trace!(target: "wire", r#"Output::Forward("{recipient}","{hex_bytes}")"#);
@@ -695,7 +723,9 @@ where
     }
 
     fn send_message(&mut self, message: Message<Attribute>, recipient: SocketAddr) {
-        tracing::trace!(target: "relay", "Sending {} {} to {recipient}", message.method().as_str(), message.class().as_str());
+        let method = message.method();
+        let class = message.class();
+        tracing::trace!(target: "relay", "Sending {} {} to {recipient}", method.as_str(), class.as_str());
 
         let Ok(bytes) = self.encoder.encode_into_bytes(message) else {
             debug_assert!(false, "Encoding should never fail");
@@ -711,6 +741,27 @@ where
             payload: bytes,
             recipient,
         });
+
+        // record metrics
+        let response_class = match class {
+            MessageClass::SuccessResponse => ResponseClass::Success,
+            MessageClass::ErrorResponse => ResponseClass::Error,
+            _ => return,
+        };
+        let message_type = match method {
+            BINDING => MessageType::Binding,
+            ALLOCATE => MessageType::Allocate,
+            REFRESH => MessageType::Refresh,
+            CHANNEL_BIND => MessageType::ChannelBind,
+            CREATE_PERMISSION => MessageType::CreatePermission,
+            _ => return,
+        };
+        self.responses_counter
+            .get_or_create(&ResponsesTotalLabels {
+                class: response_class,
+                message: message_type,
+            })
+            .inc();
     }
 
     fn public_relay_address_for_port(&self, port: u16) -> SocketAddrV4 {
@@ -727,10 +778,22 @@ where
         let Some(client) = self.clients_by_allocation.remove(&id) else {
             return;
         };
+        let allocation = self
+            .allocations
+            .remove(&client)
+            .expect("internal state mismatch");
 
-        self.allocations.remove(&client);
+        let port = allocation.port;
+
+        self.allocations_by_port.remove(&port);
+        self.allocations_gauge.dec();
         self.pending_commands
             .push_back(Command::FreeAddresses { id });
+
+        tracing::info!(
+            target: "relay",
+            "Deleted allocation for {client} on port {port}"
+        );
     }
 
     fn delete_channel_binding(&mut self, chan: u16) {
@@ -914,3 +977,24 @@ stun_codec::define_attribute_enums!(
         Username
     ]
 );
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, prometheus_client::encoding::EncodeLabelSet)]
+struct ResponsesTotalLabels {
+    class: ResponseClass,
+    message: MessageType,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, prometheus_client::encoding::EncodeLabelValue)]
+enum ResponseClass {
+    Success,
+    Error,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, prometheus_client::encoding::EncodeLabelValue)]
+enum MessageType {
+    Binding,
+    Allocate,
+    ChannelBind,
+    CreatePermission,
+    Refresh,
+}

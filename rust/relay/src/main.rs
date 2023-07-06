@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let mut metric_registry = Registry::default();
+    let mut metric_registry = Registry::with_prefix("relay");
 
     let server = Server::new(
         args.public_ip4_addr,
