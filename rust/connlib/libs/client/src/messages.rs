@@ -119,6 +119,8 @@ mod test {
         },
     };
 
+    use chrono::NaiveDateTime;
+
     use crate::messages::{EgressMessages, Relays, ReplyMessages};
 
     use super::{IngressMessages, InitClient};
@@ -241,7 +243,9 @@ mod test {
                         uri: "stun:189.172.73.111:3478".to_string(),
                     }),
                     Relay::Turn(Turn {
-                        expires_at: 1686629954,
+                        expires_at: NaiveDateTime::from_timestamp_opt(1686629954, 0)
+                            .unwrap()
+                            .and_utc(),
                         uri: "turn:189.172.73.111:3478".to_string(),
                         username: "1686629954:C7I74wXYFdFugMYM".to_string(),
                         password: "OXXRDJ7lJN1cm+4+2BWgL87CxDrvpVrn5j3fnJHye98".to_string(),
@@ -250,7 +254,9 @@ mod test {
                         uri: "stun:::1:3478".to_string(),
                     }),
                     Relay::Turn(Turn {
-                        expires_at: 1686629954,
+                        expires_at: NaiveDateTime::from_timestamp_opt(1686629954, 0)
+                            .unwrap()
+                            .and_utc(),
                         uri: "turn:::1:3478".to_string(),
                         username: "1686629954:dpHxHfNfOhxPLfMG".to_string(),
                         password: "8Wtb+3YGxO6ia23JUeSEfZ2yFD6RhGLkbgZwqjebyKY".to_string(),

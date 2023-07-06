@@ -2,6 +2,7 @@ use boringtun::{
     noise::Tunn,
     x25519::{PublicKey, StaticSecret},
 };
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
 use libs_common::{
@@ -31,6 +32,7 @@ where
         data_channel: Arc<RTCDataChannel>,
         index: u32,
         peer_config: PeerConfig,
+        expires_at: Option<DateTime<Utc>>,
     ) -> Result<()> {
         let channel = data_channel.detach().await.expect("TODO");
         let tunn = Tunn::new(
@@ -47,6 +49,7 @@ where
             index,
             &peer_config,
             Arc::clone(&channel),
+            expires_at,
         ));
 
         {
@@ -170,7 +173,7 @@ where
                     preshared_key: p_key,
                 };
 
-                if let Err(e) = tunnel.handle_channel_open(d, index, peer_config).await {
+                if let Err(e) = tunnel.handle_channel_open(d, index, peer_config, None).await {
                     tracing::error!("Couldn't establish wireguard link after channel was opened: {e}");
                     tunnel.callbacks.on_error(&e, Recoverable);
                     tunnel.cleanup_connection(resource_id);
@@ -229,11 +232,6 @@ where
         Ok(())
     }
 
-    /// Removes client's id from connections we are expecting.
-    pub fn cleanup_peer_connection(self: &Arc<Self>, client_id: Id) {
-        self.peer_connections.lock().remove(&client_id);
-    }
-
     /// Accept a connection request from a client.
     ///
     /// Sets a connection to a remote SDP, creates the local SDP
@@ -258,6 +256,7 @@ where
         peer: PeerConfig,
         relays: Vec<Relay>,
         client_id: Id,
+        expires_at: DateTime<Utc>,
     ) -> Result<RTCSessionDescription> {
         let peer_connection = self.initialize_peer_request(relays).await?;
         let index = self.next_index();
@@ -285,7 +284,10 @@ where
                                 }
                             }
                         }
-                        if let Err(e) = tunnel.handle_channel_open(data_channel, index, peer).await
+
+                        if let Err(e) = tunnel
+                            .handle_channel_open(data_channel, index, peer, Some(expires_at))
+                            .await
                         {
                             tunnel.callbacks.on_error(&e, Recoverable);
                             tracing::error!(
@@ -315,8 +317,8 @@ where
     }
 
     /// Clean up a connection to a resource.
-    pub fn cleanup_connection(&self, resource_id: Id) {
-        self.awaiting_connection.lock().remove(&resource_id);
-        self.peer_connections.lock().remove(&resource_id);
+    pub fn cleanup_connection(&self, id: Id) {
+        self.awaiting_connection.lock().remove(&id);
+        self.peer_connections.lock().remove(&id);
     }
 }

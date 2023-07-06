@@ -287,6 +287,18 @@ where
             let mut dst_buf = [0u8; MAX_UDP_SIZE];
 
             loop {
+                tunnel.peers_by_ip.write().retain(|_, p| {
+                    if !p.is_valid() {
+                        let p = p.clone();
+                        // We spawn a new task that closes the stream since it's async.
+                        // We want to do this after removal so whenever we find
+                        // a peer in peers_by_ip we can assert that it's opened.
+                        tokio::spawn(async move { p.shutdown().await });
+                    }
+
+                    p.is_valid()
+                });
+
                 let peers: Vec<_> = tunnel
                     .peers_by_ip
                     .read()

@@ -2,9 +2,10 @@ use std::{net::IpAddr, sync::Arc};
 
 use boringtun::noise::{Tunn, TunnResult};
 use bytes::Bytes;
+use chrono::{DateTime, Utc};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::{error_type::ErrorType, Callbacks};
+use libs_common::{error_type::ErrorType, Callbacks, Result};
 use parking_lot::Mutex;
 use webrtc::data::data_channel::DataChannel;
 
@@ -15,6 +16,7 @@ pub(crate) struct Peer {
     pub index: u32,
     pub allowed_ips: IpNetworkTable<()>,
     pub channel: Arc<DataChannel>,
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 impl Peer {
@@ -30,8 +32,15 @@ impl Peer {
         index: u32,
         config: &PeerConfig,
         channel: Arc<DataChannel>,
+        expires_at: Option<DateTime<Utc>>,
     ) -> Self {
-        Self::new(Mutex::new(tunnel), index, config.ips.clone(), channel)
+        Self::new(
+            Mutex::new(tunnel),
+            index,
+            config.ips.clone(),
+            channel,
+            expires_at,
+        )
     }
 
     pub(crate) fn new(
@@ -39,6 +48,7 @@ impl Peer {
         index: u32,
         ips: Vec<IpNetwork>,
         channel: Arc<DataChannel>,
+        expires_at: Option<DateTime<Utc>>,
     ) -> Peer {
         let mut allowed_ips = IpNetworkTable::new();
         for ip in ips {
@@ -49,11 +59,24 @@ impl Peer {
             index,
             allowed_ips,
             channel,
+            expires_at,
         }
     }
 
     pub(crate) fn update_timers<'a>(&self, dst: &'a mut [u8]) -> TunnResult<'a> {
         self.tunnel.lock().update_timers(dst)
+    }
+
+    pub(crate) async fn shutdown(&self) -> Result<()> {
+        self.channel.close().await?;
+        Ok(())
+    }
+
+    pub(crate) fn is_valid(&self) -> bool {
+        match self.expires_at {
+            Some(expires_at) => Utc::now() >= expires_at,
+            None => true,
+        }
     }
 
     pub(crate) fn is_allowed(&self, addr: impl Into<IpAddr>) -> bool {
