@@ -14,7 +14,8 @@ export default function EarlyAccessForm() {
         <ul className="md:text-xl mb-6 list-inside list-disc space-y-2">
           <li>Be among the first to try Firezone 1.0</li>
           <li>Shape the product roadmap with prioritized feedback</li>
-          <li>Receive discounts for paid plans after launch</li>
+          <li>Dedicated Slack channel for onboarding and support</li>
+          <li>Free unlimited usage during the beta period</li>
         </ul>
         <h3 className="mb-4 lg:text-2xl md:text-xl font-extrabold tracking-tight text-neutral-900 text-lg dark:text-white">
           What's new in 1.0?
