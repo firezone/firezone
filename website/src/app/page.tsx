@@ -287,7 +287,7 @@ export default function Page() {
             sign-on (SSO).
           </p>
         </div>
-        <div className="gap-8 max-w-screen-xl grid grid-cols-1 justify-items-center sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 px-16 pt-8">
+        <div className="mx-auto gap-8 max-w-screen-xl grid grid-cols-1 justify-items-center sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 px-16 pt-8">
           <Link href="/docs/authenticate/oidc/keycloak/">
             <Image
               width={150}

@@ -22,12 +22,12 @@ export default function EarlyAccessForm() {
         </h3>
         <ul className="md:text-xl mb-6 list-inside list-disc space-y-2">
           <li>Native clients for most major platforms</li>
-          <li>A new, snappy SaaS-based admin portal</li>
-          <li>Automated user provisioning for supported IdPs</li>
-          <li>Group-based access policies</li>
+          <li>A new, snappy SaaS-delivered admin portal</li>
           <li>STUN peer discovery with automatic holepunching</li>
+          <li>Group-based access policies built on zero trust principles</li>
+          <li>Automated user provisioning for supported IdPs</li>
+          <li>Split DNS with configurable upstream provider</li>
           <li>All-new REST API</li>
-          <li>Split DNS</li>
           {/*
           <li>Automatic failover, load balancing</li>
           */}
