@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - "swift/**"
+      - "rust/connlib/**"
       - ".github/workflows/swift.yml"
   merge_group:
     types: [checks_requested]
