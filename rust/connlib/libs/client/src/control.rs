@@ -25,7 +25,7 @@ impl ControlSignal for ControlSignaler {
                 },
                 // The resource id functions as the connection id since we can only have one connection
                 // outgoing for each resource.
-                resource.id().to_string(),
+                resource.id(),
             )
             .await?;
         Ok(())
@@ -138,7 +138,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         // TODO: create a reference number and keep track for the response
                         .send_with_ref(
                             EgressMessages::RequestConnection(connection_request),
-                            resource_id.to_string(),
+                            resource_id,
                         )
                         .await
                     {
