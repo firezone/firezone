@@ -74,7 +74,7 @@ impl Peer {
 
     pub(crate) fn is_valid(&self) -> bool {
         match self.expires_at {
-            Some(expires_at) => Utc::now() >= expires_at,
+            Some(expires_at) => expires_at > Utc::now(),
             None => true,
         }
     }

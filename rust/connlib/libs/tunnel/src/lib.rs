@@ -283,6 +283,7 @@ where
 
         for (_, peer) in peers_by_ip.iter() {
             if !peer.is_valid() {
+                tracing::trace!("Peer connection with index {} expired", peer.index);
                 let p = peer.clone();
                 // We are holding a Mutex, specially a write one, we don't want to make a blocking call
                 tokio::spawn(async move { p.shutdown().await });
@@ -342,8 +343,14 @@ where
         tokio::spawn(async move {
             let mut src_buf = [0u8; MAX_UDP_SIZE];
             let mut dst_buf = [0u8; MAX_UDP_SIZE];
-            // Loop while we have packets on the anonymous connection
             while let Ok(size) = peer.channel.read(&mut src_buf[..]).await {
+                // TODO: Double check that this can only happen on closed channel
+                // I think it's possible to transmit a 0-byte message through the channel
+                // but we would never use that.
+                if size == 0 {
+                    break;
+                }
+
                 tracing::trace!("read {size} bytes from peer");
                 // The rate limiter initially checks mac1 and mac2, and optionally asks to send a cookie
                 let parsed_packet = match tunnel.rate_limiter.verify_packet(
