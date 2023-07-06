@@ -366,7 +366,7 @@ impl PhoenixSenderWithTopic {
     pub async fn send_with_ref(
         &mut self,
         payload: impl Serialize,
-        reference: impl Into<String>,
+        reference: impl ToString,
     ) -> Result<()> {
         self.phoenix_sender
             .send_with_ref(&self.topic, payload, reference)
@@ -406,9 +406,9 @@ impl PhoenixSender {
         &mut self,
         topic: impl Into<String>,
         payload: impl Serialize,
-        reference: impl Into<String>,
+        reference: impl ToString,
     ) -> Result<()> {
-        self.send_internal(topic, payload, Some(reference.into()))
+        self.send_internal(topic, payload, Some(reference.to_string()))
             .await
     }
 
