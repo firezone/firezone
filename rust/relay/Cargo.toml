@@ -27,6 +27,8 @@ uuid = { version = "1.3.3", features = ["v4"] }
 phoenix-channel = { path = "../phoenix-channel" }
 url = "2.4.0"
 serde = { version = "1.0.163", features = ["derive"] }
+prometheus-client = "0.21.1"
+axum = { version = "0.6.18", default-features = false, features = ["http1", "tokio"] }
 
 [dev-dependencies]
 webrtc = { version = "0.8" }

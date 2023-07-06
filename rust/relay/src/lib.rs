@@ -6,6 +6,7 @@ mod stun_codec_ext;
 mod time_events;
 mod udp_socket;
 
+pub mod metrics;
 #[cfg(feature = "proptest")]
 pub mod proptest;
 

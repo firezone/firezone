@@ -13,6 +13,7 @@ use crate::TimeEvents;
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
+use prometheus_client::registry::Registry;
 use rand::Rng;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
@@ -128,7 +129,7 @@ impl<R> Server<R>
 where
     R: Rng,
 {
-    pub fn new(public_ip4_address: Ipv4Addr, mut rng: R) -> Self {
+    pub fn new(public_ip4_address: Ipv4Addr, mut rng: R, _: &mut Registry) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
         Self {
