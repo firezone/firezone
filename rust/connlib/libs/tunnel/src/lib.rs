@@ -347,6 +347,7 @@ where
                 // TODO: Double check that this can only happen on closed channel
                 // I think it's possible to transmit a 0-byte message through the channel
                 // but we would never use that.
+                // We should keep track of an open/closed channel ourselves if we wanted to do it properly then.
                 if size == 0 {
                     break;
                 }

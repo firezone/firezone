@@ -90,7 +90,7 @@ admin_actor_token = hd(admin_actor.identities).provider_virtual_state.sign_in_to
 unprivileged_subject =
   Auth.build_subject(
     unprivileged_actor_userpass_identity,
-    DateTime.utc_now() |> DateTime.add(5, :minutes),
+    DateTime.utc_now() |> DateTime.add(365, :day),
     "Debian/11.0.0 connlib/0.1.0",
     {172, 28, 0, 100}
   )
