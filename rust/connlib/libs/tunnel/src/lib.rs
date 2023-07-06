@@ -278,6 +278,20 @@ where
         });
     }
 
+    fn remove_expired_peers(self: &Arc<Self>) {
+        let mut peers_by_ip = self.peers_by_ip.write();
+
+        for (_, peer) in peers_by_ip.iter() {
+            if !peer.is_valid() {
+                let p = peer.clone();
+                // We are holding a Mutex, specially a write one, we don't want to make a blocking call
+                tokio::spawn(async move { p.shutdown().await });
+            }
+        }
+
+        peers_by_ip.retain(|_, p| p.is_valid());
+    }
+
     fn start_peers_refresh_timer(self: &Arc<Self>) {
         let tunnel = self.clone();
 
@@ -287,17 +301,7 @@ where
             let mut dst_buf = [0u8; MAX_UDP_SIZE];
 
             loop {
-                tunnel.peers_by_ip.write().retain(|_, p| {
-                    if !p.is_valid() {
-                        let p = p.clone();
-                        // We spawn a new task that closes the stream since it's async.
-                        // We want to do this after removal so whenever we find
-                        // a peer in peers_by_ip we can assert that it's opened.
-                        tokio::spawn(async move { p.shutdown().await });
-                    }
-
-                    p.is_valid()
-                });
+                tunnel.remove_expired_peers();
 
                 let peers: Vec<_> = tunnel
                     .peers_by_ip
