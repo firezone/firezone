@@ -63,7 +63,7 @@ export default function Page() {
               Trusted by organizations like
             </h3>
           </div>
-          <div className="flex justify-between items-center px-16 py-8">
+          <div className="gap-8 max-w-screen-xl grid grid-cols-1 justify-items-center sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 px-16 py-8">
             <Image
               alt="bunq logo"
               src="/images/bunq-logo.png"
@@ -106,8 +106,8 @@ export default function Page() {
 
       {/* Features sections */}
       <section className="bg-white py-24 dark:bg-neutral-800">
-        <div className="flex justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
+        <div className="mx-4 flex flex-col justify-center items-center">
+          <h2 className="justify-center mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
             A modern alternative to legacy VPNs
           </h2>
         </div>
@@ -276,7 +276,7 @@ export default function Page() {
       </section>
 
       <section className="bg-neutral-100 py-24 dark:bg-neutral-800">
-        <div className="flex flex-col justify-center items-center">
+        <div className="mx-4 flex flex-col justify-center items-center">
           <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
             Integrate your identity provider to enforce 2FA / MFA
           </h2>
@@ -287,7 +287,7 @@ export default function Page() {
             sign-on (SSO).
           </p>
         </div>
-        <div className="mx-auto max-w-screen-xl flex justify-between items-center px-16 pt-8">
+        <div className="gap-8 max-w-screen-xl grid grid-cols-1 justify-items-center sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 px-16 pt-8">
           <Link href="/docs/authenticate/oidc/keycloak/">
             <Image
               width={150}
@@ -340,7 +340,7 @@ export default function Page() {
       </section>
 
       <section className="bg-white py-24 dark:bg-neutral-800">
-        <div className="flex flex-col justify-center items-center">
+        <div className="mx-4 flex flex-col justify-center items-center">
           <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
             Who can benefit using Firezone?
           </h2>

@@ -1,19 +1,40 @@
 import HubspotForm from "@/components/HubspotForm";
+import Link from "next/link";
 
 export default function EarlyAccessForm() {
   return (
-    <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
-      <div className="mx-auto max-w-screen-md sm:text-center">
-        <h2 className="justify-center mb-4 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-6xl dark:text-white">
-          Request early access
+    <div className="pt-8 grid grid-cols-1 sm:grid-cols-2 gap-8 items-start">
+      <div className="mb-8">
+        <h2 className="mb-8 py-4 border-b text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-4xl dark:text-white">
+          FAQ
         </h2>
-        <p className="mx-auto mb-8 max-w-2xl text-neutral-800 md:mb-12 sm:text-xl dark:text-neutral-100">
-          Firezone 1.0 is coming! Fill out the form below to be get early
-          access.
-        </p>
+        <h3 className="mb-4 lg:text-2xl md:text-xl font-extrabold tracking-tight text-neutral-900 text-lg dark:text-white">
+          Why sign up for early access?
+        </h3>
+        <ul className="md:text-xl mb-6 list-inside list-disc space-y-2">
+          <li>Be among the first to try Firezone 1.0</li>
+          <li>Shape the product roadmap with prioritized feedback</li>
+          <li>Receive discounts for paid plans after launch</li>
+        </ul>
+        <h3 className="mb-4 lg:text-2xl md:text-xl font-extrabold tracking-tight text-neutral-900 text-lg dark:text-white">
+          What's new in 1.0?
+        </h3>
+        <ul className="md:text-xl mb-6 list-inside list-disc space-y-2">
+          <li>Native clients for most major platforms</li>
+          <li>A new, snappy SaaS-based admin portal</li>
+          <li>Automated user provisioning for supported IdPs</li>
+          <li>Group-based access policies</li>
+          <li>STUN peer discovery with automatic holepunching</li>
+          <li>All-new REST API</li>
+          <li>Split DNS</li>
+          {/*
+          <li>Automatic failover, load balancing</li>
+          */}
+        </ul>
       </div>
-      <div className="mx-auto max-w-screen-sm">
+      <div className="w-full">
         <HubspotForm
+          title="Enter your details to enroll"
           portalId="23723443"
           formId="1a618e17-ef54-4325-bf0e-ed2431cc8cd2"
         />

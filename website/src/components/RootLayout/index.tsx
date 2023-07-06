@@ -30,7 +30,7 @@ export default function RootLayout({
                 <strong>Firezone 1.0 is coming!</strong> Rebuilt from the ground
                 up with a cloud dashboard, native clients, and more.{" "}
                 <Link
-                  href="/blog/announcing-firezone-1-0"
+                  href="/blog/announcing-1.0"
                   className="underline text-accent-500 dark:text-accent-800 hover:no-underline"
                 >
                   Read the blogpost
