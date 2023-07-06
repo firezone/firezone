@@ -6,16 +6,7 @@ import NewsletterSignup from "@/components/NewsletterSignup";
 
 export default function Page() {
   return (
-    <section className="bg-white dark:bg-neutral-900">
-      <div className="bg-accent-400 mx-auto w-screen text-center">
-        <Image
-          alt="Firezone logo"
-          width={250}
-          height={250}
-          src="/images/logo-main.svg"
-          className="py-12 mx-auto"
-        />
-      </div>
+    <section className="bg-neutral-50 dark:bg-neutral-900">
       <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
         <div className="mx-auto max-w-screen-sm text-center lg:mb-16 mb-8">
           <h2 className="justify-center mb-4 text-3xl lg:text-6xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
@@ -26,7 +17,7 @@ export default function Page() {
           </p>
         </div>
         <div className="grid gap-8 lg:grid-cols-2">
-          <article className="p-6 bg-white rounded-lg border border-neutral-200 shadow-md dark:bg-neutral-800 dark:border-neutral-700">
+          <article className="p-6 bg-neutral-100 rounded-lg border border-neutral-200 shadow-md dark:bg-neutral-800 dark:border-neutral-700">
             <div className="flex justify-between items-center mb-5">
               <span className="bg-primary-450 text-white text-xs font-medium inline-flex items-center px-2.5 py-0.5 rounded dark:bg-primary-200 dark:text-primary-800">
                 <svg
@@ -44,12 +35,12 @@ export default function Page() {
                 </svg>
                 Announcement
               </span>
-              <span className="text-sm">October 17, 2022</span>
+              <span className="text-sm font-semibold">October 17, 2022</span>
             </div>
             <h2 className="mb-2 text-2xl font-bold tracking-tight text-neutral-900 dark:text-white">
               <Link href="/blog/release-0-6-0">Release 0.6.0</Link>
             </h2>
-            <p className="mb-5 font-light text-neutral-800 dark:text-neutral-100">
+            <p className="mb-5 font-medium text-neutral-800 dark:text-neutral-100">
               Today, I'm excited to announce we've closed the{" "}
               <Link href="https://github.com/firezone/firezone/issues/260">
                 first public issue{" "}
@@ -80,7 +71,7 @@ export default function Page() {
               </Link>
             </div>
           </article>
-          <article className="p-6 bg-white rounded-lg border border-neutral-200 shadow-md dark:bg-neutral-800 dark:border-neutral-700">
+          <article className="p-6 bg-neutral-100 rounded-lg border border-neutral-200 shadow-md dark:bg-neutral-800 dark:border-neutral-700">
             <div className="flex justify-between items-center mb-5 text-neutral-800">
               <span className="bg-primary-450 text-white text-xs font-medium inline-flex items-center px-2.5 py-0.5 rounded dark:bg-primary-200 dark:text-primary-800">
                 <svg
@@ -98,12 +89,12 @@ export default function Page() {
                 </svg>
                 Announcement
               </span>
-              <span className="text-sm">July 25, 2022</span>
+              <span className="text-sm font-semibold">July 25, 2022</span>
             </div>
             <h2 className="mb-2 text-2xl font-bold tracking-tight text-neutral-900 dark:text-white">
               <Link href="/blog/release-0-5-0">Release 0.5.0</Link>
             </h2>
-            <p className="mb-5 font-light text-neutral-800 dark:text-neutral-100">
+            <p className="mb-5 font-medium text-neutral-800 dark:text-neutral-100">
               As the first post on our new blog, we thought it'd be fitting to
               kick things off with a release announcement. So without further
               ado, we're excited to announce: Firezone{" "}
@@ -136,9 +127,6 @@ export default function Page() {
             </div>
           </article>
         </div>
-      </div>
-      <div className="border-t border-neutral-200 dark:border-neutral-700 pt-8">
-        <NewsletterSignup />
       </div>
     </section>
   );
