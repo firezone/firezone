@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use boringtun::x25519::StaticSecret;
 use firezone_tunnel::{ControlSignal, Tunnel};
 use libs_common::{
-    control::PhoenixSenderWithTopic,
+    control::{MessageResult, PhoenixSenderWithTopic},
     error_type::ErrorType::{Fatal, Recoverable},
     messages::ResourceDescription,
     Callbacks, ControlSession, Result,
@@ -36,11 +36,16 @@ impl ControlSignal for ControlSignaler {
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn start(mut self, mut receiver: Receiver<IngressMessages>) {
+    async fn start(mut self, mut receiver: Receiver<MessageResult<IngressMessages>>) {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
         loop {
             tokio::select! {
-                Some(msg) = receiver.recv() => self.handle_message(msg).await,
+                Some(msg) = receiver.recv() => {
+                    match msg {
+                        Ok(msg) => self.handle_message(msg).await,
+                        Err(_msg_reply) => todo!(),
+                    }
+                },
                 _ = interval.tick() => self.stats_event().await,
                 else => break
             }
@@ -123,7 +128,7 @@ impl<CB: Callbacks + 'static> ControlSession<IngressMessages, CB> for ControlPla
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     async fn start(
         private_key: StaticSecret,
-        receiver: Receiver<IngressMessages>,
+        receiver: Receiver<MessageResult<IngressMessages>>,
         control_signal: PhoenixSenderWithTopic,
         callbacks: CB,
     ) -> Result<()> {

@@ -13,7 +13,7 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::{
-    control::{PhoenixChannel, PhoenixSenderWithTopic},
+    control::{MessageResult, PhoenixChannel, PhoenixSenderWithTopic},
     error_type::ErrorType,
     messages::{Key, ResourceDescription, ResourceDescriptionCidr},
     Error, Result,
@@ -26,7 +26,7 @@ pub trait ControlSession<T, CB: Callbacks> {
     /// Start control-plane with the given private-key in the background.
     async fn start(
         private_key: StaticSecret,
-        receiver: Receiver<T>,
+        receiver: Receiver<MessageResult<T>>,
         control_signal: PhoenixSenderWithTopic,
         callbacks: CB,
     ) -> Result<()>;

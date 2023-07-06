@@ -88,7 +88,7 @@ mod device_channel;
 mod device_channel;
 
 const RESET_PACKET_COUNT_INTERVAL: Duration = Duration::from_secs(1);
-const REFRESH_PEERS_TIEMRS_INTERVAL: Duration = Duration::from_secs(1);
+const REFRESH_PEERS_TIMERS_INTERVAL: Duration = Duration::from_secs(1);
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
@@ -282,7 +282,7 @@ where
         let tunnel = self.clone();
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(REFRESH_PEERS_TIEMRS_INTERVAL);
+            let mut interval = tokio::time::interval(REFRESH_PEERS_TIMERS_INTERVAL);
             interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
             let mut dst_buf = [0u8; MAX_UDP_SIZE];
 
