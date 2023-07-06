@@ -9,4 +9,3 @@ build-macos:
 .PHONY: format
 format:
 	@swiftformat .
-

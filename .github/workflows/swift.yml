@@ -76,4 +76,3 @@ jobs:
         run: |
           cp Firezone/Developer.xcconfig.ci-iOS Firezone/Developer.xcconfig
           xcodebuild build -scheme Firezone -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO
-

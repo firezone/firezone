@@ -2,11 +2,11 @@
 --binarygrouping none
 --decimalgrouping none
 --hexgrouping none
---indent 2 
---octalgrouping none 
---semicolons never 
---wraparguments before-first 
---wrapcollections before-first 
+--indent 2
+--octalgrouping none
+--semicolons never
+--wraparguments before-first
+--wrapcollections before-first
 --wrapparameters before-first
 --extensionacl on-declarations
 --maxwidth 100
