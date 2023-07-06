@@ -43,7 +43,8 @@ pub trait ControlSession<T, CB: Callbacks> {
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session<T, U, V, R, M, CB: Callbacks> {
     runtime: Option<Runtime>,
-    _phantom: PhantomData<(T, U, V, R, M, CB)>,
+    callbacks: CB,
+    _phantom: PhantomData<(T, U, V, R, M)>,
 }
 
 /// Resource list that will be displayed to the users.
@@ -134,13 +135,14 @@ where
             .build()?;
 
         if cfg!(feature = "mock") {
-            Self::connect_mock(callbacks);
+            Self::connect_mock(callbacks.clone());
         } else {
-            Self::connect_inner(&runtime, portal_url, token, callbacks);
+            Self::connect_inner(&runtime, portal_url, token, callbacks.clone());
         }
 
         Ok(Self {
             runtime: Some(runtime),
+            callbacks,
             _phantom: PhantomData,
         })
     }
@@ -233,6 +235,8 @@ where
     /// For now this just drops the runtime, which should drop all pending tasks.
     /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
     pub fn disconnect(&mut self) -> bool {
+        self.callbacks.on_disconnect();
+
         // 1. Close the websocket connection
         // 2. Free the device handle (UNIX)
         // 3. Close the file descriptor (UNIX)
