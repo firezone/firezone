@@ -22,12 +22,12 @@ export INCLUDE_PATH="${base_dir}/usr/include"
 export CFLAGS="-L ${LIBRARY_PATH} -I ${INCLUDE_PATH} -Qunused-arguments"
 export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
 
-TARGETS=""
+TARGETS=()
 if [[ "$PLATFORM_NAME" = "macosx" ]]; then
-  TARGETS="aarch64-apple-darwin,x86_64-apple-darwin"
+    TARGETS=("aarch64-apple-darwin" "x86_64-apple-darwin")
 else
   if [[ "$PLATFORM_NAME" = "iphonesimulator" ]]; then
-    TARGETS="aarch64-apple-ios-sim,x86_64-apple-ios"
+    TARGETS=("aarch64-apple-ios-sim" "x86_64-apple-ios")
   else
     if [[ "$PLATFORM_NAME" = "iphoneos" ]]; then
       TARGETS="aarch64-apple-ios"
@@ -39,21 +39,17 @@ else
 fi
 
 if [[ -n "$CONNLIB_MOCK" ]]; then
-  LIPO_ARGS="--features mock"
+  FEATURE_ARGS="--features mock"
 fi
 
-# if [ $ENABLE_PREVIEWS == "NO" ]; then
+if [[ $CONFIGURATION == "Release" ]]; then
+  echo "BUILDING FOR RELEASE"
+  CONFIGURATION_ARGS="--release"
+else
+  echo "BUILDING FOR DEBUG"
+fi
 
-  if [[ $CONFIGURATION == "Release" ]]; then
-      echo "BUILDING FOR RELEASE ($TARGETS)"
-
-      cargo lipo --release --manifest-path ./Cargo.toml  --targets $TARGETS $LIPO_ARGS
-  else
-      echo "BUILDING FOR DEBUG ($TARGETS)"
-
-      cargo lipo --manifest-path ./Cargo.toml  --targets $TARGETS $LIPO_ARGS
-  fi
-
-# else
-#   echo "Skipping the script because of preview mode"
-# fi
+for target in "${TARGETS[@]}"
+do
+  cargo build --target $target $FEATURE_ARGS $CONFIGURATION_ARGS
+done
