@@ -11,10 +11,29 @@ import { ChevronDownIcon } from "@heroicons/react/24/solid";
 
 export default function RootNavbar() {
   const p = usePathname() || "";
+  let dropdown: any = null;
+
   useEffect(() => {
+    if (!dropdown) {
+      dropdown = new Dropdown(
+        document.getElementById("product-dropdown-menu"),
+        document.getElementById("product-dropdown-link")
+      );
+    }
     // Manually init flowbite's data-toggle listeners since we're using custom components
     initFlowbite();
   }, []);
+
+  const hideDropdown = () => {
+    if (!dropdown) {
+      dropdown = new Dropdown(
+        document.getElementById("product-dropdown-menu"),
+        document.getElementById("product-dropdown-link")
+      );
+    }
+
+    dropdown.hide();
+  };
 
   return (
     <header>
@@ -44,7 +63,6 @@ export default function RootNavbar() {
             <span className="p-2"></span>
             <button
               id="product-dropdown-link"
-              data-dropdown-toggle="product-dropdown-menu"
               className={
                 (p.startsWith("/product")
                   ? "text-neutral-900"
@@ -69,7 +87,8 @@ export default function RootNavbar() {
               <ul className="py-2" aria-labelledby="product-dropdown-link">
                 <li>
                   {/* TODO: use <Link> here, toggling dropdown */}
-                  <a
+                  <Link
+                    onClick={hideDropdown}
                     href="/product/roadmap"
                     className={
                       (p == "/product/roadmap"
@@ -79,11 +98,12 @@ export default function RootNavbar() {
                     }
                   >
                     Roadmap
-                  </a>
+                  </Link>
                 </li>
                 <li>
                   {/* TODO: use <Link> here, toggling dropdown */}
-                  <a
+                  <Link
+                    onClick={hideDropdown}
                     href="/product/early-access"
                     className={
                       (p == "/product/early-access"
@@ -93,11 +113,12 @@ export default function RootNavbar() {
                     }
                   >
                     Early Access
-                  </a>
+                  </Link>
                 </li>
                 <li>
                   {/* TODO: use <Link> here, toggling dropdown */}
-                  <a
+                  <Link
+                    onClick={hideDropdown}
                     href="/product/newsletter"
                     className={
                       (p.startsWith("/product/newsletter")
@@ -107,7 +128,7 @@ export default function RootNavbar() {
                     }
                   >
                     Newsletter
-                  </a>
+                  </Link>
                 </li>
               </ul>
             </div>
