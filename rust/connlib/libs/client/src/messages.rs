@@ -128,7 +128,7 @@ mod test {
     #[test]
     fn connection_ready_deserialization() {
         let message = r#"{
-            "ref": 0,
+            "ref": "0",
             "topic": "device",
             "event": "phx_reply",
             "payload": {
