@@ -5,7 +5,7 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::{error_type::ErrorType, Callbacks, Result};
+use libs_common::{error_type::ErrorType, messages::Id, Callbacks, Result};
 use parking_lot::Mutex;
 use webrtc::data::data_channel::DataChannel;
 
@@ -17,6 +17,7 @@ pub(crate) struct Peer {
     pub allowed_ips: IpNetworkTable<()>,
     pub channel: Arc<DataChannel>,
     pub expires_at: Option<DateTime<Utc>>,
+    pub conn_id: Id,
 }
 
 impl Peer {
@@ -33,6 +34,7 @@ impl Peer {
         config: &PeerConfig,
         channel: Arc<DataChannel>,
         expires_at: Option<DateTime<Utc>>,
+        conn_id: Id,
     ) -> Self {
         Self::new(
             Mutex::new(tunnel),
@@ -40,6 +42,7 @@ impl Peer {
             config.ips.clone(),
             channel,
             expires_at,
+            conn_id,
         )
     }
 
@@ -49,6 +52,7 @@ impl Peer {
         ips: Vec<IpNetwork>,
         channel: Arc<DataChannel>,
         expires_at: Option<DateTime<Utc>>,
+        conn_id: Id,
     ) -> Peer {
         let mut allowed_ips = IpNetworkTable::new();
         for ip in ips {
@@ -60,6 +64,7 @@ impl Peer {
             allowed_ips,
             channel,
             expires_at,
+            conn_id,
         }
     }
 
@@ -73,10 +78,8 @@ impl Peer {
     }
 
     pub(crate) fn is_valid(&self) -> bool {
-        match self.expires_at {
-            Some(expires_at) => expires_at > Utc::now(),
-            None => true,
-        }
+        self.expires_at
+            .is_some_and(|expires_at| expires_at <= Utc::now())
     }
 
     pub(crate) fn is_allowed(&self, addr: impl Into<IpAddr>) -> bool {

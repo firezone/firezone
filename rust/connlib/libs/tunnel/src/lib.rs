@@ -284,9 +284,17 @@ where
         for (_, peer) in peers_by_ip.iter() {
             if !peer.is_valid() {
                 tracing::trace!("Peer connection with index {} expired", peer.index);
+                let conn = self.peer_connections.lock().remove(&peer.conn_id);
                 let p = peer.clone();
                 // We are holding a Mutex, specially a write one, we don't want to make a blocking call
-                tokio::spawn(async move { p.shutdown().await });
+                tokio::spawn(async move {
+                    let _ = p.shutdown().await;
+                    if let Some(conn) = conn {
+                        // TODO: it seems that even closing the stream there are messages to the relay
+                        // see where they come from.
+                        let _ = conn.close().await;
+                    }
+                });
             }
         }
 
@@ -473,12 +481,14 @@ where
                     None => continue,
                 };
 
-                let (encapsulate_result, channel) = {
+                let (encapsulate_result, channel, peer_index, conn_id) = {
                     let peers_by_ip = dev.peers_by_ip.read();
                     match peers_by_ip.longest_match(dst_addr).map(|p| p.1) {
                         Some(peer) => (
                             peer.tunnel.lock().encapsulate(&src[..res], &mut dst[..]),
                             peer.channel.clone(),
+                            peer.index,
+                            peer.conn_id,
                         ),
                         None => {
                             // We can buffer requests here but will drop them for now and let the upper layer reliability protocol handle this
@@ -518,6 +528,7 @@ where
                         tracing::trace!(
                             "tunnel for resource corresponding to {dst_addr} was finalized"
                         );
+                        dev.peers_by_ip.write().retain(|_, p| p.index != peer_index);
                     }
                     TunnResult::Err(e) => {
                         tracing::error!(message = "Encapsulate error for resource corresponding to {dst_addr}", error = ?e);
@@ -527,6 +538,21 @@ where
                         tracing::trace!("writing iface packet to peer: {dst_addr}");
                         if let Err(e) = channel.write(&Bytes::copy_from_slice(packet)).await {
                             tracing::error!("Couldn't write packet to channel: {e}");
+                            if matches!(
+                                e,
+                                webrtc::data::Error::ErrStreamClosed
+                                    | webrtc::data::Error::Sctp(
+                                        webrtc::sctp::Error::ErrStreamClosed
+                                    )
+                            ) {
+                                dev.peers_by_ip.write().retain(|_, p| p.index != peer_index);
+                                // We are already on an error state, we ignore if the close errors also
+                                let _ = channel.close().await;
+                                let conn = dev.peer_connections.lock().remove(&conn_id);
+                                if let Some(conn) = conn {
+                                    let _ = conn.close().await;
+                                }
+                            }
                             dev.callbacks.on_error(&e.into(), Recoverable);
                         }
                     }

@@ -33,8 +33,9 @@ where
         index: u32,
         peer_config: PeerConfig,
         expires_at: Option<DateTime<Utc>>,
+        conn_id: Id,
     ) -> Result<()> {
-        let channel = data_channel.detach().await.expect("TODO");
+        let channel = data_channel.detach().await?;
         let tunn = Tunn::new(
             self.private_key.clone(),
             peer_config.public_key,
@@ -48,8 +49,9 @@ where
             tunn,
             index,
             &peer_config,
-            Arc::clone(&channel),
+            channel,
             expires_at,
+            conn_id,
         ));
 
         {
@@ -59,7 +61,7 @@ where
             }
         }
 
-        self.start_peer_handler(Arc::clone(&peer));
+        self.start_peer_handler(peer);
         Ok(())
     }
 
@@ -173,7 +175,7 @@ where
                     preshared_key: p_key,
                 };
 
-                if let Err(e) = tunnel.handle_channel_open(d, index, peer_config, None).await {
+                if let Err(e) = tunnel.handle_channel_open(d, index, peer_config, None, resource_id).await {
                     tracing::error!("Couldn't establish wireguard link after channel was opened: {e}");
                     tunnel.callbacks.on_error(&e, Recoverable);
                     tunnel.cleanup_connection(resource_id);
@@ -286,7 +288,13 @@ where
                         }
 
                         if let Err(e) = tunnel
-                            .handle_channel_open(data_channel, index, peer, Some(expires_at))
+                            .handle_channel_open(
+                                data_channel,
+                                index,
+                                peer,
+                                Some(expires_at),
+                                client_id,
+                            )
                             .await
                         {
                             tunnel.callbacks.on_error(&e, Recoverable);
@@ -295,7 +303,11 @@ where
                             );
                             // Note: handle_channel_open can only error out before insert to peers_by_ip
                             // otherwise we would need to clean that up too!
-                            tunnel.peer_connections.lock().remove(&client_id);
+                            let conn = tunnel.peer_connections.lock().remove(&client_id);
+                            if let Some(conn) = conn {
+                                // We are already on an error state, we ignore if the close errors also
+                                let _ = conn.close().await;
+                            }
                         }
                     })
                 }))
