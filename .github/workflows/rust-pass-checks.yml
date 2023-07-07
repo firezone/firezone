@@ -17,7 +17,16 @@ jobs:
     steps:
       - run: 'echo "No build required"'
   rust_test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        runs-on:
+          - ubuntu-20.04
+          - ubuntu-22.04
+          - macos-11
+          - macos-12
+          - windows-2019
+          - windows-2022
+    runs-on: ${{ matrix.runs-on }}
     steps:
       - run: 'echo "No build required"'
   rust_build-android:

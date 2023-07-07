@@ -28,6 +28,9 @@ jobs:
     steps:
       - run: 'echo "no build required"'
   elixir_acceptance-test:
+    strategy:
+      matrix:
+        MIX_TEST_PARTITION: [1, 2, 3, 4]
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "no build required"'
