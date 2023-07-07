@@ -38,7 +38,6 @@ ARG APPLICATION_VERSION=0.0.0-dev.docker
 
 # Install pipeline and compile assets for Web app
 RUN cd apps/web \
-    && mix compile \
     && mix assets.setup \
     && mix assets.deploy
 
