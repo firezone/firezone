@@ -8,6 +8,7 @@ on:
   merge_group:
     types: [checks_requested]
   workflow_call:
+  workflow_dispatch:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -15,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  draft-release:
+  swift_draft-release:
     runs-on: ubuntu-latest
     outputs:
       tag_name: ${{ steps.release_drafter.outputs.tag_name }}
@@ -27,7 +28,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  build:
+  swift_build:
     runs-on: macos-latest
     permissions:
       contents: read
@@ -35,7 +36,7 @@ jobs:
       run:
         working-directory: ./swift
     needs:
-      - draft-release
+      - swift_draft-release
     steps:
       - uses: actions/checkout@v3
       - run: rustup show

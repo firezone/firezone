@@ -1,15 +1,13 @@
-name: Codespell
+name: Static Analysis
 on:
   merge_group:
     types: [checks_requested]
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  static-analysis:
+  static-analysis_linter:
     runs-on: ubuntu-latest
-    env:
-      MIX_ENV: dev
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v2
