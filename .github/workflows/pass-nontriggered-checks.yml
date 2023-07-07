@@ -1,0 +1,85 @@
+# This workflow is a workaround to the problem described here:
+# https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/troubleshooting-required-status-checks#example
+#
+# Using Path filtering to trigger workflows leads to unmergable PRs if a "required status check" is
+# not triggered in the workflow run. Here we overload all job names selected by "required status checks"
+# and simply return true so the PR can be merged.
+name: Pass Non-triggered Checks
+on:
+  pull_request:
+    paths-ignore:
+      - "elixir/**"
+      - "kotlin/**"
+      - "rust/**"
+      - "swift/**"
+      - "terraform/**"
+
+jobs:
+  elixir/acceptance-test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  elixir/api-container-build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  elixir/migrations-and-seed-test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  elixir/static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  elixir/web-container-build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  elixir/type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  elixir/unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  kotlin/draft-release:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  kotlin/build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  swift/draft-release:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  swift/build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  rust/cross-compile-relay:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  rust/build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  rust/build-apple:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  rust/draft-release:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  rust/test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  terraform/plan-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'

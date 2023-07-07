@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  test-basic-flow:
+  integration-test/basic-flow:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

@@ -1,11 +1,11 @@
-name: Codespell
+name: Global Linter
 on:
   merge_group:
     types: [checks_requested]
   pull_request:
 
 jobs:
-  static-analysis:
+  global/linter:
     runs-on: ubuntu-latest
     env:
       MIX_ENV: dev
