@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  integration-test:basic-flow:
+  integration-test_basic-flow:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

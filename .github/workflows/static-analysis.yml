@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  static-analysis:linter:
+  static-analysis_linter:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3

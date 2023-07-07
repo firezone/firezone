@@ -19,7 +19,7 @@ defaults:
     working-directory: ./rust
 
 jobs:
-  rust:draft-release:
+  rust_draft-release:
     runs-on: ubuntu-latest
     outputs:
       tag_name: ${{ steps.release_drafter.outputs.tag_name }}
@@ -31,7 +31,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  rust:test:
+  rust_test:
     strategy:
       fail-fast: false
       matrix:
@@ -82,9 +82,9 @@ jobs:
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --all-features
 
-  rust/build-android:
+  rust_build-android:
     needs:
-      - rust:draft-release
+      - rust_draft-release
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -116,9 +116,9 @@ jobs:
           path: |
             ./rust/connlib-${{ needs.draft-release.outputs.tag_name }}.aar
 
-  rust:build-apple:
+  rust_build-apple:
     needs:
-      - rust:draft-release
+      - rust_draft-release
     runs-on: macos-latest
     permissions:
       contents: read
@@ -157,7 +157,7 @@ jobs:
             ./Connlib-${{ needs.draft-release.outputs.tag_name }}.xcframework.zip
             ./Connlib-${{ needs.draft-release.outputs.tag_name }}.xcframework.zip.checksum.txt
 
-  rust:cross-compile-relay: # cross is separate from test because cross-compiling yields different artifacts and we cannot reuse the cache.
+  rust_cross-compile-relay: # cross is separate from test because cross-compiling yields different artifacts and we cannot reuse the cache.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
