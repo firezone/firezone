@@ -6,7 +6,7 @@ import { Navbar } from "flowbite-react";
 import { usePathname } from "next/navigation";
 import DeployButton from "@/components/DeployButton";
 import { useEffect } from "react";
-import { initFlowbite } from "flowbite";
+import { initFlowbite, Dropdown } from "flowbite";
 import { ChevronDownIcon } from "@heroicons/react/24/solid";
 
 export default function RootNavbar() {
@@ -68,7 +68,8 @@ export default function RootNavbar() {
             >
               <ul className="py-2" aria-labelledby="product-dropdown-link">
                 <li>
-                  <Link
+                  {/* Used because we can't use <Link> inside a <Dropdown> since it won't reset the dropdown */}
+                  <a
                     href="/product/roadmap"
                     className={
                       (p == "/product/roadmap"
@@ -78,10 +79,11 @@ export default function RootNavbar() {
                     }
                   >
                     Roadmap
-                  </Link>
+                  </a>
                 </li>
                 <li>
-                  <Link
+                  {/* Used because we can't use <Link> inside a <Dropdown> since it won't reset the dropdown */}
+                  <a
                     href="/product/early-access"
                     className={
                       (p == "/product/early-access"
@@ -91,20 +93,21 @@ export default function RootNavbar() {
                     }
                   >
                     Early Access
-                  </Link>
+                  </a>
                 </li>
                 <li>
-                  <Link
+                  {/* Used because we can't use <Link> inside a <Dropdown> since it won't reset the dropdown */}
+                  <a
+                    href="/product/newsletter"
                     className={
                       (p.startsWith("/product/newsletter")
                         ? "text-neutral-900 underline"
                         : "text-neutral-800") +
                       " block px-4 py-2 hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                     }
-                    href="/product/newsletter"
                   >
                     Newsletter
-                  </Link>
+                  </a>
                 </li>
               </ul>
             </div>
