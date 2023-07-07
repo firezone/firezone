@@ -38,9 +38,12 @@ jobs:
       - draft-release
     steps:
       - uses: actions/checkout@v3
+      - run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
+          prefix-key: rust-${{ matrix.runs-on }}
+          save-if: ${{ github.ref == 'refs/heads/cloud' }}
       - name: Update toolchain
         run: rustup show
       - name: Setup lipo
