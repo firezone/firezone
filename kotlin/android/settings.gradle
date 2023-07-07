@@ -1,0 +1,27 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+Properties properties = new Properties()
+properties.load(new FileInputStream(new File('local.properties')))
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        maven {
+            url = uri('https://maven.pkg.github.com/firezone/connlib')
+            credentials {
+                username = properties.getProperty("githubUser") ?: System.getenv("USERNAME")
+                password = properties.getProperty("githubToken") ?: System.getenv("TOKEN")
+            }
+        }
+        mavenCentral()
+    }
+}
+rootProject.name = "Firezone App"
+include ':app'

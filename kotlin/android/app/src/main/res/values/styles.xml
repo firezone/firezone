@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<resources>
+
+    <style name="AppTheme" parent="AppTheme.Base" />
+
+    <style name="AppTheme.Base" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/black_firezone</item>
+    </style>
+
+    <style name="AppTheme.Base.HeaderText">
+        <item name="fontFamily">@font/fira_sans_bold</item>
+        <item name="android:textSize">@dimen/text_large</item>
+        <item name="android:textColorPrimary">@color/black_firezone</item>
+    </style>
+
+</resources>
