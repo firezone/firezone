@@ -118,7 +118,7 @@ services:
   client:
     environment:
       FZ_URL: "ws://api:8081/"
-      FZ_SECRET: "SFMyNTY.g2gDaAN3CGlkZW50aXR5bQAAACQ3ZGE3ZDFjZC0xMTFjLTQ0YTctYjVhYy00MDI3YjlkMjMwZTVtAAAAIBn8Xu1jtFlxZxp4ZvAz0f0QEN2PZThA-7awHMPxn_tHbgYAFhwdMokBYgAAASw.QRHbZp1JKHXXPPlYpYlE6MZXia3vCv7FLEv8_VlVN8Y"
+      FZ_SECRET: "SFMyNTY.g2gDaANkAAhpZGVudGl0eW0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACAZ_F7tY7RZcWcaeGbwM9H9EBDdj2U4QPu2sBzD8Z_7R24GAMH8mfqIAWIB4TOA.2IZ089fjvNLoCsirq2PwNTfMHXf3285F6YcNquk6niU"
       RUST_LOG: headless=trace,firezone_client_connlib=trace,firezone_tunnel=trace,libs_common=trace,warn
     build:
       context: rust
