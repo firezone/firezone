@@ -68,7 +68,7 @@ export default function RootNavbar() {
             >
               <ul className="py-2" aria-labelledby="product-dropdown-link">
                 <li>
-                  {/* Used because we can't use <Link> inside a <Dropdown> since it won't reset the dropdown */}
+                  {/* TODO: use <Link> here, toggling dropdown */}
                   <a
                     href="/product/roadmap"
                     className={
@@ -82,7 +82,7 @@ export default function RootNavbar() {
                   </a>
                 </li>
                 <li>
-                  {/* Used because we can't use <Link> inside a <Dropdown> since it won't reset the dropdown */}
+                  {/* TODO: use <Link> here, toggling dropdown */}
                   <a
                     href="/product/early-access"
                     className={
@@ -96,7 +96,7 @@ export default function RootNavbar() {
                   </a>
                 </li>
                 <li>
-                  {/* Used because we can't use <Link> inside a <Dropdown> since it won't reset the dropdown */}
+                  {/* TODO: use <Link> here, toggling dropdown */}
                   <a
                     href="/product/newsletter"
                     className={
