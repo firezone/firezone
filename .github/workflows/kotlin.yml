@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - "kotlin/**"
+      - "rust/connlib/**"
       - ".github/workflows/kotlin.yml"
   merge_group:
     types: [checks_requested]
