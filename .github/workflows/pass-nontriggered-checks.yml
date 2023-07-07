@@ -16,71 +16,71 @@ on:
   workflow_dispatch:
 
 jobs:
-  elixir/acceptance-test:
+  elixir:acceptance-test:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  elixir/api-container-build:
+  elixir:api-container-build:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  elixir/migrations-and-seed-test:
+  elixir:migrations-and-seed-test:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  elixir/static-analysis:
+  elixir:static-analysis:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  elixir/web-container-build:
+  elixir:web-container-build:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  elixir/type-check:
+  elixir:type-check:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  elixir/unit-test:
+  elixir:unit-test:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  kotlin/draft-release:
+  kotlin:draft-release:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  kotlin/build:
+  kotlin:build:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  swift/draft-release:
+  swift:draft-release:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  swift/build:
+  swift:build:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  rust/cross-compile-relay:
+  rust:cross-compile-relay:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  rust/build-android:
+  rust:build-android:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  rust/build-apple:
+  rust:build-apple:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  rust/draft-release:
+  rust:draft-release:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  rust/test:
+  rust:test:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  terraform/plan-deploy:
+  terraform:plan-deploy:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'

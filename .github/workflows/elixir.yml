@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  elixir/unit-test:
+  elixir:unit-test:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -78,7 +78,7 @@ jobs:
           name: Elixir Unit Test Report
           path: elixir/_build/test/lib/*/test-junit-report.xml
           reporter: java-junit
-  elixir/type-check:
+  elixir:type-check:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -130,7 +130,7 @@ jobs:
         run: mix dialyzer --plt
       - name: Run Dialyzer
         run: mix dialyzer --format dialyxir
-  elixir/static-analysis:
+  elixir:static-analysis:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -175,7 +175,7 @@ jobs:
         run: mix format --check-formatted
       - name: Run Credo
         run: mix credo --strict
-  elixir/migrations-and-seed-test:
+  elixir:migrations-and-seed-test:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -403,7 +403,7 @@ jobs:
   #       id: release_drafter
   #       env:
   #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  elixir/web-container-build:
+  elixir:web-container-build:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -412,8 +412,8 @@ jobs:
       contents: read
       id-token: "write"
     needs:
-      - elixir/unit-test
-      - elixir/acceptance-test
+      - elixir:unit-test
+      - elixir:acceptance-test
     env:
       APPLICATION_NAME: web
       REGISTRY: us-east1-docker.pkg.dev
@@ -463,7 +463,7 @@ jobs:
           file: elixir/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}
-  elixir/api-container-build:
+  elixir:api-container-build:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -472,8 +472,8 @@ jobs:
       contents: read
       id-token: "write"
     needs:
-      - elixir/unit-test
-      - elixir/acceptance-test
+      - elixir:unit-test
+      - elixir:acceptance-test
     env:
       APPLICATION_NAME: api
       REGISTRY: us-east1-docker.pkg.dev
