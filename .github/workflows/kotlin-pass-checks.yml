@@ -1,0 +1,24 @@
+# Workaround for the problem described here:
+# https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/troubleshooting-required-status-checks
+name: Kotlin
+on:
+  pull_request:
+    paths-ignore:
+      - "kotlin/**"
+      - "rust/connlib/**"
+      - ".github/workflows/kotlin.yml"
+  merge_group:
+    types: [checks_requested]
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  kotlin_draft-release:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "no build required"'
+  kotlin_build:
+    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "no build required"'
