@@ -1,0 +1,23 @@
+# Workaround for the problem described here:
+# https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/troubleshooting-required-status-checks
+name: Swift
+on:
+  pull_request:
+    paths-ginore:
+      - "swift/**"
+      - "rust/connlib/**"
+      - ".github/workflows/swift.yml"
+  merge_group:
+    types: [checks_requested]
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  swift_draft-release:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  swift_build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
