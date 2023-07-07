@@ -14,6 +14,7 @@
 		05CF1D16290B1FE700CF4755 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */; };
 		05CF1D17290B1FE700CF4755 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */; };
 		05D3BB2128FDE9C000BC3727 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */; };
+		6F68E44C2A588522003C7D08 /* AllConfigs.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 6F68E44B2A588522003C7D08 /* AllConfigs.xcconfig */; };
 		794C38152970A2660029F38F /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 794C38142970A2660029F38F /* FirezoneKit */; };
 		794C38172970A26A0029F38F /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 794C38162970A26A0029F38F /* FirezoneKit */; };
 		79756C6629704A7A0018E2D5 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 79756C6529704A7A0018E2D5 /* FirezoneKit */; };
@@ -73,8 +74,7 @@
 		05CF1CF6290B1CEE00CF4755 /* FirezoneNetworkExtension_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FirezoneNetworkExtension_iOS.entitlements; sourceTree = "<group>"; };
 		05CF1D03290B1DCD00CF4755 /* FirezoneNetworkExtensionmacOS.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FirezoneNetworkExtensionmacOS.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
-		79BA2AF229A00F8800A2E6DC /* Developer.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Developer.xcconfig; sourceTree = "<group>"; };
-		79C88B24296F494500261800 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
+		6F68E44B2A588522003C7D08 /* AllConfigs.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = AllConfigs.xcconfig; path = xcconfig/AllConfigs.xcconfig; sourceTree = "<group>"; };
 		8DCC021928D512AC007E12D2 /* Firezone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Firezone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8DCC021C28D512AC007E12D2 /* FirezoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirezoneApp.swift; sourceTree = "<group>"; };
 		8DCC022528D512AE007E12D2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -173,10 +173,9 @@
 		8DCC021B28D512AC007E12D2 /* Firezone */ = {
 			isa = PBXGroup;
 			children = (
+				6F68E44B2A588522003C7D08 /* AllConfigs.xcconfig */,
 				05E1505F28FF398000170F82 /* Application */,
 				8DCC022528D512AE007E12D2 /* Assets.xcassets */,
-				79C88B24296F494500261800 /* Config.xcconfig */,
-				79BA2AF229A00F8800A2E6DC /* Developer.xcconfig */,
 				8DCC022728D512AE007E12D2 /* Firezone.entitlements */,
 				05CF1C39290995DA00CF4755 /* Info.plist */,
 				8DCC022828D512AE007E12D2 /* Preview Content */,
@@ -332,6 +331,7 @@
 			files = (
 				8DCC022A28D512AE007E12D2 /* Preview Assets.xcassets in Resources */,
 				8DCC022628D512AE007E12D2 /* Assets.xcassets in Resources */,
+				6F68E44C2A588522003C7D08 /* AllConfigs.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -518,7 +518,7 @@
 		};
 		8DCC024128D512AE007E12D2 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 79C88B24296F494500261800 /* Config.xcconfig */;
+			baseConfigurationReference = 6F68E44B2A588522003C7D08 /* AllConfigs.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -581,7 +581,7 @@
 		};
 		8DCC024228D512AE007E12D2 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 79C88B24296F494500261800 /* Config.xcconfig */;
+			baseConfigurationReference = 6F68E44B2A588522003C7D08 /* AllConfigs.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
