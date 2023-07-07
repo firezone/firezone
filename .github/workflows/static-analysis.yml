@@ -3,6 +3,7 @@ on:
   merge_group:
     types: [checks_requested]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   static-analysis/linter:

@@ -13,6 +13,7 @@ on:
       - "rust/**"
       - "swift/**"
       - "terraform/**"
+  workflow_dispatch:
 
 jobs:
   elixir/acceptance-test:

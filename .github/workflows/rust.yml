@@ -7,6 +7,7 @@ on:
       - "rust/**"
       - ".github/workflows/rust.yml"
   workflow_call:
+  workflow_dispatch:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
