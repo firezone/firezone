@@ -2,7 +2,8 @@ import EarlyAccessForm from "@/components/EarlyAccessForm";
 import Link from "next/link";
 import Image from "next/image";
 import { Metadata } from "next";
-import { ArrowLongRightIcon, CheckCircleIcon } from "@heroicons/react/24/solid";
+import { CheckCircleIcon } from "@heroicons/react/24/solid";
+import ActionLink from "@/components/ActionLink";
 
 export const metadata: Metadata = {
   title: "1.0 Early Access • Firezone",
@@ -23,14 +24,13 @@ export default function EarlyAccess() {
                 <strong>Firezone 1.0 is coming! </strong>
                 Sign up below to get early access.
               </p>
-              <p className="text-right sm:text-xl dark:text-neutral-100">
-                <Link
+              <p className="sm:text-xl dark:text-neutral-100">
+                <ActionLink
                   href="/blog/announcing-1.0"
-                  className="text-accent-500 dark:text-accent-50 hover:no-underline underline"
+                  className="justify-end flex items-center text-accent-500 hover:no-underline underline"
                 >
                   Read the announcement
-                  <ArrowLongRightIcon className="inline-block ml-2 w-6 h-6" />
-                </Link>
+                </ActionLink>
               </p>
             </div>
           </div>

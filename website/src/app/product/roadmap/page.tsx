@@ -10,15 +10,8 @@ export default function Page() {
             Firezone Roadmap
           </h2>
           <p className="mx-auto sm:text-center mb-8 max-w-2xl text-neutral-800 md:mb-12 sm:text-xl dark:text-neutral-100">
-            We're building Firezone{" "}
-            <Link
-              href="https://github.com/firezone/firezone"
-              className="text-accent-500 underline hover:no-underline"
-            >
-              in the open
-            </Link>
-            . Take a peek below to learn what we're working on and how you can
-            get involved.
+            Take a peek below to learn what we're working on and how you can get
+            involved.
           </p>
         </div>
 
@@ -48,7 +41,18 @@ export default function Page() {
             </div>
           </div>
         </div>
-
+      </div>
+      <div className="mx-auto bg-accent-800">
+        <p className="mx-auto sm:text-center mb-8 max-w-2xl text-neutral-800 md:mb-12 sm:text-xl dark:text-neutral-100">
+          We're building Firezone{" "}
+          <Link
+            href="https://github.com/firezone/firezone"
+            className="text-accent-500 underline hover:no-underline"
+          >
+            in the open
+          </Link>
+          .
+        </p>
         <CommitMarquee xmlFeed="/api/github/firezone/firezone/commits/cloud.atom" />
       </div>
     </div>
