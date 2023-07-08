@@ -125,9 +125,9 @@ export default function Page() {
     <section className="bg-neutral-50 dark:bg-neutral-900">
       <div className="py-8 px-4 mx-auto max-w-screen-lg text-center lg:py-16 lg:px-6">
         <div className="text-neutral-800 sm:text-lg dark:text-neutral-100">
-          <h2 className="mb-14 justify-center text-6xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
+          <h1 className="mb-14 justify-center text-6xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
             People are everything.
-          </h2>
+          </h1>
           <p className="mb-4 sm:text-2xl">
             Here at Firezone we know that it's people who make all the
             difference.

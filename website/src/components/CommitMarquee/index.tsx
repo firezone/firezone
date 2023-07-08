@@ -22,7 +22,7 @@ export default function CommitMarquee({ xmlFeed }: { xmlFeed: string }) {
 
   return (
     <div>
-      <h3 className="justify-center sm:text-2xl text-xl font-bold tracking-tight text-neutral-900 mb-4 sm:mb-6 border-b pb-2 border-neutral-300">
+      <h3 className="justify-center sm:text-2xl text-xl font-semibold tracking-tight text-neutral-900 mb-4 sm:mb-6 border-b pb-2 border-neutral-200">
         {xml.feed.title}
       </h3>
       <Marquee

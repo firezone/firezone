@@ -17,13 +17,14 @@ export default function EarlyAccess() {
         <div className="grid flex grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="flex items-center">
             <div className="flex-none">
-              <h2 className="mb-4 text-4xl font-extrabold tracking-tight text-neutral-900 sm:text-6xl dark:text-white">
+              <h1 className="mb-4 text-4xl font-extrabold tracking-tight text-neutral-900 sm:text-6xl dark:text-white">
                 Request early access
-              </h2>
+              </h1>
               <p className="mx-auto mb-4 text-neutral-800 sm:text-xl dark:text-neutral-100">
                 <strong>Firezone 1.0 is coming! </strong>
                 Sign up below to get early access.
               </p>
+              {/* FIXME: Remove when announced
               <p className="sm:text-xl dark:text-neutral-100">
                 <ActionLink
                   href="/blog/announcing-1.0"
@@ -32,6 +33,7 @@ export default function EarlyAccess() {
                   Read the announcement
                 </ActionLink>
               </p>
+              */}
             </div>
           </div>
           <div className="flex flex-row-reverse items-baseline space-x-reverse -space-x-8">
@@ -55,8 +57,10 @@ export default function EarlyAccess() {
             </span>
           </div>
         </div>
+      </div>
+      <section className="bg-gradient-to-b from-white to-primary-50 border-t border-neutral-200 pb-14">
         <div className="mx-auto max-w-screen-lg">
-          <div className="py-12 sm:py-24 mx-auto">
+          <div className="py-14 mx-auto">
             <h2 className="justify-center mb-8 sm:mb-16 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-4xl dark:text-neutral-50">
               1.0 Timeline
             </h2>
@@ -121,9 +125,14 @@ export default function EarlyAccess() {
               </li>
             </ol>
           </div>
+          <div className="pt-14 mx-auto max-w-screen-lg">
+            <h2 className="justify-center mb-8 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-4xl dark:text-neutral-50">
+              Join our early access program
+            </h2>
+          </div>
           <EarlyAccessForm />
         </div>
-      </div>
+      </section>
     </div>
   );
 }

@@ -106,9 +106,9 @@ export default function Page() {
       </section>
 
       {/* Features sections */}
-      <section className="bg-gradient-to-b from-white via-neutral-50 to-white py-24">
+      <section className="border-t border-neutral-200 bg-gradient-to-b from-white via-neutral-50 to-white py-24">
         <div className="mx-4 flex flex-col justify-center items-center">
-          <h2 className="justify-center mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
+          <h2 className="justify-center mb-4 text-4xl tracking-tight font-bold text-neutral-900 dark:text-white">
             A modern alternative to legacy VPNs
           </h2>
         </div>
@@ -279,9 +279,9 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="bg-gradient-to-b from-neutral-100 to-primary-50 py-24">
+      <section className="border-t border-neutral-200 bg-gradient-to-b from-neutral-100 to-primary-50 py-24">
         <div className="mx-4 flex flex-col justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
+          <h2 className="mb-4 text-4xl tracking-tight font-bold text-neutral-900 dark:text-white">
             Integrate your identity provider to enforce 2FA / MFA
           </h2>
           <p className="my-4 text-xl max-w-screen-lg text-center text-primary-900 dark:text-neutral-100">
@@ -343,9 +343,9 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="py-24 bg-white">
+      <section className="border-t border-neutral-200 py-24 bg-white">
         <div className="mx-4 flex flex-col justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
+          <h2 className="mb-4 text-4xl tracking-tight font-bold text-neutral-900 dark:text-white">
             Who can benefit using Firezone?
           </h2>
           <p className="my-4 text-xl max-w-screen-lg text-center text-primary-900 dark:text-neutral-100">
@@ -536,9 +536,9 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="py-24 bg-gradient-to-b from-neutral-100 to-primary-50">
+      <section className="border-t border-neutral-200 py-24 bg-gradient-to-b from-neutral-100 to-primary-50">
         <div className="flex flex-col justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
+          <h2 className="mb-4 text-4xl tracking-tight font-bold text-neutral-900 dark:text-white">
             Join our community
           </h2>
           <p className="my-4 text-xl max-w-screen-lg text-center text-primary-900 dark:text-neutral-100">
@@ -595,9 +595,9 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="py-24 bg-gradient-to-b from-accent-800 to-accent-700">
+      <section className="border-t border-neutral-200 py-24 bg-gradient-to-b from-accent-800 to-accent-700">
         <div className="flex flex-col justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-neutral-50 dark:text-white">
+          <h2 className="mb-4 text-4xl tracking-tight font-bold text-neutral-50 dark:text-white">
             Ready to get started?
           </h2>
           <p className="my-4 font-semibold text-xl max-w-screen-md text-center text-neutral-200 dark:text-neutral-100">
