@@ -18,13 +18,19 @@ jobs:
         with:
           set: |
             elixir.cache-from.scope=elixir
+            elixir.cache-from.type=gha
             elixir.cache-to.scope=elixir
+            elixir.cache-to.type=gha
             elixir.cache-to.mode=max
             api.cache-from.scope=api
+            api.cache-from.type=gha
             api.cache-to.scope=api
+            api.cache-to.type=gha
             api.cache-to.mode=max
             web.cache-from.scope=web
+            web.cache-from.type=gha
             web.cache-to.scope=web
+            web.cache-to.type=gha
             web.cache-to.mode=max
           files: docker-compose.yml
           push: false
