@@ -321,7 +321,6 @@ where
 
         self.data_relayed_counter.inc_by(bytes.len() as u64);
 
-        let recipient = *client;
         let data = ChannelData::new(*channel_number, bytes).to_bytes();
 
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
