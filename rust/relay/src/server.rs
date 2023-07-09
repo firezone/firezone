@@ -743,10 +743,7 @@ where
         self.pending_commands
             .push_back(Command::FreeAddresses { id });
 
-        tracing::info!(
-            target: "relay",
-            "Deleted allocation for {client} on port {port}"
-        );
+        tracing::info!(target: "relay", %port, "Deleted allocation");
     }
 
     fn delete_channel_binding(&mut self, chan: u16) {
