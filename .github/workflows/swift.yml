@@ -3,10 +3,12 @@ on:
   pull_request:
     paths:
       - "swift/**"
+      - "rust/connlib/**"
       - ".github/workflows/swift.yml"
   merge_group:
     types: [checks_requested]
   workflow_call:
+  workflow_dispatch:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -14,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  draft-release:
+  swift_draft-release:
     runs-on: ubuntu-latest
     outputs:
       tag_name: ${{ steps.release_drafter.outputs.tag_name }}
@@ -26,9 +28,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # TODO: Add a basic CI for the Apple client
-  # See rust.yml how we build, package and release connlib as an example
-  build:
+  swift_build:
     runs-on: macos-latest
     permissions:
       contents: read
@@ -36,7 +36,48 @@ jobs:
       run:
         working-directory: ./swift
     needs:
-      - draft-release
+      - swift_draft-release
     steps:
       - uses: actions/checkout@v3
-      # TODO: Build Apple client from the CLI
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
+          prefix-key: rust-${{ matrix.runs-on }}
+          save-if: ${{ github.ref == 'refs/heads/cloud' }}
+      - name: Update toolchain
+        run: rustup show
+      - name: Setup lipo
+        run: cargo install cargo-lipo
+      - uses: actions/cache@v3
+        with:
+          path: apple/.build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+      - name: Build Connlib.xcframework
+        env:
+          CONFIGURATION: Release
+          PROJECT_DIR: .
+        working-directory: ./rust/connlib/clients/apple
+        run: |
+          # build-xcframework.sh calls build-rust.sh indirectly via `xcodebuild`, but it pollutes the environment
+          # to the point that it causes the `ring` build to fail for the aarch64-apple-darwin target. So, explicitly
+          # build first. See https://github.com/briansmith/ring/issues/1332
+          PLATFORM_NAME=macosx ./build-rust.sh
+          PLATFORM_NAME=iphoneos ./build-rust.sh
+          ./build-xcframework-dev.sh
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Build app for macOS
+        working-directory: ./swift/apple
+        run: |
+          cp Firezone/Developer.xcconfig.ci-macOS Firezone/Developer.xcconfig
+          xcodebuild build -scheme Firezone -sdk macosx -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+      - name: Build app for iOS
+        working-directory: ./swift/apple
+        run: |
+          cp Firezone/Developer.xcconfig.ci-iOS Firezone/Developer.xcconfig
+          xcodebuild build -scheme Firezone -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO

@@ -15,7 +15,9 @@ use std::task::Poll;
 use std::time::SystemTime;
 use tokio::task;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer};
 use url::Url;
 
 #[derive(Parser, Debug)]
@@ -46,19 +48,26 @@ struct Args {
     /// Only available in debug builds.
     #[arg(long, env)]
     rng_seed: Option<u64>,
+    /// Whether to log in JSON format.
+    #[arg(long, env = "JSON_LOG")]
+    json: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
-                .from_env_lossy(),
-        )
-        .init();
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy();
+
+    if args.json {
+        tracing_subscriber::registry()
+            .with(tracing_stackdriver::layer().with_filter(env_filter))
+            .init()
+    } else {
+        tracing_subscriber::fmt().with_env_filter(env_filter).init()
+    }
 
     let mut metric_registry = Registry::with_prefix("relay");
 
