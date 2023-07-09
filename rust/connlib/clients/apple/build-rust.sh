@@ -6,13 +6,6 @@
 
 set -ex
 
-if [[ -z "$PROJECT_DIR" ]]; then
-  echo "Must provide PROJECT_DIR environment variable set to the Xcode project directory." 1>&2
-  exit 1
-fi
-
-cd $PROJECT_DIR
-
 # Default PLATFORM_NAME to macosx if not set.
 : "${PLATFORM_NAME:=macosx}"
 

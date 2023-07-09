@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_short_name">firezone</string>
+
+    <!-- Onboarding Fragment -->
+    <string name="onboarding_fragment_header_title">Login URL</string>
+    <string name="onboarding_fragment_input_hint">Enter Login URL</string>
+    <string name="onboarding_fragment_button_text">Save</string>
+
+    <!-- Sign In Fragment -->
+    <string name="sign_in_fragment_button_text">Sign In</string>
+    <string name="sign_in_settings_button_text">Settings</string>
+    <string name="sign_in_fragment_sign_status_text">Signed Out</string>
+
+    <!-- Sign Out Activity -->
+    <string name="sign_out_activity_status_text">Authenticated</string>
+    <string name="sign_out_activity_button_text">Sign Out</string>
+
+    <!-- Error Dialog -->
+    <string name="error_dialog_title">Error</string>
+    <string name="error_dialog_message">Ops, something went wrong. Please try again later.</string>
+    <string name="error_dialog_button_text">Ok</string>
+    <!-- Error Dialog -->
+
+</resources>
