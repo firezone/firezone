@@ -63,6 +63,10 @@ defmodule API.Device.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(25, :millisecond)
       subject = %{subject | expires_at: expires_at}
 
+      # We need to trap exits to avoid test process termination
+      # because it is linked to the created test channel process
+      Process.flag(:trap_exit, true)
+
       {:ok, _reply, _socket} =
         API.Device.Socket
         |> socket("device:#{device.id}", %{
