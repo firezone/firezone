@@ -17,14 +17,14 @@ defmodule Domain.Jobs.RecurrentTest do
 
   describe "seconds/1" do
     test "converts seconds to milliseconds" do
-      assert seconds(1) == 1000
-      assert seconds(13) == 13000
+      assert seconds(1) == 1_000
+      assert seconds(13) == 13_000
     end
   end
 
   describe "minutes/1" do
     test "converts minutes to milliseconds" do
-      assert minutes(1) == 60000
+      assert minutes(1) == 60_000
       assert minutes(13) == 780_000
     end
   end
