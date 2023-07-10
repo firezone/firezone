@@ -160,6 +160,5 @@ defmodule Domain.Jobs.Executors.Global do
     :ok
   end
 
-  defp global_name(module, function), do: name(module, function)
-  defp name(module, function), do: {__MODULE__, module, function}
+  defp global_name(module, function), do: {__MODULE__, module, function}
 end
