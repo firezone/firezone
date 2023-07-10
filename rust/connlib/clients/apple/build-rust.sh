@@ -4,11 +4,10 @@
 # We call this from an Xcode run script.
 ##################################################
 
-set -ex
+set -e
 
 # Default PLATFORM_NAME to macosx if not set.
 : "${PLATFORM_NAME:=macosx}"
-
 
 export PATH="$HOME/.cargo/bin:$PATH"
 
@@ -38,15 +37,18 @@ else
   fi
 fi
 
+MESSAGE="Building Connlib"
+
 if [[ -n "$CONNLIB_MOCK" ]]; then
+  MESSAGE="${MESSAGE} (mock)"
   FEATURE_ARGS="--features mock"
 fi
 
 if [[ $CONFIGURATION == "Release" ]]; then
-  echo "BUILDING FOR RELEASE"
+  echo "${MESSAGE} for Release"
   CONFIGURATION_ARGS="--release"
 else
-  echo "BUILDING FOR DEBUG"
+  echo "${MESSAGE} for Debug"
 fi
 
 for target in "${TARGETS[@]}"
