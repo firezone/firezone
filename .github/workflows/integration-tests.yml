@@ -17,12 +17,12 @@ jobs:
         uses: docker/bake-action@v3
         with:
           set: |
-            elixir.cache-from=scope=elixir,type=gha
-            elixir.cache-to=scope=elixir,type=gha,mode=max
-            api.cache-from=scope=api,type=gha
-            api.cache-to=scope=api,type=gha,mode=max
-            web.cache-from=scope=web,type=gha
-            web.cache-to=scope=web,type=gha,mode=max
+            elixir.cache-from=scope=elixir-${{ github.job }},type=gha
+            elixir.cache-to=scope=elixir-${{ github.job }},type=gha,mode=max
+            api.cache-from=scope=api-${{ github.job }},type=gha
+            api.cache-to=scope=api-${{ github.job }},type=gha,mode=max
+            web.cache-from=scope=web-${{ github.job }},type=gha
+            web.cache-to=scope=web-${{ github.job }},type=gha,mode=max
           files: docker-compose.yml
           push: false
       - name: Seed database
