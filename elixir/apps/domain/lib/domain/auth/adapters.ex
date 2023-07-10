@@ -6,6 +6,7 @@ defmodule Domain.Auth.Adapters do
   @adapters %{
     email: Domain.Auth.Adapters.Email,
     openid_connect: Domain.Auth.Adapters.OpenIDConnect,
+    google_workspace: Domain.Auth.Adapters.GoogleWorkspace,
     userpass: Domain.Auth.Adapters.UserPass,
     token: Domain.Auth.Adapters.Token
   }

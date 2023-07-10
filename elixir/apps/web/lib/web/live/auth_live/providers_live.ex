@@ -161,13 +161,16 @@ defmodule Web.Auth.ProvidersLive do
     Map.get(providers_by_adapter, adapter, []) != []
   end
 
+  defp group(%{adapter: :google_workspace}), do: :openid_connect
+  defp group(%{adapter: other}), do: other
+
   def mount(%{"account_id" => account_id}, _session, socket) do
     with {:ok, account} <- Accounts.fetch_account_by_id(account_id),
          {:ok, [_ | _] = providers} <- Auth.list_active_providers_for_account(account) do
       {:ok, socket,
        temporary_assigns: [
          account: account,
-         providers_by_adapter: Enum.group_by(providers, & &1.adapter),
+         providers_by_adapter: Enum.group_by(providers, &group/1),
          page_title: "Sign in"
        ]}
     else

@@ -4,7 +4,7 @@ defmodule Domain.Auth.Provider do
   schema "auth_providers" do
     field :name, :string
 
-    field :adapter, Ecto.Enum, values: ~w[email openid_connect userpass token]a
+    field :adapter, Ecto.Enum, values: ~w[email openid_connect google_workspace userpass token]a
     field :adapter_config, :map
 
     belongs_to :account, Domain.Accounts.Account
