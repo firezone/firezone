@@ -546,11 +546,15 @@ where
                                     )
                             ) {
                                 dev.peers_by_ip.write().retain(|_, p| p.index != peer_index);
-                                // We are already on an error state, we ignore if the close errors also
                                 let _ = channel.close().await;
                                 let conn = dev.peer_connections.lock().remove(&conn_id);
                                 if let Some(conn) = conn {
-                                    let _ = conn.close().await;
+                                    if let Err(e) = conn.close().await {
+                                        tracing::error!(
+                                            "Problem while trying to close channel: {e:?}"
+                                        );
+                                        dev.callbacks().on_error(&e.into(), Recoverable);
+                                    }
                                 }
                             }
                             dev.callbacks.on_error(&e.into(), Recoverable);

@@ -305,8 +305,10 @@ where
                             // otherwise we would need to clean that up too!
                             let conn = tunnel.peer_connections.lock().remove(&client_id);
                             if let Some(conn) = conn {
-                                // We are already on an error state, we ignore if the close errors also
-                                let _ = conn.close().await;
+                                if let Err(e) = conn.close().await {
+                                    tracing::error!("Problem while trying to close channel: {e:?}");
+                                    tunnel.callbacks().on_error(&e.into(), Recoverable);
+                                }
                             }
                         }
                     })
