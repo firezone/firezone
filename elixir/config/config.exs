@@ -169,7 +169,7 @@ config :posthog,
   api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
 
 config :web, Web.Mailer,
-  adapter: Web.Mailer.NoopAdapter,
+  adapter: Domain.Mailer.NoopAdapter,
   from_email: "test@firez.one"
 
 # TODO: actually copy fonts here, otherwise:application
