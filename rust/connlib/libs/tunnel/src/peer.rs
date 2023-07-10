@@ -1,13 +1,10 @@
 use std::{net::IpAddr, sync::Arc};
 
+use boringtun::noise::{Tunn, TunnResult};
 use bytes::Bytes;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use boringtun::noise::{Tunn, TunnResult};
-use libs_common::{
-    error_type::ErrorType,
-    Callbacks,
-};
+use libs_common::{error_type::ErrorType, Callbacks};
 use parking_lot::Mutex;
 use webrtc::data::data_channel::DataChannel;
 
@@ -21,10 +18,10 @@ pub(crate) struct Peer {
 }
 
 impl Peer {
-    pub(crate) async fn send_infallible<CB: Callbacks>(&self, data: &[u8]) {
+    pub(crate) async fn send_infallible<CB: Callbacks>(&self, data: &[u8], callbacks: &CB) {
         if let Err(e) = self.channel.write(&Bytes::copy_from_slice(data)).await {
             tracing::error!("Couldn't send packet to connected peer: {e}");
-            CB::on_error(&e.into(), ErrorType::Recoverable);
+            callbacks.on_error(&e.into(), ErrorType::Recoverable);
         }
     }
 

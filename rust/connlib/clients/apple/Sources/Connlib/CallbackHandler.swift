@@ -8,6 +8,10 @@
 import NetworkExtension
 import os.log
 
+// TODO: https://github.com/chinedufn/swift-bridge/issues/150
+extension SwiftConnlibError: @unchecked Sendable {}
+extension SwiftConnlibError: Error {}
+
 public protocol CallbackHandlerDelegate: AnyObject {
     func didUpdateResources(_ resourceList: ResourceList)
 }
@@ -45,7 +49,7 @@ public class CallbackHandler {
         )
     }
 
-    func onSetTunnelAddresses(tunnelAddresses: TunnelAddresses) -> Bool {
+    func onConnect(tunnelAddresses: TunnelAddresses) -> Bool {
         let addresses4 = [tunnelAddresses.address4.toString()]
         let addresses6 = [tunnelAddresses.address6.toString()]
         let ipv4Routes =
@@ -56,6 +60,10 @@ public class CallbackHandler {
         return setTunnelSettingsKeepingSomeExisting(
             addresses4: addresses4, addresses6: addresses6, ipv4Routes: ipv4Routes, ipv6Routes: ipv6Routes
         )
+    }
+
+    func onDisconnect() {
+        // TODO: handle disconnect
     }
 
     private func setTunnelSettingsKeepingSomeExisting(
@@ -89,5 +97,11 @@ public class CallbackHandler {
 
             return false
         }
+    }
+
+    func onError(error: SwiftConnlibError, error_type: SwiftErrorType) {
+        // TODO: handle/report errors
+        let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
+        logger.log(level: .error, "Internal connlib error: \(String(describing: error), privacy: .public)")
     }
 }

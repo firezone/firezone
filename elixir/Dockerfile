@@ -1,6 +1,6 @@
 ARG ALPINE_VERSION=3.18.2
-ARG OTP_VERSION=26.0.1
-ARG ELIXIR_VERSION=1.15.0
+ARG OTP_VERSION=26.0.2
+ARG ELIXIR_VERSION=1.15.2
 
 ARG BUILDER_IMAGE="firezone/elixir:${ELIXIR_VERSION}-otp-${OTP_VERSION}"
 ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
@@ -39,8 +39,7 @@ ARG APPLICATION_VERSION=0.0.0-dev.docker
 # Install pipeline and compile assets for Web app
 RUN cd apps/web \
     && mix assets.setup \
-    && mix assets.deploy \
-    && cd ../../
+    && mix assets.deploy
 
 # Compile the release
 RUN mix compile

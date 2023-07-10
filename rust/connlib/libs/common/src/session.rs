@@ -1,25 +1,35 @@
 use async_trait::async_trait;
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use boringtun::x25519::{PublicKey, StaticSecret};
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_core::OsRng;
 use std::{
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
+    time::Duration,
 };
-use tokio::{
-    runtime::Runtime,
-    sync::mpsc::{Receiver, Sender},
-};
+use tokio::{runtime::Runtime, sync::mpsc::Receiver};
 use url::Url;
+use uuid::Uuid;
 
-use crate::{control::PhoenixChannel, error_type::ErrorType, messages::Key, Error, Result};
+use crate::{
+    control::{MessageResult, PhoenixChannel, PhoenixSenderWithTopic},
+    error_type::ErrorType,
+    messages::{Key, ResourceDescription, ResourceDescriptionCidr},
+    Error, Result,
+};
 
 // TODO: Not the most tidy trait for a control-plane.
 /// Trait that represents a control-plane.
 #[async_trait]
-pub trait ControlSession<T, U> {
+pub trait ControlSession<T, CB: Callbacks> {
     /// Start control-plane with the given private-key in the background.
-    async fn start(private_key: StaticSecret) -> Result<(Sender<T>, Receiver<U>)>;
+    async fn start(
+        private_key: StaticSecret,
+        receiver: Receiver<MessageResult<T>>,
+        control_signal: PhoenixSenderWithTopic,
+        callbacks: CB,
+    ) -> Result<()>;
 
     /// Either "gateway" or "client" used to get the control-plane URL.
     fn socket_path() -> &'static str;
@@ -31,9 +41,9 @@ pub trait ControlSession<T, U> {
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
-pub struct Session<T, U, V, R, M> {
+pub struct Session<T, U, V, R, M, CB: Callbacks> {
     runtime: Option<Runtime>,
-    _phantom: PhantomData<(T, U, V, R, M)>,
+    _phantom: PhantomData<(T, U, V, R, M, CB)>,
 }
 
 /// Resource list that will be displayed to the users.
@@ -51,38 +61,41 @@ pub struct TunnelAddresses {
 
 // Evaluate doing this not static
 /// Traits that will be used by connlib to callback the client upper layers.
-pub trait Callbacks {
+pub trait Callbacks: Clone + Send + Sync {
     /// Called when there's a change in the resource list.
-    fn on_update_resources(resource_list: ResourceList);
+    fn on_update_resources(&self, resource_list: ResourceList);
     /// Called when the tunnel address is set.
-    fn on_set_tunnel_adresses(tunnel_addresses: TunnelAddresses);
+    fn on_connect(&self, tunnel_addresses: TunnelAddresses);
+    /// Called when the tunnel is disconnected.
+    fn on_disconnect(&self);
     /// Called when there's an error.
     ///
     /// # Parameters
     /// - `error`: The actual error that happened.
     /// - `error_type`: Whether the error should terminate the session or not.
-    fn on_error(error: &Error, error_type: ErrorType);
+    fn on_error(&self, error: &Error, error_type: ErrorType);
 }
 
 macro_rules! fatal_error {
-    ($result:expr, $c:ty) => {
+    ($result:expr, $c:expr) => {
         match $result {
             Ok(res) => res,
             Err(e) => {
-                <$c>::on_error(&e, ErrorType::Fatal);
+                $c.on_error(&e, ErrorType::Fatal);
                 return;
             }
         }
     };
 }
 
-impl<T, U, V, R, M> Session<T, U, V, R, M>
+impl<T, U, V, R, M, CB> Session<T, U, V, R, M, CB>
 where
-    T: ControlSession<M, V>,
+    T: ControlSession<M, CB>,
     U: for<'de> serde::Deserialize<'de> + std::fmt::Debug + Send + 'static,
     R: for<'de> serde::Deserialize<'de> + std::fmt::Debug + Send + 'static,
     V: serde::Serialize + Send + 'static,
     M: From<U> + From<R> + Send + 'static + std::fmt::Debug,
+    CB: Callbacks + 'static,
 {
     /// Block on waiting for ctrl+c to terminate the runtime.
     /// (Used for the gateways).
@@ -103,11 +116,11 @@ where
     /// 2. Connect to the control plane to the portal
     /// 3. Start the tunnel in the background and forward control plane messages to it.
     ///
-    /// The generic parameter `C` should implement all the handlers and that's how errors will be surfaced.
+    /// The generic parameter `CB` should implement all the handlers and that's how errors will be surfaced.
     ///
     /// On a fatal error you should call `[Session::disconnect]` and start a new one.
     // TODO: token should be something like SecretString but we need to think about FFI compatibility
-    pub fn connect<C: Callbacks>(portal_url: impl TryInto<Url>, token: String) -> Result<Self> {
+    pub fn connect(portal_url: impl TryInto<Url>, token: String, callbacks: CB) -> Result<Self> {
         // TODO: We could use tokio::runtime::current() to get the current runtime
         // which could work with swif-rust that already runs a runtime. But IDK if that will work
         // in all pltaforms, a couple of new threads shouldn't bother none.
@@ -120,67 +133,99 @@ where
             .enable_all()
             .build()?;
 
-        runtime.spawn(async move {
-                let private_key = StaticSecret::random_from_rng(OsRng);
-                let self_id = uuid::Uuid::new_v4();
-
-                let connect_url = fatal_error!(get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string()), C);
-
-                let (sender, mut receiver) = fatal_error!(T::start(private_key).await, C);
-
-                let mut connection = PhoenixChannel::<_, U, R, M>::new(connect_url, move |msg| {
-                    let sender = sender.clone();
-                    async move {
-                        tracing::trace!("Received message: {msg:?}");
-                        if let Err(e) = sender.send(msg).await {
-                            tracing::warn!("Received a message after handler already closed: {e}. Probably message received during session clean up.");
-                        }
-                    }
-                });
-
-                // Used to send internal messages
-                let mut internal_sender = connection.sender();
-                let topic = T::socket_path().to_string();
-                let topic_send = topic.clone();
-
-                tokio::spawn(async move {
-                    let mut exponential_backoff = ExponentialBackoffBuilder::default().build();
-                    loop {
-                        let result = connection.start(vec![topic.clone()]).await;
-                        if let Some(t) = exponential_backoff.next_backoff() {
-                            tracing::warn!("Error during connection to the portal, retrying in {} seconds", t.as_secs());
-                            match result {
-                                Ok(()) => C::on_error(&tokio_tungstenite::tungstenite::Error::ConnectionClosed.into(), ErrorType::Recoverable),
-                                Err(e) => C::on_error(&e, ErrorType::Recoverable)
-                            }
-                            tokio::time::sleep(t).await;
-                        } else {
-                            tracing::error!("Connection to the portal error, check your internet or the status of the portal.\nDisconnecting interface.");
-                            match result {
-                                Ok(()) => C::on_error(&crate::Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed), ErrorType::Fatal),
-                                Err(e) => C::on_error(&e, ErrorType::Fatal)
-                            }
-                            break;
-                        }
-                    }
-
-                });
-
-                // TODO: Implement Sink for PhoenixEvent (created from a PhoenixSender event + topic)
-                // that way we can simply do receiver.forward(sender)
-                tokio::spawn(async move {
-                    while let Some(message) = receiver.recv().await {
-                        if let Err(err) = internal_sender.send(&topic_send, message).await {
-                            tracing::error!("Channel already closed when trying to send message: {err}. Probably trying to send a message during session clean up.");
-                        }
-                    }
-                });
-        });
+        if cfg!(feature = "mock") {
+            Self::connect_mock(callbacks);
+        } else {
+            Self::connect_inner(&runtime, portal_url, token, callbacks);
+        }
 
         Ok(Self {
             runtime: Some(runtime),
             _phantom: PhantomData,
         })
+    }
+
+    fn connect_inner(runtime: &Runtime, portal_url: Url, token: String, callbacks: CB) {
+        runtime.spawn(async move {
+            let private_key = StaticSecret::random_from_rng(OsRng);
+            let self_id = uuid::Uuid::new_v4();
+            let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
+
+            let connect_url = fatal_error!(get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix), callbacks);
+
+
+            // This is kinda hacky, the buffer size is 1 so that we make sure that we
+            // process one message at a time, blocking if a previous message haven't been processed
+            // to force queue ordering.
+            let (control_plane_sender, control_plane_receiver) = tokio::sync::mpsc::channel(1);
+
+            let mut connection = PhoenixChannel::<_, U, R, M>::new(connect_url, move |msg| {
+                let control_plane_sender = control_plane_sender.clone();
+                async move {
+                    tracing::trace!("Received message: {msg:?}");
+                    if let Err(e) = control_plane_sender.send(msg).await {
+                        tracing::warn!("Received a message after handler already closed: {e}. Probably message received during session clean up.");
+                    }
+                }
+            });
+
+            // Used to send internal messages
+            let topic = T::socket_path().to_string();
+            let internal_sender = connection.sender_with_topic(topic.clone());
+            fatal_error!(T::start(private_key, control_plane_receiver, internal_sender, callbacks.clone()).await, callbacks);
+
+            tokio::spawn(async move {
+                let mut exponential_backoff = ExponentialBackoffBuilder::default().build();
+                loop {
+                    // `connection.start` calls the callback only after connecting
+                    let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
+                    if let Some(t) = exponential_backoff.next_backoff() {
+                        tracing::warn!("Error during connection to the portal, retrying in {} seconds", t.as_secs());
+                        match result {
+                            Ok(()) => callbacks.on_error(&tokio_tungstenite::tungstenite::Error::ConnectionClosed.into(), ErrorType::Recoverable),
+                            Err(e) => callbacks.on_error(&e, ErrorType::Recoverable)
+                        }
+                        tokio::time::sleep(t).await;
+                    } else {
+                        tracing::error!("Connection to the portal error, check your internet or the status of the portal.\nDisconnecting interface.");
+                        match result {
+                            Ok(()) => callbacks.on_error(&crate::Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed), ErrorType::Fatal),
+                            Err(e) => callbacks.on_error(&e, ErrorType::Fatal)
+                        }
+                        break;
+                    }
+                }
+
+            });
+
+        });
+    }
+
+    fn connect_mock(callbacks: CB) {
+        std::thread::sleep(Duration::from_secs(1));
+        callbacks.on_connect(TunnelAddresses {
+            address4: "100.100.111.2".parse().unwrap(),
+            address6: "fd00:0222:2021:1111::2".parse().unwrap(),
+        });
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(3));
+            callbacks.on_update_resources(ResourceList {
+                resources: vec![
+                    serde_json::to_string(&ResourceDescription::Cidr(ResourceDescriptionCidr {
+                        id: Uuid::new_v4(),
+                        address: "8.8.4.4".parse::<Ipv4Addr>().unwrap().into(),
+                        name: "Google Public DNS IPv4".to_string(),
+                    }))
+                    .unwrap(),
+                    serde_json::to_string(&ResourceDescription::Cidr(ResourceDescriptionCidr {
+                        id: Uuid::new_v4(),
+                        address: "2001:4860:4860::8844".parse::<Ipv6Addr>().unwrap().into(),
+                        name: "Google Public DNS IPv6".to_string(),
+                    }))
+                    .unwrap(),
+                ],
+            });
+        });
     }
 
     /// Cleanup a [Session].
@@ -220,6 +265,7 @@ fn get_websocket_path(
     mode: &str,
     public_key: &Key,
     external_id: &str,
+    name_suffix: &str,
 ) -> Result<Url> {
     {
         let mut paths = url.path_segments_mut().map_err(|_| Error::UriError)?;
@@ -234,7 +280,7 @@ fn get_websocket_path(
         query_pairs.append_pair("token", &secret);
         query_pairs.append_pair("public_key", &public_key.to_string());
         query_pairs.append_pair("external_id", external_id);
-        query_pairs.append_pair("name_suffix", "todo");
+        query_pairs.append_pair("name_suffix", name_suffix);
     }
 
     Ok(url)

@@ -2,6 +2,12 @@ defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
   alias Domain.{Devices, Resources, Relays, Gateways}
+  require Logger
+
+  def broadcast(%Gateways.Gateway{} = gateway, payload) do
+    Logger.debug("Gateway message is being dispatched", gateway_id: gateway.id)
+    Phoenix.PubSub.broadcast(Domain.PubSub, "gateway:#{gateway.id}", payload)
+  end
 
   @impl true
   def join("gateway", _payload, socket) do
@@ -12,6 +18,8 @@ defmodule API.Gateway.Channel do
 
   @impl true
   def handle_info(:after_join, socket) do
+    API.Endpoint.subscribe("gateway:#{socket.assigns.gateway.id}")
+
     push(socket, "init", %{
       interface: Views.Interface.render(socket.assigns.gateway),
       # TODO: move to settings
@@ -33,6 +41,11 @@ defmodule API.Gateway.Channel do
       device_preshared_key: preshared_key
     } = attrs
 
+    Logger.debug("Gateway received connection request message",
+      device_id: device_id,
+      resource_id: resource_id
+    )
+
     device = Devices.fetch_device_by_id!(device_id, preload: [:actor])
     resource = Resources.fetch_resource_by_id!(resource_id)
     {:ok, relays} = Relays.list_connected_relays_for_resource(resource)
@@ -47,6 +60,12 @@ defmodule API.Gateway.Channel do
       device: Views.Device.render(device, rtc_session_description, preshared_key),
       expires_at: DateTime.to_unix(authorization_expires_at, :second)
     })
+
+    Logger.debug("Awaiting gateway connection_ready message",
+      device_id: device_id,
+      resource_id: resource_id,
+      ref: ref
+    )
 
     refs = Map.put(socket.assigns.refs, ref, {channel_pid, socket_ref, resource_id})
     socket = assign(socket, :refs, refs)
@@ -70,6 +89,12 @@ defmodule API.Gateway.Channel do
       channel_pid,
       {:connect, socket_ref, resource_id, socket.assigns.gateway.public_key,
        rtc_session_description}
+    )
+
+    Logger.debug("Gateway replied to the Device with :connect message",
+      resource_id: resource_id,
+      channel_pid: inspect(channel_pid),
+      ref: ref
     )
 
     {:reply, :ok, socket}

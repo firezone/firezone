@@ -6,13 +6,6 @@
 
 set -ex
 
-if [[ -z "$PROJECT_DIR" ]]; then
-  echo "Must provide PROJECT_DIR environment variable set to the Xcode project directory." 1>&2
-  exit 1
-fi
-
-cd $PROJECT_DIR
-
 # Default PLATFORM_NAME to macosx if not set.
 : "${PLATFORM_NAME:=macosx}"
 
@@ -24,7 +17,9 @@ base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
 # See https://github.com/briansmith/ring/issues/1332
 export LIBRARY_PATH="${base_dir}/usr/lib"
 export INCLUDE_PATH="${base_dir}/usr/include"
-export CFLAGS="-L ${LIBRARY_PATH} -I ${INCLUDE_PATH}"
+# `-Qunused-arguments` stops clang from failing while building *ring*
+# (but the library search path is still necessary when building the framework!)
+export CFLAGS="-L ${LIBRARY_PATH} -I ${INCLUDE_PATH} -Qunused-arguments"
 export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
 
 TARGETS=""
@@ -43,16 +38,20 @@ else
   fi
 fi
 
+if [[ -n "$CONNLIB_MOCK" ]]; then
+  LIPO_ARGS="--features mock"
+fi
+
 # if [ $ENABLE_PREVIEWS == "NO" ]; then
 
   if [[ $CONFIGURATION == "Release" ]]; then
       echo "BUILDING FOR RELEASE ($TARGETS)"
 
-      cargo lipo --release --manifest-path ./Cargo.toml  --targets $TARGETS
+      cargo lipo --release --manifest-path ./Cargo.toml  --targets $TARGETS $LIPO_ARGS
   else
       echo "BUILDING FOR DEBUG ($TARGETS)"
 
-      cargo lipo --manifest-path ./Cargo.toml  --targets $TARGETS
+      cargo lipo --manifest-path ./Cargo.toml  --targets $TARGETS $LIPO_ARGS
   fi
 
 # else

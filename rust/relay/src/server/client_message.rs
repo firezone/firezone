@@ -81,6 +81,19 @@ pub enum ClientMessage<'a> {
     CreatePermission(CreatePermission),
 }
 
+impl<'a> ClientMessage<'a> {
+    pub fn transaction_id(&self) -> Option<TransactionId> {
+        match self {
+            ClientMessage::Binding(request) => Some(request.transaction_id),
+            ClientMessage::Allocate(request) => Some(request.transaction_id),
+            ClientMessage::Refresh(request) => Some(request.transaction_id),
+            ClientMessage::ChannelBind(request) => Some(request.transaction_id),
+            ClientMessage::CreatePermission(request) => Some(request.transaction_id),
+            ClientMessage::ChannelData(_) => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Binding {
     transaction_id: TransactionId,
