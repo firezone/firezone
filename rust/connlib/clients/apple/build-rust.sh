@@ -51,7 +51,13 @@ else
   echo "${MESSAGE} for Debug"
 fi
 
+if [[ -n "$CONNLIB_TARGET_DIR" ]]; then
+  CONNLIB_TARGET_ARGS="--target-dir $CONNLIB_TARGET_DIR"
+fi
+
 for target in "${TARGETS[@]}"
 do
-  cargo build --target $target $FEATURE_ARGS $CONFIGURATION_ARGS
+  set -x
+  cargo build --target $target $CONNLIB_TARGET_ARGS $FEATURE_ARGS $CONFIGURATION_ARGS
+  set +x
 done
