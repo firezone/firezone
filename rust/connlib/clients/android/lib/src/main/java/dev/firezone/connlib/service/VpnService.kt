@@ -1,18 +1,18 @@
-package dev.firezone.connlib
+package dev.firezone.connlib.service
 import android.util.Log
 
-public class VpnService : android.net.VpnService() {
-    public override fun onCreate() {
+class VpnService : android.net.VpnService() {
+    override fun onCreate() {
         super.onCreate()
         Log.d("Connlib", "VpnService.onCreate")
     }
 
-    public override fun onDestroy() {
+    override fun onDestroy() {
         super.onDestroy()
         Log.d("Connlib", "VpnService.onDestroy")
     }
 
-    public override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
         Log.d("Connlib", "VpnService.onStartCommand")
         return super.onStartCommand(intent, flags, startId)
     }

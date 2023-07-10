@@ -85,6 +85,11 @@ cargo {
     module  = "../"
     libname = "connlib"
     targets = listOf("arm", "arm64", "x86", "x86_64")
+    // Cargo requires both `targetDirectory` and `CARGO_TARGET_DIR` env to be set to work properly.
+    targetDirectory = "${project.buildDir}/cargo-target"
+    exec = { spec, _ ->
+        spec.environment("CARGO_TARGET_DIR", targetDirectory)
+    }
     features {
         if (System.getenv("CONNLIB_MOCK") != null) {
             defaultAnd(listOf("mock").toTypedArray())
