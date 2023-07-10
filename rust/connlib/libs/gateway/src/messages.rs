@@ -1,5 +1,6 @@
 use std::net::IpAddr;
 
+use chrono::{serde::ts_seconds, DateTime, Utc};
 use firezone_tunnel::RTCSessionDescription;
 use libs_common::messages::{Id, Interface, Peer, Relay, ResourceDescription};
 use serde::{Deserialize, Serialize};
@@ -42,8 +43,8 @@ pub struct RequestConnection {
     pub device: Device,
     #[serde(rename = "ref")]
     pub reference: String,
-    // TODO: this should be a DateTime or similar
-    pub expires_at: u64,
+    #[serde(with = "ts_seconds")]
+    pub expires_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]

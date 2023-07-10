@@ -1,6 +1,7 @@
 //! Message types that are used by both the gateway and client.
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+use chrono::{serde::ts_seconds, DateTime, Utc};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -140,9 +141,9 @@ pub enum Relay {
 /// Represent a TURN relay
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Turn {
-    // TODO: DateTIme
     //// Expire time of the username/password in unix millisecond timestamp UTC
-    pub expires_at: u64,
+    #[serde(with = "ts_seconds")]
+    pub expires_at: DateTime<Utc>,
     /// URI of the relay
     pub uri: String,
     /// Username for the relay
