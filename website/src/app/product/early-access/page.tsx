@@ -116,7 +116,7 @@ export default function EarlyAccess() {
                     Public Release
                   </h3>
                   <time className="block mb-2 text-sm font-normal leading-none text-neutral-700 dark:text-neutral-300">
-                    Late Q3 2023
+                    Q4 2023
                   </time>
                   <p className="text-base font-normal text-neutral-800 dark:text-neutral-200">
                     Firezone 1.0 is released to the general public.

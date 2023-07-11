@@ -15,7 +15,7 @@
   }
 
   .github-html ul {
-    @apply list-disc list-inside;
+    @apply list-disc text-sm list-inside;
   }
   
   .github-html a {

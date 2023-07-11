@@ -4,50 +4,52 @@ import Link from "next/link";
 import CommitMarquee from "@/components/CommitMarquee";
 import ActionLink from "@/components/ActionLink";
 import JoinOurCommunity from "@/components/JoinOurCommunity";
-import { MegaphoneIcon, ClockIcon } from "@heroicons/react/24/solid";
+import { MegaphoneIcon, BeakerIcon } from "@heroicons/react/24/solid";
 import { XMLParser } from "fast-xml-parser";
 import { useState, useEffect } from "react";
 import GitHubHtml from "@/components/GitHubHtml";
 
 function RoadmapItem({
   title,
-  content,
-  date,
   href,
   type,
+  date,
   entryId,
+  children,
 }: {
   href: string;
-  content: string;
-  date: string;
   title: string;
   type: string;
-  entryId: string;
+  date?: string;
+  entryId?: string;
+  children: React.ReactNode;
 }) {
   function badge(type: string) {
     switch (type) {
       case "release":
         return (
-          <span className="bg-accent-600 text-accent-100 text-xs font-semibold px-2.5 py-0.5 rounded">
-            Release
+          <span className="bg-accent-600 text-white text-xs font-semibold px-2.5 py-0.5 rounded">
+            {type}
           </span>
         );
+      case "1.0":
       case "feature":
         return (
-          <span className="bg-primary-100 text-primary-800 text-xs font-semibold px-2.5 py-0.5 rounded">
-            Feature
+          <span className="bg-primary-450 text-white text-xs font-semibold px-2.5 py-0.5 rounded">
+            {type}
           </span>
         );
+      case "refactor":
       case "website":
         return (
-          <span className="bg-neutral-100 text-neutral-800 text-xs font-semibold px-2.5 py-0.5 rounded">
-            Website
+          <span className="bg-neutral-800 text-white text-xs font-semibold px-2.5 py-0.5 rounded">
+            {type}
           </span>
         );
       case "docs":
         return (
           <span className="bg-neutral-100 text-neutral-800 text-xs font-semibold px-2.5 py-0.5 rounded">
-            Docs
+            {type}
           </span>
         );
     }
@@ -65,14 +67,15 @@ function RoadmapItem({
           {title}
         </Link>
       </h5>
-      <div className="pb-4">
-        <GitHubHtml html={content} />
-      </div>
+      <div className="pb-4">{children}</div>
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold px-2.5 py-0.5 bg-neutral-200 text-neutral-800">
-          <ClockIcon className="w-4 h-4 inline-block items-center mr-1" />
-          {new Date(date).toDateString()}
-        </span>
+        {date ? (
+          <span className="text-xs font-semibold px-2.5 py-0.5 bg-neutral-200 text-neutral-800">
+            {new Date(date!).toDateString()}
+          </span>
+        ) : (
+          <span></span>
+        )}
         {badge(type)}
       </div>
     </li>
@@ -106,64 +109,218 @@ export default function Page() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mx-auto max-w-screen-lg divide-x">
+        <div className="grid grid-cols-1 md:grid-cols-3 mx-auto max-w-screen-lg divide-x">
           <div className="p-6">
-            <h3 className="text-neutral-900 tracking-tight font-bold text-xl mb-4">
+            <h3 className="text-neutral-900 tracking-tight font-bold text-2xl mb-4">
               Shipped
             </h3>
             <p className="text-lg text-neutral-900 dark:text-neutral-50 mb-6">
               Updates we've recently shipped.
             </p>
-            <h4 className="border-b border-neutral-200 mb-2 text-lg tracking-tight font-semibold text-neutral-800">
-              Releases
-            </h4>
-            <ul className="flex flex-col">
-              {xml.feed.entry.slice(0, 3).map((entry: any) => {
-                return (
-                  <RoadmapItem
-                    entryId={entry.id}
-                    content={entry.content["#text"]}
-                    title={entry.title}
-                    href={entry.link["@_href"]}
-                    type="release"
-                    date={entry.updated}
-                  />
-                );
-              })}
-            </ul>
-          </div>
-          <div className="p-6">
-            <h3 className="text-neutral-900 tracking-tight font-bold text-xl mb-4">
-              In Progress
-            </h3>
-            <p className="text-lg text-neutral-900 dark:text-neutral-50 mb-6">
-              Things we plan to ship in the next release or two.
-            </p>
-            <div className="flex flex-col">
-              <ul>
-                <li>Firezone 1.0</li>
+            <div className="mb-4">
+              <h4 className="border-b border-neutral-200 mb-2 text-xl tracking-tight font-semibold text-neutral-800">
+                Recent Releases
+              </h4>
+              <ul className="flex flex-col">
+                {xml.feed.entry.slice(0, 3).map((entry: any) => {
+                  return (
+                    <RoadmapItem
+                      entryId={entry.id}
+                      title={entry.title}
+                      href={entry.link["@_href"]}
+                      type="release"
+                      date={entry.updated}
+                    >
+                      <GitHubHtml html={entry.content["#text"]} />
+                    </RoadmapItem>
+                  );
+                })}
+              </ul>
+            </div>
+            {/* TODO: Consider automating this with the GitHub API */}
+            <div className="mb-4">
+              <h4 className="border-b border-neutral-200 mb-2 text-xl tracking-tight font-semibold text-neutral-800">
+                Website / Docs
+              </h4>
+              <ul className="flex flex-col">
+                <RoadmapItem
+                  title="1.0 early access page"
+                  href="https://github.com/firezone/firezone/pull/1733"
+                  type="website"
+                  date="2023-07-06T17:56:03Z"
+                >
+                  We've added a new{" "}
+                  <Link
+                    href="/product/early-access"
+                    className="text-accent-500 underline hover:no-underline"
+                  >
+                    early access page
+                  </Link>{" "}
+                  to allow users to sign up to test new Firezone features and
+                  releases.
+                </RoadmapItem>
+                <RoadmapItem
+                  title="Team page"
+                  href="https://github.com/firezone/firezone/pull/1731"
+                  type="website"
+                  date="2023-07-05T16:08:36Z"
+                >
+                  A new{" "}
+                  <Link
+                    href="/team"
+                    className="text-accent-500 underline hover:no-underline"
+                  >
+                    team page
+                  </Link>{" "}
+                  has been added to showcase the team behind Firezone.
+                </RoadmapItem>
+                <RoadmapItem
+                  title="Brand colors"
+                  href="https://github.com/firezone/firezone/pull/1728"
+                  type="website"
+                  date="2023-07-03T23:32:41Z"
+                >
+                  Our website now sports a new color palette, font, and spacing
+                  consistent with the Firezone product.
+                </RoadmapItem>
               </ul>
             </div>
           </div>
           <div className="p-6">
-            <h3 className="text-neutral-900 tracking-tight font-bold text-xl mb-4">
+            <h3 className="text-neutral-900 tracking-tight font-bold text-2xl mb-4">
+              In progress
+            </h3>
+            <p className="text-lg text-neutral-900 dark:text-neutral-50 mb-6">
+              Things we're actively working on and plan to ship in the next
+              release or two.
+            </p>
+            <div className="mb-4">
+              <div className="p-2 bg-primary-100 border border-primary-200 mb-4">
+                <BeakerIcon className="inline-block w-4 h-4 mr-1 text-primary-450" />
+                <Link
+                  href="/product/early-access"
+                  className="text-accent-500 underline hover:no-underline"
+                >
+                  Sign up for early access
+                </Link>{" "}
+                to test new Firezone features and releases.
+              </div>
+              <h4 className="border-b border-neutral-200 mb-2 text-xl tracking-tight font-semibold text-neutral-800">
+                Firezone 1.0
+              </h4>
+              <ul className="flex flex-col">
+                <RoadmapItem
+                  title="Automated provisioning"
+                  href="https://github.com/firezone/firezone/issues/1437"
+                  type="feature"
+                >
+                  Automated user and group provisioning via just-in-time (JIT)
+                  provisioning or SCIM 2.0.
+                </RoadmapItem>
+                <RoadmapItem
+                  title="Authentication overhaul"
+                  href="https://github.com/firezone/firezone/issues/1123"
+                  type="refactor"
+                >
+                  More robust support for SAML 2.0, OIDC, and magic link
+                  authentication methods.
+                </RoadmapItem>
+                <RoadmapItem
+                  title="Group-based access policies"
+                  href="https://github.com/firezone/firezone/issues/1157"
+                  type="feature"
+                >
+                  Control access to protected Resources on a per-group basis.
+                </RoadmapItem>
+                <RoadmapItem
+                  title="Apple client"
+                  href="https://github.com/firezone/firezone/issues/1763"
+                  type="feature"
+                >
+                  Native Firezone client for macOS and iOS.
+                </RoadmapItem>
+                <RoadmapItem
+                  title="NAT traversal"
+                  href="https://github.com/firezone/firezone/issues/1765"
+                  type="feature"
+                >
+                  Automatic holepunching and STUN/TURN discovery for Clients and
+                  Gateways.
+                </RoadmapItem>
+                <RoadmapItem
+                  title="Split DNS"
+                  href="https://github.com/firezone/firezone/issues/1158"
+                  type="feature"
+                >
+                  Resolve DNS queries for protected Resources using Firezone's
+                  built-in DNS while forwarding other queries to a configurable
+                  upstream DNS server.
+                </RoadmapItem>
+                <RoadmapItem
+                  title="Android client"
+                  href="https://github.com/firezone/firezone/issues/1767"
+                  type="feature"
+                >
+                  Native Firezone client for Android.
+                </RoadmapItem>
+                <RoadmapItem
+                  title="High availability"
+                  href="https://github.com/firezone/firezone/issues/897"
+                  type="feature"
+                >
+                  Support for High availability (HA) deployments of the Firezone
+                  Gateway.
+                </RoadmapItem>
+              </ul>
+            </div>
+          </div>
+          <div className="p-6">
+            <h3 className="text-neutral-900 tracking-tight font-bold text-2xl mb-4">
               Under consideration
             </h3>
             <p className="text-lg text-neutral-900 dark:text-neutral-50 mb-6">
-              Things we're still investigating and in the process of
-              prioritizing.
-              <br />
-              <span className="font-semibold">Feedback welcome!</span>
+              Things we're still investigating, architecting, or in the process
+              of prioritizing.{" "}
+              <span className="font-semibold">(feedback welcome!)</span>
             </p>
-            <div className="flex flex-col">
-              <ul>
-                <li>Windows Client</li>
-              </ul>
-            </div>
+            <ul className="flex flex-col">
+              <RoadmapItem
+                title="Windows client"
+                href="https://github.com/firezone/firezone/issues/1768"
+                type="feature"
+              >
+                Native Firezone client for Windows.
+              </RoadmapItem>
+              <RoadmapItem
+                title="Service  accounts"
+                href="https://github.com/firezone/firezone/issues/1770"
+                type="feature"
+              >
+                Support for service accounts to allow automated access to
+                protected Resources. Requires headless clients for
+                Linux/Windows.
+              </RoadmapItem>
+              <RoadmapItem
+                title="Linux client"
+                href="https://github.com/firezone/firezone/issues/1762"
+                type="feature"
+              >
+                Native Firezone client for Linux.
+              </RoadmapItem>
+              <RoadmapItem
+                title="Audit logging"
+                href="https://github.com/firezone/firezone/issues/949"
+                type="feature"
+              >
+                Log admin portal configuration changes and end-user access to
+                protected Resources to achieve compliance with regulatory
+                requirements.
+              </RoadmapItem>
+            </ul>
           </div>
         </div>
       </div>
-      <div className="mx-auto p-6 rounded-sm border border-5 border-primary-200 bg-primary-100 text-xl flex items-center justify-center">
+      <div className="mx-auto p-6 rounded-sm border border-primary-200 bg-primary-100 text-xl flex items-center justify-center">
         <MegaphoneIcon className="h-5 w-5 mr-2 text-primary-450" />
         Want to stay updated on our progress?
         <span className="ml-2">
@@ -187,10 +344,10 @@ export default function Page() {
         </p>
         <p className="mx-auto mb-4 sm:mb-8 sm:text-xl">
           <ActionLink
-            href="https://github.com/firezone/firezone"
+            href="https://github.com/firezone/firezone/pulls"
             className="flex items-center justify-center text-accent-500 underline hover:no-underline"
           >
-            See what we've been working on
+            See what we're working on
           </ActionLink>
           .
         </p>
