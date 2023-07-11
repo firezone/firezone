@@ -677,7 +677,7 @@ dependencies = [
  "firezone-client-connlib",
  "libc",
  "swift-bridge",
- "swift-bridge-build 0.1.51 (git+https://github.com/conectado/swift-bridge.git?branch=fix-already-declared)",
+ "swift-bridge-build",
  "walkdir",
 ]
 
@@ -2844,49 +2844,31 @@ checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
 
 [[package]]
 name = "swift-bridge"
-version = "0.1.51"
-source = "git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f#4fbd30f81085dc366bda3c0303eac66345de3ed9"
+version = "0.1.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f72aa49fc376893673e6b7ace589802877d2dad554da1fde5aa1445498e1929c"
 dependencies = [
- "swift-bridge-build 0.1.51 (git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f)",
+ "swift-bridge-build",
  "swift-bridge-macro",
 ]
 
 [[package]]
 name = "swift-bridge-build"
-version = "0.1.51"
-source = "git+https://github.com/conectado/swift-bridge.git?branch=fix-already-declared#7415b9108beb87de95cd4687c1f841ae7b37ea6f"
+version = "0.1.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba4282dc94afa1b7d8f2445532a7c0b7508d470cee261132e26ec001b3185c3b"
 dependencies = [
  "proc-macro2",
- "swift-bridge-ir 0.1.51 (git+https://github.com/conectado/swift-bridge.git?branch=fix-already-declared)",
- "syn 1.0.109",
- "tempfile",
-]
-
-[[package]]
-name = "swift-bridge-build"
-version = "0.1.51"
-source = "git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f#4fbd30f81085dc366bda3c0303eac66345de3ed9"
-dependencies = [
- "proc-macro2",
- "swift-bridge-ir 0.1.51 (git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f)",
+ "swift-bridge-ir",
  "syn 1.0.109",
  "tempfile",
 ]
 
 [[package]]
 name = "swift-bridge-ir"
-version = "0.1.51"
-source = "git+https://github.com/conectado/swift-bridge.git?branch=fix-already-declared#7415b9108beb87de95cd4687c1f841ae7b37ea6f"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "swift-bridge-ir"
-version = "0.1.51"
-source = "git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f#4fbd30f81085dc366bda3c0303eac66345de3ed9"
+version = "0.1.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2096a82fb42280699d9b5dde6674cb4f802931eca8623f1edc4587c50dc58da"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2895,12 +2877,13 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge-macro"
-version = "0.1.51"
-source = "git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f#4fbd30f81085dc366bda3c0303eac66345de3ed9"
+version = "0.1.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c2f4d5b41976c351ecb735eb9336bdd3cbaaebc9990300023ea2b6874a2d68c"
 dependencies = [
  "proc-macro2",
  "quote",
- "swift-bridge-ir 0.1.51 (git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f)",
+ "swift-bridge-ir",
  "syn 1.0.109",
 ]
 
@@ -3203,7 +3186,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "time",
+ "time 0.3.22",
  "tracing-core",
  "tracing-subscriber",
 ]
