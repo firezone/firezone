@@ -46,20 +46,6 @@
 			remoteGlobalIDString = 05CF1D02290B1DCD00CF4755;
 			remoteInfo = FirezoneNetworkExtensionmacOS;
 		};
-		6FE454C02A5BC616006549B1 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 6FE454BC2A5BC5F3006549B1;
-			remoteInfo = "Build Connlib";
-		};
-		6FE454C22A5BC7E7006549B1 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 6FE454BC2A5BC5F3006549B1;
-			remoteInfo = "Build Connlib";
-		};
 		6FE454E02A5BF88D006549B1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
@@ -298,7 +284,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				6FE454C32A5BC7E7006549B1 /* PBXTargetDependency */,
 				6FE454E32A5BF892006549B1 /* PBXTargetDependency */,
 			);
 			name = FirezoneNetworkExtensioniOS;
@@ -320,7 +305,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				6FE454C12A5BC616006549B1 /* PBXTargetDependency */,
 				6FE454E52A5BF899006549B1 /* PBXTargetDependency */,
 			);
 			name = FirezoneNetworkExtensionmacOS;
@@ -485,16 +469,6 @@
 			);
 			target = 05CF1D02290B1DCD00CF4755 /* FirezoneNetworkExtensionmacOS */;
 			targetProxy = 05CF1D0A290B1DCD00CF4755 /* PBXContainerItemProxy */;
-		};
-		6FE454C12A5BC616006549B1 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 6FE454BC2A5BC5F3006549B1 /* Build Connlib */;
-			targetProxy = 6FE454C02A5BC616006549B1 /* PBXContainerItemProxy */;
-		};
-		6FE454C32A5BC7E7006549B1 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 6FE454BC2A5BC5F3006549B1 /* Build Connlib */;
-			targetProxy = 6FE454C22A5BC7E7006549B1 /* PBXContainerItemProxy */;
 		};
 		6FE454E12A5BF88D006549B1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
