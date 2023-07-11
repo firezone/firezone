@@ -38,7 +38,7 @@ defmodule Web.GatewaysLive.Index do
     <!-- Gateways Table -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <.resource_filter />
-      <.table id="gateways" rows={@gateways} subject={@subject} row_id={&"gateway-#{&1.id}"}>
+      <.table id="gateways" rows={@gateways} row_id={&"gateway-#{&1.id}"}>
         <:col :let={gateway} label="GATEWAY" sortable="true">
           <.badge type="info">
             <%= gateway.group.name_prefix %>

@@ -852,7 +852,6 @@ defmodule Web.CoreComponents do
   attr :rows, :list, required: true
   attr :row_id, :any, default: nil, doc: "the function for generating the row id"
   attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
-  attr :subject, :string, required: false
 
   attr :row_item, :any,
     default: &Function.identity/1,

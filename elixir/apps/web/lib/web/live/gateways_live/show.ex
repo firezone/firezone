@@ -164,17 +164,6 @@ defmodule Web.GatewaysLive.Show do
               scope="row"
               class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
             >
-              OS version
-            </th>
-            <td class="px-6 py-4">
-              TODO: Linux 5.10.25-1-MANJARO x86_64
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
               Deployment method
             </th>
             <td class="px-6 py-4">
@@ -193,7 +182,7 @@ defmodule Web.GatewaysLive.Show do
       </div>
     </div>
     <div class="relative overflow-x-auto">
-      <.table id="resources" rows={@resources} subject={@subject}>
+      <.table id="resources" rows={@resources}>
         <:col :let={resource} label="NAME">
           <.link
             navigate={~p"/#{@subject.account}/resources/#{resource.id}"}

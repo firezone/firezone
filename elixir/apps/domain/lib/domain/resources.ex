@@ -48,20 +48,29 @@ defmodule Domain.Resources do
   end
 
   def count_resources_for_gateway(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject) do
-    count =
-      Resource.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Resource.Query.by_gateway_id(gateway.group_id)
-      |> Repo.aggregate(:count)
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_resources_permission(),
+         Authorizer.view_available_resources_permission()
+       ]}
 
-    {:ok, count}
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
+      count =
+        Resource.Query.all()
+        |> Authorizer.for_subject(subject)
+        |> Resource.Query.by_gateway_group_id(gateway.group_id)
+        |> Repo.aggregate(:count)
+
+      {:ok, count}
+    end
   end
 
   def list_resources_for_gateway(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject) do
     resources =
       Resource.Query.all()
       |> Resource.Query.by_account_id(subject.account.id)
-      |> Resource.Query.by_gateway_id(gateway.group_id)
+      |> Resource.Query.by_gateway_group_id(gateway.group_id)
       |> Repo.all()
 
     {:ok, resources}
