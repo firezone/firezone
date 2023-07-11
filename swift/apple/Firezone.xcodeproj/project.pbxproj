@@ -261,7 +261,7 @@
 			buildConfigurationList = 6FE454BD2A5BC5F3006549B1 /* Build configuration list for PBXLegacyTarget "Build Connlib" */;
 			buildPhases = (
 			);
-			buildToolPath = "./build-rust.sh";
+			buildToolPath = "${CONNLIB_SOURCE_DIR}/build-rust.sh";
 			buildWorkingDirectory = "${CONNLIB_SOURCE_DIR}";
 			dependencies = (
 			);
@@ -275,7 +275,7 @@
 			buildConfigurationList = 6FE454DF2A5BF851006549B1 /* Build configuration list for PBXLegacyTarget "Copy Generated Connlib Files" */;
 			buildPhases = (
 			);
-			buildToolPath = ./copy_generated_connlib_files.sh;
+			buildToolPath = "${PROJECT_DIR}/copy_generated_connlib_files.sh";
 			buildWorkingDirectory = "${PROJECT_DIR}";
 			dependencies = (
 				6FE454E12A5BF88D006549B1 /* PBXTargetDependency */,

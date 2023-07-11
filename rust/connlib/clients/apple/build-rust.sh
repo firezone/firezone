@@ -6,6 +6,11 @@
 
 set -e
 
+if [[ $1 == "clean" ]]; then
+  echo "Skipping build during 'clean'"
+  exit 0
+fi
+
 # Default PLATFORM_NAME to macosx if not set.
 : "${PLATFORM_NAME:=macosx}"
 
