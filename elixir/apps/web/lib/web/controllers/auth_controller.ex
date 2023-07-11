@@ -198,8 +198,9 @@ defmodule Web.AuthController do
     conn = fetch_cookies(conn, signed: [key])
 
     with {:ok, encoded_state} <- Map.fetch(conn.cookies, key),
-         {^state, verifier} <- :erlang.binary_to_term(encoded_state, [:safe]) do
-      {:ok, verifier}
+         {persisted_state, persisted_verifier} <- :erlang.binary_to_term(encoded_state, [:safe]),
+         :ok <- OpenIDConnect.ensure_states_equal(state, persisted_state) do
+      {:ok, persisted_verifier}
     else
       _ -> {:error, :invalid_state}
     end
