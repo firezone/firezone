@@ -51,4 +51,3 @@ To cleanup both Swift and Rust build objects:
 cd swift/apple
 ./cleanup.sh all
 ```
-
