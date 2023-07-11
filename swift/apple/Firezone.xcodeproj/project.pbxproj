@@ -122,6 +122,7 @@
 		6FE455082A5D110D006549B1 /* CallbackHandler.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = CallbackHandler.swift; path = Connlib/CallbackHandler.swift; sourceTree = "<group>"; };
 		6FE4550B2A5D111D006549B1 /* SwiftBridgeCore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = SwiftBridgeCore.swift; path = Connlib/Generated/SwiftBridgeCore.swift; sourceTree = "<group>"; };
 		6FE4550E2A5D112C006549B1 /* connlib-apple.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = "connlib-apple.swift"; path = "Connlib/Generated/connlib-apple/connlib-apple.swift"; sourceTree = "<group>"; };
+		6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "FirezoneNetworkExtension-Bridging-Header.h"; sourceTree = "<group>"; };
 		8DCC021928D512AC007E12D2 /* Firezone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Firezone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8DCC021C28D512AC007E12D2 /* FirezoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirezoneApp.swift; sourceTree = "<group>"; };
 		8DCC022528D512AE007E12D2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -179,6 +180,7 @@
 				6FE455082A5D110D006549B1 /* CallbackHandler.swift */,
 				6FE4550B2A5D111D006549B1 /* SwiftBridgeCore.swift */,
 				6FE4550E2A5D112C006549B1 /* connlib-apple.swift */,
+				6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */,
 			);
 			path = FirezoneNetworkExtension;
 			sourceTree = "<group>";
@@ -365,9 +367,11 @@
 				TargetAttributes = {
 					05CF1CEF290B1CEE00CF4755 = {
 						CreatedOnToolsVersion = 14.0.1;
+						LastSwiftMigration = 1430;
 					};
 					05CF1D02290B1DCD00CF4755 = {
 						CreatedOnToolsVersion = 14.0.1;
+						LastSwiftMigration = 1430;
 					};
 					6FE454BC2A5BC5F3006549B1 = {
 						CreatedOnToolsVersion = 14.3;
@@ -513,6 +517,7 @@
 		05CF1CFB290B1CEE00CF4755 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension_iOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -541,7 +546,9 @@
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "FirezoneNetworkExtension/FirezoneNetworkExtension-Bridging-Header.h";
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TVOS_DEPLOYMENT_TARGET = "";
@@ -552,6 +559,7 @@
 		05CF1CFC290B1CEE00CF4755 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension_iOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -579,6 +587,7 @@
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "FirezoneNetworkExtension/FirezoneNetworkExtension-Bridging-Header.h";
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -591,6 +600,7 @@
 		05CF1D0E290B1DCD00CF4755 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension_macOS.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
@@ -619,7 +629,9 @@
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "FirezoneNetworkExtension/FirezoneNetworkExtension-Bridging-Header.h";
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TVOS_DEPLOYMENT_TARGET = "";
 				WATCHOS_DEPLOYMENT_TARGET = "";
@@ -629,6 +641,7 @@
 		05CF1D0F290B1DCD00CF4755 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension_macOS.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
@@ -657,6 +670,7 @@
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "FirezoneNetworkExtension/FirezoneNetworkExtension-Bridging-Header.h";
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
 				SWIFT_VERSION = 5.0;
 				TVOS_DEPLOYMENT_TARGET = "";
