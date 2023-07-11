@@ -159,13 +159,10 @@ defmodule Domain.Gateways do
   end
 
   def list_gateways_for_resource(%Resources.Resource{} = resource) do
-    gateways =
-      Gateway.Query.all()
-      |> Gateway.Query.by_account_id(resource.account_id)
-      |> Gateway.Query.by_resource_id(resource.id)
-      |> Repo.all()
-
-    {:ok, gateways}
+    Gateway.Query.all()
+    |> Gateway.Query.by_account_id(resource.account_id)
+    |> Gateway.Query.by_resource_id(resource.id)
+    |> Repo.list()
   end
 
   def change_gateway(%Gateway{} = gateway, attrs \\ %{}) do
