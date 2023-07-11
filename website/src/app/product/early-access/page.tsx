@@ -59,15 +59,15 @@ export default function EarlyAccess() {
         </div>
       </div>
       <section className="bg-gradient-to-b from-white to-primary-50 border-t border-neutral-200 pb-14">
-        <div className="mx-auto max-w-screen-lg">
+        <div className="mx-auto lg:max-w-screen-lg max-w-screen-sm">
           <div className="py-14 mx-auto">
             <h2 className="justify-center mb-8 sm:mb-16 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-4xl dark:text-neutral-50">
               1.0 Timeline
             </h2>
-            <ol className="items-center sm:flex">
+            <ol className="px-4 items-center sm:flex">
               <li className="relative mb-6 sm:mb-0">
                 <div className="flex items-center">
-                  <div className="z-10 flex items-center justify-center font-semibold w-6 h-6 bg-accent-500 text-neutral-50 rounded-full ring-0 ring-neutral-300 dark:bg-blue-900 sm:ring-8 dark:ring-neutral-900 shrink-0">
+                  <div className="z-10 flex items-center justify-center font-semibold w-6 h-6 bg-accent-600 text-neutral-50 rounded-full ring-0 ring-neutral-300 dark:bg-blue-900 ring-8 dark:ring-neutral-900 shrink-0">
                     1
                   </div>
                   <div className="hidden sm:flex w-full bg-neutral-300 h-0.5 dark:bg-neutral-700"></div>
@@ -87,7 +87,7 @@ export default function EarlyAccess() {
               </li>
               <li className="relative mb-6 sm:mb-0">
                 <div className="flex items-center">
-                  <div className="z-10 flex items-center font-semibold justify-center w-6 h-6 text-neutral-900 bg-neutral-100 rounded-full ring-0 ring-neutral-300 dark:bg-blue-900 sm:ring-8 dark:ring-neutral-900 shrink-0">
+                  <div className="z-10 flex items-center font-semibold justify-center w-6 h-6 text-neutral-900 bg-white rounded-full ring-0 ring-neutral-300 dark:bg-blue-900 ring-8 dark:ring-neutral-900 shrink-0">
                     2
                   </div>
                   <div className="hidden sm:flex w-full bg-neutral-300 h-0.5 dark:bg-neutral-700"></div>
@@ -106,7 +106,7 @@ export default function EarlyAccess() {
               </li>
               <li className="relative mb-6 sm:mb-0">
                 <div className="flex items-center">
-                  <div className="z-10 flex items-center font-semibold justify-center w-6 h-6 text-neutral-900 bg-neutral-100 rounded-full ring-0 ring-neutral-300 dark:bg-blue-900 sm:ring-8 dark:ring-neutral-900 shrink-0">
+                  <div className="z-10 flex items-center font-semibold justify-center w-6 h-6 text-neutral-900 bg-white rounded-full ring-0 ring-neutral-300 dark:bg-blue-900 ring-8 dark:ring-neutral-900 shrink-0">
                     3
                   </div>
                   <div className="hidden sm:flex w-full bg-neutral-300 h-0.5 dark:bg-neutral-700"></div>
