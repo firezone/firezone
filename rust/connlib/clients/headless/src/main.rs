@@ -11,16 +11,16 @@ use url::Url;
 pub struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
-    fn on_update_resources(&self, _resource_list: ResourceList) {
-        todo!()
+    fn on_update_resources(&self, resource_list: ResourceList) {
+        tracing::trace!("Resources updated, current list: {resource_list:?}");
     }
 
-    fn on_connect(&self, _tunnel_addresses: TunnelAddresses) {
-        todo!()
+    fn on_connect(&self, tunnel_addresses: TunnelAddresses) {
+        tracing::trace!("Tunnel connected with address: {tunnel_addresses:?}");
     }
 
     fn on_disconnect(&self) {
-        todo!()
+        tracing::trace!("Tunnel disconnected");
     }
 
     fn on_error(&self, error: &Error, error_type: ErrorType) {
