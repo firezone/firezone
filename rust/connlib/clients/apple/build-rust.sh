@@ -23,10 +23,34 @@ export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
 
 TARGETS=()
 if [[ "$PLATFORM_NAME" = "macosx" ]]; then
-    TARGETS=("aarch64-apple-darwin" "x86_64-apple-darwin")
+    if [[ $CONFIGURATION == "Release" ]] || [[ -z "$NATIVE_ARCH" ]]; then
+      TARGETS=("aarch64-apple-darwin" "x86_64-apple-darwin")
+    else
+      if [[ $NATIVE_ARCH == "arm64" ]]; then
+        TARGETS=("aarch64-apple-darwin")
+      else
+        if [[ $NATIVE_ARCH == "x86_64" ]]; then
+          TARGETS=("x86_64-apple-darwin")
+	else
+          echo "Unsupported native arch for $PLATFORM_NAME: $NATIVE_ARCH"
+        fi
+      fi
+    fi
 else
   if [[ "$PLATFORM_NAME" = "iphonesimulator" ]]; then
-    TARGETS=("aarch64-apple-ios-sim" "x86_64-apple-ios")
+    if [[ $CONFIGURATION == "Release" ]] || [[ -z "$NATIVE_ARCH" ]]; then
+      TARGETS=("aarch64-apple-ios-sim" "x86_64-apple-ios")
+    else
+      if [[ $NATIVE_ARCH == "arm64" ]]; then
+        TARGETS=("aarch64-apple-ios-sim")
+      else
+        if [[ $NATIVE_ARCH == "x86_64" ]]; then
+          TARGETS=("x86_64-apple-ios")
+	else
+          echo "Unsupported native arch for $PLATFORM_NAME: $NATIVE_ARCH"
+        fi
+      fi
+    fi
   else
     if [[ "$PLATFORM_NAME" = "iphoneos" ]]; then
       TARGETS="aarch64-apple-ios"
