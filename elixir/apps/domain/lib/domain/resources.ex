@@ -1,6 +1,7 @@
 defmodule Domain.Resources do
   alias Domain.{Repo, Validator, Auth}
   alias Domain.Resources.{Authorizer, Resource}
+  alias Domain.Gateways
 
   def fetch_resource_by_id(id, %Auth.Subject{} = subject) do
     required_permissions =
@@ -44,6 +45,26 @@ defmodule Domain.Resources do
       |> Authorizer.for_subject(subject)
       |> Repo.list()
     end
+  end
+
+  def count_resources_for_gateway(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject) do
+    count =
+      Resource.Query.all()
+      |> Resource.Query.by_account_id(subject.account.id)
+      |> Resource.Query.by_gateway_id(gateway.group_id)
+      |> Repo.aggregate(:count)
+
+    {:ok, count}
+  end
+
+  def list_resources_for_gateway(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject) do
+    resources =
+      Resource.Query.all()
+      |> Resource.Query.by_account_id(subject.account.id)
+      |> Resource.Query.by_gateway_id(gateway.group_id)
+      |> Repo.all()
+
+    {:ok, resources}
   end
 
   def create_resource(attrs, %Auth.Subject{} = subject) do

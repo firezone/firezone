@@ -167,7 +167,7 @@ IO.puts("Created gateway groups:")
 IO.puts("  #{gateway_group.name_prefix} token: #{Gateways.encode_token!(gateway_group_token)}")
 IO.puts("")
 
-{:ok, gateway} =
+{:ok, gateway1} =
   Gateways.upsert_gateway(gateway_group_token, %{
     external_id: Ecto.UUID.generate(),
     name_suffix: "gw-#{Domain.Crypto.rand_string(5)}",
@@ -176,12 +176,28 @@ IO.puts("")
     last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}}
   })
 
+{:ok, gateway2} =
+  Gateways.upsert_gateway(gateway_group_token, %{
+    external_id: Ecto.UUID.generate(),
+    name_suffix: "gw-#{Domain.Crypto.rand_string(5)}",
+    public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+    last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+    last_seen_remote_ip: %Postgrex.INET{address: {164, 112, 78, 62}}
+  })
+
 IO.puts("Created gateways:")
-gateway_name = "#{gateway_group.name_prefix}-#{gateway.name_suffix}"
+gateway_name = "#{gateway_group.name_prefix}-#{gateway1.name_suffix}"
 IO.puts("  #{gateway_name}:")
-IO.puts("    External UUID: #{gateway.external_id}")
-IO.puts("    Public Key: #{gateway.public_key}")
-IO.puts("    IPv4: #{gateway.ipv4} IPv6: #{gateway.ipv6}")
+IO.puts("    External UUID: #{gateway1.external_id}")
+IO.puts("    Public Key: #{gateway1.public_key}")
+IO.puts("    IPv4: #{gateway1.ipv4} IPv6: #{gateway1.ipv6}")
+IO.puts("")
+
+gateway_name = "#{gateway_group.name_prefix}-#{gateway2.name_suffix}"
+IO.puts("  #{gateway_name}:")
+IO.puts("    External UUID: #{gateway1.external_id}")
+IO.puts("    Public Key: #{gateway2.public_key}")
+IO.puts("    IPv4: #{gateway2.ipv4} IPv6: #{gateway2.ipv6}")
 IO.puts("")
 
 {:ok, dns_resource} =

@@ -852,6 +852,7 @@ defmodule Web.CoreComponents do
   attr :rows, :list, required: true
   attr :row_id, :any, default: nil, doc: "the function for generating the row id"
   attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
+  attr :subject, :string, required: false
 
   attr :row_item, :any,
     default: &Function.identity/1,
@@ -859,6 +860,7 @@ defmodule Web.CoreComponents do
 
   slot :col, required: true do
     attr :label, :string
+    attr :sortable, :string
   end
 
   slot :action, doc: "the slot for showing user actions in the last table column"
@@ -870,41 +872,56 @@ defmodule Web.CoreComponents do
       end
 
     ~H"""
-    <div class="overflow-y-auto px-4 sm:overflow-visible sm:px-0">
-      <table class="w-[40rem] mt-11 sm:w-full">
-        <thead class="text-sm text-left leading-6 text-zinc-500">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+        <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
           <tr>
-            <th :for={col <- @col} class="p-0 pr-6 pb-4 font-normal"><%= col[:label] %></th>
-            <th class="relative p-0 pb-4"><span class="sr-only"><%= gettext("Actions") %></span></th>
+            <th :for={col <- @col} class="px-4 py-3">
+              <%= col[:label] %>
+              <.icon
+                :if={col[:sortable] == "true"}
+                name="hero-chevron-up-down-solid"
+                class="w-4 h-4 ml-1"
+              />
+            </th>
+            <th class="px-4 py-3">
+              <span class="sr-only"><%= gettext("Actions") %></span>
+            </th>
           </tr>
         </thead>
-        <tbody
-          id={@id}
-          phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
-          class="relative divide-y divide-zinc-100 border-t border-zinc-200 text-sm leading-6 text-zinc-700"
-        >
-          <tr :for={row <- @rows} id={@row_id && @row_id.(row)} class="group hover:bg-zinc-50">
+        <tbody id={@id} phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}>
+          <tr :for={row <- @rows} id={@row_id && @row_id.(row)} class="border-b dark:border-gray-700">
             <td
-              :for={{col, i} <- Enum.with_index(@col)}
+              :for={{col, _i} <- Enum.with_index(@col)}
               phx-click={@row_click && @row_click.(row)}
-              class={["relative p-0", @row_click && "hover:cursor-pointer"]}
+              class={[
+                "px-4 py-3",
+                @row_click && "hover:cursor-pointer"
+              ]}
             >
-              <div class="block py-4 pr-6">
-                <span class="absolute -inset-y-px right-0 -left-4 group-hover:bg-zinc-50 sm:rounded-l-xl" />
-                <span class={["relative", i == 0 && "font-semibold text-zinc-900"]}>
-                  <%= render_slot(col, @row_item.(row)) %>
-                </span>
-              </div>
+              <%= render_slot(col, @row_item.(row)) %>
             </td>
-            <td :if={@action != []} class="relative w-14 p-0">
-              <div class="relative whitespace-nowrap py-4 text-right text-sm font-medium">
-                <span class="absolute -inset-y-px -right-4 left-0 group-hover:bg-zinc-50 sm:rounded-r-xl" />
-                <span
-                  :for={action <- @action}
-                  class="relative ml-4 font-semibold leading-6 text-zinc-900 hover:text-zinc-700"
+            <td :if={@action != []} class="px-4 py-3 flex items-center justify-end">
+              <button
+                id={"#{@row_id.(row)}-dropdown-button"}
+                data-dropdown-toggle={"#{@row_id.(row)}-dropdown"}
+                class="inline-flex items-center p-0.5 text-sm font-medium text-center text-gray-500 hover:text-gray-800 rounded-lg focus:outline-none dark:text-gray-400 dark:hover:text-gray-100"
+                type="button"
+              >
+                <.icon name="hero-ellipsis-horizontal" class="w-5 h-5" />
+              </button>
+              <div
+                id={"#{@row_id.(row)}-dropdown" }
+                class="hidden z-10 w-44 bg-white rounded divide-y divide-gray-100 shadow border border-gray-300 dark:bg-gray-700 dark:divide-gray-600"
+              >
+                <ul
+                  class="py-1 text-sm text-gray-700 dark:text-gray-200"
+                  aria-labelledby={"#{@row_id.(row)}-dropdown-button"}
                 >
-                  <%= render_slot(action, @row_item.(row)) %>
-                </span>
+                  <li :for={action <- @action}>
+                    <%= render_slot(action, @row_item.(row)) %>
+                  </li>
+                </ul>
               </div>
             </td>
           </tr>
@@ -1063,6 +1080,27 @@ defmodule Web.CoreComponents do
         <span id="status-page-widget" phx-hook="StatusPage" />
       </.link>
     </div>
+    """
+  end
+
+  attr :type, :string, default: "default"
+  slot :inner_block, required: true
+
+  def badge(assigns) do
+    colors = %{
+      "success" => "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
+      "failure" => "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
+      "warning" => "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
+      "info" => "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
+      "default" => "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
+    }
+
+    assigns = assign(assigns, colors: colors)
+
+    ~H"""
+    <span class={"text-xs font-medium mr-2 px-2.5 py-0.5 rounded #{@colors[@type]}"}>
+      <%= render_slot(@inner_block) %>
+    </span>
     """
   end
 

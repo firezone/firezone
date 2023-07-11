@@ -101,12 +101,18 @@ defmodule Domain.Gateways do
     end
   end
 
-  def fetch_gateway_by_id(id, %Auth.Subject{} = subject) do
+  def fetch_gateway_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
          true <- Validator.valid_uuid?(id) do
       Gateway.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
+      |> case do
+        {:ok, gateway} -> {:ok, Repo.preload(gateway, preload)}
+        {:error, reason} -> {:error, reason}
+      end
     else
       false -> {:error, :not_found}
       other -> other
@@ -121,11 +127,16 @@ defmodule Domain.Gateways do
     |> Repo.preload(preload)
   end
 
-  def list_gateways(%Auth.Subject{} = subject) do
+  def list_gateways(%Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Gateway.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list()
+      {:ok, gateways} =
+        Gateway.Query.all()
+        |> Authorizer.for_subject(subject)
+        |> Repo.list()
+
+      {:ok, Repo.preload(gateways, preload)}
     end
   end
 
@@ -140,6 +151,16 @@ defmodule Domain.Gateways do
       # and persist them in the memory not to query DB every time with a
       # `WHERE ... IN (...)`.
       |> Gateway.Query.by_ids()
+      |> Gateway.Query.by_account_id(resource.account_id)
+      |> Gateway.Query.by_resource_id(resource.id)
+      |> Repo.all()
+
+    {:ok, gateways}
+  end
+
+  def list_gateways_for_resource(%Resources.Resource{} = resource) do
+    gateways =
+      Gateway.Query.all()
       |> Gateway.Query.by_account_id(resource.account_id)
       |> Gateway.Query.by_resource_id(resource.id)
       |> Repo.all()
