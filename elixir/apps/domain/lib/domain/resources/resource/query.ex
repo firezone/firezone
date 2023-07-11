@@ -14,7 +14,7 @@ defmodule Domain.Resources.Resource.Query do
     where(queryable, [resources: resources], resources.account_id == ^account_id)
   end
 
-  def by_gateway_id(queryable \\ all(), gateway_group_id) do
+  def by_gateway_group_id(queryable \\ all(), gateway_group_id) do
     queryable
     |> with_joined_connections()
     |> where([connections: connections], connections.gateway_group_id == ^gateway_group_id)
