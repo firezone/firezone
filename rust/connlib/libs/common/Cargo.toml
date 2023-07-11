@@ -28,6 +28,7 @@ ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 boringtun = { workspace = true }
 os_info = { version = "3", default-features = false }
 rand = { version = "0.8", default-features = false, features = ["std"] }
+chrono = { workspace = true }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 swift-bridge = { workspace = true }

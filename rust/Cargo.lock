@@ -134,6 +134,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "android-tzdata"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e999941b234f3131b00bc13c22d06e8c5ff726d1b6318ac7eb276997bbb4fef0"
+
+[[package]]
 name = "android_log-sys"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -149,6 +155,15 @@ dependencies = [
  "env_logger",
  "log",
  "once_cell",
+]
+
+[[package]]
+name = "android_system_properties"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -225,7 +240,7 @@ dependencies = [
  "num-traits",
  "rusticata-macros",
  "thiserror",
- "time",
+ "time 0.3.22",
 ]
 
 [[package]]
@@ -241,7 +256,7 @@ dependencies = [
  "num-traits",
  "rusticata-macros",
  "thiserror",
- "time",
+ "time 0.3.22",
 ]
 
 [[package]]
@@ -540,6 +555,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono"
+version = "0.4.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec837a71355b28f6556dbd569b37b3f363091c0bd4b2e735674521b4c5fd9bc5"
+dependencies = [
+ "android-tzdata",
+ "iana-time-zone",
+ "num-traits",
+ "serde",
+ "time 0.1.45",
+ "winapi",
+]
+
+[[package]]
 name = "cipher"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -648,7 +677,7 @@ dependencies = [
  "firezone-client-connlib",
  "libc",
  "swift-bridge",
- "swift-bridge-build 0.1.51 (git+https://github.com/conectado/swift-bridge.git?branch=fix-already-declared)",
+ "swift-bridge-build",
  "walkdir",
 ]
 
@@ -1062,6 +1091,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "boringtun",
+ "chrono",
  "firezone-tunnel",
  "libs-common",
  "serde",
@@ -1076,6 +1106,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "boringtun",
+ "chrono",
  "firezone-tunnel",
  "libs-common",
  "serde",
@@ -1092,6 +1123,7 @@ dependencies = [
  "async-trait",
  "boringtun",
  "bytes",
+ "chrono",
  "futures",
  "futures-util",
  "ip_network",
@@ -1381,6 +1413,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 
 [[package]]
+name = "iana-time-zone"
+version = "0.1.57"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2fad5b825842d2b38bd206f3e81d6957625fd7f0a361e345c30e01a0ae2dd613"
+dependencies = [
+ "android_system_properties",
+ "core-foundation-sys",
+ "iana-time-zone-haiku",
+ "js-sys",
+ "wasm-bindgen",
+ "windows",
+]
+
+[[package]]
+name = "iana-time-zone-haiku"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
+dependencies = [
+ "cc 1.0.79 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1594,6 +1649,7 @@ dependencies = [
  "backoff",
  "base64 0.21.2",
  "boringtun",
+ "chrono",
  "futures",
  "futures-util",
  "ip_network",
@@ -2178,7 +2234,7 @@ checksum = "ffbe84efe2f38dea12e9bfc1f65377fdf03e53a18cb3b995faedf7934c7e785b"
 dependencies = [
  "pem",
  "ring",
- "time",
+ "time 0.3.22",
  "x509-parser 0.14.0",
  "yasna",
 ]
@@ -2789,49 +2845,31 @@ checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
 
 [[package]]
 name = "swift-bridge"
-version = "0.1.51"
-source = "git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f#4fbd30f81085dc366bda3c0303eac66345de3ed9"
+version = "0.1.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f72aa49fc376893673e6b7ace589802877d2dad554da1fde5aa1445498e1929c"
 dependencies = [
- "swift-bridge-build 0.1.51 (git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f)",
+ "swift-bridge-build",
  "swift-bridge-macro",
 ]
 
 [[package]]
 name = "swift-bridge-build"
-version = "0.1.51"
-source = "git+https://github.com/conectado/swift-bridge.git?branch=fix-already-declared#7415b9108beb87de95cd4687c1f841ae7b37ea6f"
+version = "0.1.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba4282dc94afa1b7d8f2445532a7c0b7508d470cee261132e26ec001b3185c3b"
 dependencies = [
  "proc-macro2",
- "swift-bridge-ir 0.1.51 (git+https://github.com/conectado/swift-bridge.git?branch=fix-already-declared)",
- "syn 1.0.109",
- "tempfile",
-]
-
-[[package]]
-name = "swift-bridge-build"
-version = "0.1.51"
-source = "git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f#4fbd30f81085dc366bda3c0303eac66345de3ed9"
-dependencies = [
- "proc-macro2",
- "swift-bridge-ir 0.1.51 (git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f)",
+ "swift-bridge-ir",
  "syn 1.0.109",
  "tempfile",
 ]
 
 [[package]]
 name = "swift-bridge-ir"
-version = "0.1.51"
-source = "git+https://github.com/conectado/swift-bridge.git?branch=fix-already-declared#7415b9108beb87de95cd4687c1f841ae7b37ea6f"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "swift-bridge-ir"
-version = "0.1.51"
-source = "git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f#4fbd30f81085dc366bda3c0303eac66345de3ed9"
+version = "0.1.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2096a82fb42280699d9b5dde6674cb4f802931eca8623f1edc4587c50dc58da"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2840,12 +2878,13 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge-macro"
-version = "0.1.51"
-source = "git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f#4fbd30f81085dc366bda3c0303eac66345de3ed9"
+version = "0.1.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c2f4d5b41976c351ecb735eb9336bdd3cbaaebc9990300023ea2b6874a2d68c"
 dependencies = [
  "proc-macro2",
  "quote",
- "swift-bridge-ir 0.1.51 (git+https://github.com/chinedufn/swift-bridge.git?rev=4fbd30f)",
+ "swift-bridge-ir",
  "syn 1.0.109",
 ]
 
@@ -2946,6 +2985,17 @@ checksum = "3fdd6f064ccff2d6567adcb3873ca630700f00b5ad3f060c25b5dcfd9a4ce152"
 dependencies = [
  "cfg-if 1.0.0",
  "once_cell",
+]
+
+[[package]]
+name = "time"
+version = "0.1.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b797afad3f312d1c66a56d11d0316f916356d11bd158fbc6ca6389ff6bf805a"
+dependencies = [
+ "libc",
+ "wasi 0.10.0+wasi-snapshot-preview1",
+ "winapi",
 ]
 
 [[package]]
@@ -3137,7 +3187,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "time",
+ "time 0.3.22",
  "tracing-core",
  "tracing-subscriber",
 ]
@@ -3393,6 +3443,12 @@ checksum = "cccddf32554fecc6acb585f82a32a72e28b48f8c4c1883ddfeeeaa96f7d8e519"
 
 [[package]]
 name = "wasi"
+version = "0.10.0+wasi-snapshot-preview1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
+
+[[package]]
+name = "wasi"
 version = "0.11.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
@@ -3509,7 +3565,7 @@ dependencies = [
  "smol_str",
  "stun",
  "thiserror",
- "time",
+ "time 0.3.22",
  "tokio",
  "turn",
  "url",
@@ -3728,6 +3784,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
+name = "windows"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e686886bc078bc1b0b600cac0147aadb815089b6e4da64016cbd754b6342700f"
+dependencies = [
+ "windows-targets 0.48.1",
+]
+
+[[package]]
 name = "windows-sys"
 version = "0.45.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3901,7 +3966,7 @@ dependencies = [
  "oid-registry 0.4.0",
  "rusticata-macros",
  "thiserror",
- "time",
+ "time 0.3.22",
 ]
 
 [[package]]
@@ -3920,7 +3985,7 @@ dependencies = [
  "ring",
  "rusticata-macros",
  "thiserror",
- "time",
+ "time 0.3.22",
 ]
 
 [[package]]
@@ -3929,7 +3994,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e17bb3549cc1321ae1296b9cdc2698e2b6cb1992adfa19a8c72e5b7a738f44cd"
 dependencies = [
- "time",
+ "time 0.3.22",
 ]
 
 [[package]]

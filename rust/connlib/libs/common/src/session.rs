@@ -48,11 +48,13 @@ pub struct Session<T, U, V, R, M, CB: Callbacks> {
 }
 
 /// Resource list that will be displayed to the users.
+#[derive(Debug)]
 pub struct ResourceList {
     pub resources: Vec<String>,
 }
 
 /// Tunnel addresses to be surfaced to the client apps.
+#[derive(Debug)]
 pub struct TunnelAddresses {
     /// IPv4 Address.
     pub address4: Ipv4Addr,

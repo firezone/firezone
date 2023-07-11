@@ -293,6 +293,29 @@ where
         });
     }
 
+    fn remove_expired_peers(self: &Arc<Self>) {
+        let mut peers_by_ip = self.peers_by_ip.write();
+
+        for (_, peer) in peers_by_ip.iter() {
+            if !peer.is_valid() {
+                tracing::trace!("Peer connection with index {} expired", peer.index);
+                let conn = self.peer_connections.lock().remove(&peer.conn_id);
+                let p = peer.clone();
+                // We are holding a Mutex, specially a write one, we don't want to make a blocking call
+                tokio::spawn(async move {
+                    let _ = p.shutdown().await;
+                    if let Some(conn) = conn {
+                        // TODO: it seems that even closing the stream there are messages to the relay
+                        // see where they come from.
+                        let _ = conn.close().await;
+                    }
+                });
+            }
+        }
+
+        peers_by_ip.retain(|_, p| p.is_valid());
+    }
+
     fn start_peers_refresh_timer(self: &Arc<Self>) {
         let tunnel = self.clone();
 
@@ -302,6 +325,8 @@ where
             let mut dst_buf = [0u8; MAX_UDP_SIZE];
 
             loop {
+                tunnel.remove_expired_peers();
+
                 let peers: Vec<_> = tunnel
                     .peers_by_ip
                     .read()
@@ -341,8 +366,15 @@ where
         tokio::spawn(async move {
             let mut src_buf = [0u8; MAX_UDP_SIZE];
             let mut dst_buf = [0u8; MAX_UDP_SIZE];
-            // Loop while we have packets on the anonymous connection
             while let Ok(size) = peer.channel.read(&mut src_buf[..]).await {
+                // TODO: Double check that this can only happen on closed channel
+                // I think it's possible to transmit a 0-byte message through the channel
+                // but we would never use that.
+                // We should keep track of an open/closed channel ourselves if we wanted to do it properly then.
+                if size == 0 {
+                    break;
+                }
+
                 tracing::trace!("read {size} bytes from peer");
                 // The rate limiter initially checks mac1 and mac2, and optionally asks to send a cookie
                 let parsed_packet = match tunnel.rate_limiter.verify_packet(
@@ -464,12 +496,14 @@ where
                     None => continue,
                 };
 
-                let (encapsulate_result, channel) = {
+                let (encapsulate_result, channel, peer_index, conn_id) = {
                     let peers_by_ip = dev.peers_by_ip.read();
                     match peers_by_ip.longest_match(dst_addr).map(|p| p.1) {
                         Some(peer) => (
                             peer.tunnel.lock().encapsulate(&src[..res], &mut dst[..]),
                             peer.channel.clone(),
+                            peer.index,
+                            peer.conn_id,
                         ),
                         None => {
                             // We can buffer requests here but will drop them for now and let the upper layer reliability protocol handle this
@@ -509,6 +543,7 @@ where
                         tracing::trace!(
                             "tunnel for resource corresponding to {dst_addr} was finalized"
                         );
+                        dev.peers_by_ip.write().retain(|_, p| p.index != peer_index);
                     }
                     TunnResult::Err(e) => {
                         tracing::error!(message = "Encapsulate error for resource corresponding to {dst_addr}", error = ?e);
@@ -518,6 +553,25 @@ where
                         tracing::trace!("writing iface packet to peer: {dst_addr}");
                         if let Err(e) = channel.write(&Bytes::copy_from_slice(packet)).await {
                             tracing::error!("Couldn't write packet to channel: {e}");
+                            if matches!(
+                                e,
+                                webrtc::data::Error::ErrStreamClosed
+                                    | webrtc::data::Error::Sctp(
+                                        webrtc::sctp::Error::ErrStreamClosed
+                                    )
+                            ) {
+                                dev.peers_by_ip.write().retain(|_, p| p.index != peer_index);
+                                let _ = channel.close().await;
+                                let conn = dev.peer_connections.lock().remove(&conn_id);
+                                if let Some(conn) = conn {
+                                    if let Err(e) = conn.close().await {
+                                        tracing::error!(
+                                            "Problem while trying to close channel: {e:?}"
+                                        );
+                                        dev.callbacks().on_error(&e.into(), Recoverable);
+                                    }
+                                }
+                            }
                             dev.callbacks.on_error(&e.into(), Recoverable);
                         }
                     }

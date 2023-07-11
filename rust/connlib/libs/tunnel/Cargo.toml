@@ -21,6 +21,7 @@ libc = { version = "0.2", default-features = false, features = ["std", "const-ex
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
 boringtun = { workspace = true }
+chrono = { workspace = true }
 
 # TODO: research replacing for https://github.com/algesten/str0m
 webrtc = { version = "0.8" }
