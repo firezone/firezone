@@ -395,7 +395,9 @@ module "web" {
         healthy_threshold   = 1
         unhealthy_threshold = 2
 
-        http_health_check = {}
+        http_health_check = {
+          request_path = "/healthz"
+        }
       }
     }
   ]
@@ -462,7 +464,9 @@ module "api" {
         healthy_threshold   = 1
         unhealthy_threshold = 2
 
-        tcp_health_check = {}
+        http_health_check = {
+          request_path = "/healthz"
+        }
       }
     }
   ]
