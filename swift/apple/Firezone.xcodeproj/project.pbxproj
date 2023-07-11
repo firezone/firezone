@@ -46,26 +46,19 @@
 			remoteGlobalIDString = 05CF1D02290B1DCD00CF4755;
 			remoteInfo = FirezoneNetworkExtensionmacOS;
 		};
-		6FE454E02A5BF88D006549B1 /* PBXContainerItemProxy */ = {
+		6F3E231B2A5DC0DB00737CF1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 6FE454BC2A5BC5F3006549B1;
 			remoteInfo = "Build Connlib";
 		};
-		6FE454E22A5BF892006549B1 /* PBXContainerItemProxy */ = {
+		6F3E231D2A5DC0DF00737CF1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 6FE454DC2A5BF851006549B1;
-			remoteInfo = "Copy Generated Connlib Files";
-		};
-		6FE454E42A5BF899006549B1 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 6FE454DC2A5BF851006549B1;
-			remoteInfo = "Copy Generated Connlib Files";
+			remoteGlobalIDString = 6FE454BC2A5BC5F3006549B1;
+			remoteInfo = "Build Connlib";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -255,21 +248,6 @@
 			passBuildSettingsInEnvironment = 1;
 			productName = "Build Connlib";
 		};
-		6FE454DC2A5BF851006549B1 /* Copy Generated Connlib Files */ = {
-			isa = PBXLegacyTarget;
-			buildArgumentsString = "$(ACTION)";
-			buildConfigurationList = 6FE454DF2A5BF851006549B1 /* Build configuration list for PBXLegacyTarget "Copy Generated Connlib Files" */;
-			buildPhases = (
-			);
-			buildToolPath = "${PROJECT_DIR}/copy_generated_connlib_files.sh";
-			buildWorkingDirectory = "${PROJECT_DIR}";
-			dependencies = (
-				6FE454E12A5BF88D006549B1 /* PBXTargetDependency */,
-			);
-			name = "Copy Generated Connlib Files";
-			passBuildSettingsInEnvironment = 1;
-			productName = "Copy Generated Connlib Files";
-		};
 /* End PBXLegacyTarget section */
 
 /* Begin PBXNativeTarget section */
@@ -277,6 +255,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 05CF1CFA290B1CEE00CF4755 /* Build configuration list for PBXNativeTarget "FirezoneNetworkExtensioniOS" */;
 			buildPhases = (
+				6F3E231A2A5D830D00737CF1 /* Copy Connlib Headers and Swift Files */,
 				05CF1CEC290B1CEE00CF4755 /* Sources */,
 				05CF1CED290B1CEE00CF4755 /* Frameworks */,
 				05CF1CEE290B1CEE00CF4755 /* Resources */,
@@ -284,7 +263,7 @@
 			buildRules = (
 			);
 			dependencies = (
-				6FE454E32A5BF892006549B1 /* PBXTargetDependency */,
+				6F3E231C2A5DC0DB00737CF1 /* PBXTargetDependency */,
 			);
 			name = FirezoneNetworkExtensioniOS;
 			packageProductDependencies = (
@@ -298,6 +277,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 05CF1D0D290B1DCD00CF4755 /* Build configuration list for PBXNativeTarget "FirezoneNetworkExtensionmacOS" */;
 			buildPhases = (
+				6F3E23192A5D823500737CF1 /* Copy Connlib Headers and Swift Files */,
 				05CF1CFF290B1DCD00CF4755 /* Sources */,
 				05CF1D00290B1DCD00CF4755 /* Frameworks */,
 				05CF1D01290B1DCD00CF4755 /* Resources */,
@@ -305,7 +285,7 @@
 			buildRules = (
 			);
 			dependencies = (
-				6FE454E52A5BF899006549B1 /* PBXTargetDependency */,
+				6F3E231E2A5DC0DF00737CF1 /* PBXTargetDependency */,
 			);
 			name = FirezoneNetworkExtensionmacOS;
 			packageProductDependencies = (
@@ -360,9 +340,6 @@
 					6FE454BC2A5BC5F3006549B1 = {
 						CreatedOnToolsVersion = 14.3;
 					};
-					6FE454DC2A5BF851006549B1 = {
-						CreatedOnToolsVersion = 14.3;
-					};
 					8DCC021828D512AC007E12D2 = {
 						CreatedOnToolsVersion = 14.0;
 						LastSwiftMigration = 1400;
@@ -388,7 +365,6 @@
 				05CF1CEF290B1CEE00CF4755 /* FirezoneNetworkExtensioniOS */,
 				05CF1D02290B1DCD00CF4755 /* FirezoneNetworkExtensionmacOS */,
 				6FE454BC2A5BC5F3006549B1 /* Build Connlib */,
-				6FE454DC2A5BF851006549B1 /* Copy Generated Connlib Files */,
 			);
 		};
 /* End PBXProject section */
@@ -419,6 +395,51 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		6F3E23192A5D823500737CF1 /* Copy Connlib Headers and Swift Files */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy Connlib Headers and Swift Files";
+			outputFileListPaths = (
+				"$(SRCROOT)/FirezoneNetworkExtension/Connlib.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n./copy_generated_connlib_files.sh\n";
+			showEnvVarsInLog = 0;
+		};
+		6F3E231A2A5D830D00737CF1 /* Copy Connlib Headers and Swift Files */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy Connlib Headers and Swift Files";
+			outputFileListPaths = (
+				"$(SRCROOT)/FirezoneNetworkExtension/Connlib.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n./copy_generated_connlib_files.sh\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		05CF1CEC290B1CEE00CF4755 /* Sources */ = {
@@ -470,20 +491,15 @@
 			target = 05CF1D02290B1DCD00CF4755 /* FirezoneNetworkExtensionmacOS */;
 			targetProxy = 05CF1D0A290B1DCD00CF4755 /* PBXContainerItemProxy */;
 		};
-		6FE454E12A5BF88D006549B1 /* PBXTargetDependency */ = {
+		6F3E231C2A5DC0DB00737CF1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 6FE454BC2A5BC5F3006549B1 /* Build Connlib */;
-			targetProxy = 6FE454E02A5BF88D006549B1 /* PBXContainerItemProxy */;
+			targetProxy = 6F3E231B2A5DC0DB00737CF1 /* PBXContainerItemProxy */;
 		};
-		6FE454E32A5BF892006549B1 /* PBXTargetDependency */ = {
+		6F3E231E2A5DC0DF00737CF1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 6FE454DC2A5BF851006549B1 /* Copy Generated Connlib Files */;
-			targetProxy = 6FE454E22A5BF892006549B1 /* PBXContainerItemProxy */;
-		};
-		6FE454E52A5BF899006549B1 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 6FE454DC2A5BF851006549B1 /* Copy Generated Connlib Files */;
-			targetProxy = 6FE454E42A5BF899006549B1 /* PBXContainerItemProxy */;
+			target = 6FE454BC2A5BC5F3006549B1 /* Build Connlib */;
+			targetProxy = 6F3E231D2A5DC0DF00737CF1 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -667,31 +683,6 @@
 			name = Debug;
 		};
 		6FE454BF2A5BC5F3006549B1 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				OTHER_CFLAGS = "";
-				OTHER_LDFLAGS = "";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-			};
-			name = Release;
-		};
-		6FE454DD2A5BF851006549B1 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				DEBUGGING_SYMBOLS = YES;
-				DEBUG_INFORMATION_FORMAT = dwarf;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				OTHER_CFLAGS = "";
-				OTHER_LDFLAGS = "";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-			};
-			name = Debug;
-		};
-		6FE454DE2A5BF851006549B1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
@@ -949,15 +940,6 @@
 			buildConfigurations = (
 				6FE454BE2A5BC5F3006549B1 /* Debug */,
 				6FE454BF2A5BC5F3006549B1 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		6FE454DF2A5BF851006549B1 /* Build configuration list for PBXLegacyTarget "Copy Generated Connlib Files" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				6FE454DD2A5BF851006549B1 /* Debug */,
-				6FE454DE2A5BF851006549B1 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
