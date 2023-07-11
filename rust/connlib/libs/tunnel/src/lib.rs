@@ -13,7 +13,7 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use libs_common::{
     error_type::ErrorType::{Fatal, Recoverable},
-    Callbacks,
+    Callbacks, TunnelAddresses,
 };
 
 use async_trait::async_trait;
@@ -224,7 +224,17 @@ where
                 }
             }
         }
-        self.resources.write().insert(resource_description);
+        let resource_list = {
+            let mut resources = self.resources.write();
+            resources.insert(resource_description);
+            resources.resource_list()
+        };
+        match resource_list {
+            Ok(resource_list) => {
+                self.callbacks.on_update_resources(resource_list);
+            }
+            Err(err) => self.callbacks.on_error(&err.into(), Fatal),
+        }
     }
 
     /// Sets the interface configuration and starts background tasks.
@@ -244,6 +254,11 @@ where
 
         self.start_timers();
         self.start_iface_handler();
+
+        self.callbacks.on_connect(TunnelAddresses {
+            address4: config.ipv4,
+            address6: config.ipv6,
+        });
 
         tracing::trace!("Started background loops");
 
