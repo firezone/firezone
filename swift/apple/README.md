@@ -2,33 +2,53 @@
 
 Firezone app clients for macOS and iOS.
 
-## Builidng
+## Pre-requisites
 
-Clone this repo:
+  - Rust
+
+## Building
+
+ 1. Clone this repo:
+
+    ```bash
+    git clone https://github.com/firezone/firezone
+    ```
+
+ 2. `cd` to the Apple clients code
+
+    ```bash
+    cd swift/apple
+    ```
+
+ 3. Rename and populate developer team ID file:
+
+    ```bash
+    cp Firezone/Developer.xcconfig.template Firezone/Developer.xcconfig
+    vim Firezone/Developer.xcconfig
+    ```
+
+ 4. Open project in Xcode:
+
+    ```bash
+    open Firezone.xcodeproj
+    ```
+
+    Build the Firezone target
+
+
+## Cleaning up
+
+To cleanup Swift build objects:
 
 ```bash
-git clone https://github.com/firezone/firezone
+cd swift/apple
+./cleanup.sh
 ```
 
-Build Connlib:
-```bash
-cd rust/connlib/clients/apple
-PLATFORM_NAME=macosx ./build-rust.sh # For macOS
-PLATFORM_NAME=iphoneos ./build-rust.sh # For iOS
-./build-xcframework-dev.sh
-```
-
-Rename and populate developer team ID file:
+To cleanup both Swift and Rust build objects:
 
 ```bash
-cp Firezone/Developer.xcconfig.template Firezone/Developer.xcconfig
-vim Firezone/Developer.xcconfig
+cd swift/apple
+./cleanup.sh all
 ```
 
-Open project in Xcode:
-
-```bash
-open Firezone.xcodeproj
-```
-
-Build the Firezone target
