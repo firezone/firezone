@@ -50,7 +50,7 @@ defmodule Domain.Resources do
   def count_resources_for_gateway(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject) do
     count =
       Resource.Query.all()
-      |> Resource.Query.by_account_id(subject.account.id)
+      |> Authorizer.for_subject(subject)
       |> Resource.Query.by_gateway_id(gateway.group_id)
       |> Repo.aggregate(:count)
 
