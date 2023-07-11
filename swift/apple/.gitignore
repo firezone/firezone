@@ -6,3 +6,4 @@ xcuserdata/
 **/*.xcuserstate
 
 Firezone/xcconfig/Developer.xcconfig
+FirezoneNetworkExtension/Connlib
