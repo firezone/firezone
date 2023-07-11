@@ -1138,6 +1138,7 @@ dependencies = [
  "rand_core 0.6.4",
  "rtnetlink",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "tracing",
