@@ -17,7 +17,7 @@
   .github-html ul {
     @apply list-disc text-sm list-inside;
   }
-  
+
   .github-html a {
     @apply text-accent-500 underline hover:no-underline;
   }
