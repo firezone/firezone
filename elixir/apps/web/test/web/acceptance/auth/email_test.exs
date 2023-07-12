@@ -17,6 +17,8 @@ defmodule Web.Acceptance.Auth.EmailTest do
   end
 
   feature "allows to log in using email link", %{session: session} do
+    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
     account = AccountsFixtures.create_account()
     provider = AuthFixtures.create_email_provider(account: account)
 
