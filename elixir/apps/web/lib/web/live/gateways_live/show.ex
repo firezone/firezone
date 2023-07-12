@@ -97,7 +97,9 @@ defmodule Web.GatewaysLive.Show do
               Location
             </th>
             <td class="px-6 py-4">
-              <%= @gateway.last_seen_remote_ip %> (TODO: add physical location)
+              <code>
+                <%= @gateway.last_seen_remote_ip %>
+              </code>
             </td>
           </tr>
           <tr class="border-b border-gray-200 dark:border-gray-700">
