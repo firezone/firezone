@@ -25,6 +25,8 @@ end
 
 IO.puts("")
 
+Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
 {:ok, email_provider} =
   Auth.create_provider(account, %{
     name: "email",
