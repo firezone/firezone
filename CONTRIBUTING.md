@@ -155,6 +155,16 @@ If using asdf, simply run `asdf install` from the project root.
   will show which `asdf` plugins need to be installed prior to installing the
   required language runtimes.
 
+You may need to install the required plugins first:
+
+```bash
+asdf plugin-add elixir https://github.com/asdf-vm/asdf-elixir.git
+asdf plugin add erlang https://github.com/asdf-vm/asdf-erlang.git
+asdf plugin add nodejs https://github.com/asdf-vm/asdf-nodejs.git
+asdf plugin add ruby https://github.com/asdf-vm/asdf-ruby.git
+asdf plugin-add python https://github.com/asdf-community/asdf-python.git
+```
+
 This is used to run static analysis checks during [pre-commit](#pre-commit) and
 for any local, non-Docker development or testing.
 
