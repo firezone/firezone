@@ -5,7 +5,7 @@ import dev.firezone.connlib.session.SessionCallback
 
 class SessionCallbackImpl: SessionCallback {
 
-    override fun onConnect(status: String): Boolean {
+    override fun onConnect(addresses: String): Boolean {
         Log.d("Connlib", "status: $: $status")
 
         return true
