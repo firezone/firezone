@@ -18,7 +18,7 @@ class SessionCallbackImpl: SessionCallback {
         return true
     }
 
-    override fun onSetTunnelAddresses(addresses: String): Boolean {
+    override fun onDisconnect(): Boolean {
         // TODO: // Call into client app to update interface addresses
         Log.d("Connlib", "onSetTunnelAddresses: $addresses")
 
