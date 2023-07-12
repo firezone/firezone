@@ -30,11 +30,19 @@ pub extern "system" fn Java_dev_firezone_connlib_Logger_init(_: JNIEnv, _: JClas
 pub struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
-    fn on_update_resources(&self, _resource_list: ResourceList) {
+    fn on_set_interface_config(&self, _tunnel_addresses: TunnelAddresses) {
         todo!()
     }
 
-    fn on_connect(&self, _tunnel_addresses: TunnelAddresses) {
+    fn on_tunnel_ready(&self) {
+        todo!()
+    }
+
+    fn on_add_route(&self, _route: String) {
+        todo!()
+    }
+
+    fn on_update_resources(&self, _resource_list: ResourceList) {
         todo!()
     }
 
@@ -70,12 +78,12 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
     let tunnel_addresses = env.new_string(tunnelAddressesJSON).unwrap();
     match env.call_method(
         callback,
-        "onConnect",
+        "onTunnelReady",
         "(Ljava/lang/String;)Z",
         &[JValue::from(&tunnel_addresses)],
     ) {
-        Ok(res) => log::trace!("`onConnect` returned `{res:?}`"),
-        Err(err) => log::error!("Failed to call `onConnect`: {err}"),
+        Ok(res) => log::trace!("`onTunnelReady` returned `{res:?}`"),
+        Err(err) => log::error!("Failed to call `onTunnelReady`: {err}"),
     }
 
     Box::into_raw(session)

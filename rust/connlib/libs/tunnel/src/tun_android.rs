@@ -1,7 +1,7 @@
 use super::InterfaceConfig;
 use ip_network::IpNetwork;
 use libc::{close, open, O_RDWR};
-use libs_common::{Error, Result};
+use libs_common::{Callbacks, Error, Result, TunnelAddresses};
 use std::{
     os::fd::{AsRawFd, RawFd},
     sync::Arc,
@@ -69,14 +69,21 @@ impl IfaceDevice {
 }
 
 impl IfaceConfig {
-    pub async fn add_route(&mut self, route: &IpNetwork) -> Result<()> {
-        tracing::error!("`add_route` unimplemented on Android: `{route:#?}`");
+    #[tracing::instrument(level = "trace", skip(self, callbacks))]
+    pub async fn set_iface_config(
+        &mut self,
+        config: &InterfaceConfig,
+        callbacks: &impl Callbacks,
+    ) -> Result<()> {
+        callbacks.on_set_interface_config(TunnelAddresses {
+            address4: config.ipv4,
+            address6: config.ipv6,
+        });
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_iface_config(&mut self, _config: &InterfaceConfig) -> Result<()> {
-        tracing::error!("`set_iface_config` unimplemented on Android: `{_config:#?}`");
+    pub async fn add_route(&mut self, route: &IpNetwork, callbacks: &impl Callbacks) -> Result<()> {
+        callbacks.on_add_route(serde_json::to_string(route)?);
         Ok(())
     }
 
