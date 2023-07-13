@@ -1,5 +1,9 @@
 alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources}
 
+# Seeds can be run both with MIX_ENV=prod and MIX_ENV=test, for test env we don't have
+# an adapter configured and creation of email provider will fail, so we will override it here.
+System.put_env("OUTBOUND_EMAIL_ADAPTER", "Elixir.Swoosh.Adapters.Postmark")
+
 # This function is used to update fields if STATIC_SEEDS is set,
 # which helps with static docker-compose environment for local development.
 maybe_repo_update = fn resource, values ->
@@ -24,8 +28,6 @@ for item <- [account, other_account] do
 end
 
 IO.puts("")
-
-Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
 {:ok, email_provider} =
   Auth.create_provider(account, %{
