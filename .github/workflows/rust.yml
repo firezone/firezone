@@ -116,47 +116,6 @@ jobs:
           path: |
             ./rust/connlib-${{ needs.draft-release.outputs.tag_name }}.aar
 
-  rust_build-apple:
-    needs:
-      - rust_draft-release
-    runs-on: macos-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v3
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ./rust
-      - name: Update toolchain
-        run: rustup show
-      - name: Setup lipo
-        run: cargo install cargo-lipo
-      - uses: actions/cache@v3
-        with:
-          path: apple/.build
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-spm-
-      - name: Build Connlib.xcframework.zip
-        env:
-          CONFIGURATION: Release
-          PROJECT_DIR: .
-        working-directory: ./rust/connlib/clients/apple
-        run: |
-          # build-xcframework.sh calls build-rust.sh indirectly via `xcodebuild`, but it pollutes the environment
-          # to the point that it causes the `ring` build to fail for the aarch64-apple-darwin target. So, explicitly
-          # build first. See https://github.com/briansmith/ring/issues/1332
-          ./build-rust.sh
-          ./build-xcframework.sh
-          mv Connlib.xcframework.zip ../../../../Connlib-${{ needs.draft-release.outputs.tag_name }}.xcframework.zip
-          mv Connlib.xcframework.zip.checksum.txt ../../../../Connlib-${{ needs.draft-release.outputs.tag_name }}.xcframework.zip.checksum.txt
-      - uses: actions/upload-artifact@v3
-        with:
-          name: connlib-apple
-          path: |
-            ./Connlib-${{ needs.draft-release.outputs.tag_name }}.xcframework.zip
-            ./Connlib-${{ needs.draft-release.outputs.tag_name }}.xcframework.zip.checksum.txt
-
   rust_cross-compile-relay: # cross is separate from test because cross-compiling yields different artifacts and we cannot reuse the cache.
     runs-on: ubuntu-latest
     steps:
