@@ -608,7 +608,7 @@ export default function Page() {
           <div className="mt-8">
             <CodeBlock
               language="bash"
-              codeString="bash <(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/install.sh)"
+              codeString="bash <(curl -fsSL https://github.com/firezone/firezone/raw/legacy/scripts/install.sh)"
             />
           </div>
           <p className="mt-8 border-y font-semibold text-xl w-12 max-w-screen-md text-center text-neutral-200 dark:text-neutral-100">
