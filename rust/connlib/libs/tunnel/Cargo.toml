@@ -30,7 +30,7 @@ webrtc = { version = "0.8" }
 [target.'cfg(target_os = "linux")'.dependencies]
 netlink-packet-route = { version = "0.15", default-features = false }
 netlink-packet-core = { version = "0.5", default-features = false }
-rtnetlink = { version = "0.12", default-features = false, features = ["tokio_socket"] }
+rtnetlink = { version = "0.13", default-features = false, features = ["tokio_socket"] }
 
 # Android tunnel dependencies
 [target.'cfg(target_os = "android")'.dependencies]
