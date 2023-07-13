@@ -1,7 +1,7 @@
 use super::InterfaceConfig;
 use ip_network::IpNetwork;
 use libc::{close, open, O_RDWR};
-use libs_common::{Callbacks, Error, Result, TunnelAddresses};
+use libs_common::{Callbacks, Error, Result, TunnelAddresses, DNS_SENTINEL};
 use std::{
     os::fd::{AsRawFd, RawFd},
     sync::Arc,
@@ -75,10 +75,13 @@ impl IfaceConfig {
         config: &InterfaceConfig,
         callbacks: &impl Callbacks,
     ) -> Result<()> {
-        callbacks.on_set_interface_config(TunnelAddresses {
-            address4: config.ipv4,
-            address6: config.ipv6,
-        });
+        callbacks.on_set_interface_config(
+            TunnelAddresses {
+                address4: config.ipv4,
+                address6: config.ipv6,
+            },
+            DNS_SENTINEL,
+        );
         Ok(())
     }
 

@@ -5,7 +5,7 @@
 use firezone_client_connlib::{
     Callbacks, Error, ErrorType, ResourceList, Session, TunnelAddresses,
 };
-use std::sync::Arc;
+use std::{net::Ipv4Addr, sync::Arc};
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -74,7 +74,7 @@ mod ffi {
         type CallbackHandler;
 
         #[swift_bridge(swift_name = "onSetInterfaceConfig")]
-        fn on_set_interface_config(&self, tunnelAddresses: TunnelAddresses);
+        fn on_set_interface_config(&self, tunnelAddresses: TunnelAddresses, dnsAddress: String);
 
         #[swift_bridge(swift_name = "onTunnelReady")]
         fn on_tunnel_ready(&self);
@@ -174,8 +174,9 @@ unsafe impl Sync for ffi::CallbackHandler {}
 pub struct CallbackHandler(Arc<ffi::CallbackHandler>);
 
 impl Callbacks for CallbackHandler {
-    fn on_set_interface_config(&self, tunnel_addresses: TunnelAddresses) {
-        self.0.on_set_interface_config(tunnel_addresses.into())
+    fn on_set_interface_config(&self, tunnel_addresses: TunnelAddresses, dns_address: Ipv4Addr) {
+        self.0
+            .on_set_interface_config(tunnel_addresses.into(), dns_address.to_string())
     }
 
     fn on_tunnel_ready(&self) {

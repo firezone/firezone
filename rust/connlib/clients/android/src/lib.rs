@@ -10,6 +10,7 @@ use jni::{
     objects::{JClass, JObject, JString, JValue},
     JNIEnv,
 };
+use std::net::Ipv4Addr;
 
 /// This should be called once after the library is loaded by the system.
 #[allow(non_snake_case)]
@@ -30,7 +31,7 @@ pub extern "system" fn Java_dev_firezone_connlib_Logger_init(_: JNIEnv, _: JClas
 pub struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
-    fn on_set_interface_config(&self, _tunnel_addresses: TunnelAddresses) {
+    fn on_set_interface_config(&self, _tunnel_addresses: TunnelAddresses, _dns_address: Ipv4Addr) {
         todo!()
     }
 

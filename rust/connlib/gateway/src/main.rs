@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::str::FromStr;
+use std::{net::Ipv4Addr, str::FromStr};
 
 use firezone_gateway_connlib::{
     Callbacks, Error, ErrorType, ResourceList, Session, TunnelAddresses,
@@ -10,7 +10,7 @@ use url::Url;
 pub struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
-    fn on_set_interface_config(&self, _tunnel_addresses: TunnelAddresses) {}
+    fn on_set_interface_config(&self, _tunnel_addresses: TunnelAddresses, _dns_address: Ipv4Addr) {}
 
     fn on_tunnel_ready(&self) {
         tracing::trace!("Tunnel connected with address");

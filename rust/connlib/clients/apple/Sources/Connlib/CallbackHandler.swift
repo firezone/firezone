@@ -26,8 +26,8 @@ public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
   private let logger = Logger(subsystem: "dev.firezone.firezone", category: "callbackhandler")
 
-  func onSetInterfaceConfig(tunnelAddresses: TunnelAddresses) {
-    logger.debug("CallbackHandler.onSetInterfaceConfig: IPv4: \(tunnelAddresses.address4.toString(), privacy: .public), IPv6: \(tunnelAddresses.address6.toString(), privacy: .public)")
+  func onSetInterfaceConfig(tunnelAddresses: TunnelAddresses, dnsAddress: RustString) {
+    logger.debug("CallbackHandler.onSetInterfaceConfig: IPv4: \(tunnelAddresses.address4.toString(), privacy: .public), IPv6: \(tunnelAddresses.address6.toString(), privacy: .public), DNS: \(dnsAddress.toString(), privacy: .public)")
     // Unimplemented
   }
 

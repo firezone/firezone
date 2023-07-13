@@ -19,6 +19,8 @@ use crate::{
     Error, Result,
 };
 
+pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
+
 // TODO: Not the most tidy trait for a control-plane.
 /// Trait that represents a control-plane.
 #[async_trait]
@@ -66,7 +68,7 @@ pub struct TunnelAddresses {
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
     /// Called when the tunnel address is set.
-    fn on_set_interface_config(&self, tunnel_addresses: TunnelAddresses);
+    fn on_set_interface_config(&self, tunnel_addresses: TunnelAddresses, dns_address: Ipv4Addr);
     /// Called when the tunnel is connected.
     fn on_tunnel_ready(&self);
     /// Called when when a route is added.
@@ -213,10 +215,13 @@ where
 
     fn connect_mock(callbacks: CB) {
         std::thread::sleep(Duration::from_secs(1));
-        callbacks.on_set_interface_config(TunnelAddresses {
-            address4: "100.100.111.2".parse().unwrap(),
-            address6: "fd00:0222:2021:1111::2".parse().unwrap(),
-        });
+        callbacks.on_set_interface_config(
+            TunnelAddresses {
+                address4: "100.100.111.2".parse().unwrap(),
+                address6: "fd00:0222:2021:1111::2".parse().unwrap(),
+            },
+            DNS_SENTINEL,
+        );
         callbacks.on_tunnel_ready();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_secs(3));
