@@ -222,7 +222,7 @@ impl IfaceConfig {
 
         Ok(())
     }
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self, _callbacks))]
     pub async fn set_iface_config(
         &mut self,
         config: &InterfaceConfig,
