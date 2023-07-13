@@ -37,7 +37,7 @@ Follow our [deploy guide](https://docs.firezone.dev/deploy) to install your self
 Or, if you're on a [supported platform](https://docs.firezone.dev/deploy/docker/supported-platforms?utm_source=readme),
 try our [auto-install script](https://docs.firezone.dev/deploy/docker/#option-1-automatic-install).
 
-Using Firezone in production at your organization? Take a look at our [Enterprise Plan](https://www.firezone.dev/pricing?utm_source=readme).
+Using Firezone in production at your organization? Contact us to learn about our [Enterprise Plan](https://www.firezone.dev/contact/sales?utm_source=readme).
 
 ## Features
 
