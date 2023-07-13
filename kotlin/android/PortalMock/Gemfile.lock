@@ -5,7 +5,7 @@ GEM
     eventmachine (1.2.7)
     mustermann (3.0.0)
       ruby2_keywords (~> 0.0.1)
-    rack (2.2.4)
+    rack (2.2.7)
     rack-protection (3.0.4)
       rack
     ruby2_keywords (0.0.5)
@@ -24,6 +24,7 @@ PLATFORMS
   arm64-darwin-21
   x64-mingw-ucrt
   x86_64-darwin-21
+  x86_64-linux
 
 DEPENDENCIES
   sinatra
