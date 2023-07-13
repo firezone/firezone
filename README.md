@@ -1,8 +1,6 @@
-<p align="center">
-  **Note**: 🚧 This repository is undergoing major reorganization for the 1.0 release 🚧.
-  <!-- TODO: [Read the announcement](https://www.firezone.dev/blog/announcing-1.0). -->
-  See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) for the branch tracking the latest 0.7 release.
-</p>
+**Note**: 🚧 This repository is undergoing major reorganization for the 1.0 release 🚧. See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) for the branch tracking the latest 0.7 release.
+
+<!-- TODO: [Read the announcement](https://www.firezone.dev/blog/announcing-1.0). -->
 
 <p align="center">
   <img src="https://user-images.githubusercontent.com/52545545/144147936-39f3e416-8ba0-4f24-915e-f0515f85bb64.png" alt="firezone logo" width="305"/>
