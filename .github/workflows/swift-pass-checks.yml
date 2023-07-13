@@ -3,7 +3,7 @@
 name: Swift
 on:
   pull_request:
-    paths-ginore:
+    paths-ignore:
       - "swift/**"
       - "rust/connlib/**"
       - ".github/workflows/swift.yml"

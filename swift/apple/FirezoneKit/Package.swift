@@ -9,7 +9,7 @@ let package = Package(
   products: [
     // Products define the executables and libraries a package produces, and make them visible to
     // other packages.
-    .library(name: "FirezoneKit", targets: ["FirezoneKit", "Connlib"]),
+    .library(name: "FirezoneKit", targets: ["FirezoneKit"]),
   ],
   dependencies: [
     // Dependencies declare other packages that this package depends on.
@@ -18,10 +18,6 @@ let package = Package(
     .package(url: "https://github.com/auth0/JWTDecode.swift", from: "3.0.0"),
   ],
   targets: [
-    .binaryTarget(
-      name: "Connlib",
-      path: "../../../rust/connlib/clients/apple/Connlib.xcframework"
-    ),
     .target(
       name: "FirezoneKit",
       dependencies: [

@@ -1,18 +1,9 @@
-//
-//  connlib.h
-//  connlib
-//
-//  Created by Jamil Bou Kheir on 4/3/23.
-//
+// Umbrella header for connlib
 
-#import <Foundation/Foundation.h>
+#ifndef connlib_h
+#define connlib_h
 
-//! Project version number for connlib.
-FOUNDATION_EXPORT double connlibVersionNumber;
+#include "Generated/SwiftBridgeCore.h"
+#include "Generated/connlib-apple/connlib-apple.h"
 
-//! Project version string for connlib.
-FOUNDATION_EXPORT const unsigned char connlibVersionString[];
-
-// In this header, you should import all the public headers of your framework using statements like #import <connlib/PublicHeader.h>
-
-#import <connlib/BridgingHeader.h>
+#endif

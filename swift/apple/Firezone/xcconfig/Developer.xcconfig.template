@@ -5,3 +5,7 @@ DEVELOPMENT_TEAM = <team_id>
 // Should be an app id created at developer.apple.com
 // with Network Extensions capability.
 PRODUCT_BUNDLE_IDENTIFIER = <app_id>
+
+// If you want to build Connlib with mocks,
+// enable it here.
+// CONNLIB_MOCK=1
