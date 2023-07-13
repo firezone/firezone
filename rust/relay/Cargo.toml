@@ -27,7 +27,7 @@ derive_more = { version = "0.99.17", features = ["from"] }
 uuid = { version = "1.3.3", features = ["v4"] }
 phoenix-channel = { path = "../phoenix-channel" }
 url = "2.4.0"
-serde = { version = "1.0.163", features = ["derive"] }
+serde = { version = "1.0.171", features = ["derive"] }
 
 [dev-dependencies]
 webrtc = { version = "0.8" }
