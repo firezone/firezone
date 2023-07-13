@@ -6,6 +6,8 @@ defmodule Domain.Auth.Adapters.EmailTest do
 
   describe "identity_changeset/2" do
     setup do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
       changeset = %Auth.Identity{} |> Ecto.Changeset.change()
@@ -38,10 +40,20 @@ defmodule Domain.Auth.Adapters.EmailTest do
     end
   end
 
-  describe "ensure_provisioned/1" do
+  describe "ensure_provisioned_for_account/2" do
     test "returns changeset as is" do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
+      account = AccountsFixtures.create_account()
       changeset = %Ecto.Changeset{}
-      assert ensure_provisioned(changeset) == changeset
+      assert ensure_provisioned_for_account(changeset, account) == changeset
+    end
+
+    test "returns error when email adapter is not configured" do
+      account = AccountsFixtures.create_account()
+      changeset = %Ecto.Changeset{}
+      changeset = ensure_provisioned_for_account(changeset, account)
+      assert changeset.errors == [adapter: {"email adapter is not configured", []}]
     end
   end
 
@@ -74,6 +86,8 @@ defmodule Domain.Auth.Adapters.EmailTest do
 
   describe "verify_secret/2" do
     setup do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
       identity = AuthFixtures.create_identity(account: account, provider: provider)

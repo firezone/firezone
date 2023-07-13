@@ -3,6 +3,8 @@ defmodule Web.Acceptance.AuthTest do
   alias Domain.{AccountsFixtures, AuthFixtures}
 
   feature "renders all sign in options", %{session: session} do
+    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
     account = AccountsFixtures.create_account()
     AuthFixtures.create_userpass_provider(account: account)
 

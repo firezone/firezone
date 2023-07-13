@@ -14,6 +14,7 @@ defmodule Domain.AuthTest do
     test "returns error when provider is disabled" do
       account = AccountsFixtures.create_account()
       AuthFixtures.create_userpass_provider(account: account)
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider(account: account)
 
       identity =
@@ -32,6 +33,7 @@ defmodule Domain.AuthTest do
     test "returns error when provider is deleted" do
       account = AccountsFixtures.create_account()
       AuthFixtures.create_userpass_provider(account: account)
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider(account: account)
 
       identity =
@@ -48,6 +50,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns provider" do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider()
       assert {:ok, fetched_provider} = fetch_active_provider_by_id(provider.id)
       assert fetched_provider.id == provider.id
@@ -58,6 +61,7 @@ defmodule Domain.AuthTest do
     test "returns active providers for a given account" do
       account = AccountsFixtures.create_account()
 
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       userpass_provider = AuthFixtures.create_userpass_provider(account: account)
       email_provider = AuthFixtures.create_email_provider(account: account)
       token_provider = AuthFixtures.create_token_provider(account: account)
@@ -124,7 +128,7 @@ defmodule Domain.AuthTest do
     test "returns error if email provider is already enabled", %{
       account: account
     } do
-      # email, userpass, token
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       AuthFixtures.create_email_provider(account: account)
       attrs = AuthFixtures.provider_attrs(adapter: :email)
       assert {:error, changeset} = create_provider(account, attrs)
@@ -135,7 +139,6 @@ defmodule Domain.AuthTest do
     test "returns error if userpass provider is already enabled", %{
       account: account
     } do
-      # userpass, userpass, token
       AuthFixtures.create_userpass_provider(account: account)
       attrs = AuthFixtures.provider_attrs(adapter: :userpass)
       assert {:error, changeset} = create_provider(account, attrs)
@@ -176,6 +179,8 @@ defmodule Domain.AuthTest do
     } do
       attrs = AuthFixtures.provider_attrs()
 
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
       assert {:ok, provider} = create_provider(account, attrs)
 
       assert provider.name == attrs.name
@@ -186,15 +191,15 @@ defmodule Domain.AuthTest do
       assert is_nil(provider.deleted_at)
     end
 
-    # test "returns error when email provider is disabled", %{
-    #   account: account
-    # } do
-    #   Domain.Config.put_system_env_override(:outbound_email_adapter, Domain.Mailer.NoopAdapter)
-    #   attrs = AuthFixtures.provider_attrs()
+    test "returns error when email provider is disabled", %{
+      account: account
+    } do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, nil)
+      attrs = AuthFixtures.provider_attrs()
 
-    #   assert {:error, changeset} = create_provider(account, attrs)
-    #   assert errors_on(changeset) == %{adapter: ["email adapter is not configured"]}
-    # end
+      assert {:error, changeset} = create_provider(account, attrs)
+      assert errors_on(changeset) == %{adapter: ["email adapter is not configured"]}
+    end
   end
 
   describe "create_provider/3" do
@@ -233,6 +238,7 @@ defmodule Domain.AuthTest do
   describe "disable_provider/2" do
     setup do
       account = AccountsFixtures.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider(account: account)
 
       actor =
@@ -379,6 +385,7 @@ defmodule Domain.AuthTest do
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider(account: account)
       {:ok, provider} = disable_provider(provider, subject)
 
@@ -413,6 +420,7 @@ defmodule Domain.AuthTest do
     test "does not allow to enable providers in other accounts", %{
       subject: subject
     } do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider()
       assert enable_provider(provider, subject) == {:error, :not_found}
     end
@@ -432,6 +440,7 @@ defmodule Domain.AuthTest do
   describe "delete_provider/2" do
     setup do
       account = AccountsFixtures.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider(account: account)
 
       actor =
@@ -582,6 +591,7 @@ defmodule Domain.AuthTest do
   describe "create_identity/3" do
     test "creates an identity" do
       account = AccountsFixtures.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider(account: account)
       provider_identifier = AuthFixtures.random_provider_identifier(provider)
 
@@ -608,6 +618,7 @@ defmodule Domain.AuthTest do
 
     test "returns error when identifier is invalid" do
       account = AccountsFixtures.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider(account: account)
 
       actor =
@@ -630,6 +641,7 @@ defmodule Domain.AuthTest do
   describe "replace_identity/3" do
     setup do
       account = AccountsFixtures.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider(account: account)
 
       actor =
@@ -719,6 +731,7 @@ defmodule Domain.AuthTest do
   describe "delete_identity/2" do
     setup do
       account = AccountsFixtures.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider(account: account)
 
       actor =
@@ -837,6 +850,7 @@ defmodule Domain.AuthTest do
   describe "sign_in/5" do
     setup do
       account = AccountsFixtures.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider(account: account)
       user_agent = AuthFixtures.user_agent()
       remote_ip = AuthFixtures.remote_ip()
@@ -1318,6 +1332,7 @@ defmodule Domain.AuthTest do
   describe "sign_in/3" do
     setup do
       account = AccountsFixtures.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider(account: account)
       user_agent = AuthFixtures.user_agent()
       remote_ip = AuthFixtures.remote_ip()
@@ -1535,6 +1550,7 @@ defmodule Domain.AuthTest do
     test "returns error when subject has no access to given provider", %{
       subject: subject
     } do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider()
       assert ensure_has_access_to(subject, provider) == {:error, :unauthorized}
     end
@@ -1543,6 +1559,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       account: account
     } do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
       provider = AuthFixtures.create_email_provider(account: account)
       assert ensure_has_access_to(subject, provider) == :ok
     end

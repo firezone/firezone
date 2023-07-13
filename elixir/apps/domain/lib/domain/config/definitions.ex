@@ -509,7 +509,7 @@ defmodule Domain.Config.Definitions do
   )
 
   @doc """
-  Method to use for sending outbound email.
+  Method to use for sending outbound email. If not set, sending emails will be disabled (default).
   """
   defconfig(
     :outbound_email_adapter,
@@ -533,11 +533,10 @@ defmodule Domain.Config.Definitions do
          Swoosh.Adapters.Sendinblue,
          Swoosh.Adapters.Sendmail,
          Swoosh.Adapters.SocketLabs,
-         Swoosh.Adapters.SparkPost,
-         Domain.Mailer.NoopAdapter
+         Swoosh.Adapters.SparkPost
        ]
      )},
-    default: Domain.Mailer.NoopAdapter
+    default: nil
   )
 
   @doc """

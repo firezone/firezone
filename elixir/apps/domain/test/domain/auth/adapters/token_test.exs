@@ -67,10 +67,11 @@ defmodule Domain.Auth.Adapters.TokenTest do
     end
   end
 
-  describe "ensure_provisioned/1" do
+  describe "ensure_provisioned_for_account/2" do
     test "returns changeset as is" do
+      account = AccountsFixtures.create_account()
       changeset = %Ecto.Changeset{}
-      assert ensure_provisioned(changeset) == changeset
+      assert ensure_provisioned_for_account(changeset, account) == changeset
     end
   end
 

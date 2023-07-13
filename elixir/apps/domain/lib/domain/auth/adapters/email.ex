@@ -1,6 +1,7 @@
 defmodule Domain.Auth.Adapters.Email do
   use Supervisor
   alias Domain.Repo
+  alias Domain.Accounts
   alias Domain.Auth.{Identity, Provider, Adapter}
 
   @behaviour Adapter
@@ -31,16 +32,16 @@ defmodule Domain.Auth.Adapters.Email do
   end
 
   @impl true
-  def ensure_provisioned(%Ecto.Changeset{} = changeset) do
-    # XXX: Re-enable this when web app will start handling email delivery again,
-    # we will need to verify that it's configured.
-    # email_disabled? = Config.fetch_config!(:outbound_email_adapter) == Domain.Mailer.NoopAdapter
+  def ensure_provisioned_for_account(%Ecto.Changeset{} = changeset, %Accounts.Account{} = account) do
+    %{
+      outbound_email_adapter: outbound_email_adapter
+    } = Domain.Config.fetch_resolved_configs!(account.id, [:outbound_email_adapter])
 
-    # if email_disabled? do
-    #   Ecto.Changeset.add_error(changeset, :adapter, "email adapter is not configured")
-    # else
-    changeset
-    # end
+    if is_nil(outbound_email_adapter) do
+      Ecto.Changeset.add_error(changeset, :adapter, "email adapter is not configured")
+    else
+      changeset
+    end
   end
 
   @impl true

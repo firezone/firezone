@@ -49,7 +49,7 @@ defmodule Domain.Auth do
 
   def create_provider(%Accounts.Account{} = account, attrs) do
     Provider.Changeset.create_changeset(account, attrs)
-    |> Adapters.ensure_provisioned()
+    |> Adapters.ensure_provisioned_for_account(account)
     |> Repo.insert()
   end
 

@@ -35,15 +35,16 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     end
   end
 
-  describe "ensure_provisioned/1" do
+  describe "ensure_provisioned_for_account/2" do
     test "returns changeset errors in invalid adapter config" do
-      changeset = Ecto.Changeset.change(%Auth.Provider{}, %{})
-      assert %Ecto.Changeset{} = changeset = ensure_provisioned(changeset)
+      account = AccountsFixtures.create_account()
+      changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, %{})
+      assert %Ecto.Changeset{} = changeset = ensure_provisioned_for_account(changeset, account)
       assert errors_on(changeset) == %{adapter_config: ["can't be blank"]}
 
       attrs = AuthFixtures.provider_attrs(adapter: :openid_connect, adapter_config: %{})
-      changeset = Ecto.Changeset.change(%Auth.Provider{}, attrs)
-      assert %Ecto.Changeset{} = changeset = ensure_provisioned(changeset)
+      changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, attrs)
+      assert %Ecto.Changeset{} = changeset = ensure_provisioned_for_account(changeset, account)
 
       assert errors_on(changeset) == %{
                adapter_config: %{
@@ -70,7 +71,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
       changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, attrs)
 
-      assert %Ecto.Changeset{} = changeset = ensure_provisioned(changeset)
+      assert %Ecto.Changeset{} = changeset = ensure_provisioned_for_account(changeset, account)
       assert {:ok, provider} = Repo.insert(changeset)
 
       assert provider.name == attrs.name

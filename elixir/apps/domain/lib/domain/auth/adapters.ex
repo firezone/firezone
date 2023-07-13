@@ -1,5 +1,6 @@
 defmodule Domain.Auth.Adapters do
   use Supervisor
+  alias Domain.Accounts
   alias Domain.Auth.{Provider, Identity}
 
   @adapters %{
@@ -26,13 +27,16 @@ defmodule Domain.Auth.Adapters do
     %Ecto.Changeset{} = adapter.identity_changeset(provider, changeset)
   end
 
-  def ensure_provisioned(%Ecto.Changeset{changes: %{adapter: adapter}} = changeset)
+  def ensure_provisioned_for_account(
+        %Ecto.Changeset{changes: %{adapter: adapter}} = changeset,
+        %Accounts.Account{} = account
+      )
       when adapter in @adapter_names do
     adapter = Map.fetch!(@adapters, adapter)
-    %Ecto.Changeset{} = adapter.ensure_provisioned(changeset)
+    %Ecto.Changeset{} = adapter.ensure_provisioned_for_account(changeset, account)
   end
 
-  def ensure_provisioned(%Ecto.Changeset{} = changeset) do
+  def ensure_provisioned_for_account(%Ecto.Changeset{} = changeset, %Accounts.Account{}) do
     changeset
   end
 

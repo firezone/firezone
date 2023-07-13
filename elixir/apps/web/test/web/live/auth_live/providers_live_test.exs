@@ -3,6 +3,8 @@ defmodule Web.Auth.ProvidersLiveTest do
   alias Domain.{AccountsFixtures, AuthFixtures}
 
   test "renders active providers on the page", %{conn: conn} do
+    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
     account = AccountsFixtures.create_account()
 
     email_provider = AuthFixtures.create_email_provider(account: account)
