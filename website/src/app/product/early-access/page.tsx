@@ -1,14 +1,14 @@
-import EarlyAccessForm from "@/components/EarlyAccessForm";
-import Link from "next/link";
-import Image from "next/image";
-import { Metadata } from "next";
-import { CheckCircleIcon } from "@heroicons/react/24/solid";
-import ActionLink from "@/components/ActionLink";
+import EarlyAccessForm from "@/components/EarlyAccessForm"
+import Link from "next/link"
+import Image from "next/image"
+import { Metadata } from "next"
+import { CheckCircleIcon } from "@heroicons/react/24/solid"
+import ActionLink from "@/components/ActionLink"
 
 export const metadata: Metadata = {
   title: "1.0 Early Access • Firezone",
   description: "Get early access to Firezone 1.0.",
-};
+}
 
 export default function EarlyAccess() {
   return (
@@ -37,7 +37,7 @@ export default function EarlyAccess() {
             </div>
           </div>
           <div className="flex flex-row-reverse items-baseline space-x-reverse -space-x-8">
-            <span>
+            <span className="z-0">
               <Image
                 src="/images/portal_mockup.svg"
                 className="shadow-lg rounded-lg"
@@ -46,7 +46,7 @@ export default function EarlyAccess() {
                 alt="firezone portal mockup"
               />
             </span>
-            <span>
+            <span className="z-10">
               <Image
                 src="/images/mobile_mockup.svg"
                 className="shadow-lg rounded-2xl"
@@ -134,5 +134,5 @@ export default function EarlyAccess() {
         </div>
       </section>
     </div>
-  );
+  )
 }
