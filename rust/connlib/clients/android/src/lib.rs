@@ -42,6 +42,10 @@ impl Callbacks for CallbackHandler {
         todo!()
     }
 
+    fn on_remove_route(&self, _route: String) {
+        todo!()
+    }
+
     fn on_update_resources(&self, _resource_list: ResourceList) {
         todo!()
     }

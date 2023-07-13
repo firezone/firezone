@@ -41,6 +41,11 @@ public class CallbackHandler {
     // Unimplemented
   }
 
+  func onRemoveRoute(route: RustString) {
+    logger.debug("CallbackHandler.onRemoveRoute: \(route.toString(), privacy: .public)")
+    // Unimplemented
+  }
+
   func onUpdateResources(resourceList: ResourceList) {
     logger.debug("CallbackHandler.onUpdateResources: \(resourceList.resources.toString(), privacy: .public)")
     delegate?.onUpdateResources(resourceList: resourceList.resources.toString())

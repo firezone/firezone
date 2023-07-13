@@ -82,6 +82,9 @@ mod ffi {
         #[swift_bridge(swift_name = "onAddRoute")]
         fn on_add_route(&self, route: String);
 
+        #[swift_bridge(swift_name = "onRemoveRoute")]
+        fn on_remove_route(&self, route: String);
+
         #[swift_bridge(swift_name = "onUpdateResources")]
         fn on_update_resources(&self, resourceList: ResourceList);
 
@@ -181,6 +184,10 @@ impl Callbacks for CallbackHandler {
 
     fn on_add_route(&self, route: String) {
         self.0.on_add_route(route)
+    }
+
+    fn on_remove_route(&self, route: String) {
+        self.0.on_remove_route(route)
     }
 
     fn on_update_resources(&self, resource_list: ResourceList) {

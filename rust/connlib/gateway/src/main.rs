@@ -18,6 +18,8 @@ impl Callbacks for CallbackHandler {
 
     fn on_add_route(&self, _route: String) {}
 
+    fn on_remove_route(&self, _route: String) {}
+
     fn on_update_resources(&self, resource_list: ResourceList) {
         tracing::trace!("Resources updated, current list: {resource_list:?}");
     }

@@ -71,6 +71,8 @@ pub trait Callbacks: Clone + Send + Sync {
     fn on_tunnel_ready(&self);
     /// Called when when a route is added.
     fn on_add_route(&self, route: String);
+    /// Called when when a route is removed.
+    fn on_remove_route(&self, route: String);
     /// Called when the resource list changes.
     fn on_update_resources(&self, resource_list: ResourceList);
     /// Called when the tunnel is disconnected.
