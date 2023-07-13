@@ -1,5 +1,5 @@
-import HubspotForm from "@/components/HubspotForm";
-import Link from "next/link";
+import HubspotForm from "@/components/HubspotForm"
+import Link from "next/link"
 
 export default function EarlyAccessForm() {
   return (
@@ -32,6 +32,15 @@ export default function EarlyAccessForm() {
           <li>Automatic failover, load balancing</li>
           */}
         </ul>
+        <h3 className="mb-4 lg:text-2xl md:text-xl font-bold tracking-tight text-neutral-900 text-lg dark:text-white">
+          How much will it cost?
+        </h3>
+        <p className="md:text-xl mb-6">
+          We're still working out pricing details for the 1.0 release and will
+          launch an updated pricing page when we have more to share. Our goal is
+          to price Firezone competitively among other products in the space with
+          a cost that scales predictably according to value it provides.
+        </p>
       </div>
       <div className="w-full">
         <HubspotForm
@@ -41,5 +50,5 @@ export default function EarlyAccessForm() {
         />
       </div>
     </div>
-  );
+  )
 }
