@@ -14,7 +14,10 @@ defmodule Web.GatewaysLive.Index do
         {count, Map.put(acc, g.id, count)}
       end)
 
-    {:ok, assign(socket, gateways: gateways, resources: resources)}
+    grouped_gateways = Enum.group_by(gateways, fn g -> g.group end)
+
+    {:ok,
+     assign(socket, gateways: gateways, resources: resources, grouped_gateways: grouped_gateways)}
   end
 
   def render(assigns) do
@@ -31,20 +34,16 @@ defmodule Web.GatewaysLive.Index do
       </:title>
       <:actions>
         <.add_button navigate={~p"/#{@subject.account}/gateways/new"}>
-          Add Gateway
+          Add Instance Group
         </.add_button>
       </:actions>
     </.section_header>
     <!-- Gateways Table -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <.resource_filter />
-      <.table id="gateways" rows={@gateways} row_id={&"gateway-#{&1.id}"}>
-        <:col :let={gateway} label="GATEWAY" sortable="true">
-          <.badge type="info">
-            <%= gateway.group.name_prefix %>
-          </.badge>
-        </:col>
-        <:col :let={gateway} label="INSTANCE" sortable="true">
+      <.table_with_groups id="grouped-gateways" rows={@grouped_gateways} row_id={&"gateway-#{&1.id}"}>
+        <:col label="INSTANCE GROUP"></:col>
+        <:col :let={gateway} label="INSTANCE">
           <.link
             navigate={~p"/#{@subject.account}/gateways/#{gateway.id}"}
             class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
@@ -52,7 +51,7 @@ defmodule Web.GatewaysLive.Index do
             <%= gateway.name_suffix %>
           </.link>
         </:col>
-        <:col :let={gateway} label="REMOTE IP" sortable="true">
+        <:col :let={gateway} label="REMOTE IP">
           <code class="block text-xs">
             <%= gateway.ipv4 %>
           </code>
@@ -60,15 +59,14 @@ defmodule Web.GatewaysLive.Index do
             <%= gateway.ipv6 %>
           </code>
         </:col>
-        <:col :let={gateway} label="RESOURCES" sortable="true">
+        <:col :let={gateway} label="RESOURCES">
           <.badge>
-            <%= @resources[gateway.id] %>
+            <%= @resources[gateway.id] || "0" %>
           </.badge>
         </:col>
-        <:col :let={_gateway} label="STATUS" sortable="true">
+        <:col :let={_gateway} label="STATUS">
           <.badge type="success">
-            <!-- TODO: Make this dynamic data -->
-          TODO: Online
+            TODO: Online
           </.badge>
         </:col>
         <:action :let={gateway}>
@@ -79,15 +77,7 @@ defmodule Web.GatewaysLive.Index do
             Show
           </.link>
         </:action>
-        <:action :let={gateway}>
-          <.link
-            navigate={~p"/#{@subject.account}/gateways/#{gateway.id}/edit"}
-            class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-          >
-            Edit
-          </.link>
-        </:action>
-        <:action>
+        <:action :let={_gateway}>
           <a
             href="#"
             class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
@@ -95,7 +85,7 @@ defmodule Web.GatewaysLive.Index do
             Delete
           </a>
         </:action>
-      </.table>
+      </.table_with_groups>
       <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@subject.account}/gateways"} />
     </div>
     """

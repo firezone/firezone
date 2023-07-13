@@ -67,13 +67,22 @@ defmodule Domain.Resources do
   end
 
   def list_resources_for_gateway(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject) do
-    resources =
-      Resource.Query.all()
-      |> Resource.Query.by_account_id(subject.account.id)
-      |> Resource.Query.by_gateway_group_id(gateway.group_id)
-      |> Repo.all()
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_resources_permission(),
+         Authorizer.view_available_resources_permission()
+       ]}
 
-    {:ok, resources}
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
+      resources =
+        Resource.Query.all()
+        |> Resource.Query.by_account_id(subject.account.id)
+        |> Resource.Query.by_gateway_group_id(gateway.group_id)
+        |> Repo.all()
+
+      {:ok, resources}
+    end
   end
 
   def create_resource(attrs, %Auth.Subject{} = subject) do

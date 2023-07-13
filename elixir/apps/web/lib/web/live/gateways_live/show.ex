@@ -10,11 +10,6 @@ defmodule Web.GatewaysLive.Show do
     {:ok, assign(socket, gateway: gateway, resources: resources)}
   end
 
-  defp time_diff_now(rel_time) do
-    {_, now} = DateTime.now("Etc/UTC")
-    DateTime.diff(now, rel_time)
-  end
-
   def render(assigns) do
     ~H"""
     <.section_header>
@@ -31,11 +26,6 @@ defmodule Web.GatewaysLive.Show do
       <:title>
         Gateway: <code><%= @gateway.name_suffix %></code>
       </:title>
-      <:actions>
-        <.edit_button navigate={~p"/#{@subject.account}/gateways/#{@gateway.id}/edit"}>
-          Edit Gateway
-        </.edit_button>
-      </:actions>
     </.section_header>
     <!-- Gateway details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
@@ -46,7 +36,7 @@ defmodule Web.GatewaysLive.Show do
               scope="row"
               class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
             >
-              Gateway Name
+              Instance Group Name
             </th>
             <td class="px-6 py-4">
               <.badge type="info">
@@ -110,8 +100,9 @@ defmodule Web.GatewaysLive.Show do
               Last seen
             </th>
             <td class="px-6 py-4">
-              <%= time_diff_now(@gateway.last_seen_at) %> seconds ago in (TODO: add physical location)
+              <.relative_datetime relative={@gateway.last_seen_at} />
               <br />
+              <%= @gateway.last_seen_at %>
             </td>
           </tr>
           <tr class="border-b border-gray-200 dark:border-gray-700">
