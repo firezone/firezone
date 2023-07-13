@@ -351,7 +351,7 @@ export default function Page() {
           </ActionLink>
           .
         </p>
-        <CommitMarquee xmlFeed="/api/github/firezone/firezone/commits/cloud.atom" />
+        <CommitMarquee xmlFeed="/api/github/firezone/firezone/commits/main.atom" />
       </div>
 
       <JoinOurCommunity />
