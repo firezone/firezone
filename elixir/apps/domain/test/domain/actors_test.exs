@@ -193,6 +193,8 @@ defmodule Domain.ActorsTest do
 
   describe "create_actor/4" do
     setup do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
       provider_identifier = AuthFixtures.random_provider_identifier(provider)
@@ -282,6 +284,8 @@ defmodule Domain.ActorsTest do
 
   describe "create_actor/5" do
     setup do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
       provider_identifier = AuthFixtures.random_provider_identifier(provider)
@@ -451,6 +455,8 @@ defmodule Domain.ActorsTest do
 
         Task.async(fn ->
           allow_child_sandbox_access(test_pid)
+
+          Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
           account = AccountsFixtures.create_account()
           provider = AuthFixtures.create_email_provider(account: account)
@@ -656,6 +662,8 @@ defmodule Domain.ActorsTest do
 
         Task.async(fn ->
           allow_child_sandbox_access(test_pid)
+
+          Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
           account = AccountsFixtures.create_account()
           provider = AuthFixtures.create_email_provider(account: account)
