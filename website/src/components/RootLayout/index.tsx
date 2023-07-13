@@ -37,7 +37,7 @@ export default function RootLayout({
                 </Link>{" "}
                 or{" "}
                 <Link
-                  href="/contact/1.0-early-access"
+                  href="/product/early-access"
                   className="text-accent-500 dark:text-accent-800 underline hover:no-underline"
                 >
                   request early access.

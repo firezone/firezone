@@ -31,6 +31,11 @@ export default function Footer() {
                   </Link>
                 </li>
                 <li className="mb-4">
+                  <Link href="/blog" className="hover:underline">
+                    Blog
+                  </Link>
+                </li>
+                <li className="mb-4">
                   <Link href="/team" className="hover:underline">
                     Team
                   </Link>
@@ -51,22 +56,42 @@ export default function Footer() {
               </h2>
               <ul className="text-neutral-800 dark:text-neutral-100 font-medium">
                 <li className="mb-4">
-                  <Link href="/docs" className="hover:underline">
+                  <Link
+                    href="/docs"
+                    className="hover:underline hover:text-neutral-900"
+                  >
                     Docs
                   </Link>
                 </li>
                 <li className="mb-4">
-                  <Link href="/blog" className="hover:underline">
-                    Blog
+                  <Link
+                    href="/product/early-access"
+                    className="hover:underline hover:text-neutral-900"
+                  >
+                    Early Access
                   </Link>
                 </li>
                 <li className="mb-4">
-                  <Link href="/contact/sales" className="hover:underline">
-                    Contact
+                  <Link
+                    href="/product/roadmap"
+                    className="hover:underline hover:text-neutral-900"
+                  >
+                    Roadmap
+                  </Link>
+                </li>
+                <li className="mb-4">
+                  <Link
+                    href="/contact/sales"
+                    className="hover:underline hover:text-neutral-900"
+                  >
+                    Sales
                   </Link>
                 </li>
                 <li>
-                  <Link href="/contact/newsletter" className="hover:underline">
+                  <Link
+                    href="/product/newsletter"
+                    className="hover:underline hover:text-neutral-900"
+                  >
                     Newsletter
                   </Link>
                 </li>
@@ -80,7 +105,7 @@ export default function Footer() {
                 <li className="mb-4">
                   <Link
                     href="https://discourse.firez.one"
-                    className="hover:underline"
+                    className="hover:underline hover:text-neutral-900"
                   >
                     Forums
                   </Link>
@@ -88,7 +113,7 @@ export default function Footer() {
                 <li className="mb-4">
                   <Link
                     href="https://join.slack.com/t/firezone-users/shared_invite/zt-19jd956j4-rWcCqiKMh~ikPGsUFbvZiA"
-                    className="hover:underline"
+                    className="hover:underline hover:text-neutral-900"
                   >
                     Slack
                   </Link>
@@ -96,7 +121,7 @@ export default function Footer() {
                 <li className="mb-4">
                   <Link
                     href="https://github.com/firezone"
-                    className="hover:underline"
+                    className="hover:underline hover:text-neutral-900"
                   >
                     GitHub
                   </Link>
@@ -104,7 +129,7 @@ export default function Footer() {
                 <li className="mb-4">
                   <Link
                     href="https://twitter.com/firezonehq"
-                    className="hover:underline"
+                    className="hover:underline hover:text-neutral-900"
                   >
                     Twitter
                   </Link>
@@ -112,7 +137,7 @@ export default function Footer() {
                 <li>
                   <Link
                     href="https://www.linkedin.com/company/firezonehq"
-                    className="hover:underline"
+                    className="hover:underline hover:text-neutral-900"
                   >
                     LinkedIn
                   </Link>

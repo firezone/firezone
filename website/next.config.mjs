@@ -32,12 +32,27 @@ const highlightLanguages = {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Proxy GitHub requests to avoid CORS issues
+  async rewrites() {
+    return [
+      {
+        source: "/api/github/:path*",
+        destination: "https://github.com/:path*",
+      },
+    ];
+  },
   pageExtensions: ["js", "jsx", "ts", "tsx", "md", "mdx"],
   images: {
     dangerouslyAllowSVG: true,
     remotePatterns: [
       {
         hostname: "img.shields.io",
+      },
+      {
+        hostname: "github.com",
+      },
+      {
+        hostname: "avatars.githubusercontent.com",
       },
       {
         hostname: "www.gravatar.com",
