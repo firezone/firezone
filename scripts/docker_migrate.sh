@@ -102,7 +102,7 @@ migrate () {
   env_files=/opt/firezone/service/phoenix/env
 
   if ! test -f $installDir/docker-compose.yml; then
-    curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o $installDir/docker-compose.yml
+    curl -fsSL https://raw.githubusercontent.com/firezone/firezone/legacy/docker-compose.prod.yml -o $installDir/docker-compose.yml
   fi
 
   # copy tid
