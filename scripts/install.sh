@@ -122,7 +122,7 @@ firezoneSetup() {
         file=docker-compose.desktop.yml
         ;;
     esac
-    curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/$file -o $installDir/docker-compose.yml
+    curl -fsSL https://raw.githubusercontent.com/firezone/firezone/legacy/$file -o $installDir/docker-compose.yml
   fi
   db_pass=$(od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo)
   docker run --rm firezone/firezone bin/gen-env > "$installDir/.env"
