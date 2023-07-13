@@ -1,4 +1,5 @@
 **Note**: 🚧 The `main` branch is undergoing major restructuring in preparation for the 1.0 release 🚧.
+
 See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) for the branch tracking the latest 0.7 release.
 
 <!-- TODO: [Read the announcement](https://www.firezone.dev/blog/announcing-1.0). -->
