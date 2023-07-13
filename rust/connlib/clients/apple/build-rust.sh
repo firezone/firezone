@@ -81,12 +81,14 @@ else
 fi
 
 if [[ -n "$CONNLIB_TARGET_DIR" ]]; then
-  CONNLIB_TARGET_ARGS="--target-dir $CONNLIB_TARGET_DIR"
+  set -x
+  CARGO_TARGET_DIR=$CONNLIB_TARGET_DIR
+  set +x
 fi
 
 for target in "${TARGETS[@]}"
 do
   set -x
-  cargo build --target $target $CONNLIB_TARGET_ARGS $FEATURE_ARGS $CONFIGURATION_ARGS
+  cargo build --target $target $FEATURE_ARGS $CONFIGURATION_ARGS
   set +x
 done
