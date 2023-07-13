@@ -1,8 +1,5 @@
 //
-//  Callbacks.swift
-//  connlib
-//
-//  Created by Jamil Bou Kheir on 4/3/23.
+//  CallbackHandler.swift
 //
 
 import NetworkExtension
@@ -19,31 +16,43 @@ extension SwiftConnlibError: @unchecked Sendable {}
 extension SwiftConnlibError: Error {}
 
 public protocol CallbackHandlerDelegate: AnyObject {
-    func onConnect(tunnelAddressIPv4: String, tunnelAddressIPv6: String)
-    func onUpdateResources(resourceList: String)
-    func onDisconnect()
-    func onError(error: Error, isRecoverable: Bool)
+  func onConnect(tunnelAddressIPv4: String, tunnelAddressIPv6: String)
+  func onUpdateResources(resourceList: String)
+  func onDisconnect()
+  func onError(error: Error, isRecoverable: Bool)
 }
 
 public class CallbackHandler {
-    public weak var delegate: CallbackHandlerDelegate?
+  public weak var delegate: CallbackHandlerDelegate?
+  private let logger = Logger(subsystem: "dev.firezone.firezone", category: "callbackhandler")
 
-    func onUpdateResources(resourceList: ResourceList) {
-        delegate?.onUpdateResources(resourceList: resourceList.resources.toString())
-    }
+  func onSetInterfaceConfig(tunnelAddresses: TunnelAddresses) {
+    logger.debug("CallbackHandler.onSetInterfaceConfig: IPv4: \(tunnelAddresses.address4.toString(), privacy: .public), IPv6: \(tunnelAddresses.address6.toString(), privacy: .public)")
+    // Unimplemented
+  }
 
-    func onConnect(tunnelAddresses: TunnelAddresses) {
-        delegate?.onConnect(
-            tunnelAddressIPv4: tunnelAddresses.address4.toString(),
-            tunnelAddressIPv6: tunnelAddresses.address6.toString()
-        )
-    }
+  func onTunnelReady() {
+    logger.debug("CallbackHandler.onTunnelReady")
+    // Unimplemented
+  }
 
-    func onDisconnect() {
-        delegate?.onDisconnect()
-    }
+  func onAddRoute(route: RustString) {
+    logger.debug("CallbackHandler.onAddRoute: \(route.toString(), privacy: .public)")
+    // Unimplemented
+  }
 
-    func onError(error: SwiftConnlibError, error_type: SwiftErrorType) {
-        delegate?.onError(error: error, isRecoverable: error_type == .Recoverable)
-    }
+  func onUpdateResources(resourceList: ResourceList) {
+    logger.debug("CallbackHandler.onUpdateResources: \(resourceList.resources.toString(), privacy: .public)")
+    delegate?.onUpdateResources(resourceList: resourceList.resources.toString())
+  }
+
+  func onDisconnect() {
+    logger.debug("CallbackHandler.onDisconnect")
+    delegate?.onDisconnect()
+  }
+
+  func onError(error: SwiftConnlibError, error_type: SwiftErrorType) {
+    logger.debug("CallbackHandler.onError: \(error, privacy: .public) (\(error_type == .Recoverable ? "Recoverable" : "Fatal", privacy: .public)")
+    delegate?.onError(error: error, isRecoverable: error_type == .Recoverable)
+  }
 }
