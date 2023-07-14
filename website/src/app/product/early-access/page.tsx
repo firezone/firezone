@@ -1,14 +1,14 @@
-import EarlyAccessForm from "@/components/EarlyAccessForm"
-import Link from "next/link"
-import Image from "next/image"
-import { Metadata } from "next"
-import { CheckCircleIcon } from "@heroicons/react/24/solid"
-import ActionLink from "@/components/ActionLink"
+import EarlyAccessForm from "@/components/EarlyAccessForm";
+import Link from "next/link";
+import Image from "next/image";
+import { Metadata } from "next";
+import { CheckCircleIcon } from "@heroicons/react/24/solid";
+import ActionLink from "@/components/ActionLink";
 
 export const metadata: Metadata = {
   title: "1.0 Early Access • Firezone",
   description: "Get early access to Firezone 1.0.",
-}
+};
 
 export default function EarlyAccess() {
   return (
@@ -24,16 +24,14 @@ export default function EarlyAccess() {
                 <strong>Firezone 1.0 is coming! </strong>
                 Sign up below to get early access.
               </p>
-              {/* FIXME: Remove when announced
               <p className="sm:text-xl dark:text-neutral-100">
                 <ActionLink
-                  href="/blog/announcing-1.0"
+                  href="/blog/firezone-1.0"
                   className="justify-end flex items-center text-accent-500 hover:no-underline underline"
                 >
                   Read the announcement
                 </ActionLink>
               </p>
-              */}
             </div>
           </div>
           <div className="flex flex-row-reverse items-baseline space-x-reverse -space-x-8">
@@ -134,5 +132,5 @@ export default function EarlyAccess() {
         </div>
       </section>
     </div>
-  )
+  );
 }

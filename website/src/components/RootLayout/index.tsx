@@ -23,14 +23,14 @@ export default function RootLayout({
     <html lang="en">
       <Providers>
         <body className={source_sans_pro.className}>
-          <div className="h-auto antialiased">
+          <div className="min-h-screen h-auto antialiased">
             <RootNavbar />
             <Banner active={false}>
               <p className="text-md font-medium text-center w-full text-neutral-200 dark:text-neutral-800">
                 <strong>Firezone 1.0 is coming!</strong> Rebuilt from the ground
                 up with a cloud dashboard, native clients, and more.{" "}
                 <Link
-                  href="/blog/announcing-1.0"
+                  href="/blog/firezone-1.0"
                   className="underline text-accent-500 dark:text-accent-800 hover:no-underline"
                 >
                   Read the blogpost

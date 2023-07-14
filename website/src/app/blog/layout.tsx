@@ -14,7 +14,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         />
       </div>
       {children}
-      <div className="bg-neutral-50 dark:bg-neutral-800 pt-8">
+      <div className="bg-neutral-50 dark:bg-neutral-800 py-8">
         <NewsletterSignup />
       </div>
     </div>
