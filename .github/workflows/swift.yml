@@ -66,5 +66,5 @@ jobs:
       - name: Build app
         working-directory: ./swift/apple
         run: |
-          cp Firezone/xcconfig/Developer.xcconfig.ci-{{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
-          xcodebuild archive -scheme Firezone -sdk {{ matrix.target.sdk }} -destination 'platform={{ matrix.target.platform }}' CODE_SIGNING_ALLOWED=NO
+          cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
+          xcodebuild archive -scheme Firezone -sdk ${{ matrix.target.sdk }} -destination 'platform=${{ matrix.target.platform }}' CODE_SIGNING_ALLOWED=NO
