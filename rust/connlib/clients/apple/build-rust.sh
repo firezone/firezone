@@ -89,6 +89,6 @@ fi
 for target in "${TARGETS[@]}"
 do
   set -x
-  cargo build --target $target $FEATURE_ARGS $CONFIGURATION_ARGS
+  cargo build --target=$target $FEATURE_ARGS $CONFIGURATION_ARGS
   set +x
 done
