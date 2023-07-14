@@ -34,6 +34,7 @@ config :web, Web.Endpoint,
       ~r"apps/web/lib/web/.*(ex|eex|heex)$"
     ]
   ],
+  reloadable_apps: [:domain, :web],
   server: true
 
 root_path =
