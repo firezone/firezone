@@ -52,7 +52,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          prefix-key: rust-${{ matrix.target.platform }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Update toolchain
         run: rustup show
@@ -61,7 +60,7 @@ jobs:
           path: apple/.build
           key: ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-spm-
+            ${{ matrix.target.platform }}-spm-
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
