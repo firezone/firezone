@@ -34,10 +34,10 @@ jobs:
         target:
           - sdk: macosx
             platform: macOS
-            destination: macOS
+            destination: platform=macOS
           - sdk: iphoneos
             platform: iOS
-            destination: generic/iOS
+            destination: generic/platform=iOS
     runs-on: macos-latest
     permissions:
       contents: read
@@ -69,4 +69,4 @@ jobs:
         working-directory: ./swift/apple
         run: |
           cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
-          xcodebuild archive -scheme Firezone -sdk ${{ matrix.target.sdk }} -destination 'platform=${{ matrix.target.destination }}' CODE_SIGNING_ALLOWED=NO
+          xcodebuild archive -scheme Firezone -sdk ${{ matrix.target.sdk }} -destination '${{ matrix.target.destination }}' CODE_SIGNING_ALLOWED=NO
