@@ -106,15 +106,7 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: build assembleRelease
-          build-root-directory: rust/connlib/clients/android
-      - name: Move artifact
-        run: |
-          mv ./connlib/clients/android/lib/build/outputs/aar/lib-release.aar ./connlib-${{ needs.draft-release.outputs.tag_name }}.aar
-      - uses: actions/upload-artifact@v3
-        with:
-          name: connlib-android
-          path: |
-            ./rust/connlib-${{ needs.draft-release.outputs.tag_name }}.aar
+          build-root-directory: kotlin/android
 
   rust_build-apple:
     needs:
