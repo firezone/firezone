@@ -33,11 +33,9 @@ jobs:
       matrix:
         target:
           - sdk: macosx
-            arch_string: "-arch x86_64 -arch arm64"
             platform: macOS
             destination: platform=macOS
           - sdk: iphoneos
-            arch_string: "-arch arm64"
             platform: iOS
             destination: generic/platform=iOS
     runs-on: macos-latest
@@ -74,4 +72,4 @@ jobs:
         working-directory: ./swift/apple
         run: |
           cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
-          xcodebuild archive ${{ matrix.target.arch_string }} -configuration Release -scheme Firezone -sdk ${{ matrix.target.sdk }} -destination '${{ matrix.target.destination }}' CODE_SIGNING_ALLOWED=NO
+          xcodebuild archive -configuration Release -scheme Firezone -sdk ${{ matrix.target.sdk }} -destination '${{ matrix.target.destination }}' CODE_SIGNING_ALLOWED=NO
