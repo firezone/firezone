@@ -56,7 +56,7 @@ jobs:
       - uses: actions/cache@v3
         with:
           path: apple/.build
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          key: ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-
       - name: Select Xcode
