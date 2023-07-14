@@ -26,6 +26,16 @@ export INCLUDE_PATH="${base_dir}/usr/include"
 export CFLAGS="-L ${LIBRARY_PATH} -I ${INCLUDE_PATH} -Qunused-arguments"
 export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
 
+# Borrowed from https://github.com/signalapp/libsignal/commit/02899cac643a14b2ced7c058cc15a836a2165b6d
+# Thanks to @francesca64 for the fix
+if [[ -n "${DEVELOPER_SDK_DIR:-}" ]]; then
+  # Assume we're in Xcode, which means we're probably cross-compiling.
+  # In this case, we need to add an extra library search path for build scripts and proc-macros,
+  # which run on the host instead of the target.
+  # (macOS Big Sur does not have linkable libraries in /usr/lib/.)
+  export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${LIBRARY_PATH:-}"
+fi
+
 TARGETS=()
 if [[ "$PLATFORM_NAME" = "macosx" ]]; then
     if [[ $CONFIGURATION == "Release" ]] || [[ -z "$NATIVE_ARCH" ]]; then
