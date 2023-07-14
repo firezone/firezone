@@ -82,32 +82,6 @@ jobs:
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --all-features
 
-  rust_build-android:
-    needs:
-      - rust_draft-release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v3
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ./rust
-      - name: Update toolchain
-        run: rustup show
-      - uses: actions/setup-java@v3
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: gradle
-      - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@v1
-      - name: Assemble Release
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: build assembleRelease
-          build-root-directory: kotlin/android
-
   rust_cross-compile-relay: # cross is separate from test because cross-compiling yields different artifacts and we cannot reuse the cache.
     runs-on: ubuntu-latest
     steps:
