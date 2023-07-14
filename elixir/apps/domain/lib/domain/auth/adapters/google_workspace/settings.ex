@@ -19,3 +19,5 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Settings do
     field :discovery_document_uri, :string, default: @discovery_document_uri
   end
 end
+
+# field :provisioners, Ecto.Enum, values: [:manual, :just_in_time, :custom]

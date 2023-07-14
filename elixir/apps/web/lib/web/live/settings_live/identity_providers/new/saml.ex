@@ -17,6 +17,7 @@ defmodule Web.SettingsLive.IdentityProviders.New.SAML do
     {:ok, assign(socket, form: to_form(@form_initializer))}
   end
 
+  @spec handle_event(<<_::48>>, any, any) :: {:noreply, any}
   def handle_event("change", params, socket) do
     # TODO: Validations
     # changeset = ProvisioningStrategies.changeset(%ProvisioningStrategy{}, params)

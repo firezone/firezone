@@ -1,7 +1,6 @@
 defmodule Domain.Auth.Adapters.Token do
   @moduledoc """
-  This is not recommended to use in production,
-  it's only for development, testing, and small home labs.
+  This provider is used to authenticate service account using API keys.
   """
   use Supervisor
   alias Domain.Repo
@@ -21,6 +20,14 @@ defmodule Domain.Auth.Adapters.Token do
     children = []
 
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  @impl true
+  def capabilities do
+    [
+      provisioners: [:manual],
+      group: nil
+    ]
   end
 
   @impl true

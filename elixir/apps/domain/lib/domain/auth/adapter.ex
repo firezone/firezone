@@ -2,6 +2,29 @@ defmodule Domain.Auth.Adapter do
   alias Domain.Accounts
   alias Domain.Auth.{Provider, Identity}
 
+  @typedoc """
+  This type defines which kind of provisioners are enabled for IdP adapter.
+
+  The `:custom` is a special key which means that the IdP adapter implements
+  its own provisioning logic (eg. API integration), so it should be rendered
+  in the UI on pre-provider basis.
+  """
+  @type provisioners :: :manual | :just_in_time | :custom
+
+  @typedoc """
+  This type defines which kind of auth flow will be used on frontend for the
+  IdP provider. Can be set to `nil` if the IdP adapter should not be part of
+  login form.
+  """
+  @type login_flow_group :: nil | atom()
+
+  @type capability :: {:provisioners, [provisioners()]} | {:login_flow_group, login_flow_group()}
+
+  @doc """
+  This callback returns list of provider capabilities for a better UI rendering.
+  """
+  @callback capabilities() :: [capability()]
+
   @doc """
   Applies provider-specific validations for the Identity changeset before it's created.
   """

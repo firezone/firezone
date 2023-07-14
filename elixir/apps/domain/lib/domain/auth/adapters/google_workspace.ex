@@ -21,9 +21,11 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  @impl true
   def capabilities do
     [
-      provisioners: [:custom, :jit, :none]
+      provisioners: [:manual, :just_in_time, :custom],
+      login_flow_group: :openid_connect
     ]
   end
 

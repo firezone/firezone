@@ -22,6 +22,17 @@ defmodule Domain.Auth.Adapters do
     Supervisor.init(@adapter_modules, strategy: :one_for_one)
   end
 
+  def list_adapters do
+    enabled_adapters = Domain.Config.compile_config!(:auth_provider_adapters)
+    enabled_idp_adapters = enabled_adapters -- ~w[token email userpass]a
+    {:ok, Map.take(@adapters, enabled_idp_adapters)}
+  end
+
+  def fetch_capabilities!(%Provider{} = provider) do
+    adapter = fetch_adapter!(provider)
+    adapter.capabilities()
+  end
+
   def identity_changeset(%Ecto.Changeset{} = changeset, %Provider{} = provider, provider_attrs) do
     adapter = fetch_adapter!(provider)
     changeset = Ecto.Changeset.put_change(changeset, :provider_virtual_state, provider_attrs)

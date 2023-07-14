@@ -5,9 +5,6 @@ defmodule Web.Auth do
   def signed_in_path(%Auth.Subject{actor: %{type: :account_admin_user}} = subject),
     do: ~p"/#{subject.account}/dashboard"
 
-  def signed_in_path(%Auth.Subject{actor: %{type: :account_user}} = subject),
-    do: ~p"/#{subject.account}"
-
   def put_subject_in_session(conn, %Auth.Subject{} = subject) do
     {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
 
@@ -15,6 +12,42 @@ defmodule Web.Auth do
     |> Plug.Conn.put_session(:signed_in_at, DateTime.utc_now())
     |> Plug.Conn.put_session(:session_token, session_token)
     |> Plug.Conn.put_session(:live_socket_id, "actors_sessions:#{subject.actor.id}")
+  end
+
+  @doc """
+  This is a wrapper around `Domain.Auth.sign_in/5` that fails authentication and redirects
+  to app install instructions for the users that should not have access to the control plane UI.
+  """
+  def sign_in(conn, provider, provider_identifier, secret) do
+    case Domain.Auth.sign_in(
+           provider,
+           provider_identifier,
+           secret,
+           conn.assigns.user_agent,
+           conn.remote_ip
+         ) do
+      {:ok, %Auth.Subject{actor: %{type: :account_admin_user}} = subject} ->
+        {:ok, subject}
+
+      {:ok, %Auth.Subject{}} ->
+        {:error, :invalid_actor_type}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def sign_in(conn, provider, payload) do
+    case Domain.Auth.sign_in(provider, payload, conn.assigns.user_agent, conn.remote_ip) do
+      {:ok, %Auth.Subject{actor: %{type: :account_admin_user}} = subject} ->
+        {:ok, subject}
+
+      {:ok, %Auth.Subject{}} ->
+        {:error, :invalid_actor_type}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """

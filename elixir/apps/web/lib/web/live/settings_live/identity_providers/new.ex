@@ -1,12 +1,23 @@
 defmodule Web.SettingsLive.IdentityProviders.New do
   use Web, :live_view
+  alias Domain.Auth
+
+  def mount(_params, _session, socket) do
+    {:ok, adapters} = Auth.list_provider_adapters()
+    dbg(adapters)
+
+    socket =
+      socket
+      |> assign(:form, %{})
+
+    {:ok, socket,
+     temporary_assigns: [
+       adapters: adapters
+     ]}
+  end
 
   def handle_event("submit", %{"next" => next}, socket) do
     {:noreply, push_navigate(socket, to: next)}
-  end
-
-  def mount(_params, _session, socket) do
-    {:ok, assign(socket, :form, %{})}
   end
 
   def render(assigns) do
@@ -34,72 +45,11 @@ defmodule Web.SettingsLive.IdentityProviders.New do
             <fieldset>
               <legend class="sr-only">Identity Provider Type</legend>
 
-              <div>
-                <div class="flex items-center mb-2">
-                  <input
-                    id="idp-option-1"
-                    type="radio"
-                    name="next"
-                    value={~p"/#{@subject.account}/settings/identity_providers/new/#"}
-                    class="w-4 h-4 border-gray-300 focus:ring-2 focus:ring-blue-300 dark:focus:ring-blue-600 dark:focus:bg-blue-600 dark:bg-gray-700 dark:border-gray-600"
-                    required
-                  />
-                  <label
-                    for="idp-option-1"
-                    class="block ml-2 text-md font-medium text-gray-900 dark:text-gray-300"
-                  >
-                    Google Workspace
-                  </label>
-                </div>
-                <p class="ml-6 mb-6 text-sm text-gray-500 dark:text-gray-400">
-                  Authenticate users and synchronize users and groups with preconfigured Google Workspace connector.
-                </p>
-              </div>
-
-              <div>
-                <div class="flex items-center mb-2">
-                  <input
-                    id="idp-option-2"
-                    type="radio"
-                    name="next"
-                    value={~p"/#{@subject.account}/settings/identity_providers/new/oidc"}
-                    class="w-4 h-4 border-gray-300 focus:ring-2 focus:ring-blue-300 dark:focus:ring-blue-600 dark:focus:bg-blue-600 dark:bg-gray-700 dark:border-gray-600"
-                    required
-                  />
-                  <label
-                    for="idp-option-2"
-                    class="block ml-2 text-lg font-medium text-gray-900 dark:text-gray-300"
-                  >
-                    OIDC
-                  </label>
-                  <p class="ml-2 text-sm text-gray-500 dark:text-gray-400"></p>
-                </div>
-                <p class="ml-6 mb-6 text-sm text-gray-500 dark:text-gray-400">
-                  Authenticate users with a custom OIDC adapter and synchronize users and groups with just-in-time provisioning.
-                </p>
-              </div>
-
-              <div>
-                <div class="flex items-center mb-4">
-                  <input
-                    id="idp-option-3"
-                    type="radio"
-                    name="next"
-                    value={~p"/#{@subject.account}/settings/identity_providers/new/saml"}
-                    class="w-4 h-4 border-gray-300 focus:ring-2 focus:ring-blue-300 dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600"
-                    required
-                  />
-                  <label
-                    for="idp-option-3"
-                    class="block ml-2 text-lg font-medium text-gray-900 dark:text-gray-300"
-                  >
-                    SAML 2.0
-                  </label>
-                </div>
-                <p class="ml-6 mb-6 text-sm text-gray-500 dark:text-gray-400">
-                  Authenticate users with a custom SAML 2.0 adapter and synchronize users and groups with SCIM 2.0.
-                </p>
-              </div>
+              <.adapter
+                :for={{adapter, _module} <- @adapters}
+                adapter={adapter}
+                account={@subject.account}
+              />
             </fieldset>
           </div>
           <div class="flex justify-end items-center space-x-4">
@@ -113,6 +63,69 @@ defmodule Web.SettingsLive.IdentityProviders.New do
         </.form>
       </div>
     </section>
+    """
+  end
+
+  def adapter(%{adapter: :google_workspace} = assigns) do
+    ~H"""
+    <.adapter_item
+      adapter={@adapter}
+      account={@account}
+      name="Google Workspace"
+      description="Authenticate users and synchronize users and groups with preconfigured Google Workspace connector."
+    />
+    """
+  end
+
+  def adapter(%{adapter: :openid_connect} = assigns) do
+    ~H"""
+    <.adapter_item
+      adapter={@adapter}
+      account={@account}
+      name="OpenID Connect"
+      description="Authenticate users with a generic OpenID Connect adapter and synchronize users and groups with just-in-time provisioning."
+    />
+    """
+  end
+
+  def adapter(%{adapter: :saml} = assigns) do
+    ~H"""
+    <.adapter_item
+      adapter={@adapter}
+      account={@account}
+      name="SAML 2.0"
+      description="Authenticate users with a custom SAML 2.0 adapter and synchronize users and groups with SCIM 2.0."
+    />
+    """
+  end
+
+  def adapter_item(assigns) do
+    ~H"""
+    <div>
+      <div class="flex items-center mb-4">
+        <input
+          id={"idp-option-#{@adapter}"}
+          type="radio"
+          name="next"
+          value={~p"/#{@account}/settings/identity_providers/new/#{@adapter}"}
+          class={~w[
+            w-4 h-4 border-gray-300
+            focus:ring-2 focus:ring-blue-300
+            dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600
+          ]}
+          required
+        />
+        <label
+          for={"idp-option-#{@adapter}"}
+          class="block ml-2 text-lg font-medium text-gray-900 dark:text-gray-300"
+        >
+          <%= @name %>
+        </label>
+      </div>
+      <p class="ml-6 mb-6 text-sm text-gray-500 dark:text-gray-400">
+        <%= @description %>
+      </p>
+    </div>
     """
   end
 end

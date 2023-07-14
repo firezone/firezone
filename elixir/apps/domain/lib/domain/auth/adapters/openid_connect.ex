@@ -21,6 +21,14 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   @impl true
+  def capabilities do
+    [
+      provisioners: [:just_in_time],
+      login_flow_group: :openid_connect
+    ]
+  end
+
+  @impl true
   def identity_changeset(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
     changeset
     |> Domain.Validator.trim_change(:provider_identifier)
@@ -103,6 +111,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
          {:ok, userinfo} <- OpenIDConnect.fetch_userinfo(config, tokens["access_token"]) do
       # TODO: sync groups
+      # TODO: refresh the access token so it doesn't expire
+      # TODO: first admin user token that configured provider should used for periodic syncs
+      # TODO: active status for relays, gateways in list functions
+      # TODO: JIT provisioning
       expires_at =
         cond do
           not is_nil(tokens["expires_in"]) ->

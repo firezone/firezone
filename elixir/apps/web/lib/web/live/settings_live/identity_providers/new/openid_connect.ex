@@ -1,10 +1,10 @@
-defmodule Web.SettingsLive.IdentityProviders.New.OIDC do
+defmodule Web.SettingsLive.IdentityProviders.New.OpenIDConnect do
   use Web, :live_view
   import Web.SettingsLive.IdentityProviders.New.Components
 
   # TODO: Use a changeset for this
   @form_initializer %{
-    "type" => "oidc",
+    "type" => "openid-connect",
     "scopes" => "openid profile email offline_access",
     "provisioning_strategy" => "jit",
     "jit_user_filter_type" => "email_allowlist",
@@ -12,7 +12,8 @@ defmodule Web.SettingsLive.IdentityProviders.New.OIDC do
   }
 
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, form: to_form(@form_initializer))}
+    changeset = Auth.Adapters.socket() = assign(socket, form: to_form(@form_initializer))
+    {:ok, socket}
   end
 
   def handle_event("change", params, socket) do
@@ -43,17 +44,22 @@ defmodule Web.SettingsLive.IdentityProviders.New.OIDC do
             label: "Add Identity Provider",
             path: ~p"/#{@subject.account}/settings/identity_providers/new"
           },
-          %{label: "OIDC", path: ~p"/#{@subject.account}/settings/identity_providers/new/oidc"}
+          %{
+            label: "OpenID Connect",
+            path: ~p"/#{@subject.account}/settings/identity_providers/new/openid_connect"
+          }
         ]} />
       </:breadcrumbs>
       <:title>
-        Add a new OIDC Identity Provider
+        Add a new OpenID Connect Identity Provider
       </:title>
     </.section_header>
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <.form for={@form} id="oidc-form" phx-change="change" phx-submit="submit">
-          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">OIDC configuration</h2>
+        <.form for={@form} id="openid-connect-form" phx-change="change" phx-submit="submit">
+          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">
+            Client configuration
+          </h2>
           <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
             <div>
               <.input
@@ -75,7 +81,7 @@ defmodule Web.SettingsLive.IdentityProviders.New.OIDC do
                 autocomplete="off"
                 field={@form[:scopes]}
                 class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                placeholder="OIDC scopes to request"
+                placeholder="OpenID Connect scopes to request"
                 required
               />
               <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">

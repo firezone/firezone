@@ -28,14 +28,7 @@ defmodule Web.AuthController do
         }
       }) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-         {:ok, subject} <-
-           Domain.Auth.sign_in(
-             provider,
-             provider_identifier,
-             secret,
-             conn.assigns.user_agent,
-             conn.remote_ip
-           ) do
+         {:ok, subject} <- Web.Auth.sign_in(conn, provider, provider_identifier, secret) do
       redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
 
       conn
@@ -48,6 +41,11 @@ defmodule Web.AuthController do
         |> put_flash(:userpass_provider_identifier, String.slice(provider_identifier, 0, 160))
         |> put_flash(:error, "You can not use this method to sign in.")
         |> redirect(to: "/#{account_id}/sign_in")
+
+      {:error, :invalid_actor_type} ->
+        conn
+        |> put_flash(:info, "Please use client application to access Firezone.")
+        |> redirect(to: ~p"/#{account_id}")
 
       {:error, _reason} ->
         conn
@@ -90,14 +88,7 @@ defmodule Web.AuthController do
         "secret" => secret
       }) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-         {:ok, subject} <-
-           Domain.Auth.sign_in(
-             provider,
-             identity_id,
-             secret,
-             conn.assigns.user_agent,
-             conn.remote_ip
-           ) do
+         {:ok, subject} <- Web.Auth.sign_in(conn, provider, identity_id, secret) do
       redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
 
       conn
@@ -109,6 +100,11 @@ defmodule Web.AuthController do
         conn
         |> put_flash(:error, "You can not use this method to sign in.")
         |> redirect(to: "/#{account_id}/sign_in")
+
+      {:error, :invalid_actor_type} ->
+        conn
+        |> put_flash(:info, "Please use client application to access Firezone.")
+        |> redirect(to: ~p"/#{account_id}")
 
       {:error, _reason} ->
         conn
@@ -162,13 +158,7 @@ defmodule Web.AuthController do
              code_verifier,
              code
            },
-         {:ok, subject} <-
-           Domain.Auth.sign_in(
-             provider,
-             payload,
-             conn.assigns.user_agent,
-             conn.remote_ip
-           ) do
+         {:ok, subject} <- Web.Auth.sign_in(conn, provider, payload) do
       redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
 
       conn
@@ -186,6 +176,11 @@ defmodule Web.AuthController do
         conn
         |> put_flash(:error, "Your session has expired, please try again.")
         |> redirect(to: "/#{account_id}/sign_in")
+
+      {:error, :invalid_actor_type} ->
+        conn
+        |> put_flash(:info, "Please use client application to access Firezone.")
+        |> redirect(to: ~p"/#{account_id}")
 
       {:error, _reason} ->
         conn

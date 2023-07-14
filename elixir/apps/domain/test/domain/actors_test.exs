@@ -141,6 +141,61 @@ defmodule Domain.ActorsTest do
     end
   end
 
+  describe "upsert_provider_group/3" do
+    setup do
+      account = AccountsFixtures.create_account()
+
+      {provider, bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_openid_connect_provider(account: account)
+
+      %{
+        bypass: bypass,
+        account: account,
+        provider: provider
+      }
+    end
+
+    # test "creates a new group", %{provider: provider} do
+    #   provider_identifier = Ecto.UUID.generate()
+    #   attrs_by_provider_identifier = %{provider_identifier => %{name: "foo"}}
+
+    #   assert {:ok, group} = upsert_provider_group(provider, attrs)
+
+    #   assert group.provider_identifier == provider_identifier
+    #   assert group.name == attrs.name
+
+    #   assert group.provider_id == provider.id
+    #   assert group.account_id == provider.account_id
+    #   refute group.deleted_at
+
+    #   assert Repo.one(Actors.Group)
+    # end
+
+    # test "updates an existing group", %{account: account, provider: provider} do
+    #   group = ActorsFixtures.create_provider_group(account: account, provider: provider)
+
+    #   provider_identifier = Ecto.UUID.generate()
+    #   attrs = %{name: "foo"}
+
+    #   assert {:ok, updated_group} = upsert_provider_group_and_actors(provider, group.provider_identifier, attrs)
+
+    #   assert updated_group.provider_identifier == provider_identifier
+    #   assert updated_group.name == group.name
+    #   assert updated_group.name != attrs.name
+
+    #   assert updated_group.provider_id == provider.id
+    #   assert updated_group.account_id == provider.account_id
+    #   refute group.deleted_at
+
+    #   assert Repo.one(Actors.Group)
+    # end
+
+    # test "deletes existing groups that are not synced"
+
+    # updates membmers (removes old and adds new)
+  end
+
   describe "create_group/2" do
     setup do
       account = AccountsFixtures.create_account()

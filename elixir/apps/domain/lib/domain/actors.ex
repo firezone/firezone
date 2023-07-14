@@ -27,6 +27,35 @@ defmodule Domain.Actors do
     change_group(%Group{}, attrs)
   end
 
+  def upsert_provider_groups(%Auth.Provider{} = provider, attrs_by_provider_identifier) do
+    attrs_by_provider_identifier
+    |> Enum.reduce(Ecto.Multi.new(), fn {provider_identifier, attrs}, multi ->
+      Ecto.Multi.insert(
+        multi,
+        {:group, provider_identifier},
+        Group.Changeset.create_changeset(provider, provider_identifier, attrs),
+        conflict_target: Group.Changeset.upsert_conflict_target(),
+        on_conflict: Group.Changeset.upsert_on_conflict(),
+        returning: true
+      )
+    end)
+    |> Repo.transaction()
+
+    # Ecto.Multi.new()
+    # |> Ecto.Multi.insert(:actor, Actor.Changeset.create_changeset(provider, attrs))
+    # |> Ecto.Multi.run(:identity, fn _repo, %{actor: actor} ->
+    #   Auth.create_identity(actor, provider, provider_identifier)
+    # end)
+    # |> Repo.transaction()
+    |> case do
+      {:ok, %{group: group}} ->
+        {:ok, group}
+
+      {:error, _step, changeset, _effects_so_far} ->
+        {:error, changeset}
+    end
+  end
+
   def create_group(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       subject.account
@@ -58,8 +87,6 @@ defmodule Domain.Actors do
       |> Repo.fetch_and_update(with: &Group.Changeset.delete_changeset/1)
     end
   end
-
-  ##########
 
   def fetch_count_by_type(type, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do

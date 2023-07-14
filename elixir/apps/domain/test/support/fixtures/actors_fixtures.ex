@@ -30,6 +30,30 @@ defmodule Domain.ActorsFixtures do
     group
   end
 
+  # def create_provider_group(attrs \\ %{}) do
+  #   attrs = Enum.into(attrs, %{})
+
+  #   {account, attrs} =
+  #     Map.pop_lazy(attrs, :account, fn ->
+  #       AccountsFixtures.create_account()
+  #     end)
+
+  #   {provider_identifier, attrs} =
+  #     Map.pop_lazy(attrs, :provider_identifier, fn ->
+  #       Ecto.UUID.generate()
+  #     end)
+
+  #   {provider, attrs} =
+  #     Map.pop_lazy(attrs, :account, fn ->
+  #       AccountsFixtures.create_account()
+  #     end)
+
+  #   attrs = group_attrs(attrs)
+
+  #   {:ok, group} = Actors.upsert_provider_group(provider, provider_identifier, attrs)
+  #   group
+  # end
+
   def delete_group(group) do
     group = Repo.preload(group, :account)
     actor = create_actor(type: :account_admin_user, account: group.account)

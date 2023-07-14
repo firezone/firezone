@@ -6,6 +6,7 @@ defmodule Domain.Auth.Provider do
 
     field :adapter, Ecto.Enum, values: ~w[email openid_connect google_workspace userpass token]a
     field :adapter_config, :map
+    # field :adapter_state, :map
 
     belongs_to :account, Domain.Accounts.Account
 

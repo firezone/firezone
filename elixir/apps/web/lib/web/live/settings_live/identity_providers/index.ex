@@ -1,5 +1,26 @@
 defmodule Web.SettingsLive.IdentityProviders.Index do
   use Web, :live_view
+  alias Domain.{Auth, Accounts}
+
+  def mount(%{"account_id" => account_id}, _session, socket) do
+    with {:ok, account} <- Accounts.fetch_account_by_id(account_id),
+         {:ok, providers} <- Auth.list_active_providers_for_account(account) do
+      {:ok, socket,
+       temporary_assigns: [
+         account: account,
+         providers: providers,
+         page_title: "Identity Providers"
+       ]}
+    else
+      {:error, :not_found} ->
+        socket =
+          socket
+          |> put_flash(:error, "Account not found.")
+          |> redirect(to: ~p"/#{account_id}/")
+
+        {:ok, socket}
+    end
+  end
 
   def render(assigns) do
     ~H"""
@@ -13,9 +34,11 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
           }
         ]} />
       </:breadcrumbs>
+
       <:title>
         Identity Providers
       </:title>
+
       <:actions>
         <.add_button navigate={~p"/#{@subject.account}/settings/identity_providers/new"}>
           Add Identity Provider

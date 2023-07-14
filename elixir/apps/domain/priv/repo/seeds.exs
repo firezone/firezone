@@ -88,6 +88,33 @@ unprivileged_actor_userpass_identity =
     id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5"
   )
 
+if client_secret = System.get_env("SEEDS_GOOGLE_OIDC_CLIENT_SECRET") do
+  {:ok, google_provider} =
+    Auth.create_provider(account, %{
+      name: "Google Workspace",
+      adapter: :google_workspace,
+      adapter_config: %{
+        "client_id" =>
+          "1064313638613-0bttveunfv27l72s3h6th13kk16pj9l1.apps.googleusercontent.com",
+        "client_secret" => client_secret
+      }
+    })
+
+  google_provider =
+    Ecto.Changeset.change(google_provider, id: "8614a622-6c24-48aa-b1a4-2c6c04b6cbab")
+    |> Repo.update!()
+
+  google_workspace_uid = System.get_env("SEEDS_GOOGLE_WORKSPACE_USER_ID")
+
+  {:ok, _admin_actor_google_workspace_identity} =
+    Auth.create_identity(admin_actor, google_provider, google_workspace_uid, %{})
+
+  IO.puts("")
+  IO.puts("Google Workspace provider: #{google_provider.id}")
+  IO.puts("               User ID: #{google_workspace_uid}")
+  IO.puts("")
+end
+
 unprivileged_actor_token = hd(unprivileged_actor.identities).provider_virtual_state.sign_in_token
 admin_actor_token = hd(admin_actor.identities).provider_virtual_state.sign_in_token
 

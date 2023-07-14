@@ -21,6 +21,14 @@ defmodule Domain.Auth.Adapters.Email do
   end
 
   @impl true
+  def capabilities do
+    [
+      provisioners: [:manual],
+      login_flow_group: :email
+    ]
+  end
+
+  @impl true
   def identity_changeset(%Provider{} = provider, %Ecto.Changeset{} = changeset) do
     {state, virtual_state} = identity_create_state(provider)
 
@@ -63,7 +71,6 @@ defmodule Domain.Auth.Adapters.Email do
     }
   end
 
-  # XXX: Send actual email here once web has templates
   def request_sign_in_token(%Identity{} = identity) do
     identity = Repo.preload(identity, :provider)
     {state, virtual_state} = identity_create_state(identity.provider)
@@ -107,7 +114,7 @@ defmodule Domain.Auth.Adapters.Email do
     )
     |> case do
       {:ok, identity} -> {:ok, identity, nil}
-      {:error, reason} -> {:error, reason}
+      {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
     end
   end
 

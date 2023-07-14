@@ -13,4 +13,16 @@ defmodule Domain.Actors.Group.Query do
   def by_account_id(queryable \\ all(), account_id) do
     where(queryable, [groups: groups], groups.account_id == ^account_id)
   end
+
+  def by_provider_id(queryable \\ all(), provider_id) do
+    where(queryable, [groups: groups], groups.provider_id == ^provider_id)
+  end
+
+  def by_provider_identifier(queryable \\ all(), provider_identifier) do
+    where(queryable, [groups: groups], groups.provider_identifier == ^provider_identifier)
+  end
+
+  def lock(queryable \\ all()) do
+    lock(queryable, "FOR UPDATE")
+  end
 end

@@ -24,6 +24,14 @@ defmodule Domain.Auth.Adapters.UserPass do
   end
 
   @impl true
+  def capabilities do
+    [
+      provisioners: [:manual],
+      login_flow_group: :userpass
+    ]
+  end
+
+  @impl true
   def identity_changeset(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
     changeset
     |> Domain.Validator.trim_change(:provider_identifier)

@@ -24,6 +24,10 @@ defmodule Domain.Auth do
 
   # Providers
 
+  def list_provider_adapters do
+    Adapters.list_adapters()
+  end
+
   def fetch_active_provider_by_id(id) do
     if Validator.valid_uuid?(id) do
       Provider.Query.by_id(id)
@@ -38,6 +42,11 @@ defmodule Domain.Auth do
     Provider.Query.by_account_id(account.id)
     |> Provider.Query.not_disabled()
     |> Repo.list()
+  end
+
+  def change_provider(adapter, attrs) do
+    Provider.Changeset.create_changeset(account, attrs)
+    |> Adapters.changeset()
   end
 
   def create_provider(%Accounts.Account{} = account, attrs, %Subject{} = subject) do
@@ -101,6 +110,10 @@ defmodule Domain.Auth do
     |> Provider.Query.by_account_id(account_id)
     |> Provider.Query.lock()
     |> Repo.exists?()
+  end
+
+  def fetch_provider_capabilities!(%Provider{} = provider) do
+    Adapters.fetch_capabilities!(provider)
   end
 
   # Identities
@@ -261,6 +274,7 @@ defmodule Domain.Auth do
     salt = Keyword.fetch!(config, :salt)
     # TODO: we don't want client token to be invalid if you reconnect client from a different ip,
     # for the clients that move between cellular towers
+    # TODO: we want to show all sessions in a UI so persist them to DB
     payload = session_token_payload(subject)
     max_age = DateTime.diff(subject.expires_at, DateTime.utc_now(), :second)
 
