@@ -29,7 +29,6 @@ const statusUpdater = function () {
 }
 Hooks.StatusPage = {
   mounted: statusUpdater,
-  updated: statusUpdater,
 }
 
 export default Hooks
