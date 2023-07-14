@@ -1,4 +1,4 @@
-package dev.firezone.connlib.session
+package dev.firezone.connlib
 
 object Session {
     external fun connect(portalURL: String, token: String, callback: Any): Long

@@ -64,6 +64,9 @@ android {
     publishing {
         singleVariant("release")
     }
+    sourceSets["main"].jniLibs {
+        srcDir("jniLibs")
+    }
 }
 
 dependencies {
@@ -79,17 +82,42 @@ dependencies {
 
 apply(plugin = "org.mozilla.rust-android-gradle.rust-android")
 
+tasks.register("copyJniSharedObjects") {
+    outputs.upToDateWhen { false }
+
+    val jniTargets = mapOf(
+        "armv7-linux-androideabi" to "armeabi-v7a",
+        "aarch64-linux-android" to "arm64-v8a",
+        "i686-linux-android" to "x86",
+        "x86_64-linux-android" to "x86_64",
+    )
+
+    jniTargets.forEach { entry ->
+        val soFile = File(
+            project.projectDir.parentFile.parentFile.parentFile.parentFile,
+            "target/${entry.key}/debug/libconnlib.so"
+        )
+        val targetDir = File(project.projectDir, "/jniLibs/${entry.value}").apply {
+            if (!exists()) {
+                mkdirs()
+            }
+        }
+
+        copy {
+            with(copySpec {
+                from(soFile)
+            })
+            into(targetDir)
+        }
+    }
+}
+
 cargo {
     prebuiltToolchains = true
     verbose = true
     module  = "../"
     libname = "connlib"
     targets = listOf("arm", "arm64", "x86", "x86_64")
-    // Cargo requires both `targetDirectory` and `CARGO_TARGET_DIR` env to be set to work properly.
-    targetDirectory = "${project.buildDir}/cargo-target"
-    exec = { spec, _ ->
-        spec.environment("CARGO_TARGET_DIR", targetDirectory)
-    }
     features {
         if (System.getenv("CONNLIB_MOCK") != null) {
             defaultAnd(listOf("mock").toTypedArray())
@@ -99,6 +127,9 @@ cargo {
 
 tasks.whenTaskAdded {
     if (name.startsWith("javaPreCompile")) {
-        dependsOn(tasks.named("cargoBuild"))
+        dependsOn(
+            tasks.named("cargoBuild"),
+            tasks.named("copyJniSharedObjects")
+        )
     }
 }

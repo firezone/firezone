@@ -2,8 +2,8 @@ package dev.firezone.android.features.session.backend
 
 import android.content.SharedPreferences
 import android.util.Log
-import dev.firezone.connlib.logging.Logger
-import dev.firezone.connlib.session.Session
+import dev.firezone.connlib.Logger
+import dev.firezone.connlib.Session
 import javax.inject.Inject
 
 private const val PORTAL_URL_KEY = "portalUrl"

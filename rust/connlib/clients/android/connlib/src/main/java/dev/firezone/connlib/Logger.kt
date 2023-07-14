@@ -1,4 +1,4 @@
-package dev.firezone.connlib.logging
+package dev.firezone.connlib
 
 object Logger {
     external fun init()

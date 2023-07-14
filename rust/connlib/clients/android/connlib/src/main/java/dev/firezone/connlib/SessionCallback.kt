@@ -1,4 +1,4 @@
-package dev.firezone.connlib.session
+package dev.firezone.connlib
 
 interface SessionCallback {
 

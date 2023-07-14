@@ -26,4 +26,4 @@ dependencyResolutionManagement {
 rootProject.name = "Firezone App"
 include ':app'
 include ':connlib'
-project(':connlib').projectDir=new File('../../rust/connlib/clients/android/lib')
+project(':connlib').projectDir=new File('../../rust/connlib/clients/android/connlib')

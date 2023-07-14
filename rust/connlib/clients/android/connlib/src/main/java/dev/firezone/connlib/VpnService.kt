@@ -1,4 +1,4 @@
-package dev.firezone.connlib.service
+package dev.firezone.connlib
 import android.util.Log
 
 class VpnService : android.net.VpnService() {

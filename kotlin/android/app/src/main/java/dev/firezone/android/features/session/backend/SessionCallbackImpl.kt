@@ -1,12 +1,12 @@
 package dev.firezone.android.features.session.backend
 
 import android.util.Log
-import dev.firezone.connlib.session.SessionCallback
+import dev.firezone.connlib.SessionCallback
 
 class SessionCallbackImpl: SessionCallback {
 
     override fun onConnect(addresses: String): Boolean {
-        Log.d("Connlib", "status: $: $status")
+        Log.d("Connlib", "onConnect: $addresses")
 
         return true
     }
@@ -19,8 +19,7 @@ class SessionCallbackImpl: SessionCallback {
     }
 
     override fun onDisconnect(): Boolean {
-        // TODO: // Call into client app to update interface addresses
-        Log.d("Connlib", "onSetTunnelAddresses: $addresses")
+        Log.d("Connlib", "onDisconnect")
 
         return true
     }
