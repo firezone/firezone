@@ -8,3 +8,17 @@
     @apply flex items-center gap-1 scroll-mt-20;
   }
 }
+
+@layer base {
+  .github-html h2 {
+    @apply text-lg font-semibold tracking-tight pt-4;
+  }
+
+  .github-html ul {
+    @apply list-disc text-sm list-inside;
+  }
+
+  .github-html a {
+    @apply text-accent-500 underline hover:no-underline;
+  }
+}

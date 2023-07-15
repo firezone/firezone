@@ -48,7 +48,7 @@ The easiest way to deploy Firezone with Docker is the automatic install script:
 
 <CodeBlock
   language="bash"
-  codeString="bash <(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/install.sh)"
+  codeString="bash <(curl -fsSL https://github.com/firezone/firezone/raw/legacy/scripts/install.sh)"
 />
 
 This will ask you a few questions regarding initial configuration, then proceed
@@ -66,13 +66,13 @@ installation process, follow the steps below to install manually.
    Linux**:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/firezone/firezone/legacy/docker-compose.prod.yml -o docker-compose.yml
 ```
 
 **For macOS, Windows (non-production only)**:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.desktop.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/firezone/firezone/legacy/docker-compose.desktop.yml -o docker-compose.yml
 ```
 
 1. Generate required secrets:
