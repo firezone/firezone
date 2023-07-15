@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export default function EarlyAccessForm() {
   return (
-    <div className="pt-8 grid grid-cols-1 sm:grid-cols-2 gap-8 items-start">
+    <div className="pt-8 grid sm:grid-cols-2 gap-8 items-start">
       <div className="px-4 mb-8">
         <h2 className="mb-8 py-4 border-b text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl dark:text-white">
           FAQ

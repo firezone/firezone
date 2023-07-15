@@ -12,7 +12,7 @@ export default function SalesLeadForm() {
           Firezone can help.
         </p>
       </div>
-      <div className="pt-8 grid grid-cols-1 sm:grid-cols-2 gap-4 items-top">
+      <div className="pt-8 grid sm:grid-cols-2 gap-4 items-top">
         <div className="mb-8">
           <h3 className="mb-4 lg:text-3xl md:text-2xl font-bold tracking-tight text-neutral-900 sm:text-xl dark:text-white">
             Ensure business continuity

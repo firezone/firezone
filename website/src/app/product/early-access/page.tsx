@@ -14,7 +14,7 @@ export default function EarlyAccess() {
   return (
     <div className="pt-14 bg-neutral-100">
       <div className="py-8 px-4 mx-auto max-w-screen-2xl lg:py-16 lg:px-6">
-        <div className="grid flex grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid flex gap-4 lg:grid-cols-2">
           <div className="flex items-center justify-center lg:justify-start">
             <div className="flex-none px-2">
               <h1 className="mb-4 text-5xl justify-center lg:justify-end font-extrabold tracking-tight text-neutral-900 xl:text-6xl">

@@ -109,7 +109,7 @@ export default function Page() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 mx-auto max-w-screen-lg divide-x">
+        <div className="grid md:grid-cols-3 mx-auto max-w-screen-lg divide-x">
           <div className="p-6">
             <h3 className="text-neutral-900 tracking-tight font-bold text-2xl mb-4">
               Shipped
@@ -321,7 +321,7 @@ export default function Page() {
         </div>
       </div>
       <div className="border border-primary-200 bg-primary-100">
-        <div className="mx-auto max-w-screen-md grid grid-cols-1 text-center md:grid-cols-2 text-lg sm:text-xl py-3 sm:py-6">
+        <div className="mx-auto max-w-screen-md grid text-center md:grid-cols-2 text-lg sm:text-xl py-3 sm:py-6">
           <div>
             <MegaphoneIcon className="inline-flex h-5 w-5 mr-2 text-primary-450" />
             Want to stay updated on our progress?

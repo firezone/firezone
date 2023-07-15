@@ -140,7 +140,7 @@ export default function Page() {
             CORE TEAM
           </h3>
         </div>
-        <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 lg:gap-16">
+        <div className="mt-16 grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 lg:gap-16">
           {coreTeam.map((person) => {
             return renderTeamMember(person);
           })}
@@ -150,7 +150,7 @@ export default function Page() {
             ADVISORS & CONSULTANTS
           </h3>
         </div>
-        <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 lg:gap-16">
+        <div className="mt-16 grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 lg:gap-16">
           {advisors.map((person) => {
             return renderTeamMember(person);
           })}
