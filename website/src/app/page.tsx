@@ -346,7 +346,7 @@ export default function Page() {
           <h2 className="mb-4 text-4xl tracking-tight font-bold text-neutral-900 dark:text-white">
             Who can benefit using Firezone?
           </h2>
-          <p className="my-4 text-xl max-w-screen-lg text-center text-primary-900 dark:text-neutral-100">
+          <p className="my-4 text-xl max-w-screen-lg sm:text-center text-primary-900 dark:text-neutral-100">
             Easy to deploy and manage for individuals and organizations alike.
             Only allow connections from authenticated users and automatically
             disable access for employees who have left. Firezone integrates with
