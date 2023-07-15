@@ -58,6 +58,7 @@ module.exports = {
       typography: {
         DEFAULT: {
           css: {
+            color: firezoneColors["night-rider"][900],
             a: {
               color: firezoneColors["electric-violet"][500],
               "&:hover": {

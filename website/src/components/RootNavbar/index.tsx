@@ -46,7 +46,7 @@ export default function RootNavbar() {
                 width={150}
                 height={150}
                 src="/images/logo-text.svg"
-                className="ml-2 mr-5"
+                className="w-24 sm:w-32 ml-2 mr-2 sm:mr-5"
                 alt="Firezone Logo"
               />
             </Link>
@@ -54,7 +54,7 @@ export default function RootNavbar() {
             <Link
               className={
                 (p == "/" ? "text-neutral-900 underline" : "text-neutral-800") +
-                " p-1 mr-1 hover:text-neutral-900 hover:underline"
+                " p-0 sm:p-1 mr-1 hover:text-neutral-900 hover:underline"
               }
               href="/"
             >
@@ -67,7 +67,7 @@ export default function RootNavbar() {
                 (p.startsWith("/product")
                   ? "text-neutral-900"
                   : "text-neutral-800") +
-                " hover:text-neutral-900 flex items-center justify-between p-1 mr-1"
+                " hover:text-neutral-900 flex items-center justify-between p-0 sm:p-1 mr-1"
               }
             >
               <span
@@ -78,7 +78,7 @@ export default function RootNavbar() {
               >
                 Product
               </span>
-              <ChevronDownIcon className="w-2.5 h-2.5 ml-1" />
+              <ChevronDownIcon className="w-3 h-3 mx-1" />
             </button>
             <div
               id="product-dropdown-menu"

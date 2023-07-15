@@ -24,7 +24,7 @@ export default function Footer() {
               <h2 className="mb-6 text-sm font-semibold text-neutral-900 uppercase dark:text-white">
                 Company
               </h2>
-              <ul className="text-neutral-800 dark:text-neutral-100 font-medium">
+              <ul className="text-neutral-900 dark:text-neutral-100 font-medium">
                 <li className="mb-4">
                   <Link href="/" className="hover:underline">
                     Home
@@ -54,7 +54,7 @@ export default function Footer() {
               <h2 className="mb-6 text-sm font-semibold text-neutral-900 uppercase dark:text-white">
                 Resources
               </h2>
-              <ul className="text-neutral-800 dark:text-neutral-100 font-medium">
+              <ul className="text-neutral-900 dark:text-neutral-100 font-medium">
                 <li className="mb-4">
                   <Link
                     href="/docs"
@@ -101,7 +101,7 @@ export default function Footer() {
               <h2 className="mb-6 text-sm font-semibold text-neutral-900 uppercase dark:text-white">
                 Community
               </h2>
-              <ul className="text-neutral-800 dark:text-neutral-100 font-medium">
+              <ul className="text-neutral-900 dark:text-neutral-100 font-medium">
                 <li className="mb-4">
                   <Link
                     href="https://discourse.firez.one"
@@ -148,7 +148,7 @@ export default function Footer() {
         </div>
         <hr className="my-6 border-neutral-200 sm:mx-auto dark:border-neutral-700 lg:my-8" />
         <div className="sm:flex sm:items-center sm:justify-between">
-          <span className="text-sm text-neutral-800 sm:text-center dark:text-neutral-100">
+          <span className="text-sm text-neutral-900 sm:text-center dark:text-neutral-100">
             © 2023{" "}
             <Link href="/" className="hover:underline">
               Firezone, Inc.

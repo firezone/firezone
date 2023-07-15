@@ -6,13 +6,13 @@ import NewsletterSignup from "@/components/NewsletterSignup";
 
 export default function Page() {
   return (
-    <section className="bg-neutral-50 dark:bg-neutral-900">
+    <section className="bg-neutral-100 dark:bg-neutral-900">
       <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
         <div className="mx-auto max-w-screen-sm text-center lg:mb-16 mb-8">
           <h1 className="justify-center mb-4 text-3xl lg:text-6xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
             Firezone Blog
           </h1>
-          <p className="text-neutral-800 sm:text-xl dark:text-neutral-100">
+          <p className="text-neutral-900 text-lg sm:text-xl dark:text-neutral-100">
             Announcements, tutorials, and more from the Firezone team.
           </p>
         </div>
