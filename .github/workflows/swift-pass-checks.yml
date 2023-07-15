@@ -18,6 +18,13 @@ jobs:
     steps:
       - run: 'echo "No build required"'
   swift_build:
+    strategy:
+      matrix:
+        target:
+          - sdk: macosx
+            platform: macOS
+          - sdk: iphoneos
+            platform: iOS
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
