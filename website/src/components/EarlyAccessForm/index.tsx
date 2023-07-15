@@ -5,10 +5,10 @@ export default function EarlyAccessForm() {
   return (
     <div className="pt-8 grid sm:grid-cols-2 gap-8 items-start">
       <div className="px-4 mb-8">
-        <h2 className="mb-8 py-4 border-b text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl dark:text-white">
+        <h2 className="mb-8 py-4 border-b text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl ">
           FAQ
         </h2>
-        <h3 className="mb-4 lg:text-2xl md:text-xl font-bold tracking-tight text-neutral-900 text-lg dark:text-white">
+        <h3 className="mb-4 lg:text-2xl md:text-xl font-bold tracking-tight text-neutral-900 text-lg ">
           Why sign up for early access?
         </h3>
         <ul className="md:text-xl mb-6 list-inside list-disc space-y-2">
@@ -17,7 +17,7 @@ export default function EarlyAccessForm() {
           <li>Dedicated Slack channel for onboarding and support</li>
           <li>Free unlimited usage during the beta period</li>
         </ul>
-        <h3 className="mb-4 lg:text-2xl md:text-xl font-bold tracking-tight text-neutral-900 text-lg dark:text-white">
+        <h3 className="mb-4 lg:text-2xl md:text-xl font-bold tracking-tight text-neutral-900 text-lg ">
           What's new in 1.0?
         </h3>
         <ul className="md:text-xl mb-6 list-inside list-disc space-y-2">
@@ -32,7 +32,7 @@ export default function EarlyAccessForm() {
           <li>Automatic failover, load balancing</li>
           */}
         </ul>
-        <h3 className="mb-4 lg:text-2xl md:text-xl font-bold tracking-tight text-neutral-900 text-lg dark:text-white">
+        <h3 className="mb-4 lg:text-2xl md:text-xl font-bold tracking-tight text-neutral-900 text-lg ">
           How much will it cost?
         </h3>
         <p className="md:text-xl mb-6">

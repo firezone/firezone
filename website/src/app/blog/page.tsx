@@ -6,20 +6,20 @@ import NewsletterSignup from "@/components/NewsletterSignup";
 
 export default function Page() {
   return (
-    <section className="bg-neutral-100 dark:bg-neutral-900">
+    <section className="bg-neutral-100 ">
       <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
         <div className="mx-auto max-w-screen-sm text-center lg:mb-16 mb-8">
-          <h1 className="justify-center mb-4 text-3xl lg:text-6xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
+          <h1 className="justify-center mb-4 text-3xl lg:text-6xl tracking-tight font-extrabold text-neutral-900 ">
             Firezone Blog
           </h1>
-          <p className="text-neutral-900 text-lg sm:text-xl dark:text-neutral-100">
+          <p className="text-neutral-900 text-lg sm:text-xl ">
             Announcements, tutorials, and more from the Firezone team.
           </p>
         </div>
         <div className="grid gap-8 lg:grid-cols-2">
-          <article className="p-6 bg-neutral-100 rounded-lg border border-neutral-200 shadow-md dark:bg-neutral-800 dark:border-neutral-700">
+          <article className="p-6 bg-neutral-100 rounded-lg border border-neutral-200 shadow-md  ">
             <div className="flex justify-between items-center mb-5">
-              <span className="bg-primary-450 text-white text-xs font-medium inline-flex items-center px-2.5 py-0.5 rounded dark:bg-primary-200 dark:text-primary-800">
+              <span className="bg-primary-450 text-white text-xs font-medium inline-flex items-center px-2.5 py-0.5 rounded  ">
                 <svg
                   className="mr-1 w-3 h-3"
                   fill="currentColor"
@@ -37,10 +37,10 @@ export default function Page() {
               </span>
               <span className="text-sm font-semibold">October 17, 2022</span>
             </div>
-            <h2 className="mb-2 text-2xl font-bold tracking-tight text-neutral-900 dark:text-white">
+            <h2 className="mb-2 text-2xl font-bold tracking-tight text-neutral-900 ">
               <Link href="/blog/release-0-6-0">Release 0.6.0</Link>
             </h2>
-            <p className="mb-5 font-medium text-neutral-800 dark:text-neutral-100">
+            <p className="mb-5 font-medium text-neutral-800 ">
               Today, I'm excited to announce we've closed the{" "}
               <Link href="https://github.com/firezone/firezone/issues/260">
                 first public issue{" "}
@@ -58,22 +58,22 @@ export default function Page() {
                   src={gravatar("jamil@firezone.dev")}
                   alt="Jamil Bou Kheir avatar"
                 />
-                <span className="font-medium dark:text-white">
+                <span className="font-medium ">
                   Jamil Bou Kheir
                 </span>
               </div>
               <Link
                 href="/blog/release-0-6-0"
-                className="inline-flex items-center font-medium text-primary-900 dark:text-primary-100 hover:underline"
+                className="inline-flex items-center font-medium text-primary-900  hover:underline"
               >
                 Read more
                 <ArrowRightIcon className="ml-2 w-4 h-4" />
               </Link>
             </div>
           </article>
-          <article className="p-6 bg-neutral-100 rounded-lg border border-neutral-200 shadow-md dark:bg-neutral-800 dark:border-neutral-700">
+          <article className="p-6 bg-neutral-100 rounded-lg border border-neutral-200 shadow-md  ">
             <div className="flex justify-between items-center mb-5 text-neutral-800">
-              <span className="bg-primary-450 text-white text-xs font-medium inline-flex items-center px-2.5 py-0.5 rounded dark:bg-primary-200 dark:text-primary-800">
+              <span className="bg-primary-450 text-white text-xs font-medium inline-flex items-center px-2.5 py-0.5 rounded  ">
                 <svg
                   className="mr-1 w-3 h-3"
                   fill="currentColor"
@@ -91,10 +91,10 @@ export default function Page() {
               </span>
               <span className="text-sm font-semibold">July 25, 2022</span>
             </div>
-            <h2 className="mb-2 text-2xl font-bold tracking-tight text-neutral-900 dark:text-white">
+            <h2 className="mb-2 text-2xl font-bold tracking-tight text-neutral-900 ">
               <Link href="/blog/release-0-5-0">Release 0.5.0</Link>
             </h2>
-            <p className="mb-5 font-medium text-neutral-800 dark:text-neutral-100">
+            <p className="mb-5 font-medium text-neutral-800 ">
               As the first post on our new blog, we thought it'd be fitting to
               kick things off with a release announcement. So without further
               ado, we're excited to announce: Firezone{" "}
@@ -113,13 +113,13 @@ export default function Page() {
                   src={gravatar("jamil@firezone.dev")}
                   alt="Jamil Bou Kheir avatar"
                 />
-                <span className="font-medium dark:text-white">
+                <span className="font-medium ">
                   Jamil Bou Kheir
                 </span>
               </div>
               <Link
                 href="/blog/release-0-5-0"
-                className="inline-flex items-center font-medium text-primary-900 dark:text-primary-100 hover:underline"
+                className="inline-flex items-center font-medium text-primary-900  hover:underline"
               >
                 Read more
                 <ArrowRightIcon className="ml-2 w-4 h-4" />

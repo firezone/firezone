@@ -100,10 +100,10 @@ export default function Page() {
     <div className="bg-neutral-100">
       <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
         <div className="mx-auto max-w-screen-md">
-          <h1 className="sm:justify-center mb-4 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-6xl dark:text-neutral-50">
+          <h1 className="sm:justify-center mb-4 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-6xl ">
             Product Roadmap
           </h1>
-          <p className="mx-auto sm:text-center mb-8 max-w-2xl text-neutral-900 md:mb-12 sm:text-xl dark:text-neutral-100">
+          <p className="mx-auto sm:text-center mb-8 max-w-2xl text-neutral-900 md:mb-12 sm:text-xl ">
             Take a peek below to learn what we're working on and how you can get
             involved.
           </p>
@@ -114,7 +114,7 @@ export default function Page() {
             <h3 className="text-neutral-900 tracking-tight font-bold text-2xl mb-4">
               Shipped
             </h3>
-            <p className="text-lg text-neutral-900 dark:text-neutral-50 mb-6">
+            <p className="text-lg text-neutral-900  mb-6">
               Updates we've recently shipped.
             </p>
             <div className="mb-4">
@@ -190,7 +190,7 @@ export default function Page() {
             <h3 className="text-neutral-900 tracking-tight font-bold text-2xl mb-4">
               In progress
             </h3>
-            <p className="text-lg text-neutral-900 dark:text-neutral-50 mb-6">
+            <p className="text-lg text-neutral-900  mb-6">
               Things we're actively working on and plan to ship in the next
               release or two.
             </p>
@@ -278,7 +278,7 @@ export default function Page() {
             <h3 className="text-neutral-900 tracking-tight font-bold text-2xl mb-4">
               Under consideration
             </h3>
-            <p className="text-lg text-neutral-900 dark:text-neutral-50 mb-6">
+            <p className="text-lg text-neutral-900  mb-6">
               Things we're still investigating, architecting, or in the process
               of prioritizing.{" "}
               <span className="font-semibold">(feedback welcome!)</span>
