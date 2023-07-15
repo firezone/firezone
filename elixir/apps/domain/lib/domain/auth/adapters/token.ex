@@ -5,6 +5,7 @@ defmodule Domain.Auth.Adapters.Token do
   """
   use Supervisor
   alias Domain.Repo
+  alias Domain.Accounts
   alias Domain.Auth.{Identity, Provider, Adapter}
   alias Domain.Auth.Adapters.Token.State
 
@@ -65,7 +66,7 @@ defmodule Domain.Auth.Adapters.Token do
   end
 
   @impl true
-  def ensure_provisioned(%Ecto.Changeset{} = changeset) do
+  def ensure_provisioned_for_account(%Ecto.Changeset{} = changeset, %Accounts.Account{}) do
     changeset
   end
 

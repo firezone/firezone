@@ -3,7 +3,7 @@
 name: Swift
 on:
   pull_request:
-    paths-ginore:
+    paths-ignore:
       - "swift/**"
       - "rust/connlib/**"
       - ".github/workflows/swift.yml"
@@ -18,6 +18,15 @@ jobs:
     steps:
       - run: 'echo "No build required"'
   swift_build:
+    strategy:
+      matrix:
+        target:
+          - sdk: macosx
+            platform: macOS
+            destination: platform=macOS
+          - sdk: iphoneos
+            platform: iOS
+            destination: generic/platform=iOS
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
