@@ -27,7 +27,7 @@ export default function EarlyAccess() {
               </p>
               <p className="text-lg sm:text-xl lg:justify-end">
                 <ActionLink
-                  href="/blog/firezone-1.0"
+                  href="/blog/firezone-1-0"
                   className="mb-8 justify-center lg:justify-end flex items-center text-accent-500 hover:no-underline underline"
                 >
                   Read the announcement

@@ -38,10 +38,8 @@ export default function Post({
                   >
                     {authorName}
                   </a>
-                  <p className="text-base font-light text-neutral-800 ">
-                    {authorTitle}
-                  </p>
-                  <p className="text-base font-light text-neutral-800 ">
+                  <p className="text-base text-neutral-900 ">{authorTitle}</p>
+                  <p className="text-base text-neutral-900 ">
                     <time dateTime="2022-02-08" title="February 8th, 2022">
                       {date}
                     </time>
