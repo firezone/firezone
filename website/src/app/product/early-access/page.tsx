@@ -6,8 +6,9 @@ import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import ActionLink from "@/components/ActionLink";
 
 export const metadata: Metadata = {
-  title: "1.0 Early Access • Firezone",
-  description: "Get early access to Firezone 1.0.",
+  title: "Early Access • Firezone",
+  description:
+    "Register for early access to try new Firezone features before they're released.",
 };
 
 export default function EarlyAccess() {

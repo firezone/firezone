@@ -1,0 +1,103 @@
+Firezone comes from humble roots.
+
+When we [launched on Hacker News](https://news.ycombinator.com/item?id=28683231)
+nearly two years ago, we never envisioned Firezone to be more than a simple tool
+for managing your WireGuard configurations.
+
+WireGuard itself is a work of art but intentionally lacks tooling that would
+make it usable in most remote access scenarios... on its own. You have to
+generate keys, manage configs, and possibly tie these to user identities if you
+wanted to replace existing VPN solutions.
+
+It was an inconvenience myself and engineering friends in my circles had faced.
+While we could have spent the time automating most of it away, I decided it'd be
+an opportunity to learn some new technologies (Elixir/Phoenix/LiveView), and got
+to building.
+
+Fast-forward 4500 GitHub stars, a Y Combinator-fueled funding round, and 130
+releases later, Firezone has now grown into something more than just a
+self-hosted tool to manage your WireGuard configurations.
+
+We now have over 3,000 Firezone instances running in wild (that we know about)
+securing private networks for hobbyists, schools, non-profits, and businesses
+with hundreds of employees.
+
+![Instance growth]()
+
+To be clear, Firezone is successful in large part because WireGuard itself is
+successful. It's one of those incredible breakthroughs that makes you question
+how the world ever got by without it. WireGuard's release made us realize how
+bad VPN tooling really was up until that point. As a Cisco employee for 8 years
+I should know; AnyConnect was my worst nightmare. What's that? Reconnecting
+again due to cipher renegotiation? Fun.
+
+WireGuard in contrast has been a joy to use and build upon. There's no ciphers
+to negotiate so tunnel setup and reconnect occurs near instantaneously, even
+when roaming. Dropped packets get retransmitted based on the encapsulated
+protocol, which is really how things should when you stop to think about it.
+WireGuard's great.
+
+But let's take a step back for a moment. Why are VPNs needed? And why are they
+used for remote access?
+
+To answer that we need to go all the way back in history to the formation of the
+Internet itself.
+
+You see, the early Internet was designed primarily for large entities to connect
+to each other. Connecting to the Internet was expensive; only entities with a
+business justification and budget could afford the equipment required to connect
+to it. Because only large entities could connect, they were inherently trusted.
+
+When you received a packet from an IPv4 address, it was clear which entity it
+was from based on its allocated IPv4 address range. If there were any issues
+with the received packets, it was clear who to contact.
+
+The early Internet Protocol wasn't designed with authorization in mind.
+
+But, as the Internet grew and access to it became cheaper, more types of
+entities could connect. Smaller entities. Untrusted entities. Perhaps even
+individuals.
+
+And thus, firewalls were born. Firewalls keep packets out from entities you
+don't wish to communicate with. These entities could
+
+But what if you did wish to communicate with some entity? Enter stateful
+firewalls (sometimes mistakenly confused with NATs, but that's a whole 'nother
+topic I won't get into).
+
+Stateful firewalls only let entities talk to you if (and only if) you've
+recently attempted to talk to them first. Recently in most cases means 30
+seconds.
+
+IP address ventriloquism in support of your favorite regionally-locked Netflix
+content, VPNs have traditionally been used by businesses to select allow remote
+access to private networks.
+
+have been Building in the open isn't always easy, and you often get pulled in
+many directions by users with requirements that seemingly contradict one
+another. But we wouldn't build a product like this any other way -- we believe
+better transparency ultimately leads to better security. That's why we're open
+source, after all.
+
+Being open source tends to imply some level of self-hosting, and Firezone has
+been completely
+
+- History
+  - Show HN
+  - Y Combinator
+- Metrics
+- Problem solved
+  - Users
+- The problem with the internet
+  - Enter stateful firewalls
+  - Enter zero trust
+- ... But zero trust is still a bandaid
+- Introducing Firezone 1.0
+  - How it solves the problem
+  - Who's it for initially
+  - What's the timeline to GA
+- Clarify 1.0 details
+  - Distribution model: Self-hosting vs Cloud
+  - Licensing
+  - Pricing
+- Early access CTAs

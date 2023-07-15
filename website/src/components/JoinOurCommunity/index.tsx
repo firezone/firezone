@@ -12,7 +12,7 @@ export default function JoinOurCommunity() {
         <h2 className="mb-4 text-4xl tracking-tight font-bold text-neutral-900 ">
           Join our community
         </h2>
-        <p className="my-4 text-xl max-w-screen-lg text-center text-primary-900 ">
+        <p className="mx-2 my-4 text-xl max-w-screen-lg text-center text-primary-900 ">
           Participate in Firezone's development, suggest new features, and
           collaborate with other Firezone users.
         </p>
