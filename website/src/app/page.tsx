@@ -22,11 +22,11 @@ export default function Page() {
   return (
     <>
       <section className="bg-neutral-100 pt-24 dark:bg-neutral-900">
-        <div className="px-4 py-8 mx-auto max-w-screen-xl text-center lg:py-16 lg:px-12">
-          <h1 className="mb-4 text-4xl justify-center font-extrabold tracking-tight leading-none text-neutral-900 md:text-5xl lg:text-6xl dark:text-white tracking-tight">
+        <div className="px-4 py-8 mx-auto max-w-screen-xl sm:text-center lg:py-16 lg:px-12">
+          <h1 className="mb-4 md:text-6xl text-5xl justify-center font-extrabold tracking-tight leading-none text-neutral-900">
             Fast, effortless secure access.
           </h1>
-          <p className="mb-8 font-normal text-neutral-800 md:text-lg lg:text-xl sm:px-16 xl:px-48 dark:text-neutral-100">
+          <p className="mb-8 text-xl font-medium text-neutral-900 sm:px-16 xl:px-48 dark:text-neutral-100">
             Firezone is an open-source remote access platform built on
             WireGuard®, a modern VPN protocol that's 4-6x faster than OpenVPN.
             Deploy on your infrastructure and start onboarding users in minutes.
@@ -157,8 +157,8 @@ export default function Page() {
         </div>
 
         {/* Feature section 2 */}
-        <div className="gap-8 items-center py-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-16 sm:py-16 lg:px-6 ">
-          <div className="flex flex-col justify-between">
+        <div className="gap-8 py-8 px-4 mx-auto max-w-screen-xl flex flex-col-reverse lg:grid lg:grid-cols-2 xl:gap-16 sm:py-16 lg:px-6 ">
+          <div className="flex flex-col">
             <Image
               className="rounded-md shadow-md"
               width={600}
@@ -167,7 +167,7 @@ export default function Page() {
               src="/images/feature-2.png"
             />
             <Link
-              className="mt-4 mx-auto text-accent-600 hover:underline"
+              className="mt-4 lg:mx-auto text-accent-600 hover:underline"
               href="https://core.ac.uk/download/pdf/322886318.pdf"
             >
               Performance comparison of VPN solutions (Osswald et al.)

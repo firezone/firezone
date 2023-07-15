@@ -320,32 +320,36 @@ export default function Page() {
           </div>
         </div>
       </div>
-      <div className="mx-auto p-6 rounded-sm border border-primary-200 bg-primary-100 text-xl flex items-center justify-center">
-        <MegaphoneIcon className="h-5 w-5 mr-2 text-primary-450" />
-        Want to stay updated on our progress?
-        <span className="ml-2">
-          <ActionLink
-            href="/product/newsletter"
-            className="flex items-center justify-center text-accent-500 underline hover:no-underline"
-          >
-            Subscribe to our newsletter.
-          </ActionLink>
-        </span>
+      <div className="border border-primary-200 bg-primary-100">
+        <div className="mx-auto max-w-screen-md grid grid-cols-1 text-center md:grid-cols-2 text-lg sm:text-xl py-3 sm:py-6">
+          <div>
+            <MegaphoneIcon className="inline-flex h-5 w-5 mr-2 text-primary-450" />
+            Want to stay updated on our progress?
+          </div>
+          <div>
+            <ActionLink
+              href="/product/newsletter"
+              className="ml-8 inline-flex text-accent-500 underline hover:no-underline"
+            >
+              Subscribe to our newsletter.
+            </ActionLink>
+          </div>
+        </div>
       </div>
       <div className="border-t border-neutral-200 mx-auto bg-gradient-to-b from-white to-neutral-100 pt-14">
-        <h2 className="sm:justify-center mb-4 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-4xl dark:text-neutral-50">
+        <h2 className="ml-2 sm:justify-center flex-wrap mb-4 text-4xl font-extrabold tracking-tight text-neutral-900">
           <span>We're building Firezone</span>{" "}
           <span className="text-primary-450 underline">in the open.</span>
         </h2>
-        <p className="mx-auto max-w-2xl text-neutral-900 sm:text-center mb-4 sm:text-xl">
+        <p className="sm:mx-auto ml-2 max-w-xl text-neutral-900 sm:text-center mb-4 text-lg sm:text-xl">
           We're open source because we believe <i>better transparency</i> leads
           to <i>better security</i>. After all, how can you trust what you can't
           see?
         </p>
-        <p className="mx-auto mb-4 sm:mb-8 sm:text-xl">
+        <p className="mx-auto mb-4 sm:mb-8 text-lg sm:text-xl">
           <ActionLink
             href="https://github.com/firezone/firezone/pulls"
-            className="flex items-center justify-center text-accent-500 underline hover:no-underline"
+            className="ml-2 flex text-lg items-center sm:justify-center text-accent-500 underline hover:no-underline"
           >
             See what we're working on
           </ActionLink>
