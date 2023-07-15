@@ -2,8 +2,7 @@ name: Continuous Delivery
 on:
   push:
     branches:
-      - master
-      - cloud
+      - main
 
 # Cancel old workflow runs if new code is pushed
 concurrency:

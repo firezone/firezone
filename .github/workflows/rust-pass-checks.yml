@@ -33,10 +33,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  rust_build-apple:
-    runs-on: ubuntu-latest
-    steps:
-      - run: 'echo "No build required"'
   rust_cross-compile-relay: # cross is separate from test because cross-compiling yields different artifacts and we cannot reuse the cache.
     runs-on: ubuntu-latest
     steps:

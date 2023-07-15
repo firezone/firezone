@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: release-drafter/release-drafter@v5
         with:
-          commitish: cloud
+          commitish: main
         id: release_drafter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -55,7 +55,7 @@ jobs:
           workspaces: ./rust
           key: v2
           prefix-key: rust-${{ matrix.runs-on }}
-          save-if: ${{ github.ref == 'refs/heads/cloud' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # TODO: Building *ring* from git requires us to install additional tools;
       # once we're not using a forked *ring* these 2 steps can be removed.

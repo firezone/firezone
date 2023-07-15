@@ -23,12 +23,21 @@ jobs:
     steps:
       - uses: release-drafter/release-drafter@v5
         with:
-          commitish: cloud
+          commitish: main
         id: release_drafter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   swift_build:
+    strategy:
+      matrix:
+        target:
+          - sdk: macosx
+            platform: macOS
+            destination: platform=macOS
+          - sdk: iphoneos
+            platform: iOS
+            destination: generic/platform=iOS
     runs-on: macos-latest
     permissions:
       contents: read
@@ -43,27 +52,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          prefix-key: rust-${{ matrix.runs-on }}
-          save-if: ${{ github.ref == 'refs/heads/cloud' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Update toolchain
         run: rustup show
       - uses: actions/cache@v3
         with:
-          path: apple/.build
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
+          key: ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-spm-
+            ${{ matrix.target.platform }}-spm-
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
-      - name: Build app for macOS
+      - name: Build app
+        env:
+          ONLY_ACTIVE_ARCH: no
+
         working-directory: ./swift/apple
         run: |
-          cp Firezone/xcconfig/Developer.xcconfig.ci-macOS Firezone/xcconfig/Developer.xcconfig
-          xcodebuild archive -scheme Firezone -sdk macosx -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
-      - name: Build app for iOS
-        working-directory: ./swift/apple
-        run: |
-          cp Firezone/xcconfig/Developer.xcconfig.ci-iOS Firezone/xcconfig/Developer.xcconfig
-          xcodebuild archive -scheme Firezone -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO
+          cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
+          xcodebuild archive -configuration Release -scheme Firezone -sdk ${{ matrix.target.sdk }} -destination '${{ matrix.target.destination }}' CODE_SIGNING_ALLOWED=NO
