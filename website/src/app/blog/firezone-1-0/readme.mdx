@@ -1,11 +1,5 @@
 import Image from "next/image";
 
-**Firezone comes from humble roots.**
-
-When we [launched on Hacker News](https://news.ycombinator.com/item?id=28683231)
-nearly two years ago, we never envisioned Firezone to be more than a simple tool
-for managing your WireGuard configurations:
-
 <Image
   src="/images/nostalgia-show-hn.png"
   alt="Show HN"
@@ -14,15 +8,22 @@ for managing your WireGuard configurations:
   className="shadow"
 />
 
-WireGuard itself is a work of art but intentionally lacks tooling that would
-make it usable in most remote access scenarios... on its own. You have to
-generate keys, manage configs, and possibly tie these to user identities if you
-wanted to replace existing VPN solutions.
+**Firezone comes from humble roots.**
 
-It was an inconvenience myself and engineering friends in my circles had faced.
-While we could have spent the time automating most of it away, I decided it'd be
-an opportunity to learn some new technologies (Elixir/Phoenix/LiveView), and got
-to building.
+When we [launched on Hacker News](https://news.ycombinator.com/item?id=28683231)
+nearly two years ago, we never envisioned Firezone to be more than a simple tool
+for managing your WireGuard configurations.
+
+WireGuard itself is a marvelous feat of engineering intentionally lacks tooling
+that would make it usable in typical remote access scenarios. You have to
+generate keys tie these to user identities if you hoped to use WireGuard to
+replace existing VPN solutions.
+
+Managing WireGuard configurations was an inconvenience myself and engineering
+friends in my circles had faced in our day jobs. I had just quit my job at Cisco
+to take some time off, so I decided this was the perfect opportunity to brush up
+on some new tech I'd been reading about (namely: Elixir/Phoenix/LiveView). So I
+got to building.
 
 Fast-forward 4,500 GitHub stars, a Y Combinator-fueled funding round, and 130
 releases later, Firezone has now grown into something more than just a

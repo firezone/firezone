@@ -7,8 +7,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <div className="bg-primary-900 mx-auto w-screen text-center">
         <Image
           alt="Firezone logo light"
-          width={125}
-          height={125}
+          width={147}
+          height={92}
           src="/images/logo-main-light-primary.svg"
           className="py-12 mx-auto"
         />

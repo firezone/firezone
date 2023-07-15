@@ -5,7 +5,7 @@ import { LinkedInIcon, GitHubIcon, TwitterIcon } from "@/components/Icons";
 
 export default function Footer() {
   return (
-    <footer className="relative bg-white  border-t">
+    <footer className="relative bg-white border-t">
       <div className="mx-auto w-full max-w-screen-xl p-4 py-6 lg:py-8">
         <div className="md:flex md:justify-between">
           <div className="mb-6 md:mb-0">
@@ -146,7 +146,12 @@ export default function Footer() {
             </div>
           </div>
         </div>
-        <hr className="my-6 border-neutral-200 sm:mx-auto  lg:my-8" />
+        <div className="sm:flex sm:items-center sm:justify-start mt-4">
+          <span className="text-xs">
+            WireGuard® is a registered trademark of Jason Donenfeld.
+          </span>
+        </div>
+        <hr className="mt-2 mb-6 border-neutral-200 sm:mx-auto lg:mb-8 lg:mt-4" />
         <div className="sm:flex sm:items-center sm:justify-between">
           <span className="text-sm text-neutral-900 sm:text-center ">
             © 2023{" "}
