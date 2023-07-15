@@ -2,7 +2,7 @@ import EarlyAccessForm from "@/components/EarlyAccessForm";
 import Link from "next/link";
 import Image from "next/image";
 import { Metadata } from "next";
-import { CheckCircleIcon } from "@heroicons/react/24/solid";
+import { HiCheckCircle } from "react-icons/hi2";
 import ActionLink from "@/components/ActionLink";
 
 export const metadata: Metadata = {

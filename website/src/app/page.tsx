@@ -4,13 +4,13 @@ import Link from "next/link";
 import Image from "next/image";
 import ActionLink from "@/components/ActionLink";
 import {
-  ArrowLongRightIcon,
-  CheckIcon,
-  HomeIcon,
-  RocketLaunchIcon,
-  WrenchScrewdriverIcon,
-  GlobeAltIcon,
-} from "@heroicons/react/24/solid";
+  HiArrowLongRight,
+  HiCheck,
+  HiHome,
+  HiRocketLaunch,
+  HiWrenchScrewdriver,
+  HiGlobeAlt,
+} from "react-icons/hi2";
 import JoinOurCommunity from "@/components/JoinOurCommunity";
 
 export const metadata: Metadata = {
@@ -38,7 +38,7 @@ export default function Page() {
                 className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-md bg-gradient-to-br from-accent-700 to-accent-600 hover:scale-105 duration-0 transform transition"
               >
                 Deploy now
-                <ArrowLongRightIcon className="ml-2 -mr-1 w-6 h-6" />
+                <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
               </button>
             </Link>
           </div>
@@ -129,19 +129,19 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Integrate any identity provider to enforce 2FA / MFA
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Define user-scoped access rules
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Manage access with a snappy admin dashboard
                 </span>
@@ -188,7 +188,7 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   <Link
                     className="text-accent-600 hover:underline"
@@ -199,7 +199,7 @@ export default function Page() {
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Auditable and{" "}
                   <Link
@@ -211,7 +211,7 @@ export default function Page() {
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   <Link
                     className="text-accent-600 hover:underline"
@@ -242,19 +242,19 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   VPC, data center, or on-prem
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Auto-renewing SSL certs from Let's Encrypt via ACME
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Flexible and configurable
                 </span>
@@ -357,7 +357,7 @@ export default function Page() {
         <div className="gap-4 items-center pt-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-8 sm:pt-16 lg:px-6 ">
           <div className="bg-neutral-100 p-8 rounded-md shadow-md">
             <div className="flex items-center space-x-2.5">
-              <HomeIcon className="flex-shrink-0 w-5 h-5 text-primary-450" />
+              <HiHome className="flex-shrink-0 w-5 h-5 text-primary-450" />
               <h3 className="text-xl tracking-tight font-bold text-primary-900 ">
                 Individuals and homelab users
               </h3>
@@ -368,25 +368,25 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Effortless to deploy on any infrastructure
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Community plan supports unlimited devices
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Lightweight with minimal resource usage
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Open-source and self-hosted
                 </span>
@@ -401,7 +401,7 @@ export default function Page() {
           </div>
           <div className="bg-neutral-100 p-8 rounded-md shadow-md">
             <div className="flex items-center space-x-2.5">
-              <RocketLaunchIcon className="flex-shrink-0 w-5 h-5 text-primary-450" />
+              <HiRocketLaunch className="flex-shrink-0 w-5 h-5 text-primary-450" />
               <h3 className="text-xl tracking-tight font-bold text-primary-900 ">
                 Growing businesses
               </h3>
@@ -412,25 +412,25 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Integrate your identity provider
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Quickly onboard/offboard employees{" "}
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Segment access for contractors
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   High performance, reduce bottlenecks
                 </span>
@@ -445,7 +445,7 @@ export default function Page() {
           </div>
           <div className="bg-neutral-100 p-8 rounded-md shadow-md">
             <div className="flex items-center space-x-2.5">
-              <GlobeAltIcon className=" lex-shrink-0 w-5 h-5 text-primary-450" />
+              <HiGlobeAlt className=" lex-shrink-0 w-5 h-5 text-primary-450" />
               <h3 className="text-xl tracking-tight font-bold text-primary-900 ">
                 Remote organizations
               </h3>
@@ -456,25 +456,25 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Require periodic re-authentication
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Enforce MFA / 2FA
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Self-serve user portal
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Export logs to your observability platform
                 </span>
@@ -489,7 +489,7 @@ export default function Page() {
           </div>
           <div className="bg-neutral-100 p-8 rounded-md shadow-md">
             <div className="flex items-center space-x-2.5">
-              <WrenchScrewdriverIcon className=" lex-shrink-0 w-5 h-5 text-primary-450" />
+              <HiWrenchScrewdriver className=" lex-shrink-0 w-5 h-5 text-primary-450" />
               <h3 className="text-xl tracking-tight font-bold text-primary-900 ">
                 Technical IT teams
               </h3>
@@ -500,25 +500,25 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Built on WireGuard®
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   No vendor lock-in
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Supports OIDC and SAML 2.0
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
                 <span className="leading-tight text-lg text-primary-900 ">
                   Flexible and configurable
                 </span>
@@ -561,7 +561,7 @@ export default function Page() {
               className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-md bg-gradient-to-br from-primary-500 to-primary-450 hover:scale-105 duration-0 transform transition"
             >
               <Link href="/contact/sales">Contact sales</Link>
-              <ArrowLongRightIcon className="ml-2 -mr-1 w-6 h-6" />
+              <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
             </button>
           </div>
         </div>

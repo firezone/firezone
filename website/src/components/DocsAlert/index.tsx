@@ -1,19 +1,19 @@
 "use client";
 import { Alert as FlowbiteAlert } from "flowbite-react";
 import {
-  InformationCircleIcon,
-  ExclamationCircleIcon,
-  ExclamationTriangleIcon,
-} from "@heroicons/react/24/outline";
+  HiInformationCircle,
+  HiExclamationCircle,
+  HiExclamationTriangle,
+} from "react-icons/hi2";
 
 function icon(color: string) {
   switch (color) {
     case "info":
-      return InformationCircleIcon;
+      return HiInformationCircle;
     case "warning":
-      return ExclamationCircleIcon;
+      return HiExclamationCircle;
     case "danger":
-      return ExclamationTriangleIcon;
+      return HiExclamationTriangle;
   }
 }
 

@@ -1,5 +1,5 @@
 "use client";
-import { XMarkIcon } from "@heroicons/react/20/solid";
+import { HiXMark } from "react-icons/hi2";
 import { useEffect } from "react";
 import { initFlowbite } from "flowbite";
 
@@ -35,7 +35,7 @@ export default function Banner({
         type="button"
         className="flex items-center text-neutral-50 hover:bg-neutral-50 hover:text-neutral-900 rounded-lg text-sm p-1.5  "
       >
-        <XMarkIcon className="w-5 h-5" />
+        <HiXMark className="w-5 h-5" />
       </button>
     </div>
   );

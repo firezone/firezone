@@ -5,7 +5,7 @@ import Link from "next/link";
 import CommitMarquee from "@/components/CommitMarquee";
 import ActionLink from "@/components/ActionLink";
 import JoinOurCommunity from "@/components/JoinOurCommunity";
-import { MegaphoneIcon, BeakerIcon } from "@heroicons/react/24/solid";
+import { HiMegaphone, HiBeaker } from "react-icons/hi2";
 import { XMLParser } from "fast-xml-parser";
 import { useState, useEffect } from "react";
 import GitHubHtml from "@/components/GitHubHtml";
@@ -202,7 +202,7 @@ export default function Page() {
             </p>
             <div className="mb-4">
               <div className="p-2 bg-primary-100 border border-primary-200 mb-4">
-                <BeakerIcon className="inline-block w-4 h-4 mr-1 text-primary-450" />
+                <HiBeaker className="inline-block w-4 h-4 mr-1 text-primary-450" />
                 <Link
                   href="/product/early-access"
                   className="text-accent-500 underline hover:no-underline"
@@ -329,7 +329,7 @@ export default function Page() {
       <div className="border border-primary-200 bg-primary-100">
         <div className="mx-auto max-w-screen-lg grid text-center md:grid-cols-2 text-lg sm:text-xl py-3 sm:py-6">
           <div>
-            <MegaphoneIcon className="inline-flex h-5 w-5 mr-2 text-primary-450" />
+            <HiMegaphone className="inline-flex h-5 w-5 mr-2 text-primary-450" />
             Want to stay updated on our progress?
           </div>
           <div>

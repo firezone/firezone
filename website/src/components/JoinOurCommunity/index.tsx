@@ -1,9 +1,5 @@
 import Link from "next/link";
-import {
-  ChatBubbleLeftRightIcon,
-  UserGroupIcon,
-  StarIcon,
-} from "@heroicons/react/24/solid";
+import { HiChatBubbleLeftRight, HiUserGroup, HiStar } from "react-icons/hi2";
 
 export default function JoinOurCommunity() {
   return (
@@ -19,7 +15,7 @@ export default function JoinOurCommunity() {
       </div>
       <div className="gap-4 items-center pt-4 px-4 mx-auto max-w-screen-lg lg:grid lg:grid-cols-3 xl:gap-8 sm:pt-8 lg:px-6 ">
         <div className="py-8 rounded-md shadow-md text-center bg-white">
-          <UserGroupIcon className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 " />
+          <HiUserGroup className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 " />
           <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 ">
             30+
           </h3>
@@ -34,7 +30,7 @@ export default function JoinOurCommunity() {
           </button>
         </div>
         <div className="py-8 rounded-md shadow-md text-center bg-white">
-          <StarIcon className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 " />
+          <HiStar className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 " />
           <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 ">
             4,300+
           </h3>
@@ -49,7 +45,7 @@ export default function JoinOurCommunity() {
           </button>
         </div>
         <div className="py-8 rounded-md shadow-md text-center bg-white">
-          <ChatBubbleLeftRightIcon className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 " />
+          <HiChatBubbleLeftRight className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 " />
           <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 ">
             250+
           </h3>

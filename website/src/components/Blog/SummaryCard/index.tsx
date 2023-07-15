@@ -2,7 +2,6 @@ import ActionLink from "@/components/ActionLink";
 import Link from "next/link";
 
 import Image from "next/image";
-import { ArrowLongRightIcon } from "@heroicons/react/24/solid";
 
 export default function SummaryCard({
   children,

@@ -1,4 +1,4 @@
-import { ChevronRightIcon, ChevronDownIcon } from "@heroicons/react/20/solid";
+import { HiChevronRight, HiChevronDown } from "react-icons/hi2";
 import { useState } from "react";
 
 export default function Collapse({
@@ -13,9 +13,7 @@ export default function Collapse({
   const ctl = label.toLowerCase().replace(" ", "-") + "-dropdown";
   const indent = "ml-3";
   const hidden = expanded ? "" : "hidden";
-  const text = expanded
-    ? "bg-neutral-100 "
-    : "text-neutral-900 ";
+  const text = expanded ? "bg-neutral-100 " : "text-neutral-900 ";
   const [expandedState, setExpandedState] = useState(expanded);
 
   return (
@@ -37,9 +35,9 @@ export default function Collapse({
           {label}
         </span>
         {expandedState ? (
-          <ChevronDownIcon sidebar-toggle-item="true" className="w-6 h-6" />
+          <HiChevronDown sidebar-toggle-item="true" className="w-6 h-6" />
         ) : (
-          <ChevronRightIcon sidebar-toggle-item="true" className="w-6 h-6" />
+          <HiChevronRight sidebar-toggle-item="true" className="w-6 h-6" />
         )}
       </button>
       <ul id={ctl} className={[hidden, "ml-3 py-1 space-y-0.5"].join(" ")}>

@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import DeployButton from "@/components/DeployButton";
 import { useEffect } from "react";
 import { initFlowbite, Dropdown } from "flowbite";
-import { ChevronDownIcon } from "@heroicons/react/24/solid";
+import { HiChevronDown } from "react-icons/hi2";
 
 export default function RootNavbar() {
   const p = usePathname() || "";
@@ -78,7 +78,7 @@ export default function RootNavbar() {
               >
                 Product
               </span>
-              <ChevronDownIcon className="w-3 h-3 mx-1" />
+              <HiChevronDown className="w-3 h-3 mx-1" />
             </button>
             <div
               id="product-dropdown-menu"
