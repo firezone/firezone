@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: release-drafter/release-drafter@v5
         with:
-          commitish: cloud
+          commitish: main
         id: release_drafter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
