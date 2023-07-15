@@ -23,8 +23,10 @@ jobs:
         target:
           - sdk: macosx
             platform: macOS
+            destination: platform=macOS
           - sdk: iphoneos
             platform: iOS
+            destination: generic/platform=iOS
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
