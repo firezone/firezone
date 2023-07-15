@@ -1,6 +1,34 @@
 defmodule Web.Mailer do
-  use Swoosh.Mailer, otp_app: :web
+  alias Swoosh.Mailer
   alias Swoosh.Email
+  require Logger
+
+  @doc """
+  Delivers an email via configured Swoosh adapter.
+
+  If adapter is not configured or is set to nil, the delivery will be ignored and
+  function will return `{:ok, %{}}`.
+
+  Notice: this code is copied from `Swoosh.Mailer.deliver/2` and modified to
+  not send emails if adapter is not configured. This is needed to avoid
+  custom adapter implementation that does nothing.
+  """
+  def deliver(email, config \\ []) do
+    opts = Mailer.parse_config(:web, __MODULE__, [], config)
+    metadata = %{email: email, config: config, mailer: __MODULE__}
+
+    if opts[:adapter] do
+      :telemetry.span([:swoosh, :deliver], metadata, fn ->
+        case Mailer.deliver(email, opts) do
+          {:ok, result} -> {{:ok, result}, Map.put(metadata, :result, result)}
+          {:error, error} -> {{:error, error}, Map.put(metadata, :error, error)}
+        end
+      end)
+    else
+      Logger.info("Emails are not configured", email_subject: inspect(email.subject))
+      {:ok, %{}}
+    end
+  end
 
   defp render_template(view, template, format, assigns) do
     heex = apply(view, String.to_atom("#{template}_#{format}"), [assigns])

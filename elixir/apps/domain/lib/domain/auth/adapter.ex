@@ -1,4 +1,5 @@
 defmodule Domain.Auth.Adapter do
+  alias Domain.Accounts
   alias Domain.Auth.{Provider, Identity}
 
   @doc """
@@ -13,8 +14,10 @@ defmodule Domain.Auth.Adapter do
   It should impotently ensure that the provider is provisioned on the third-party end,
   eg. it can use a REST API to configure SCIM webhook and token.
   """
-  @callback ensure_provisioned(%Ecto.Changeset{data: %Provider{}}) ::
-              %Ecto.Changeset{data: %Provider{}}
+  @callback ensure_provisioned_for_account(
+              %Ecto.Changeset{data: %Provider{}},
+              %Accounts.Account{}
+            ) :: %Ecto.Changeset{data: %Provider{}}
 
   @doc """
   A callback which is triggered when the provider is deleted.

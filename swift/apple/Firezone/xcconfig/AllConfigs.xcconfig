@@ -1,1 +1,2 @@
 #include "Developer.xcconfig"
+#include "Build.xcconfig"

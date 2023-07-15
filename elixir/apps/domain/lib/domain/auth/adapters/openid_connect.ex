@@ -1,6 +1,7 @@
 defmodule Domain.Auth.Adapters.OpenIDConnect do
   use Supervisor
   alias Domain.Repo
+  alias Domain.Accounts
   alias Domain.Auth.{Identity, Provider, Adapter}
   alias Domain.Auth.Adapters.OpenIDConnect.{Settings, State, PKCE}
   require Logger
@@ -28,7 +29,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   @impl true
-  def ensure_provisioned(%Ecto.Changeset{} = changeset) do
+  def ensure_provisioned_for_account(%Ecto.Changeset{} = changeset, %Accounts.Account{}) do
     Domain.Changeset.cast_polymorphic_embed(changeset, :adapter_config,
       required: true,
       with: fn current_attrs, attrs ->
