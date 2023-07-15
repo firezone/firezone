@@ -8,10 +8,10 @@ import Script from "next/script";
 import Banner from "@/components/Banner";
 import Providers from "@/components/Providers";
 import Footer from "@/components/Footer";
-import { Source_Sans_Pro } from "next/font/google";
-const source_sans_pro = Source_Sans_Pro({
+import { Public_Sans } from "next/font/google";
+const raleway = Public_Sans({
   subsets: ["latin"],
-  weight: ["200", "300", "400", "600", "700", "900"],
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
 });
 
 export default function RootLayout({
@@ -22,7 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <Providers>
-        <body className={source_sans_pro.className}>
+        <body className={raleway.className}>
           <div className="min-h-screen h-auto antialiased">
             <RootNavbar />
             <Banner active={false}>

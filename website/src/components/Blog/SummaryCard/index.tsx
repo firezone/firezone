@@ -32,7 +32,7 @@ export default function SummaryCard({
       <h2 className="mb-2 text-2xl font-bold tracking-tight text-neutral-900 ">
         {title}
       </h2>
-      <p className="mb-5 font-medium text-neutral-800 ">{children}</p>
+      <div className="mb-5 font-medium text-neutral-800 ">{children}</div>
       <div className="flex justify-between items-center">
         <div className="flex items-center space-x-4">
           <Image

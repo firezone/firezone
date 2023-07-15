@@ -109,10 +109,10 @@ export default function Page() {
           <h1 className="sm:justify-center mb-4 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-6xl ">
             Product Roadmap
           </h1>
-          <p className="mx-auto sm:text-center mb-8 max-w-2xl text-neutral-900 md:mb-12 sm:text-xl ">
+          <h2 className="mx-auto sm:text-center mb-8 max-w-2xl tracking-tight font-medium text-neutral-900 md:mb-12 sm:text-xl ">
             Take a peek below to learn what we're working on and how you can get
             involved.
-          </p>
+          </h2>
         </div>
 
         <div className="grid md:grid-cols-3 mx-auto max-w-screen-lg divide-x">

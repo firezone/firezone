@@ -7,7 +7,7 @@ import SummaryCard from "@/components/Blog/SummaryCard";
 export default function Page() {
   return (
     <section className="bg-neutral-100 ">
-      <div className="py-8 px-4 mx-auto max-w-md md:max-w-screen-lg lg:py-16 lg:px-6">
+      <div className="py-8 px-4 mx-auto max-w-md md:max-w-screen-md lg:py-16 lg:px-6">
         <div className="mx-auto max-w-screen-sm text-center lg:mb-16 mb-8">
           <h1 className="justify-center mb-4 text-3xl lg:text-6xl tracking-tight font-extrabold text-neutral-900 ">
             Firezone Blog
@@ -16,7 +16,7 @@ export default function Page() {
             Announcements, tutorials, and more from the Firezone team.
           </p>
         </div>
-        <div className="grid md:grid-cols-2 divide-y lg:divide-x lg:divide-y-0">
+        <div className="grid divide-y">
           <SummaryCard
             title="Firezone 1.0"
             date="July 15, 2023"
@@ -47,6 +47,7 @@ export default function Page() {
             opened: Containerization support! We're also releasing preliminary
             support for SAML 2.0 identity providers like Okta and OneLogin.
           </SummaryCard>
+          <div></div>
           <SummaryCard
             title="Release 0.5.0"
             date="July 25, 2022"

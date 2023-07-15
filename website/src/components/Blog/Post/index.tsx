@@ -51,7 +51,7 @@ export default function Post({
               {title}
             </h1>
           </header>
-          {children}
+          <div className="pt-4">{children}</div>
         </article>
       </div>
     </main>

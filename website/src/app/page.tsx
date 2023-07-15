@@ -26,11 +26,11 @@ export default function Page() {
           <h1 className="mb-4 md:text-6xl text-5xl justify-center font-extrabold tracking-tight leading-none text-neutral-900">
             Fast, effortless secure access.
           </h1>
-          <p className="mb-8 text-xl font-medium text-neutral-900 sm:px-16 xl:px-48 ">
+          <h2 className="mb-8 text-xl tracking-tight font-medium text-neutral-900 sm:px-16 xl:px-48 ">
             Firezone is an open-source remote access platform built on
             WireGuard®, a modern VPN protocol that's 4-6x faster than OpenVPN.
             Deploy on your infrastructure and start onboarding users in minutes.
-          </p>
+          </h2>
           <div className="flex flex-col mb-8 lg:mb-16 space-y-4 sm:flex-row sm:justify-center sm:space-y-0 sm:space-x-4">
             <Link href="/docs/deploy">
               <button
@@ -58,7 +58,7 @@ export default function Page() {
             </video>
           </div>
           <div className="flex justify-center items-center p-8 mt-8">
-            <h3 className="text-2xl font-bold text-neutral-800 ">
+            <h3 className="text-2xl tracking-tight font-bold text-neutral-800 ">
               Trusted by organizations like
             </h3>
           </div>

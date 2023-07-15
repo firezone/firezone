@@ -9,28 +9,11 @@ import {
 function icon(color: string) {
   switch (color) {
     case "info":
-      return (
-        <span>
-          <InformationCircleIcon className="inline-block w-5 h-5 mr-2" />
-          <span className="text-xs font-bold">INFO</span>
-        </span>
-      );
+      return InformationCircleIcon;
     case "warning":
-      return (
-        <span>
-          <ExclamationCircleIcon className="inline-block w-5 h-5 mr-2" />
-          <span className="text-xs font-bold">WARNING</span>
-        </span>
-      );
+      return ExclamationCircleIcon;
     case "danger":
-      return (
-        <span>
-          <ExclamationTriangleIcon className="inline-block w-5 h-5 mr-2" />
-          <span className="text-xs font-bold">DANGER</span>
-        </span>
-      );
-    default:
-      return null;
+      return ExclamationTriangleIcon;
   }
 }
 
@@ -43,11 +26,8 @@ export default function Alert({
 }) {
   return (
     <div className="mb-4">
-      <FlowbiteAlert color={color}>
-        <span>
-          {icon(color)}
-          {children}
-        </span>
+      <FlowbiteAlert color={color} icon={icon(color)}>
+        {children}
       </FlowbiteAlert>
     </div>
   );

@@ -7,17 +7,17 @@ export default function SalesLeadForm() {
         <h1 className="justify-center mb-4 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-6xl ">
           Talk to a Firezone expert.
         </h1>
-        <p className="mx-auto mb-8 max-w-2xl text-neutral-800 md:mb-12 sm:text-xl ">
+        <h2 className="mx-auto mb-8 max-w-2xl tracking-tight font-medium text-neutral-900 md:mb-12 sm:text-xl ">
           Ready to manage secure remote access for your organization? Learn how
           Firezone can help.
-        </p>
+        </h2>
       </div>
       <div className="pt-8 grid sm:grid-cols-2 gap-4 items-top">
         <div className="mb-8">
           <h3 className="mb-4 lg:text-3xl md:text-2xl font-bold tracking-tight text-neutral-900 sm:text-xl ">
             Ensure business continuity
           </h3>
-          <ul className="md:text-xl mb-4 list-inside list-disc">
+          <ul className="md:text-xl mb-8 list-inside list-disc">
             <li>Technical support with SLAs</li>
             <li>Private Slack channel</li>
             <li>White-glove onboarding</li>
@@ -25,7 +25,7 @@ export default function SalesLeadForm() {
           <h3 className="mb-4 lg:text-3xl md:text-2xl font-bold tracking-tight text-neutral-900 sm:text-xl ">
             Built for privacy and compliance
           </h3>
-          <ul className="md:text-xl mb-4 list-inside list-disc">
+          <ul className="md:text-xl mb-8 list-inside list-disc">
             <li>Host on-prem in security sensitive environments</li>
             <li>Maintain full control of your data and network traffic</li>
           </ul>

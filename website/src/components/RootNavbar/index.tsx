@@ -54,7 +54,7 @@ export default function RootNavbar() {
             <Link
               className={
                 (p == "/" ? "text-neutral-900 underline" : "text-neutral-800") +
-                " p-0 sm:p-1 mr-1 hover:text-neutral-900 hover:underline"
+                " p-0 sm:p-1 mr-1 font-medium hover:text-neutral-900 hover:underline"
               }
               href="/"
             >
@@ -72,7 +72,7 @@ export default function RootNavbar() {
             >
               <span
                 className={
-                  "hover:underline " +
+                  "hover:underline font-medium " +
                   (p.startsWith("/product") ? "underline" : "")
                 }
               >
@@ -86,7 +86,6 @@ export default function RootNavbar() {
             >
               <ul className="py-2" aria-labelledby="product-dropdown-link">
                 <li>
-                  {/* TODO: use <Link> here, toggling dropdown */}
                   <Link
                     onClick={hideDropdown}
                     href="/product/roadmap"
@@ -94,7 +93,7 @@ export default function RootNavbar() {
                       (p == "/product/roadmap"
                         ? "text-neutral-900 underline"
                         : "text-neutral-800") +
-                      " block px-4 py-2 hover:underline hover:bg-neutral-100 hover:text-neutral-900"
+                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                     }
                   >
                     Roadmap
@@ -109,7 +108,7 @@ export default function RootNavbar() {
                       (p == "/product/early-access"
                         ? "text-neutral-900 underline"
                         : "text-neutral-800") +
-                      " block px-4 py-2 hover:underline hover:bg-neutral-100 hover:text-neutral-900"
+                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                     }
                   >
                     Early Access
@@ -124,7 +123,7 @@ export default function RootNavbar() {
                       (p.startsWith("/product/newsletter")
                         ? "text-neutral-900 underline"
                         : "text-neutral-800") +
-                      " block px-4 py-2 hover:underline hover:bg-neutral-100 hover:text-neutral-900"
+                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                     }
                   >
                     Newsletter
@@ -137,7 +136,7 @@ export default function RootNavbar() {
                 (p.startsWith("/contact/sales")
                   ? "text-neutral-900 underline"
                   : "text-neutral-800") +
-                " p-1 mr-1 hover:text-neutral-900 hover:underline"
+                " p-1 mr-1 font-medium hover:text-neutral-900 hover:underline"
               }
               href="/contact/sales"
             >
@@ -150,7 +149,7 @@ export default function RootNavbar() {
                 (p.startsWith("/docs")
                   ? "text-neutral-900 underline"
                   : "text-neutral-800") +
-                " p-1 mr-1 hover:text-neutral-900 hover:underline"
+                " p-1 mr-1 font-medium hover:text-neutral-900 hover:underline"
               }
               href="/docs"
             >
