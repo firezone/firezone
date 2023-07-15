@@ -14,26 +14,37 @@ When we [launched on Hacker News](https://news.ycombinator.com/item?id=28683231)
 nearly two years ago, we never envisioned Firezone to be more than a simple tool
 for managing your WireGuard configurations.
 
-WireGuard itself is a marvelous feat of engineering intentionally lacks tooling
-that would make it usable in typical remote access scenarios. You have to
-generate keys tie these to user identities if you hoped to use WireGuard to
-replace existing VPN solutions.
+While WireGuard itself is a marvelous feat of engineering, it intentionally
+lacks tooling that would make it usable in typical remote access scenarios. It
+provides only the basic building blocks; you still have plan your routing,
+generate keys, and tie these to user identities if you were hoping to use
+WireGuard to replace your existing VPN.
 
-Managing WireGuard configurations was an inconvenience myself and engineering
-friends in my circles had faced in our day jobs. I had just quit my job at Cisco
-to take some time off, so I decided this was the perfect opportunity to brush up
-on some new tech I'd been reading about (namely: Elixir/Phoenix/LiveView). So I
-got to building.
+Doing all of this was an error-prone inconvenience myself and colleagues had
+faced often in our day jobs. We agreed that someone should build a tool to make
+this easier. I had recently quit my job at Cisco and had a bit of extra time on
+my hands, so I decided this was the perfect opportunity to brush up on some new
+tech I'd been hoping to learn (namely: Elixir/Phoenix/LiveView). So I got to
+building.
 
-Fast-forward 4,500 GitHub stars, a Y Combinator-fueled funding round, and 130
-releases later, Firezone has now grown into something more than just a
-self-hosted tool to manage your WireGuard configurations.
+Fast-forward
+[4,500 GitHub stars](https://github.com/firezone/firezone/stargazers), a Y
+Combinator backed funding round, and
+[130 releases](https://github.com/firezone/firezone/releases) later. Firezone
+has now grown into something more than just a self-hosted tool to manage your
+WireGuard configurations.
 
-We now have over 3,000 Firezone instances running in wild (that we know about)
-securing private networks for hobbyists, schools, non-profits, and businesses
-with hundreds of employees.
+There are now over 3,000 Firezone instances running in wild (that we know
+about!) securing private networks for hobbyists, schools, non-profits, and
+businesses with hundreds of employees.
 
-![Instance growth]()
+<Image
+  src="/images/wai-7-2-23.png"
+  alt="weekly active instances"
+  width={500}
+  height={500}
+  className="shadow"
+/>
 
 To be clear, Firezone is successful in large part because WireGuard itself is
 successful. It's one of those incredible breakthroughs that makes you question

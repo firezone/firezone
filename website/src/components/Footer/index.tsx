@@ -148,7 +148,7 @@ export default function Footer() {
         </div>
         <div className="sm:flex sm:items-center sm:justify-start mt-4">
           <span className="text-xs">
-            WireGuard® is a registered trademark of Jason Donenfeld.
+            WireGuard® is a registered trademark of Jason A. Donenfeld.
           </span>
         </div>
         <hr className="mt-2 mb-6 border-neutral-200 sm:mx-auto lg:mb-8 lg:mt-4" />

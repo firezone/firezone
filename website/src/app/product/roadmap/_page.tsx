@@ -327,7 +327,7 @@ export default function Page() {
         </div>
       </div>
       <div className="border border-primary-200 bg-primary-100">
-        <div className="mx-auto max-w-screen-md grid text-center md:grid-cols-2 text-lg sm:text-xl py-3 sm:py-6">
+        <div className="mx-auto max-w-screen-lg grid text-center md:grid-cols-2 text-lg sm:text-xl py-3 sm:py-6">
           <div>
             <MegaphoneIcon className="inline-flex h-5 w-5 mr-2 text-primary-450" />
             Want to stay updated on our progress?
