@@ -87,13 +87,15 @@ trust them.
 And thus, firewalls were born. Firewalls keep packets out from entities you
 don't wish to communicate with and let packets in from those you do.
 
-<Image
-  width={600}
-  height={400}
-  src="/images/firewall-block.svg"
-  alt="firewall animation"
-  className="mx-auto"
-/>
+<object type="image/svg+xml" data="/images/firewall-block.svg">
+  <Image
+    width={600}
+    height={400}
+    src="/images/firewall-block.svg"
+    alt="firewall animation"
+    className="mx-auto"
+  />
+</object>
 
 And this worked great for some time. However, as the Internet grew, a problem
 arose: Firewalls required you to know _in advance_ who you'd like to communicate
@@ -115,6 +117,16 @@ Stateful firewalls exist in nearly every consumer router and datacenter gateway
 connected to the Internet today. They've been largely successful at serving
 their intended purpose.
 
+<object type="image/svg+xml" data="/images/stateful-firewall.svg">
+  <Image
+    width={600}
+    height={400}
+    src="/images/stateful-firewall.svg"
+    alt="firewall animation"
+    className="mx-auto"
+  />
+</object>
+
 However (as you may have guessed), this wouldn't make for much of an interesting
 post if we stopped there.
 
@@ -123,8 +135,6 @@ particularly as it relates to remote access. For two-way communication to occur,
 one entity (namely the one "behind" the firewall) must always initiate. This
 means that entities outside the firewall can never communicate to those inside,
 _even if the outside ones are trusted_.
-
-
 
 Aside from being used for IP address ventriloquism in support of your favorite
 regionally-locked Netflix content, VPNs have traditionally been used by
