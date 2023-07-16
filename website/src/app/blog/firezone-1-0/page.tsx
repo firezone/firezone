@@ -4,7 +4,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Announcing 1.0 • Firezone Blog",
+  title: "Firezone 1.0 • Firezone Blog",
   description: "Announcing the 1.0 early access program",
 };
 

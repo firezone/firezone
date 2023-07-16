@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-100 pt-24 ">
+      <section className="bg-gradient-to-b from-primary-50 to-neutral-100 pt-24">
         <div className="px-4 py-8 mx-auto max-w-screen-xl sm:text-center lg:py-16 lg:px-12">
           <h1 className="mb-4 md:text-6xl text-5xl justify-center font-extrabold tracking-tight leading-none text-neutral-900">
             Fast, effortless secure access.

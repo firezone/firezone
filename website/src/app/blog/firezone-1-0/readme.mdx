@@ -5,83 +5,87 @@ import Image from "next/image";
   alt="Show HN"
   width={1412}
   height={168}
-  className="shadow"
+  className="mx-auto shadow rounded"
 />
 
-**Firezone comes from humble roots.**
+<span className="font-semibold">Firezone comes from humble roots.</span>
 
 When we [launched on Hacker News](https://news.ycombinator.com/item?id=28683231)
 nearly two years ago, we never envisioned Firezone to be more than a simple tool
 for managing your WireGuard configurations.
 
-While WireGuard itself is a marvelous feat of engineering, it intentionally
-lacks tooling that would make it usable in typical remote access scenarios. It
-provides only the basic building blocks; you still have plan your routing,
-generate keys, and tie these to user identities if you were hoping to use
-WireGuard to replace your existing VPN.
+Firezone was born out of necessity. While WireGuard itself is a marvelous
+engineering feat, it provides only the basic building blocks. Users wishing to
+deploy WireGuard as a replacement for their existing VPN likely found themselves
+building automation to distribute keys, manage users, configure routing tables,
+and so on.
 
-Doing all of this was an error-prone inconvenience myself and colleagues had
-faced often in our day jobs. We agreed that someone should build a tool to make
-this easier. I had recently quit my job at Cisco and had a bit of extra time on
-my hands, so I decided this was the perfect opportunity to brush up on some new
-tech I'd been hoping to learn (namely: Elixir/Phoenix/LiveView). So I got to
-building.
+And in my day job I found myself doing just that. It wasn't particularly
+difficult automation to build, but it was tedious and error-prone. Still, it was
+worth the price of admission to reap the benefits of WireGuard. Colleagues and I
+agreed though -- "wouldn't it be wonderful if a tool existed to do this for us?"
+
+So after one particularly grueling project to refactor an ancient codebase to
+remove a particularly large dependency that was essentially welded in (there's
+always one, isn't there?), I decided it was time for something new.
+
+I resigned, picked up a book on Elixir/Phoenix (rejoicing at the time I now had
+to learn some new tech), and started building what ended up becoming the first
+version of Firezone.
 
 Fast-forward
 [4,500 GitHub stars](https://github.com/firezone/firezone/stargazers), a Y
 Combinator backed funding round, and
-[130 releases](https://github.com/firezone/firezone/releases) later. Firezone
+[130 releases](https://github.com/firezone/firezone/releases) later -- Firezone
 has now grown into something more than just a self-hosted tool to manage your
 WireGuard configurations.
 
-There are now over 3,000 Firezone instances running in wild (that we know
-about!) securing private networks for hobbyists, schools, non-profits, and
-businesses with hundreds of employees.
+There are now over <strong>3,000</strong> Firezone instances running in the wild
+(possibly much more -- we allow users to
+[disable telemetry](/docs/reference/telemetry)) securing private networks for
+hobbyists, schools, non-profits, and businesses with hundreds of employees.
 
 <Image
   src="/images/wai-7-2-23.png"
   alt="weekly active instances"
-  width={500}
-  height={500}
-  className="shadow"
+  width={600}
+  height={600}
+  className="mx-auto shadow rounded border border-neutral-200"
 />
 
 To be clear, Firezone is successful in large part because WireGuard itself is
-successful. It's one of those incredible breakthroughs that makes you question
-how the world ever got by without it. WireGuard's release made us realize how
-bad VPN tooling really was up until that point. As a Cisco employee for 8 years
-I should know; AnyConnect was my worst nightmare. What's that? Reconnecting
-again due to cipher renegotiation? Fun.
+successful. In an industry brimming with enterprise security bloatware and
+endless acronyms, WireGuard's a breath of fresh air. Every issue I've thought I
+had with it turned out to be user error. How we ever got by without it is a
+mystery to me.
 
-WireGuard in contrast has been a joy to use and build upon. There's no ciphers
-to negotiate so tunnel setup and reconnect occurs near instantaneously, even
-when roaming. Dropped packets get retransmitted based on the encapsulated
-protocol, which is really how things should when you stop to think about it.
-WireGuard's great.
+But I could go on and on about WireGuard's strengths. Let's back up for a minute
+-- what is a VPN, and why is one needed at all? Why is it used for remote
+access?
 
-But let's take a step back for a moment. Why are VPNs needed? And why are they
-used for remote access?
+To answer that we'll need to go back to the formation of the Internet itself.
 
-To answer that we need to go all the way back in history to the formation of the
-Internet itself.
+You see, the early Internet was designed at a time where entities connecting to
+it were largely trusted, and well, large. Connecting to the Internet was
+expensive.
 
-You see, the early Internet was designed primarily for large entities to connect
-to each other. Connecting to the Internet was expensive; only entities with a
-business justification and budget could afford the equipment required to connect
-to it. Because only large entities could connect, they were inherently trusted.
+So when you connected your organization to the Internet and began receiving
+packets, it was clear which entity it was from based on its allocated IPv4
+address range. Since there were so few entities connected, it was clear who the
+traffic was from. It was clear who to contact (and blame) in case any issues
+arose. Identifying who you were communicating with was trivial.
 
-When you received a packet from an IPv4 address, it was clear which entity it
-was from based on its allocated IPv4 address range. If there were any issues
-with the received packets, it was clear who to contact.
-
-The early Internet Protocol wasn't designed with authorization in mind.
-
-But, as the Internet grew and access to it became cheaper, more types of
-entities could connect. Smaller entities. Untrusted entities. Perhaps even
-individuals.
+But, as the Internet grew, and access to it became cheaper, more types of
+entities could afford to connect. As more entities connected, the value
+connecting to the Internet increased exponentially, and so more and more wanted
+to connect. Smaller entities. Soon Internet Service Providers began offering
+connections to mere individuals. At this point, there were so many entities on
+the Internet that identifying the source of packets coming to you was no longer
+trivial. Since you couldn't easily know who you were talking to, you couldn't
+trust them.
 
 And thus, firewalls were born. Firewalls keep packets out from entities you
-don't wish to communicate with. These entities could
+don't wish to communicate with.
 
 But what if you did wish to communicate with some entity? Enter stateful
 firewalls (sometimes mistakenly confused with NATs, but that's a whole 'nother
@@ -91,9 +95,9 @@ Stateful firewalls only let entities talk to you if (and only if) you've
 recently attempted to talk to them first. Recently in most cases means 30
 seconds.
 
-IP address ventriloquism in support of your favorite regionally-locked Netflix
-content, VPNs have traditionally been used by businesses to select allow remote
-access to private networks.
+Aside from being used for IP address ventriloquism in support of your favorite
+regionally-locked Netflix content, VPNs have traditionally been used by
+businesses to select allow remote access to private networks.
 
 have been Building in the open isn't always easy, and you often get pulled in
 many directions by users with requirements that seemingly contradict one

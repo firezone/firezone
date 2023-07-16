@@ -17,11 +17,11 @@ export default function EarlyAccess() {
       <div className="py-8 px-4 mx-auto max-w-screen-2xl lg:py-16 lg:px-6">
         <div className="grid flex gap-4 lg:grid-cols-2">
           <div className="flex items-center justify-center lg:justify-start">
-            <div className="flex-none px-2">
-              <h1 className="mb-4 text-5xl justify-center lg:justify-end font-extrabold tracking-tight text-neutral-900 xl:text-6xl">
+            <div className="flex-wrap px-2">
+              <h1 className="mb-4 text-4xl sm:text-5xl justify-center lg:justify-end font-extrabold tracking-tight text-neutral-900 xl:text-6xl">
                 Request early access
               </h1>
-              <h2 className="flex mb-4 text-lg tracking-tight text-neutral-900 sm:text-xl justify-center lg:justify-end">
+              <h2 className="flex flex-wrap mb-4 text-lg tracking-tight text-neutral-900 sm:text-xl justify-center lg:justify-end">
                 <strong className="mr-1">Firezone 1.0 is coming!</strong>
                 <span className="font-medium">
                   Sign up below to get early access.
