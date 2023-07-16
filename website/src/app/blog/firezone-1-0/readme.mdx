@@ -85,15 +85,46 @@ trivial. Since you couldn't easily know who you were talking to, you couldn't
 trust them.
 
 And thus, firewalls were born. Firewalls keep packets out from entities you
-don't wish to communicate with.
+don't wish to communicate with and let packets in from those you do.
 
-But what if you did wish to communicate with some entity? Enter stateful
-firewalls (sometimes mistakenly confused with NATs, but that's a whole 'nother
-topic I won't get into).
+<Image
+  width={600}
+  height={400}
+  src="/images/firewall-block.svg"
+  alt="firewall animation"
+  className="mx-auto"
+/>
 
-Stateful firewalls only let entities talk to you if (and only if) you've
-recently attempted to talk to them first. Recently in most cases means 30
-seconds.
+And this worked great for some time. However, as the Internet grew, a problem
+arose: Firewalls required you to know _in advance_ who you'd like to communicate
+with. But as more entities connected, this wasn't always the case. Soon, it
+became untenable to modify your firewall ruleset for each entity you wanted to
+communicate with, and remove those with which you didn't.
+
+So a clever solution was designed: what if we could dynamically add and remove
+entities to the firewall ruleset? What if we
+
+And thus, stateful firewalls were born. I should pause here and clarify that
+these are sometimes confused with NAT device, but I won't get into that
+distinction here. They're often the same device these days, but the fundamental
+attribute of a stateful firewall is that it _remembers_ things in order to to
+update its behavior dynamically, whereas for a NAT device this quality isn't
+strictly true.
+
+Stateful firewalls exist in nearly every consumer router and datacenter gateway
+connected to the Internet today. They've been largely successful at serving
+their intended purpose.
+
+However (as you may have guessed), this wouldn't make for much of an interesting
+post if we stopped there.
+
+You see, there's still one fundamental problem with stateful firewalls,
+particularly as it relates to remote access. For two-way communication to occur,
+one entity (namely the one "behind" the firewall) must always initiate. This
+means that entities outside the firewall can never communicate to those inside,
+_even if the outside ones are trusted_.
+
+
 
 Aside from being used for IP address ventriloquism in support of your favorite
 regionally-locked Netflix content, VPNs have traditionally been used by
