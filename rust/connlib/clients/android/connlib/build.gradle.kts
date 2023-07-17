@@ -3,33 +3,6 @@ plugins {
     id("com.android.library")
     id("kotlin-android")
     id("org.jetbrains.kotlin.android")
-    `maven-publish`
-}
-
-afterEvaluate {
-    publishing {
-        publications {
-            create<MavenPublication>("release") {
-                groupId = "dev.firezone"
-                artifactId = "connlib"
-                version = "0.1.6"
-                from(components["release"])
-            }
-        }
-    }
-}
-
-publishing {
-    repositories {
-        maven {
-            url = uri("https://maven.pkg.github.com/firezone/connlib")
-            name = "GitHubPackages"
-            credentials {
-                username = System.getenv("GITHUB_ACTOR")
-                password = System.getenv("GITHUB_TOKEN")
-            }
-        }
-    }
 }
 
 android {
@@ -64,6 +37,9 @@ android {
     publishing {
         singleVariant("release")
     }
+    sourceSets["main"].jniLibs {
+        srcDir("jniLibs")
+    }
 }
 
 dependencies {
@@ -79,6 +55,36 @@ dependencies {
 
 apply(plugin = "org.mozilla.rust-android-gradle.rust-android")
 
+fun copyJniShared(task: Task, buildType: String) = task.apply {
+    outputs.upToDateWhen { false }
+
+    val jniTargets = mapOf(
+        "armv7-linux-androideabi" to "armeabi-v7a",
+        "aarch64-linux-android" to "arm64-v8a",
+        "i686-linux-android" to "x86",
+        "x86_64-linux-android" to "x86_64",
+    )
+
+    jniTargets.forEach { entry ->
+        val soFile = File(
+            project.projectDir.parentFile.parentFile.parentFile.parentFile,
+            "target/${entry.key}/${buildType}/libconnlib.so"
+        )
+        val targetDir = File(project.projectDir, "/jniLibs/${entry.value}").apply {
+            if (!exists()) {
+                mkdirs()
+            }
+        }
+
+        copy {
+            with(copySpec {
+                from(soFile)
+            })
+            into(targetDir)
+        }
+    }
+}
+
 cargo {
     prebuiltToolchains = true
     verbose = true
@@ -92,8 +98,24 @@ cargo {
     }
 }
 
+tasks.register("copyJniSharedObjectsDebug") {
+    copyJniShared(this, "debug")
+}
+
+tasks.register("copyJniSharedObjectsRelease") {
+    copyJniShared(this, "release")
+}
+
 tasks.whenTaskAdded {
     if (name.startsWith("javaPreCompile")) {
-        dependsOn(tasks.named("cargoBuild"))
+        val newTasks = arrayOf (
+            tasks.named("cargoBuild"),
+            if (name.endsWith("Debug")) {
+                tasks.named("copyJniSharedObjectsDebug")
+            } else {
+                tasks.named("copyJniSharedObjectsRelease")
+            }
+        )
+        dependsOn(*newTasks)
     }
 }
