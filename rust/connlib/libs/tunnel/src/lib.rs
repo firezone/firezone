@@ -13,7 +13,7 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use libs_common::{
     error_type::ErrorType::{Fatal, Recoverable},
-    Callbacks, TunnelAddresses,
+    Callbacks,
 };
 
 use async_trait::async_trait;
@@ -219,7 +219,7 @@ where
         {
             let mut iface_config = self.iface_config.lock().await;
             for ip in resource_description.ips() {
-                if let Err(err) = iface_config.add_route(&ip).await {
+                if let Err(err) = iface_config.add_route(&ip, self.callbacks()).await {
                     self.callbacks.on_error(&err, Fatal);
                 }
             }
@@ -243,7 +243,7 @@ where
         {
             let mut iface_config = self.iface_config.lock().await;
             iface_config
-                .set_iface_config(config)
+                .set_iface_config(config, self.callbacks())
                 .await
                 .expect("Couldn't initiate interface");
             iface_config
@@ -255,10 +255,7 @@ where
         self.start_timers();
         self.start_iface_handler();
 
-        self.callbacks.on_connect(TunnelAddresses {
-            address4: config.ipv4,
-            address6: config.ipv6,
-        });
+        self.callbacks.on_tunnel_ready();
 
         tracing::trace!("Started background loops");
 
