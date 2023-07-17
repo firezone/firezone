@@ -26,21 +26,20 @@ export default function RootLayout({
           <div className="min-h-screen h-auto antialiased">
             <RootNavbar />
             <Banner active>
-              <p className="text-md font-medium text-center w-full text-neutral-200 ">
-                <strong>Firezone 1.0 is coming!</strong> Rebuilt from the ground
-                up with a cloud dashboard, native clients, and more.{" "}
+              <p className="text-md font-medium tracking-tight text-center w-full text-neutral-50 ">
                 <Link
                   href="/blog/firezone-1-0"
                   className="underline text-accent-500  hover:no-underline"
                 >
-                  Read the blogpost
-                </Link>{" "}
-                or{" "}
+                  Firezone 1.0 is coming
+                </Link>
+                ! Rebuilt from the ground up with a cloud dashboard, native
+                clients, and more.{" "}
                 <Link
                   href="/product/early-access"
                   className="text-accent-500  underline hover:no-underline"
                 >
-                  request early access.
+                  Request early access.
                 </Link>
               </p>
             </Banner>
