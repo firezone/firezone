@@ -1,54 +1,50 @@
 "use client";
-import { Alert as FlowbiteAlert } from "flowbite-react";
 import {
-  InformationCircleIcon,
-  ExclamationCircleIcon,
-  ExclamationTriangleIcon,
-} from "@heroicons/react/24/outline";
+  HiOutlineInformationCircle,
+  HiOutlineExclamationCircle,
+  HiOutlineExclamationTriangle,
+} from "react-icons/hi2";
 
-function icon(color: string) {
+export default function Alert({
+  html,
+  color,
+}: {
+  html: string;
+  color: string;
+}) {
   switch (color) {
     case "info":
       return (
-        <span>
-          <InformationCircleIcon className="inline-block w-5 h-5 mr-2" />
-          <span className="text-xs font-bold">INFO</span>
-        </span>
+        <div className="mb-4 p-3 flex items-center rounded border bg-neutral-100 text-neutral-800 border-neutral-200">
+          <HiOutlineInformationCircle className="flex-none w-5 h-5 mr-2" />
+          {/* ReactMarkdown wraps this in a <p> tag if we wrap {children} as ReactNode, so we need to use string here instead. */}
+          <span
+            className="format-none text-sm"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        </div>
       );
     case "warning":
       return (
-        <span>
-          <ExclamationCircleIcon className="inline-block w-5 h-5 mr-2" />
-          <span className="text-xs font-bold">WARNING</span>
-        </span>
+        <div className="mb-4 p-3 flex items-center rounded border bg-accent-100 text-accent-800 border-accent-200">
+          <HiOutlineExclamationCircle className="flex-none w-5 h-5 mr-2" />
+          {/* ReactMarkdown wraps this in a <p> tag if we wrap {children} as ReactNode, so we need to use string here instead. */}
+          <span
+            className="format-none text-sm"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        </div>
       );
     case "danger":
       return (
-        <span>
-          <ExclamationTriangleIcon className="inline-block w-5 h-5 mr-2" />
-          <span className="text-xs font-bold">DANGER</span>
-        </span>
+        <div className="mb-4 p-3 flex items-center rounded border bg-primary-100 text-primary-800 border-primary-200">
+          <HiOutlineExclamationTriangle className="flex-none w-5 h-5 mr-2" />
+          {/* ReactMarkdown wraps this in a <p> tag if we wrap {children} as ReactNode, so we need to use string here instead. */}
+          <span
+            className="format-none text-sm"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        </div>
       );
-    default:
-      return null;
   }
-}
-
-export default function Alert({
-  children,
-  color,
-}: {
-  children: React.ReactNode;
-  color: string;
-}) {
-  return (
-    <div className="mb-4">
-      <FlowbiteAlert color={color}>
-        <span>
-          {icon(color)}
-          {children}
-        </span>
-      </FlowbiteAlert>
-    </div>
-  );
 }

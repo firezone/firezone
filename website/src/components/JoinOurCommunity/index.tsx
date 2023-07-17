@@ -1,26 +1,22 @@
 import Link from "next/link";
-import {
-  ChatBubbleLeftRightIcon,
-  UserGroupIcon,
-  StarIcon,
-} from "@heroicons/react/24/solid";
+import { HiChatBubbleLeftRight, HiUserGroup, HiStar } from "react-icons/hi2";
 
 export default function JoinOurCommunity() {
   return (
     <section className="border-t border-neutral-200 py-24 bg-gradient-to-b from-neutral-100 to-primary-50">
       <div className="flex flex-col justify-center items-center">
-        <h2 className="mb-4 text-4xl tracking-tight font-bold text-neutral-900 dark:text-white">
+        <h2 className="mb-4 text-4xl tracking-tight font-bold text-neutral-900 ">
           Join our community
         </h2>
-        <p className="my-4 text-xl max-w-screen-lg text-center text-primary-900 dark:text-neutral-100">
+        <p className="mx-2 my-4 text-xl max-w-screen-lg text-center text-primary-900 ">
           Participate in Firezone's development, suggest new features, and
           collaborate with other Firezone users.
         </p>
       </div>
       <div className="gap-4 items-center pt-4 px-4 mx-auto max-w-screen-lg lg:grid lg:grid-cols-3 xl:gap-8 sm:pt-8 lg:px-6 ">
         <div className="py-8 rounded-md shadow-md text-center bg-white">
-          <UserGroupIcon className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 dark:text-neutral-100" />
-          <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 dark:text-neutral-100">
+          <HiUserGroup className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 " />
+          <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 ">
             30+
           </h3>
           <p className="mb-8 text-xl font-semibold">Contributors</p>
@@ -34,8 +30,8 @@ export default function JoinOurCommunity() {
           </button>
         </div>
         <div className="py-8 rounded-md shadow-md text-center bg-white">
-          <StarIcon className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 dark:text-neutral-100" />
-          <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 dark:text-neutral-100">
+          <HiStar className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 " />
+          <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 ">
             4,300+
           </h3>
           <p className="mb-8 text-xl font-semibold">GitHub stars</p>
@@ -49,8 +45,8 @@ export default function JoinOurCommunity() {
           </button>
         </div>
         <div className="py-8 rounded-md shadow-md text-center bg-white">
-          <ChatBubbleLeftRightIcon className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 dark:text-neutral-100" />
-          <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 dark:text-neutral-100">
+          <HiChatBubbleLeftRight className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 " />
+          <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 ">
             250+
           </h3>
           <p className="mb-8 text-xl font-semibold">Members</p>

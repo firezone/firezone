@@ -28,10 +28,10 @@ function renderTeamMember({
         alt={`{name} Avatar`}
       />
       <div className="text-center">
-        <h3 className="justify-center text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
+        <h3 className="justify-center text-xl font-bold tracking-tight text-neutral-900 ">
           {name}
         </h3>
-        <span className="text-neutral-800 dark:text-neutral-100">{title}</span>
+        <span className="text-neutral-800 ">{title}</span>
         <ul className="flex justify-center space-x-4 mt-4">
           {twitterUrl && (
             <li>
@@ -122,10 +122,10 @@ export default function Page() {
   ];
 
   return (
-    <section className="bg-neutral-100 dark:bg-neutral-900">
+    <section className="bg-neutral-100 ">
       <div className="py-8 px-4 mx-auto max-w-screen-lg text-center lg:py-16 lg:px-6">
-        <div className="text-neutral-800 sm:text-lg dark:text-neutral-100">
-          <h1 className="mb-14 justify-center text-6xl tracking-tight font-extrabold text-neutral-900 dark:text-white">
+        <div className="text-neutral-800 sm:text-lg ">
+          <h1 className="mb-14 justify-center text-6xl tracking-tight font-extrabold text-neutral-900 ">
             People are everything.
           </h1>
           <p className="mb-4 sm:text-2xl">
@@ -135,22 +135,22 @@ export default function Page() {
             tools they need to succeed.
           </p>
         </div>
-        <div className="text-neutral-800 sm:text-lg dark:text-neutral-100">
-          <h3 className="justify-center pb-4 pt-14 text-2xl tracking-tight font-bold text-neutral-900 dark:text-white border-b border-neutral-300">
+        <div className="text-neutral-800 sm:text-lg ">
+          <h3 className="justify-center pb-4 pt-14 text-2xl tracking-tight font-bold text-neutral-900  border-b border-neutral-300">
             CORE TEAM
           </h3>
         </div>
-        <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 lg:gap-16">
+        <div className="mt-16 grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 lg:gap-16">
           {coreTeam.map((person) => {
             return renderTeamMember(person);
           })}
         </div>
-        <div className="text-neutral-800 sm:text-lg dark:text-neutral-100">
-          <h3 className="justify-center pb-4 pt-14 text-2xl tracking-tight font-bold text-neutral-900 dark:text-white border-b border-neutral-300">
+        <div className="text-neutral-800 sm:text-lg ">
+          <h3 className="justify-center pb-4 pt-14 text-2xl tracking-tight font-bold text-neutral-900  border-b border-neutral-300">
             ADVISORS & CONSULTANTS
           </h3>
         </div>
-        <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 lg:gap-16">
+        <div className="mt-16 grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 lg:gap-16">
           {advisors.map((person) => {
             return renderTeamMember(person);
           })}

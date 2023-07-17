@@ -36,7 +36,7 @@ export default function CommitMarquee({ xmlFeed }: { xmlFeed: string }) {
             key={entry.id}
             className="text-center w-64 h-full items-top mx-2 py-2 px-2"
           >
-            <h4 className="justify-center mb-2 text-neutral-800 dark:text-neutral-200 font-medium text-lg">
+            <h4 className="justify-center mb-2 text-neutral-800  font-medium text-lg">
               <Link
                 href={entry.link["@_href"]}
                 className="text-accent-500 underline hover:no-underline"

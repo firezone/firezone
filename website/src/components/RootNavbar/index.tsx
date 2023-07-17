@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import DeployButton from "@/components/DeployButton";
 import { useEffect } from "react";
 import { initFlowbite, Dropdown } from "flowbite";
-import { ChevronDownIcon } from "@heroicons/react/24/solid";
+import { HiChevronDown } from "react-icons/hi2";
 
 export default function RootNavbar() {
   const p = usePathname() || "";
@@ -37,7 +37,7 @@ export default function RootNavbar() {
 
   return (
     <header>
-      <nav className="fixed top-0 left-0 right-0 bg-white border-b border-neutral-200 z-50">
+      <nav className="h-14 fixed top-0 left-0 right-0 bg-white border-b items-center flex border-neutral-200 z-50">
         <div className="w-full flex flex-wrap py-2 justify-between items-center">
           <div className="flex justify-start items-center">
             <SidebarToggle />
@@ -46,7 +46,7 @@ export default function RootNavbar() {
                 width={150}
                 height={150}
                 src="/images/logo-text.svg"
-                className="ml-2 mr-5"
+                className="w-32 sm:w-40 ml-2 mr-2 sm:mr-5"
                 alt="Firezone Logo"
               />
             </Link>
@@ -54,7 +54,7 @@ export default function RootNavbar() {
             <Link
               className={
                 (p == "/" ? "text-neutral-900 underline" : "text-neutral-800") +
-                " p-1 mr-1 hover:text-neutral-900 hover:underline"
+                " p-0 sm:p-1 mr-1 font-medium hover:text-neutral-900 hover:underline"
               }
               href="/"
             >
@@ -67,18 +67,18 @@ export default function RootNavbar() {
                 (p.startsWith("/product")
                   ? "text-neutral-900"
                   : "text-neutral-800") +
-                " hover:text-neutral-900 flex items-center justify-between p-1 mr-1"
+                " hover:text-neutral-900 flex items-center justify-between p-0 sm:p-1 mr-1"
               }
             >
               <span
                 className={
-                  "hover:underline " +
+                  "hover:underline font-medium " +
                   (p.startsWith("/product") ? "underline" : "")
                 }
               >
                 Product
               </span>
-              <ChevronDownIcon className="w-2.5 h-2.5 ml-1" />
+              <HiChevronDown className="w-3 h-3 mx-1" />
             </button>
             <div
               id="product-dropdown-menu"
@@ -86,7 +86,6 @@ export default function RootNavbar() {
             >
               <ul className="py-2" aria-labelledby="product-dropdown-link">
                 <li>
-                  {/* TODO: use <Link> here, toggling dropdown */}
                   <Link
                     onClick={hideDropdown}
                     href="/product/roadmap"
@@ -94,7 +93,7 @@ export default function RootNavbar() {
                       (p == "/product/roadmap"
                         ? "text-neutral-900 underline"
                         : "text-neutral-800") +
-                      " block px-4 py-2 hover:underline hover:bg-neutral-100 hover:text-neutral-900"
+                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                     }
                   >
                     Roadmap
@@ -109,7 +108,7 @@ export default function RootNavbar() {
                       (p == "/product/early-access"
                         ? "text-neutral-900 underline"
                         : "text-neutral-800") +
-                      " block px-4 py-2 hover:underline hover:bg-neutral-100 hover:text-neutral-900"
+                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                     }
                   >
                     Early Access
@@ -124,7 +123,7 @@ export default function RootNavbar() {
                       (p.startsWith("/product/newsletter")
                         ? "text-neutral-900 underline"
                         : "text-neutral-800") +
-                      " block px-4 py-2 hover:underline hover:bg-neutral-100 hover:text-neutral-900"
+                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                     }
                   >
                     Newsletter
@@ -137,7 +136,7 @@ export default function RootNavbar() {
                 (p.startsWith("/contact/sales")
                   ? "text-neutral-900 underline"
                   : "text-neutral-800") +
-                " p-1 mr-1 hover:text-neutral-900 hover:underline"
+                " p-1 mr-1 font-medium hover:text-neutral-900 hover:underline"
               }
               href="/contact/sales"
             >
@@ -150,7 +149,7 @@ export default function RootNavbar() {
                 (p.startsWith("/docs")
                   ? "text-neutral-900 underline"
                   : "text-neutral-800") +
-                " p-1 mr-1 hover:text-neutral-900 hover:underline"
+                " p-1 mr-1 font-medium hover:text-neutral-900 hover:underline"
               }
               href="/docs"
             >

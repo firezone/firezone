@@ -4,7 +4,7 @@ export function LinkedInIcon({ url }: { url: string }) {
   return (
     <Link
       href={url}
-      className="text-neutral-800 hover:text-neutral-900 dark:hover:text-white"
+      className="text-neutral-800 hover:text-neutral-900 "
     >
       <svg
         aria-hidden="true"
@@ -27,7 +27,7 @@ export function GitHubIcon({ url }: { url: string }) {
   return (
     <Link
       href={url}
-      className="text-neutral-800 hover:text-neutral-900 dark:hover:text-white"
+      className="text-neutral-800 hover:text-neutral-900 "
     >
       <svg
         className="w-5 h-5"
@@ -50,7 +50,7 @@ export function TwitterIcon({ url }: { url: string }) {
   return (
     <Link
       href={url}
-      className="text-neutral-800 hover:text-neutral-900 dark:hover:text-white"
+      className="text-neutral-800 hover:text-neutral-900 "
     >
       <svg
         className="w-5 h-5"
