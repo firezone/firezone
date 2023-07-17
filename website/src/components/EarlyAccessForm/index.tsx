@@ -13,7 +13,7 @@ export default function EarlyAccessForm() {
         </h3>
         <ul className="md:text-xl mb-6 list-inside list-disc space-y-2">
           <li>Be among the first to try Firezone 1.0</li>
-          <li>Shape the product roadmap with prioritized feedback</li>
+          <li>Accelerate the roadmap with prioritized feedback</li>
           <li>Dedicated Slack channel for onboarding and support</li>
           <li>Free unlimited usage during the beta period</li>
         </ul>
