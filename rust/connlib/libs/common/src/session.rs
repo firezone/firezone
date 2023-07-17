@@ -64,7 +64,6 @@ pub struct TunnelAddresses {
     pub address6: Ipv6Addr,
 }
 
-// Evaluate doing this not static
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
     /// Called when the tunnel address is set.
