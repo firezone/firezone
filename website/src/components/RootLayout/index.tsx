@@ -9,7 +9,7 @@ import Banner from "@/components/Banner";
 import Providers from "@/components/Providers";
 import Footer from "@/components/Footer";
 import { Public_Sans } from "next/font/google";
-const raleway = Public_Sans({
+const public_sans = Public_Sans({
   subsets: ["latin"],
   weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
 });
@@ -22,10 +22,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <Providers>
-        <body className={raleway.className}>
+        <body className={public_sans.className}>
           <div className="min-h-screen h-auto antialiased">
             <RootNavbar />
-            <Banner active={false}>
+            <Banner active>
               <p className="text-md font-medium text-center w-full text-neutral-200 ">
                 <strong>Firezone 1.0 is coming!</strong> Rebuilt from the ground
                 up with a cloud dashboard, native clients, and more.{" "}
