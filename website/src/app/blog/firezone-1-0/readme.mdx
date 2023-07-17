@@ -85,8 +85,8 @@ Soon, all types of entities wanted to connect -- local governments, schools,
 small businesses. Internet Service Providers began offering connections to mere
 individuals. Eventually there were so many entities on the Internet that
 identifying who you were communicating with was no longer trivial. Since you
-couldn't easily know who you were talking to, you couldn't always trust them not
-to misbehave.
+couldn't easily know who you were talking to, you couldn't always trust them to
+behave.
 
 And thus, firewalls were born. Firewalls keep packets of information out from
 entities you don't wish to communicate with and let packets in from those you
@@ -146,13 +146,12 @@ back to managing firewall configurations again.
 This is where VPNs come in. A VPN _disguises_ an outside entity as an inside
 one, thereby allowing communication by default.
 
-After the firewall authenticates the outside entity, they agree to package up
-the information packets between each other so that the Internet routers in
+After the firewall authenticates the outside entity, they both agree to package
+up the information packets between each other so that the Internet routers in
 between forward them properly. This creates a kind of network within a network:
 the original packets with their network attributes are packaged into another
-packet with more network attributes that allow the Internet routers in between
-to forward them properly. Thus giving this technology its name: Virtual Private
-Network.
+packet with more network attributes, thus giving this technology its name:
+Virtual Private Network.
 
 So a VPN is just a technology that authenticates an outside, untrusted entity to
 a protected network. And WireGuard is the best VPN technology we have so far. As
@@ -164,7 +163,7 @@ But there's a security risk with this arrangement: once the outsider is
 authenticated, all of the entities inside the firewall perimeter now trust its
 packets completely. What if an untrusted entity managed to obtain a VPN
 connection? One misconfiguration, stolen credential, or hijacked connection
-would be a perimeter breach. Not good.
+would result in a perimeter breach. Not good.
 
 The solution to this problem is aptly named
 [Zero Trust Architecture (ZTA)](https://en.wikipedia.org/wiki/Zero_trust_security_model).
@@ -225,9 +224,14 @@ Firezone 1.0 makes this process transparent, but also goes one step further by
 exposing granular controls to allow or deny access based on attributes like
 which group a user is a member of and so on.
 
+Of course if you wanted to use Firezone 1.0 like a traditional perimeter-based
+VPN and then transition to finer-grined access controls over time, you can do
+that as well. We understand the realities of legacy processes and systems, so we
+designed 1.0 to be flexible enough to suit the needs of both.
+
 And while we were at it, we decided to build a slew of new features for 1.0 as
 well, most notably a cloud-managed admin portal and native clients. Check our
-roadmap
+[product roadmap](/product/roadmap) for more details on what's coming in 1.0.
 
 #### Next steps
 
@@ -238,6 +242,4 @@ year. If you're interesting in joining the early access program,
 
 Until then, feel free to [follow our roadmap](/product/roadmap) or
 [watch our GitHub repository](https://www.github.com/firezone/firezone) for
-updates. We're introducing a slew of new features in 1.0 in addition to the new
-architecture described in this post, so follow along there if you're curious how
-things are going or you have comments. Feedback welcome!
+updates. Comments welcome!
