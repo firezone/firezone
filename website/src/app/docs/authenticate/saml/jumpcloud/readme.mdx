@@ -3,11 +3,14 @@ import Image from "next/image";
 
 # Enable SSO with JumpCloud (SAML 2.0)
 
-<Alert color="info">
-  This guide assumes you have completed the prerequisite steps (e.g. generate
-  self-signed X.509 certificates) outlined
-  [here](/docs/authenticate/saml#prerequisites).
-</Alert>
+<Alert
+  color="info"
+  html={`
+This guide assumes you have completed the prerequisite steps (e.g. generate
+self-signed X.509 certificates) outlined
+<a href="/docs/authenticate/saml#prerequisites">here</a>.
+`}
+/>
 
 Firezone supports Single Sign-On (SSO) using JumpCloud through the generic SAML
 2.0 connector. This guide will walk you through how to configure the
@@ -37,7 +40,8 @@ the bottom-right.
 
 Your JumpCloud configuration should now resemble the following:
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="jumpcloud saml"
   width={960}
   height={540}
@@ -68,7 +72,8 @@ filling out the following information:
 
 Your Firezone configuration should now resemble the following:
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="firezone saml"
   width={960}
   height={540}

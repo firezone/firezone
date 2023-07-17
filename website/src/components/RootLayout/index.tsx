@@ -8,10 +8,10 @@ import Script from "next/script";
 import Banner from "@/components/Banner";
 import Providers from "@/components/Providers";
 import Footer from "@/components/Footer";
-import { Source_Sans_Pro } from "next/font/google";
-const source_sans_pro = Source_Sans_Pro({
+import { Public_Sans } from "next/font/google";
+const public_sans = Public_Sans({
   subsets: ["latin"],
-  weight: ["200", "300", "400", "600", "700", "900"],
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
 });
 
 export default function RootLayout({
@@ -22,23 +22,23 @@ export default function RootLayout({
   return (
     <html lang="en">
       <Providers>
-        <body className={source_sans_pro.className}>
-          <div className="h-auto antialiased">
+        <body className={public_sans.className}>
+          <div className="min-h-screen h-auto antialiased">
             <RootNavbar />
-            <Banner active={false}>
-              <p className="text-md font-medium text-center w-full text-neutral-200 dark:text-neutral-800">
+            <Banner active>
+              <p className="text-md font-medium text-center w-full text-neutral-200 ">
                 <strong>Firezone 1.0 is coming!</strong> Rebuilt from the ground
                 up with a cloud dashboard, native clients, and more.{" "}
                 <Link
-                  href="/blog/announcing-1.0"
-                  className="underline text-accent-500 dark:text-accent-800 hover:no-underline"
+                  href="/blog/firezone-1-0"
+                  className="underline text-accent-500  hover:no-underline"
                 >
                   Read the blogpost
                 </Link>{" "}
                 or{" "}
                 <Link
                   href="/product/early-access"
-                  className="text-accent-500 dark:text-accent-800 underline hover:no-underline"
+                  className="text-accent-500  underline hover:no-underline"
                 >
                   request early access.
                 </Link>

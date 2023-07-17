@@ -1,0 +1,245 @@
+import Image from "next/image";
+
+<span className="font-semibold">Firezone comes from humble roots.</span>
+
+It was born out of necessity -- as an engineer at Cisco I found myself in need
+of an easy way to deploy and manage a VPN server for security automation. I had
+used OpenVPN in the past and loathed it, so this time I decided to try a fast,
+new contender called [WireGuard](https://www.wireguard.com).
+
+While WireGuard itself is a marvelous feat of engineering, it provides only
+basic building blocks. Users wishing to deploy WireGuard as a replacement for
+their existing remote access VPN will find themselves building automation to
+distribute keys, manage users, configure routing tables, and so on.
+
+And I found myself doing just that. It wasn't particularly difficult automation
+to build, but it was tedious and error-prone. Although the benefits of WireGuard
+were worth the price of admission, colleagues and I agreed -- _wouldn't it be
+great if a tool existed to do this for us?_
+
+So after one particularly grueling refactoring project involving a major
+dependency in an ancient codebase that had become "suddenly" deprecated, I
+decided it was time for something new. I resigned, picked up a book on
+Elixir/Phoenix, and, rejoicing at the opportunity to learn some new tech,
+started building what became the first version of Firezone.
+
+<Image
+  src="/images/nostalgia-show-hn.png"
+  alt="Show HN"
+  width={1412}
+  height={168}
+  className="mx-auto shadow rounded"
+/>
+
+When we [launched on Hacker News](https://news.ycombinator.com/item?id=28683231)
+nearly two years ago, we never envisioned Firezone to be more than a simple tool
+deploying your own WireGuard-based VPN server.
+
+Fast-forward
+[4,500 GitHub stars](https://github.com/firezone/firezone/stargazers), a
+[Y Combinator backed funding round](https://techcrunch.com/2022/03/30/ycombinator-open-source-startups-winter-22-demo-day/),
+and [130 releases](https://github.com/firezone/firezone/releases) later --
+Firezone has now grown into something more than just a self-hosted tool to
+manage your WireGuard configurations.
+
+We now count over <strong>3,000</strong> Firezone instances running in the wild
+(possibly much more -- we allow users to
+[disable telemetry](/docs/reference/telemetry)) securing private networks for
+hobbyists, schools, non-profits, and businesses with hundreds of employees.
+
+<Image
+  src="/images/wai-7-2-23.png"
+  alt="weekly active instances"
+  width={600}
+  height={600}
+  className="mx-auto shadow rounded border border-neutral-200"
+/>
+
+To be clear, Firezone is successful in large part because WireGuard itself is
+successful. In an industry brimming with enterprise security bloatware and
+endless acronyms, WireGuard's a breath of fresh air. Every issue I've thought I
+had with it turned out to be user error. How we ever got by without it is a
+mystery to me.
+
+But I could go on and on about WireGuard's strengths. Let's back up for a minute
+-- what is a VPN, and why is one needed at all? To answer that we'll need to go
+back to the formation of the Internet itself.
+
+#### The purpose of a VPN
+
+You see, the early Internet had only a handful of entities connected to it --
+connecting to the Internet was expensive, after all. Typically only banks,
+universities, and other large institutions could justify the cost.
+
+So when you connected your organization to the Internet and began receiving
+packets, it was clear which entity it was from based on its allocated IPv4
+address range. Since there were so few entities connected, it was clear who you
+communicated with. It was clear who to contact (and blame) in case any issues
+arose.
+
+But, as access to the Internet became cheaper, more types of entities could
+afford to connect. As more entities connected, the number of resources on the
+Internet grew, and its
+[value increased quadratically](https://en.wikipedia.org/wiki/Metcalfe%27s_law).
+Soon, all types of entities wanted to connect -- local governments, schools,
+small businesses. Internet Service Providers began offering connections to mere
+individuals. Eventually there were so many entities on the Internet that
+identifying who you were communicating with was no longer trivial. Since you
+couldn't easily know who you were talking to, you couldn't always trust them to
+behave.
+
+And thus, firewalls were born. Firewalls keep packets of information out from
+entities you don't wish to communicate with and let packets in from those you
+do.
+
+<object type="image/svg+xml" data="/images/firewall-block.svg">
+  <Image
+    width={600}
+    height={400}
+    src="/images/firewall-block.svg"
+    alt="firewall animation"
+    className="mx-auto"
+  />
+</object>
+
+And this worked well for some time. However, as the Internet grew even larger, a
+problem arose: firewalls required you to know _in advance_ who you'd like to
+communicate with, adding them to your configuration, and likewise removing the
+ones you didn't. As you might imagine, it quickly became unwieldy to keep these
+configurations up to date.
+
+So a clever solution was developed: what if you could dynamically add and remove
+entities to the firewall configuration on the fly?
+
+And thus, stateful firewalls were born. I should pause here and clarify that
+stateful firewalls are sometimes confused with
+[Network Address Translation (NAT)](https://en.wikipedia.org/wiki/Network_address_translation),
+since they're often found on the same device. But there's an important
+distinction: A stateful firewall _remembers_ stuff it's seen in order to to
+update its configuration dynamically, whereas NAT can behave statically.
+
+Stateful firewalls exist in nearly every consumer router and datacenter gateway
+connected to the Internet today. There's a very high likelihood the Internet
+connection you're reading this from is behind one or several of them. They've
+been largely successful at serving their intended purpose.
+
+<object type="image/svg+xml" data="/images/stateful-firewall.svg">
+  <Image
+    width={600}
+    height={400}
+    src="/images/stateful-firewall.svg"
+    alt="firewall animation"
+    className="mx-auto"
+  />
+</object>
+
+However, this post wouldn't be very interesting if we stopped there.
+
+You see, there's still one fundamental problem with stateful firewalls,
+particularly as it relates to remote access. For two-way communication to occur,
+one entity (namely the one "behind" the firewall) must always initiate. This
+means that entities outside the firewall can never communicate to those inside,
+_even if the outside entities are trusted_. To do that, you'd have to add a
+configuration rule to expect an outside entity to talk in, which means we're
+back to managing firewall configurations again.
+
+This is where VPNs come in. A VPN _disguises_ an outside entity as an inside
+one, thereby allowing communication by default.
+
+After the firewall authenticates the outside entity, they both agree to package
+up the information packets between each other so that the Internet routers in
+between forward them properly. This creates a kind of network within a network:
+the original packets with their network attributes are packaged into another
+packet with more network attributes, thus giving this technology its name:
+Virtual Private Network.
+
+So a VPN is just a technology that authenticates an outside, untrusted entity to
+a protected network. And WireGuard is the best VPN technology we have so far. As
+far as VPNs go, there's nothing faster, more secure, or more robust.
+
+#### The challenge with trust
+
+But there's a security risk with this arrangement: once the outsider is
+authenticated, all of the entities inside the firewall perimeter now trust its
+packets completely. What if an untrusted entity managed to obtain a VPN
+connection? One misconfiguration, stolen credential, or hijacked connection
+would result in a perimeter breach. Not good.
+
+The solution to this problem is aptly named
+[Zero Trust Architecture (ZTA)](https://en.wikipedia.org/wiki/Zero_trust_security_model).
+The idea with ZTA is to do away with using network zone (or perceived network
+zone in the case of a VPN) for determining whether to trust communication. All
+network zones are considered _untrusted_ by default. Suddenly the network
+perimeter we had before vanishes -- inside and outside entities are equally
+untrusted.
+
+Then how does an entity come to be trusted? We still authenticate them as usual,
+but there's a key difference: with ZTA, we authenticate entities each time the
+communication is requested, on the fly. Not once at the perimeter. And since the
+perimeter is gone, the protected entity itself (or a proxy) authenticates the
+untrusted entity. But wait, what happened to the firewall?
+
+This presents a dilemma. If we use a firewall to protect entities, they're
+shielded outside the perimeter, but left unprotected inside the perimeter. And
+if we choose ZTA, we only trust entities we've authenticated directly, but must
+expose ourselves to _all_ outside entities in order to do so.
+
+#### The solution
+
+Firezone solves this problem with a third entity, called an access broker, which
+works as follows:
+
+<object type="image/svg+xml" data="/images/firezone-1.0.svg">
+  <Image
+    width={600}
+    height={600}
+    src="/images/firezone-1.0.svg"
+    alt="firewall animation"
+    className="mx-auto"
+  />
+</object>
+
+1. The protected entity is deployed behind a stateful firewall.
+1. The protected entity then initiates and maintains a bi-directional control
+   channel to the broker.
+1. Whenever an untrusted entity wants access to the protected resource, it
+   notifies the broker.
+1. If the broker determines access is granted, it notifies the protected entity
+   that the now-trusted entity is allowed in.
+1. The protected entity then initiates communication to the now-trusted entity
+   _directly_. The stateful firewall's configuration is dynamically updated,
+   allowing communication to happen from the now-trusted entity to the protected
+   entity.
+
+So we're able to both authenticate the untrusted entity at the time of request,
+yet also keep our protected entity behind a firewall to keep it invisible to the
+public Internet. In fast, _both_ entities can live behind a stateful firewall
+and the technique would still work -- the principles are the same.
+
+As it turns out, this approach is nothing new. It's how web browsers and VoIP
+systems have established peer to peer connections for low-latency audio and
+video chat for decades.
+
+Firezone 1.0 makes this process transparent, but also goes one step further by
+exposing granular controls to allow or deny access based on attributes like
+which group a user is a member of and so on.
+
+Of course if you wanted to use Firezone 1.0 like a traditional perimeter-based
+VPN and then transition to finer-grined access controls over time, you can do
+that as well. We understand the realities of legacy processes and systems, so we
+designed 1.0 to be flexible enough to suit the needs of both.
+
+And while we were at it, we decided to build a slew of new features for 1.0 as
+well, most notably a cloud-managed admin portal and native clients. Check our
+[product roadmap](/product/roadmap) for more details on what's coming in 1.0.
+
+#### Next steps
+
+To help ensure a bug-free experience for our users, we'll be rolling out 1.0 in
+phases, starting with an early access preview aiming to launch mid-Q3 of this
+year. If you're interesting in joining the early access program,
+[head here to fill out the form](/product/early-access) and we'll be in touch.
+
+Until then, feel free to [follow our roadmap](/product/roadmap) or
+[watch our GitHub repository](https://www.github.com/firezone/firezone) for
+updates. Comments welcome!
