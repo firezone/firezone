@@ -281,7 +281,8 @@ where
                         {
                             let mut iface_config = tunnel.iface_config.lock().await;
                             for ip in &peer.ips {
-                                if let Err(e) = iface_config.add_route(ip).await {
+                                if let Err(e) = iface_config.add_route(ip, tunnel.callbacks()).await
+                                {
                                     tunnel.callbacks.on_error(&e, Recoverable);
                                 }
                             }

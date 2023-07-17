@@ -5,7 +5,7 @@
 use firezone_client_connlib::{
     Callbacks, Error, ErrorType, ResourceList, Session, TunnelAddresses,
 };
-use std::sync::Arc;
+use std::{net::Ipv4Addr, sync::Arc};
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -73,11 +73,20 @@ mod ffi {
     extern "Swift" {
         type CallbackHandler;
 
+        #[swift_bridge(swift_name = "onSetInterfaceConfig")]
+        fn on_set_interface_config(&self, tunnelAddresses: TunnelAddresses, dnsAddress: String);
+
+        #[swift_bridge(swift_name = "onTunnelReady")]
+        fn on_tunnel_ready(&self);
+
+        #[swift_bridge(swift_name = "onAddRoute")]
+        fn on_add_route(&self, route: String);
+
+        #[swift_bridge(swift_name = "onRemoveRoute")]
+        fn on_remove_route(&self, route: String);
+
         #[swift_bridge(swift_name = "onUpdateResources")]
         fn on_update_resources(&self, resourceList: ResourceList);
-
-        #[swift_bridge(swift_name = "onConnect")]
-        fn on_connect(&self, tunnelAddresses: TunnelAddresses);
 
         #[swift_bridge(swift_name = "onDisconnect")]
         fn on_disconnect(&self);
@@ -165,12 +174,25 @@ unsafe impl Sync for ffi::CallbackHandler {}
 pub struct CallbackHandler(Arc<ffi::CallbackHandler>);
 
 impl Callbacks for CallbackHandler {
-    fn on_update_resources(&self, resource_list: ResourceList) {
-        self.0.on_update_resources(resource_list.into())
+    fn on_set_interface_config(&self, tunnel_addresses: TunnelAddresses, dns_address: Ipv4Addr) {
+        self.0
+            .on_set_interface_config(tunnel_addresses.into(), dns_address.to_string())
     }
 
-    fn on_connect(&self, tunnel_addresses: TunnelAddresses) {
-        self.0.on_connect(tunnel_addresses.into())
+    fn on_tunnel_ready(&self) {
+        self.0.on_tunnel_ready()
+    }
+
+    fn on_add_route(&self, route: String) {
+        self.0.on_add_route(route)
+    }
+
+    fn on_remove_route(&self, route: String) {
+        self.0.on_remove_route(route)
+    }
+
+    fn on_update_resources(&self, resource_list: ResourceList) {
+        self.0.on_update_resources(resource_list.into())
     }
 
     fn on_disconnect(&self) {
