@@ -1,11 +1,13 @@
 use async_trait::async_trait;
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use boringtun::x25519::{PublicKey, StaticSecret};
+use parking_lot::Mutex;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_core::OsRng;
 use std::{
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
+    sync::Arc,
     time::Duration,
 };
 use tokio::{runtime::Runtime, sync::mpsc::Receiver};
@@ -14,7 +16,6 @@ use uuid::Uuid;
 
 use crate::{
     control::{MessageResult, PhoenixChannel, PhoenixSenderWithTopic},
-    error_type::ErrorType,
     messages::{Key, ResourceDescription, ResourceDescriptionCidr},
     Error, Result,
 };
@@ -44,7 +45,7 @@ pub trait ControlSession<T, CB: Callbacks> {
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session<T, U, V, R, M, CB: Callbacks> {
-    runtime: Option<Runtime>,
+    runtime: Arc<Mutex<Option<Runtime>>>,
     callbacks: CB,
     _phantom: PhantomData<(T, U, V, R, M)>,
 }
@@ -77,21 +78,20 @@ pub trait Callbacks: Clone + Send + Sync {
     /// Called when the resource list changes.
     fn on_update_resources(&self, resource_list: ResourceList);
     /// Called when the tunnel is disconnected.
-    fn on_disconnect(&self);
-    /// Called when there's an error.
     ///
-    /// # Parameters
-    /// - `error`: The actual error that happened.
-    /// - `error_type`: Whether the error should terminate the session or not.
-    fn on_error(&self, error: &Error, error_type: ErrorType);
+    /// If the tunnel disconnected due to a fatal error, `error` is the error
+    /// that caused the disconnect.
+    fn on_disconnect(&self, error: Option<&Error>);
+    /// Called when there's a recoverable error.
+    fn on_error(&self, error: &Error);
 }
 
 macro_rules! fatal_error {
-    ($result:expr, $c:expr) => {
+    ($result:expr, $rt:expr, $cb:expr) => {
         match $result {
             Ok(res) => res,
-            Err(e) => {
-                $c.on_error(&e, ErrorType::Fatal);
+            Err(err) => {
+                Self::disconnect_inner($rt, $cb, Some(err));
                 return;
             }
         }
@@ -111,6 +111,7 @@ where
     /// (Used for the gateways).
     pub fn wait_for_ctrl_c(&mut self) -> Result<()> {
         self.runtime
+            .lock()
             .as_ref()
             .ok_or(Error::NoRuntime)?
             .block_on(async {
@@ -137,32 +138,48 @@ where
         // Big question here however is how do we get the result? We could block here await the result and spawn a new task.
         // but then platforms should know that this function is blocking.
 
-        let portal_url = portal_url.try_into().map_err(|_| Error::UriError)?;
-
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()?;
-
-        if cfg!(feature = "mock") {
-            Self::connect_mock(callbacks.clone());
-        } else {
-            Self::connect_inner(&runtime, portal_url, token, callbacks.clone());
-        }
-
-        Ok(Self {
-            runtime: Some(runtime),
+        let this = Self {
+            runtime: Mutex::new(Some(
+                tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()?,
+            ))
+            .into(),
             callbacks,
             _phantom: PhantomData,
-        })
+        };
+
+        if cfg!(feature = "mock") {
+            Self::connect_mock(this.callbacks.clone());
+        } else {
+            Self::connect_inner(
+                Arc::clone(&this.runtime),
+                portal_url.try_into().map_err(|_| Error::UriError)?,
+                token,
+                this.callbacks.clone(),
+            );
+        }
+
+        Ok(this)
     }
 
-    fn connect_inner(runtime: &Runtime, portal_url: Url, token: String, callbacks: CB) {
-        runtime.spawn(async move {
+    fn connect_inner(
+        runtime: Arc<Mutex<Option<Runtime>>>,
+        portal_url: Url,
+        token: String,
+        callbacks: CB,
+    ) {
+        let runtime_disconnector = Arc::clone(&runtime);
+        runtime.lock().as_ref().unwrap().spawn(async move {
             let private_key = StaticSecret::random_from_rng(OsRng);
             let self_id = uuid::Uuid::new_v4();
             let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
 
-            let connect_url = fatal_error!(get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix), callbacks);
+            let connect_url = fatal_error!(
+                get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix),
+                &runtime_disconnector,
+                &callbacks
+            );
 
 
             // This is kinda hacky, the buffer size is 1 so that we make sure that we
@@ -183,7 +200,11 @@ where
             // Used to send internal messages
             let topic = T::socket_path().to_string();
             let internal_sender = connection.sender_with_topic(topic.clone());
-            fatal_error!(T::start(private_key, control_plane_receiver, internal_sender, callbacks.clone()).await, callbacks);
+            fatal_error!(
+                T::start(private_key, control_plane_receiver, internal_sender, callbacks.clone()).await,
+                &runtime_disconnector,
+                &callbacks
+            );
 
             tokio::spawn(async move {
                 let mut exponential_backoff = ExponentialBackoffBuilder::default().build();
@@ -193,17 +214,20 @@ where
                     if let Some(t) = exponential_backoff.next_backoff() {
                         tracing::warn!("Error during connection to the portal, retrying in {} seconds", t.as_secs());
                         match result {
-                            Ok(()) => callbacks.on_error(&tokio_tungstenite::tungstenite::Error::ConnectionClosed.into(), ErrorType::Recoverable),
-                            Err(e) => callbacks.on_error(&e, ErrorType::Recoverable)
+                            Ok(()) => callbacks.on_error(&tokio_tungstenite::tungstenite::Error::ConnectionClosed.into()),
+                            Err(e) => callbacks.on_error(&e)
                         }
                         tokio::time::sleep(t).await;
                     } else {
                         tracing::error!("Connection to the portal error, check your internet or the status of the portal.\nDisconnecting interface.");
-                        match result {
-                            Ok(()) => callbacks.on_error(&crate::Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed), ErrorType::Fatal),
-                            Err(e) => callbacks.on_error(&e, ErrorType::Fatal)
-                        }
-                        break;
+                        fatal_error!(
+                            match result {
+                                Ok(()) => Err(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed)),
+                                Err(e) => Err(e)
+                            },
+                            &runtime_disconnector,
+                            &callbacks
+                        );
                     }
                 }
 
@@ -250,12 +274,8 @@ where
         });
     }
 
-    /// Cleanup a [Session].
-    ///
-    /// For now this just drops the runtime, which should drop all pending tasks.
-    /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
-    pub fn disconnect(&mut self) -> bool {
-        self.callbacks.on_disconnect();
+    fn disconnect_inner(runtime: &Mutex<Option<Runtime>>, callbacks: &CB, error: Option<Error>) {
+        callbacks.on_disconnect(error.as_ref());
 
         // 1. Close the websocket connection
         // 2. Free the device handle (UNIX)
@@ -268,7 +288,15 @@ where
         // So always yield and if you spawn a blocking tasks rewrite this.
         // Furthermore, we will depend on Drop impls to do the list above so,
         // implement them :)
-        self.runtime = None;
+        *runtime.lock() = None;
+    }
+
+    /// Cleanup a [Session].
+    ///
+    /// For now this just drops the runtime, which should drop all pending tasks.
+    /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
+    pub fn disconnect(&mut self, error: Option<Error>) -> bool {
+        Self::disconnect_inner(&self.runtime, &self.callbacks, error);
         true
     }
 

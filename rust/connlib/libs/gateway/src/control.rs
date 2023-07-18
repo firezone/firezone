@@ -4,7 +4,6 @@ use boringtun::x25519::StaticSecret;
 use firezone_tunnel::{ControlSignal, Tunnel};
 use libs_common::{
     control::{MessageResult, PhoenixSenderWithTopic},
-    error_type::ErrorType::{Fatal, Recoverable},
     messages::ResourceDescription,
     Callbacks, ControlSession, Result,
 };
@@ -36,13 +35,13 @@ impl ControlSignal for ControlSignaler {
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn start(mut self, mut receiver: Receiver<MessageResult<IngressMessages>>) {
+    async fn start(mut self, mut receiver: Receiver<MessageResult<IngressMessages>>) -> Result<()> {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
         loop {
             tokio::select! {
                 Some(msg) = receiver.recv() => {
                     match msg {
-                        Ok(msg) => self.handle_message(msg).await,
+                        Ok(msg) => self.handle_message(msg).await?,
                         Err(_msg_reply) => todo!(),
                     }
                 },
@@ -50,18 +49,19 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 else => break
             }
         }
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    async fn init(&mut self, init: InitGateway) {
+    async fn init(&mut self, init: InitGateway) -> Result<()> {
         if let Err(e) = self.tunnel.set_interface(&init.interface).await {
             tracing::error!("Couldn't initialize interface: {e}");
-            self.tunnel.callbacks().on_error(&e, Fatal);
-            return;
+            Err(e)
+        } else {
+            // TODO: Enable masquerading here.
+            tracing::info!("Firezoned Started!");
+            Ok(())
         }
-
-        // TODO: Enable masquerading here.
-        tracing::info!("Firezoned Started!");
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -89,12 +89,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         .await
                     {
                         tunnel.cleanup_connection(connection_request.device.id);
-                        tunnel.callbacks().on_error(&err, Recoverable);
+                        tunnel.callbacks().on_error(&err);
                     }
                 }
                 Err(err) => {
                     tunnel.cleanup_connection(connection_request.device.id);
-                    tunnel.callbacks().on_error(&err, Recoverable);
+                    tunnel.callbacks().on_error(&err);
                 }
             }
         });
@@ -106,13 +106,13 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn handle_message(&mut self, msg: IngressMessages) {
+    pub(super) async fn handle_message(&mut self, msg: IngressMessages) -> Result<()> {
         match msg {
             IngressMessages::Init(init) => self.init(init).await,
             IngressMessages::RequestConnection(connection_request) => {
-                self.connection_request(connection_request)
+                Ok(self.connection_request(connection_request))
             }
-            IngressMessages::AddResource(resource) => self.add_resource(resource),
+            IngressMessages::AddResource(resource) => Ok(self.add_resource(resource)),
             IngressMessages::RemoveResource(_) => todo!(),
             IngressMessages::UpdateResource(_) => todo!(),
         }

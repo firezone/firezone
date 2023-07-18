@@ -4,7 +4,6 @@ use crate::messages::{Connect, EgressMessages, InitClient, Messages, Relays};
 use boringtun::x25519::StaticSecret;
 use libs_common::{
     control::{ErrorInfo, ErrorReply, MessageResult, PhoenixSenderWithTopic},
-    error_type::ErrorType::{self, Fatal, Recoverable},
     messages::{Id, ResourceDescription},
     Callbacks, ControlSession, Error, Result,
 };
@@ -45,13 +44,13 @@ struct ControlSignaler {
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn start(mut self, mut receiver: Receiver<MessageResult<Messages>>) {
+    async fn start(mut self, mut receiver: Receiver<MessageResult<Messages>>) -> Result<()> {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
         loop {
             tokio::select! {
                 Some(msg) = receiver.recv() => {
                     match msg {
-                        Ok(msg) => self.handle_message(msg).await,
+                        Ok(msg) => self.handle_message(msg).await?,
                         Err(msg_reply) => self.handle_error(msg_reply).await,
                     }
                 },
@@ -59,6 +58,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 else => break
             }
         }
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -68,18 +68,17 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             interface,
             resources,
         }: InitClient,
-    ) {
+    ) -> Result<()> {
         if let Err(e) = self.tunnel.set_interface(&interface).await {
             tracing::error!("Couldn't initialize interface: {e}");
-            self.tunnel.callbacks().on_error(&e, Fatal);
-            return;
+            Err(e)
+        } else {
+            for resource_description in resources {
+                self.add_resource(resource_description).await?;
+            }
+            tracing::info!("Firezoned Started!");
+            Ok(())
         }
-
-        for resource_description in resources {
-            self.add_resource(resource_description).await
-        }
-
-        tracing::info!("Firezoned Started!");
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -101,13 +100,13 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             )
             .await
         {
-            self.tunnel.callbacks().on_error(&e, Recoverable);
+            self.tunnel.callbacks().on_error(&e);
         }
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn add_resource(&self, resource_description: ResourceDescription) {
-        self.tunnel.add_resource(resource_description).await;
+    async fn add_resource(&self, resource_description: ResourceDescription) -> Result<()> {
+        self.tunnel.add_resource(resource_description).await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -143,26 +142,26 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         .await
                     {
                         tunnel.cleanup_connection(resource_id);
-                        tunnel.callbacks().on_error(&err, Recoverable);
+                        tunnel.callbacks().on_error(&err);
                     }
                 }
                 Err(err) => {
                     tunnel.cleanup_connection(resource_id);
-                    tunnel.callbacks().on_error(&err, Recoverable);
+                    tunnel.callbacks().on_error(&err);
                 }
             }
         });
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn handle_message(&mut self, msg: Messages) {
+    pub(super) async fn handle_message(&mut self, msg: Messages) -> Result<()> {
         match msg {
             Messages::Init(init) => self.init(init).await,
-            Messages::Relays(connection_details) => self.relays(connection_details),
-            Messages::Connect(connect) => self.connect(connect).await,
+            Messages::Relays(connection_details) => Ok(self.relays(connection_details)),
+            Messages::Connect(connect) => Ok(self.connect(connect).await),
             Messages::ResourceAdded(resource) => self.add_resource(resource).await,
-            Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
-            Messages::ResourceUpdated(resource) => self.update_resource(resource),
+            Messages::ResourceRemoved(resource) => Ok(self.remove_resource(resource.id)),
+            Messages::ResourceUpdated(resource) => Ok(self.update_resource(resource)),
         }
     }
 
@@ -175,7 +174,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         tracing::error!(
                             "An offline error came back with a reference to a non-valid resource id"
                         );
-                        self.tunnel.callbacks().on_error(&Error::ControlProtocolError, ErrorType::Recoverable);
+                        self.tunnel.callbacks().on_error(&Error::ControlProtocolError);
                         return;
                     };
                     // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
@@ -187,7 +186,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 );
                     self.tunnel
                         .callbacks()
-                        .on_error(&Error::ControlProtocolError, ErrorType::Recoverable);
+                        .on_error(&Error::ControlProtocolError);
                 }
             }
         }
