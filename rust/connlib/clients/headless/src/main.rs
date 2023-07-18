@@ -1,24 +1,35 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use std::str::FromStr;
+use std::{net::Ipv4Addr, str::FromStr};
 
 use firezone_client_connlib::{
     get_user_agent, Callbacks, Error, ErrorType, ResourceList, Session, TunnelAddresses,
 };
 use url::Url;
 
-enum CallbackHandler {}
+#[derive(Clone)]
+pub struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
-    fn on_update_resources(_resource_list: ResourceList) {
-        todo!()
+    fn on_set_interface_config(&self, _tunnel_addresses: TunnelAddresses, _dns_address: Ipv4Addr) {}
+
+    fn on_tunnel_ready(&self) {
+        tracing::trace!("Tunnel connected");
     }
 
-    fn on_set_tunnel_adresses(_tunnel_addresses: TunnelAddresses) {
-        todo!()
+    fn on_add_route(&self, _route: String) {}
+
+    fn on_remove_route(&self, _route: String) {}
+
+    fn on_update_resources(&self, resource_list: ResourceList) {
+        tracing::trace!("Resources updated, current list: {resource_list:?}");
     }
 
-    fn on_error(error: &Error, error_type: ErrorType) {
+    fn on_disconnect(&self) {
+        tracing::trace!("Tunnel disconnected");
+    }
+
+    fn on_error(&self, error: &Error, error_type: ErrorType) {
         match error_type {
             ErrorType::Recoverable => tracing::warn!("Encountered error: {error}"),
             ErrorType::Fatal => panic!("Encountered fatal error: {error}"),
@@ -40,8 +51,7 @@ fn main() -> Result<()> {
     // TODO: allow passing as arg vars
     let url = parse_env_var::<Url>(URL_ENV_VAR)?;
     let secret = parse_env_var::<String>(SECRET_ENV_VAR)?;
-    // TODO: This is disgusting
-    let mut session = Session::<CallbackHandler>::connect::<CallbackHandler>(url, secret).unwrap();
+    let mut session = Session::connect(url, secret, CallbackHandler).unwrap();
     tracing::info!("Started new session");
     session.wait_for_ctrl_c().unwrap();
     session.disconnect();

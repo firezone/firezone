@@ -35,15 +35,16 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     end
   end
 
-  describe "ensure_provisioned/1" do
+  describe "ensure_provisioned_for_account/2" do
     test "returns changeset errors in invalid adapter config" do
-      changeset = Ecto.Changeset.change(%Auth.Provider{}, %{})
-      assert %Ecto.Changeset{} = changeset = ensure_provisioned(changeset)
+      account = AccountsFixtures.create_account()
+      changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, %{})
+      assert %Ecto.Changeset{} = changeset = ensure_provisioned_for_account(changeset, account)
       assert errors_on(changeset) == %{adapter_config: ["can't be blank"]}
 
       attrs = AuthFixtures.provider_attrs(adapter: :openid_connect, adapter_config: %{})
-      changeset = Ecto.Changeset.change(%Auth.Provider{}, attrs)
-      assert %Ecto.Changeset{} = changeset = ensure_provisioned(changeset)
+      changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, attrs)
+      assert %Ecto.Changeset{} = changeset = ensure_provisioned_for_account(changeset, account)
 
       assert errors_on(changeset) == %{
                adapter_config: %{
@@ -70,7 +71,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
       changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, attrs)
 
-      assert %Ecto.Changeset{} = changeset = ensure_provisioned(changeset)
+      assert %Ecto.Changeset{} = changeset = ensure_provisioned_for_account(changeset, account)
       assert {:ok, provider} = Repo.insert(changeset)
 
       assert provider.name == attrs.name
@@ -104,16 +105,25 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       assert {:ok, authorization_uri, {state, verifier}} =
                authorization_uri(provider, "https://example.com/")
 
-      assert authorization_uri ==
-               "http://localhost:#{bypass.port}/authorize" <>
-                 "?access_type=offline" <>
-                 "&client_id=#{provider.adapter_config["client_id"]}" <>
-                 "&code_challenge=#{Domain.Auth.Adapters.OpenIDConnect.PKCE.code_challenge(verifier)}" <>
-                 "&code_challenge_method=S256" <>
-                 "&redirect_uri=https%3A%2F%2Fexample.com%2F" <>
-                 "&response_type=code" <>
-                 "&scope=openid+email+profile" <>
-                 "&state=#{state}"
+      uri = URI.parse(authorization_uri)
+      uri_query = URI.decode_query(uri.query)
+
+      assert uri.scheme == "http"
+      assert uri.host == "localhost"
+      assert uri.port == bypass.port
+      assert uri.path == "/authorize"
+
+      assert uri_query == %{
+               "access_type" => "offline",
+               "client_id" => provider.adapter_config["client_id"],
+               "code_challenge" =>
+                 Domain.Auth.Adapters.OpenIDConnect.PKCE.code_challenge(verifier),
+               "code_challenge_method" => "S256",
+               "redirect_uri" => "https://example.com/",
+               "response_type" => "code",
+               "scope" => "openid email profile",
+               "state" => state
+             }
 
       assert is_binary(state)
       assert is_binary(verifier)

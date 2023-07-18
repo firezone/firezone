@@ -1,0 +1,2 @@
+CONNLIB_SOURCE_DIR=${PROJECT_DIR}/../../rust/connlib/clients/apple
+CONNLIB_TARGET_DIR=${PROJECT_DIR}/../../rust/target

@@ -2,15 +2,15 @@
 //!
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
-use ip_network::IpNetwork;
-use ip_network_table::IpNetworkTable;
 use boringtun::{
     noise::{
-        errors::WireGuardError, handshake::parse_handshake_anon, rate_limiter::RateLimiter,
-        Packet, Tunn, TunnResult,
+        errors::WireGuardError, handshake::parse_handshake_anon, rate_limiter::RateLimiter, Packet,
+        Tunn, TunnResult,
     },
     x25519::{PublicKey, StaticSecret},
 };
+use ip_network::IpNetwork;
+use ip_network_table::IpNetworkTable;
 use libs_common::{
     error_type::ErrorType::{Fatal, Recoverable},
     Callbacks,
@@ -34,7 +34,6 @@ use webrtc::{
 
 use std::{
     collections::{HashMap, HashSet},
-    marker::PhantomData,
     net::IpAddr,
     sync::Arc,
     time::Duration,
@@ -89,7 +88,7 @@ mod device_channel;
 mod device_channel;
 
 const RESET_PACKET_COUNT_INTERVAL: Duration = Duration::from_secs(1);
-const REFRESH_PEERS_TIEMRS_INTERVAL: Duration = Duration::from_secs(1);
+const REFRESH_PEERS_TIMERS_INTERVAL: Duration = Duration::from_secs(1);
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
@@ -145,21 +144,25 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     resources: RwLock<ResourceTable>,
     control_signaler: C,
     gateway_public_keys: Mutex<HashMap<Id, PublicKey>>,
-    _phantom: PhantomData<CB>,
+    callbacks: CB,
 }
 
-impl<C: ControlSignal, CB: Callbacks> Tunnel<C, CB>
+impl<C, CB> Tunnel<C, CB>
 where
-    C: Send + Sync + 'static,
-    CB: Send + Sync + 'static,
+    C: ControlSignal + Send + Sync + 'static,
+    CB: Callbacks + 'static,
 {
     /// Creates a new tunnel.
     ///
     /// # Parameters
     /// - `private_key`: wireguard's private key.
     /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
-    #[tracing::instrument(level = "trace", skip(private_key, control_signaler))]
-    pub async fn new(private_key: StaticSecret, control_signaler: C) -> Result<Self> {
+    #[tracing::instrument(level = "trace", skip(private_key, control_signaler, callbacks))]
+    pub async fn new(
+        private_key: StaticSecret,
+        control_signaler: C,
+        callbacks: CB,
+    ) -> Result<Self> {
         let public_key = (&private_key).into();
         let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
         let peers_by_ip = RwLock::new(IpNetworkTable::new());
@@ -203,7 +206,7 @@ where
             resources,
             awaiting_connection,
             control_signaler,
-            _phantom: PhantomData,
+            callbacks,
         })
     }
 
@@ -216,12 +219,22 @@ where
         {
             let mut iface_config = self.iface_config.lock().await;
             for ip in resource_description.ips() {
-                if let Err(err) = iface_config.add_route(ip).await {
-                    CB::on_error(&err, Fatal);
+                if let Err(err) = iface_config.add_route(&ip, self.callbacks()).await {
+                    self.callbacks.on_error(&err, Fatal);
                 }
             }
         }
-        self.resources.write().insert(resource_description);
+        let resource_list = {
+            let mut resources = self.resources.write();
+            resources.insert(resource_description);
+            resources.resource_list()
+        };
+        match resource_list {
+            Ok(resource_list) => {
+                self.callbacks.on_update_resources(resource_list);
+            }
+            Err(err) => self.callbacks.on_error(&err.into(), Fatal),
+        }
     }
 
     /// Sets the interface configuration and starts background tasks.
@@ -230,7 +243,7 @@ where
         {
             let mut iface_config = self.iface_config.lock().await;
             iface_config
-                .set_iface_config(config)
+                .set_iface_config(config, self.callbacks())
                 .await
                 .expect("Couldn't initiate interface");
             iface_config
@@ -242,12 +255,14 @@ where
         self.start_timers();
         self.start_iface_handler();
 
+        self.callbacks.on_tunnel_ready();
+
         tracing::trace!("Started background loops");
 
         Ok(())
     }
 
-    async fn peer_refresh(peer: &Peer, dst_buf: &mut [u8; MAX_UDP_SIZE]) {
+    async fn peer_refresh(&self, peer: &Peer, dst_buf: &mut [u8; MAX_UDP_SIZE]) {
         let update_timers_result = peer.update_timers(&mut dst_buf[..]);
 
         match update_timers_result {
@@ -256,7 +271,9 @@ where
                 tracing::error!("Connection expired");
             }
             TunnResult::Err(e) => tracing::error!(message = "Timer error", error = ?e),
-            TunnResult::WriteToNetwork(packet) => peer.send_infallible::<CB>(packet).await,
+            TunnResult::WriteToNetwork(packet) => {
+                peer.send_infallible(packet, &self.callbacks).await
+            }
             _ => panic!("Unexpected result from update_timers"),
         };
     }
@@ -273,15 +290,40 @@ where
         });
     }
 
+    fn remove_expired_peers(self: &Arc<Self>) {
+        let mut peers_by_ip = self.peers_by_ip.write();
+
+        for (_, peer) in peers_by_ip.iter() {
+            if !peer.is_valid() {
+                tracing::trace!("Peer connection with index {} expired", peer.index);
+                let conn = self.peer_connections.lock().remove(&peer.conn_id);
+                let p = peer.clone();
+                // We are holding a Mutex, specially a write one, we don't want to make a blocking call
+                tokio::spawn(async move {
+                    let _ = p.shutdown().await;
+                    if let Some(conn) = conn {
+                        // TODO: it seems that even closing the stream there are messages to the relay
+                        // see where they come from.
+                        let _ = conn.close().await;
+                    }
+                });
+            }
+        }
+
+        peers_by_ip.retain(|_, p| p.is_valid());
+    }
+
     fn start_peers_refresh_timer(self: &Arc<Self>) {
         let tunnel = self.clone();
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(REFRESH_PEERS_TIEMRS_INTERVAL);
+            let mut interval = tokio::time::interval(REFRESH_PEERS_TIMERS_INTERVAL);
             interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
             let mut dst_buf = [0u8; MAX_UDP_SIZE];
 
             loop {
+                tunnel.remove_expired_peers();
+
                 let peers: Vec<_> = tunnel
                     .peers_by_ip
                     .read()
@@ -292,7 +334,7 @@ where
                     .collect();
 
                 for peer in peers {
-                    Self::peer_refresh(&peer, &mut dst_buf).await;
+                    tunnel.peer_refresh(&peer, &mut dst_buf).await;
                 }
 
                 interval.tick().await;
@@ -321,8 +363,15 @@ where
         tokio::spawn(async move {
             let mut src_buf = [0u8; MAX_UDP_SIZE];
             let mut dst_buf = [0u8; MAX_UDP_SIZE];
-            // Loop while we have packets on the anonymous connection
             while let Ok(size) = peer.channel.read(&mut src_buf[..]).await {
+                // TODO: Double check that this can only happen on closed channel
+                // I think it's possible to transmit a 0-byte message through the channel
+                // but we would never use that.
+                // We should keep track of an open/closed channel ourselves if we wanted to do it properly then.
+                if size == 0 {
+                    break;
+                }
+
                 tracing::trace!("read {size} bytes from peer");
                 // The rate limiter initially checks mac1 and mac2, and optionally asks to send a cookie
                 let parsed_packet = match tunnel.rate_limiter.verify_packet(
@@ -336,7 +385,7 @@ where
                 ) {
                     Ok(packet) => packet,
                     Err(TunnResult::WriteToNetwork(cookie)) => {
-                        peer.send_infallible::<CB>(cookie).await;
+                        peer.send_infallible(cookie, &tunnel.callbacks).await;
                         continue;
                     }
                     Err(_) => continue,
@@ -360,15 +409,17 @@ where
                     TunnResult::Err(_) => continue,
                     TunnResult::WriteToNetwork(packet) => {
                         flush = true;
-                        peer.send_infallible::<CB>(packet).await;
+                        peer.send_infallible(packet, &tunnel.callbacks).await;
                     }
                     TunnResult::WriteToTunnelV4(packet, addr) => {
                         if peer.is_allowed(addr) {
+                            tracing::trace!("Writing received peer packet to iface");
                             tunnel.write4_device_infallible(packet).await;
                         }
                     }
                     TunnResult::WriteToTunnelV6(packet, addr) => {
                         if peer.is_allowed(addr) {
+                            tracing::trace!("Writing received peer packet to iface");
                             tunnel.write6_device_infallible(packet).await;
                         }
                     }
@@ -380,7 +431,7 @@ where
                         let res = peer.tunnel.lock().decapsulate(None, &[], &mut dst_buf[..]);
                         res
                     } {
-                        peer.send_infallible::<CB>(packet).await;
+                        peer.send_infallible(packet, &tunnel.callbacks).await;
                     }
                 }
             }
@@ -389,13 +440,13 @@ where
 
     async fn write4_device_infallible(&self, packet: &[u8]) {
         if let Err(e) = self.device_channel.write4(packet).await {
-            CB::on_error(&e.into(), Recoverable);
+            self.callbacks.on_error(&e.into(), Recoverable);
         }
     }
 
     async fn write6_device_infallible(&self, packet: &[u8]) {
         if let Err(e) = self.device_channel.write6(packet).await {
-            CB::on_error(&e.into(), Recoverable);
+            self.callbacks.on_error(&e.into(), Recoverable);
         }
     }
 
@@ -425,13 +476,13 @@ where
                             Ok(res) => res,
                             Err(err) => {
                                 tracing::error!("Couldn't read packet from interface: {err}");
-                                CB::on_error(&err.into(), Recoverable);
+                                dev.callbacks.on_error(&err.into(), Recoverable);
                                 continue;
                             }
                         },
                         Err(err) => {
                             tracing::error!("Couldn't obtain iface mtu: {err}");
-                            CB::on_error(&err, Recoverable);
+                            dev.callbacks.on_error(&err, Recoverable);
                             continue;
                         }
                     }
@@ -442,12 +493,14 @@ where
                     None => continue,
                 };
 
-                let (encapsulate_result, channel) = {
+                let (encapsulate_result, channel, peer_index, conn_id) = {
                     let peers_by_ip = dev.peers_by_ip.read();
                     match peers_by_ip.longest_match(dst_addr).map(|p| p.1) {
                         Some(peer) => (
                             peer.tunnel.lock().encapsulate(&src[..res], &mut dst[..]),
                             peer.channel.clone(),
+                            peer.index,
+                            peer.conn_id,
                         ),
                         None => {
                             // We can buffer requests here but will drop them for now and let the upper layer reliability protocol handle this
@@ -472,7 +525,7 @@ where
                                             // Not a deadlock because this is a different task
                                             dev.awaiting_connection.lock().remove(&id);
                                             tracing::error!("couldn't start protocol for new connection to resource: {e}");
-                                            CB::on_error(&e, Recoverable);
+                                            dev.callbacks.on_error(&e, Recoverable);
                                         }
                                     });
                                 }
@@ -487,16 +540,36 @@ where
                         tracing::trace!(
                             "tunnel for resource corresponding to {dst_addr} was finalized"
                         );
+                        dev.peers_by_ip.write().retain(|_, p| p.index != peer_index);
                     }
                     TunnResult::Err(e) => {
                         tracing::error!(message = "Encapsulate error for resource corresponding to {dst_addr}", error = ?e);
-                        CB::on_error(&e.into(), Recoverable);
+                        dev.callbacks.on_error(&e.into(), Recoverable);
                     }
                     TunnResult::WriteToNetwork(packet) => {
                         tracing::trace!("writing iface packet to peer: {dst_addr}");
                         if let Err(e) = channel.write(&Bytes::copy_from_slice(packet)).await {
                             tracing::error!("Couldn't write packet to channel: {e}");
-                            CB::on_error(&e.into(), Recoverable);
+                            if matches!(
+                                e,
+                                webrtc::data::Error::ErrStreamClosed
+                                    | webrtc::data::Error::Sctp(
+                                        webrtc::sctp::Error::ErrStreamClosed
+                                    )
+                            ) {
+                                dev.peers_by_ip.write().retain(|_, p| p.index != peer_index);
+                                let _ = channel.close().await;
+                                let conn = dev.peer_connections.lock().remove(&conn_id);
+                                if let Some(conn) = conn {
+                                    if let Err(e) = conn.close().await {
+                                        tracing::error!(
+                                            "Problem while trying to close channel: {e:?}"
+                                        );
+                                        dev.callbacks().on_error(&e.into(), Recoverable);
+                                    }
+                                }
+                            }
+                            dev.callbacks.on_error(&e.into(), Recoverable);
                         }
                     }
                     _ => panic!("Unexpected result from encapsulate"),
@@ -507,5 +580,9 @@ where
 
     fn next_index(&self) -> u32 {
         self.next_index.lock().next()
+    }
+
+    pub fn callbacks(&self) -> &CB {
+        &self.callbacks
     }
 }

@@ -1,0 +1,75 @@
+name: Swift
+on:
+  pull_request:
+    paths:
+      - "swift/**"
+      - "rust/connlib/**"
+      - ".github/workflows/swift.yml"
+  merge_group:
+    types: [checks_requested]
+  workflow_call:
+  workflow_dispatch:
+
+# Cancel old workflow runs if new code is pushed
+concurrency:
+  group: "swift-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  swift_draft-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.release_drafter.outputs.tag_name }}
+    steps:
+      - uses: release-drafter/release-drafter@v5
+        with:
+          commitish: main
+        id: release_drafter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  swift_build:
+    strategy:
+      matrix:
+        target:
+          - sdk: macosx
+            platform: macOS
+            destination: platform=macOS
+          - sdk: iphoneos
+            platform: iOS
+            destination: generic/platform=iOS
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ./swift
+    needs:
+      - swift_draft-release
+    steps:
+      - uses: actions/checkout@v3
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Update toolchain
+        run: rustup show
+      - uses: actions/cache@v3
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
+          key: ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ matrix.target.platform }}-spm-
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Build app
+        env:
+          ONLY_ACTIVE_ARCH: no
+
+        working-directory: ./swift/apple
+        run: |
+          cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
+          xcodebuild archive -configuration Release -scheme Firezone -sdk ${{ matrix.target.sdk }} -destination '${{ matrix.target.destination }}' CODE_SIGNING_ALLOWED=NO

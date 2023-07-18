@@ -29,7 +29,7 @@ use stun_codec::rfc5766::attributes::{
 use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
 use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
-use tracing::log;
+use tracing::{field, log};
 use uuid::Uuid;
 
 /// A sans-IO STUN & TURN server.
@@ -47,7 +47,6 @@ pub struct Server<R> {
 
     /// All client allocations, indexed by client's socket address.
     allocations: HashMap<SocketAddr, Allocation>,
-
     clients_by_allocation: HashMap<AllocationId, SocketAddr>,
     allocations_by_port: HashMap<u16, AllocationId>,
 
@@ -164,13 +163,20 @@ where
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
     pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr, now: SystemTime) {
+        let span = tracing::error_span!("client", %sender,  transaction_id = field::Empty);
+        let _guard = span.enter();
+
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(bytes);
-            tracing::trace!(target: "wire", r#"Input::client("{sender}","{hex_bytes}")"#);
+            tracing::trace!(target: "wire", %hex_bytes, "receiving bytes");
         }
 
         match self.decoder.decode(bytes) {
             Ok(Ok(message)) => {
+                if let Some(id) = message.transaction_id() {
+                    span.record("transaction_id", hex::encode(id.as_bytes()));
+                }
+
                 self.handle_client_message(message, sender, now);
             }
             // Could parse the bytes but message was semantically invalid (like missing attribute).
@@ -241,20 +247,27 @@ where
         sender: SocketAddr,
         allocation_id: AllocationId,
     ) {
+        let span = tracing::error_span!("peer", %sender, %allocation_id, recipient = field::Empty, channel = field::Empty);
+        let _guard = span.enter();
+
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(bytes);
-            tracing::trace!(target: "wire", r#"Input::peer("{sender}","{hex_bytes}")"#);
+            tracing::trace!(target: "wire", %hex_bytes, "receiving bytes");
         }
 
-        let Some(client) = self.clients_by_allocation.get(&allocation_id) else {
-            tracing::debug!(target: "relay", "unknown allocation {allocation_id}");
+        let Some(recipient) = self.clients_by_allocation.get(&allocation_id) else {
+            tracing::debug!(target: "relay", "unknown allocation");
             return;
         };
 
+        span.record("recipient", field::display(&recipient));
+
         let Some(channel_number) = self.channel_numbers_by_peer.get(&sender) else {
-            tracing::debug!(target: "relay", "no active channel for {sender}, refusing to relay {} bytes", bytes.len());
+            tracing::debug!(target: "relay", "no active channel, refusing to relay {} bytes", bytes.len());
             return;
         };
+
+        span.record("channel", channel_number);
 
         let Some(channel) = self.channels_by_number.get(channel_number) else {
             debug_assert!(false, "unknown channel {}", channel_number);
@@ -262,36 +275,27 @@ where
         };
 
         if !channel.bound {
-            tracing::debug!(
-                target: "relay",
-                "channel {channel_number} from {sender} to {client} existed but is unbound"
-            );
+            tracing::debug!(target: "relay", "channel existed but is unbound");
             return;
         }
 
         if channel.allocation != allocation_id {
-            tracing::debug!(
-                target: "relay",
-                "channel {channel_number} is not associated with allocation {allocation_id}",
-            );
+            tracing::debug!(target: "relay", "channel is not associated with allocation");
             return;
         }
 
-        tracing::debug!(target: "relay", "Relaying {} bytes from {sender} to {client} via channel {channel_number}",
-            bytes.len()
-        );
+        tracing::debug!(target: "relay", "Relaying {} bytes", bytes.len());
 
-        let recipient = *client;
         let data = ChannelData::new(*channel_number, bytes).to_bytes();
 
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(&data);
-            tracing::trace!(target: "wire", r#"Output::send_message("{recipient}","{hex_bytes}")"#);
+            tracing::trace!(target: "wire", %hex_bytes, "sending bytes");
         }
 
         self.pending_commands.push_back(Command::SendMessage {
             payload: data,
-            recipient,
+            recipient: *recipient,
         })
     }
 
@@ -359,6 +363,12 @@ where
         sender: SocketAddr,
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
+        let effective_lifetime = request.effective_lifetime();
+
+        let span =
+            tracing::error_span!("allocate", lifetime = %effective_lifetime.lifetime().as_secs());
+        let _guard = span.enter();
+
         self.verify_auth(&request, now)?;
 
         if self.allocations.contains_key(&sender) {
@@ -372,8 +382,6 @@ where
         if request.requested_transport().protocol() != UDP_TRANSPORT {
             return Err(error_response(BadRequest, &request));
         }
-
-        let effective_lifetime = request.effective_lifetime();
 
         // TODO: Do we need to handle DONT-FRAGMENT?
         // TODO: Do we need to handle EVEN/ODD-PORT?
@@ -407,8 +415,8 @@ where
 
         tracing::info!(
             target: "relay",
-            "Created new allocation for {sender} on {ip4_relay_address} and lifetime {}s",
-            effective_lifetime.lifetime().as_secs()
+            ip4_relay_address = field::display(ip4_relay_address),
+            "Created new allocation",
         );
 
         self.clients_by_allocation.insert(allocation.id, sender);
@@ -426,6 +434,12 @@ where
         sender: SocketAddr,
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
+        let effective_lifetime = request.effective_lifetime();
+
+        let span =
+            tracing::error_span!("refresh", lifetime = %effective_lifetime.lifetime().as_secs());
+        let _guard = span.enter();
+
         self.verify_auth(&request, now)?;
 
         // TODO: Verify that this is the correct error code.
@@ -434,23 +448,13 @@ where
             .get_mut(&sender)
             .ok_or(error_response(AllocationMismatch, &request))?;
 
-        let effective_lifetime = request.effective_lifetime();
-
         if effective_lifetime.lifetime().is_zero() {
-            let port = allocation.port;
+            let id = allocation.id;
 
-            self.pending_commands
-                .push_back(Command::FreeAddresses { id: allocation.id });
-            self.allocations.remove(&sender);
-            self.allocations_by_port.remove(&port);
+            self.delete_allocation(id);
             self.send_message(
                 refresh_success_response(effective_lifetime, request.transaction_id()),
                 sender,
-            );
-
-            tracing::info!(
-                target: "relay",
-                "Deleted allocation for {sender} on port {port}"
             );
 
             return Ok(());
@@ -460,9 +464,8 @@ where
 
         tracing::info!(
             target: "relay",
-            "Refreshed allocation for {sender} on port {} and lifetime {}s",
-            allocation.port,
-            effective_lifetime.lifetime().as_secs()
+            port = %allocation.port,
+            "Refreshed allocation",
         );
 
         let wake_deadline = self.time_events.add(
@@ -489,6 +492,13 @@ where
         sender: SocketAddr,
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
+        // Note: `channel_number` is enforced to be in the correct range.
+        let requested_channel = request.channel_number().value();
+        let peer_address = request.xor_peer_address().address();
+
+        let span = tracing::error_span!("channel_bind", %requested_channel, %peer_address, allocation = field::Empty);
+        let _guard = span.enter();
+
         self.verify_auth(&request, now)?;
 
         let allocation = self
@@ -496,10 +506,7 @@ where
             .get_mut(&sender)
             .ok_or(error_response(AllocationMismatch, &request))?;
 
-        let requested_channel = request.channel_number().value();
-        let peer_address = request.xor_peer_address().address();
-
-        // Note: `channel_number` is enforced to be in the correct range.
+        span.record("allocation", allocation.id.to_string());
 
         // Check that our allocation can handle the requested peer addr.
         if !allocation.can_relay_to(peer_address) {
@@ -523,7 +530,7 @@ where
 
             channel.refresh(now);
 
-            tracing::info!(target: "relay", "Refreshed channel binding {requested_channel} between {sender} and {peer_address} on allocation {}", allocation.id);
+            tracing::info!(target: "relay", "Refreshed channel binding");
 
             self.time_events.add(
                 channel.expiry,
@@ -549,7 +556,7 @@ where
             sender,
         );
 
-        tracing::info!(target: "relay", "Bound channel {requested_channel} between {sender} and {peer_address} on allocation {}", allocation_id);
+        tracing::info!(target: "relay", "Successfully bound channel");
 
         Ok(())
     }
@@ -576,17 +583,15 @@ where
         Ok(())
     }
 
-    fn handle_channel_data_message(
-        &mut self,
-        message: ChannelData,
-        sender: SocketAddr,
-        _: SystemTime,
-    ) {
+    fn handle_channel_data_message(&mut self, message: ChannelData, _: SocketAddr, _: SystemTime) {
         let channel_number = message.channel();
         let data = message.data();
 
+        let span = tracing::error_span!("channel_data", channel = %channel_number, recipient = field::Empty);
+        let _guard = span.enter();
+
         let Some(channel) = self.channels_by_number.get(&channel_number) else {
-            tracing::debug!(target: "relay", "Channel {channel_number} does not exist, refusing to forward data");
+            tracing::debug!(target: "relay", "Channel does not exist, refusing to forward data");
             return;
         };
 
@@ -594,17 +599,18 @@ where
         // The sender of a UDP packet can be spoofed, so why would we bother?
 
         if !channel.bound {
-            tracing::debug!(target: "relay", "Channel {channel_number} exists but is unbound");
+            tracing::debug!(target: "relay", "Channel exists but is unbound");
             return;
         }
 
         let recipient = channel.peer_address;
+        span.record("recipient", field::display(&recipient));
 
-        tracing::debug!(target: "relay", "Relaying {} bytes from {sender} to {recipient} via channel {channel_number}", data.len());
+        tracing::debug!(target: "relay", "Relaying {} bytes", data.len());
 
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(data);
-            tracing::trace!(target: "wire", r#"Output::Forward("{recipient}","{hex_bytes}")"#);
+            tracing::trace!(target: "wire", %hex_bytes, "sending bytes");
         }
 
         self.pending_commands.push_back(Command::ForwardData {
@@ -694,7 +700,7 @@ where
     }
 
     fn send_message(&mut self, message: Message<Attribute>, recipient: SocketAddr) {
-        tracing::trace!(target: "relay", "Sending {} {} to {recipient}", message.method().as_str(), message.class().as_str());
+        tracing::trace!(target: "relay",  method = %message.method().as_str(), class = %message.class().as_str(), "Sending message");
 
         let Ok(bytes) = self.encoder.encode_into_bytes(message) else {
             debug_assert!(false, "Encoding should never fail");
@@ -703,7 +709,7 @@ where
 
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(&bytes);
-            tracing::trace!(target: "wire", r#"Output::SendMessage("{recipient}","{hex_bytes}")"#);
+            tracing::trace!(target: "wire", %hex_bytes, "sending bytes");
         }
 
         self.pending_commands.push_back(Command::SendMessage {
@@ -727,9 +733,17 @@ where
             return;
         };
 
-        self.allocations.remove(&client);
+        let allocation = self
+            .allocations
+            .remove(&client)
+            .expect("internal state mismatch");
+        let port = allocation.port;
+
+        self.allocations_by_port.remove(&port);
         self.pending_commands
             .push_back(Command::FreeAddresses { id });
+
+        tracing::info!(target: "relay", %port, "Deleted allocation");
     }
 
     fn delete_channel_binding(&mut self, chan: u16) {

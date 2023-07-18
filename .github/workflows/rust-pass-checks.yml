@@ -1,0 +1,39 @@
+# Workaround for the problem described here:
+# https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/troubleshooting-required-status-checks
+name: Rust
+on:
+  merge_group:
+    types: [checks_requested]
+  pull_request:
+    paths-ignore:
+      - "rust/**"
+      - ".github/workflows/rust.yml"
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  rust_draft-release:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  rust_test:
+    strategy:
+      matrix:
+        runs-on:
+          - ubuntu-20.04
+          - ubuntu-22.04
+          - macos-11
+          - macos-12
+          - windows-2019
+          - windows-2022
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - run: 'echo "No build required"'
+  rust_build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  rust_cross-compile-relay: # cross is separate from test because cross-compiling yields different artifacts and we cannot reuse the cache.
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'

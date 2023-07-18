@@ -2,6 +2,11 @@ defmodule Web.AuthControllerTest do
   use Web.ConnCase, async: true
   alias Domain.{AccountsFixtures, AuthFixtures}
 
+  setup do
+    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    %{}
+  end
+
   describe "verify_credentials/2" do
     test "redirects with an error when provider does not exist", %{conn: conn} do
       account_id = Ecto.UUID.generate()
@@ -216,8 +221,9 @@ defmodule Web.AuthControllerTest do
         verify_sign_in_token_path =
           "/#{account.id}/sign_in/providers/#{provider.id}/verify_sign_in_token"
 
-        assert email.text_body =~
-                 "#{verify_sign_in_token_path}?identity_id=#{identity.id}&amp;secret="
+        assert email.text_body =~ "#{verify_sign_in_token_path}"
+        assert email.text_body =~ "identity_id=#{identity.id}"
+        assert email.text_body =~ "secret="
       end)
 
       assert redirected_to(conn) == "/#{account.id}/sign_in/providers/email/#{provider.id}"
@@ -557,6 +563,8 @@ defmodule Web.AuthControllerTest do
 
   describe "sign_out/2" do
     test "redirects to the sign in page and renews the session", %{conn: conn} do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
       identity = AuthFixtures.create_identity(account: account, provider: provider)
@@ -572,6 +580,8 @@ defmodule Web.AuthControllerTest do
     end
 
     test "broadcasts to the given live_socket_id", %{conn: conn} do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
       identity = AuthFixtures.create_identity(account: account, provider: provider)

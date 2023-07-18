@@ -5,7 +5,7 @@ use libc::{
     CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE, IPPROTO_IP, O_NONBLOCK, PF_SYSTEM, SOCK_DGRAM,
     SOCK_STREAM, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
 };
-use libs_common::{Error, Result};
+use libs_common::{Callbacks, Error, Result, TunnelAddresses, DNS_SENTINEL};
 use std::{
     ffi::{c_int, c_short, c_uchar},
     io,
@@ -262,20 +262,30 @@ impl IfaceDevice {
 
 // So, these functions take a mutable &self, this is not necessary in theory but it's correct!
 impl IfaceConfig {
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_iface_config(&mut self, config: &InterfaceConfig) -> Result<()> {
-        // TODO
+    #[tracing::instrument(level = "trace", skip(self, callbacks))]
+    pub async fn set_iface_config(
+        &mut self,
+        config: &InterfaceConfig,
+        callbacks: &impl Callbacks,
+    ) -> Result<()> {
+        callbacks.on_set_interface_config(
+            TunnelAddresses {
+                address4: config.ipv4,
+                address6: config.ipv6,
+            },
+            DNS_SENTINEL,
+        );
+        Ok(())
+    }
 
+    pub async fn add_route(&mut self, route: &IpNetwork, callbacks: &impl Callbacks) -> Result<()> {
+        callbacks.on_add_route(serde_json::to_string(route)?);
         Ok(())
     }
 
     pub async fn up(&mut self) -> Result<()> {
-        // TODO
+        tracing::error!("`up` unimplemented on macOS");
         Ok(())
-    }
-
-    pub async fn add_route(&mut self, route: IpNetwork) -> Result<()> {
-        todo!()
     }
 }
 

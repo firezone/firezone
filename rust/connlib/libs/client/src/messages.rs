@@ -17,9 +17,10 @@ pub struct RemoveResource {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Connect {
-    pub rtc_sdp: RTCSessionDescription,
+    pub gateway_rtc_session_description: RTCSessionDescription,
     pub resource_id: Id,
     pub gateway_public_key: Key,
+    pub persistent_keepalive: u64,
 }
 
 // Just because RTCSessionDescription doesn't implement partialeq
@@ -48,7 +49,6 @@ pub struct Relays {
 #[allow(clippy::large_enum_variant)]
 pub enum IngressMessages {
     Init(InitClient),
-    Connect(Connect),
 
     // Resources: arrive in an orderly fashion
     ResourceAdded(ResourceDescription),
@@ -59,8 +59,10 @@ pub enum IngressMessages {
 /// The replies that can arrive from the channel by a client
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 pub enum ReplyMessages {
     Relays(Relays),
+    Connect(Connect),
 }
 
 /// The totality of all messages (might have a macro in the future to derive the other types)
@@ -81,7 +83,6 @@ impl From<IngressMessages> for Messages {
     fn from(value: IngressMessages) -> Self {
         match value {
             IngressMessages::Init(m) => Self::Init(m),
-            IngressMessages::Connect(m) => Self::Connect(m),
             IngressMessages::ResourceAdded(m) => Self::ResourceAdded(m),
             IngressMessages::ResourceRemoved(m) => Self::ResourceRemoved(m),
             IngressMessages::ResourceUpdated(m) => Self::ResourceUpdated(m),
@@ -93,6 +94,7 @@ impl From<ReplyMessages> for Messages {
     fn from(value: ReplyMessages) -> Self {
         match value {
             ReplyMessages::Relays(m) => Self::Relays(m),
+            ReplyMessages::Connect(m) => Self::Connect(m),
         }
     }
 }
@@ -117,12 +119,36 @@ mod test {
         },
     };
 
+    use chrono::NaiveDateTime;
+
     use crate::messages::{EgressMessages, Relays, ReplyMessages};
 
     use super::{IngressMessages, InitClient};
 
     // TODO: request_connection tests
 
+    #[test]
+    fn connection_ready_deserialization() {
+        let message = r#"{
+            "ref": "0",
+            "topic": "device",
+            "event": "phx_reply",
+            "payload": {
+                "status": "ok",
+                "response": {
+                    "resource_id": "ea6570d1-47c7-49d2-9dc3-efff1c0c9e0b",
+                    "gateway_public_key": "dvy0IwyxAi+txSbAdT7WKgf7K4TekhKzrnYwt5WfbSM=",
+                    "gateway_rtc_session_description": {
+                        "sdp": "v=0\\r\\no=- 6423047867593421607 871431568 IN IP4 0.0.0.0\\r\\ns=-\\r\\nt=0 0\\r\\na=fingerprint:sha-256 65:8C:0B:EC:C5:B8:AB:2C:C7:47:F6:1A:6F:C3:4F:70:C7:06:34:84:FE:4E:FD:E5:C4:D2:4F:7C:ED:AF:0D:17\\r\\na=group:BUNDLE 0\\r\\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\\r\\nc=IN IP4 0.0.0.0\\r\\na=setup:active\\r\\na=mid:0\\r\\na=sendrecv\\r\\na=sctp-port:5000\\r\\na=ice-ufrag:zDSijpzITpzCfjbw\\r\\na=ice-pwd:QGufrJIKwqRjhDsNTdddVLFXmvGQJxke\\r\\na=candidate:167090039 1 udp 2130706431 :: 33628 typ host\\r\\na=candidate:167090039 2 udp 2130706431 :: 33628 typ host\\r\\na=candidate:1081386133 1 udp 2130706431 100.102.249.43 51575 typ host\\r\\na=candidate:1081386133 2 udp 2130706431 100.102.249.43 51575 typ host\\r\\na=candidate:1290078212 1 udp 2130706431 172.28.0.7 58698 typ host\\r\\na=candidate:1290078212 2 udp 2130706431 172.28.0.7 58698 typ host\\r\\na=candidate:349389859 1 udp 2130706431 172.20.0.3 51567 typ host\\r\\na=candidate:349389859 2 udp 2130706431 172.20.0.3 51567 typ host\\r\\na=candidate:936829106 1 udp 1694498815 172.28.0.7 35458 typ srflx raddr 0.0.0.0 rport 35458\\r\\na=candidate:936829106 2 udp 1694498815 172.28.0.7 35458 typ srflx raddr 0.0.0.0 rport 35458\\r\\na=candidate:936829106 1 udp 1694498815 172.28.0.7 46603 typ srflx raddr 0.0.0.0 rport 46603\\r\\na=candidate:936829106 2 udp 1694498815 172.28.0.7 46603 typ srflx raddr 0.0.0.0 rport 46603\\r\\na=end-of-candidates\\r\\n",
+                        "type": "answer"
+                    },
+                    "persistent_keepalive": 25
+                }
+            }
+        }"#;
+        let _: PhoenixMessage<IngressMessages, ReplyMessages> =
+            serde_json::from_str(message).unwrap();
+    }
     #[test]
     fn init_phoenix_message() {
         let m = PhoenixMessage::new(
@@ -148,8 +174,8 @@ mod test {
                     }),
                 ],
             }),
+            None,
         );
-        println!("{}", serde_json::to_string(&m).unwrap());
         let message = r#"{
             "event": "init",
             "payload": {
@@ -190,6 +216,7 @@ mod test {
             EgressMessages::ListRelays {
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
             },
+            None,
         );
         let message = r#"
             {
@@ -201,7 +228,7 @@ mod test {
                 "topic": "device"
             }
         "#;
-        let egress_message = serde_json::from_str(&message).unwrap();
+        let egress_message = serde_json::from_str(message).unwrap();
         assert_eq!(m, egress_message);
     }
 
@@ -216,7 +243,9 @@ mod test {
                         uri: "stun:189.172.73.111:3478".to_string(),
                     }),
                     Relay::Turn(Turn {
-                        expires_at: 1686629954,
+                        expires_at: NaiveDateTime::from_timestamp_opt(1686629954, 0)
+                            .unwrap()
+                            .and_utc(),
                         uri: "turn:189.172.73.111:3478".to_string(),
                         username: "1686629954:C7I74wXYFdFugMYM".to_string(),
                         password: "OXXRDJ7lJN1cm+4+2BWgL87CxDrvpVrn5j3fnJHye98".to_string(),
@@ -225,7 +254,9 @@ mod test {
                         uri: "stun:::1:3478".to_string(),
                     }),
                     Relay::Turn(Turn {
-                        expires_at: 1686629954,
+                        expires_at: NaiveDateTime::from_timestamp_opt(1686629954, 0)
+                            .unwrap()
+                            .and_utc(),
                         uri: "turn:::1:3478".to_string(),
                         username: "1686629954:dpHxHfNfOhxPLfMG".to_string(),
                         password: "8Wtb+3YGxO6ia23JUeSEfZ2yFD6RhGLkbgZwqjebyKY".to_string(),
@@ -268,7 +299,7 @@ mod test {
                     "status":"ok"
                 }
             }"#;
-        let reply_message = serde_json::from_str(&message).unwrap();
+        let reply_message = serde_json::from_str(message).unwrap();
         assert_eq!(m, reply_message);
     }
 }

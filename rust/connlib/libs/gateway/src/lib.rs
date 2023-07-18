@@ -10,12 +10,13 @@ mod messages;
 ///
 /// For more information see libs_common docs on [Session][libs_common::Session].
 // TODO: Still working on gateway messages
-pub type Session<C> = libs_common::Session<
-    ControlPlane<C>,
+pub type Session<CB> = libs_common::Session<
+    ControlPlane<CB>,
     IngressMessages,
     EgressMessages,
     IngressMessages,
     IngressMessages,
+    CB,
 >;
 
 pub use libs_common::{error_type::ErrorType, Callbacks, Error, ResourceList, TunnelAddresses};

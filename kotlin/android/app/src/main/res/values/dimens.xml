@@ -1,0 +1,12 @@
+<resources>
+    <dimen name="spacing_small">8dp</dimen>
+    <dimen name="spacing_medium">16dp</dimen>
+
+    <!-- Onboarding Fragment -->
+    <dimen name="iv_logo_size">120dp</dimen>
+    <!-- Onboarding Fragment -->
+
+    <!-- Text Size -->
+    <dimen name="text_large">32sp</dimen>
+    <!-- Text Size -->
+</resources>

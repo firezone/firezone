@@ -1,43 +1,61 @@
-#[macro_use]
-extern crate log;
-extern crate android_logger;
-extern crate jni;
-use self::jni::JNIEnv;
-use android_logger::Config;
+// The "system" ABI is only needed for Java FFI on Win32, not Android:
+// https://github.com/jni-rs/jni-rs/pull/22
+// However, this consideration has made it idiomatic for Java FFI in the Rust
+// ecosystem, so it's used here for consistency.
+
 use firezone_client_connlib::{
     Callbacks, Error, ErrorType, ResourceList, Session, TunnelAddresses,
 };
-use jni::objects::{JClass, JObject, JString, JValue};
-use log::LevelFilter;
+use jni::{
+    objects::{JClass, JObject, JString, JValue},
+    JNIEnv,
+};
+use std::net::Ipv4Addr;
 
 /// This should be called once after the library is loaded by the system.
 #[allow(non_snake_case)]
 #[no_mangle]
 pub extern "system" fn Java_dev_firezone_connlib_Logger_init(_: JNIEnv, _: JClass) {
-    #[cfg(debug_assertions)]
-    let level = LevelFilter::Trace;
-    #[cfg(not(debug_assertions))]
-    let level = LevelFilter::Warn;
-
     android_logger::init_once(
-        Config::default()
-            // Allow all log levels
-            .with_max_level(level)
+        android_logger::Config::default()
+            .with_max_level(if cfg!(debug_assertions) {
+                log::LevelFilter::Trace
+            } else {
+                log::LevelFilter::Warn
+            })
             .with_tag("connlib"),
     )
 }
 
-pub enum CallbackHandler {}
+#[derive(Clone)]
+pub struct CallbackHandler;
+
 impl Callbacks for CallbackHandler {
-    fn on_update_resources(_resource_list: ResourceList) {
+    fn on_set_interface_config(&self, _tunnel_addresses: TunnelAddresses, _dns_address: Ipv4Addr) {
         todo!()
     }
 
-    fn on_set_tunnel_adresses(_tunnel_addresses: TunnelAddresses) {
+    fn on_tunnel_ready(&self) {
         todo!()
     }
 
-    fn on_error(_error: &Error, _error_type: ErrorType) {
+    fn on_add_route(&self, _route: String) {
+        todo!()
+    }
+
+    fn on_remove_route(&self, _route: String) {
+        todo!()
+    }
+
+    fn on_update_resources(&self, _resource_list: ResourceList) {
+        todo!()
+    }
+
+    fn on_disconnect(&self) {
+        todo!()
+    }
+
+    fn on_error(&self, _error: &Error, _error_type: ErrorType) {
         todo!()
     }
 }
@@ -57,7 +75,7 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
     let portal_token: String = env.get_string(&portal_token).unwrap().into();
 
     let session = Box::new(
-        Session::connect::<CallbackHandler>(portal_url.as_str(), portal_token).expect("TODO!"),
+        Session::connect(portal_url.as_str(), portal_token, CallbackHandler).expect("TODO!"),
     );
 
     // TODO: Get actual IPs returned from portal based on this device
@@ -65,12 +83,12 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
     let tunnel_addresses = env.new_string(tunnelAddressesJSON).unwrap();
     match env.call_method(
         callback,
-        "onSetTunnelAddresses",
+        "onTunnelReady",
         "(Ljava/lang/String;)Z",
         &[JValue::from(&tunnel_addresses)],
     ) {
-        Ok(res) => trace!("onSetTunnelAddresses returned {:?}", res),
-        Err(e) => error!("Failed to call setTunnelAddresses: {:?}", e),
+        Ok(res) => log::trace!("`onTunnelReady` returned `{res:?}`"),
+        Err(err) => log::error!("Failed to call `onTunnelReady`: {err}"),
     }
 
     Box::into_raw(session)

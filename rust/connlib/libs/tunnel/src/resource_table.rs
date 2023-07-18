@@ -2,7 +2,10 @@
 use std::{collections::HashMap, net::IpAddr, ptr::NonNull};
 
 use ip_network_table::IpNetworkTable;
-use libs_common::messages::{Id, ResourceDescription};
+use libs_common::{
+    messages::{Id, ResourceDescription},
+    ResourceList,
+};
 
 // Oh boy... here we go
 /// The resource table type
@@ -14,7 +17,7 @@ pub(crate) struct ResourceTable {
     dns_name: HashMap<String, NonNull<ResourceDescription>>,
 }
 
-// SAFETY: We actually hold a `Vec` internally that the poitners points to
+// SAFETY: We actually hold a hashmap internally that the pointers points to
 unsafe impl Send for ResourceTable {}
 // SAFETY: we don't allow interior mutability of the pointers we hold, in fact we don't allow ANY mutability!
 // (this is part of the reason why the API is so limiting, it is easier to reason about.
@@ -69,7 +72,7 @@ impl ResourceTable {
         self.id_table.remove(&id);
     }
 
-    fn cleaup_resource(&mut self, resource_description: &ResourceDescription) {
+    fn cleanup_resource(&mut self, resource_description: &ResourceDescription) {
         match resource_description {
             ResourceDescription::Dns(r) => {
                 if let Some(res) = self.id_table.get(&r.id) {
@@ -123,7 +126,7 @@ impl ResourceTable {
 
     // For soundness it's very important that this API only takes a resource_description
     // doing this, we can assume that when removing a resource from the id table we have all the info
-    // about all the o
+    // about all the tables.
     /// Inserts a new resource_description
     ///
     /// If the id was used previously the old value will be deleted.
@@ -132,7 +135,7 @@ impl ResourceTable {
     ///
     /// This is done so that we don't have dangling values.
     pub fn insert(&mut self, resource_description: ResourceDescription) {
-        self.cleaup_resource(&resource_description);
+        self.cleanup_resource(&resource_description);
         let id = resource_description.id();
         self.id_table.insert(id, resource_description);
         // we just inserted it we can unwrap
@@ -147,5 +150,13 @@ impl ResourceTable {
                 self.network_table.insert(r.address, res.into());
             }
         }
+    }
+
+    pub fn resource_list(&self) -> Result<ResourceList, serde_json::Error> {
+        self.id_table
+            .values()
+            .map(serde_json::to_string)
+            .collect::<Result<_, _>>()
+            .map(|resources| ResourceList { resources })
     }
 }

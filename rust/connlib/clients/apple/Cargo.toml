@@ -3,8 +3,14 @@ name = "connlib-apple"
 version = "0.1.6"
 edition = "2021"
 
+[features]
+mock = ["firezone-client-connlib/mock"]
+
 [build-dependencies]
-swift-bridge-build = { git = "https://github.com/conectado/swift-bridge.git", branch = "fix-already-declared" }
+anyhow = "1.0.71"
+diva = "0.1.0"
+swift-bridge-build = "0.1.52"
+walkdir = "2.3.3"
 
 [dependencies]
 libc = "0.2"
@@ -14,3 +20,4 @@ firezone-client-connlib = { path = "../../libs/client" }
 [lib]
 name = "connlib"
 crate-type = ["staticlib"]
+doc = false

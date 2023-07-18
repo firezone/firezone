@@ -2,6 +2,7 @@ defmodule API.Device.Channel do
   use API, :channel
   alias API.Device.Views
   alias Domain.{Devices, Resources, Gateways, Relays}
+  require Logger
 
   @impl true
   def join("device", _payload, socket) do
@@ -19,6 +20,8 @@ defmodule API.Device.Channel do
 
   @impl true
   def handle_info(:after_join, socket) do
+    API.Endpoint.subscribe("device:#{socket.assigns.device.id}")
+
     {:ok, resources} = Domain.Resources.list_resources(socket.assigns.subject)
 
     :ok =
@@ -110,18 +113,18 @@ defmodule API.Device.Channel do
            Gateways.list_connected_gateways_for_resource(resource) do
       gateway = Enum.random(gateways)
 
-      Phoenix.PubSub.broadcast(
-        Domain.PubSub,
-        API.Gateway.Socket.id(gateway),
-        {:request_connection, {self(), socket_ref(socket)},
-         %{
-           device_id: socket.assigns.device.id,
-           resource_id: resource_id,
-           authorization_expires_at: socket.assigns.subject.expires_at,
-           device_rtc_session_description: device_rtc_session_description,
-           device_preshared_key: preshared_key
-         }}
-      )
+      :ok =
+        API.Gateway.Channel.broadcast(
+          gateway,
+          {:request_connection, {self(), socket_ref(socket)},
+           %{
+             device_id: socket.assigns.device.id,
+             resource_id: resource_id,
+             authorization_expires_at: socket.assigns.subject.expires_at,
+             device_rtc_session_description: device_rtc_session_description,
+             device_preshared_key: preshared_key
+           }}
+        )
 
       {:noreply, socket}
     else

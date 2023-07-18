@@ -1,13 +1,14 @@
 use std::{sync::Arc, time::Duration};
 
-use firezone_tunnel::{ControlSignal, Tunnel};
 use boringtun::x25519::StaticSecret;
+use firezone_tunnel::{ControlSignal, Tunnel};
 use libs_common::{
+    control::{MessageResult, PhoenixSenderWithTopic},
     error_type::ErrorType::{Fatal, Recoverable},
     messages::ResourceDescription,
     Callbacks, ControlSession, Result,
 };
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::Receiver;
 
 use super::messages::{
     ConnectionReady, EgressMessages, IngressMessages, InitGateway, RequestConnection,
@@ -15,16 +16,14 @@ use super::messages::{
 
 use async_trait::async_trait;
 
-const INTERNAL_CHANNEL_SIZE: usize = 256;
-
-pub struct ControlPlane<C: Callbacks> {
-    tunnel: Arc<Tunnel<ControlSignaler, C>>,
+pub struct ControlPlane<CB: Callbacks> {
+    tunnel: Arc<Tunnel<ControlSignaler, CB>>,
     control_signaler: ControlSignaler,
 }
 
 #[derive(Clone)]
 struct ControlSignaler {
-    internal_sender: Arc<Sender<EgressMessages>>,
+    control_signal: PhoenixSenderWithTopic,
 }
 
 #[async_trait]
@@ -35,16 +34,18 @@ impl ControlSignal for ControlSignaler {
     }
 }
 
-impl<C: Callbacks> ControlPlane<C>
-where
-    C: Send + Sync + 'static,
-{
+impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn start(mut self, mut receiver: Receiver<IngressMessages>) {
+    async fn start(mut self, mut receiver: Receiver<MessageResult<IngressMessages>>) {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
         loop {
             tokio::select! {
-                Some(msg) = receiver.recv() => self.handle_message(msg).await,
+                Some(msg) = receiver.recv() => {
+                    match msg {
+                        Ok(msg) => self.handle_message(msg).await,
+                        Err(_msg_reply) => todo!(),
+                    }
+                },
                 _ = interval.tick() => self.stats_event().await,
                 else => break
             }
@@ -55,7 +56,7 @@ where
     async fn init(&mut self, init: InitGateway) {
         if let Err(e) = self.tunnel.set_interface(&init.interface).await {
             tracing::error!("Couldn't initialize interface: {e}");
-            C::on_error(&e, Fatal);
+            self.tunnel.callbacks().on_error(&e, Fatal);
             return;
         }
 
@@ -66,7 +67,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     fn connection_request(&self, connection_request: RequestConnection) {
         let tunnel = Arc::clone(&self.tunnel);
-        let control_signaler = self.control_signaler.clone();
+        let mut control_signaler = self.control_signaler.clone();
         tokio::spawn(async move {
             match tunnel
                 .set_peer_connection_request(
@@ -74,25 +75,26 @@ where
                     connection_request.device.peer.into(),
                     connection_request.relays,
                     connection_request.device.id,
+                    connection_request.expires_at,
                 )
                 .await
             {
-                Ok(gateway_rtc_sdp) => {
+                Ok(gateway_rtc_session_description) => {
                     if let Err(err) = control_signaler
-                        .internal_sender
+                        .control_signal
                         .send(EgressMessages::ConnectionReady(ConnectionReady {
-                            client_id: connection_request.device.id,
-                            gateway_rtc_sdp,
+                            reference: connection_request.reference,
+                            gateway_rtc_session_description,
                         }))
                         .await
                     {
-                        tunnel.cleanup_peer_connection(connection_request.device.id);
-                        C::on_error(&err.into(), Recoverable);
+                        tunnel.cleanup_connection(connection_request.device.id);
+                        tunnel.callbacks().on_error(&err, Recoverable);
                     }
                 }
                 Err(err) => {
-                    tunnel.cleanup_peer_connection(connection_request.device.id);
-                    C::on_error(&err, Recoverable);
+                    tunnel.cleanup_connection(connection_request.device.id);
+                    tunnel.callbacks().on_error(&err, Recoverable);
                 }
             }
         });
@@ -123,34 +125,25 @@ where
 }
 
 #[async_trait]
-impl<C: Callbacks> ControlSession<IngressMessages, EgressMessages> for ControlPlane<C>
-where
-    C: Send + Sync + 'static,
-{
-    #[tracing::instrument(level = "trace", skip(private_key))]
+impl<CB: Callbacks + 'static> ControlSession<IngressMessages, CB> for ControlPlane<CB> {
+    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     async fn start(
         private_key: StaticSecret,
-    ) -> Result<(Sender<IngressMessages>, Receiver<EgressMessages>)> {
-        // This is kinda hacky, the buffer size is 1 so that we make sure that we
-        // process one message at a time, blocking if a previous message haven't been processed
-        // to force queue ordering.
-        // (couldn't find any other guarantee of the ordering of message)
-        let (sender, receiver) = channel::<IngressMessages>(1);
-
-        let (internal_sender, internal_receiver) = channel(INTERNAL_CHANNEL_SIZE);
-        let internal_sender = Arc::new(internal_sender);
-        let control_signaler = ControlSignaler { internal_sender };
-        let tunnel = Arc::new(Tunnel::<_, C>::new(private_key, control_signaler.clone()).await?);
+        receiver: Receiver<MessageResult<IngressMessages>>,
+        control_signal: PhoenixSenderWithTopic,
+        callbacks: CB,
+    ) -> Result<()> {
+        let control_signaler = ControlSignaler { control_signal };
+        let tunnel = Arc::new(Tunnel::new(private_key, control_signaler.clone(), callbacks).await?);
 
         let control_plane = ControlPlane {
             tunnel,
             control_signaler,
         };
 
-        // TODO: We should have some kind of callback from clients to surface errors here
         tokio::spawn(async move { control_plane.start(receiver).await });
 
-        Ok((sender, internal_receiver))
+        Ok(())
     }
 
     fn socket_path() -> &'static str {
