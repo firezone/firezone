@@ -386,7 +386,12 @@ where
             return Err(error_response(BadRequest, &request));
         }
 
-        let primary_relay_address = self.get_relay_addresses(&request)?;
+        let (first_relay_address, maybe_second_relay_addr) = derive_relay_addresses(
+            self.public_address,
+            request.requested_address_family(),
+            request.additional_address_family(),
+        )
+        .map_err(|e| error_response(e, &request))?;
 
         // TODO: Do we need to handle DONT-FRAGMENT?
         // TODO: Do we need to handle EVEN/ODD-PORT?
@@ -401,9 +406,14 @@ where
 
         let port = allocation.port;
 
-        message.add_attribute(
-            XorRelayAddress::new(SocketAddr::new(primary_relay_address, port)).into(),
-        );
+        message
+            .add_attribute(XorRelayAddress::new(SocketAddr::new(first_relay_address, port)).into());
+        if let Some(second_relay_address) = maybe_second_relay_addr {
+            message.add_attribute(
+                XorRelayAddress::new(SocketAddr::new(second_relay_address, port)).into(),
+            );
+        }
+
         message.add_attribute(XorMappedAddress::new(sender).into());
         message.add_attribute(effective_lifetime.clone().into());
 
@@ -420,11 +430,20 @@ where
         });
         self.send_message(message, sender);
 
-        tracing::info!(
-            target: "relay",
-            relay_address = field::display(primary_relay_address),
-            "Created new allocation",
-        );
+        if let Some(second_relay_addr) = maybe_second_relay_addr {
+            tracing::info!(
+                target: "relay",
+                first_relay_address = field::display(first_relay_address),
+                second_relay_address = field::display(second_relay_addr),
+                "Created new allocation",
+            )
+        } else {
+            tracing::info!(
+                target: "relay",
+                first_relay_address = field::display(first_relay_address),
+                "Created new allocation",
+            )
+        }
 
         self.clients_by_allocation.insert(allocation.id, sender);
         self.allocations.insert(sender, allocation);
@@ -658,28 +677,6 @@ where
         Ok(())
     }
 
-    fn get_relay_addresses(
-        &self,
-        request: &Allocate,
-    ) -> Result<std::net::IpAddr, Message<Attribute>> {
-        let requested_addr_family = request
-            .requested_address_family()
-            .map(|r| r.address_family());
-        let addr = match (self.public_address, requested_addr_family) {
-            (
-                IpAddr::Ip4Only(addr) | IpAddr::DualStack { ip4: addr, .. },
-                None | Some(AddressFamily::V4),
-            ) => addr.into(),
-            (
-                IpAddr::Ip6Only(addr) | IpAddr::DualStack { ip6: addr, .. },
-                Some(AddressFamily::V6),
-            ) => addr.into(),
-            _ => return Err(error_response(AddressFamilyNotSupported, request)),
-        };
-
-        Ok(addr)
-    }
-
     fn create_new_allocation(&mut self, now: SystemTime, lifetime: &Lifetime) -> Allocation {
         // First, find an unused port.
 
@@ -878,6 +875,35 @@ fn error_response(
     message
 }
 
+fn derive_relay_addresses(
+    public_address: IpAddr,
+    requested_addr_family: Option<&RequestedAddressFamily>,
+    additional_addr_family: Option<&AdditionalAddressFamily>,
+) -> Result<(std::net::IpAddr, Option<std::net::IpAddr>), ErrorCode> {
+    match (
+        public_address,
+        requested_addr_family.map(|r| r.address_family()),
+        additional_addr_family.map(|a| a.address_family()),
+    ) {
+        (
+            IpAddr::Ip4Only(addr) | IpAddr::DualStack { ip4: addr, .. },
+            None | Some(AddressFamily::V4),
+            None,
+        ) => Ok((addr.into(), None)),
+        (
+            IpAddr::Ip6Only(addr) | IpAddr::DualStack { ip6: addr, .. },
+            Some(AddressFamily::V6),
+            None,
+        ) => Ok((addr.into(), None)),
+        (IpAddr::DualStack { ip4, ip6 }, None, Some(AddressFamily::V6)) => {
+            Ok((ip4.into(), Some(ip6.into())))
+        }
+        (_, Some(_), Some(_)) => return Err(BadRequest.into()),
+        (_, _, Some(AddressFamily::V4)) => return Err(BadRequest.into()),
+        _ => return Err(AddressFamilyNotSupported.into()),
+    }
+}
+
 /// Private helper trait to make [`error_response`] more ergonomic to use.
 trait StunRequest {
     fn transaction_id(&self) -> TransactionId;
@@ -954,3 +980,65 @@ stun_codec::define_attribute_enums!(
         AdditionalAddressFamily
     ]
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    // Tests for requirements listed in https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque.
+
+    // 6. The server checks if the request contains both REQUESTED-ADDRESS-FAMILY and ADDITIONAL-ADDRESS-FAMILY attributes. If yes, then the server rejects the request with a 400 (Bad Request) error.
+    #[test]
+    fn requested_and_additional_is_bad_request() {
+        let error_code = derive_relay_addresses(
+            IpAddr::Ip4Only(Ipv4Addr::LOCALHOST),
+            Some(&RequestedAddressFamily::new(AddressFamily::V4)),
+            Some(&AdditionalAddressFamily::new(AddressFamily::V6)),
+        )
+        .unwrap_err();
+
+        assert_eq!(error_code.code(), BadRequest::CODEPOINT)
+    }
+
+    // 7. If the server does not support the address family requested by the client in REQUESTED-ADDRESS-FAMILY, or if the allocation of the requested address family is disabled by local policy, it MUST generate an Allocate error response, and it MUST include an ERROR-CODE attribute with the 440 (Address Family not Supported) response code.
+    // If the REQUESTED-ADDRESS-FAMILY attribute is absent and the server does not support the IPv4 address family, the server MUST include an ERROR-CODE attribute with the 440 (Address Family not Supported) response code.
+    #[test]
+    fn requested_address_family_not_available_is_not_supported() {
+        let error_code = derive_relay_addresses(
+            IpAddr::Ip4Only(Ipv4Addr::LOCALHOST),
+            Some(&RequestedAddressFamily::new(AddressFamily::V6)),
+            None,
+        )
+        .unwrap_err();
+
+        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
+
+        let error_code = derive_relay_addresses(
+            IpAddr::Ip6Only(Ipv6Addr::LOCALHOST),
+            Some(&RequestedAddressFamily::new(AddressFamily::V4)),
+            None,
+        )
+        .unwrap_err();
+
+        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
+
+        let error_code =
+            derive_relay_addresses(IpAddr::Ip6Only(Ipv6Addr::LOCALHOST), None, None).unwrap_err();
+
+        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT)
+    }
+
+    //9. The server checks if the request contains an ADDITIONAL-ADDRESS-FAMILY attribute. If yes, and the attribute value is 0x01 (IPv4 address family), then the server rejects the request with a 400 (Bad Request) error.
+    #[test]
+    fn additional_address_family_ip4_is_bad_request() {
+        let error_code = derive_relay_addresses(
+            IpAddr::Ip4Only(Ipv4Addr::LOCALHOST),
+            None,
+            Some(&AdditionalAddressFamily::new(AddressFamily::V4)),
+        )
+        .unwrap_err();
+
+        assert_eq!(error_code.code(), BadRequest::CODEPOINT)
+    }
+}
