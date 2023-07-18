@@ -1,5 +1,5 @@
 use crate::auth::{generate_password, split_username, systemtime_from_unix, FIREZONE};
-use crate::rfc8656::{AddressFamily, RequestedAddressFamily};
+use crate::rfc8656::{AdditionalAddressFamily, AddressFamily, RequestedAddressFamily};
 use crate::server::channel_data::ChannelData;
 use crate::server::UDP_TRANSPORT;
 use crate::Attribute;
@@ -123,6 +123,7 @@ pub struct Allocate {
     username: Option<Username>,
     nonce: Option<Nonce>,
     requested_address_family: Option<RequestedAddressFamily>,
+    additional_address_family: Option<AdditionalAddressFamily>,
 }
 
 impl Allocate {
@@ -150,6 +151,7 @@ impl Allocate {
             username: Some(username),
             nonce: Some(nonce),
             requested_address_family: None, // IPv4 is the default.
+            additional_address_family: None,
         }
     }
 
@@ -179,6 +181,7 @@ impl Allocate {
             username: Some(username),
             nonce: Some(nonce),
             requested_address_family: Some(requested_address_family),
+            additional_address_family: None,
         }
     }
 
@@ -204,6 +207,7 @@ impl Allocate {
             username: None,
             nonce: None,
             requested_address_family: None,
+            additional_address_family: None,
         }
     }
 
@@ -254,6 +258,7 @@ impl Allocate {
         let lifetime = message.get_attribute::<Lifetime>().cloned();
         let username = message.get_attribute::<Username>().cloned();
         let requested_address_family = message.get_attribute::<RequestedAddressFamily>().cloned();
+        let additional_address_family = message.get_attribute::<AdditionalAddressFamily>().cloned();
 
         Ok(Allocate {
             transaction_id,
@@ -263,6 +268,7 @@ impl Allocate {
             username,
             nonce,
             requested_address_family,
+            additional_address_family,
         })
     }
 
@@ -292,6 +298,10 @@ impl Allocate {
 
     pub fn requested_address_family(&self) -> Option<&RequestedAddressFamily> {
         self.requested_address_family.as_ref()
+    }
+
+    pub fn additional_address_family(&self) -> Option<&AdditionalAddressFamily> {
+        self.additional_address_family.as_ref()
     }
 }
 

@@ -8,7 +8,8 @@ pub use crate::server::client_message::{
 
 use crate::auth::{MessageIntegrityExt, Nonces, FIREZONE};
 use crate::rfc8656::{
-    AddressFamily, AddressFamilyNotSupported, PeerAddressFamilyMismatch, RequestedAddressFamily,
+    AdditionalAddressFamily, AddressFamily, AddressFamilyNotSupported, PeerAddressFamilyMismatch,
+    RequestedAddressFamily,
 };
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::{IpAddr, TimeEvents};
@@ -949,6 +950,7 @@ stun_codec::define_attribute_enums!(
         Nonce,
         Realm,
         Username,
-        RequestedAddressFamily
+        RequestedAddressFamily,
+        AdditionalAddressFamily
     ]
 );
