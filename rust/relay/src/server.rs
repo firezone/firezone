@@ -898,9 +898,9 @@ fn derive_relay_addresses(
         (IpAddr::DualStack { ip4, ip6 }, None, Some(AddressFamily::V6)) => {
             Ok((ip4.into(), Some(ip6.into())))
         }
-        (_, Some(_), Some(_)) => return Err(BadRequest.into()),
-        (_, _, Some(AddressFamily::V4)) => return Err(BadRequest.into()),
-        _ => return Err(AddressFamilyNotSupported.into()),
+        (_, Some(_), Some(_)) => Err(BadRequest.into()),
+        (_, _, Some(AddressFamily::V4)) => Err(BadRequest.into()),
+        _ => Err(AddressFamilyNotSupported.into()),
     }
 }
 
