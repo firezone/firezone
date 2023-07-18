@@ -26,3 +26,21 @@ pub enum IpAddr {
     Ip6Only(Ipv6Addr),
     DualStack { ip4: Ipv4Addr, ip6: Ipv6Addr },
 }
+
+impl From<Ipv4Addr> for IpAddr {
+    fn from(value: Ipv4Addr) -> Self {
+        IpAddr::Ip4Only(value)
+    }
+}
+
+impl From<Ipv6Addr> for IpAddr {
+    fn from(value: Ipv6Addr) -> Self {
+        IpAddr::Ip6Only(value)
+    }
+}
+
+impl From<(Ipv4Addr, Ipv6Addr)> for IpAddr {
+    fn from((ip4, ip6): (Ipv4Addr, Ipv6Addr)) -> Self {
+        IpAddr::DualStack { ip4, ip6 }
+    }
+}

@@ -385,8 +385,8 @@ fn can_make_ipv6_allocation(
     #[strategy(relay::proptest::now())] now: SystemTime,
     #[strategy(relay::proptest::nonce())] nonce: Uuid,
 ) {
-    // TODO: Figure out how we want to pass (optional?) IPv6 address to server.
-    let mut server = TestServer::new(public_relay_ip4_addr).with_nonce(nonce);
+    let mut server =
+        TestServer::new((public_relay_ip4_addr, public_relay_ip6_addr)).with_nonce(nonce);
     let secret = server.auth_secret();
 
     server.assert_commands(
@@ -424,12 +424,9 @@ struct TestServer {
 }
 
 impl TestServer {
-    fn new(relay_public_addr: Ipv4Addr) -> Self {
+    fn new(relay_public_addr: impl Into<relay::IpAddr>) -> Self {
         Self {
-            server: Server::new(
-                relay::IpAddr::Ip4Only(relay_public_addr),
-                StepRng::new(0, 0),
-            ),
+            server: Server::new(relay_public_addr.into(), StepRng::new(0, 0)),
             id_to_port: Default::default(),
         }
     }
