@@ -797,10 +797,6 @@ where
             .remove(&client)
             .expect("internal state mismatch");
 
-        let allocation = self
-            .allocations
-            .remove(&client)
-            .expect("internal state mismatch");
         let port = allocation.port;
 
         self.allocations_by_port.remove(&port);
