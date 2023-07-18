@@ -21,7 +21,7 @@ export default function EarlyAccess() {
               <h1 className="mb-4 text-4xl sm:text-5xl justify-center lg:justify-end font-extrabold tracking-tight text-neutral-900 xl:text-6xl">
                 Request early access
               </h1>
-              <h2 className="flex flex-wrap mb-4 text-lg tracking-tight text-neutral-900 sm:text-xl justify-center lg:justify-end">
+              <h2 className="flex flex-wrap mb-4 text-lg tracking-tight text-neutral-800 sm:text-xl justify-center lg:justify-end">
                 <strong className="mr-1">Firezone 1.0 is coming!</strong>
                 <span className="font-medium">
                   Sign up below to get early access.

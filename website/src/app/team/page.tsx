@@ -125,15 +125,14 @@ export default function Page() {
     <section className="bg-neutral-100 ">
       <div className="py-8 px-4 mx-auto max-w-screen-lg text-center lg:py-16 lg:px-6">
         <div className="text-neutral-800 sm:text-lg ">
-          <h1 className="mb-14 justify-center text-6xl tracking-tight font-extrabold text-neutral-900 ">
+          <h1 className="mb-14 justify-center md:text-6xl text-5xl tracking-tight font-extrabold text-neutral-900 leading-none">
             People are everything.
           </h1>
-          <p className="mb-4 sm:text-2xl">
-            Here at Firezone we know that it's people who make all the
-            difference.
-            <br /> We strive to hire the best and brightest and give them the
-            tools they need to succeed.
-          </p>
+          <h2 className="mb-8 text-xl tracking-tight text-neutral-800 sm:px-16 xl:px-48">
+            We know that it's people who make all the difference. We strive to
+            hire the best and brightest and give them the tools they need to
+            succeed.
+          </h2>
         </div>
         <div className="text-neutral-800 sm:text-lg ">
           <h3 className="justify-center pb-4 pt-14 text-2xl tracking-tight font-bold text-neutral-900  border-b border-neutral-300">

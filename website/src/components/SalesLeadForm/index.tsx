@@ -3,11 +3,11 @@ import HubspotForm from "@/components/HubspotForm";
 export default function SalesLeadForm() {
   return (
     <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
-      <div className="mx-auto max-w-screen-md sm:text-center">
-        <h1 className="justify-center mb-4 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-6xl ">
+      <div className="mx-auto max-w-screen-md text-center">
+        <h1 className="justify-center mb-8 md:mb-12 text-5xl font-extrabold tracking-tight text-neutral-900 sm:text-6xl ">
           Talk to a Firezone expert.
         </h1>
-        <h2 className="mx-auto mb-8 max-w-2xl tracking-tight font-medium text-neutral-900 md:mb-12 sm:text-xl ">
+        <h2 className="mx-auto mb-8 max-w-2xl tracking-tight text-neutral-800 md:mb-12 text-xl">
           Ready to manage secure remote access for your organization? Learn how
           Firezone can help.
         </h2>
