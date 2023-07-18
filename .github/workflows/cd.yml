@@ -2,8 +2,7 @@ name: Continuous Delivery
 on:
   push:
     branches:
-      - master
-      - cloud
+      - main
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -64,7 +63,7 @@ jobs:
       #       --field branch="$DESTINATION_BRANCH" \
       #       --field sha="$SHA"
       - name: Upload Configuration
-        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0
+        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.2
         id: apply-upload
         with:
           workspace: ${{ env.TF_WORKSPACE }}
@@ -72,7 +71,7 @@ jobs:
           # https://app.terraform.io/app/firezone/workspaces/staging/settings/general
           directory: "./"
       - name: Create Plan Run
-        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.2
         id: apply-run
         env:
           TF_VAR_api_image_tag: '"${{ github.sha }}"'
@@ -81,9 +80,22 @@ jobs:
           workspace: ${{ env.TF_WORKSPACE }}
           configuration_version: ${{ steps.apply-upload.outputs.configuration_version_id }}
       - name: Apply
-        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.0.0
+        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.0.2
         if: fromJSON(steps.apply-run.outputs.payload).data.attributes.actions.IsConfirmable
         id: apply
         with:
           run: ${{ steps.apply-run.outputs.run_id }}
           comment: "Apply Run from GitHub Actions CI ${{ github.sha }}"
+      - name: Report Status
+        if: failure()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_USERNAME: "GitHub Actions"
+          SLACK_COLOR: "#ff0000"
+          MSG_MINIMAL: "ref,actions url"
+          SLACK_TITLE: "Deployment Failed"
+          SLACK_MESSAGE: "Automatic deployment to ${{ env.TF_WORKSPACE }} failed"
+        with:
+          status: ${{ job.status }}
+          notify_when: "failure"

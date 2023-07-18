@@ -51,7 +51,6 @@ pub struct Server<R> {
 
     /// All client allocations, indexed by client's socket address.
     allocations: HashMap<SocketAddr, Allocation>,
-
     clients_by_allocation: HashMap<AllocationId, SocketAddr>,
     allocations_by_port: HashMap<u16, AllocationId>,
 
@@ -798,6 +797,10 @@ where
             .remove(&client)
             .expect("internal state mismatch");
 
+        let allocation = self
+            .allocations
+            .remove(&client)
+            .expect("internal state mismatch");
         let port = allocation.port;
 
         self.allocations_by_port.remove(&port);
@@ -805,10 +808,7 @@ where
         self.pending_commands
             .push_back(Command::FreeAddresses { id });
 
-        tracing::info!(
-            target: "relay",
-            "Deleted allocation for {client} on port {port}"
-        );
+        tracing::info!(target: "relay", %port, "Deleted allocation");
     }
 
     fn delete_channel_binding(&mut self, chan: u16) {

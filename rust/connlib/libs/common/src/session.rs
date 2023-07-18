@@ -19,6 +19,8 @@ use crate::{
     Error, Result,
 };
 
+pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
+
 // TODO: Not the most tidy trait for a control-plane.
 /// Trait that represents a control-plane.
 #[async_trait]
@@ -43,15 +45,18 @@ pub trait ControlSession<T, CB: Callbacks> {
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session<T, U, V, R, M, CB: Callbacks> {
     runtime: Option<Runtime>,
-    _phantom: PhantomData<(T, U, V, R, M, CB)>,
+    callbacks: CB,
+    _phantom: PhantomData<(T, U, V, R, M)>,
 }
 
 /// Resource list that will be displayed to the users.
+#[derive(Debug)]
 pub struct ResourceList {
     pub resources: Vec<String>,
 }
 
 /// Tunnel addresses to be surfaced to the client apps.
+#[derive(Debug)]
 pub struct TunnelAddresses {
     /// IPv4 Address.
     pub address4: Ipv4Addr,
@@ -62,10 +67,16 @@ pub struct TunnelAddresses {
 // Evaluate doing this not static
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
-    /// Called when there's a change in the resource list.
-    fn on_update_resources(&self, resource_list: ResourceList);
     /// Called when the tunnel address is set.
-    fn on_connect(&self, tunnel_addresses: TunnelAddresses);
+    fn on_set_interface_config(&self, tunnel_addresses: TunnelAddresses, dns_address: Ipv4Addr);
+    /// Called when the tunnel is connected.
+    fn on_tunnel_ready(&self);
+    /// Called when when a route is added.
+    fn on_add_route(&self, route: String);
+    /// Called when when a route is removed.
+    fn on_remove_route(&self, route: String);
+    /// Called when the resource list changes.
+    fn on_update_resources(&self, resource_list: ResourceList);
     /// Called when the tunnel is disconnected.
     fn on_disconnect(&self);
     /// Called when there's an error.
@@ -134,13 +145,14 @@ where
             .build()?;
 
         if cfg!(feature = "mock") {
-            Self::connect_mock(callbacks);
+            Self::connect_mock(callbacks.clone());
         } else {
-            Self::connect_inner(&runtime, portal_url, token, callbacks);
+            Self::connect_inner(&runtime, portal_url, token, callbacks.clone());
         }
 
         Ok(Self {
             runtime: Some(runtime),
+            callbacks,
             _phantom: PhantomData,
         })
     }
@@ -203,27 +215,38 @@ where
 
     fn connect_mock(callbacks: CB) {
         std::thread::sleep(Duration::from_secs(1));
-        callbacks.on_connect(TunnelAddresses {
-            address4: "100.100.111.2".parse().unwrap(),
-            address6: "fd00:0222:2021:1111::2".parse().unwrap(),
-        });
+        callbacks.on_set_interface_config(
+            TunnelAddresses {
+                address4: "100.100.111.2".parse().unwrap(),
+                address6: "fd00:0222:2021:1111::2".parse().unwrap(),
+            },
+            DNS_SENTINEL,
+        );
+        callbacks.on_tunnel_ready();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_secs(3));
+            let resources = vec![
+                ResourceDescriptionCidr {
+                    id: Uuid::new_v4(),
+                    address: "8.8.4.4".parse::<Ipv4Addr>().unwrap().into(),
+                    name: "Google Public DNS IPv4".to_string(),
+                },
+                ResourceDescriptionCidr {
+                    id: Uuid::new_v4(),
+                    address: "2001:4860:4860::8844".parse::<Ipv6Addr>().unwrap().into(),
+                    name: "Google Public DNS IPv6".to_string(),
+                },
+            ];
+            for resource in &resources {
+                callbacks.on_add_route(serde_json::to_string(&resource.address).unwrap());
+            }
             callbacks.on_update_resources(ResourceList {
-                resources: vec![
-                    serde_json::to_string(&ResourceDescription::Cidr(ResourceDescriptionCidr {
-                        id: Uuid::new_v4(),
-                        address: "8.8.4.4".parse::<Ipv4Addr>().unwrap().into(),
-                        name: "Google Public DNS IPv4".to_string(),
-                    }))
-                    .unwrap(),
-                    serde_json::to_string(&ResourceDescription::Cidr(ResourceDescriptionCidr {
-                        id: Uuid::new_v4(),
-                        address: "2001:4860:4860::8844".parse::<Ipv6Addr>().unwrap().into(),
-                        name: "Google Public DNS IPv6".to_string(),
-                    }))
-                    .unwrap(),
-                ],
+                resources: resources
+                    .into_iter()
+                    .map(|resource| {
+                        serde_json::to_string(&ResourceDescription::Cidr(resource)).unwrap()
+                    })
+                    .collect(),
             });
         });
     }
@@ -233,6 +256,8 @@ where
     /// For now this just drops the runtime, which should drop all pending tasks.
     /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
     pub fn disconnect(&mut self) -> bool {
+        self.callbacks.on_disconnect();
+
         // 1. Close the websocket connection
         // 2. Free the device handle (UNIX)
         // 3. Close the file descriptor (UNIX)

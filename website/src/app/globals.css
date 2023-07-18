@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  *:is(h1, h2, h3, h4, h5, h6) {
+    /* Fix anchor slug links and scroll position due to fixed navbar */
+    @apply flex items-center gap-1 scroll-mt-20;
+  }
+}
+
+@layer base {
+  .github-html h2 {
+    @apply text-lg font-semibold tracking-tight pt-4;
+  }
+
+  .github-html ul {
+    @apply list-disc text-sm list-inside;
+  }
+
+  .github-html a {
+    @apply text-accent-500 underline hover:no-underline;
+  }
+}

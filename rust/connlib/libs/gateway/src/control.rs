@@ -75,6 +75,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     connection_request.device.peer.into(),
                     connection_request.relays,
                     connection_request.device.id,
+                    connection_request.expires_at,
                 )
                 .await
             {
@@ -87,12 +88,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         }))
                         .await
                     {
-                        tunnel.cleanup_peer_connection(connection_request.device.id);
+                        tunnel.cleanup_connection(connection_request.device.id);
                         tunnel.callbacks().on_error(&err, Recoverable);
                     }
                 }
                 Err(err) => {
-                    tunnel.cleanup_peer_connection(connection_request.device.id);
+                    tunnel.cleanup_connection(connection_request.device.id);
                     tunnel.callbacks().on_error(&err, Recoverable);
                 }
             }
