@@ -426,7 +426,7 @@ struct TestServer {
 impl TestServer {
     fn new(relay_public_addr: impl Into<relay::IpAddr>) -> Self {
         Self {
-            server: Server::new(relay_public_addr.into(), StepRng::new(0, 0)),
+            server: Server::new(relay_public_addr, StepRng::new(0, 0)),
             id_to_port: Default::default(),
         }
     }

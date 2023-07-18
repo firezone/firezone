@@ -129,13 +129,13 @@ impl<R> Server<R>
 where
     R: Rng,
 {
-    pub fn new(public_address: IpAddr, mut rng: R) -> Self {
+    pub fn new(public_address: impl Into<IpAddr>, mut rng: R) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
         Self {
             decoder: Default::default(),
             encoder: Default::default(),
-            public_address,
+            public_address: public_address.into(),
             allocations: Default::default(),
             clients_by_allocation: Default::default(),
             allocations_by_port: Default::default(),
