@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import ConsentPreferences from "@/components/ConsentPreferences";
 
 import { LinkedInIcon, GitHubIcon, TwitterIcon } from "@/components/Icons";
 
@@ -153,12 +154,33 @@ export default function Footer() {
         </div>
         <hr className="mt-2 mb-6 border-neutral-200 sm:mx-auto lg:mb-8 lg:mt-4" />
         <div className="sm:flex sm:items-center sm:justify-between">
-          <span className="text-sm text-neutral-900 sm:text-center ">
+          <span className="text-xs text-neutral-900 sm:text-center ">
             © 2023{" "}
             <Link href="/" className="hover:underline">
               Firezone, Inc.
             </Link>{" "}
-            All Rights Reserved.
+            <ConsentPreferences />
+            {" | "}
+            <Link
+              href="https://app.termly.io/notify/1aa082a3-aba1-4169-b69b-c1d1b42b7a48"
+              className="hover:underline"
+            >
+              privacy policy
+            </Link>
+            {" | "}
+            <Link
+              className="hover:underline"
+              href="https://app.termly.io/notify/1aa082a3-aba1-4169-b69b-c1d1b42b7a48"
+            >
+              do not sell or share my personal information
+            </Link>
+            {" | "}
+            <Link
+              href="https://app.termly.io/notify/1aa082a3-aba1-4169-b69b-c1d1b42b7a48"
+              className="hover:underline"
+            >
+              limit the use of my sensitive personal information
+            </Link>
           </span>
           <div className="flex mt-4 space-x-6 sm:justify-center sm:mt-0">
             <TwitterIcon url="https://twitter.com/firezonehq" />

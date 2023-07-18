@@ -39,7 +39,7 @@ export default function EarlyAccessForm() {
           We're still working out pricing details for the 1.0 release and will
           launch an updated pricing page when we have more to share. Our goal is
           to price Firezone competitively among other products in the space with
-          a cost that scales predictably according to the value it provides.
+          a cost that scales predictably.
         </p>
       </div>
       <div className="w-full">
