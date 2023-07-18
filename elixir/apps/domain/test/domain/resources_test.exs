@@ -271,7 +271,7 @@ defmodule Domain.ResourcesTest do
       assert count_resources_for_gateway(gateway, subject) == {:ok, 1}
     end
 
-    test "returns error when subject has no permission to manage resources associated to gateway",
+    test "returns error when subject has no permission to manage resources",
          %{
            account: account,
            subject: subject
