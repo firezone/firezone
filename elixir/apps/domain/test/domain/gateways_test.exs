@@ -401,6 +401,7 @@ defmodule Domain.GatewaysTest do
                  [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
     end
 
+    # TODO: add a test that soft-deleted assocs are not preloaded
     test "associations are preloaded when opts given", %{account: account, subject: subject} do
       gateway = GatewaysFixtures.create_gateway(account: account)
       {:ok, gateway} = fetch_gateway_by_id(gateway.id, subject, preload: [:group, :account])
