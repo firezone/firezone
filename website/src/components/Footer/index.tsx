@@ -159,27 +159,21 @@ export default function Footer() {
             <Link href="/" className="hover:underline">
               Firezone, Inc.
             </Link>{" "}
+            <Link href="/privacy-policy" className="hover:underline">
+              privacy
+            </Link>
+            {" | "}
+            <Link href="/terms" className="hover:underline">
+              terms
+            </Link>
+            {" | "}
             <ConsentPreferences />
             {" | "}
             <Link
               href="https://app.termly.io/notify/1aa082a3-aba1-4169-b69b-c1d1b42b7a48"
               className="hover:underline"
             >
-              privacy policy
-            </Link>
-            {" | "}
-            <Link
-              className="hover:underline"
-              href="https://app.termly.io/notify/1aa082a3-aba1-4169-b69b-c1d1b42b7a48"
-            >
               do not sell or share my personal information
-            </Link>
-            {" | "}
-            <Link
-              href="https://app.termly.io/notify/1aa082a3-aba1-4169-b69b-c1d1b42b7a48"
-              className="hover:underline"
-            >
-              limit the use of my sensitive personal information
             </Link>
           </span>
           <div className="flex mt-4 space-x-6 sm:justify-center sm:mt-0">
