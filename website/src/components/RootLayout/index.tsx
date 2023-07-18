@@ -21,6 +21,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <Script
+        src="https://app.termly.io/embed.min.js"
+        data-auto-block="on"
+        data-website-uuid="c4df1a31-22d9-4000-82e6-a86cbec0bba0"
+      ></Script>
       <Providers>
         <body className={public_sans.className}>
           <div className="min-h-screen h-auto antialiased">
