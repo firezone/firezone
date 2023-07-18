@@ -8,7 +8,7 @@ pub use crate::server::client_message::{
 
 use crate::auth::{MessageIntegrityExt, Nonces, FIREZONE};
 use crate::rfc8656::{
-    AddressFamilyNotSupported, PeerAddressFamilyMismatch, RequestedAddressFamily,
+    AddressFamily, AddressFamilyNotSupported, PeerAddressFamilyMismatch, RequestedAddressFamily,
 };
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::{IpAddr, TimeEvents};
@@ -18,7 +18,7 @@ use core::fmt;
 use rand::Rng;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
-use std::net::{SocketAddr, SocketAddrV4};
+use std::net::SocketAddr;
 use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
@@ -385,6 +385,8 @@ where
             return Err(error_response(BadRequest, &request));
         }
 
+        let primary_relay_address = self.get_relay_addresses(&request)?;
+
         // TODO: Do we need to handle DONT-FRAGMENT?
         // TODO: Do we need to handle EVEN/ODD-PORT?
 
@@ -396,12 +398,11 @@ where
             request.transaction_id(),
         );
 
-        let ip4_relay_address = match self.public_address {
-            IpAddr::Ip4Only(addr) => SocketAddrV4::new(addr, allocation.port),
-            _ => return Err(error_response(AddressFamilyNotSupported, &request)),
-        };
+        let port = allocation.port;
 
-        message.add_attribute(XorRelayAddress::new(ip4_relay_address.into()).into());
+        message.add_attribute(
+            XorRelayAddress::new(SocketAddr::new(primary_relay_address, port)).into(),
+        );
         message.add_attribute(XorMappedAddress::new(sender).into());
         message.add_attribute(effective_lifetime.clone().into());
 
@@ -414,13 +415,13 @@ where
         });
         self.pending_commands.push_back(Command::AllocateAddresses {
             id: allocation.id,
-            port: allocation.port,
+            port,
         });
         self.send_message(message, sender);
 
         tracing::info!(
             target: "relay",
-            ip4_relay_address = field::display(ip4_relay_address),
+            relay_address = field::display(primary_relay_address),
             "Created new allocation",
         );
 
@@ -654,6 +655,28 @@ where
             .map_err(|_| error_response(Unauthorized, request))?;
 
         Ok(())
+    }
+
+    fn get_relay_addresses(
+        &self,
+        request: &Allocate,
+    ) -> Result<std::net::IpAddr, Message<Attribute>> {
+        let requested_addr_family = request
+            .requested_address_family()
+            .map(|r| r.address_family());
+        let addr = match (self.public_address, requested_addr_family) {
+            (
+                IpAddr::Ip4Only(addr) | IpAddr::DualStack { ip4: addr, .. },
+                None | Some(AddressFamily::V4),
+            ) => addr.into(),
+            (
+                IpAddr::Ip6Only(addr) | IpAddr::DualStack { ip6: addr, .. },
+                Some(AddressFamily::V6),
+            ) => addr.into(),
+            _ => return Err(error_response(AddressFamilyNotSupported, request)),
+        };
+
+        Ok(addr)
     }
 
     fn create_new_allocation(&mut self, now: SystemTime, lifetime: &Lifetime) -> Allocation {
