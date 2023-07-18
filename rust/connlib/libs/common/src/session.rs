@@ -213,18 +213,12 @@ where
                     let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
                     if let Some(t) = exponential_backoff.next_backoff() {
                         tracing::warn!("Error during connection to the portal, retrying in {} seconds", t.as_secs());
-                        match result {
-                            Ok(()) => callbacks.on_error(&tokio_tungstenite::tungstenite::Error::ConnectionClosed.into()),
-                            Err(e) => callbacks.on_error(&e)
-                        }
+                        callbacks.on_error(&result.err().unwrap_or(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed)));
                         tokio::time::sleep(t).await;
                     } else {
                         tracing::error!("Connection to the portal error, check your internet or the status of the portal.\nDisconnecting interface.");
                         fatal_error!(
-                            match result {
-                                Ok(()) => Err(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed)),
-                                Err(e) => Err(e)
-                            },
+                            result.and(Err(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed))),
                             &runtime_disconnector,
                             &callbacks
                         );
