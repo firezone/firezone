@@ -33,14 +33,13 @@ started building what became the first version of Firezone.
 
 When we [launched on Hacker News](https://news.ycombinator.com/item?id=28683231)
 nearly two years ago, we never envisioned Firezone to be more than a simple tool
-deploying your own WireGuard-based VPN server.
+for deploying your own WireGuard-based VPN server.
 
 Fast-forward
 [4,500 GitHub stars](https://github.com/firezone/firezone/stargazers), a
 [Y Combinator backed funding round](https://techcrunch.com/2022/03/30/ycombinator-open-source-startups-winter-22-demo-day/),
 and [130 releases](https://github.com/firezone/firezone/releases) later --
-Firezone has now grown into something more than just a self-hosted tool to
-manage your WireGuard configurations.
+Firezone has now grown into something more.
 
 We now count over <strong>3,000</strong> Firezone instances running in the wild
 (possibly much more -- we allow users to
@@ -57,13 +56,13 @@ hobbyists, schools, non-profits, and businesses with hundreds of employees.
 
 To be clear, Firezone is successful in large part because WireGuard itself is
 successful. In an industry brimming with enterprise security bloatware and
-endless acronyms, WireGuard's a breath of fresh air. Every issue I've thought I
-had with it turned out to be user error. How we ever got by without it is a
-mystery to me.
+acronyms galore, WireGuard's a breath of fresh air. It's almost boring how well
+it works. I suppose I could go on and on about WireGuard's strengths, but I
+won't. After all, this post is supposed to be about Firezone 1.0.
 
-But I could go on and on about WireGuard's strengths. Let's back up for a minute
--- what is a VPN, and why is one needed at all? To answer that we'll need to go
-back to the formation of the Internet itself.
+So let's back up -- what is a VPN anyway, and why is one needed at all? To
+answer that we'll need to go back in time to the formation of the early
+Internet.
 
 #### The purpose of a VPN
 
@@ -73,11 +72,11 @@ universities, and other large institutions could justify the cost.
 
 So when you connected your organization to the Internet and began receiving
 packets, it was clear which entity it was from based on its allocated IPv4
-address range. Since there were so few entities connected, it was clear who you
-communicated with. It was clear who to contact (and blame) in case any issues
-arose.
+address range. Since there were so few entities connected, you could easily know
+who you were communicating with, and who to contact (and blame) in case any
+issues arose.
 
-But, as access to the Internet became cheaper, more types of entities could
+But as access to the Internet became cheaper, more types of entities could
 afford to connect. As more entities connected, the number of resources on the
 Internet grew, and its
 [value increased quadratically](https://en.wikipedia.org/wiki/Metcalfe%27s_law).
@@ -102,21 +101,22 @@ do.
   />
 </object>
 
-And this worked well for some time. However, as the Internet grew even larger, a
-problem arose: firewalls required you to know _in advance_ who you'd like to
-communicate with, adding them to your configuration, and likewise removing the
-ones you didn't. As you might imagine, it quickly became unwieldy to keep these
-configurations up to date.
+And this worked well for some time. However, the Internet grew even larger (as
+networks tend to do). And then a problem arose: firewalls required you to know
+_in advance_ who you'd like to communicate with, adding them to your
+configuration, and likewise removing the ones you didn't. As you might imagine,
+it quickly became unwieldy to keep these configurations up to date.
 
 So a clever solution was developed: what if you could dynamically add and remove
-entities to the firewall configuration on the fly?
+entities to the firewall configuration, on the fly?
 
-And thus, stateful firewalls were born. I should pause here and clarify that
+And thus stateful firewalls were born. I should pause here and clarify that
 stateful firewalls are sometimes confused with
 [Network Address Translation (NAT)](https://en.wikipedia.org/wiki/Network_address_translation),
 since they're often found on the same device. But there's an important
 distinction: A stateful firewall _remembers_ stuff it's seen in order to to
-update its configuration dynamically, whereas NAT can behave statically.
+update its configuration dynamically, whereas a NAT device is primarily
+concerned with static operation.
 
 Stateful firewalls exist in nearly every consumer router and datacenter gateway
 connected to the Internet today. There's a very high likelihood the Internet
@@ -133,7 +133,7 @@ been largely successful at serving their intended purpose.
   />
 </object>
 
-However, this post wouldn't be very interesting if we stopped there.
+But this post wouldn't be very interesting if we stopped there.
 
 You see, there's still one fundamental problem with stateful firewalls,
 particularly as it relates to remote access. For two-way communication to occur,
@@ -177,7 +177,7 @@ Then how does an entity come to be trusted? We still authenticate them as usual,
 but there's a key difference: with ZTA, we authenticate entities each time the
 communication is requested, on the fly. Not once at the perimeter. And since the
 perimeter is gone, the protected entity itself (or a proxy) authenticates the
-untrusted entity. But wait, what happened to the firewall?
+untrusted entity. But wait, hold on a minute -- what happened to the firewall?
 
 This presents a dilemma. If we use a firewall to protect entities, they're
 shielded outside the perimeter, but left unprotected inside the perimeter. And
