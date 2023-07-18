@@ -1,6 +1,13 @@
 defmodule Web.GatewaysLive.Edit do
   use Web, :live_view
 
+  alias Domain.Gateways
+
+  def mount(%{"id" => id} = _params, _session, socket) do
+    {:ok, gateway} = Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: :group)
+    {:ok, assign(socket, gateway: gateway)}
+  end
+
   def render(assigns) do
     ~H"""
     <.section_header>
@@ -9,17 +16,17 @@ defmodule Web.GatewaysLive.Edit do
           %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
           %{label: "Gateways", path: ~p"/#{@subject.account}/gateways"},
           %{
-            label: "gcp-primary",
-            path: ~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
+            label: "#{@gateway.name_suffix}",
+            path: ~p"/#{@subject.account}/gateways/#{@gateway.id}"
           },
           %{
             label: "Edit",
-            path: ~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
+            path: ~p"/#{@subject.account}/gateways/#{@gateway.id}/edit"
           }
         ]} />
       </:breadcrumbs>
       <:title>
-        Editing Gateway <code>gcp-primary</code>
+        Editing Gateway <code><%= @gateway.name_suffix %></code>
       </:title>
     </.section_header>
 
@@ -38,6 +45,7 @@ defmodule Web.GatewaysLive.Edit do
                 id="gateway-name"
                 class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
                 required=""
+                value={@gateway.name_suffix}
               />
             </div>
           </div>

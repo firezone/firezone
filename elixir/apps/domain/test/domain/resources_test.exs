@@ -29,18 +29,15 @@ defmodule Domain.ResourcesTest do
     end
 
     test "returns resource when resource exists", %{account: account, subject: subject} do
-      gateway = GatewaysFixtures.create_gateway(account: account)
-      resource = ResourcesFixtures.create_resource(account: account, gateway: gateway)
+      resource = ResourcesFixtures.create_resource(account: account)
 
       assert {:ok, fetched_resource} = fetch_resource_by_id(resource.id, subject)
       assert fetched_resource.id == resource.id
     end
 
     test "does not return deleted resources", %{account: account, subject: subject} do
-      gateway = GatewaysFixtures.create_gateway(account: account)
-
       {:ok, resource} =
-        ResourcesFixtures.create_resource(account: account, gateway: gateway)
+        ResourcesFixtures.create_resource(account: account)
         |> delete_resource(subject)
 
       assert fetch_resource_by_id(resource.id, subject) == {:error, :not_found}
@@ -124,6 +121,172 @@ defmodule Domain.ResourcesTest do
       subject = AuthFixtures.remove_permissions(subject)
 
       assert list_resources(subject) ==
+               {:error,
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Resources.Authorizer.manage_resources_permission(),
+                        Resources.Authorizer.view_available_resources_permission()
+                      ]}
+                   ]
+                 ]}}
+    end
+  end
+
+  describe "list_resources_for_gateway/2" do
+    test "returns empty list when there are no resources associated to gateway", %{
+      account: account,
+      subject: subject
+    } do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+
+      assert list_resources_for_gateway(gateway, subject) == {:ok, []}
+    end
+
+    test "does not list resources that are not associated to the gateway", %{
+      account: account,
+      subject: subject
+    } do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+      ResourcesFixtures.create_resource()
+
+      assert list_resources_for_gateway(gateway, subject) == {:ok, []}
+    end
+
+    test "does not list deleted resources associated to gateway", %{
+      account: account,
+      subject: subject
+    } do
+      group = GatewaysFixtures.create_group(account: account, subject: subject)
+      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+
+      ResourcesFixtures.create_resource(
+        account: account,
+        gateway_groups: [%{gateway_group_id: group.id}]
+      )
+      |> delete_resource(subject)
+
+      assert list_resources_for_gateway(gateway, subject) == {:ok, []}
+    end
+
+    test "returns all resources for a given gateway and account user subject", %{
+      account: account,
+      subject: subject
+    } do
+      group = GatewaysFixtures.create_group(account: account, subject: subject)
+      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+
+      ResourcesFixtures.create_resource(
+        account: account,
+        gateway_groups: [%{gateway_group_id: group.id}]
+      )
+
+      ResourcesFixtures.create_resource(
+        account: account,
+        gateway_groups: [%{gateway_group_id: group.id}]
+      )
+
+      ResourcesFixtures.create_resource(account: account)
+
+      assert {:ok, resources} = list_resources_for_gateway(gateway, subject)
+      assert length(resources) == 2
+    end
+
+    test "returns error when subject has no permission to manage resources", %{
+      account: account,
+      subject: subject
+    } do
+      group = GatewaysFixtures.create_group(account: account, subject: subject)
+      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+
+      ResourcesFixtures.create_resource(
+        account: account,
+        gateway_groups: [%{gateway_group_id: group.id}]
+      )
+
+      subject = AuthFixtures.remove_permissions(subject)
+
+      assert list_resources_for_gateway(gateway, subject) ==
+               {:error,
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Resources.Authorizer.manage_resources_permission(),
+                        Resources.Authorizer.view_available_resources_permission()
+                      ]}
+                   ]
+                 ]}}
+    end
+  end
+
+  describe "count_resources_for_gateway/2" do
+    test "returns zero when there are no resources associated to gateway", %{
+      account: account,
+      subject: subject
+    } do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+
+      assert count_resources_for_gateway(gateway, subject) == {:ok, 0}
+    end
+
+    test "does not count resources that are not associated to the gateway", %{
+      account: account,
+      subject: subject
+    } do
+      group = GatewaysFixtures.create_group(account: account, subject: subject)
+      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+
+      ResourcesFixtures.create_resource(
+        account: account,
+        gateway_groups: [%{gateway_group_id: group.id}]
+      )
+
+      ResourcesFixtures.create_resource(account: account)
+
+      assert count_resources_for_gateway(gateway, subject) == {:ok, 1}
+    end
+
+    test "does not count deleted resources associated to gateway", %{
+      account: account,
+      subject: subject
+    } do
+      group = GatewaysFixtures.create_group(account: account, subject: subject)
+      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+
+      ResourcesFixtures.create_resource(
+        account: account,
+        gateway_groups: [%{gateway_group_id: group.id}]
+      )
+
+      ResourcesFixtures.create_resource(
+        account: account,
+        gateway_groups: [%{gateway_group_id: group.id}]
+      )
+      |> delete_resource(subject)
+
+      assert count_resources_for_gateway(gateway, subject) == {:ok, 1}
+    end
+
+    test "returns error when subject has no permission to manage resources",
+         %{
+           account: account,
+           subject: subject
+         } do
+      group = GatewaysFixtures.create_group(account: account, subject: subject)
+      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+
+      ResourcesFixtures.create_resource(
+        account: account,
+        gateway_groups: [%{gateway_group_id: group.id}]
+      )
+
+      subject = AuthFixtures.remove_permissions(subject)
+
+      assert count_resources_for_gateway(gateway, subject) ==
                {:error,
                 {:unauthorized,
                  [
