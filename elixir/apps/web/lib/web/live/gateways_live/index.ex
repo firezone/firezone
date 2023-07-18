@@ -6,18 +6,23 @@ defmodule Web.GatewaysLive.Index do
 
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
-    {_, gateways} = Gateways.list_gateways(subject, preload: :group)
+    {:ok, gateways} = Gateways.list_gateways(subject, preload: :group)
 
     {_, resources} =
       Enum.map_reduce(gateways, %{}, fn g, acc ->
-        {_, count} = Resources.count_resources_for_gateway(g, subject)
+        {:ok, count} = Resources.count_resources_for_gateway(g, subject)
         {count, Map.put(acc, g.id, count)}
       end)
 
     grouped_gateways = Enum.group_by(gateways, fn g -> g.group end)
 
-    {:ok,
-     assign(socket, gateways: gateways, resources: resources, grouped_gateways: grouped_gateways)}
+    socket =
+      assign(socket,
+        grouped_gateways: grouped_gateways,
+        resources: resources
+      )
+
+    {:ok, socket}
   end
 
   def render(assigns) do

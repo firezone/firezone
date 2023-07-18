@@ -158,13 +158,6 @@ defmodule Domain.Gateways do
     {:ok, gateways}
   end
 
-  def list_gateways_for_resource(%Resources.Resource{} = resource) do
-    Gateway.Query.all()
-    |> Gateway.Query.by_account_id(resource.account_id)
-    |> Gateway.Query.by_resource_id(resource.id)
-    |> Repo.list()
-  end
-
   def change_gateway(%Gateway{} = gateway, attrs \\ %{}) do
     Gateway.Changeset.update_changeset(gateway, attrs)
   end

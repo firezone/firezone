@@ -1,7 +1,7 @@
 defmodule Domain.Resources do
   alias Domain.{Repo, Validator, Auth}
-  alias Domain.Resources.{Authorizer, Resource}
   alias Domain.Gateways
+  alias Domain.Resources.{Authorizer, Resource}
 
   def fetch_resource_by_id(id, %Auth.Subject{} = subject) do
     required_permissions =

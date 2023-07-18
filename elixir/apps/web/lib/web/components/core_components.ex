@@ -795,6 +795,8 @@ defmodule Web.CoreComponents do
   attr :relative_to, DateTime, required: false, default: DateTime.utc_now()
 
   def relative_datetime(assigns) do
+    # Note: This code was written with the intent to be replace by the following in the future:
+    # https://github.com/elixir-cldr/cldr_dates_times/blob/main/lib/cldr/datetime/relative.ex
     diff = DateTime.diff(assigns[:relative_to], assigns[:relative])
 
     diff_str =
