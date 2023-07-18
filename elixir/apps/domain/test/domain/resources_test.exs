@@ -195,9 +195,9 @@ defmodule Domain.ResourcesTest do
     end
 
     test "returns error when subject has no permission to manage resources", %{
-       account: account,
-       subject: subject
-     } do
+      account: account,
+      subject: subject
+    } do
       group = GatewaysFixtures.create_group(account: account, subject: subject)
       gateway = GatewaysFixtures.create_gateway(account: account, group: group)
 
