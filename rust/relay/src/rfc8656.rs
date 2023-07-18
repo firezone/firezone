@@ -263,6 +263,23 @@ impl SizedEncode for AddressFamilyEncoder {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AddressFamilyNotSupported;
+
+impl AddressFamilyNotSupported {
+    /// The codepoint of the error.
+    pub const CODEPOINT: u16 = 440;
+}
+impl From<AddressFamilyNotSupported> for ErrorCode {
+    fn from(_: AddressFamilyNotSupported) -> Self {
+        ErrorCode::new(
+            AddressFamilyNotSupported::CODEPOINT,
+            "Address Family not Supported".to_string(),
+        )
+        .expect("never fails")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

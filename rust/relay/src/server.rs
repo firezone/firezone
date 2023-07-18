@@ -7,16 +7,18 @@ pub use crate::server::client_message::{
 };
 
 use crate::auth::{MessageIntegrityExt, Nonces, FIREZONE};
-use crate::rfc8656::{PeerAddressFamilyMismatch, RequestedAddressFamily};
+use crate::rfc8656::{
+    AddressFamilyNotSupported, PeerAddressFamilyMismatch, RequestedAddressFamily,
+};
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
-use crate::TimeEvents;
+use crate::{IpAddr, TimeEvents};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
 use rand::Rng;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{SocketAddr, SocketAddrV4};
 use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
@@ -43,7 +45,7 @@ pub struct Server<R> {
     decoder: client_message::Decoder,
     encoder: MessageEncoder<Attribute>,
 
-    public_ip4_address: Ipv4Addr,
+    public_address: IpAddr,
 
     /// All client allocations, indexed by client's socket address.
     allocations: HashMap<SocketAddr, Allocation>,
@@ -127,13 +129,13 @@ impl<R> Server<R>
 where
     R: Rng,
 {
-    pub fn new(public_ip4_address: Ipv4Addr, mut rng: R) -> Self {
+    pub fn new(public_address: IpAddr, mut rng: R) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
         Self {
             decoder: Default::default(),
             encoder: Default::default(),
-            public_ip4_address,
+            public_address,
             allocations: Default::default(),
             clients_by_allocation: Default::default(),
             allocations_by_port: Default::default(),
@@ -394,7 +396,10 @@ where
             request.transaction_id(),
         );
 
-        let ip4_relay_address = self.public_relay_address_for_port(allocation.port);
+        let ip4_relay_address = match self.public_address {
+            IpAddr::Ip4Only(addr) => SocketAddrV4::new(addr, allocation.port),
+            _ => return Err(error_response(AddressFamilyNotSupported, &request)),
+        };
 
         message.add_attribute(XorRelayAddress::new(ip4_relay_address.into()).into());
         message.add_attribute(XorMappedAddress::new(sender).into());
@@ -716,10 +721,6 @@ where
             payload: bytes,
             recipient,
         });
-    }
-
-    fn public_relay_address_for_port(&self, port: u16) -> SocketAddrV4 {
-        SocketAddrV4::new(self.public_ip4_address, port)
     }
 
     fn get_allocation(&self, id: &AllocationId) -> Option<&Allocation> {

@@ -5,7 +5,7 @@ use futures::{future, FutureExt, SinkExt, StreamExt};
 use phoenix_channel::{Error, Event, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use relay::{AllocationId, Command, Server, Sleep, UdpSocket};
+use relay::{AllocationId, Command, IpAddr, Server, Sleep, UdpSocket};
 use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -68,7 +68,10 @@ async fn main() -> Result<()> {
         tracing_subscriber::fmt().with_env_filter(env_filter).init()
     }
 
-    let server = Server::new(args.public_ip4_addr, make_rng(args.rng_seed));
+    let server = Server::new(
+        IpAddr::Ip4Only(args.public_ip4_addr),
+        make_rng(args.rng_seed),
+    );
 
     let channel = if let Some(token) = args.portal_token {
         let mut url = args.portal_ws_url.clone();
