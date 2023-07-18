@@ -20,7 +20,8 @@ pub async fn serve(addr: impl Into<IpAddr>, registry: Registry) -> Result<()> {
         .with_state(Arc::new(registry))
         .into_make_service();
 
-    tracing::info!("Serving metrics at http://{addr}/metrics");
+    let url = format!("http://{addr}/metrics");
+    tracing::info!(%url, "Now serving metrics");
 
     Server::try_bind(&addr)?.serve(service).await?;
 
