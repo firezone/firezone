@@ -13,6 +13,7 @@ const public_sans = Public_Sans({
   subsets: ["latin"],
   weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
 });
+import { HiArrowLongRight } from "react-icons/hi2";
 
 export default function RootLayout({
   children,
@@ -32,19 +33,20 @@ export default function RootLayout({
             <RootNavbar />
             <Banner active>
               <p className="text-md font-medium tracking-tight text-center w-full text-neutral-50 ">
+                Announcing Firezone 1.0: cloud, clients, and{" "}
                 <Link
                   href="/blog/firezone-1-0"
                   className="underline text-accent-500  hover:no-underline"
                 >
-                  Firezone 1.0 is coming
+                  more
                 </Link>
-                ! Rebuilt from the ground up with a cloud dashboard, native
-                clients, and more.{" "}
+                . Request{" "}
                 <Link
                   href="/product/early-access"
-                  className="text-accent-500  underline hover:no-underline"
+                  className="group text-accent-500 items-center inline-flex underline hover:no-underline"
                 >
-                  Request early access.
+                  early access
+                  <HiArrowLongRight className="group-hover:translate-x-0.5 group-hover:scale-105 duration-100 transform transition ml-1 w-5 h-5" />
                 </Link>
               </p>
             </Banner>
