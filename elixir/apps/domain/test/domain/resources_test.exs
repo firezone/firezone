@@ -194,11 +194,10 @@ defmodule Domain.ResourcesTest do
       assert length(resources) == 2
     end
 
-    test "returns error when subject has no permission to manage resources associated to gateway",
-         %{
-           account: account,
-           subject: subject
-         } do
+    test "returns error when subject has no permission to manage resources", %{
+       account: account,
+       subject: subject
+     } do
       group = GatewaysFixtures.create_group(account: account, subject: subject)
       gateway = GatewaysFixtures.create_gateway(account: account, group: group)
 
