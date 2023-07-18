@@ -108,14 +108,15 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn handle_message(&mut self, msg: IngressMessages) -> Result<()> {
         match msg {
-            IngressMessages::Init(init) => self.init(init).await,
+            IngressMessages::Init(init) => self.init(init).await?,
             IngressMessages::RequestConnection(connection_request) => {
-                Ok(self.connection_request(connection_request))
+                self.connection_request(connection_request)
             }
-            IngressMessages::AddResource(resource) => Ok(self.add_resource(resource)),
+            IngressMessages::AddResource(resource) => self.add_resource(resource),
             IngressMessages::RemoveResource(_) => todo!(),
             IngressMessages::UpdateResource(_) => todo!(),
         }
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

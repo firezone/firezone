@@ -156,13 +156,14 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn handle_message(&mut self, msg: Messages) -> Result<()> {
         match msg {
-            Messages::Init(init) => self.init(init).await,
-            Messages::Relays(connection_details) => Ok(self.relays(connection_details)),
-            Messages::Connect(connect) => Ok(self.connect(connect).await),
-            Messages::ResourceAdded(resource) => self.add_resource(resource).await,
-            Messages::ResourceRemoved(resource) => Ok(self.remove_resource(resource.id)),
-            Messages::ResourceUpdated(resource) => Ok(self.update_resource(resource)),
+            Messages::Init(init) => self.init(init).await?,
+            Messages::Relays(connection_details) => self.relays(connection_details),
+            Messages::Connect(connect) => self.connect(connect).await,
+            Messages::ResourceAdded(resource) => self.add_resource(resource).await?,
+            Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
+            Messages::ResourceUpdated(resource) => self.update_resource(resource),
         }
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
