@@ -106,10 +106,10 @@ export default function Page() {
     <div className="bg-neutral-100">
       <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
         <div className="mx-auto max-w-screen-md">
-          <h1 className="sm:justify-center mb-4 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-6xl ">
+          <h1 className="mb-4 md:mb-12 justify-center text-center text-5xl sm:text-6xl font-extrabold tracking-tight leading-none text-neutral-900">
             Product Roadmap
           </h1>
-          <h2 className="mx-auto sm:text-center mb-8 max-w-2xl tracking-tight font-medium text-neutral-900 md:mb-12 sm:text-xl ">
+          <h2 className="mx-auto text-xl text-center mb-8 md:mb-12 max-w-2xl tracking-tight text-neutral-800">
             Take a peek below to learn what we're working on and how you can get
             involved.
           </h2>
