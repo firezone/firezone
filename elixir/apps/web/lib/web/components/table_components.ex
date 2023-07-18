@@ -112,7 +112,8 @@ defmodule Web.TableComponents do
 
   ## Examples
 
-      <.table id="users" rows={@users}>
+      <.table_with_groups id="users" rows={@grouped_users}>
+        <:col label="user group"></:col>
         <:col :let={user} label="id"><%= user.id %></:col>
         <:col :let={user} label="username"><%= user.username %></:col>
       </.table>
