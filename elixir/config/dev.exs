@@ -28,6 +28,7 @@ config :web, Web.Endpoint,
   ],
   live_reload: [
     patterns: [
+      ~r"apps/config/.*(exs)$",
       ~r"apps/domain/lib/domain/.*(ex|eex|heex)$",
       ~r"apps/web/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"apps/web/priv/gettext/.*(po)$",
