@@ -29,7 +29,8 @@ defmodule Domain.AuthFixtures do
     Enum.into(attrs, %{
       name: "provider-#{counter()}",
       adapter: :email,
-      adapter_config: %{}
+      adapter_config: %{},
+      created_by: :system
     })
   end
 

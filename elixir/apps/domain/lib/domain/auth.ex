@@ -44,22 +44,30 @@ defmodule Domain.Auth do
     |> Repo.list()
   end
 
-  def change_provider(adapter, attrs) do
+  def new_provider(%Accounts.Account{} = account, attrs \\ %{}) do
     Provider.Changeset.create_changeset(account, attrs)
-    |> Adapters.changeset()
+    |> Adapters.provider_changeset()
   end
 
   def create_provider(%Accounts.Account{} = account, attrs, %Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()),
-         :ok <- Accounts.ensure_has_access_to(subject, account) do
-      create_provider(account, attrs)
+         :ok <- Accounts.ensure_has_access_to(subject, account),
+         changeset =
+           Provider.Changeset.create_changeset(account, attrs, subject)
+           |> Adapters.provider_changeset(),
+         {:ok, provider} <- Repo.insert(changeset) do
+      Adapters.ensure_provisioned(provider)
     end
   end
 
   def create_provider(%Accounts.Account{} = account, attrs) do
-    Provider.Changeset.create_changeset(account, attrs)
-    |> Adapters.ensure_provisioned_for_account(account)
-    |> Repo.insert()
+    changeset =
+      Provider.Changeset.create_changeset(account, attrs)
+      |> Adapters.provider_changeset()
+
+    with {:ok, provider} <- Repo.insert(changeset) do
+      Adapters.ensure_provisioned(provider)
+    end
   end
 
   def disable_provider(%Provider{} = provider, %Subject{} = subject) do
@@ -95,12 +103,18 @@ defmodule Domain.Auth do
           if other_active_providers_exist?(provider) do
             provider
             |> Provider.Changeset.delete_provider()
-            |> Adapters.ensure_deprovisioned()
           else
             :cant_delete_the_last_provider
           end
         end
       )
+      |> case do
+        {:ok, provider} ->
+          Adapters.ensure_deprovisioned(provider)
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -134,7 +148,7 @@ defmodule Domain.Auth do
         provider_identifier,
         provider_attrs \\ %{}
       ) do
-    Identity.Changeset.create(actor, provider, provider_identifier)
+    Identity.Changeset.create_identity(actor, provider, provider_identifier)
     |> Adapters.identity_changeset(provider, provider_attrs)
     |> Repo.insert()
   end
@@ -162,7 +176,12 @@ defmodule Domain.Auth do
         |> Repo.fetch()
       end)
       |> Ecto.Multi.insert(:new_identity, fn %{identity: identity} ->
-        Identity.Changeset.create(identity.actor, identity.provider, provider_identifier)
+        Identity.Changeset.create_identity(
+          identity.actor,
+          identity.provider,
+          provider_identifier,
+          subject
+        )
         |> Adapters.identity_changeset(identity.provider, provider_attrs)
       end)
       |> Ecto.Multi.update(:deleted_identity, fn %{identity: identity} ->
@@ -245,7 +264,7 @@ defmodule Domain.Auth do
       when is_binary(user_agent) and is_tuple(remote_ip) do
     identity =
       identity
-      |> Identity.Changeset.sign_in(user_agent, remote_ip)
+      |> Identity.Changeset.sign_in_identity(user_agent, remote_ip)
       |> Repo.update!()
 
     identity_with_preloads = Repo.preload(identity, [:account, :actor])

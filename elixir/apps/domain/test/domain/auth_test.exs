@@ -187,6 +187,10 @@ defmodule Domain.AuthTest do
       assert provider.adapter == attrs.adapter
       assert provider.adapter_config == attrs.adapter_config
       assert provider.account_id == account.id
+
+      assert provider.created_by == :system
+      assert is_nil(provider.created_by_identity_id)
+
       assert is_nil(provider.disabled_at)
       assert is_nil(provider.deleted_at)
     end
@@ -232,6 +236,20 @@ defmodule Domain.AuthTest do
       subject = AuthFixtures.create_subject(identity)
 
       assert create_provider(other_account, %{}, subject) == {:error, :unauthorized}
+    end
+
+    test "persists identity that created the provider", %{account: account} do
+      attrs = AuthFixtures.provider_attrs()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
+      actor = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      assert {:ok, provider} = create_provider(account, attrs, subject)
+
+      assert provider.created_by == :identity
+      assert provider.created_by_identity_id == subject.identity.id
     end
   end
 
