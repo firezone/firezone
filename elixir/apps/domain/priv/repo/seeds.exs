@@ -208,7 +208,7 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :dns,
-      address: "gitlab.mycorp.com",
+      address: "google.com",
       connections: [%{gateway_group_id: gateway_group.id}]
     },
     admin_subject

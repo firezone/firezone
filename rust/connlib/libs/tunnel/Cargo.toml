@@ -20,8 +20,11 @@ libs-common = { path = "../common" }
 libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
+domain = "0.8"
 boringtun = { workspace = true }
 chrono = { workspace = true }
+pnet = "0.33"
+enum_dispatch = "0.3"
 
 # TODO: research replacing for https://github.com/algesten/str0m
 webrtc = { version = "0.8" }

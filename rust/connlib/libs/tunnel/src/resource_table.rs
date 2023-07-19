@@ -52,6 +52,14 @@ impl ResourceTable {
         self.id_table.get(id)
     }
 
+    /// Gets the resource by name
+    pub fn get_by_name(&self, name: impl AsRef<str>) -> Option<&ResourceDescription> {
+        // SAFETY: if we found the pointer, due to our internal consistency rules it is in the id_table
+        self.dns_name
+            .get(name.as_ref())
+            .map(|m| unsafe { m.as_ref() })
+    }
+
     // SAFETY: resource_description must still be in storage since we are going to reference it.
     unsafe fn remove_resource(&mut self, resource_description: NonNull<ResourceDescription>) {
         let id = {

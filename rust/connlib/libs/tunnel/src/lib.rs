@@ -11,7 +11,9 @@ use boringtun::{
 };
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::Callbacks;
+use libs_common::{
+    Callbacks, DNS_SENTINEL,
+};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -49,7 +51,9 @@ pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription
 use index::{check_packet_index, IndexLfsr};
 
 mod control_protocol;
+mod dns;
 mod index;
+mod ip_packet;
 mod peer;
 mod resource_table;
 
@@ -241,6 +245,9 @@ where
                 .up()
                 .await
                 .expect("Couldn't initiate interface");
+            iface_config
+                .add_route(&DNS_SENTINEL.into(), self.callbacks())
+                .await?;
         }
 
         self.start_timers();
@@ -478,6 +485,14 @@ where
                         }
                     }
                 };
+
+                tracing::trace!("Reading from iface {res} bytes");
+
+                if let Some(r) = dev.check_for_dns(&src[..res]) {
+                    // TODO(ipv4/ipv6)!
+                    dev.write4_device_infallible(&r[..]).await;
+                    continue;
+                }
 
                 let dst_addr = match Tunn::dst_address(&src[..res]) {
                     Some(addr) => addr,
