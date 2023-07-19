@@ -209,7 +209,12 @@ IO.puts("")
     %{
       type: :dns,
       address: "gitlab.mycorp.com",
-      connections: [%{gateway_group_id: gateway_group.id}]
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [
+        %{ports: ["80", "433"], protocol: :tcp},
+        %{ports: ["53"], protocol: :udp},
+        %{protocol: :icmp}
+      ]
     },
     admin_subject
   )
@@ -219,7 +224,8 @@ IO.puts("")
     %{
       type: :cidr,
       address: "172.20.0.1/16",
-      connections: [%{gateway_group_id: gateway_group.id}]
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [%{protocol: :all}]
     },
     admin_subject
   )

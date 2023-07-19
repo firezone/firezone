@@ -58,15 +58,10 @@ defmodule Web.FormComponents do
     ~H"""
     <div phx-feedback-for={@name}>
       <label class="flex items-center gap-2 text-gray-900 dark:text-gray-300">
-        <input
-          type="radio"
-          id={@id}
-          name={@name}
-          value={@value}
-          checked={@checked}
-          class="w-4 h-4 border-gray-300 focus:ring-2 focus:ring-blue-300 dark:focus:ring-blue-600 dark:focus:bg-blue-600 dark:bg-gray-700 dark:border-gray-600"
-          {@rest}
-        />
+        <input type="radio" id={@id} name={@name} value={@value} checked={@checked} class={~w[
+          w-4 h-4 border-gray-300 focus:ring-2 focus:ring-primary-300
+          dark:focus:ring-primary-600 dark:focus:bg-primary-600
+          dark:bg-gray-700 dark:border-gray-600]} {@rest} />
         <%= @label %>
       </label>
     </div>
@@ -101,13 +96,11 @@ defmodule Web.FormComponents do
     ~H"""
     <div phx-feedback-for={@name}>
       <.label for={@id}><%= @label %></.label>
-      <select
-        id={@id}
-        name={@name}
-        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-        multiple={@multiple}
-        {@rest}
-      >
+      <select id={@id} name={@name} class={~w[
+          bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500
+          focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600
+          dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500
+        ]} multiple={@multiple} {@rest}>
         <option :if={@prompt} value=""><%= @prompt %></option>
         <%= Phoenix.HTML.Form.options_for_select(@options, @value) %>
       </select>
@@ -147,15 +140,32 @@ defmodule Web.FormComponents do
         id={@id}
         value={Phoenix.HTML.Form.normalize_value(@type, @value)}
         class={[
-          "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6",
-          "phx-no-feedback:border-zinc-300 phx-no-feedback:focus:border-zinc-400",
-          "border-zinc-300 focus:border-zinc-400",
+          "bg-gray-50 p-2.5 block w-full rounded-lg border text-gray-900 focus:ring-primary-600 text-sm",
+          "phx-no-feedback:border-gray-300 phx-no-feedback:focus:border-primary-600",
+          "border-gray-300 focus:border-primary-600",
           @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
         {@rest}
       />
       <.error :for={msg <- @errors}><%= msg %></.error>
     </div>
+    """
+  end
+
+  attr :id, :string, default: nil
+  attr :name, :string, default: nil
+  attr :value, :string, default: nil
+  attr :checked, :boolean, default: false
+
+  def checkbox(assigns) do
+    ~H"""
+    <input
+      type="checkbox"
+      name={@name}
+      value={@value}
+      checked={@checked}
+      class="rounded text-blue-600 border-zinc-300 focus:ring-0"
+    />
     """
   end
 
