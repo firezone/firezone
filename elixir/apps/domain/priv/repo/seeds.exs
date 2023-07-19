@@ -44,7 +44,7 @@ IO.puts("")
       "client_id" => "CLIENT_ID",
       "client_secret" => "CLIENT_SECRET",
       "response_type" => "code",
-      "scope" => "openid email offline_access",
+      "scope" => "openid email profile",
       "discovery_document_uri" => "https://common.auth0.com/.well-known/openid-configuration"
     }
   })
@@ -148,7 +148,10 @@ IO.puts("")
 
 relay_group =
   account
-  |> Relays.Group.Changeset.create_changeset(%{name: "mycorp-aws-relays", tokens: [%{}]})
+  |> Relays.Group.Changeset.create_changeset(
+    %{name: "mycorp-aws-relays", tokens: [%{}]},
+    admin_subject
+  )
   |> Repo.insert!()
 
 relay_group_token = hd(relay_group.tokens)
@@ -180,7 +183,10 @@ IO.puts("")
 
 gateway_group =
   account
-  |> Gateways.Group.Changeset.create_changeset(%{name_prefix: "mycro-aws-gws", tokens: [%{}]})
+  |> Gateways.Group.Changeset.create_changeset(
+    %{name_prefix: "mycro-aws-gws", tokens: [%{}]},
+    admin_subject
+  )
   |> Repo.insert!()
 
 gateway_group_token = hd(gateway_group.tokens)
