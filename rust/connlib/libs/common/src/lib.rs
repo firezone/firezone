@@ -4,7 +4,6 @@
 //! we are using the same version across our own crates.
 
 pub mod error;
-pub mod error_type;
 
 mod session;
 

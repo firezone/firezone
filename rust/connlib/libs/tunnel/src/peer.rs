@@ -5,7 +5,7 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::{error_type::ErrorType, messages::Id, Callbacks, Result};
+use libs_common::{messages::Id, Callbacks, Result};
 use parking_lot::Mutex;
 use webrtc::data::data_channel::DataChannel;
 
@@ -24,7 +24,7 @@ impl Peer {
     pub(crate) async fn send_infallible<CB: Callbacks>(&self, data: &[u8], callbacks: &CB) {
         if let Err(e) = self.channel.write(&Bytes::copy_from_slice(data)).await {
             tracing::error!("Couldn't send packet to connected peer: {e}");
-            callbacks.on_error(&e.into(), ErrorType::Recoverable);
+            callbacks.on_error(&e.into());
         }
     }
 

@@ -3,7 +3,7 @@ use clap::Parser;
 use std::{net::Ipv4Addr, str::FromStr};
 
 use firezone_client_connlib::{
-    get_user_agent, Callbacks, Error, ErrorType, ResourceList, Session, TunnelAddresses,
+    get_user_agent, Callbacks, Error, ResourceList, Session, TunnelAddresses,
 };
 use url::Url;
 
@@ -25,15 +25,12 @@ impl Callbacks for CallbackHandler {
         tracing::trace!("Resources updated, current list: {resource_list:?}");
     }
 
-    fn on_disconnect(&self) {
-        tracing::trace!("Tunnel disconnected");
+    fn on_disconnect(&self, error: Option<&Error>) {
+        tracing::trace!("Tunnel disconnected: {error:?}");
     }
 
-    fn on_error(&self, error: &Error, error_type: ErrorType) {
-        match error_type {
-            ErrorType::Recoverable => tracing::warn!("Encountered error: {error}"),
-            ErrorType::Fatal => panic!("Encountered fatal error: {error}"),
-        }
+    fn on_error(&self, error: &Error) {
+        tracing::warn!("Encountered recoverable error: {error}");
     }
 }
 
@@ -54,7 +51,7 @@ fn main() -> Result<()> {
     let mut session = Session::connect(url, secret, CallbackHandler).unwrap();
     tracing::info!("Started new session");
     session.wait_for_ctrl_c().unwrap();
-    session.disconnect();
+    session.disconnect(None);
     Ok(())
 }
 

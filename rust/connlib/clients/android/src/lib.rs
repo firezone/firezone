@@ -3,9 +3,7 @@
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
 
-use firezone_client_connlib::{
-    Callbacks, Error, ErrorType, ResourceList, Session, TunnelAddresses,
-};
+use firezone_client_connlib::{Callbacks, Error, ResourceList, Session, TunnelAddresses};
 use jni::{
     objects::{JClass, JObject, JString, JValue},
     JNIEnv,
@@ -51,11 +49,11 @@ impl Callbacks for CallbackHandler {
         todo!()
     }
 
-    fn on_disconnect(&self) {
+    fn on_disconnect(&self, _error: Option<&Error>) {
         todo!()
     }
 
-    fn on_error(&self, _error: &Error, _error_type: ErrorType) {
+    fn on_error(&self, _error: &Error) {
         todo!()
     }
 }
@@ -108,7 +106,7 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_disconnect(
     }
 
     let session = unsafe { &mut *session_ptr };
-    session.disconnect()
+    session.disconnect(None)
 }
 
 /// # Safety
