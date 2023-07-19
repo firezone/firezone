@@ -73,6 +73,7 @@ defmodule Web.MixProject do
       # Other deps
       {:jason, "~> 1.2"},
       {:file_size, "~> 3.0.1"},
+      {:ex_cldr_dates_times, "~> 2.13"},
 
       # Test deps
       {:floki, ">= 0.30.0", only: :test},
