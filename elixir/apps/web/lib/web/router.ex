@@ -100,7 +100,8 @@ defmodule Web.Router do
       on_mount: [
         Web.Sandbox,
         {Web.Auth, :ensure_authenticated},
-        {Web.Auth, :ensure_account_admin_user_actor}
+        {Web.Auth, :ensure_account_admin_user_actor},
+        {Web.Auth, :mount_account}
       ] do
       live "/dashboard", DashboardLive
 
@@ -143,12 +144,13 @@ defmodule Web.Router do
       live "/settings/identity_providers", SettingsLive.IdentityProviders.Index
       live "/settings/identity_providers/new", SettingsLive.IdentityProviders.New
 
+      # TODO: /settings/identity_providers/new/:adapter
       live "/settings/identity_providers/new/openid_connect",
            SettingsLive.IdentityProviders.New.OpenIDConnect
 
       live "/settings/identity_providers/new/saml", SettingsLive.IdentityProviders.New.SAML
-      live "/settings/identity_providers/:id", SettingsLive.IdentityProviders.Show
-      live "/settings/identity_providers/:id/edit", SettingsLive.IdentityProviders.Edit
+      live "/settings/identity_providers/:provider_id", SettingsLive.IdentityProviders.Show
+      live "/settings/identity_providers/:provider_id/edit", SettingsLive.IdentityProviders.Edit
       live "/settings/dns", SettingsLive.Dns
       live "/settings/api_tokens", SettingsLive.ApiTokens.Index
       live "/settings/api_tokens/new", SettingsLive.ApiTokens.New

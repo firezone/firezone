@@ -180,6 +180,11 @@ defmodule Web.Auth do
     * `:redirect_if_user_is_authenticated` - authenticates the user from the session.
       Redirects to signed_in_path if there's a logged user.
 
+    * `:mount_account` - takes `account_id` from path params and loads the given account
+      into the socket assigns using the `subject` mounted via `:mount_subject`. This is useful
+      because some actions can be performed by superadmin users on behalf of other accounts
+      so we can't really rely on `subject.account` in a lot of places.
+
   ## Examples
 
   Use the `on_mount` lifecycle macro in LiveViews to mount or authenticate
@@ -200,6 +205,10 @@ defmodule Web.Auth do
   """
   def on_mount(:mount_subject, params, session, socket) do
     {:cont, mount_subject(socket, params, session)}
+  end
+
+  def on_mount(:mount_account, params, session, socket) do
+    {:cont, mount_account(socket, params, session)}
   end
 
   def on_mount(:ensure_authenticated, params, session, socket) do
@@ -246,6 +255,20 @@ defmodule Web.Auth do
            {:ok, subject} <- Domain.Auth.sign_in(token, user_agent, remote_ip),
            true <- params["account_id"] == subject.account.id do
         subject
+      else
+        _ -> nil
+      end
+    end)
+  end
+
+  defp mount_account(
+         %{assigns: %{subject: subject}} = socket,
+         %{"account_id" => account_id},
+         _session
+       ) do
+    Phoenix.Component.assign_new(socket, :account, fn ->
+      with {:ok, account} <- Domain.Accounts.fetch_account_by_id(account_id, subject) do
+        account
       else
         _ -> nil
       end
