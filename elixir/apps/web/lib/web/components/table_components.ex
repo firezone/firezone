@@ -197,4 +197,75 @@ defmodule Web.TableComponents do
     </table>
     """
   end
+
+  @doc ~S"""
+  Renders a table with 2 columns and generic styling.
+
+  The component will likely be used when displaying the properties of an
+  individual resource (e.g. Gateway, Resource, Device, etc...)
+
+  The component renders a table that is meant to be viewed vertically, with
+  the first column being the label and the second column being the value.
+
+  This component is intended to be used with the `vertical_table_row` component
+
+  ## Examples
+
+      <.vertical_table>
+        <.vertical_table_row>
+          <:label>First Name</:label>
+          <:value>User First Name Here</:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Last Name</:label>
+          <:value>User Last Name Here</:value>
+        </.vertical_table_row>
+      </.vertical_table>
+  """
+
+  def vertical_table(assigns) do
+    ~H"""
+    <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+      <tbody>
+        <%= render_slot(@inner_block) %>
+      </tbody>
+    </table>
+    """
+  end
+
+  @doc ~S"""
+  Renders a row with 2 columns and generic styling.  The first column will be
+  the header and the second column will be the value.
+
+  The component will likely be used when displaying the properties of an
+  individual resource (e.g. Gateway, Resource, Device, etc...)
+
+  This component is intended to be used with the `vertical_table` component.
+
+  ## Examples
+
+      <.vertical_table_row>
+        <:label>First Name</:label>
+        <:value>User First Name Here</:value>
+      </.vertical_table_row>
+  """
+
+  slot :label, doc: "the slot for rendering the label of a row"
+  slot :value, doc: "the slot for rendering the value of a row"
+
+  def vertical_table_row(assigns) do
+    ~H"""
+    <tr class="border-b border-gray-200 dark:border-gray-700">
+      <th scope="row" class={~w[
+          text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap
+          bg-gray-50 dark:text-white dark:bg-gray-800
+        ]}>
+        <%= render_slot(@label) %>
+      </th>
+      <td class="px-6 py-4">
+        <%= render_slot(@value) %>
+      </td>
+    </tr>
+    """
+  end
 end
