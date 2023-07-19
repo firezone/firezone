@@ -29,142 +29,72 @@ defmodule Web.GatewaysLive.Show do
     </.section_header>
     <!-- Gateway details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-        <tbody>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Instance Group Name
-            </th>
-            <td class="px-6 py-4">
-              <.badge type="info">
-                <%= @gateway.group.name_prefix %>
-              </.badge>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Instance Name
-            </th>
-            <td class="px-6 py-4">
-              <%= @gateway.name_suffix %>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Connectivity
-            </th>
-            <td class="px-6 py-4">
-              TODO: Peer to Peer
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Status
-            </th>
-            <td class="px-6 py-4">
-              <.badge type="success">
-                TODO: Online
-              </.badge>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Location
-            </th>
-            <td class="px-6 py-4">
-              <code>
-                <%= @gateway.last_seen_remote_ip %>
-              </code>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Last seen
-            </th>
-            <td class="px-6 py-4">
-              <.relative_datetime relative={@gateway.last_seen_at} />
-              <br />
-              <%= @gateway.last_seen_at %>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Remote IPv4
-            </th>
-            <td class="px-6 py-4">
-              <code><%= @gateway.ipv4 %></code>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Remote IPv6
-            </th>
-            <td class="px-6 py-4">
-              <code><%= @gateway.ipv6 %></code>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Transfer
-            </th>
-            <td class="px-6 py-4">
-              TODO: 4.43 GB up, 1.23 GB down
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Gateway version
-            </th>
-            <td class="px-6 py-4">
-              <%= "Gateway Version: #{@gateway.last_seen_version}" %>
-              <br />
-
-              <%= "User Agent: #{@gateway.last_seen_user_agent}" %>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Deployment method
-            </th>
-            <td class="px-6 py-4">
-              TODO: Docker
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <.vertical_table>
+        <.vertical_table_row>
+          <:label>Instance Group Name</:label>
+          <:value><%= @gateway.group.name_prefix %></:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Instance Name</:label>
+          <:value><%= @gateway.name_suffix %></:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Connectivity</:label>
+          <:value>TODO: Peer to Peer</:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Status</:label>
+          <:value>
+            <.badge type="success">TODO: Online</.badge>
+          </:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Location</:label>
+          <:value>
+            <code>
+              <%= @gateway.last_seen_remote_ip %>
+            </code>
+          </:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>
+            Last seen
+          </:label>
+          <:value>
+            <.relative_datetime relative={@gateway.last_seen_at} />
+            <br />
+            <%= @gateway.last_seen_at %>
+          </:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Remote IPv4</:label>
+          <:value>
+            <code><%= @gateway.ipv4 %></code>
+          </:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Remote IPv6</:label>
+          <:value>
+            <code><%= @gateway.ipv6 %></code>
+          </:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Transfer</:label>
+          <:value>TODO: 4.43 GB up, 1.23 GB down</:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Gateway Version</:label>
+          <:value>
+            <%= "Gateway Version: #{@gateway.last_seen_version}" %>
+            <br />
+            <%= "User Agent: #{@gateway.last_seen_user_agent}" %>
+          </:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Deployment Method</:label>
+          <:value>TODO: Docker</:value>
+        </.vertical_table_row>
+      </.vertical_table>
     </div>
     <!-- Linked Resources table -->
     <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
