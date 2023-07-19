@@ -6,7 +6,6 @@ use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
 use libs_common::{
-    error_type::ErrorType::Recoverable,
     messages::{Id, Key, Relay, RequestConnection},
     Callbacks, Error, Result,
 };
@@ -165,7 +164,7 @@ where
                 let Some(gateway_public_key) = tunnel.gateway_public_keys.lock().remove(&resource_id) else {
                     tunnel.cleanup_connection(resource_id);
                     tracing::warn!("Opened ICE channel with gateway without ever receiving public key");
-                    tunnel.callbacks.on_error(&Error::ControlProtocolError, Recoverable);
+                    tunnel.callbacks.on_error(&Error::ControlProtocolError);
                     return;
                 };
                 let peer_config = PeerConfig {
@@ -177,7 +176,7 @@ where
 
                 if let Err(e) = tunnel.handle_channel_open(d, index, peer_config, None, resource_id).await {
                     tracing::error!("Couldn't establish wireguard link after channel was opened: {e}");
-                    tunnel.callbacks.on_error(&e, Recoverable);
+                    tunnel.callbacks.on_error(&e);
                     tunnel.cleanup_connection(resource_id);
                 }
                 tunnel.awaiting_connection.lock().remove(&resource_id);
@@ -283,7 +282,7 @@ where
                             for ip in &peer.ips {
                                 if let Err(e) = iface_config.add_route(ip, tunnel.callbacks()).await
                                 {
-                                    tunnel.callbacks.on_error(&e, Recoverable);
+                                    tunnel.callbacks.on_error(&e);
                                 }
                             }
                         }
@@ -298,7 +297,7 @@ where
                             )
                             .await
                         {
-                            tunnel.callbacks.on_error(&e, Recoverable);
+                            tunnel.callbacks.on_error(&e);
                             tracing::error!(
                                 "Couldn't establish wireguard link after opening channel: {e}"
                             );
@@ -308,7 +307,7 @@ where
                             if let Some(conn) = conn {
                                 if let Err(e) = conn.close().await {
                                     tracing::error!("Problem while trying to close channel: {e:?}");
-                                    tunnel.callbacks().on_error(&e.into(), Recoverable);
+                                    tunnel.callbacks().on_error(&e.into());
                                 }
                             }
                         }
