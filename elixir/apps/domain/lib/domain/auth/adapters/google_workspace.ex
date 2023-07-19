@@ -35,7 +35,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
   end
 
   @impl true
-  def ensure_provisioned(%Ecto.Changeset{} = changeset) do
+  def provider_changeset(%Ecto.Changeset{} = changeset) do
     Domain.Changeset.cast_polymorphic_embed(changeset, :adapter_config,
       required: true,
       with: fn current_attrs, attrs ->
@@ -46,8 +46,13 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
   end
 
   @impl true
-  def ensure_deprovisioned(%Ecto.Changeset{} = changeset) do
-    OpenIDConnect.ensure_deprovisioned(changeset)
+  def ensure_provisioned(%Provider{} = provider) do
+    {:ok, provider}
+  end
+
+  @impl true
+  def ensure_deprovisioned(%Provider{} = provider) do
+    {:ok, provider}
   end
 
   @impl true

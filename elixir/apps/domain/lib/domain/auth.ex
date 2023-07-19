@@ -28,6 +28,19 @@ defmodule Domain.Auth do
     Adapters.list_adapters()
   end
 
+  def fetch_active_provider_by_id(id, %Subject{} = subject) do
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()),
+         true <- Validator.valid_uuid?(id) do
+      Provider.Query.by_id(id)
+      |> Provider.Query.not_disabled()
+      |> Authorizer.for_subject(Provider, subject)
+      |> Repo.fetch()
+    else
+      false -> {:error, :not_found}
+      other -> other
+    end
+  end
+
   def fetch_active_provider_by_id(id) do
     if Validator.valid_uuid?(id) do
       Provider.Query.by_id(id)

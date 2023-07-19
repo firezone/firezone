@@ -35,15 +35,15 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
     end
   end
 
-  describe "ensure_provisioned/1" do
+  describe "provider_changeset/1" do
     test "returns changeset errors in invalid adapter config" do
       changeset = Ecto.Changeset.change(%Auth.Provider{}, %{})
-      assert %Ecto.Changeset{} = changeset = ensure_provisioned(changeset)
+      assert %Ecto.Changeset{} = changeset = provider_changeset(changeset)
       assert errors_on(changeset) == %{adapter_config: ["can't be blank"]}
 
       attrs = AuthFixtures.provider_attrs(adapter: :google_workspace, adapter_config: %{})
       changeset = Ecto.Changeset.change(%Auth.Provider{}, attrs)
-      assert %Ecto.Changeset{} = changeset = ensure_provisioned(changeset)
+      assert %Ecto.Changeset{} = changeset = provider_changeset(changeset)
 
       assert errors_on(changeset) == %{
                adapter_config: %{
@@ -69,7 +69,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
 
       changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, attrs)
 
-      assert %Ecto.Changeset{} = changeset = ensure_provisioned(changeset)
+      assert %Ecto.Changeset{} = changeset = provider_changeset(changeset)
       assert {:ok, provider} = Repo.insert(changeset)
 
       assert provider.name == attrs.name
@@ -97,9 +97,12 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
   end
 
   describe "ensure_deprovisioned/1" do
-    test "returns changeset as is" do
-      changeset = %Ecto.Changeset{}
-      assert ensure_deprovisioned(changeset) == changeset
+    test "does nothing for a provider" do
+      {provider, _bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_openid_connect_provider()
+
+      assert ensure_deprovisioned(provider) == {:ok, provider}
     end
   end
 

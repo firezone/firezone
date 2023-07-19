@@ -1,7 +1,6 @@
 defmodule Domain.Auth.Adapters.OpenIDConnect do
   use Supervisor
   alias Domain.Repo
-  alias Domain.Accounts
   alias Domain.Auth.{Identity, Provider, Adapter}
   alias Domain.Auth.Adapters.OpenIDConnect.{Settings, State, PKCE}
   require Logger
@@ -37,7 +36,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   @impl true
-  def ensure_provisioned_for_account(%Ecto.Changeset{} = changeset, %Accounts.Account{}) do
+  def provider_changeset(%Ecto.Changeset{} = changeset) do
     Domain.Changeset.cast_polymorphic_embed(changeset, :adapter_config,
       required: true,
       with: fn current_attrs, attrs ->
@@ -48,8 +47,13 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   @impl true
-  def ensure_deprovisioned(%Ecto.Changeset{} = changeset) do
-    changeset
+  def ensure_provisioned(%Provider{} = provider) do
+    {:ok, provider}
+  end
+
+  @impl true
+  def ensure_deprovisioned(%Provider{} = provider) do
+    {:ok, provider}
   end
 
   def authorization_uri(%Provider{} = provider, redirect_uri) when is_binary(redirect_uri) do
@@ -133,7 +137,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       |> Identity.Query.by_provider_identifier(provider_identifier)
       |> Repo.fetch_and_update(
         with: fn identity ->
-          Identity.Changeset.update_provider_state(
+          Identity.Changeset.update_identity_provider_state(
             identity,
             %{
               access_token: tokens["access_token"],

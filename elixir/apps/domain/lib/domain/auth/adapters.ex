@@ -1,6 +1,5 @@
 defmodule Domain.Auth.Adapters do
   use Supervisor
-  alias Domain.Accounts
   alias Domain.Auth.{Provider, Identity}
 
   @adapters %{
@@ -39,22 +38,32 @@ defmodule Domain.Auth.Adapters do
     %Ecto.Changeset{} = adapter.identity_changeset(provider, changeset)
   end
 
-  def ensure_provisioned_for_account(
-        %Ecto.Changeset{changes: %{adapter: adapter}} = changeset,
-        %Accounts.Account{} = account
-      )
+  def provider_changeset(%Ecto.Changeset{changes: %{adapter: adapter}} = changeset)
       when adapter in @adapter_names do
     adapter = Map.fetch!(@adapters, adapter)
-    %Ecto.Changeset{} = adapter.ensure_provisioned_for_account(changeset, account)
+    %Ecto.Changeset{} = adapter.provider_changeset(changeset)
   end
 
-  def ensure_provisioned_for_account(%Ecto.Changeset{} = changeset, %Accounts.Account{}) do
+  def provider_changeset(%Ecto.Changeset{} = changeset) do
     changeset
   end
 
-  def ensure_deprovisioned(%Ecto.Changeset{data: %Provider{} = provider} = changeset) do
+  def ensure_provisioned(%Provider{} = provider) do
     adapter = fetch_adapter!(provider)
-    %Ecto.Changeset{} = adapter.ensure_deprovisioned(changeset)
+
+    case adapter.ensure_provisioned(provider) do
+      {:ok, provider} -> {:ok, provider}
+      {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
+    end
+  end
+
+  def ensure_deprovisioned(%Provider{} = provider) do
+    adapter = fetch_adapter!(provider)
+
+    case adapter.ensure_deprovisioned(provider) do
+      {:ok, provider} -> {:ok, provider}
+      {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
+    end
   end
 
   def verify_secret(%Provider{} = provider, %Identity{} = identity, secret) do

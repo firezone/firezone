@@ -1,7 +1,19 @@
 defmodule Domain.Accounts do
   alias Domain.{Repo, Validator}
   alias Domain.Auth
-  alias Domain.Accounts.Account
+  alias Domain.Accounts.{Authorizer, Account}
+
+  def fetch_account_by_id(id, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_accounts_permission()),
+         true <- Validator.valid_uuid?(id) do
+      Account.Query.by_id(id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch()
+    else
+      false -> {:error, :not_found}
+      other -> other
+    end
+  end
 
   def fetch_account_by_id(id) do
     if Validator.valid_uuid?(id) do

@@ -1,5 +1,4 @@
 defmodule Domain.Auth.Adapter do
-  alias Domain.Accounts
   alias Domain.Auth.{Provider, Identity}
 
   @typedoc """
@@ -32,15 +31,19 @@ defmodule Domain.Auth.Adapter do
               %Ecto.Changeset{data: %Identity{}}
 
   @doc """
+  Adds adapter-specific validations to the provider changeset.
+  """
+  @callback provider_changeset(%Ecto.Changeset{data: %Provider{}}) ::
+              %Ecto.Changeset{data: %Provider{}}
+
+  @doc """
   A callback which is triggered when the provider is first created.
 
   It should impotently ensure that the provider is provisioned on the third-party end,
   eg. it can use a REST API to configure SCIM webhook and token.
   """
-  @callback ensure_provisioned_for_account(
-              %Ecto.Changeset{data: %Provider{}},
-              %Accounts.Account{}
-            ) :: %Ecto.Changeset{data: %Provider{}}
+  @callback ensure_provisioned(%Provider{}) ::
+              {:ok, %Provider{}} | {:error, %Ecto.Changeset{data: %Provider{}}}
 
   @doc """
   A callback which is triggered when the provider is deleted.
@@ -48,8 +51,8 @@ defmodule Domain.Auth.Adapter do
   It should impotently ensure that the provider is deprovisioned on the third-party end,
   eg. it can use a REST API to remove SCIM webhook and token.
   """
-  @callback ensure_deprovisioned(%Ecto.Changeset{data: %Provider{}}) ::
-              %Ecto.Changeset{data: %Provider{}}
+  @callback ensure_deprovisioned(%Provider{}) ::
+              {:ok, %Provider{}} | {:error, %Ecto.Changeset{data: %Provider{}}}
 
   defmodule Local do
     @doc """
