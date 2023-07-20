@@ -22,16 +22,16 @@ export default function Page() {
   return (
     <>
       <section className="bg-gradient-to-b from-primary-50 to-neutral-100 pt-24">
-        <div className="px-4 py-8 mx-auto max-w-screen-xl sm:text-center lg:py-16 lg:px-12">
+        <div className="px-4 py-8 mx-auto max-w-screen-xl text-center lg:py-16 lg:px-12">
           <h1 className="mb-4 md:text-6xl text-5xl justify-center font-extrabold tracking-tight leading-none text-neutral-900">
             Fast, effortless secure access.
           </h1>
-          <h2 className="mb-8 text-xl tracking-tight font-medium text-neutral-900 sm:px-16 xl:px-48 ">
+          <h2 className="mb-8 text-xl tracking-tight text-neutral-800 sm:px-16 xl:px-48">
             Firezone is an open-source remote access platform built on
             WireGuard®, a modern VPN protocol that's 4-6x faster than OpenVPN.
             Deploy on your infrastructure and start onboarding users in minutes.
           </h2>
-          <div className="flex flex-col mb-8 lg:mb-16 space-y-4 sm:flex-row sm:justify-center sm:space-y-0 sm:space-x-4">
+          <div className="flex mb-8 lg:mb-16 flex-row justify-center space-y-0 space-x-4">
             <Link href="/docs/deploy">
               <button
                 type="button"
@@ -106,7 +106,7 @@ export default function Page() {
       {/* Features sections */}
       <section className="border-t border-neutral-200 bg-gradient-to-b from-white via-neutral-50 to-white py-24">
         <div className="mx-4 flex flex-col justify-center items-center">
-          <h2 className="justify-center mb-4 text-4xl tracking-tight font-bold text-neutral-900 ">
+          <h2 className="text-center justify-center mb-4 text-4xl tracking-tight font-bold text-neutral-900 ">
             A modern alternative to legacy VPNs
           </h2>
         </div>
@@ -129,20 +129,20 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Integrate any identity provider to enforce 2FA / MFA
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Define user-scoped access rules
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Manage access with a snappy admin dashboard
                 </span>
               </li>
@@ -188,8 +188,8 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   <Link
                     className="text-accent-600 hover:underline"
                     href="https://www.wireguard.com/protocol/"
@@ -199,8 +199,8 @@ export default function Page() {
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Auditable and{" "}
                   <Link
                     className="text-accent-600 hover:underline"
@@ -211,8 +211,8 @@ export default function Page() {
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   <Link
                     className="text-accent-600 hover:underline"
                     href="https://www.wireguard.com/performance/"
@@ -242,20 +242,20 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   VPC, data center, or on-prem
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Auto-renewing SSL certs from Let's Encrypt via ACME
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Flexible and configurable
                 </span>
               </li>
@@ -279,15 +279,15 @@ export default function Page() {
 
       <section className="border-t border-neutral-200 bg-gradient-to-b from-neutral-100 to-primary-50 py-24">
         <div className="mx-4 flex flex-col justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight font-bold text-neutral-900 ">
+          <h2 className="mb-4 text-4xl justify-center text-center tracking-tight font-bold text-neutral-900 ">
             Integrate your identity provider to enforce 2FA / MFA
           </h2>
-          <p className="my-4 text-xl max-w-screen-lg text-center text-primary-900 ">
+          <h3 className="my-4 text-xl tracking-tight max-w-screen-lg text-center text-neutral-800 ">
             Only allow connections from authenticated users and automatically
             disable access for employees who have left. Firezone integrates with
             any OIDC and SAML 2.0 compatible identity provider for single
             sign-on (SSO).
-          </p>
+          </h3>
         </div>
         <div className="mx-auto gap-8 max-w-screen-xl grid justify-items-center sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 px-16 pt-8">
           <Link href="/docs/authenticate/oidc/keycloak/">
@@ -343,51 +343,51 @@ export default function Page() {
 
       <section className="border-t border-neutral-200 py-24 bg-white">
         <div className="mx-4 flex flex-col justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight font-bold text-neutral-900 ">
+          <h2 className="mb-4 justify-center text-center text-4xl tracking-tight font-bold text-neutral-900 ">
             Who can benefit using Firezone?
           </h2>
-          <p className="my-4 text-xl max-w-screen-lg sm:text-center text-primary-900 ">
+          <h3 className="my-4 text-xl tracking-tight max-w-screen-lg text-center text-neutral-800 ">
             Easy to deploy and manage for individuals and organizations alike.
             Only allow connections from authenticated users and automatically
             disable access for employees who have left. Firezone integrates with
             any OIDC and SAML 2.0 compatible identity provider for single
             sign-on (SSO).
-          </p>
+          </h3>
         </div>
         <div className="gap-4 items-center pt-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-8 sm:pt-16 lg:px-6 ">
           <div className="bg-neutral-100 p-8 rounded-md shadow-md">
             <div className="flex items-center space-x-2.5">
               <HiHome className="flex-shrink-0 w-5 h-5 text-primary-450" />
-              <h3 className="text-xl tracking-tight font-bold text-primary-900 ">
+              <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
                 Individuals and homelab users
               </h3>
             </div>
-            <p className="mt-8 text-primary-900 text-xl">
+            <p className="mt-8 text-neutral-900 text-xl">
               Lightweight and fast. Access your home network securely when on
               the road.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Effortless to deploy on any infrastructure
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Community plan supports unlimited devices
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Lightweight with minimal resource usage
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Open-source and self-hosted
                 </span>
               </li>
@@ -402,36 +402,36 @@ export default function Page() {
           <div className="bg-neutral-100 p-8 rounded-md shadow-md">
             <div className="flex items-center space-x-2.5">
               <HiRocketLaunch className="flex-shrink-0 w-5 h-5 text-primary-450" />
-              <h3 className="text-xl tracking-tight font-bold text-primary-900 ">
+              <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
                 Growing businesses
               </h3>
             </div>
-            <p className="mt-8 text-primary-900 text-xl">
+            <p className="mt-8 text-neutral-900 text-xl">
               Keep up with increasing network and compliance demands as you
               scale your team and infrastructure.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Integrate your identity provider
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Quickly onboard/offboard employees{" "}
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Segment access for contractors
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   High performance, reduce bottlenecks
                 </span>
               </li>
@@ -446,36 +446,36 @@ export default function Page() {
           <div className="bg-neutral-100 p-8 rounded-md shadow-md">
             <div className="flex items-center space-x-2.5">
               <HiGlobeAlt className=" lex-shrink-0 w-5 h-5 text-primary-450" />
-              <h3 className="text-xl tracking-tight font-bold text-primary-900 ">
+              <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
                 Remote organizations
               </h3>
             </div>
-            <p className="mt-8 text-primary-900 text-xl">
+            <p className="mt-8 text-neutral-900 text-xl">
               Transitioning to remote? Perfect timing to replace the legacy VPN.
               Improve your security posture and reduce support tickets.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Require periodic re-authentication
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Enforce MFA / 2FA
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Self-serve user portal
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Export logs to your observability platform
                 </span>
               </li>
@@ -490,36 +490,36 @@ export default function Page() {
           <div className="bg-neutral-100 p-8 rounded-md shadow-md">
             <div className="flex items-center space-x-2.5">
               <HiWrenchScrewdriver className=" lex-shrink-0 w-5 h-5 text-primary-450" />
-              <h3 className="text-xl tracking-tight font-bold text-primary-900 ">
+              <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
                 Technical IT teams
               </h3>
             </div>
-            <p className="mt-8 text-primary-900 text-xl">
+            <p className="mt-8 text-neutral-900 text-xl">
               Firezone runs on your infrastructure. Customize it to suit your
               needs and architecture.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Built on WireGuard®
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   No vendor lock-in
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Supports OIDC and SAML 2.0
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-primary-900 font-bold " />
-                <span className="leading-tight text-lg text-primary-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Flexible and configurable
                 </span>
               </li>
@@ -537,15 +537,14 @@ export default function Page() {
       <JoinOurCommunity />
 
       <section className="border-t border-neutral-200 py-24 bg-gradient-to-b from-accent-800 to-accent-700">
-        <div className="flex flex-col justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight font-bold text-neutral-50 ">
+        <div className="flex flex-col px-4 justify-center items-center">
+          <h2 className="mb-4 text-4xl tracking-tight text-center font-bold text-neutral-50">
             Ready to get started?
           </h2>
-          <p className="my-4 font-semibold text-xl max-w-screen-md text-center text-neutral-200 ">
-            Set up secure access and start onboarding users in minutes.
-            <br />
-            Copy and paste the command below on any Docker-supported host.
-          </p>
+          <h3 className="my-4 font-medium text-xl max-w-screen-md tracking-tight text-center text-neutral-200 ">
+            Set up secure access and start onboarding users in minutes. Copy and
+            paste the command below on any Docker-supported host.
+          </h3>
           <div className="mt-8">
             <CodeBlock
               language="bash"

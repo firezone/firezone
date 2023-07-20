@@ -51,13 +51,14 @@ public class CallbackHandler {
     delegate?.onUpdateResources(resourceList: resourceList.resources.toString())
   }
 
-  func onDisconnect() {
-    logger.debug("CallbackHandler.onDisconnect")
+  func onDisconnect(error: SwiftConnlibError) {
+    logger.debug("CallbackHandler.onDisconnect: \(error, privacy: .public)")
+    // TODO: convert `error` to `Optional` by checking for `None` case
     delegate?.onDisconnect()
   }
 
-  func onError(error: SwiftConnlibError, error_type: SwiftErrorType) {
-    logger.debug("CallbackHandler.onError: \(error, privacy: .public) (\(error_type == .Recoverable ? "Recoverable" : "Fatal", privacy: .public)")
-    delegate?.onError(error: error, isRecoverable: error_type == .Recoverable)
+  func onError(error: SwiftConnlibError) {
+    logger.debug("CallbackHandler.onError: \(error, privacy: .public)")
+    delegate?.onError(error: error, isRecoverable: true)
   }
 }

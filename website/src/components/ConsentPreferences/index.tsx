@@ -12,7 +12,7 @@ export default function ConsentPreferences() {
         return false;
       }}
     >
-      consent preferences
+      cookies
     </Link>
   );
 }

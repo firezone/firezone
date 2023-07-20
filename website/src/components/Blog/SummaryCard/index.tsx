@@ -28,7 +28,7 @@ export default function SummaryCard({
         </span>
         <span className="text-sm font-semibold">{date}</span>
       </div>
-      <h2 className="mb-2 text-2xl font-bold tracking-tight text-neutral-900 ">
+      <h2 className="mb-2 text-2xl font-bold tracking-tight text-neutral-800 ">
         {title}
       </h2>
       <div className="mb-5 font-medium text-neutral-800 ">{children}</div>
