@@ -506,7 +506,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CODE_SIGN_FLAGS = "";
 				OTHER_LDFLAGS = "-lconnlib";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited).network-extension";
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.firezone.firezone.network-extension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
@@ -552,7 +552,7 @@
 				MARKETING_VERSION = 1.0;
 				OTHER_CODE_SIGN_FLAGS = "";
 				OTHER_LDFLAGS = "-lconnlib";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited).network-extension";
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.firezone.firezone.network-extension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
@@ -596,7 +596,7 @@
 				MARKETING_VERSION = 1.0;
 				OTHER_CODE_SIGN_FLAGS = "";
 				OTHER_LDFLAGS = "-lconnlib";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited).network-extension";
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.firezone.firezone.network-extension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
@@ -639,7 +639,7 @@
 				MARKETING_VERSION = 1.0;
 				OTHER_CODE_SIGN_FLAGS = "";
 				OTHER_LDFLAGS = "-lconnlib";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited).network-extension";
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.firezone.firezone.network-extension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
@@ -835,7 +835,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
-				OTHER_CODE_SIGN_FLAGS = "--deep";
+				OTHER_CODE_SIGN_FLAGS = "";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = auto;
@@ -887,7 +887,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
-				OTHER_CODE_SIGN_FLAGS = "--deep";
+				OTHER_CODE_SIGN_FLAGS = "";
 				PRODUCT_MODULE_NAME = "$(PRODUCT_NAME:c99extidentifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
