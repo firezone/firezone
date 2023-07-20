@@ -99,6 +99,8 @@ defmodule Web do
       import Phoenix.HTML
       # Core UI components and translation
       import Web.CoreComponents
+      import Web.FormComponents
+      import Web.TableComponents
       import Web.Gettext
 
       # Shortcut for generating JS commands
