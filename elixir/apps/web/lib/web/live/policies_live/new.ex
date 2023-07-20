@@ -3,18 +3,15 @@ defmodule Web.PoliciesLive.New do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Policies", path: ~p"/#{@subject.account}/policies"},
-          %{label: "Add policy", path: ~p"/#{@subject.account}/policies/new"}
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/policies"}>Policies</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/policies/new"}>Add Policy</.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         Add a new Policy
       </:title>
-    </.section_header>
+    </.header>
     <!-- Add Policy -->
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">

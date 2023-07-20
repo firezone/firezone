@@ -181,20 +181,10 @@ defmodule Web.Auth.ProvidersLive do
        ]}
     else
       {:ok, []} ->
-        socket =
-          socket
-          |> put_flash(:error, "This account is disabled.")
-          |> redirect(to: ~p"/#{account_id}/")
-
-        {:ok, socket}
+        raise Web.LiveErrors.NotFoundError
 
       {:error, :not_found} ->
-        socket =
-          socket
-          |> put_flash(:error, "Account not found.")
-          |> redirect(to: ~p"/#{account_id}/")
-
-        {:ok, socket}
+        raise Web.LiveErrors.NotFoundError
     end
   end
 end

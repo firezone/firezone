@@ -3,25 +3,22 @@ defmodule Web.PoliciesLive.Show do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Policies", path: ~p"/#{@subject.account}/policies"},
-          %{label: "Engineering access to GitLab", path: ~p"/#{@subject.account}/policies/new"}
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/policies"}>Policies</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/policies/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}>
+        Engineering access to GitLab
+      </.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         Viewing Policy <code>Engineering access to GitLab</code>
       </:title>
       <:actions>
-        <.edit_button navigate={
-          ~p"/#{@subject.account}/policies/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
-        }>
+        <.edit_button navigate={~p"/#{@account}/policies/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}>
           Edit Policy
         </.edit_button>
       </:actions>
-    </.section_header>
+    </.header>
     <!-- Show Policy -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
@@ -70,7 +67,7 @@ defmodule Web.PoliciesLive.Show do
               4/15/22 12:32 PM by
               <.link
                 class="text-blue-600 hover:underline"
-                navigate={~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                navigate={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
               >
                 Andrew Dryga
               </.link>
@@ -112,7 +109,7 @@ defmodule Web.PoliciesLive.Show do
             <td class="px-6 py-4">
               <.link
                 class="text-blue-600 dark:text-blue-500 hover:underline"
-                navigate={~p"/#{@subject.account}/devices/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                navigate={~p"/#{@account}/devices/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
               >
                 2425BD07A38D
               </.link>
@@ -120,7 +117,7 @@ defmodule Web.PoliciesLive.Show do
             <td class="px-6 py-4">
               <.link
                 class="text-blue-600 dark:text-blue-500 hover:underline"
-                navigate={~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                navigate={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
               >
                 <%= "Thomas Eizinger <thomas@eizinger.io>" %>
               </.link>
@@ -130,7 +127,7 @@ defmodule Web.PoliciesLive.Show do
       </table>
     </div>
 
-    <.section_header>
+    <.header>
       <:title>
         Danger zone
       </:title>
@@ -139,7 +136,7 @@ defmodule Web.PoliciesLive.Show do
           Delete Policy
         </.delete_button>
       </:actions>
-    </.section_header>
+    </.header>
     """
   end
 end

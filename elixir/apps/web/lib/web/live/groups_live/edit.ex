@@ -3,25 +3,20 @@ defmodule Web.GroupsLive.Edit do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Groups", path: ~p"/#{@subject.account}/groups"},
-          %{
-            label: "Engineering",
-            path: ~p"/#{@subject.account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
-          },
-          %{
-            label: "Edit",
-            path: ~p"/#{@subject.account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
-          }
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/groups"}>Groups</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}>
+        Engineering
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}>
+        Edit
+      </.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         Editing group <code>Engineering</code>
       </:title>
-    </.section_header>
+    </.header>
     <!-- Update Group -->
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">

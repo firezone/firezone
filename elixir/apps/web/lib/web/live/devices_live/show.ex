@@ -3,21 +3,18 @@ defmodule Web.DevicesLive.Show do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Devices", path: ~p"/#{@subject.account}/devices"},
-          %{
-            label: "Jamil's Macbook Pro",
-            path: ~p"/#{@subject.account}/devices/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
-          }
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/devices"}>Devices</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/devices/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}>
+        Jamil's Macbook Pro
+      </.breadcrumb>
+    </.breadcrumbs>
+
+    <.header>
       <:title>
         Device details
       </:title>
-    </.section_header>
+    </.header>
     <!-- Device Details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
@@ -42,7 +39,7 @@ defmodule Web.DevicesLive.Show do
             </th>
             <td class="px-6 py-4">
               <.link
-                navigate={~p"/#{@subject.account}/users/55DDA8CB-69A7-48FC-9048-639021C205A2"}
+                navigate={~p"/#{@account}/actors/55DDA8CB-69A7-48FC-9048-639021C205A2"}
                 class="text-blue-600 hover:underline"
               >
                 Andrew Dryga
@@ -141,7 +138,7 @@ defmodule Web.DevicesLive.Show do
       </table>
     </div>
 
-    <.section_header>
+    <.header>
       <:title>
         Danger zone
       </:title>
@@ -150,7 +147,7 @@ defmodule Web.DevicesLive.Show do
           Archive
         </.delete_button>
       </:actions>
-    </.section_header>
+    </.header>
     """
   end
 end

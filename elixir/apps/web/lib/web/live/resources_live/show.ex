@@ -32,26 +32,22 @@ defmodule Web.ResourcesLive.Show do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Resources", path: ~p"/#{@subject.account}/resources"},
-          %{
-            label: "#{@resource.name}",
-            path: ~p"/#{@subject.account}/resources/#{@resource.id}"
-          }
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/resources"}>Resources</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/resources/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}>
+        Jira
+      </.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         Resource: <code><%= @resource.name %></code>
       </:title>
       <:actions>
-        <.edit_button navigate={~p"/#{@subject.account}/resources/#{@resource.id}/edit"}>
+        <.edit_button navigate={~p"/#{@account}/resources/#{@resource.id}/edit"}>
           Edit Resource
         </.edit_button>
       </:actions>
-    </.section_header>
+    </.header>
     <!-- Resource details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <.vertical_table>
@@ -93,7 +89,7 @@ defmodule Web.ResourcesLive.Show do
             (TODO:
             <.link
               class="text-blue-600 hover:underline"
-              navigate={~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+              navigate={~p"/#{@account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
             >
               Andrew Dryga
             </.link>
@@ -114,7 +110,7 @@ defmodule Web.ResourcesLive.Show do
       <.table id="gateway_instance_groups" rows={@resource.gateway_groups}>
         <:col :let={gateway_group} label="NAME">
           <.link
-            navigate={~p"/#{@subject.account}/gateways"}
+            navigate={~p"/#{@account}/gateways"}
             class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
           >
             <%= gateway_group.name_prefix %>
@@ -126,7 +122,7 @@ defmodule Web.ResourcesLive.Show do
       </.table>
     </div>
 
-    <.section_header>
+    <.header>
       <:title>
         Danger zone
       </:title>
@@ -135,7 +131,7 @@ defmodule Web.ResourcesLive.Show do
           Delete Resource
         </.delete_button>
       </:actions>
-    </.section_header>
+    </.header>
     """
   end
 end

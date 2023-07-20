@@ -3,22 +3,19 @@ defmodule Web.UsersLive.Index do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Users", path: ~p"/#{@subject.account}/users"}
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/actors"}>Users</.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         All users
       </:title>
       <:actions>
-        <.add_button navigate={~p"/#{@subject.account}/users/new"}>
+        <.add_button navigate={~p"/#{@account}/actors/new"}>
           Add a new user
         </.add_button>
       </:actions>
-    </.section_header>
+    </.header>
     <!-- Users Table -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <div class="flex flex-col md:flex-row items-center justify-between space-y-3 md:space-y-0 md:space-x-4 p-4">
@@ -88,7 +85,7 @@ defmodule Web.UsersLive.Index do
                 class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
               >
                 <.link
-                  navigate={~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   Bou Kheir, Jamil
@@ -127,9 +124,7 @@ defmodule Web.UsersLive.Index do
                     </li>
                     <li>
                       <.link
-                        navigate={
-                          ~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
-                        }
+                        navigate={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}
                         class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                       >
                         Edit
@@ -153,7 +148,7 @@ defmodule Web.UsersLive.Index do
                 class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
               >
                 <.link
-                  navigate={~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   Dryga, Andrew
@@ -192,9 +187,7 @@ defmodule Web.UsersLive.Index do
                     </li>
                     <li>
                       <.link
-                        navigate={
-                          ~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
-                        }
+                        navigate={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}
                         class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                       >
                         Edit
@@ -218,7 +211,7 @@ defmodule Web.UsersLive.Index do
                 class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
               >
                 <.link
-                  navigate={~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   Steinberg, Gabriel
@@ -257,9 +250,7 @@ defmodule Web.UsersLive.Index do
                     </li>
                     <li>
                       <.link
-                        navigate={
-                          ~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
-                        }
+                        navigate={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}
                         class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                       >
                         Edit
@@ -280,7 +271,7 @@ defmodule Web.UsersLive.Index do
           </tbody>
         </table>
       </div>
-      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@subject.account}/users"} />
+      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/actors"} />
     </div>
     """
   end

@@ -3,18 +3,15 @@ defmodule Web.GroupsLive.New do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Groups", path: ~p"/#{@subject.account}/groups"},
-          %{label: "Add Group", path: ~p"/#{@subject.account}/groups/new"}
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/groups"}>Groups</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/groups/new"}>Add Group</.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         Add a new group
       </:title>
-    </.section_header>
+    </.header>
 
     <section class="bg-white dark:bg-gray-900">
       <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">

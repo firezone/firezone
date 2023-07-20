@@ -37,22 +37,20 @@ defmodule Web.SettingsLive.IdentityProviders.New.SAML do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Identity Providers", path: ~p"/#{@subject.account}/settings/identity_providers"},
-          %{
-            label: "Add Identity Provider",
-            path: ~p"/#{@subject.account}/settings/identity_providers/new"
-          },
-          %{label: "SAML", path: ~p"/#{@subject.account}/settings/identity_providers/new/saml"}
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/settings/identity_providers"}>
+        Identity Providers Settings
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/settings/identity_providers/new"}>
+        Create Identity Provider
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/settings/identity_providers/new/saml"}>SAML</.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         Add a new SAML Identity Provider
       </:title>
-    </.section_header>
+    </.header>
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
         <.form for={@form} id="saml-form" phx-change="change" phx-submit="submit">

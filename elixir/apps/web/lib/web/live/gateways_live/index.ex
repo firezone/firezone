@@ -27,22 +27,19 @@ defmodule Web.GatewaysLive.Index do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Gateways", path: ~p"/#{@subject.account}/gateways"}
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/gateways"}>Gateways</.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         All gateways
       </:title>
       <:actions>
-        <.add_button navigate={~p"/#{@subject.account}/gateways/new"}>
+        <.add_button navigate={~p"/#{@account}/gateways/new"}>
           Add Instance Group
         </.add_button>
       </:actions>
-    </.section_header>
+    </.header>
     <!-- Gateways Table -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <.resource_filter />
@@ -50,7 +47,7 @@ defmodule Web.GatewaysLive.Index do
         <:col label="INSTANCE GROUP"></:col>
         <:col :let={gateway} label="INSTANCE">
           <.link
-            navigate={~p"/#{@subject.account}/gateways/#{gateway.id}"}
+            navigate={~p"/#{@account}/gateways/#{gateway.id}"}
             class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
           >
             <%= gateway.name_suffix %>
@@ -76,7 +73,7 @@ defmodule Web.GatewaysLive.Index do
         </:col>
         <:action :let={gateway}>
           <.link
-            navigate={~p"/#{@subject.account}/gateways/#{gateway.id}"}
+            navigate={~p"/#{@account}/gateways/#{gateway.id}"}
             class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
           >
             Show
@@ -91,7 +88,7 @@ defmodule Web.GatewaysLive.Index do
           </a>
         </:action>
       </.table_with_groups>
-      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@subject.account}/gateways"} />
+      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/gateways"} />
     </div>
     """
   end

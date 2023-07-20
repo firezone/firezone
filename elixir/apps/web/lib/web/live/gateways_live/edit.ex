@@ -10,25 +10,18 @@ defmodule Web.GatewaysLive.Edit do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Gateways", path: ~p"/#{@subject.account}/gateways"},
-          %{
-            label: "#{@gateway.name_suffix}",
-            path: ~p"/#{@subject.account}/gateways/#{@gateway.id}"
-          },
-          %{
-            label: "Edit",
-            path: ~p"/#{@subject.account}/gateways/#{@gateway.id}/edit"
-          }
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/gateways"}>Gateways</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/gateways/#{@gateway}"}>
+        <%= @gateway.name_suffix %>
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/gateways/#{@gateway}/edit"}>Edit</.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         Editing Gateway <code><%= @gateway.name_suffix %></code>
       </:title>
-    </.section_header>
+    </.header>
 
     <section class="bg-white dark:bg-gray-900">
       <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">

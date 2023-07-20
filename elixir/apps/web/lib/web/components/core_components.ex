@@ -11,7 +11,6 @@ defmodule Web.CoreComponents do
   """
   use Phoenix.Component
   use Web, :verified_routes
-  import Web.Gettext
   alias Phoenix.LiveView.JS
 
   def logo(assigns) do
@@ -132,13 +131,7 @@ defmodule Web.CoreComponents do
 
   ## Examples
 
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/"},
-          %{label: "Gateways", path: ~p"/gateways"}
-        ]} />
-      </:breadcrumbs>
+    <.section>
       <:title>
         All gateways
       </:title>
@@ -147,17 +140,15 @@ defmodule Web.CoreComponents do
           Deploy gateway
         </.add_button>
       </:actions>
-    </.section_header>
+    </.section>
   """
-  slot :breadcrumbs, required: false, doc: "Breadcrumb links"
   slot :title, required: true, doc: "Title of the section"
   slot :actions, required: false, doc: "Buttons or other action elements"
 
-  def section_header(assigns) do
+  def header(assigns) do
     ~H"""
     <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
       <div class="col-span-full mb-4 xl:mb-2">
-        <%= render_slot(@breadcrumbs) %>
         <div class="flex justify-between items-center">
           <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
             <%= render_slot(@title) %>
@@ -170,50 +161,6 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Render a button group.
-  """
-
-  slot :first, required: true, doc: "First button"
-  slot :middle, required: false, doc: "Middle button(s)"
-  slot :last, required: true, doc: "Last button"
-
-  def button_group(assigns) do
-    ~H"""
-    <div class="inline-flex rounded-md shadow-sm" role="group">
-      <button type="button" class={~w[
-          px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200
-          rounded-l-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
-          focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
-          dark:text-white dark:hover:text-white dark:hover:bg-gray-600
-          dark:focus:ring-blue-500 dark:focus:text-white
-        ]}>
-        <%= render_slot(@first) %>
-      </button>
-      <%= for middle <- @middle do %>
-        <button type="button" class={~w[
-            px-4 py-2 text-sm font-medium text-gray-900 bg-white border-t border-b
-            border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
-            focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
-            dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500
-            dark:focus:text-white
-          ]}>
-          <%= render_slot(middle) %>
-        </button>
-      <% end %>
-      <button type="button" class={~w[
-          px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200
-          rounded-r-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
-          focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
-          dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500
-          dark:focus:text-white
-        ]}>
-        <%= render_slot(@last) %>
-      </button>
-    </div>
-    """
-  end
-
-  @doc """
   Renders a paginator bar.
 
   ## Examples
@@ -221,7 +168,7 @@ defmodule Web.CoreComponents do
     <.paginator
       page={5}
       total_pages={100}
-      collection_base_path={~p"/users"}/>
+      collection_base_path={~p"/actors"}/>
   """
   attr :page, :integer, required: true, doc: "Current page"
   attr :total_pages, :integer, required: true, doc: "Total number of pages"
@@ -307,117 +254,6 @@ defmodule Web.CoreComponents do
         </li>
       </ul>
     </nav>
-    """
-  end
-
-  @doc """
-  Renders navigation breadcrumbs.
-
-  ## Examples
-
-      <.breadcrumbs entries={[%{label: "Home", path: ~p"/"}]}/>
-  """
-  attr :entries, :list, default: [], doc: "List of breadcrumbs"
-
-  def breadcrumbs(assigns) do
-    ~H"""
-    <div class="col-span-full mb-4 xl:mb-2">
-      <nav class="flex mb-5" aria-label="Breadcrumb">
-        <ol class="inline-flex items-center space-x-1 md:space-x-2">
-          <li :for={entry <- @entries} class="inline-flex items-center">
-            <%= if entry.label == "Home" do %>
-              <.link
-                navigate={entry.path}
-                class="inline-flex items-center text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-              >
-                <.icon name="hero-home-solid" class="w-4 h-4 mr-2" />
-                <%= entry.label %>
-              </.link>
-            <% else %>
-              <div class="flex items-center text-gray-700 dark:text-gray-300">
-                <.icon name="hero-chevron-right-solid" class="w-6 h-6" />
-                <.link
-                  navigate={entry.path}
-                  class="ml-1 text-sm font-medium text-gray-700 hover:text-gray-900 md:ml-2 dark:text-gray-300 dark:hover:text-white"
-                >
-                  <%= entry.label %>
-                </.link>
-              </div>
-            <% end %>
-          </li>
-        </ol>
-      </nav>
-    </div>
-    """
-  end
-
-  @doc """
-  Renders a modal.
-
-  ## Examples
-
-      <.modal id="confirm-modal">
-        This is a modal.
-      </.modal>
-
-  JS commands may be passed to the `:on_cancel` to configure
-  the closing/cancel event, for example:
-
-      <.modal id="confirm" on_cancel={JS.navigate(~p"/posts")}>
-        This is another modal.
-      </.modal>
-
-  """
-  attr :id, :string, required: true
-  attr :show, :boolean, default: false
-  attr :on_cancel, JS, default: %JS{}
-  slot :inner_block, required: true
-
-  def modal(assigns) do
-    ~H"""
-    <div
-      id={@id}
-      phx-mounted={@show && show_modal(@id)}
-      phx-remove={hide_modal(@id)}
-      data-cancel={JS.exec(@on_cancel, "phx-remove")}
-      class="relative z-50 hidden"
-    >
-      <div id={"#{@id}-bg"} class="bg-zinc-50/90 fixed inset-0 transition-opacity" aria-hidden="true" />
-      <div
-        class="fixed inset-0 overflow-y-auto"
-        aria-labelledby={"#{@id}-title"}
-        aria-describedby={"#{@id}-description"}
-        role="dialog"
-        aria-modal="true"
-        tabindex="0"
-      >
-        <div class="flex min-h-full items-center justify-center">
-          <div class="w-full max-w-3xl p-4 sm:p-6 lg:py-8">
-            <.focus_wrap
-              id={"#{@id}-container"}
-              phx-window-keydown={JS.exec("data-cancel", to: "##{@id}")}
-              phx-key="escape"
-              phx-click-away={JS.exec("data-cancel", to: "##{@id}")}
-              class="shadow-zinc-700/10 ring-zinc-700/10 relative hidden rounded-2xl bg-white p-14 shadow-lg ring-1 transition"
-            >
-              <div class="absolute top-6 right-5">
-                <button
-                  phx-click={JS.exec("data-cancel", to: "##{@id}")}
-                  type="button"
-                  class="-m-3 flex-none p-3 opacity-20 hover:opacity-40"
-                  aria-label={gettext("close")}
-                >
-                  <.icon name="hero-x-mark-solid" class="h-5 w-5" />
-                </button>
-              </div>
-              <div id={"#{@id}-content"}>
-                <%= render_slot(@inner_block) %>
-              </div>
-            </.focus_wrap>
-          </div>
-        </div>
-      </div>
-    </div>
     """
   end
 
@@ -516,31 +352,6 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders a header with title.
-  """
-  attr :class, :string, default: nil
-
-  slot :inner_block, required: true
-  slot :subtitle
-  slot :actions
-
-  def header(assigns) do
-    ~H"""
-    <header class={[@actions != [] && "flex items-center justify-between gap-6", @class]}>
-      <div>
-        <h1 class="text-lg font-semibold leading-8 text-zinc-800">
-          <%= render_slot(@inner_block) %>
-        </h1>
-        <p :if={@subtitle != []} class="mt-2 text-sm leading-6 text-zinc-600">
-          <%= render_slot(@subtitle) %>
-        </p>
-      </div>
-      <div class="flex-none"><%= render_slot(@actions) %></div>
-    </header>
-    """
-  end
-
-  @doc """
   Renders a data list.
 
   ## Examples
@@ -563,30 +374,6 @@ defmodule Web.CoreComponents do
           <dd class="text-zinc-700"><%= render_slot(item) %></dd>
         </div>
       </dl>
-    </div>
-    """
-  end
-
-  @doc """
-  Renders a back navigation link.
-
-  ## Examples
-
-      <.back navigate={~p"/posts"}>Back to posts</.back>
-  """
-  attr :navigate, :any, required: true
-  slot :inner_block, required: true
-
-  def back(assigns) do
-    ~H"""
-    <div class="mt-16">
-      <.link
-        navigate={@navigate}
-        class="text-sm font-semibold leading-6 text-zinc-900 hover:text-zinc-700"
-      >
-        <.icon name="hero-arrow-left-solid" class="h-3 w-3" />
-        <%= render_slot(@inner_block) %>
-      </.link>
     </div>
     """
   end
@@ -686,7 +473,7 @@ defmodule Web.CoreComponents do
     ~H"""
     <div class="absolute bottom-0 left-0 justify-left p-4 space-x-4 w-full lg:flex bg-white dark:bg-gray-800 z-20">
       <.link href="https://firezone.statuspage.io" class="text-xs hover:underline">
-        <span id="status-page-widget" phx-hook="StatusPage" />
+        <span id="status-page-widget" phx-update="ignore" phx-hook="StatusPage" />
       </.link>
     </div>
     """
@@ -713,6 +500,63 @@ defmodule Web.CoreComponents do
     """
   end
 
+  @doc """
+  Renders datetime field in a format that is suitable for the user's locale.
+  """
+  attr :datetime, DateTime, required: true
+  attr :format, :atom, default: :short
+
+  def datetime(assigns) do
+    ~H"""
+    <span title={@datetime}>
+      <%= Cldr.DateTime.to_string!(@datetime, Web.CLDR, format: @format) %>
+    </span>
+    """
+  end
+
+  @doc """
+  Returns a string the represents a relative time for a given Datetime
+  from the current time or a given base time
+  """
+  attr :datetime, DateTime, required: true
+  attr :relative_to, DateTime, required: false
+
+  def relative_datetime(assigns) do
+    assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
+
+    ~H"""
+    <span title={@datetime}>
+      <%= Cldr.DateTime.Relative.to_string(@datetime, Web.CLDR, relative_to: @relative_to) %>
+    </span>
+    """
+  end
+
+  @doc """
+  Renders username
+  """
+  attr :schema, :map, required: true
+
+  def owner(assigns) do
+    case assigns.schema.created_by do
+      :system ->
+        ~H"""
+        <span>
+          System
+        </span>
+        """
+
+      :identity ->
+        ~H"""
+        <.link
+          class="text-blue-600 hover:underline"
+          navigate={~p"/#{@schema.account_id}/actors/#{@schema.created_by_identity.actor.id}"}
+        >
+          <%= assigns.schema.created_by_identity.actor.name %>
+        </.link>
+        """
+    end
+  end
+
   ## JS Commands
 
   def show(js \\ %JS{}, selector) do
@@ -734,30 +578,6 @@ defmodule Web.CoreComponents do
          "opacity-100 translate-y-0 sm:scale-100",
          "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"}
     )
-  end
-
-  def show_modal(js \\ %JS{}, id) when is_binary(id) do
-    js
-    |> JS.show(to: "##{id}")
-    |> JS.show(
-      to: "##{id}-bg",
-      transition: {"transition-all transform ease-out duration-300", "opacity-0", "opacity-100"}
-    )
-    |> show("##{id}-container")
-    |> JS.add_class("overflow-hidden", to: "body")
-    |> JS.focus_first(to: "##{id}-content")
-  end
-
-  def hide_modal(js \\ %JS{}, id) do
-    js
-    |> JS.hide(
-      to: "##{id}-bg",
-      transition: {"transition-all transform ease-in duration-200", "opacity-100", "opacity-0"}
-    )
-    |> hide("##{id}-container")
-    |> JS.hide(to: "##{id}", transition: {"block", "block", "hidden"})
-    |> JS.remove_class("overflow-hidden", to: "body")
-    |> JS.pop_focus()
   end
 
   @doc """
@@ -786,39 +606,5 @@ defmodule Web.CoreComponents do
   """
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
-  end
-
-  @doc """
-  Returns a string the represents a relative time for a given Datetime
-  from the current time or a given base time
-  """
-  attr :relative, DateTime, required: true
-  attr :relative_to, DateTime, required: false, default: DateTime.utc_now()
-
-  def relative_datetime(assigns) do
-    # Note: This code was written with the intent to be replace by the following in the future:
-    # https://github.com/elixir-cldr/cldr_dates_times/blob/main/lib/cldr/datetime/relative.ex
-    diff = DateTime.diff(assigns[:relative_to], assigns[:relative])
-
-    diff_str =
-      cond do
-        diff <= -24 * 3600 -> "in #{div(-diff, 24 * 3600)}day(s)"
-        diff <= -3600 -> "in #{div(-diff, 3600)}hour(s)"
-        diff <= -60 -> "in #{div(-diff, 60)}minute(s)"
-        diff <= -5 -> "in #{-diff}seconds"
-        diff <= 5 -> "now"
-        diff <= 60 -> "#{diff}seconds ago"
-        diff <= 3600 -> "#{div(diff, 60)} minute(s) ago"
-        diff <= 24 * 3600 -> "#{div(diff, 3600)} hour(s) ago"
-        true -> "#{div(diff, 24 * 3600)} day(s) ago"
-      end
-
-    assigns = assign(assigns, diff_str: diff_str)
-
-    ~H"""
-    <span>
-      <%= @diff_str %>
-    </span>
-    """
   end
 end

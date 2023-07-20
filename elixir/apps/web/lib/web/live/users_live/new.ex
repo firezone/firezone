@@ -3,18 +3,15 @@ defmodule Web.UsersLive.New do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Users", path: ~p"/#{@subject.account}/users"},
-          %{label: "Add user", path: ~p"/#{@subject.account}/users/new"}
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/actors"}>Users</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors/new"}>Add User</.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         Add a new user
       </:title>
-    </.section_header>
+    </.header>
 
     <section class="bg-white dark:bg-gray-900">
       <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">

@@ -39,25 +39,20 @@ defmodule Web.ResourcesLive.Edit do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Resources", path: ~p"/#{@subject.account}/resources"},
-          %{
-            label: "#{@resource.name}",
-            path: ~p"/#{@subject.account}/resources/#{@resource.id}"
-          },
-          %{
-            label: "Edit",
-            path: ~p"/#{@subject.account}/resources/#{@resource.id}/edit"
-          }
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/resources"}>Resources</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/resources/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}>
+        GitLab
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/resources/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}>
+        Edit
+      </.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         Edit Resource
       </:title>
-    </.section_header>
+    </.header>
     <!-- Edit Resource -->
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">

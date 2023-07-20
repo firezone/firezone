@@ -24,27 +24,22 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{
-            label: "Identity Providers Settings",
-            path: ~p"/#{@subject.account}/settings/identity_providers"
-          }
-        ]} />
-      </:breadcrumbs>
-
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/settings/identity_providers"}>
+        Identity Providers Settings
+      </.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         Identity Providers
       </:title>
 
       <:actions>
-        <.add_button navigate={~p"/#{@subject.account}/settings/identity_providers/new"}>
+        <.add_button navigate={~p"/#{@account}/settings/identity_providers/new"}>
           Add Identity Provider
         </.add_button>
       </:actions>
-    </.section_header>
+    </.header>
     <p class="ml-4 mb-4 font-medium bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-500">
       <.link
         class="text-blue-600 dark:text-blue-500 hover:underline"
@@ -96,7 +91,7 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
               >
                 <.link
                   navigate={
-                    ~p"/#{@subject.account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
+                    ~p"/#{@account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
                   }
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
@@ -112,14 +107,14 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
                   <span class="ml-3">
                     Synced
                     <.link
-                      navigate={~p"/#{@subject.account}/users"}
+                      navigate={~p"/#{@account}/actors"}
                       class="text-blue-600 dark:text-blue-500 hover:underline"
                     >
                       17 users
                     </.link>
                     and
                     <.link
-                      navigate={~p"/#{@subject.account}/groups"}
+                      navigate={~p"/#{@account}/groups"}
                       class="text-blue-600 dark:text-blue-500 hover:underline"
                     >
                       8 groups
@@ -156,7 +151,7 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
                     <li>
                       <.link
                         navigate={
-                          ~p"/#{@subject.account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
+                          ~p"/#{@account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
                         }
                         class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                       >
@@ -182,7 +177,7 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
               >
                 <.link
                   navigate={
-                    ~p"/#{@subject.account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
+                    ~p"/#{@account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
                   }
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
@@ -199,14 +194,14 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
                     Synced
                     <.link
                       class="text-blue-600 dark:text-blue-500 hover:underline"
-                      navigate={~p"/#{@subject.account}/users"}
+                      navigate={~p"/#{@account}/actors"}
                     >
                       67 users
                     </.link>
                     and
                     <.link
                       class="text-blue-600 dark:text-blue-500 hover:underline"
-                      navigate={~p"/#{@subject.account}/groups"}
+                      navigate={~p"/#{@account}/groups"}
                     >
                       4 groups
                     </.link>
@@ -242,7 +237,7 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
                     <li>
                       <.link
                         navigate={
-                          ~p"/#{@subject.account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
+                          ~p"/#{@account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
                         }
                         class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                       >
@@ -268,7 +263,7 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
               >
                 <.link
                   navigate={
-                    ~p"/#{@subject.account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
+                    ~p"/#{@account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
                   }
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
@@ -285,14 +280,14 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
                     Synced
                     <.link
                       class="text-blue-600 dark:text-blue-500 hover:underline"
-                      navigate={~p"/#{@subject.account}/users"}
+                      navigate={~p"/#{@account}/actors"}
                     >
                       221 users
                     </.link>
                     and
                     <.link
                       class="text-blue-600 dark:text-blue-500 hover:underline"
-                      navigate={~p"/#{@subject.account}/groups"}
+                      navigate={~p"/#{@account}/groups"}
                     >
                       14 groups
                     </.link>
@@ -328,7 +323,7 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
                     <li>
                       <.link
                         navigate={
-                          ~p"/#{@subject.account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
+                          ~p"/#{@account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
                         }
                         class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                       >

@@ -3,17 +3,14 @@ defmodule Web.SettingsLive.Account do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Account Settings", path: ~p"/#{@subject.account}/settings/account"}
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/settings/account"}>Account Settings</.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         User profile
       </:title>
-    </.section_header>
+    </.header>
     <!-- Account details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
@@ -82,11 +79,11 @@ defmodule Web.SettingsLive.Account do
       </table>
     </div>
     <!-- License details -->
-    <.section_header>
+    <.header>
       <:title>
         License
       </:title>
-    </.section_header>
+    </.header>
     <p class="ml-4 mb-4 font-medium bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-500">
       <.icon name="hero-exclamation-triangle" class="inline-block w-5 h-5 mr-1 text-yellow-500" />
       You have <strong>17 days</strong>
@@ -172,11 +169,11 @@ defmodule Web.SettingsLive.Account do
       </table>
     </div>
     <!-- Danger zone -->
-    <.section_header>
+    <.header>
       <:title>
         Danger zone
       </:title>
-    </.section_header>
+    </.header>
     <h3 class="ml-4 mb-4 font-bold text-gray-900 dark:text-white">
       Terminate account
     </h3>

@@ -3,17 +3,14 @@ defmodule Web.SettingsLive.Dns do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "DNS Settings", path: ~p"/#{@subject.account}/settings/dns"}
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/settings/dns"}>DNS Settings</.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         DNS
       </:title>
-    </.section_header>
+    </.header>
     <p class="ml-4 mb-4 font-medium bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-500">
       Configure the default resolver used by connected Devices in your Firezone network. Queries for
       defined Resources will <strong>always</strong>

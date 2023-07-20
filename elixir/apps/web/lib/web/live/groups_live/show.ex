@@ -3,28 +3,22 @@ defmodule Web.GroupsLive.Show do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Groups", path: ~p"/#{@subject.account}/groups"},
-          %{
-            label: "Engineering",
-            path: ~p"/#{@subject.account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
-          }
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/groups"}>Groups</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}>
+        Engineering
+      </.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         Viewing Group <code>Engineering</code>
       </:title>
       <:actions>
-        <.edit_button navigate={
-          ~p"/#{@subject.account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
-        }>
+        <.edit_button navigate={~p"/#{@account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}>
           Edit Group
         </.edit_button>
       </:actions>
-    </.section_header>
+    </.header>
     <!-- Group Details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
@@ -51,7 +45,7 @@ defmodule Web.GroupsLive.Show do
               Created manually by
               <.link
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-                navigate={~p"/#{@subject.account}/users/BEE2202A-2598-401D-A6C1-8CC09FFB853A"}
+                navigate={~p"/#{@account}/actors/BEE2202A-2598-401D-A6C1-8CC09FFB853A"}
               >
                 Jamil Bou Kheir
               </.link>
@@ -97,7 +91,7 @@ defmodule Web.GroupsLive.Show do
               class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white"
             >
               <.link
-                navigate={~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                navigate={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
                 Bou Kheir, Jamil
@@ -113,7 +107,7 @@ defmodule Web.GroupsLive.Show do
               class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white"
             >
               <.link
-                navigate={~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                navigate={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
                 Dryga, Andrew

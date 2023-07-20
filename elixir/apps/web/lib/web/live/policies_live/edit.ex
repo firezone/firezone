@@ -3,25 +3,20 @@ defmodule Web.PoliciesLive.Edit do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Policies", path: ~p"/#{@subject.account}/policies"},
-          %{
-            label: "Engineering access to GitLab",
-            path: ~p"/#{@subject.account}/policies/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
-          },
-          %{
-            label: "Edit",
-            path: ~p"/#{@subject.account}/policies/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
-          }
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/policies"}>Policies</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/policies/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}>
+        Engineering access to GitLab
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/policies/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}>
+        Edit
+      </.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         Edit Policy <code>Engineering access to GitLab</code>
       </:title>
-    </.section_header>
+    </.header>
     <!-- Edit Policy -->
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">

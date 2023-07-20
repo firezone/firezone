@@ -3,18 +3,16 @@ defmodule Web.GatewaysLive.New do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Gateways", path: ~p"/#{@subject.account}/gateways"},
-          %{label: "Add Gateway", path: ~p"/#{@subject.account}/gateways/new"}
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/gateways"}>Gateways</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/gateways/new"}>Add Gateway</.breadcrumb>
+    </.breadcrumbs>
+
+    <.header>
       <:title>
         Add a new Gateway
       </:title>
-    </.section_header>
+    </.header>
 
     <section class="bg-white dark:bg-gray-900">
       <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
