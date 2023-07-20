@@ -10,7 +10,7 @@ export default function SidebarToggle() {
         data-drawer-target="docs-sidebar"
         data-drawer-toggle="docs-sidebar"
         aria-controls="docs-sidebar"
-        className="p-2 mr-1 text-neutral-800 rounded-lg cursor-pointer md:hidden hover:text-neutral-900 hover:bg-neutral-100 focus:bg-neutral-100 dark:focus:bg-neutral-700 focus:ring-2 focus:ring-neutral-100 dark:focus:ring-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-700 dark:hover:text-white"
+        className="p-2 mr-1 text-neutral-800 rounded-lg cursor-pointer md:hidden hover:text-neutral-900 hover:bg-neutral-100 focus:bg-neutral-100  focus:ring-2 focus:ring-neutral-100    "
       >
         <svg
           aria-hidden="true"
