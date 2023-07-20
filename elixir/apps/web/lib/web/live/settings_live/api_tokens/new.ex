@@ -1,4 +1,4 @@
-defmodule Web.SettingsLive.ApiTokens.New do
+defmodule Web.SettingsLive.APITokens.New do
   use Web, :live_view
 
   def render(assigns) do

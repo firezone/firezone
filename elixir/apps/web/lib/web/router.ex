@@ -86,11 +86,6 @@ defmodule Web.Router do
     pipe_through [:browser]
 
     get "/sign_out", AuthController, :sign_out
-
-    live_session :landing,
-      on_mount: [Web.Sandbox] do
-      live "/", LandingLive
-    end
   end
 
   scope "/:account_id", Web do
@@ -105,55 +100,76 @@ defmodule Web.Router do
       ] do
       live "/dashboard", DashboardLive
 
-      # Users
-      live "/users", UsersLive.Index
-      live "/users/new", UsersLive.New
-      live "/users/:id/edit", UsersLive.Edit
-      live "/users/:id", UsersLive.Show
+      scope "/actors", UsersLive do
+        live "/", Index
+        live "/new", New
+        live "/:id/edit", Edit
+        live "/:id", Show
+      end
 
-      # Groups
-      live "/groups", GroupsLive.Index
-      live "/groups/new", GroupsLive.New
-      live "/groups/:id/edit", GroupsLive.Edit
-      live "/groups/:id", GroupsLive.Show
+      scope "/groups", GroupsLive do
+        live "/", Index
+        live "/new", New
+        live "/:id/edit", Edit
+        live "/:id", Show
+      end
 
-      # Devices
-      live "/devices", DevicesLive.Index
-      live "/devices/:id", DevicesLive.Show
+      scope "/devices", DevicesLive do
+        live "/", Index
+        live "/:id", Show
+      end
 
-      # Gateways
-      live "/gateways", GatewaysLive.Index
-      live "/gateways/new", GatewaysLive.New
-      live "/gateways/:id/edit", GatewaysLive.Edit
-      live "/gateways/:id", GatewaysLive.Show
+      scope "/gateways", GatewaysLive do
+        live "/", Index
+        live "/new", New
+        live "/:id/edit", Edit
+        live "/:id", Show
+      end
 
-      # Resources
-      live "/resources", ResourcesLive.Index
-      live "/resources/new", ResourcesLive.New
-      live "/resources/:id/edit", ResourcesLive.Edit
-      live "/resources/:id", ResourcesLive.Show
+      scope "/resources", ResourcesLive do
+        live "/", Index
+        live "/new", New
+        live "/:id/edit", Edit
+        live "/:id", Show
+      end
 
-      # Policies
-      live "/policies", PoliciesLive.Index
-      live "/policies/new", PoliciesLive.New
-      live "/policies/:id/edit", PoliciesLive.Edit
-      live "/policies/:id", PoliciesLive.Show
+      scope "/policies", PoliciesLive do
+        live "/", Index
+        live "/new", New
+        live "/:id/edit", Edit
+        live "/:id", Show
+      end
 
-      # Settings
-      live "/settings/account", SettingsLive.Account
-      live "/settings/identity_providers", SettingsLive.IdentityProviders.Index
-      live "/settings/identity_providers/new", SettingsLive.IdentityProviders.New
+      scope "/settings", SettingsLive do
+        live "/account", Account
 
-      # TODO: /settings/identity_providers/new/:adapter
-      live "/settings/identity_providers/new/openid_connect",
-           SettingsLive.IdentityProviders.New.OpenIDConnect
+        scope "/identity_providers", IdentityProviders do
+          live "/", Index
+          live "/:provider_id", Show
+          live "/:provider_id/edit", Edit
 
-      live "/settings/identity_providers/new/saml", SettingsLive.IdentityProviders.New.SAML
-      live "/settings/identity_providers/:provider_id", SettingsLive.IdentityProviders.Show
-      live "/settings/identity_providers/:provider_id/edit", SettingsLive.IdentityProviders.Edit
-      live "/settings/dns", SettingsLive.Dns
-      live "/settings/api_tokens", SettingsLive.ApiTokens.Index
-      live "/settings/api_tokens/new", SettingsLive.ApiTokens.New
+          live "/new", New
+          live "/new/openid_connect", New.OpenIDConnect
+          live "/new/saml", New.SAML
+        end
+
+        live "/dns", DNS
+
+        scope "/api_tokens", APITokens do
+          live "/", Index
+          live "/new", New
+        end
+      end
+    end
+  end
+
+  scope "/", Web do
+    pipe_through [:browser]
+
+    live_session :landing,
+      on_mount: [Web.Sandbox] do
+      live "/:account_id/", LandingLive
+      live "/", LandingLive
     end
   end
 end
