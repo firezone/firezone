@@ -86,6 +86,15 @@
 		05CF1D03290B1DCD00CF4755 /* FirezoneNetworkExtensionmacOS.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FirezoneNetworkExtensionmacOS.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
 		6F68E44B2A588522003C7D08 /* AllConfigs.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = AllConfigs.xcconfig; path = xcconfig/AllConfigs.xcconfig; sourceTree = "<group>"; };
+		8DAB3C2F2A69F121001AC019 /* connlib-apple.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "connlib-apple.swift"; sourceTree = "<group>"; };
+		8DAB3C302A69F121001AC019 /* connlib-apple.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "connlib-apple.h"; sourceTree = "<group>"; };
+		8DAB3C312A69F121001AC019 /* .gitignore */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
+		8DAB3C322A69F121001AC019 /* SwiftBridgeCore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SwiftBridgeCore.h; sourceTree = "<group>"; };
+		8DAB3C332A69F121001AC019 /* SwiftBridgeCore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SwiftBridgeCore.swift; sourceTree = "<group>"; };
+		8DAB3C342A69F121001AC019 /* CallbackHandler.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CallbackHandler.swift; sourceTree = "<group>"; };
+		8DAB3C352A69F121001AC019 /* connlib.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = connlib.h; sourceTree = "<group>"; };
+		8DAB3C362A69F205001AC019 /* Adapter.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Adapter.swift; sourceTree = "<group>"; };
+		8DAB3C372A69F224001AC019 /* FirezoneNetworkExtension-Bridging-Header.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "FirezoneNetworkExtension-Bridging-Header.h"; sourceTree = "<group>"; };
 		8DCC021928D512AC007E12D2 /* Firezone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Firezone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8DCC021C28D512AC007E12D2 /* FirezoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirezoneApp.swift; sourceTree = "<group>"; };
 		8DCC022528D512AE007E12D2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -138,6 +147,9 @@
 		05833DF928F73B070008FAB0 /* FirezoneNetworkExtension */ = {
 			isa = PBXGroup;
 			children = (
+				8DAB3C372A69F224001AC019 /* FirezoneNetworkExtension-Bridging-Header.h */,
+				8DAB3C362A69F205001AC019 /* Adapter.swift */,
+				8DAB3C2C2A69F121001AC019 /* Connlib */,
 				8DE3D25F2A69B072006465A2 /* PacketTunnelProvider.swift */,
 				8DE3D2602A69B07A006465A2 /* ConnlibMock.swift */,
 				05CF1CF6290B1CEE00CF4755 /* FirezoneNetworkExtension_iOS.entitlements */,
@@ -160,6 +172,36 @@
 				05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		8DAB3C2C2A69F121001AC019 /* Connlib */ = {
+			isa = PBXGroup;
+			children = (
+				8DAB3C2D2A69F121001AC019 /* Generated */,
+				8DAB3C342A69F121001AC019 /* CallbackHandler.swift */,
+				8DAB3C352A69F121001AC019 /* connlib.h */,
+			);
+			path = Connlib;
+			sourceTree = "<group>";
+		};
+		8DAB3C2D2A69F121001AC019 /* Generated */ = {
+			isa = PBXGroup;
+			children = (
+				8DAB3C2E2A69F121001AC019 /* connlib-apple */,
+				8DAB3C312A69F121001AC019 /* .gitignore */,
+				8DAB3C322A69F121001AC019 /* SwiftBridgeCore.h */,
+				8DAB3C332A69F121001AC019 /* SwiftBridgeCore.swift */,
+			);
+			path = Generated;
+			sourceTree = "<group>";
+		};
+		8DAB3C2E2A69F121001AC019 /* connlib-apple */ = {
+			isa = PBXGroup;
+			children = (
+				8DAB3C2F2A69F121001AC019 /* connlib-apple.swift */,
+				8DAB3C302A69F121001AC019 /* connlib-apple.h */,
+			);
+			path = "connlib-apple";
 			sourceTree = "<group>";
 		};
 		8DCC021028D512AC007E12D2 = {
@@ -321,6 +363,7 @@
 					};
 					6FE454BC2A5BC5F3006549B1 = {
 						CreatedOnToolsVersion = 14.3;
+						LastSwiftMigration = 1430;
 					};
 					8DCC021828D512AC007E12D2 = {
 						CreatedOnToolsVersion = 14.0;
@@ -657,6 +700,7 @@
 		6FE454BE2A5BC5F3006549B1 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				DEBUGGING_SYMBOLS = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
@@ -665,17 +709,21 @@
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
 		6FE454BF2A5BC5F3006549B1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
