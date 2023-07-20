@@ -11,9 +11,7 @@ use boringtun::{
 };
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::{
-    Callbacks, DNS_SENTINEL,
-};
+use libs_common::{Callbacks, DNS_SENTINEL};
 
 use async_trait::async_trait;
 use bytes::Bytes;
