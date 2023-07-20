@@ -30,8 +30,8 @@ macro_rules! swap_src_dst {
 impl<'a> MutableIpPacket<'a> {
     pub(crate) fn new(data: &mut [u8]) -> Option<MutableIpPacket> {
         match data[0] >> 4 {
-            4 => MutableIpv4Packet::new(data).map(MutableIpPacket::from),
-            6 => MutableIpv6Packet::new(data).map(MutableIpPacket::from),
+            4 => MutableIpv4Packet::new(data).map(Into::into),
+            6 => MutableIpv6Packet::new(data).map(Into::into),
             _ => None,
         }
     }
@@ -52,14 +52,14 @@ impl<'a> MutableIpPacket<'a> {
     pub(crate) fn as_udp(&mut self) -> Option<MutableUdpPacket> {
         self.to_immutable()
             .is_udp()
-            .then_some(MutableUdpPacket::new(self.payload_mut()))
+            .then(|| MutableUdpPacket::new(self.payload_mut()))
             .flatten()
     }
 
     pub(crate) fn as_immutable_udp(&self) -> Option<UdpPacket> {
         self.to_immutable()
             .is_udp()
-            .then_some(UdpPacket::new(self.payload()))
+            .then(|| UdpPacket::new(self.payload()))
             .flatten()
     }
 
@@ -91,16 +91,16 @@ pub(crate) enum IpPacket<'a> {
 impl<'a> IpPacket<'a> {
     pub(crate) fn new(data: &[u8]) -> Option<IpPacket> {
         match data[0] >> 4 {
-            4 => Ipv4Packet::new(data).map(IpPacket::from),
-            6 => Ipv6Packet::new(data).map(IpPacket::from),
+            4 => Ipv4Packet::new(data).map(Into::into),
+            6 => Ipv6Packet::new(data).map(Into::into),
             _ => None,
         }
     }
 
     pub(crate) fn next_header(&self) -> IpNextHeaderProtocol {
         match self {
-            IpPacket::Ipv4Packet(p) => p.get_next_level_protocol(),
-            IpPacket::Ipv6Packet(p) => p.get_next_header(),
+            Self::Ipv4Packet(p) => p.get_next_level_protocol(),
+            Self::Ipv6Packet(p) => p.get_next_header(),
         }
     }
 
@@ -203,6 +203,7 @@ impl<'a> From<Ipv6Packet<'a>> for IpPacket<'a> {
         Self::Ipv6Packet(pkt)
     }
 }
+
 impl<'a> From<MutableIpv4Packet<'a>> for MutableIpPacket<'a> {
     fn from(pkt: MutableIpv4Packet<'a>) -> Self {
         Self::MutableIpv4Packet(pkt)
