@@ -79,7 +79,7 @@ extension ConnlibMock {
   struct MockData {
     static let mockInterfaceAddress = InterfaceAddresses(ipv4: "100.100.111.2", ipv6: "fd00:0222:2021:1111::2")
     static let mockResourceSets: [([Resource], DispatchTimeInterval)] = [
-      // The set of resources avaiable, and for how long does the set last (after which the next set becomes live)
+      // The set of resources available, and for how long does the set last (after which the next set becomes live)
       ([Resource(name: "PostHog", resourceLocation: .dns(domain: "app.posthog.com", ipv4: "100.64.1.1/32", ipv6: "fd00:0222:2021:1111::1")),
         Resource(name: "AWS", resourceLocation: .cidr(addressRange: "100.64.2.0/24")),
        ], .seconds(10)),
