@@ -254,14 +254,16 @@ public class Adapter {
   private func didReceivePathUpdate(path: Network.NWPath) {
     #if os(macOS)
       if case .started(let wrappedSession) = self.state {
-        wrappedSession.bumpSockets()
+        self.logger.log(level: .debug, "Suppressing call to bumpSockets()")
+        // wrappedSession.bumpSockets()
       }
     #elseif os(iOS)
       switch self.state {
       case .started(let wrappedSession):
         if path.status == .satisfied {
-          wrappedSession.disableSomeRoamingForBrokenMobileSemantics()
-          wrappedSession.bumpSockets()
+          self.logger.log(level: .debug, "Suppressing calls to disableSomeRoamingForBrokenMobileSemantics() and bumpSockets()")
+          // wrappedSession.disableSomeRoamingForBrokenMobileSemantics()
+          // wrappedSession.bumpSockets()
         } else {
           //self.logger.log(.debug, "Connectivity offline, pausing backend.")
           self.state = .temporaryShutdown
