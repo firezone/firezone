@@ -31,11 +31,7 @@ private enum State {
 public class Adapter {
   private let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
 
-  // Maintain a handle to the currently instantiated tunnel adapter 🤮
-  public static var currentAdapter: Adapter?
-
-  // Maintain a reference to the initialized callback handler
-  public static var callbackHandler: CallbackHandler?
+  private var callbackHandler: CallbackHandler
 
   // Latest applied NETunnelProviderNetworkSettings
   public var lastNetworkSettings: NEPacketTunnelNetworkSettings?
@@ -54,17 +50,11 @@ public class Adapter {
 
   public init(with packetTunnelProvider: NEPacketTunnelProvider) {
     self.packetTunnelProvider = packetTunnelProvider
-
-    // There must be a better way than making this a static class var...
-    Self.currentAdapter = self
-    Self.callbackHandler = CallbackHandler()
-    Self.callbackHandler?.delegate = self
+    self.callbackHandler = CallbackHandler()
+    self.callbackHandler.delegate = self
   }
 
   deinit {
-    // Remove static var reference
-    Self.currentAdapter = nil
-
     // Cancel network monitor
     networkMonitor?.cancel()
 
@@ -94,7 +84,7 @@ public class Adapter {
       do {
         try self.setNetworkSettings(self.generateNetworkSettings(ipv4Routes: [], ipv6Routes: []))
         self.state = .started(
-          try WrappedSession.connect("http://localhost:4568", "test-token", Self.callbackHandler!)
+          try WrappedSession.connect("http://localhost:4568", "test-token", self.callbackHandler)
         )
         self.networkMonitor = networkMonitor
         completionHandler(nil)
@@ -300,9 +290,9 @@ extension Adapter: CallbackHandlerDelegate {
     let addresses4 = [tunnelAddressIPv4]
     let addresses6 = [tunnelAddressIPv6]
     let ipv4Routes =
-    Adapter.currentAdapter?.lastNetworkSettings?.ipv4Settings?.includedRoutes ?? []
+    self.lastNetworkSettings?.ipv4Settings?.includedRoutes ?? []
     let ipv6Routes =
-    Adapter.currentAdapter?.lastNetworkSettings?.ipv6Settings?.includedRoutes ?? []
+    self.lastNetworkSettings?.ipv6Settings?.includedRoutes ?? []
 
     _ = setTunnelSettingsKeepingSomeExisting(
       addresses4: addresses4, addresses6: addresses6, ipv4Routes: ipv4Routes, ipv6Routes: ipv6Routes
