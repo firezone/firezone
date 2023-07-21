@@ -24,7 +24,6 @@ domain = "0.8"
 boringtun = { workspace = true }
 chrono = { workspace = true }
 pnet = "0.33"
-enum_dispatch = "0.3"
 
 # TODO: research replacing for https://github.com/algesten/str0m
 webrtc = { version = "0.8" }
