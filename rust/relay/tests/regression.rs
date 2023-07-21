@@ -403,7 +403,7 @@ fn can_make_ipv6_allocation(
         ),
         [
             Wake(now + lifetime.lifetime()),
-            CreateAllocation(49152, AddressFamily::V4),
+            CreateAllocation(49152, AddressFamily::V6),
             send_message(
                 source,
                 allocate_response(
