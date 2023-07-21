@@ -5,6 +5,7 @@
 //
 import Foundation
 import NetworkExtension
+import FirezoneKit
 import os.log
 
 public enum AdapterError: Error {
@@ -47,6 +48,9 @@ public class Adapter {
 
   /// Adapter state.
   private var state: State = .stopped
+
+  /// Keep track of resources
+  private var displayableResources = DisplayableResources()
 
   public init(with packetTunnelProvider: NEPacketTunnelProvider) {
     self.packetTunnelProvider = packetTunnelProvider
@@ -303,7 +307,16 @@ extension Adapter: CallbackHandlerDelegate {
   }
 
   public func onUpdateResources(resourceList: String) {
-    // Unimplemented
+    workQueue.async {
+      let jsonString = "[\(resourceList)]"
+      guard let jsonData = jsonString.data(using: .utf8) else {
+        return
+      }
+      guard let networkResources = try? JSONDecoder().decode([NetworkResource].self, from: jsonData) else {
+        return
+      }
+      self.displayableResources.update(resources: networkResources.map { $0.displayableResource })
+    }
   }
 
   public func onDisconnect(error: Error) {
