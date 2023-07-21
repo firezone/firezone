@@ -284,7 +284,7 @@ public class Adapter {
           try self.setNetworkSettings(self.lastNetworkSettings!)
 
           self.state = .started(
-            try WrappedSession.connect("http://localhost:4568", "test-token", Self.callbackHandler!)
+            try WrappedSession.connect("http://localhost:4568", "test-token", self.callbackHandler)
           )
         } catch {
           self.logger.log(level: .debug, "Failed to restart backend: \(error.localizedDescription)")
