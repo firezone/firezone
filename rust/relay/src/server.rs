@@ -7,6 +7,7 @@ pub use crate::server::client_message::{
 };
 
 use crate::auth::{MessageIntegrityExt, Nonces, FIREZONE};
+use crate::net_ext::IpAddrExt;
 use crate::rfc8656::{
     AdditionalAddressFamily, AddressFamily, AddressFamilyNotSupported, PeerAddressFamilyMismatch,
     RequestedAddressFamily,
@@ -77,12 +78,21 @@ pub enum Command {
         payload: Vec<u8>,
         recipient: SocketAddr,
     },
-    /// Listen for traffic on the provided IP addresses.
+    /// Listen for traffic on the provided port [AddressFamily].
     ///
     /// Any incoming data should be handed to the [`Server`] via [`Server::handle_relay_input`].
-    AllocateAddresses { id: AllocationId, port: u16 },
-    /// Free the addresses associated with the given [`AllocationId`].
-    FreeAddresses { id: AllocationId },
+    /// A single allocation can reference one of either [AddressFamily]s or both.
+    /// Only the combination of [AllocationId] and [AddressFamily] is unique.
+    CreateAllocation {
+        id: AllocationId,
+        family: AddressFamily,
+        port: u16,
+    },
+    /// Free the allocation associated with the given [`AllocationId`] and [AddressFamily]
+    FreeAllocation {
+        id: AllocationId,
+        family: AddressFamily,
+    },
 
     ForwardData {
         id: AllocationId,
@@ -396,7 +406,12 @@ where
         // TODO: Do we need to handle DONT-FRAGMENT?
         // TODO: Do we need to handle EVEN/ODD-PORT?
 
-        let allocation = self.create_new_allocation(now, &effective_lifetime);
+        let allocation = self.create_new_allocation(
+            now,
+            &effective_lifetime,
+            first_relay_address,
+            maybe_second_relay_addr,
+        );
 
         let mut message = Message::new(
             MessageClass::SuccessResponse,
@@ -424,10 +439,18 @@ where
         self.pending_commands.push_back(Command::Wake {
             deadline: wake_deadline,
         });
-        self.pending_commands.push_back(Command::AllocateAddresses {
+        self.pending_commands.push_back(Command::CreateAllocation {
             id: allocation.id,
+            family: first_relay_address.family(),
             port,
         });
+        if let Some(second_relay_addr) = maybe_second_relay_addr {
+            self.pending_commands.push_back(Command::CreateAllocation {
+                id: allocation.id,
+                family: second_relay_addr.family(),
+                port,
+            });
+        }
         self.send_message(message, sender);
 
         if let Some(second_relay_addr) = maybe_second_relay_addr {
@@ -677,7 +700,13 @@ where
         Ok(())
     }
 
-    fn create_new_allocation(&mut self, now: SystemTime, lifetime: &Lifetime) -> Allocation {
+    fn create_new_allocation(
+        &mut self,
+        now: SystemTime,
+        lifetime: &Lifetime,
+        first_relay_addr: std::net::IpAddr,
+        second_relay_addr: Option<std::net::IpAddr>,
+    ) -> Allocation {
         // First, find an unused port.
 
         assert!(
@@ -702,6 +731,8 @@ where
             id,
             port,
             expires_at: now + lifetime.lifetime(),
+            first_relay_addr,
+            second_relay_addr,
         }
     }
 
@@ -762,8 +793,17 @@ where
         let port = allocation.port;
 
         self.allocations_by_port.remove(&port);
-        self.pending_commands
-            .push_back(Command::FreeAddresses { id });
+
+        self.pending_commands.push_back(Command::FreeAllocation {
+            id,
+            family: allocation.first_relay_addr.family(),
+        });
+        if let Some(second_relay_addr) = allocation.second_relay_addr {
+            self.pending_commands.push_back(Command::FreeAllocation {
+                id,
+                family: second_relay_addr.family(),
+            })
+        }
 
         tracing::info!(target: "relay", %port, "Deleted allocation");
     }
@@ -807,6 +847,9 @@ struct Allocation {
     /// Data arriving on this port will be forwarded to the client iff there is an active data channel.
     port: u16,
     expires_at: SystemTime,
+
+    first_relay_addr: std::net::IpAddr,
+    second_relay_addr: Option<std::net::IpAddr>,
 }
 
 struct Channel {

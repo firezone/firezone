@@ -4,6 +4,7 @@
 
 use bytecodec::fixnum::{U32beDecoder, U32beEncoder};
 use bytecodec::{ByteCount, Decode, Encode, Eos, ErrorKind, Result, SizedEncode, TryTaggedDecode};
+use std::fmt;
 use stun_codec::rfc5389::attributes::ErrorCode;
 use stun_codec::{Attribute, AttributeType};
 use trackable::{track, track_panic};
@@ -84,10 +85,20 @@ impl From<PeerAddressFamilyMismatch> for ErrorCode {
     }
 }
 
+/// The family of an IP address, either IPv4 or IPv6.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AddressFamily {
     V4,
     V6,
+}
+
+impl fmt::Display for AddressFamily {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AddressFamily::V4 => write!(f, "IPv4"),
+            AddressFamily::V6 => write!(f, "IPv6"),
+        }
+    }
 }
 
 const FAMILY_IPV4: u8 = 1;

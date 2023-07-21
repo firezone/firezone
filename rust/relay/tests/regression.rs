@@ -1,8 +1,8 @@
 use bytecodec::{DecodeExt, EncodeExt};
 use rand::rngs::mock::StepRng;
 use relay::{
-    Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, Command,
-    Refresh, Server,
+    AddressFamily, Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData,
+    ClientMessage, Command, Refresh, Server,
 };
 use std::collections::HashMap;
 use std::iter;
@@ -65,7 +65,7 @@ fn deallocate_once_time_expired(
         ),
         [
             Wake(now + lifetime.lifetime()),
-            CreateAllocation(49152),
+            CreateAllocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 allocate_response(transaction_id, public_relay_addr, 49152, source, &lifetime),
@@ -75,7 +75,7 @@ fn deallocate_once_time_expired(
 
     server.assert_commands(
         forward_time_to(now + lifetime.lifetime() + Duration::from_secs(1)),
-        [FreeAllocation(49152)],
+        [FreeAllocation(49152, AddressFamily::V4)],
     );
 }
 
@@ -120,7 +120,7 @@ fn unauthenticated_allocate_triggers_authentication(
         ),
         [
             Wake(now + lifetime.lifetime()),
-            CreateAllocation(49152),
+            CreateAllocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 allocate_response(transaction_id, public_relay_addr, 49152, source, &lifetime),
@@ -159,7 +159,7 @@ fn when_refreshed_in_time_allocation_does_not_expire(
         ),
         [
             Wake(first_wake),
-            CreateAllocation(49152),
+            CreateAllocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 allocate_response(
@@ -235,7 +235,7 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
         ),
         [
             Wake(first_wake),
-            CreateAllocation(49152),
+            CreateAllocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 allocate_response(
@@ -265,7 +265,7 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
             now,
         ),
         [
-            FreeAllocation(49152),
+            FreeAllocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 refresh_response(
@@ -319,7 +319,7 @@ fn ping_pong_relay(
         ),
         [
             Wake(now + lifetime.lifetime()),
-            CreateAllocation(49152),
+            CreateAllocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 allocate_response(
@@ -403,7 +403,7 @@ fn can_make_ipv6_allocation(
         ),
         [
             Wake(now + lifetime.lifetime()),
-            CreateAllocation(49152),
+            CreateAllocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 allocate_response(
@@ -460,8 +460,8 @@ impl TestServer {
                 let msg = match expected_output {
                     Output::SendMessage((recipient, msg)) => format!("to send message {:?} to {recipient}", msg),
                     Wake(time) => format!("to be woken at {time:?}"),
-                    CreateAllocation(port) => format!("to create allocation on port {port}"),
-                    FreeAllocation(port) => format!("to free allocation on port {port}"),
+                    CreateAllocation(port, family) => format!("to create allocation on port {port} for address family {family}"),
+                    FreeAllocation(port, family) => format!("to free allocation on port {port} for address family {family}"),
                     Output::SendChannelData((peer, _)) => format!("to send channel data from {peer} to client"),
                     Output::Forward((peer, _, _)) => format!("to forward data to peer {peer}")
                 };
@@ -491,18 +491,27 @@ impl TestServer {
                     assert_eq!(when, deadline);
                 }
                 (
-                    CreateAllocation(expected_port),
-                    Command::AllocateAddresses {
+                    CreateAllocation(expected_port, expected_family),
+                    Command::CreateAllocation {
                         id,
+                        family: actual_family,
                         port: actual_port,
                     },
                 ) => {
                     self.id_to_port.insert(actual_port, id);
                     assert_eq!(expected_port, actual_port);
+                    assert_eq!(expected_family, actual_family);
                 }
-                (FreeAllocation(port), Command::FreeAddresses { id }) => {
+                (
+                    FreeAllocation(port, family),
+                    Command::FreeAllocation {
+                        id,
+                        family: actual_family,
+                    },
+                ) => {
                     let actual_id = self.id_to_port.remove(&port).expect("to have port in map");
                     assert_eq!(id, actual_id);
+                    assert_eq!(family, actual_family);
                 }
                 (Wake(when), Command::SendMessage { payload, .. }) => {
                     panic!(
@@ -649,8 +658,8 @@ enum Output<'a> {
     SendChannelData((SocketAddr, ChannelData<'a>)),
     Forward((SocketAddr, Vec<u8>, u16)),
     Wake(SystemTime),
-    CreateAllocation(u16),
-    FreeAllocation(u16),
+    CreateAllocation(u16, AddressFamily),
+    FreeAllocation(u16, AddressFamily),
 }
 
 fn send_message<'a>(source: impl Into<SocketAddr>, message: Message<Attribute>) -> Output<'a> {

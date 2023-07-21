@@ -1,4 +1,5 @@
 mod auth;
+mod net_ext;
 mod rfc8656;
 mod server;
 mod sleep;
@@ -9,15 +10,18 @@ mod udp_socket;
 #[cfg(feature = "proptest")]
 pub mod proptest;
 
+pub use net_ext::{IpAddrExt, SocketAddrExt};
+pub use rfc8656::AddressFamily;
 pub use server::{
     Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, Command,
     CreatePermission, Refresh, Server,
 };
 pub use sleep::Sleep;
-use std::net::{Ipv4Addr, Ipv6Addr};
 pub use udp_socket::UdpSocket;
 
 pub(crate) use time_events::TimeEvents;
+
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// Enumerates all possible IP address types, including dual-stack operation of IPv4 and IPv6.
 #[derive(Debug, Copy, Clone)]

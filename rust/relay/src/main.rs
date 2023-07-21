@@ -5,7 +5,7 @@ use futures::{future, FutureExt, SinkExt, StreamExt};
 use phoenix_channel::{Error, Event, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use relay::{AllocationId, Command, Server, Sleep, UdpSocket};
+use relay::{AddressFamily, AllocationId, Command, Server, Sleep, SocketAddrExt, UdpSocket};
 use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -172,7 +172,7 @@ struct Eventloop<R> {
     listen_ip4_address: Ipv4Addr,
     server: Server<R>,
     channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
-    allocations: HashMap<AllocationId, Allocation>,
+    allocations: HashMap<(AllocationId, AddressFamily), Allocation>,
     relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     relay_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr, AllocationId)>,
     sleep: Sleep,
@@ -222,10 +222,14 @@ where
                     Command::SendMessage { payload, recipient } => {
                         self.client_send_buffer.push_back((payload, recipient));
                     }
-                    Command::AllocateAddresses { id, port } => {
+                    Command::CreateAllocation {
+                        id,
+                        family: AddressFamily::V4,
+                        port,
+                    } => {
                         self.allocations.insert(
-                            id,
-                            Allocation::new(
+                            (id, AddressFamily::V4),
+                            Allocation::new_ip4(
                                 self.relay_data_sender.clone(),
                                 id,
                                 self.listen_ip4_address,
@@ -233,8 +237,15 @@ where
                             ),
                         );
                     }
-                    Command::FreeAddresses { id } => {
-                        if self.allocations.remove(&id).is_none() {
+                    Command::CreateAllocation {
+                        id: _,
+                        family: AddressFamily::V6,
+                        port: _,
+                    } => {
+                        todo!("Creating IPv6 allocations is not supported yet")
+                    }
+                    Command::FreeAllocation { id, family } => {
+                        if self.allocations.remove(&(id, family)).is_none() {
                             tracing::debug!("Unknown allocation {id}");
                             continue;
                         };
@@ -270,7 +281,7 @@ where
 
             // Priority 3: Forward data to allocations.
             if let Some((data, receiver, id)) = self.allocation_send_buffer.pop_front() {
-                let Some(allocation) = self.allocations.get_mut(&id) else {
+                let Some(allocation) = self.allocations.get_mut(&(id, receiver.family())) else {
                     tracing::debug!("Unknown allocation {id}");
                     continue;
                 };
@@ -382,7 +393,7 @@ where
 }
 
 impl Allocation {
-    fn new(
+    fn new_ip4(
         relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
         id: AllocationId,
         listen_ip4_addr: Ipv4Addr,
