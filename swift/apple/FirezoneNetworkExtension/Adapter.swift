@@ -123,6 +123,17 @@ public class Adapter {
     }
   }
 
+  public func getDisplayableResourcesIfVersionDifferentFrom(
+    referenceVersionString: String, completionHandler: @escaping (DisplayableResources?) -> Void) {
+      workQueue.async {
+        if referenceVersionString == self.displayableResources.versionString {
+          completionHandler(nil)
+        } else {
+          completionHandler(self.displayableResources)
+        }
+      }
+  }
+
   public func generateNetworkSettings(
     addresses4: [String] = ["100.100.111.2"], addresses6: [String] = ["fd00:0222:2011:1111::2"],
     ipv4Routes: [NEIPv4Route], ipv6Routes: [NEIPv6Route]
