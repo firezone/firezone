@@ -45,6 +45,8 @@ mod ffi {
         NetlinkErrorIo,
         NoIface,
         NoMtu,
+        Panic(String),
+        PanicNonStringPayload,
     }
 
     extern "Rust" {
@@ -116,6 +118,8 @@ impl<'a> From<&'a Error> for ffi::SwiftConnlibError {
             Error::NetlinkErrorIo(_) => Self::NetlinkErrorIo,
             Error::NoIface => Self::NoIface,
             Error::NoMtu => Self::NoMtu,
+            Error::Panic(msg) => Self::Panic(msg.into()),
+            Error::PanicNonStringPayload => Self::PanicNonStringPayload,
         }
     }
 }
