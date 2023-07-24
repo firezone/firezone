@@ -2,16 +2,11 @@
 // Swift bridge generated code triggers this below
 #![allow(improper_ctypes, non_camel_case_types)]
 
-use firezone_client_connlib::{Callbacks, Error, ResourceList, Session, TunnelAddresses};
+use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session, TunnelAddresses};
 use std::{net::Ipv4Addr, sync::Arc};
 
 #[swift_bridge::bridge]
 mod ffi {
-    #[swift_bridge(swift_repr = "struct")]
-    struct ResourceList {
-        resources: String,
-    }
-
     #[swift_bridge(swift_repr = "struct")]
     struct TunnelAddresses {
         address4: String,
@@ -84,7 +79,7 @@ mod ffi {
         fn on_remove_route(&self, route: String);
 
         #[swift_bridge(swift_name = "onUpdateResources")]
-        fn on_update_resources(&self, resourceList: ResourceList);
+        fn on_update_resources(&self, resourceList: String);
 
         #[swift_bridge(swift_name = "onDisconnect")]
         fn on_disconnect(&self, error: SwiftConnlibError);
@@ -127,14 +122,6 @@ impl<'a> From<&'a Error> for ffi::SwiftConnlibError {
 impl From<Error> for ffi::SwiftConnlibError {
     fn from(val: Error) -> Self {
         (&val).into()
-    }
-}
-
-impl From<ResourceList> for ffi::ResourceList {
-    fn from(value: ResourceList) -> Self {
-        Self {
-            resources: value.resources.join(","),
-        }
     }
 }
 
@@ -182,8 +169,11 @@ impl Callbacks for CallbackHandler {
         self.0.on_remove_route(route)
     }
 
-    fn on_update_resources(&self, resource_list: ResourceList) {
-        self.0.on_update_resources(resource_list.into())
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
+        self.0.on_update_resources(
+            serde_json::to_string(&resource_list)
+                .expect("developer error: failed to serialize resource list"),
+        )
     }
 
     fn on_disconnect(&self, error: Option<&Error>) {

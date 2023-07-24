@@ -3,7 +3,7 @@ use clap::Parser;
 use std::{net::Ipv4Addr, str::FromStr};
 
 use firezone_client_connlib::{
-    get_user_agent, Callbacks, Error, ResourceList, Session, TunnelAddresses,
+    get_user_agent, Callbacks, Error, ResourceDescription, Session, TunnelAddresses,
 };
 use url::Url;
 
@@ -21,7 +21,7 @@ impl Callbacks for CallbackHandler {
 
     fn on_remove_route(&self, _route: String) {}
 
-    fn on_update_resources(&self, resource_list: ResourceList) {
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
         tracing::trace!("Resources updated, current list: {resource_list:?}");
     }
 
