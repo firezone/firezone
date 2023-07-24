@@ -9,7 +9,7 @@ use domain::base::{
     Message, MessageBuilder, ToDname,
 };
 use libs_common::{messages::ResourceDescription, Callbacks, DNS_SENTINEL};
-use pnet::packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, PacketSize};
+use pnet_packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, PacketSize};
 
 const DNS_TTL: u32 = 300;
 const UDP_HEADER_SIZE: usize = 8;

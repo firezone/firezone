@@ -1,7 +1,7 @@
 use std::net::IpAddr;
 
 use domain::base::message::Message;
-use pnet::packet::{
+use pnet_packet::{
     ip::{IpNextHeaderProtocol, IpNextHeaderProtocols},
     ipv4::{checksum, Ipv4Packet, MutableIpv4Packet},
     ipv6::{Ipv6Packet, MutableIpv6Packet},
