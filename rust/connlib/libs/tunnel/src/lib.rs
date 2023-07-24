@@ -222,7 +222,7 @@ where
         let resource_list = {
             let mut resources = self.resources.write();
             resources.insert(resource_description);
-            resources.resource_list()?
+            resources.resource_list()
         };
         self.callbacks.on_update_resources(resource_list);
         Ok(())

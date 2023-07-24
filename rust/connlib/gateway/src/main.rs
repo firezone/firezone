@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::{net::Ipv4Addr, str::FromStr};
 
-use firezone_gateway_connlib::{Callbacks, Error, ResourceList, Session, TunnelAddresses};
+use firezone_gateway_connlib::{Callbacks, Error, ResourceDescription, Session, TunnelAddresses};
 use url::Url;
 
 #[derive(Clone)]
@@ -18,7 +18,7 @@ impl Callbacks for CallbackHandler {
 
     fn on_remove_route(&self, _route: String) {}
 
-    fn on_update_resources(&self, resource_list: ResourceList) {
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
         tracing::trace!("Resources updated, current list: {resource_list:?}");
     }
 

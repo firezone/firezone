@@ -13,9 +13,7 @@ pub mod messages;
 pub use error::ConnlibError as Error;
 pub use error::Result;
 
-pub use session::{
-    Callbacks, ControlSession, ResourceList, Session, TunnelAddresses, DNS_SENTINEL,
-};
+pub use session::{Callbacks, ControlSession, Session, TunnelAddresses, DNS_SENTINEL};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
