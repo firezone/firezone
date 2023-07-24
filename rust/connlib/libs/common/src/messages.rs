@@ -90,6 +90,19 @@ impl ResourceDescription {
             ResourceDescription::Cidr(r) => vec![r.address],
         }
     }
+    pub fn ipv4(&self) -> Option<Ipv4Addr> {
+        match self {
+            ResourceDescription::Dns(r) => Some(r.ipv4),
+            ResourceDescription::Cidr(_) => None,
+        }
+    }
+
+    pub fn ipv6(&self) -> Option<Ipv6Addr> {
+        match self {
+            ResourceDescription::Dns(r) => Some(r.ipv6),
+            ResourceDescription::Cidr(_) => None,
+        }
+    }
 
     pub fn id(&self) -> Id {
         match self {
