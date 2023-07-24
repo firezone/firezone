@@ -19,10 +19,10 @@ export default function DocsSidebar() {
       id="docs-sidebar"
       aria-label="Sidebar"
       aria-hidden="true"
-      className="sticky left-0 top-0 flex-none w-64 h-screen pt-20 transition-transform -translate-x-full bg-white border-r border-neutral-200 md:translate-x-0 dark:bg-neutral-800 dark:border-neutral-700"
+      className="sticky left-0 top-0 flex-none w-64 h-screen pt-20 transition-transform -translate-x-full bg-white border-r border-neutral-200 md:translate-x-0  "
     >
       <SearchForm />
-      <div className="mt-5 h-full overflow-y-auto bg-white dark:bg-neutral-800 pr-3">
+      <div className="mt-5 h-full overflow-y-auto bg-white  pr-3">
         <ul className="space-y-2 font-medium">
           <li>
             <Item href="/docs" label="Overview" />
@@ -205,6 +205,9 @@ export default function DocsSidebar() {
               label="Administer"
             >
               <li>
+                <Item href="/docs/administer" label="Overview" />
+              </li>
+              <li>
                 <Item
                   href="/docs/administer/migrate"
                   label="Migrate to Docker"
@@ -242,6 +245,9 @@ export default function DocsSidebar() {
               label="User Guides"
             >
               <li>
+                <Item href="/docs/user-guides" label="Overview" />
+              </li>
+              <li>
                 <Item href="/docs/user-guides/add-users" label="Add Users" />
               </li>
               <li>
@@ -267,6 +273,9 @@ export default function DocsSidebar() {
                   expanded={p.startsWith("/docs/user-guides/use-cases")}
                   label="Common Use Cases"
                 >
+                  <li>
+                    <Item href="/docs/user-guides/use-cases" label="Overview" />
+                  </li>
                   <li>
                     <Item
                       href="/docs/user-guides/use-cases/split-tunnel"

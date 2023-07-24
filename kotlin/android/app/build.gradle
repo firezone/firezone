@@ -62,7 +62,7 @@ dependencies {
     def core_version = "1.9.0"
 
     // Connlib
-    implementation "dev.firezone:connlib:0.1.6"
+    implementation project(path: ':connlib')
 
     // AndroidX
     implementation "androidx.core:core-ktx:$core_version"

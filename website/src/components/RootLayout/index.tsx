@@ -8,11 +8,12 @@ import Script from "next/script";
 import Banner from "@/components/Banner";
 import Providers from "@/components/Providers";
 import Footer from "@/components/Footer";
-import { Source_Sans_Pro } from "next/font/google";
-const source_sans_pro = Source_Sans_Pro({
+import { Public_Sans } from "next/font/google";
+const public_sans = Public_Sans({
   subsets: ["latin"],
-  weight: ["200", "300", "400", "600", "700", "900"],
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
 });
+import { HiArrowLongRight } from "react-icons/hi2";
 
 export default function RootLayout({
   children,
@@ -21,26 +22,31 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <Script
+        src="https://app.termly.io/embed.min.js"
+        data-auto-block="on"
+        data-website-uuid="c4df1a31-22d9-4000-82e6-a86cbec0bba0"
+      ></Script>
       <Providers>
-        <body className={source_sans_pro.className}>
-          <div className="h-auto antialiased">
+        <body className={public_sans.className}>
+          <div className="min-h-screen h-auto antialiased">
             <RootNavbar />
-            <Banner active={false}>
-              <p className="text-md font-medium text-center w-full text-neutral-200 dark:text-neutral-800">
-                <strong>Firezone 1.0 is coming!</strong> Rebuilt from the ground
-                up with a cloud dashboard, native clients, and more.{" "}
+            <Banner active>
+              <p className="text-md font-medium tracking-tight text-center w-full text-neutral-50">
+                Announcing{" "}
                 <Link
-                  href="/blog/announcing-1.0"
-                  className="underline text-accent-500 dark:text-accent-800 hover:no-underline"
+                  href="/blog/firezone-1-0"
+                  className="underline text-accent-500  hover:no-underline"
                 >
-                  Read the blogpost
-                </Link>{" "}
-                or{" "}
+                  Firezone 1.0
+                </Link>
+                : cloud, clients, and more.{" "}
                 <Link
                   href="/product/early-access"
-                  className="text-accent-500 dark:text-accent-800 underline hover:no-underline"
+                  className="group text-accent-500 items-center inline-flex underline hover:no-underline"
                 >
-                  request early access.
+                  Request early access
+                  <HiArrowLongRight className="group-hover:translate-x-0.5 group-hover:scale-105 duration-100 transform transition ml-1 w-5 h-5" />
                 </Link>
               </p>
             </Banner>
