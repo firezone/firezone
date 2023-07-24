@@ -23,7 +23,7 @@ public final class SettingsViewModel: ObservableObject {
     }
   }
 
-  func saveButtonTapped() {
+  func save() {
     settingsClient.saveSettings(settings)
     onSettingsSaved()
   }
@@ -31,6 +31,7 @@ public final class SettingsViewModel: ObservableObject {
 
 public struct SettingsView: View {
   @ObservedObject var model: SettingsViewModel
+  @Environment(\.dismiss) var dismiss
 
   public init(model: SettingsViewModel) {
     self.model = model
@@ -76,11 +77,18 @@ public struct SettingsView: View {
     .navigationTitle("Settings")
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
-        Button("Save") {
-          model.saveButtonTapped()
+        #if os(macOS)
+        Button("Done") {
+          self.doneButtonTapped()
         }
+        #endif
       }
     }
+  }
+
+  func doneButtonTapped() {
+    model.save()
+    dismiss()
   }
 }
 
@@ -104,10 +112,15 @@ struct FormTextField: View {
           .keyboardType(.URL)
       }
     #else
-      TextField(title, text: text, prompt: Text(placeholder))
-        .autocorrectionDisabled()
-        .multilineTextAlignment(.trailing)
-        .foregroundColor(.secondary)
+    HStack(spacing: 30) {
+        Spacer()
+        TextField(title, text: text, prompt: Text(placeholder))
+          .autocorrectionDisabled()
+          .multilineTextAlignment(.trailing)
+          .foregroundColor(.secondary)
+          .frame(maxWidth: 360)
+        Spacer()
+      }
     #endif
   }
 }

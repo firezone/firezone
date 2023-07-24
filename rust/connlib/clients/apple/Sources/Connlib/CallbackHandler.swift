@@ -16,10 +16,13 @@ extension SwiftConnlibError: @unchecked Sendable {}
 extension SwiftConnlibError: Error {}
 
 public protocol CallbackHandlerDelegate: AnyObject {
-  func onConnect(tunnelAddressIPv4: String, tunnelAddressIPv6: String)
+  func onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String)
+  func onTunnelReady()
+  func onAddRoute(_: String)
+  func onRemoveRoute(_: String)
   func onUpdateResources(resourceList: String)
-  func onDisconnect()
-  func onError(error: Error, isRecoverable: Bool)
+  func onDisconnect(error: Error)
+  func onError(error: Error)
 }
 
 public class CallbackHandler {
@@ -28,22 +31,26 @@ public class CallbackHandler {
 
   func onSetInterfaceConfig(tunnelAddresses: TunnelAddresses, dnsAddress: RustString) {
     logger.debug("CallbackHandler.onSetInterfaceConfig: IPv4: \(tunnelAddresses.address4.toString(), privacy: .public), IPv6: \(tunnelAddresses.address6.toString(), privacy: .public), DNS: \(dnsAddress.toString(), privacy: .public)")
-    // Unimplemented
+    delegate?.onSetInterfaceConfig(
+      tunnelAddressIPv4: tunnelAddresses.address4.toString(),
+      tunnelAddressIPv6: tunnelAddresses.address6.toString(),
+      dnsAddress: dnsAddress.toString()
+    )
   }
 
   func onTunnelReady() {
     logger.debug("CallbackHandler.onTunnelReady")
-    // Unimplemented
+    delegate?.onTunnelReady()
   }
 
   func onAddRoute(route: RustString) {
     logger.debug("CallbackHandler.onAddRoute: \(route.toString(), privacy: .public)")
-    // Unimplemented
+    delegate?.onAddRoute(route.toString())
   }
 
   func onRemoveRoute(route: RustString) {
     logger.debug("CallbackHandler.onRemoveRoute: \(route.toString(), privacy: .public)")
-    // Unimplemented
+    delegate?.onRemoveRoute(route.toString())
   }
 
   func onUpdateResources(resourceList: ResourceList) {
@@ -54,11 +61,11 @@ public class CallbackHandler {
   func onDisconnect(error: SwiftConnlibError) {
     logger.debug("CallbackHandler.onDisconnect: \(error, privacy: .public)")
     // TODO: convert `error` to `Optional` by checking for `None` case
-    delegate?.onDisconnect()
+    delegate?.onDisconnect(error: error)
   }
 
   func onError(error: SwiftConnlibError) {
     logger.debug("CallbackHandler.onError: \(error, privacy: .public)")
-    delegate?.onError(error: error, isRecoverable: true)
+    delegate?.onError(error: error)
   }
 }

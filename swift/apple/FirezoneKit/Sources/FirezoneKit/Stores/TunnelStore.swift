@@ -11,7 +11,6 @@ import OSLog
 
 // TODO: Can this file be removed since we're managing the tunnel in connlib?
 
-@MainActor
 final class TunnelStore: ObservableObject {
   private static let logger = Logger.make(for: TunnelStore.self)
 
@@ -25,6 +24,12 @@ final class TunnelStore: ObservableObject {
 
   @Published private(set) var isEnabled = false {
     didSet { TunnelStore.logger.info("isEnabled changed: \(self.isEnabled.description)") }
+  }
+
+  @Published private(set) var resources = DisplayableResources()
+
+  private var resourcesTimer: Timer? {
+    didSet(oldValue) { oldValue?.invalidate() }
   }
 
   private var tunnelObservingTasks: [Task<Void, Never>] = []
@@ -69,6 +74,37 @@ final class TunnelStore: ObservableObject {
     TunnelStore.logger.trace("\(#function)")
     let session = tunnel.connection as! NETunnelProviderSession
     session.stopTunnel()
+  }
+
+  func beginUpdatingResources() {
+    self.updateResources()
+    let timer = Timer(timeInterval: 1 /*second*/, repeats: true) { [weak self] _ in
+      guard let self = self else { return }
+      guard self.status == .connected else { return }
+      self.updateResources()
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    self.resourcesTimer = timer
+  }
+
+  func endUpdatingResources() {
+    self.resourcesTimer = nil
+  }
+
+  private func updateResources() {
+    let session = tunnel.connection as! NETunnelProviderSession
+    let resourcesQuery = resources.versionStringToData()
+    do {
+      try session.sendProviderMessage(resourcesQuery) { [weak self] reply in
+        if let reply = reply { // If reply is nil, then the resources have not changed
+          if let updatedResources = DisplayableResources(from: reply) {
+            self?.resources = updatedResources
+          }
+        }
+      }
+    } catch {
+      TunnelStore.logger.error("Error: sendProviderMessage: \(error)")
+    }
   }
 
   private static func makeManager() -> NETunnelProviderManager {

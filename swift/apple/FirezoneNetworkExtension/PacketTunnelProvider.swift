@@ -69,4 +69,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       exit(0)
     #endif
   }
+
+  override func handleAppMessage(_ messageData: Data, completionHandler: ((Data?) -> Void)? = nil) {
+    let query = String(data: messageData, encoding: .utf8) ?? ""
+    adapter.getDisplayableResourcesIfVersionDifferentFrom(referenceVersionString: query) { displayableResources in
+      completionHandler?(displayableResources?.toData())
+    }
+  }
 }
