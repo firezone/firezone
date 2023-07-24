@@ -676,6 +676,7 @@ dependencies = [
  "diva",
  "firezone-client-connlib",
  "libc",
+ "serde_json",
  "swift-bridge",
  "swift-bridge-build",
  "walkdir",

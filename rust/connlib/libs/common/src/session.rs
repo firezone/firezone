@@ -50,12 +50,6 @@ pub struct Session<T, U, V, R, M, CB: Callbacks> {
     _phantom: PhantomData<(T, U, V, R, M)>,
 }
 
-/// Resource list that will be displayed to the users.
-#[derive(Debug)]
-pub struct ResourceList {
-    pub resources: Vec<String>,
-}
-
 /// Tunnel addresses to be surfaced to the client apps.
 #[derive(Debug)]
 pub struct TunnelAddresses {
@@ -76,7 +70,7 @@ pub trait Callbacks: Clone + Send + Sync {
     /// Called when when a route is removed.
     fn on_remove_route(&self, route: String);
     /// Called when the resource list changes.
-    fn on_update_resources(&self, resource_list: ResourceList);
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>);
     /// Called when the tunnel is disconnected.
     ///
     /// If the tunnel disconnected due to a fatal error, `error` is the error
@@ -272,14 +266,12 @@ where
             for resource in &resources {
                 callbacks.on_add_route(serde_json::to_string(&resource.address).unwrap());
             }
-            callbacks.on_update_resources(ResourceList {
-                resources: resources
+            callbacks.on_update_resources(
+                resources
                     .into_iter()
-                    .map(|resource| {
-                        serde_json::to_string(&ResourceDescription::Cidr(resource)).unwrap()
-                    })
+                    .map(ResourceDescription::Cidr)
                     .collect(),
-            });
+            );
         });
     }
 

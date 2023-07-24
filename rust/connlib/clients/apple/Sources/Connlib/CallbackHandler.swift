@@ -53,9 +53,9 @@ public class CallbackHandler {
     delegate?.onRemoveRoute(route.toString())
   }
 
-  func onUpdateResources(resourceList: ResourceList) {
-    logger.debug("CallbackHandler.onUpdateResources: \(resourceList.resources.toString(), privacy: .public)")
-    delegate?.onUpdateResources(resourceList: resourceList.resources.toString())
+  func onUpdateResources(resourceList: RustString) {
+    logger.debug("CallbackHandler.onUpdateResources: \(resourceList.toString(), privacy: .public)")
+    delegate?.onUpdateResources(resourceList: resourceList.toString())
   }
 
   func onDisconnect(error: SwiftConnlibError) {

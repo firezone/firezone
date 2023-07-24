@@ -3,7 +3,7 @@
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
 
-use firezone_client_connlib::{Callbacks, Error, ResourceList, Session, TunnelAddresses};
+use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session, TunnelAddresses};
 use jni::{
     objects::{JClass, JObject, JString, JValue},
     JNIEnv,
@@ -45,7 +45,7 @@ impl Callbacks for CallbackHandler {
         todo!()
     }
 
-    fn on_update_resources(&self, _resource_list: ResourceList) {
+    fn on_update_resources(&self, _resource_list: Vec<ResourceDescription>) {
         todo!()
     }
 

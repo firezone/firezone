@@ -2,10 +2,7 @@
 use std::{collections::HashMap, net::IpAddr, ptr::NonNull};
 
 use ip_network_table::IpNetworkTable;
-use libs_common::{
-    messages::{Id, ResourceDescription},
-    ResourceList,
-};
+use libs_common::messages::{Id, ResourceDescription};
 
 // Oh boy... here we go
 /// The resource table type
@@ -160,11 +157,7 @@ impl ResourceTable {
         }
     }
 
-    pub fn resource_list(&self) -> Result<ResourceList, serde_json::Error> {
-        self.id_table
-            .values()
-            .map(serde_json::to_string)
-            .collect::<Result<_, _>>()
-            .map(|resources| ResourceList { resources })
+    pub fn resource_list(&self) -> Vec<ResourceDescription> {
+        self.id_table.values().cloned().collect()
     }
 }
