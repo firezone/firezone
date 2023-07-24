@@ -68,7 +68,7 @@ defmodule Web.ResourcesLive.New do
                   value="none"
                   checked={true}
                 />
-                <.label for="traffic-filter-option-1" class="ml-4 mt-2">
+                <.label for="filter-all" class="ml-4 mt-2">
                   Permit all
                 </.label>
               </div>
@@ -79,7 +79,7 @@ defmodule Web.ResourcesLive.New do
                   value="icmp"
                   checked={false}
                 />
-                <.label for="traffic-filter-option-2" class="ml-4 mt-2">
+                <.label for="filter-icmp" class="ml-4 mt-2">
                   ICMP
                 </.label>
               </div>
@@ -90,7 +90,7 @@ defmodule Web.ResourcesLive.New do
                   value="tcp"
                   checked={false}
                 />
-                <.label for="traffic-filter-option-3" class="ml-4 mr-4 mt-2">
+                <.label for="filter-tcp" class="ml-4 mr-4 mt-2">
                   TCP
                 </.label>
                 <.input
@@ -108,7 +108,7 @@ defmodule Web.ResourcesLive.New do
                   value="udp"
                   checked={false}
                 />
-                <.label for="traffic-filter-option-4" class="ml-4 mr-4 mt-2">
+                <.label for="filter-udp" class="ml-4 mr-4 mt-2">
                   UDP
                 </.label>
                 <.input placeholder="Enter port range(s)" id="udp-port" name="udp-port" value="" />
