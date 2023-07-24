@@ -400,6 +400,15 @@ defmodule Domain.GatewaysTest do
                 {:unauthorized,
                  [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
     end
+
+    # TODO: add a test that soft-deleted assocs are not preloaded
+    test "associations are preloaded when opts given", %{account: account, subject: subject} do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+      {:ok, gateway} = fetch_gateway_by_id(gateway.id, subject, preload: [:group, :account])
+
+      assert Ecto.assoc_loaded?(gateway.group) == true
+      assert Ecto.assoc_loaded?(gateway.account) == true
+    end
   end
 
   describe "list_gateways/1" do
@@ -437,6 +446,18 @@ defmodule Domain.GatewaysTest do
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+    end
+
+    # TODO: add a test that soft-deleted assocs are not preloaded
+    test "associations are preloaded when opts given", %{account: account, subject: subject} do
+      GatewaysFixtures.create_gateway(account: account)
+      GatewaysFixtures.create_gateway(account: account)
+
+      {:ok, gateways} = list_gateways(subject, preload: [:group, :account])
+      assert length(gateways) == 2
+
+      assert Enum.all?(gateways, fn g -> Ecto.assoc_loaded?(g.group) end) == true
+      assert Enum.all?(gateways, fn g -> Ecto.assoc_loaded?(g.account) end) == true
     end
   end
 

@@ -1,11 +1,12 @@
 import Link from "next/link";
 import Image from "next/image";
+import ConsentPreferences from "@/components/ConsentPreferences";
 
 import { LinkedInIcon, GitHubIcon, TwitterIcon } from "@/components/Icons";
 
 export default function Footer() {
   return (
-    <footer className="relative bg-white dark:bg-neutral-900 border-t">
+    <footer className="relative bg-white border-t">
       <div className="mx-auto w-full max-w-screen-xl p-4 py-6 lg:py-8">
         <div className="md:flex md:justify-between">
           <div className="mb-6 md:mb-0">
@@ -21,10 +22,10 @@ export default function Footer() {
           </div>
           <div className="grid grid-cols-2 gap-8 sm:gap-6 sm:grid-cols-3">
             <div>
-              <h2 className="mb-6 text-sm font-semibold text-neutral-900 uppercase dark:text-white">
+              <h2 className="mb-6 text-sm font-semibold text-neutral-900 uppercase ">
                 Company
               </h2>
-              <ul className="text-neutral-800 dark:text-neutral-100 font-medium">
+              <ul className="text-neutral-900  font-medium">
                 <li className="mb-4">
                   <Link href="/" className="hover:underline">
                     Home
@@ -51,10 +52,10 @@ export default function Footer() {
               </ul>
             </div>
             <div>
-              <h2 className="mb-6 text-sm font-semibold text-neutral-900 uppercase dark:text-white">
+              <h2 className="mb-6 text-sm font-semibold text-neutral-900 uppercase ">
                 Resources
               </h2>
-              <ul className="text-neutral-800 dark:text-neutral-100 font-medium">
+              <ul className="text-neutral-900  font-medium">
                 <li className="mb-4">
                   <Link
                     href="/docs"
@@ -98,10 +99,10 @@ export default function Footer() {
               </ul>
             </div>
             <div>
-              <h2 className="mb-6 text-sm font-semibold text-neutral-900 uppercase dark:text-white">
+              <h2 className="mb-6 text-sm font-semibold text-neutral-900 uppercase ">
                 Community
               </h2>
-              <ul className="text-neutral-800 dark:text-neutral-100 font-medium">
+              <ul className="text-neutral-900  font-medium">
                 <li className="mb-4">
                   <Link
                     href="https://discourse.firez.one"
@@ -146,14 +147,34 @@ export default function Footer() {
             </div>
           </div>
         </div>
-        <hr className="my-6 border-neutral-200 sm:mx-auto dark:border-neutral-700 lg:my-8" />
+        <div className="sm:flex sm:items-center sm:justify-start mt-4">
+          <span className="text-xs">
+            WireGuard® is a registered trademark of Jason A. Donenfeld.
+          </span>
+        </div>
+        <hr className="mt-2 mb-6 border-neutral-200 sm:mx-auto lg:mb-8 lg:mt-4" />
         <div className="sm:flex sm:items-center sm:justify-between">
-          <span className="text-sm text-neutral-800 sm:text-center dark:text-neutral-100">
+          <span className="text-xs text-neutral-900 sm:text-center ">
             © 2023{" "}
             <Link href="/" className="hover:underline">
               Firezone, Inc.
             </Link>{" "}
-            All Rights Reserved.
+            <Link href="/privacy-policy" className="hover:underline">
+              privacy
+            </Link>
+            {" | "}
+            <Link href="/terms" className="hover:underline">
+              terms
+            </Link>
+            {" | "}
+            <ConsentPreferences />
+            {" | "}
+            <Link
+              href="https://app.termly.io/notify/1aa082a3-aba1-4169-b69b-c1d1b42b7a48"
+              className="hover:underline"
+            >
+              do not sell or share my personal information
+            </Link>
           </span>
           <div className="flex mt-4 space-x-6 sm:justify-center sm:mt-0">
             <TwitterIcon url="https://twitter.com/firezonehq" />

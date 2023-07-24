@@ -1,32 +1,33 @@
 use anyhow::{Context, Result};
-use std::str::FromStr;
+use std::{net::Ipv4Addr, str::FromStr};
 
-use firezone_gateway_connlib::{
-    Callbacks, Error, ErrorType, ResourceList, Session, TunnelAddresses,
-};
+use firezone_gateway_connlib::{Callbacks, Error, ResourceList, Session, TunnelAddresses};
 use url::Url;
 
 #[derive(Clone)]
 pub struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
+    fn on_set_interface_config(&self, _tunnel_addresses: TunnelAddresses, _dns_address: Ipv4Addr) {}
+
+    fn on_tunnel_ready(&self) {
+        tracing::trace!("Tunnel connected with address");
+    }
+
+    fn on_add_route(&self, _route: String) {}
+
+    fn on_remove_route(&self, _route: String) {}
+
     fn on_update_resources(&self, resource_list: ResourceList) {
         tracing::trace!("Resources updated, current list: {resource_list:?}");
     }
 
-    fn on_connect(&self, tunnel_addresses: TunnelAddresses) {
-        tracing::trace!("Tunnel connected with address: {tunnel_addresses:?}");
+    fn on_disconnect(&self, error: Option<&Error>) {
+        tracing::trace!("Tunnel disconnected: {error:?}");
     }
 
-    fn on_disconnect(&self) {
-        tracing::trace!("Tunnel disconnected");
-    }
-
-    fn on_error(&self, error: &Error, error_type: ErrorType) {
-        match error_type {
-            ErrorType::Recoverable => tracing::warn!("Encountered error: {error}"),
-            ErrorType::Fatal => panic!("Encountered fatal error: {error}"),
-        }
+    fn on_error(&self, error: &Error) {
+        tracing::warn!("Encountered recoverable error: {error}");
     }
 }
 
@@ -40,7 +41,7 @@ fn main() -> Result<()> {
     let secret = parse_env_var::<String>(SECRET_ENV_VAR)?;
     let mut session = Session::connect(url, secret, CallbackHandler).unwrap();
     session.wait_for_ctrl_c().unwrap();
-    session.disconnect();
+    session.disconnect(None);
     Ok(())
 }
 

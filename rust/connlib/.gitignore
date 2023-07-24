@@ -161,6 +161,9 @@ fabric.properties
 
 !clients/android/gradle/wrapper/gradle-wrapper.jar
 
+### JNI
+jniLibs/
+
 ### Apple ###
 .build/
 DerivedData/

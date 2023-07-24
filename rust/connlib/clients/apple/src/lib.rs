@@ -2,10 +2,8 @@
 // Swift bridge generated code triggers this below
 #![allow(improper_ctypes, non_camel_case_types)]
 
-use firezone_client_connlib::{
-    Callbacks, Error, ErrorType, ResourceList, Session, TunnelAddresses,
-};
-use std::sync::Arc;
+use firezone_client_connlib::{Callbacks, Error, ResourceList, Session, TunnelAddresses};
+use std::{net::Ipv4Addr, sync::Arc};
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -23,6 +21,9 @@ mod ffi {
     // TODO: Duplicating these enum variants from `libs/common/src/error.rs` is
     // brittle/noisy/tedious
     enum SwiftConnlibError {
+        // `swift-bridge` doesn't seem to support `Option` for Swift function
+        // arguments...
+        None,
         Io,
         Base64DecodeError,
         Base64DecodeSliceError,
@@ -44,11 +45,6 @@ mod ffi {
         NetlinkErrorIo,
         NoIface,
         NoMtu,
-    }
-
-    enum SwiftErrorType {
-        Recoverable,
-        Fatal,
     }
 
     extern "Rust" {
@@ -73,17 +69,26 @@ mod ffi {
     extern "Swift" {
         type CallbackHandler;
 
+        #[swift_bridge(swift_name = "onSetInterfaceConfig")]
+        fn on_set_interface_config(&self, tunnelAddresses: TunnelAddresses, dnsAddress: String);
+
+        #[swift_bridge(swift_name = "onTunnelReady")]
+        fn on_tunnel_ready(&self);
+
+        #[swift_bridge(swift_name = "onAddRoute")]
+        fn on_add_route(&self, route: String);
+
+        #[swift_bridge(swift_name = "onRemoveRoute")]
+        fn on_remove_route(&self, route: String);
+
         #[swift_bridge(swift_name = "onUpdateResources")]
         fn on_update_resources(&self, resourceList: ResourceList);
 
-        #[swift_bridge(swift_name = "onConnect")]
-        fn on_connect(&self, tunnelAddresses: TunnelAddresses);
-
         #[swift_bridge(swift_name = "onDisconnect")]
-        fn on_disconnect(&self);
+        fn on_disconnect(&self, error: SwiftConnlibError);
 
         #[swift_bridge(swift_name = "onError")]
-        fn on_error(&self, error: SwiftConnlibError, error_type: SwiftErrorType);
+        fn on_error(&self, error: SwiftConnlibError);
     }
 }
 
@@ -118,15 +123,6 @@ impl<'a> From<&'a Error> for ffi::SwiftConnlibError {
 impl From<Error> for ffi::SwiftConnlibError {
     fn from(val: Error) -> Self {
         (&val).into()
-    }
-}
-
-impl From<ErrorType> for ffi::SwiftErrorType {
-    fn from(val: ErrorType) -> Self {
-        match val {
-            ErrorType::Recoverable => Self::Recoverable,
-            ErrorType::Fatal => Self::Fatal,
-        }
     }
 }
 
@@ -165,20 +161,37 @@ unsafe impl Sync for ffi::CallbackHandler {}
 pub struct CallbackHandler(Arc<ffi::CallbackHandler>);
 
 impl Callbacks for CallbackHandler {
+    fn on_set_interface_config(&self, tunnel_addresses: TunnelAddresses, dns_address: Ipv4Addr) {
+        self.0
+            .on_set_interface_config(tunnel_addresses.into(), dns_address.to_string())
+    }
+
+    fn on_tunnel_ready(&self) {
+        self.0.on_tunnel_ready()
+    }
+
+    fn on_add_route(&self, route: String) {
+        self.0.on_add_route(route)
+    }
+
+    fn on_remove_route(&self, route: String) {
+        self.0.on_remove_route(route)
+    }
+
     fn on_update_resources(&self, resource_list: ResourceList) {
         self.0.on_update_resources(resource_list.into())
     }
 
-    fn on_connect(&self, tunnel_addresses: TunnelAddresses) {
-        self.0.on_connect(tunnel_addresses.into())
+    fn on_disconnect(&self, error: Option<&Error>) {
+        self.0.on_disconnect(
+            error
+                .map(Into::into)
+                .unwrap_or(ffi::SwiftConnlibError::None),
+        )
     }
 
-    fn on_disconnect(&self) {
-        self.0.on_disconnect()
-    }
-
-    fn on_error(&self, error: &Error, error_type: ErrorType) {
-        self.0.on_error(error.into(), error_type.into())
+    fn on_error(&self, error: &Error) {
+        self.0.on_error(error.into())
     }
 }
 
@@ -208,6 +221,6 @@ impl WrappedSession {
     }
 
     fn disconnect(&mut self) -> bool {
-        self.session.disconnect()
+        self.session.disconnect(None)
     }
 }

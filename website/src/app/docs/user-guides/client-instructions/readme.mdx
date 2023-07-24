@@ -32,7 +32,8 @@ To self generate a device config file, visit the domain provided by your
 Firezone administrator. This URL will be specific to your company (in this
 example it is `https://firezone.example.com`)
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="firezone okta sso login"
   src="/images/firezone-okta-sso-login.gif"
   width={960}
@@ -44,7 +45,8 @@ example it is `https://firezone.example.com`)
 Open the WireGuard client and import the `.conf` file. Activate the VPN session
 by toggling the `Activate` switch.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="activate tunnel"
   src="/images/activate-tunnel.gif"
   width={960}
@@ -63,7 +65,8 @@ session, follow the steps below. You will need:
 
 ### Step 1: Deactivate VPN session
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="wireguard deactivate"
   src="/images/wireguard-deactivate.png"
   width={960}
@@ -76,7 +79,8 @@ Visit the URL of your Firezone portal and sign in using credentials provided by
 your network admin. If you are already logged into the portal, click the
 `Reauthenticate` button, then sign in again.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="re-authenticate"
   width={960}
   height={540}
@@ -85,7 +89,8 @@ your network admin. If you are already logged into the portal, click the
 
 ### Step 3: Activate VPN session
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="activate session"
   src="/images/activate-session.png"
   width={960}
@@ -97,15 +102,16 @@ your network admin. If you are already logged into the portal, click the
 The following steps can be used on Linux devices to import the WireGuard
 configuration profile using Network Manager CLI (`nmcli`).
 
-<Alert color="info">
+<Alert
+  color="info"
+  html={`
 Importing the configuration file using the Network Manager GUI may fail
 with the following error if the profile has IPv6 support enabled:
-
-```
+<code>
 ipv6.method: method "auto" is not supported for WireGuard
-```
-
-</Alert>
+</code>
+`}
+/>
 
 ### Step 1: Install the WireGuard tools
 
@@ -142,7 +148,8 @@ To self generate a device config file, visit the domain provided by your
 Firezone administrator. This URL will be specific to your company (in this
 example it is `https://firezone.example.com`)
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="firezone okta sso login"
   src="/images/firezone-sso-okta-login.gif"
   width={960}
@@ -157,15 +164,16 @@ Using `nmcli`, import the downloaded configuration file:
 sudo nmcli connection import type wireguard file /path/to/configuration.conf
 ```
 
-<Alert color="info">
+<Alert
+  color="info"
+  html={`
 The WireGuard connection/interface will match the name of the
 configuration file. If required, the connection can be renamed after import:
-
-```bash
+<code>
 nmcli connection modify [old name] connection.id [new name]
-```
-
-</Alert>
+</code>
+`}
+/>
 
 ### Step 4: Connect/disconnect
 
