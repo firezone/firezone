@@ -4,7 +4,7 @@ defmodule Web.ResourcesLive.Edit do
   alias Domain.Gateways
   alias Domain.Resources
 
-  def enabled_filters(filters) do
+  def filter_states(filters) do
     accumulator = %{all: false, icmp: false, tcp: false, udp: false}
 
     Enum.reduce(filters, accumulator, fn f, acc ->
@@ -29,7 +29,7 @@ defmodule Web.ResourcesLive.Edit do
 
     socket =
       assign(socket,
-        filter_types: enabled_filters(resource.filters),
+        filter_states: filter_states(resource.filters),
         gateway_groups: gateway_groups,
         resource: resource
       )
@@ -98,10 +98,10 @@ defmodule Web.ResourcesLive.Edit do
               </h3>
               <div class="h-12 flex items-center mb-4">
                 <.checkbox
-                  id="traffic-filter-option-1"
+                  id="filter-all"
                   name="traffic-filter"
                   value="none"
-                  checked={@filter_types[:all]}
+                  checked={@filter_states[:all]}
                 />
                 <.label for="filter-all" class="ml-4 mt-2">
                   Permit all
@@ -109,10 +109,10 @@ defmodule Web.ResourcesLive.Edit do
               </div>
               <div class="h-12 flex items-center mb-4">
                 <.checkbox
-                  id="traffic-filter-option-2"
+                  id="filter-icmp"
                   name="traffic-filter"
                   value="icmp"
-                  checked={@filter_types[:icmp]}
+                  checked={@filter_states[:icmp]}
                 />
                 <.label for="filter-icmp" class="ml-4 mt-2">
                   ICMP
@@ -120,10 +120,10 @@ defmodule Web.ResourcesLive.Edit do
               </div>
               <div class="h-12 flex items-center mb-4">
                 <.checkbox
-                  id="traffic-filter-option-3"
+                  id="filter-tcp"
                   name="traffic-filter"
                   value="tcp"
-                  checked={@filter_types[:tcp]}
+                  checked={@filter_states[:tcp]}
                 />
                 <.label for="filter-tcp" class="ml-4 mr-4 mt-2">
                   TCP
@@ -141,7 +141,7 @@ defmodule Web.ResourcesLive.Edit do
                   id="filter-udp"
                   name="traffic-filter"
                   value="udp"
-                  checked={@filter_types[:udp]}
+                  checked={@filter_states[:udp]}
                 />
                 <.label for="filter-udp" class="ml-4 mr-4 mt-2">
                   UDP
@@ -163,7 +163,7 @@ defmodule Web.ResourcesLive.Edit do
                 <.table id="gateway_groups" rows={@gateway_groups}>
                   <:col :let={gateway_group}>
                     <.checkbox
-                      name="gateway_groups[]"
+                      name="gateway_group"
                       value={gateway_group.id}
                       checked={Enum.member?(@resource.gateway_groups, gateway_group)}
                     />

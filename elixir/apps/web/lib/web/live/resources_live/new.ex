@@ -63,7 +63,7 @@ defmodule Web.ResourcesLive.New do
               </h3>
               <div class="h-12 flex items-center mb-4">
                 <.checkbox
-                  id="traffic-filter-option-1"
+                  id="filter-all"
                   name="traffic-filter"
                   value="none"
                   checked={true}
@@ -74,7 +74,7 @@ defmodule Web.ResourcesLive.New do
               </div>
               <div class="h-12 flex items-center mb-4">
                 <.checkbox
-                  id="traffic-filter-option-2"
+                  id="filter-icmp"
                   name="traffic-filter"
                   value="icmp"
                   checked={false}
@@ -85,7 +85,7 @@ defmodule Web.ResourcesLive.New do
               </div>
               <div class="h-12 flex items-center mb-4">
                 <.checkbox
-                  id="traffic-filter-option-3"
+                  id="filter-tcp"
                   name="traffic-filter"
                   value="tcp"
                   checked={false}
@@ -103,7 +103,7 @@ defmodule Web.ResourcesLive.New do
               </div>
               <div class="h-12 flex items-center">
                 <.checkbox
-                  id="traffic-filter-option-4"
+                  id="filter-udp"
                   name="traffic-filter"
                   value="udp"
                   checked={false}
@@ -122,7 +122,7 @@ defmodule Web.ResourcesLive.New do
               <div class="rounded-lg relative overflow-x-auto">
                 <.table id="gateway_groups" rows={@gateway_groups}>
                   <:col :let={gateway_group}>
-                    <.checkbox name="gateway_groups[]" value={gateway_group.id} />
+                    <.checkbox name="gateway_group" value={gateway_group.id} />
                   </:col>
                   <:col :let={gateway_group} label="NAME">
                     <%= gateway_group.name_prefix %>

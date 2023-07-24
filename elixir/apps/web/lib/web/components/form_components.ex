@@ -152,20 +152,11 @@ defmodule Web.FormComponents do
     """
   end
 
-  attr :id, :string, default: nil
-  attr :name, :string, default: nil
-  attr :value, :string, default: nil
-  attr :checked, :boolean, default: false
+  attr :rest, :global
 
   def checkbox(assigns) do
     ~H"""
-    <input
-      type="checkbox"
-      name={@name}
-      value={@value}
-      checked={@checked}
-      class="rounded text-blue-600 border-zinc-300 focus:ring-0"
-    />
+    <input type="checkbox" class="rounded text-blue-600 border-zinc-300 focus:ring-0" {@rest} />
     """
   end
 
