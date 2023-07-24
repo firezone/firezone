@@ -77,6 +77,12 @@ pub enum ConnlibError {
     /// No MTU found
     #[error("No MTU found")]
     NoMtu,
+    /// A panic occurred.
+    #[error("Panicked: {0}")]
+    Panic(String),
+    /// A panic occurred with a non-string payload.
+    #[error("Panicked with a non-string payload")]
+    PanicNonStringPayload,
 }
 
 #[cfg(target_os = "linux")]

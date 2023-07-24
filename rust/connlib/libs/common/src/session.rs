@@ -149,6 +149,21 @@ where
             _phantom: PhantomData,
         };
 
+        {
+            let runtime_disconnector = Arc::clone(&this.runtime);
+            let callbacks = this.callbacks.clone();
+            let default_panic_hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                let err = info
+                    .payload()
+                    .downcast_ref::<&str>()
+                    .map(|s| Error::Panic(s.to_string()))
+                    .unwrap_or(Error::PanicNonStringPayload);
+                Self::disconnect_inner(&runtime_disconnector, &callbacks, Some(err));
+                default_panic_hook(info);
+            }));
+        }
+
         if cfg!(feature = "mock") {
             Self::connect_mock(this.callbacks.clone());
         } else {
