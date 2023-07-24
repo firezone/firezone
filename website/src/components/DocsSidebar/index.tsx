@@ -205,6 +205,9 @@ export default function DocsSidebar() {
               label="Administer"
             >
               <li>
+                <Item href="/docs/administer" label="Overview" />
+              </li>
+              <li>
                 <Item
                   href="/docs/administer/migrate"
                   label="Migrate to Docker"
@@ -242,6 +245,9 @@ export default function DocsSidebar() {
               label="User Guides"
             >
               <li>
+                <Item href="/docs/user-guides" label="Overview" />
+              </li>
+              <li>
                 <Item href="/docs/user-guides/add-users" label="Add Users" />
               </li>
               <li>
@@ -267,6 +273,9 @@ export default function DocsSidebar() {
                   expanded={p.startsWith("/docs/user-guides/use-cases")}
                   label="Common Use Cases"
                 >
+                  <li>
+                    <Item href="/docs/user-guides/use-cases" label="Overview" />
+                  </li>
                   <li>
                     <Item
                       href="/docs/user-guides/use-cases/split-tunnel"
