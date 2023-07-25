@@ -19,7 +19,7 @@ defmodule Web.ResourcesLive.Show do
       :all ->
         "All Traffic Allowed"
 
-      :icpm ->
+      :icmp ->
         "ICPM: Allowed"
 
       :tcp ->
