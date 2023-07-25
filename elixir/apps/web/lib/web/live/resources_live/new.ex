@@ -62,34 +62,19 @@ defmodule Web.ResourcesLive.New do
                 Traffic Restriction
               </h3>
               <div class="h-12 flex items-center mb-4">
-                <.checkbox
-                  id="filter-all"
-                  name="traffic-filter"
-                  value="none"
-                  checked={true}
-                />
+                <.checkbox id="filter-all" name="traffic-filter" value="none" checked={true} />
                 <.label for="filter-all" class="ml-4 mt-2">
                   Permit all
                 </.label>
               </div>
               <div class="h-12 flex items-center mb-4">
-                <.checkbox
-                  id="filter-icmp"
-                  name="traffic-filter"
-                  value="icmp"
-                  checked={false}
-                />
+                <.checkbox id="filter-icmp" name="traffic-filter" value="icmp" checked={false} />
                 <.label for="filter-icmp" class="ml-4 mt-2">
                   ICMP
                 </.label>
               </div>
               <div class="h-12 flex items-center mb-4">
-                <.checkbox
-                  id="filter-tcp"
-                  name="traffic-filter"
-                  value="tcp"
-                  checked={false}
-                />
+                <.checkbox id="filter-tcp" name="traffic-filter" value="tcp" checked={false} />
                 <.label for="filter-tcp" class="ml-4 mr-4 mt-2">
                   TCP
                 </.label>
@@ -102,12 +87,7 @@ defmodule Web.ResourcesLive.New do
                 />
               </div>
               <div class="h-12 flex items-center">
-                <.checkbox
-                  id="filter-udp"
-                  name="traffic-filter"
-                  value="udp"
-                  checked={false}
-                />
+                <.checkbox id="filter-udp" name="traffic-filter" value="udp" checked={false} />
                 <.label for="filter-udp" class="ml-4 mr-4 mt-2">
                   UDP
                 </.label>
