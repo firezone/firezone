@@ -12,30 +12,55 @@ public enum AdapterError: Error {
   /// Failure to perform an operation in such state.
   case invalidState
 
+  /// connlib failed to start
+  case connlibConnectError(Error)
+
+  /// connlib fatal error
+  case connlibFatalError(String)
+
+  /// No network settings were provided
+  case noNetworkSettings
+
   /// Failure to set network settings.
   case setNetworkSettings(Error)
+
+  /// stop() called before the tunnel became ready
+  case stoppedByRequestWhileStarting
 }
 
-/// Enum representing internal state of the `WireGuardAdapter`
-private enum State {
-  /// The tunnel is stopped
-  case stopped
+/// Enum representing internal state of the  adapter
+private enum AdapterState: CustomStringConvertible {
+  case startingTunnel(session: WrappedSession, onStarted: Adapter.StartTunnelCompletionHandler?)
+  case tunnelReady(session: WrappedSession)
+  case stoppingTunnel(session: WrappedSession, onStopped: Adapter.StopTunnelCompletionHandler?)
+  case stoppedTunnel
+  case stoppingTunnelTemporarily(session: WrappedSession, onStopped: Adapter.StopTunnelCompletionHandler?)
+  case stoppedTunnelTemporarily
 
-  /// The tunnel is up and running
-  case started(_ handle: WrappedSession)
-
-  /// The tunnel is temporarily shutdown due to device going offline
-  case temporaryShutdown
+  var description: String {
+    switch self {
+      case .startingTunnel: return "startingTunnel"
+      case .tunnelReady: return "tunnelReady"
+      case .stoppingTunnel: return "stoppingTunnel"
+      case .stoppedTunnel: return "stoppedTunnel"
+      case .stoppingTunnelTemporarily: return "stoppingTunnelTemporarily"
+      case .stoppedTunnelTemporarily: return "stoppedTunnelTemporarily"
+    }
+  }
 }
 
 // Loosely inspired from WireGuardAdapter from WireGuardKit
 public class Adapter {
+
+  typealias StartTunnelCompletionHandler = ((AdapterError?) -> Void)
+  typealias StopTunnelCompletionHandler = (() -> Void)
+
   private let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
 
   private var callbackHandler: CallbackHandler
 
-  // Latest applied NETunnelProviderNetworkSettings
-  public var lastNetworkSettings: NEPacketTunnelNetworkSettings?
+  /// Network settings
+  private var networkSettings: NetworkSettings?
 
   /// Packet tunnel provider.
   private weak var packetTunnelProvider: NEPacketTunnelProvider?
@@ -47,25 +72,36 @@ public class Adapter {
   private let workQueue = DispatchQueue(label: "FirezoneAdapterWorkQueue")
 
   /// Adapter state.
-  private var state: State = .stopped
+  private var state: AdapterState {
+    didSet {
+      logger.debug("Adapter state changed to: \(self.state, privacy: .public)")
+    }
+  }
 
   /// Keep track of resources
   private var displayableResources = DisplayableResources()
 
-  public init(with packetTunnelProvider: NEPacketTunnelProvider) {
+  /// Starting parameters
+  private var portalURLString: String
+  private var token: String
+
+  public init(portalURLString: String, token: String, packetTunnelProvider: NEPacketTunnelProvider) {
+    self.portalURLString = portalURLString
+    self.token = token
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler()
-    self.callbackHandler.delegate = self
+    self.state = .stoppedTunnel
   }
 
   deinit {
+    self.logger.debug("Adapter.deinit")
     // Cancel network monitor
     networkMonitor?.cancel()
 
     // Shutdown the tunnel
-    if case .started(let wrappedSession) = self.state {
-      self.logger.log(level: .debug, "\(#function)")
-      wrappedSession.disconnect()
+    if case .tunnelReady(let wrappedSession) = self.state {
+      logger.debug("Adapter.deinit: Shutting down connlib")
+      _ = wrappedSession.disconnect()
     }
   }
 
@@ -73,59 +109,76 @@ public class Adapter {
   /// - Parameters:
   ///   - completionHandler: completion handler.
   public func start(completionHandler: @escaping (AdapterError?) -> Void) throws {
-    workQueue.async {
-      guard case .stopped = self.state else {
+    workQueue.async { [weak self] in
+      guard let self = self else { return }
+
+      logger.debug("Adapter.start")
+      guard case .stoppedTunnel = self.state else {
         completionHandler(.invalidState)
         return
       }
 
-      let networkMonitor = NWPathMonitor()
-      networkMonitor.pathUpdateHandler = { [weak self] path in
-        self?.didReceivePathUpdate(path: path)
-      }
-      networkMonitor.start(queue: self.workQueue)
+      self.callbackHandler.delegate = self
 
+      logger.debug("Adapter.start: Starting connlib")
       do {
-        try self.setNetworkSettings(self.generateNetworkSettings(ipv4Routes: [], ipv6Routes: []))
-        self.state = .started(
-          try WrappedSession.connect("http://localhost:4568", "test-token", self.callbackHandler)
+        self.state = .startingTunnel(
+          session: try WrappedSession.connect(self.portalURLString, self.token, self.callbackHandler),
+          onStarted: completionHandler
         )
-        self.networkMonitor = networkMonitor
-        completionHandler(nil)
-      } catch let error as AdapterError {
-        networkMonitor.cancel()
-        completionHandler(error)
-      } catch {
-        fatalError()
+      } catch let error {
+        logger.error("Adapter.start: Error: \(error, privacy: .public)")
+        self.state = .stoppedTunnel
+        completionHandler(AdapterError.connlibConnectError(error))
       }
+
     }
   }
 
-  public func stop(completionHandler: @escaping (AdapterError?) -> Void) {
-    workQueue.async {
-      switch self.state {
-      case .started(let wrappedSession):
-        wrappedSession.disconnect()
-      case .temporaryShutdown:
-        break
+  /// Stop the tunnel
+  public func stop(completionHandler: @escaping () -> Void) {
+    workQueue.async { [weak self] in
+      guard let self = self else { return }
 
-      case .stopped:
-        completionHandler(.invalidState)
-        return
+      logger.debug("Adapter.stop")
+
+      switch self.state {
+        case .stoppedTunnel, .stoppingTunnel:
+          break
+        case .tunnelReady(let session):
+          logger.debug("Adapter.stop: Shutting down connlib")
+          self.state = .stoppingTunnel(session: session, onStopped: completionHandler)
+          _ = session.disconnect()
+        case .startingTunnel(let session, let onStarted):
+          logger.debug("Adapter.stop: Shutting down connlib before tunnel ready")
+          self.state = .stoppingTunnel(session: session, onStopped: {
+            onStarted?(AdapterError.stoppedByRequestWhileStarting)
+            completionHandler()
+          })
+          // FIXME: Is it ok to call disconnect() while we haven't got onTunnelReady?
+          _ = session.disconnect()
+        case .stoppingTunnelTemporarily(let session, let onStopped):
+          self.state = .stoppingTunnel(session: session, onStopped: {
+            onStopped?()
+            completionHandler()
+          })
+        case .stoppedTunnelTemporarily:
+          self.state = .stoppedTunnel
+          completionHandler()
       }
 
       self.networkMonitor?.cancel()
       self.networkMonitor = nil
-
-      self.state = .stopped
-
-      completionHandler(nil)
     }
   }
 
+  /// Get the current set of resources in the completionHandler.
+  /// If unchanged since referenceVersionString, call completionHandler(nil).
   public func getDisplayableResourcesIfVersionDifferentFrom(
     referenceVersionString: String, completionHandler: @escaping (DisplayableResources?) -> Void) {
-      workQueue.async {
+      workQueue.async { [weak self] in
+        guard let self = self else { return }
+
         if referenceVersionString == self.displayableResources.versionString {
           completionHandler(nil)
         } else {
@@ -133,209 +186,256 @@ public class Adapter {
         }
       }
   }
+}
 
-  public func generateNetworkSettings(
-    addresses4: [String] = ["100.100.111.2"], addresses6: [String] = ["fd00:0222:2011:1111::2"],
-    ipv4Routes: [NEIPv4Route], ipv6Routes: [NEIPv6Route]
-  )
-    -> NEPacketTunnelNetworkSettings
-  {
-    // The destination IP that connlib will assign our DNS proxy to.
-    let dnsSentinel = "1.1.1.1"
+// MARK: Responding to path updates
 
-    // We can probably do better than this; see https://www.rfc-editor.org/info/rfc4821
-    // But stick with something simple for now. 1280 is the minimum that will work for IPv6.
-    let mtu = 1280
-
-    // TODO: replace these with IPs returned from the connect call to portal
-    let subnetmask = "255.192.0.0"
-    let networkPrefixLength = NSNumber(value: 64)
-
-    /* iOS requires a tunnel endpoint, whereas in WireGuard it's valid for
-       * a tunnel to have no endpoint, or for there to be many endpoints, in
-       * which case, displaying a single one in settings doesn't really
-       * make sense. So, we fill it in with this placeholder, which is not
-       * a valid IP address that will actually route over the Internet.
-       */
-    let networkSettings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
-    let dnsSettings = NEDNSSettings(servers: [dnsSentinel])
-
-    // All DNS queries must first go through the tunnel's DNS
-    dnsSettings.matchDomains = [""]
-    networkSettings.dnsSettings = dnsSettings
-    networkSettings.mtu = NSNumber(value: mtu)
-
-    let ipv4Settings = NEIPv4Settings(
-      addresses: addresses4,
-      subnetMasks: [subnetmask])
-    ipv4Settings.includedRoutes = ipv4Routes
-    networkSettings.ipv4Settings = ipv4Settings
-
-    let ipv6Settings = NEIPv6Settings(
-      addresses: addresses6,
-      networkPrefixLengths: [networkPrefixLength])
-    ipv6Settings.includedRoutes = ipv6Routes
-    networkSettings.ipv6Settings = ipv6Settings
-
-    return networkSettings
-  }
-
-  public func setNetworkSettings(_ networkSettings: NEPacketTunnelNetworkSettings) throws {
-    var systemError: Error?
-    let condition = NSCondition()
-
-    // Activate the condition
-    condition.lock()
-    defer { condition.unlock() }
-
-    self.packetTunnelProvider?.setTunnelNetworkSettings(networkSettings) { error in
-      systemError = error
-      condition.signal()
+extension Adapter {
+  private func beginPathMonitoring() {
+    self.logger.debug("Beginning path monitoring")
+    let networkMonitor = NWPathMonitor()
+    networkMonitor.pathUpdateHandler = { [weak self] path in
+      self?.didReceivePathUpdate(path: path)
     }
-
-    // Packet tunnel's `setTunnelNetworkSettings` times out in certain
-    // scenarios & never calls the given callback.
-    let setTunnelNetworkSettingsTimeout: TimeInterval = 5  // seconds
-
-    if condition.wait(until: Date().addingTimeInterval(setTunnelNetworkSettingsTimeout)) {
-      if let systemError = systemError {
-        throw AdapterError.setNetworkSettings(systemError)
-      }
-    }
-
-    // Save the latest applied network settings if there was no error.
-    if systemError != nil {
-      self.lastNetworkSettings = networkSettings
-    }
-  }
-
-  /// Update runtime configuration.
-  /// - Parameters:
-  ///   - ipv4Routes: IPv4 routes to send through the tunnel.
-  ///   - ipv6Routes: IPv6 routes to send through the tunnel.
-  ///   - completionHandler: completion handler.
-  public func update(
-    ipv4Routes: [NEIPv4Route], ipv6Routes: [NEIPv6Route],
-    completionHandler: @escaping (AdapterError?) -> Void
-  ) {
-    workQueue.async {
-      if case .stopped = self.state {
-        completionHandler(.invalidState)
-        return
-      }
-
-      // Tell the system that the tunnel is going to reconnect using new WireGuard
-      // configuration.
-      // This will broadcast the `NEVPNStatusDidChange` notification to the GUI process.
-      self.packetTunnelProvider?.reasserting = true
-      defer {
-        self.packetTunnelProvider?.reasserting = false
-      }
-
-      do {
-        try self.setNetworkSettings(
-          self.generateNetworkSettings(ipv4Routes: ipv4Routes, ipv6Routes: ipv6Routes))
-
-        switch self.state {
-        case .started(let wrappedSession):
-          self.state = .started(wrappedSession)
-
-        case .temporaryShutdown:
-          self.state = .temporaryShutdown
-
-        case .stopped:
-          fatalError()
-        }
-
-        completionHandler(nil)
-      } catch let error as AdapterError {
-        completionHandler(error)
-      } catch {
-        fatalError()
-      }
-    }
+    networkMonitor.start(queue: self.workQueue)
   }
 
   private func didReceivePathUpdate(path: Network.NWPath) {
-    #if os(macOS)
-      if case .started(let wrappedSession) = self.state {
-        self.logger.log(level: .debug, "Suppressing call to bumpSockets()")
-        // wrappedSession.bumpSockets()
-      }
-    #elseif os(iOS)
-      switch self.state {
-      case .started(let wrappedSession):
+    // Will be invoked in the workQueue by the path monitor
+    switch self.state {
+
+      case .startingTunnel(let session, let onStarted):
         if path.status == .satisfied {
-          self.logger.log(level: .debug, "Suppressing calls to disableSomeRoamingForBrokenMobileSemantics() and bumpSockets()")
+        } else {
+          logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
+          onStarted?(nil)
+          self.packetTunnelProvider?.reasserting = true
+          self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
+          // FIXME: Is it ok to call disconnect() while we haven't got onTunnelReady?
+          _ = session.disconnect()
+        }
+
+      case .tunnelReady(let session):
+        if path.status == .satisfied {
+          logger.debug("Suppressing calls to disableSomeRoamingForBrokenMobileSemantics() and bumpSockets()")
+          // #if os(iOS)
           // wrappedSession.disableSomeRoamingForBrokenMobileSemantics()
+          // #endif
           // wrappedSession.bumpSockets()
         } else {
-          //self.logger.log(.debug, "Connectivity offline, pausing backend.")
-          self.state = .temporaryShutdown
-          wrappedSession.disconnect()
+          logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
+          self.packetTunnelProvider?.reasserting = true
+          self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
+          _ = session.disconnect()
         }
 
-      case .temporaryShutdown:
+      case .stoppingTunnelTemporarily:
+        break
+
+      case .stoppedTunnelTemporarily:
         guard path.status == .satisfied else { return }
 
-        self.logger.log(level: .debug, "Connectivity online, resuming backend.")
+        logger.debug("Adapter.didReceivePathUpdate: Back online. Starting connlib.")
 
         do {
-          try self.setNetworkSettings(self.lastNetworkSettings!)
-
-          self.state = .started(
-            try WrappedSession.connect("http://localhost:4568", "test-token", self.callbackHandler)
+          self.state = .startingTunnel(
+            session: try WrappedSession.connect(portalURLString, token, self.callbackHandler),
+            onStarted: { error in
+              if let error = error {
+                self.logger.error("Adapter.didReceivePathUpdate: Error starting connlib: \(error, privacy: .public)")
+                self.packetTunnelProvider?.cancelTunnelWithError(error)
+              } else {
+                self.packetTunnelProvider?.reasserting = false
+              }
+            }
           )
+        } catch let error as AdapterError {
+          logger.error("Adapter.didReceivePathUpdate: Error: \(error, privacy: .public)")
         } catch {
-          self.logger.log(level: .debug, "Failed to restart backend: \(error.localizedDescription)")
+          logger.error("Adapter.didReceivePathUpdate: Unknown error: \(error, privacy: .public) (fatal)")
         }
 
-      case .stopped:
+      case .stoppingTunnel, .stoppedTunnel:
         // no-op
         break
-      }
-    #else
-      #error("Unsupported")
-    #endif
+    }
   }
 }
 
+// MARK: Implementing CallbackHandlerDelegate
+
 extension Adapter: CallbackHandlerDelegate {
-  public func onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String) {
-    // Unimplemented
+  public func onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String, dnsFallbackStrategy: String) {
+    workQueue.async { [weak self] in
+      guard let self = self else { return }
+
+      logger.debug("Adapter.onSetInterfaceConfig")
+
+      switch self.state {
+        case .startingTunnel:
+          self.networkSettings = NetworkSettings(
+            tunnelAddressIPv4: tunnelAddressIPv4, tunnelAddressIPv6: tunnelAddressIPv6,
+            dnsAddress: dnsAddress, dnsFallbackStrategy: NetworkSettings.DNSFallbackStrategy(dnsFallbackStrategy))
+        case .tunnelReady:
+          if let networkSettings = self.networkSettings {
+            networkSettings.setDNSFallbackStrategy(NetworkSettings.DNSFallbackStrategy(dnsFallbackStrategy))
+            if let packetTunnelProvider = self.packetTunnelProvider {
+              networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
+            }
+          }
+
+        case .stoppingTunnel, .stoppedTunnel, .stoppingTunnelTemporarily, .stoppedTunnelTemporarily:
+          // This is not expected to happen
+          break
+      }
+    }
   }
 
   public func onTunnelReady() {
-    // Unimplemented
+    workQueue.async { [weak self] in
+      guard let self = self else { return }
+
+      logger.debug("Adapter.onTunnelReady")
+      guard case .startingTunnel(let session, let onStarted) = self.state else {
+        logger.error("Adapter.onTunnelReady: Unexpected state: \(self.state, privacy: .public)")
+        return
+      }
+      guard let networkSettings = self.networkSettings else {
+        logger.error("Adapter.onTunnelReady: No network settings")
+        return
+      }
+      guard let packetTunnelProvider = self.packetTunnelProvider else {
+        logger.error("Adapter.onTunnelReady: No packet tunnel provider")
+        return
+      }
+      networkSettings.apply(on: packetTunnelProvider, logger: self.logger) { error in
+        if let error = error {
+          onStarted?(AdapterError.setNetworkSettings(error))
+          self.state = .stoppedTunnel
+        } else {
+          onStarted?(nil)
+          self.state = .tunnelReady(session: session)
+          self.beginPathMonitoring()
+        }
+      }
+    }
   }
 
-  public func onAddRoute(_: String) {
-    // Unimplemented
+  public func onAddRoute(_ route: String) {
+    workQueue.async { [weak self] in
+      guard let self = self else { return }
+
+      logger.debug("Adapter.onAddRoute(\(route, privacy: .public))")
+      guard let networkSettings = self.networkSettings else {
+        logger.error("Adapter.onAddRoute: No network settings")
+        return
+      }
+      guard let packetTunnelProvider = self.packetTunnelProvider else {
+        logger.error("Adapter.onAddRoute: No packet tunnel provider")
+        return
+      }
+
+      networkSettings.addRoute(route)
+      if case .tunnelReady = self.state {
+        networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
+      }
+    }
   }
 
-  public func onRemoveRoute(_: String) {
-    // Unimplemented
+  public func onRemoveRoute(_ route: String) {
+    workQueue.async { [weak self] in
+      guard let self = self else { return }
+
+      logger.debug("Adapter.onRemoveRoute(\(route, privacy: .public))")
+      guard let networkSettings = self.networkSettings else {
+        logger.error("Adapter.onRemoveRoute: No network settings")
+        return
+      }
+      guard let packetTunnelProvider = self.packetTunnelProvider else {
+        logger.error("Adapter.onRemoveRoute: No packet tunnel provider")
+        return
+      }
+      networkSettings.removeRoute(route)
+      if case .tunnelReady = self.state {
+        networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
+      }
+    }
   }
 
   public func onUpdateResources(resourceList: String) {
-    workQueue.async {
-      let jsonString = "[\(resourceList)]"
+    workQueue.async { [weak self] in
+      guard let self = self else { return }
+
+      logger.debug("Adapter.onUpdateResources")
+      let jsonString = resourceList
       guard let jsonData = jsonString.data(using: .utf8) else {
         return
       }
       guard let networkResources = try? JSONDecoder().decode([NetworkResource].self, from: jsonData) else {
         return
       }
+
+      // Note down the resources
       self.displayableResources.update(resources: networkResources.map { $0.displayableResource })
+
+      // Update DNS in case resource domains is changing
+      guard let networkSettings = self.networkSettings else {
+        logger.error("Adapter.onUpdateResources: No network settings")
+        return
+      }
+      guard let packetTunnelProvider = self.packetTunnelProvider else {
+        logger.error("Adapter.onUpdateResources: No packet tunnel provider")
+        return
+      }
+      let updatedResourceDomains = networkResources.compactMap { $0.resourceLocation.domain }
+      networkSettings.setResourceDomains(updatedResourceDomains)
+      if case .tunnelReady = self.state {
+        networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
+      }
     }
   }
 
   public func onDisconnect(error: Optional<String>) {
-    // Unimplemented
+    workQueue.async { [weak self] in
+      guard let self = self else { return }
+
+      logger.debug("Adapter.onDisconnect")
+      if let errorMessage = error {
+        logger.error("Connlib disconnected with unrecoverable error: \(errorMessage, privacy: .public)")
+        switch self.state {
+          case .stoppingTunnel(session: _, let onStopped):
+            onStopped?()
+            self.state = .stoppedTunnel
+          case .stoppingTunnelTemporarily(session: _, let onStopped):
+            onStopped?()
+            self.state = .stoppedTunnel
+          case .stoppedTunnel:
+            // This should not happen
+            break
+          case .stoppedTunnelTemporarily:
+            self.state = .stoppedTunnel
+          default:
+            self.packetTunnelProvider?.cancelTunnelWithError(AdapterError.connlibFatalError(errorMessage))
+            self.state = .stoppedTunnel
+        }
+      } else {
+        logger.debug("Connlib disconnected")
+        switch self.state {
+          case .stoppingTunnel(session: _, let onStopped):
+            onStopped?()
+            self.state = .stoppedTunnel
+          case .stoppingTunnelTemporarily(session: _, let onStopped):
+            onStopped?()
+            self.state = .stoppedTunnelTemporarily
+          default:
+            // This should not happen
+            self.state = .stoppedTunnel
+        }
+      }
+    }
   }
 
   public func onError(error: String) {
-    let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
-    logger.log(level: .error, "Internal connlib error: \(error, privacy: .public)")
+    logger.error("Internal connlib error: \(error, privacy: .public)")
   }
 }

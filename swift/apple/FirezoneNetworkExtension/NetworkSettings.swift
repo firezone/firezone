@@ -99,15 +99,24 @@ class NetworkSettings {
       }
       let address = String(components[0])
       let networkPrefixLengthString = String(components[1])
-      logger.debug("address: \(address, privacy: .public), networkPrefixLengthString: \(networkPrefixLengthString, privacy: .public)")
       if let groupSeparator = address.first(where: { $0 == "." || $0 == ":"}) {
         if groupSeparator == "." { // IPv4 address
+          if IPv4Address(address) == nil {
+            logger.error("NetworkSettings.apply: Ignoring invalid IPv4 address '\(address, privacy: .public)'")
+            continue
+          }
           let validNetworkPrefixLength = Self.validNetworkPrefixLength(fromString: networkPrefixLengthString, maximumValue: 32)
           let ipv4SubnetMask = Self.ipv4SubnetMask(networkPrefixLength: validNetworkPrefixLength)
+          logger.debug("NetworkSettings.apply: Adding IPv4 route: \(address) (subnet mask: \(ipv4SubnetMask))")
           tunnelIPv4Routes.append(NEIPv4Route(destinationAddress: address, subnetMask: ipv4SubnetMask))
         }
         if groupSeparator == ":" { // IPv6 address
+          if IPv6Address(address) == nil {
+            logger.error("NetworkSettings.apply: Ignoring invalid IPv6 address '\(address, privacy: .public)'")
+            continue
+          }
           let validNetworkPrefixLength = Self.validNetworkPrefixLength(fromString: networkPrefixLengthString, maximumValue: 128)
+          logger.debug("NetworkSettings.apply: Adding IPv6 route: \(address) (prefix length: \(validNetworkPrefixLength))")
           tunnelIPv6Routes.append(NEIPv6Route(destinationAddress: address, networkPrefixLength: NSNumber(integerLiteral: validNetworkPrefixLength)))
         }
       } else {
@@ -141,11 +150,17 @@ class NetworkSettings {
     }
     tunnelNetworkSettings.dnsSettings = dnsSettings
 
+    self.hasUnappliedChanges = false
     packetTunnelProvider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
       if let error = error {
         logger.error("NetworkSettings.apply: Error: \(error, privacy: .public)")
       } else {
-        self.hasUnappliedChanges = false
+        guard !self.hasUnappliedChanges else {
+          // Changes were made while the packetTunnelProvider was setting the network settings
+          logger.debug("NetworkSettings.apply: Applying changes made to network settings while we were applying the network settings")
+          self.apply(on: packetTunnelProvider, logger: logger, completionHandler: completionHandler)
+          return
+        }
         logger.debug("NetworkSettings.apply: Applied successfully")
       }
       completionHandler?(error)
