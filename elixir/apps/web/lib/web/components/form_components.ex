@@ -152,6 +152,9 @@ defmodule Web.FormComponents do
     """
   end
 
+  attr :name, :any
+  attr :value, :any
+  attr :checked, :boolean
   attr :rest, :global
 
   def checkbox(assigns) do
