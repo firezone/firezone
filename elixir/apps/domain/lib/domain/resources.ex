@@ -3,7 +3,9 @@ defmodule Domain.Resources do
   alias Domain.Gateways
   alias Domain.Resources.{Authorizer, Resource}
 
-  def fetch_resource_by_id(id, %Auth.Subject{} = subject) do
+  def fetch_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
     required_permissions =
       {:one_of,
        [
@@ -16,6 +18,10 @@ defmodule Domain.Resources do
       Resource.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
+      |> case do
+        {:ok, resource} -> {:ok, Repo.preload(resource, preload)}
+        {:error, reason} -> {:error, reason}
+      end
     else
       false -> {:error, :not_found}
       other -> other
@@ -31,7 +37,9 @@ defmodule Domain.Resources do
     end
   end
 
-  def list_resources(%Auth.Subject{} = subject) do
+  def list_resources(%Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
     required_permissions =
       {:one_of,
        [
@@ -41,9 +49,12 @@ defmodule Domain.Resources do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       # TODO: maybe we need to also enrich the data and show if it's online or not
-      Resource.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list()
+      {:ok, resources} =
+        Resource.Query.all()
+        |> Authorizer.for_subject(subject)
+        |> Repo.list()
+
+      {:ok, Repo.preload(resources, preload)}
     end
   end
 

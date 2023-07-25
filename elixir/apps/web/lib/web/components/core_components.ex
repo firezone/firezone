@@ -490,11 +490,12 @@ defmodule Web.CoreComponents do
   Renders a standard form label.
   """
   attr :for, :string, default: nil
+  attr :class, :string, default: nil
   slot :inner_block, required: true
 
   def label(assigns) do
     ~H"""
-    <label for={@for} class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">
+    <label for={@for} class={["block mb-2 text-sm font-medium text-gray-900 dark:text-white", @class]}>
       <%= render_slot(@inner_block) %>
     </label>
     """

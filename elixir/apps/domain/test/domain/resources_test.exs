@@ -64,6 +64,14 @@ defmodule Domain.ResourcesTest do
                    ]
                  ]}}
     end
+
+    # TODO: add a test that soft-deleted assocs are not preloaded
+    test "associations are preloaded when opts given", %{account: account, subject: subject} do
+      resource = ResourcesFixtures.create_resource(account: account)
+      {:ok, resource} = fetch_resource_by_id(resource.id, subject, preload: :connections)
+
+      assert Ecto.assoc_loaded?(resource.connections) == true
+    end
   end
 
   describe "list_resources/1" do
