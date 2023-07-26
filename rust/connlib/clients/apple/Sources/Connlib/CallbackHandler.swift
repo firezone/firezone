@@ -59,13 +59,25 @@ public class CallbackHandler {
   }
 
   func onDisconnect(error: SwiftConnlibError) {
-    logger.debug("CallbackHandler.onDisconnect: \(error, privacy: .public)")
+    switch error {
+    case .Io(let description, let value):
+        logger.debug("CallbackHandler.onDisconnect: Io error with description: \(description) and value: \(value)")
+    // Add similar cases for other error variants
+    default:
+        logger.debug("CallbackHandler.onDisconnect: \(error, privacy: .public)")
+    }
     // TODO: convert `error` to `Optional` by checking for `None` case
     delegate?.onDisconnect(error: error)
   }
 
   func onError(error: SwiftConnlibError) {
-    logger.debug("CallbackHandler.onError: \(error, privacy: .public)")
+    switch error {
+    case .Io(let description, let value):
+        logger.debug("CallbackHandler.onError: Io error with description: \(description) and value: \(value)")
+    // Add similar cases for other error variants
+    default:
+        logger.debug("CallbackHandler.onError: \(error, privacy: .public)")
+    }
     delegate?.onError(error: error)
   }
 }
