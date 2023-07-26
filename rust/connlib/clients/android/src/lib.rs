@@ -6,7 +6,7 @@
 use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session};
 use jni::{
     objects::{JClass, JObject, JString, JValue},
-    JNIEnv,
+    JNIEnv, JavaVM,
 };
 use std::net::{Ipv4Addr, Ipv6Addr};
 
@@ -25,41 +25,139 @@ pub extern "system" fn Java_dev_firezone_connlib_Logger_init(_: JNIEnv, _: JClas
     )
 }
 
-#[derive(Clone)]
-pub struct CallbackHandler;
+pub struct CallbackHandler {
+    vm: JavaVM,
+    callback_handler: JObject<'static>,
+}
+
+impl Clone for CallbackHandler {
+    fn clone(&self) -> Self {
+        // This is essentially a `memcpy` to bypass redundant checks from
+        // doing `as_raw` -> `from_raw`/etc; both of these fields are just
+        // dumb pointers but the wrappers don't implement `Clone`.
+        //
+        // SAFETY: `self` is guaranteed to be valid and `Self` is POD.
+        unsafe { std::ptr::read(self) }
+    }
+}
+
+impl CallbackHandler {
+    fn env<T>(&self, f: impl FnOnce(JNIEnv) -> T) -> T {
+        f(self.vm.attach_current_thread_as_daemon().unwrap())
+    }
+}
+
+fn call_method(env: &mut JNIEnv, this: &JObject, name: &str, sig: &str, args: &[JValue]) {
+    match env.call_method(this, name, sig, args) {
+        Ok(val) => log::trace!("`{name}` returned `{val:?}`"),
+        Err(err) => log::error!("Failed to call `{name}`: {err}"),
+    }
+}
 
 impl Callbacks for CallbackHandler {
     fn on_set_interface_config(
         &self,
-        _tunnel_address_v4: Ipv4Addr,
-        _tunnel_address_v6: Ipv6Addr,
-        _dns_address: Ipv4Addr,
+        tunnel_address_v4: Ipv4Addr,
+        tunnel_address_v6: Ipv6Addr,
+        dns_address: Ipv4Addr,
     ) {
-        todo!()
+        self.env(|mut env| {
+            let tunnel_address_v4 = env.new_string(tunnel_address_v4.to_string()).unwrap();
+            let tunnel_address_v6 = env.new_string(tunnel_address_v6.to_string()).unwrap();
+            let dns_address = env
+                .new_string(serde_json::to_string(&dns_address).unwrap())
+                .unwrap();
+            call_method(
+                &mut env,
+                &self.callback_handler,
+                "onSetInterfaceConfig",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)",
+                &[
+                    JValue::from(&tunnel_address_v4),
+                    JValue::from(&tunnel_address_v6),
+                    JValue::from(&dns_address),
+                ],
+            )
+        })
     }
 
     fn on_tunnel_ready(&self) {
-        todo!()
+        self.env(|mut env| {
+            call_method(&mut env, &self.callback_handler, "onTunnelReady", "()", &[])
+        })
     }
 
-    fn on_add_route(&self, _route: String) {
-        todo!()
+    fn on_add_route(&self, route: String) {
+        self.env(|mut env| {
+            let route = env
+                .new_string(serde_json::to_string(&route).unwrap())
+                .unwrap();
+            call_method(
+                &mut env,
+                &self.callback_handler,
+                "onAddRoute",
+                "(Ljava/lang/String;)",
+                &[JValue::from(&route)],
+            );
+        })
     }
 
-    fn on_remove_route(&self, _route: String) {
-        todo!()
+    fn on_remove_route(&self, route: String) {
+        self.env(|mut env| {
+            let route = env
+                .new_string(serde_json::to_string(&route).unwrap())
+                .unwrap();
+            call_method(
+                &mut env,
+                &self.callback_handler,
+                "onRemoveRoute",
+                "(Ljava/lang/String;)",
+                &[JValue::from(&route)],
+            );
+        })
     }
 
-    fn on_update_resources(&self, _resource_list: Vec<ResourceDescription>) {
-        todo!()
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
+        self.env(|mut env| {
+            let resource_list = env
+                .new_string(serde_json::to_string(&resource_list).unwrap())
+                .unwrap();
+            call_method(
+                &mut env,
+                &self.callback_handler,
+                "onUpdateResources",
+                "(Ljava/lang/String;)",
+                &[JValue::from(&resource_list)],
+            );
+        })
     }
 
-    fn on_disconnect(&self, _error: Option<&Error>) {
-        todo!()
+    fn on_disconnect(&self, error: Option<&Error>) {
+        self.env(|mut env| {
+            let error = env
+                .new_string(serde_json::to_string(&error.map(ToString::to_string)).unwrap())
+                .unwrap();
+            call_method(
+                &mut env,
+                &self.callback_handler,
+                "onDisconnect",
+                "(Ljava/lang/String;)",
+                &[JValue::from(&error)],
+            );
+        })
     }
 
-    fn on_error(&self, _error: &Error) {
-        todo!()
+    fn on_error(&self, error: &Error) {
+        self.env(|mut env| {
+            let error = env.new_string(error.to_string()).unwrap();
+            call_method(
+                &mut env,
+                &self.callback_handler,
+                "onError",
+                "(Ljava/lang/String;)",
+                &[JValue::from(&error)],
+            );
+        })
     }
 }
 
@@ -68,33 +166,25 @@ impl Callbacks for CallbackHandler {
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
-    mut env: JNIEnv,
+    mut env: JNIEnv<'static>,
     _class: JClass,
     portal_url: JString,
     portal_token: JString,
-    callback: JObject,
+    callback_handler: JObject<'static>,
 ) -> *const Session<CallbackHandler> {
-    let portal_url: String = env.get_string(&portal_url).unwrap().into();
-    let portal_token: String = env.get_string(&portal_token).unwrap().into();
-
-    let session = Box::new(
-        Session::connect(portal_url.as_str(), portal_token, CallbackHandler).expect("TODO!"),
-    );
-
-    // TODO: Get actual IPs returned from portal based on this device
-    let tunnelAddressesJSON = "[{\"tunnel_ipv4\": \"100.100.1.1\", \"tunnel_ipv6\": \"fd00:0222:2011:1111:6def:1001:fe67:0012\"}]";
-    let tunnel_addresses = env.new_string(tunnelAddressesJSON).unwrap();
-    match env.call_method(
-        callback,
-        "onTunnelReady",
-        "(Ljava/lang/String;)Z",
-        &[JValue::from(&tunnel_addresses)],
-    ) {
-        Ok(res) => log::trace!("`onTunnelReady` returned `{res:?}`"),
-        Err(err) => log::error!("Failed to call `onTunnelReady`: {err}"),
+    let portal_url = String::from(env.get_string(&portal_url).unwrap());
+    let portal_token = env.get_string(&portal_token).unwrap().into();
+    let callback_handler = CallbackHandler {
+        vm: env.get_java_vm().unwrap(),
+        callback_handler,
+    };
+    match Session::connect(portal_url.as_str(), portal_token, callback_handler.clone()) {
+        Ok(session) => Box::into_raw(Box::new(session)),
+        Err(err) => {
+            callback_handler.on_error(&err);
+            std::ptr::null()
+        }
     }
-
-    Box::into_raw(session)
 }
 
 /// # Safety

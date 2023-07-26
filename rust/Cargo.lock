@@ -712,6 +712,7 @@ dependencies = [
  "firezone-client-connlib",
  "jni 0.21.1",
  "log",
+ "serde_json",
 ]
 
 [[package]]
