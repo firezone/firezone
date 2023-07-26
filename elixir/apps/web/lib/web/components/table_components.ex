@@ -223,9 +223,14 @@ defmodule Web.TableComponents do
       </.vertical_table>
   """
 
+  attr :class, :string, default: nil
+  attr :rest, :global
+
+  slot :inner_block
+
   def vertical_table(assigns) do
     ~H"""
-    <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+    <table class={["w-full text-sm text-left text-gray-500 dark:text-gray-400", @class]}>
       <tbody>
         <%= render_slot(@inner_block) %>
       </tbody>
@@ -250,19 +255,26 @@ defmodule Web.TableComponents do
       </.vertical_table_row>
   """
 
+  attr :label_width, :string, default: nil
+  attr :value_width, :string, default: nil
+
   slot :label, doc: "the slot for rendering the label of a row"
   slot :value, doc: "the slot for rendering the value of a row"
 
   def vertical_table_row(assigns) do
     ~H"""
     <tr class="border-b border-gray-200 dark:border-gray-700">
-      <th scope="row" class={~w[
-          text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap
-          bg-gray-50 dark:text-white dark:bg-gray-800
-        ]}>
+      <th
+        scope="row"
+        class={[
+          "text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap",
+          "bg-gray-50 dark:text-white dark:bg-gray-800",
+          @label_width
+        ]}
+      >
         <%= render_slot(@label) %>
       </th>
-      <td class="px-6 py-4">
+      <td class={["px-6 py-4", @value_width]}>
         <%= render_slot(@value) %>
       </td>
     </tr>

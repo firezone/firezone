@@ -26,7 +26,9 @@ defmodule Domain.Devices do
     |> Repo.aggregate(:count)
   end
 
-  def fetch_device_by_id(id, %Auth.Subject{} = subject) do
+  def fetch_device_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
     required_permissions =
       {:one_of,
        [
@@ -39,6 +41,10 @@ defmodule Domain.Devices do
       Device.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
+      |> case do
+        {:ok, device} -> {:ok, Repo.preload(device, preload)}
+        {:error, reason} -> {:error, reason}
+      end
     else
       false -> {:error, :not_found}
       other -> other
@@ -53,7 +59,9 @@ defmodule Domain.Devices do
     |> Repo.preload(preload)
   end
 
-  def list_devices(%Auth.Subject{} = subject) do
+  def list_devices(%Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
     required_permissions =
       {:one_of,
        [
@@ -62,9 +70,12 @@ defmodule Domain.Devices do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      Device.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list()
+      {:ok, devices} =
+        Device.Query.all()
+        |> Authorizer.for_subject(subject)
+        |> Repo.list()
+
+      {:ok, Repo.preload(devices, preload)}
     end
   end
 

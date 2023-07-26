@@ -1,65 +1,52 @@
 defmodule Web.Users.Edit do
   use Web, :live_view
 
+  alias Domain.Actors
+
+  def mount(%{"id" => id} = _params, _session, socket) do
+    {:ok, actor} = Actors.fetch_actor_by_id(id, socket.assigns.subject)
+
+    {:ok, assign(socket, actor: actor)}
+  end
+
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
       <.breadcrumb path={~p"/#{@account}/actors"}>Users</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}>
-        Jamil Bou Kheir
+      <.breadcrumb path={~p"/#{@account}/actors/#{@actor.id}"}>
+        <%= @actor.name %>
       </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}>
+      <.breadcrumb path={~p"/#{@account}/actors/#{@actor.id}/edit"}>
         Edit
       </.breadcrumb>
     </.breadcrumbs>
     <.header>
       <:title>
-        Editing user <code>Bou Kheir, Jamil</code>
+        Editing User: <code><%= @actor.name %></code>
       </:title>
     </.header>
     <!-- Update User -->
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Edit user details</h2>
+        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Edit User Details</h2>
         <form action="#">
           <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
             <div>
               <.label for="first-name">
-                First Name
+                Name
               </.label>
-              <input
-                type="text"
-                name="first-name"
-                id="first-name"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                value="Steve"
-                required=""
-              />
-            </div>
-            <div class="w-full">
-              <.label for="last-name">
-                Last Name
-              </.label>
-              <input
-                type="text"
-                name="last-name"
-                id="last-name"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                value="Johnson"
-                required=""
-              />
+              <.input type="text" name="name" id="name" value={@actor.name} required="" />
             </div>
             <div>
               <.label for="email">
                 Email
               </.label>
-              <input
+              <.input
                 aria-describedby="email-explanation"
                 type="email"
                 name="email"
                 id="email"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                value="steve@tesla.com"
+                value="TODO: Email here"
               />
               <p id="email-explanation" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                 We'll send a confirmation email to both the current email address and the updated one to confirm the change.
@@ -69,26 +56,23 @@ defmodule Web.Users.Edit do
               <.label for="confirm-email">
                 Confirm email
               </.label>
-              <input
-                type="email"
-                name="confirm-email"
-                id="confirm-email"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                value="steve@tesla.com"
-              />
+              <.input type="email" name="confirm-email" id="confirm-email" value="TODO" />
             </div>
             <div>
               <.label for="user-role">
                 Role
               </.label>
-              <select
-                aria-described-by="role-explanation"
+              <.input
+                type="select"
                 id="user-role"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-              >
-                <option value="end-user">End user</option>
-                <option selected value="admin">Admin</option>
-              </select>
+                name="user-role"
+                options={[
+                  "End User": :account_user,
+                  Admin: :account_admin_user,
+                  "Service Account": :service_account
+                ]}
+                value={@actor.type}
+              />
               <p id="role-explanation" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                 Select Admin to make this user an administrator of your organization.
               </p>
@@ -97,28 +81,24 @@ defmodule Web.Users.Edit do
               <.label for="user-groups">
                 Groups
               </.label>
-              <select
-                multiple
-                aria-described-by="groups-explanation"
+              <.input
+                type="select"
+                multiple={true}
+                name="user-groups"
                 id="user-groups"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-              >
-                <option selected value="engineering">Engineering</option>
-                <option value="devops">DevOps</option>
-                <option selected value="devsecops">DevSecOps</option>
-              </select>
+                options={["TODO: Devops", "TODO: Engineering", "TODO: Accounting"]}
+                value=""
+              />
+
               <p id="groups-explanation" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                 Select one or more groups to allow this user access to resources.
               </p>
             </div>
           </div>
           <div class="flex items-center space-x-4">
-            <button
-              type="submit"
-              class="text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:outline-none focus:ring-primary-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800"
-            >
+            <.button type="submit">
               Save
-            </button>
+            </.button>
           </div>
         </form>
       </div>
