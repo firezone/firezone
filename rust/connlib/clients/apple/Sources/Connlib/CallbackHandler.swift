@@ -29,11 +29,11 @@ public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
   private let logger = Logger(subsystem: "dev.firezone.firezone", category: "callbackhandler")
 
-  func onSetInterfaceConfig(tunnelAddresses: TunnelAddresses, dnsAddress: RustString) {
-    logger.debug("CallbackHandler.onSetInterfaceConfig: IPv4: \(tunnelAddresses.address4.toString(), privacy: .public), IPv6: \(tunnelAddresses.address6.toString(), privacy: .public), DNS: \(dnsAddress.toString(), privacy: .public)")
+  func onSetInterfaceConfig(tunnelAddressIPv4: RustString, tunnelAddressIPv6: RustString, dnsAddress: RustString) {
+    logger.debug("CallbackHandler.onSetInterfaceConfig: IPv4: \(tunnelAddressIPv4.toString(), privacy: .public), IPv6: \(tunnelAddressIPv6.toString(), privacy: .public), DNS: \(dnsAddress.toString(), privacy: .public)")
     delegate?.onSetInterfaceConfig(
-      tunnelAddressIPv4: tunnelAddresses.address4.toString(),
-      tunnelAddressIPv6: tunnelAddresses.address6.toString(),
+      tunnelAddressIPv4: tunnelAddressIPv4.toString(),
+      tunnelAddressIPv6: tunnelAddressIPv6.toString(),
       dnsAddress: dnsAddress.toString()
     )
   }

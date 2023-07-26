@@ -2,17 +2,14 @@
 // Swift bridge generated code triggers this below
 #![allow(improper_ctypes, non_camel_case_types)]
 
-use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session, TunnelAddresses};
-use std::{net::Ipv4Addr, sync::Arc};
+use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session};
+use std::{
+    net::{Ipv4Addr, Ipv6Addr},
+    sync::Arc,
+};
 
 #[swift_bridge::bridge]
 mod ffi {
-    #[swift_bridge(swift_repr = "struct")]
-    struct TunnelAddresses {
-        address4: String,
-        address6: String,
-    }
-
     // TODO: Duplicating these enum variants from `libs/common/src/error.rs` is
     // brittle/noisy/tedious
     enum SwiftConnlibError {
@@ -67,7 +64,12 @@ mod ffi {
         type CallbackHandler;
 
         #[swift_bridge(swift_name = "onSetInterfaceConfig")]
-        fn on_set_interface_config(&self, tunnelAddresses: TunnelAddresses, dnsAddress: String);
+        fn on_set_interface_config(
+            &self,
+            tunnelAddressIPv4: String,
+            tunnelAddressIPv6: String,
+            dnsAddress: String,
+        );
 
         #[swift_bridge(swift_name = "onTunnelReady")]
         fn on_tunnel_ready(&self);
@@ -125,15 +127,6 @@ impl From<Error> for ffi::SwiftConnlibError {
     }
 }
 
-impl From<TunnelAddresses> for ffi::TunnelAddresses {
-    fn from(value: TunnelAddresses) -> Self {
-        Self {
-            address4: value.address4.to_string(),
-            address6: value.address6.to_string(),
-        }
-    }
-}
-
 /// This is used by the apple client to interact with our code.
 pub struct WrappedSession {
     session: Session<CallbackHandler>,
@@ -152,9 +145,17 @@ unsafe impl Sync for ffi::CallbackHandler {}
 pub struct CallbackHandler(Arc<ffi::CallbackHandler>);
 
 impl Callbacks for CallbackHandler {
-    fn on_set_interface_config(&self, tunnel_addresses: TunnelAddresses, dns_address: Ipv4Addr) {
-        self.0
-            .on_set_interface_config(tunnel_addresses.into(), dns_address.to_string())
+    fn on_set_interface_config(
+        &self,
+        tunnel_address_v4: Ipv4Addr,
+        tunnel_address_v6: Ipv6Addr,
+        dns_address: Ipv4Addr,
+    ) {
+        self.0.on_set_interface_config(
+            tunnel_address_v4.to_string(),
+            tunnel_address_v6.to_string(),
+            dns_address.to_string(),
+        )
     }
 
     fn on_tunnel_ready(&self) {
