@@ -270,8 +270,6 @@ where
     }
 
     fn disconnect_inner(runtime: &Mutex<Option<Runtime>>, callbacks: &CB, error: Option<Error>) {
-        callbacks.on_disconnect(error.as_ref());
-
         // 1. Close the websocket connection
         // 2. Free the device handle (UNIX)
         // 3. Close the file descriptor (UNIX)
@@ -284,6 +282,8 @@ where
         // Furthermore, we will depend on Drop impls to do the list above so,
         // implement them :)
         *runtime.lock() = None;
+
+        callbacks.on_disconnect(error.as_ref());
     }
 
     /// Cleanup a [Session].
