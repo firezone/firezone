@@ -22,6 +22,15 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.provider_identifier == ^provider_identifier)
   end
 
+  def group_by_provider_id(queryable \\ all()) do
+    queryable
+    |> group_by([groups: groups], groups.provider_id)
+    |> select([groups: groups], %{
+      provider_id: groups.provider_id,
+      count: count(groups.id)
+    })
+  end
+
   def lock(queryable \\ all()) do
     lock(queryable, "FOR UPDATE")
   end

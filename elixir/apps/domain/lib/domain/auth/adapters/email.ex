@@ -23,7 +23,8 @@ defmodule Domain.Auth.Adapters.Email do
   def capabilities do
     [
       provisioners: [:manual],
-      login_flow_group: :email
+      default_provisioner: :manual,
+      parent_adapter: nil
     ]
   end
 

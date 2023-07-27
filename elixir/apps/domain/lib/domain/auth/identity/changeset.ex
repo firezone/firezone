@@ -22,7 +22,7 @@ defmodule Domain.Auth.Identity.Changeset do
     |> put_change(:account_id, account_id)
     |> put_change(:provider_identifier, provider_identifier)
     |> unique_constraint(:provider_identifier,
-      name: :auth_identities_provider_id_provider_identifier_index
+      name: :auth_identities_account_id_provider_id_provider_identifier_idx
     )
     |> validate_required(:provider_identifier)
     |> put_change(:created_by, :system)

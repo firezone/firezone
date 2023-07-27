@@ -2,7 +2,7 @@ defmodule Domain.Jobs.Executors.GlobalTest do
   use ExUnit.Case, async: true
   import Domain.Jobs.Executors.Global
 
-  def execute(:send_test_message, config) do
+  def send_test_message(config) do
     send(config[:test_pid], {:executed, self(), :erlang.monotonic_time()})
     :ok
   end

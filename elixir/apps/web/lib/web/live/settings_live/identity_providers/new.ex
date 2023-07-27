@@ -4,7 +4,6 @@ defmodule Web.SettingsLive.IdentityProviders.New do
 
   def mount(_params, _session, socket) do
     {:ok, adapters} = Auth.list_provider_adapters()
-    dbg(adapters)
 
     socket =
       socket
@@ -22,21 +21,19 @@ defmodule Web.SettingsLive.IdentityProviders.New do
 
   def render(assigns) do
     ~H"""
-    <.section_header>
-      <:breadcrumbs>
-        <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
-          %{label: "Identity Providers", path: ~p"/#{@subject.account}/settings/identity_providers"},
-          %{
-            label: "Add Identity Provider",
-            path: ~p"/#{@subject.account}/settings/identity_providers/new"
-          }
-        ]} />
-      </:breadcrumbs>
+    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+      <.breadcrumb path={~p"/#{@account}/settings/identity_providers"}>
+        Identity Providers Settings
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/settings/identity_providers/new"}>
+        Create Identity Provider
+      </.breadcrumb>
+    </.breadcrumbs>
+    <.header>
       <:title>
         Add a new Identity Provider
       </:title>
-    </.section_header>
+    </.header>
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
         <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Choose type</h2>
@@ -45,11 +42,7 @@ defmodule Web.SettingsLive.IdentityProviders.New do
             <fieldset>
               <legend class="sr-only">Identity Provider Type</legend>
 
-              <.adapter
-                :for={{adapter, _module} <- @adapters}
-                adapter={adapter}
-                account={@subject.account}
-              />
+              <.adapter :for={{adapter, _module} <- @adapters} adapter={adapter} account={@account} />
             </fieldset>
           </div>
           <div class="flex justify-end items-center space-x-4">
@@ -63,6 +56,17 @@ defmodule Web.SettingsLive.IdentityProviders.New do
         </.form>
       </div>
     </section>
+    """
+  end
+
+  def adapter(%{adapter: :workos} = assigns) do
+    ~H"""
+    <.adapter_item
+      adapter={@adapter}
+      account={@account}
+      name="WorkOS"
+      description="Authenticate users and synchronize users and groups using SCIM and 12+ other directory services."
+    />
     """
   end
 
@@ -107,7 +111,7 @@ defmodule Web.SettingsLive.IdentityProviders.New do
           id={"idp-option-#{@adapter}"}
           type="radio"
           name="next"
-          value={~p"/#{@account}/settings/identity_providers/new/#{@adapter}"}
+          value={next_step_path(@adapter, @account)}
           class={~w[
             w-4 h-4 border-gray-300
             focus:ring-2 focus:ring-blue-300
@@ -128,4 +132,16 @@ defmodule Web.SettingsLive.IdentityProviders.New do
     </div>
     """
   end
+
+  def next_step_path(:openid_connect, account) do
+    ~p"/#{account}/settings/identity_providers/openid_connect/new"
+  end
+
+  def next_step_path(:google_workspace, account) do
+    ~p"/#{account}/settings/identity_providers/google_workspace/new"
+  end
+
+  # def next_step_path(:workos, account) do
+  #   ~p"/#{account}/settings/identity_providers/workos/new"
+  # end
 end

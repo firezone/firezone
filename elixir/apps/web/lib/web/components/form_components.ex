@@ -142,6 +142,7 @@ defmodule Web.FormComponents do
         class={[
           "bg-gray-50 p-2.5 block w-full rounded-lg border text-gray-900 focus:ring-primary-600 text-sm",
           "phx-no-feedback:border-gray-300 phx-no-feedback:focus:border-primary-600",
+          "disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200 disabled:shadow-none",
           "border-gray-300 focus:border-primary-600",
           @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
@@ -171,8 +172,7 @@ defmodule Web.FormComponents do
   end
 
   ### Buttons ###
-  
-  
+
   @doc """
   Render a button group.
   """
@@ -226,7 +226,7 @@ defmodule Web.FormComponents do
   """
   attr :type, :string, default: nil
   attr :class, :string, default: nil
-  attr :rest, :global, include: ~w(disabled form name value)
+  attr :rest, :global, include: ~w(disabled form name value navigate)
 
   slot :inner_block, required: true
 

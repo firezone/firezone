@@ -11,7 +11,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
 
       {provider, bypass} =
         AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        |> AuthFixtures.create_google_workspace_provider(account: account)
 
       changeset = %Auth.Identity{} |> Ecto.Changeset.change()
 
@@ -25,7 +25,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
 
     test "puts default provider state", %{provider: provider, changeset: changeset} do
       assert %Ecto.Changeset{} = changeset = identity_changeset(provider, changeset)
-      assert changeset.changes == %{provider_state: %{}, provider_virtual_state: %{}}
+      assert changeset.changes == %{provider_virtual_state: %{}}
     end
 
     test "trims provider identifier", %{provider: provider, changeset: changeset} do
@@ -100,19 +100,19 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
     test "does nothing for a provider" do
       {provider, _bypass} =
         AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider()
+        |> AuthFixtures.create_google_workspace_provider()
 
       assert ensure_deprovisioned(provider) == {:ok, provider}
     end
   end
 
-  describe "verify_identity/2" do
+  describe "verify_and_update_identity/2" do
     setup do
       account = AccountsFixtures.create_account()
 
       {provider, bypass} =
         AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        |> AuthFixtures.create_google_workspace_provider(account: account)
 
       identity = AuthFixtures.create_identity(account: account, provider: provider)
 
@@ -133,7 +133,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, identity, expires_at} = verify_identity(provider, payload)
+      assert {:ok, identity, expires_at} = verify_and_update_identity(provider, payload)
 
       assert identity.provider_state == %{
                access_token: nil,
@@ -175,7 +175,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, identity, _expires_at} = verify_identity(provider, payload)
+      assert {:ok, identity, _expires_at} = verify_and_update_identity(provider, payload)
 
       assert identity.provider_state.access_token == "MY_ACCESS_TOKEN"
       assert identity.provider_state.refresh_token == "MY_REFRESH_TOKEN"
@@ -200,7 +200,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_identity(provider, payload) == {:error, :expired}
+      assert verify_and_update_identity(provider, payload) == {:error, :expired}
     end
 
     test "returns error when token is invalid", %{
@@ -215,7 +215,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_identity(provider, payload) == {:error, :invalid}
+      assert verify_and_update_identity(provider, payload) == {:error, :invalid}
     end
 
     test "returns error when identity does not exist", %{
@@ -240,7 +240,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_identity(provider, payload) == {:error, :not_found}
+      assert verify_and_update_identity(provider, payload) == {:error, :not_found}
     end
 
     test "returns error when identity does not belong to provider", %{
@@ -265,7 +265,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_identity(provider, payload) == {:error, :not_found}
+      assert verify_and_update_identity(provider, payload) == {:error, :not_found}
     end
 
     test "returns error when provider is down", %{
@@ -278,7 +278,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_identity(provider, payload) == {:error, :internal_error}
+      assert verify_and_update_identity(provider, payload) == {:error, :internal_error}
     end
   end
 end

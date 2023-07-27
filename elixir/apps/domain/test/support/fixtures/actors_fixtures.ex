@@ -92,7 +92,7 @@ defmodule Domain.ActorsFixtures do
 
     attrs = actor_attrs(attrs)
 
-    Actors.Actor.Changeset.create_changeset(provider, attrs)
+    Actors.Actor.Changeset.create_changeset(provider.account_id, attrs)
     |> Repo.insert!()
   end
 

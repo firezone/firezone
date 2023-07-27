@@ -156,7 +156,7 @@ defmodule Domain.Jobs.Executors.Global do
   end
 
   defp execute_handler(module, function, config) do
-    _ = module.execute(function, config)
+    _ = apply(module, function, [config])
     :ok
   end
 

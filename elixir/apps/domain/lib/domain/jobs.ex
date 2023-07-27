@@ -17,7 +17,12 @@ defmodule Domain.Jobs do
         handler_config = Keyword.get(config, name, [])
 
         if Keyword.get(handler_config, :enabled, true) do
-          [{Domain.Jobs.Executors.Global, {{module, name}, interval, handler_config}}]
+          [
+            Supervisor.child_spec(
+              {Domain.Jobs.Executors.Global, {{module, name}, interval, handler_config}},
+              id: {module, name}
+            )
+          ]
         else
           []
         end

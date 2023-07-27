@@ -6,6 +6,9 @@ defmodule Domain.AuthTest do
   alias Domain.Auth.Authorizer
   alias Domain.{AccountsFixtures, AuthFixtures}
 
+  # describe "fetch_provider_by_id/2"
+  # describe "fetch_active_provider_by_id/2"
+
   describe "fetch_active_provider_by_id/1" do
     test "returns error when provider does not exist" do
       assert fetch_active_provider_by_id(Ecto.UUID.generate()) == {:error, :not_found}
@@ -101,7 +104,8 @@ defmodule Domain.AuthTest do
       assert errors_on(changeset) == %{
                adapter: ["can't be blank"],
                adapter_config: ["can't be blank"],
-               name: ["can't be blank"]
+               name: ["can't be blank"],
+               provisioner: ["can't be blank"]
              }
     end
 
@@ -133,7 +137,7 @@ defmodule Domain.AuthTest do
       attrs = AuthFixtures.provider_attrs(adapter: :email)
       assert {:error, changeset} = create_provider(account, attrs)
       refute changeset.valid?
-      assert errors_on(changeset) == %{adapter: ["this provider is already enabled"]}
+      assert errors_on(changeset) == %{base: ["this provider is already enabled"]}
     end
 
     test "returns error if userpass provider is already enabled", %{
@@ -143,7 +147,7 @@ defmodule Domain.AuthTest do
       attrs = AuthFixtures.provider_attrs(adapter: :userpass)
       assert {:error, changeset} = create_provider(account, attrs)
       refute changeset.valid?
-      assert errors_on(changeset) == %{adapter: ["this provider is already enabled"]}
+      assert errors_on(changeset) == %{base: ["this provider is already enabled"]}
     end
 
     test "returns error if token provider is already enabled", %{
@@ -153,7 +157,7 @@ defmodule Domain.AuthTest do
       attrs = AuthFixtures.provider_attrs(adapter: :token)
       assert {:error, changeset} = create_provider(account, attrs)
       refute changeset.valid?
-      assert errors_on(changeset) == %{adapter: ["this provider is already enabled"]}
+      assert errors_on(changeset) == %{base: ["this provider is already enabled"]}
     end
 
     test "returns error if openid connect provider is already enabled", %{
@@ -166,12 +170,13 @@ defmodule Domain.AuthTest do
       attrs =
         AuthFixtures.provider_attrs(
           adapter: :openid_connect,
-          adapter_config: provider.adapter_config
+          adapter_config: provider.adapter_config,
+          provisioner: :just_in_time
         )
 
       assert {:error, changeset} = create_provider(account, attrs)
       refute changeset.valid?
-      assert errors_on(changeset) == %{adapter: ["this provider is already connected"]}
+      assert errors_on(changeset) == %{base: ["this provider is already connected"]}
     end
 
     test "creates a provider", %{
@@ -227,7 +232,7 @@ defmodule Domain.AuthTest do
                 {:unauthorized, [missing_permissions: [Authorizer.manage_providers_permission()]]}}
     end
 
-    test "returns error when subject tries to create an account in another account", %{
+    test "returns error when subject tries to create a provider in another account", %{
       account: other_account
     } do
       account = AccountsFixtures.create_account()
@@ -250,6 +255,109 @@ defmodule Domain.AuthTest do
 
       assert provider.created_by == :identity
       assert provider.created_by_identity_id == subject.identity.id
+    end
+  end
+
+  describe "update_provider/2" do
+    setup do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      {provider, bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_google_workspace_provider(account: account)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        provider: provider,
+        bypass: bypass,
+        subject: subject
+      }
+    end
+
+    test "returns changeset error when required attrs are missing", %{
+      provider: provider,
+      subject: subject
+    } do
+      attrs = %{name: nil, adapter: nil, adapter_config: nil}
+      assert {:error, changeset} = update_provider(provider, attrs, subject)
+      refute changeset.valid?
+
+      assert errors_on(changeset) == %{
+               adapter_config: ["can't be blank"],
+               name: ["can't be blank"]
+             }
+    end
+
+    test "returns error on invalid attrs", %{
+      provider: provider,
+      subject: subject
+    } do
+      attrs =
+        AuthFixtures.provider_attrs(
+          name: String.duplicate("A", 256),
+          adapter: :foo,
+          adapter_config: :bar,
+          provisioner: :foo
+        )
+
+      assert {:error, changeset} = update_provider(provider, attrs, subject)
+      refute changeset.valid?
+
+      assert errors_on(changeset) == %{
+               name: ["should be at most 255 character(s)"],
+               adapter_config: ["is invalid"],
+               provisioner: ["is invalid"]
+             }
+    end
+
+    test "updates a provider", %{
+      provider: provider,
+      subject: subject
+    } do
+      attrs =
+        AuthFixtures.provider_attrs(
+          provisioner: :custom,
+          adapter_config: %{
+            client_id: "foo"
+          }
+        )
+
+      assert {:ok, provider} = update_provider(provider, attrs, subject)
+
+      assert provider.name == attrs.name
+      assert provider.adapter == provider.adapter
+      assert provider.adapter_config["client_id"] == attrs.adapter_config.client_id
+      assert provider.account_id == subject.account.id
+
+      assert is_nil(provider.disabled_at)
+      assert is_nil(provider.deleted_at)
+    end
+
+    test "returns error when subject can not manage providers", %{
+      provider: provider,
+      subject: subject
+    } do
+      subject = AuthFixtures.remove_permissions(subject)
+
+      assert update_provider(provider, %{}, subject) ==
+               {:error,
+                {:unauthorized, [missing_permissions: [Authorizer.manage_providers_permission()]]}}
+    end
+
+    test "returns error when subject tries to update an account in another account", %{
+      provider: provider
+    } do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      assert update_provider(provider, %{}, subject) == {:error, :not_found}
     end
   end
 
@@ -606,7 +714,7 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "create_identity/3" do
+  describe "upsert_identity/3" do
     test "creates an identity" do
       account = AccountsFixtures.create_account()
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
@@ -620,7 +728,7 @@ defmodule Domain.AuthTest do
           provider: provider
         )
 
-      assert {:ok, identity} = create_identity(actor, provider, provider_identifier)
+      assert {:ok, identity} = upsert_identity(actor, provider, provider_identifier)
 
       assert identity.provider_id == provider.id
       assert identity.provider_identifier == provider_identifier
@@ -647,11 +755,11 @@ defmodule Domain.AuthTest do
         )
 
       provider_identifier = Ecto.UUID.generate()
-      assert {:error, changeset} = create_identity(actor, provider, provider_identifier)
+      assert {:error, changeset} = upsert_identity(actor, provider, provider_identifier)
       assert errors_on(changeset) == %{provider_identifier: ["is an invalid email address"]}
 
       provider_identifier = nil
-      assert {:error, changeset} = create_identity(actor, provider, provider_identifier)
+      assert {:error, changeset} = upsert_identity(actor, provider, provider_identifier)
       assert errors_on(changeset) == %{provider_identifier: ["can't be blank"]}
     end
   end

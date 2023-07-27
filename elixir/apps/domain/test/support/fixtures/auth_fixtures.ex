@@ -17,6 +17,10 @@ defmodule Domain.AuthFixtures do
     Ecto.UUID.generate()
   end
 
+  def random_provider_identifier(%Domain.Auth.Provider{adapter: :google_workspace}) do
+    Ecto.UUID.generate()
+  end
+
   def random_provider_identifier(%Domain.Auth.Provider{adapter: :token}) do
     Ecto.UUID.generate()
   end
@@ -30,7 +34,8 @@ defmodule Domain.AuthFixtures do
       name: "provider-#{counter()}",
       adapter: :email,
       adapter_config: %{},
-      created_by: :system
+      created_by: :system,
+      provisioner: :manual
     })
   end
 
@@ -57,11 +62,59 @@ defmodule Domain.AuthFixtures do
       end)
 
     attrs =
-      %{adapter: :openid_connect, adapter_config: provider_attrs}
+      %{
+        adapter: :openid_connect,
+        adapter_config: provider_attrs,
+        provisioner: :just_in_time
+      }
       |> Map.merge(attrs)
       |> provider_attrs()
 
     {:ok, provider} = Auth.create_provider(account, attrs)
+
+    provider =
+      provider
+      |> Ecto.Changeset.change(
+        disabled_at: nil,
+        adapter_state: %{}
+      )
+      |> Repo.update!()
+
+    {provider, bypass}
+  end
+
+  def create_google_workspace_provider({bypass, [provider_attrs]}, attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    {account, attrs} =
+      Map.pop_lazy(attrs, :account, fn ->
+        AccountsFixtures.create_account()
+      end)
+
+    attrs =
+      %{
+        adapter: :google_workspace,
+        adapter_config: provider_attrs,
+        provisioner: :custom
+      }
+      |> Map.merge(attrs)
+      |> provider_attrs()
+
+    {:ok, provider} = Auth.create_provider(account, attrs)
+
+    provider =
+      provider
+      |> Ecto.Changeset.change(
+        disabled_at: nil,
+        adapter_state: %{
+          "access_token" => "OIDC_ACCESS_TOKEN",
+          "refresh_token" => "OIDC_REFRESH_TOKEN",
+          "expires_at" => DateTime.utc_now() |> DateTime.add(1, :day),
+          "claims" => "openid email profile offline_access"
+        }
+      )
+      |> Repo.update!()
+
     {provider, bypass}
   end
 
@@ -134,7 +187,7 @@ defmodule Domain.AuthFixtures do
       end)
 
     {:ok, identity} =
-      Auth.create_identity(actor, provider, provider_identifier, provider_virtual_state)
+      Auth.upsert_identity(actor, provider, provider_identifier, provider_virtual_state)
 
     if state = Map.get(attrs, :provider_state) do
       identity

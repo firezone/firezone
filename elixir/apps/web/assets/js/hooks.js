@@ -2,6 +2,26 @@ import StatusPage from "../vendor/status_page"
 
 let Hooks = {}
 
+// Copy to clipboard
+
+Hooks.Copy = {
+  mounted() {
+    this.el.addEventListener("click", (ev) => {
+      ev.preventDefault();
+
+      let text = ev.currentTarget.querySelector("[data-copy]").innerHTML.trim();
+      let cl = ev.currentTarget.querySelector("[data-icon]").classList
+
+      navigator.clipboard.writeText(text).then(() => {
+        cl.add("hero-clipboard-document-check");
+        cl.add("text-green-500");
+        cl.remove("hero-clipboard-document");
+        cl.remove("text-gray-500");
+      })
+    });
+  },
+}
+
 // Update status indicator when sidebar is mounted or updated
 let statusIndicatorClassNames = {
   none: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",

@@ -1,4 +1,4 @@
-defmodule Web.SettingsLive.IdentityProviders.New.Components do
+defmodule Web.SettingsLive.IdentityProviders.SAML.Components do
   @moduledoc """
   Provides components that can be shared across forms.
   """
@@ -6,6 +6,7 @@ defmodule Web.SettingsLive.IdentityProviders.New.Components do
   use Web, :verified_routes
   import Web.CoreComponents
   import Web.FormComponents
+  alias Phoenix.LiveView.JS
 
   @doc """
   Conditionally renders form fields corresponding to a given provisioning strategy type.
@@ -124,5 +125,96 @@ defmodule Web.SettingsLive.IdentityProviders.New.Components do
       </div>
     <% end %>
     """
+  end
+
+  def provisioning_status(assigns) do
+    ~H"""
+    <!-- Provisioning details -->
+    <.header>
+      <:title>Provisioning</:title>
+    </.header>
+    <div class="bg-white dark:bg-gray-800 overflow-hidden">
+      <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+        <tbody>
+          <tr class="border-b border-gray-200 dark:border-gray-700">
+            <th
+              scope="row"
+              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
+            >
+              Type
+            </th>
+            <td class="px-6 py-4">
+              SCIM 2.0
+            </td>
+          </tr>
+          <tr class="border-b border-gray-200 dark:border-gray-700">
+            <th
+              scope="row"
+              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
+            >
+              Endpoint
+            </th>
+            <td class="px-6 py-4">
+              <div class="flex items-center">
+                <button
+                  phx-click={JS.dispatch("phx:copy", to: "#endpoint-value")}
+                  title="Copy Endpoint"
+                  class="text-blue-600 dark:text-blue-500"
+                >
+                  <.icon name="hero-document-duplicate" class="w-5 h-5 mr-1" />
+                </button>
+                <code id="endpoint-value" data-copy={url(~p"/#{@account}/scim/v2")}>
+                  <%= url(~p"/#{@account}/scim/v2") %>
+                </code>
+              </div>
+            </td>
+          </tr>
+          <tr class="border-b border-gray-200 dark:border-gray-700">
+            <th
+              scope="row"
+              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
+            >
+              Token
+            </th>
+            <td class="px-6 py-4">
+              <div class="flex items-center">
+                <button
+                  phx-click={JS.dispatch("phx:copy", to: "#visible-token")}
+                  title="Copy SCIM token"
+                  class="text-blue-600 dark:text-blue-500"
+                >
+                  <.icon name="hero-document-duplicate" class="w-5 h-5 mr-1" />
+                </button>
+                <button
+                  phx-click={toggle_scim_token()}
+                  title="Show SCIM token"
+                  class="text-blue-600 dark:text-blue-500"
+                >
+                  <.icon name="hero-eye" class="w-5 h-5 mr-1" />
+                </button>
+
+                <span id="hidden-token">
+                  •••••••••••••••••••••••••••••••••••••••••••••
+                </span>
+                <span
+                  id="visible-token"
+                  style="display: none"
+                  data-copy={@identity_provider.scim_token}
+                >
+                  <code><%= @identity_provider.scim_token %></code>
+                </span>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    """
+  end
+
+  def toggle_scim_token(js \\ %JS{}) do
+    js
+    |> JS.toggle(to: "#visible-token")
+    |> JS.toggle(to: "#hidden-token")
   end
 end

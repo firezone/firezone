@@ -25,6 +25,7 @@ defmodule Domain.Auth.Adapters.Token do
   def capabilities do
     [
       provisioners: [:manual],
+      default_provisioner: :manual,
       group: nil
     ]
   end

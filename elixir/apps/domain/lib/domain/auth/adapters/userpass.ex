@@ -26,7 +26,8 @@ defmodule Domain.Auth.Adapters.UserPass do
   def capabilities do
     [
       provisioners: [:manual],
-      login_flow_group: :userpass
+      default_provisioner: :manual,
+      parent_adapter: nil
     ]
   end
 

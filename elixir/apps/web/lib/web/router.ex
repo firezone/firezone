@@ -145,12 +145,37 @@ defmodule Web.Router do
 
         scope "/identity_providers", IdentityProviders do
           live "/", Index
-          live "/:provider_id", Show
-          live "/:provider_id/edit", Edit
-
           live "/new", New
-          live "/new/openid_connect", New.OpenIDConnect
-          live "/new/saml", New.SAML
+
+          scope "/saml", SAML do
+            live "/new", New
+            live "/:provider_id", Show
+            live "/:provider_id/edit", Edit
+          end
+
+          scope "/openid_connect", OpenIDConnect do
+            live "/new", New
+            live "/:provider_id", Show
+            live "/:provider_id/edit", Edit
+
+            # OpenID Connection
+            get "/:provider_id/redirect", Connect, :redirect_to_idp
+            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
+          end
+
+          scope "/google_workspace", GoogleWorkspace do
+            live "/new", New
+            live "/:provider_id", Show
+            live "/:provider_id/edit", Edit
+
+            # OpenID Connection
+            get "/:provider_id/redirect", Connect, :redirect_to_idp
+            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
+          end
+
+          scope "/system", System do
+            live "/:provider_id", Show
+          end
         end
 
         live "/dns", DNS

@@ -38,7 +38,7 @@ defmodule Web.GatewaysLive.New do
             </div>
             <.tabs id="deployment-instructions">
               <:tab id="docker-instructions" label="Docker">
-                <.code_block>
+                <.code_block id="code-sample-docker">
                   docker run -d \
                   --name=zigbee2mqtt \
                   --restart=always \
@@ -50,7 +50,7 @@ defmodule Web.GatewaysLive.New do
                 </.code_block>
               </:tab>
               <:tab id="systemd-instructions" label="Systemd">
-                <.code_block>
+                <.code_block id="code-sample-systemd">
                   [Unit]
                   Description=zigbee2mqtt
                   After=network.target

@@ -8,16 +8,18 @@ defmodule Domain.Auth.Adapter do
   its own provisioning logic (eg. API integration), so it should be rendered
   in the UI on pre-provider basis.
   """
-  @type provisioners :: :manual | :just_in_time | :custom
+  @type provisioner :: :manual | :just_in_time | :custom
 
   @typedoc """
-  This type defines which kind of auth flow will be used on frontend for the
-  IdP provider. Can be set to `nil` if the IdP adapter should not be part of
-  login form.
+  Setting parent adapter is important because it will allow to reuse auth flows
+  on the front-end for multiple IdP adapters.
   """
-  @type login_flow_group :: nil | atom()
+  @type parent_adapter :: nil | atom()
 
-  @type capability :: {:provisioners, [provisioners()]} | {:login_flow_group, login_flow_group()}
+  @type capability ::
+          {:parent_adapter, parent_adapter()}
+          | {:provisioners, [provisioner()]}
+          | {:default_provisioner, provisioner()}
 
   @doc """
   This callback returns list of provider capabilities for a better UI rendering.
@@ -72,7 +74,7 @@ defmodule Domain.Auth.Adapter do
     @doc """
     Used for adapters that are not secret-based, eg. OpenID Connect.
     """
-    @callback verify_identity(%Provider{}, payload :: term()) ::
+    @callback verify_and_update_identity(%Provider{}, payload :: term()) ::
                 {:ok, %Identity{}, expires_at :: %DateTime{} | nil}
                 | {:error, :invalid_secret}
                 | {:error, :expired_secret}

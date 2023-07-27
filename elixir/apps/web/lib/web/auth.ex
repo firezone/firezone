@@ -214,7 +214,7 @@ defmodule Web.Auth do
   def on_mount(:ensure_authenticated, params, session, socket) do
     socket = mount_subject(socket, params, session)
 
-    if socket.assigns.subject do
+    if socket.assigns[:subject] do
       {:cont, socket}
     else
       socket =
@@ -229,18 +229,18 @@ defmodule Web.Auth do
   def on_mount(:ensure_account_admin_user_actor, params, session, socket) do
     socket = mount_subject(socket, params, session)
 
-    if socket.assigns.subject.actor.type == :account_admin_user do
+    if socket.assigns[:subject].actor.type == :account_admin_user do
       {:cont, socket}
     else
-      raise Ecto.NoResultsError
+      raise Web.LiveErrors.NotFoundError
     end
   end
 
   def on_mount(:redirect_if_user_is_authenticated, params, session, socket) do
     socket = mount_subject(socket, params, session)
 
-    if socket.assigns.subject do
-      {:halt, Phoenix.LiveView.redirect(socket, to: signed_in_path(socket.assigns.subject))}
+    if socket.assigns[:subject] do
+      {:halt, Phoenix.LiveView.redirect(socket, to: signed_in_path(socket.assigns[:subject]))}
     else
       {:cont, socket}
     end

@@ -3,8 +3,9 @@ defmodule Domain.Auth.Provider.Changeset do
   alias Domain.Accounts
   alias Domain.Auth.{Subject, Provider}
 
-  @fields ~w[name adapter adapter_config]a
-  @required_fields @fields
+  @create_fields ~w[id name adapter provisioner adapter_config adapter_state disabled_at]a
+  @update_fields ~w[name adapter_config adapter_state provisioner disabled_at deleted_at]a
+  @required_fields ~w[name adapter adapter_config provisioner]a
 
   def create_changeset(account, attrs, %Subject{} = subject) do
     account
@@ -15,19 +16,47 @@ defmodule Domain.Auth.Provider.Changeset do
 
   def create_changeset(%Accounts.Account{} = account, attrs) do
     %Provider{}
-    |> cast(attrs, @fields)
+    |> cast(attrs, @create_fields)
     |> put_change(:account_id, account.id)
+    |> changeset()
+    |> put_change(:created_by, :system)
+  end
+
+  def update_changeset(%Provider{} = provider, attrs) do
+    provider
+    |> cast(attrs, @update_fields)
+    |> changeset()
+  end
+
+  defp changeset(changeset) do
+    changeset
     |> validate_length(:name, min: 1, max: 255)
-    |> validate_required(@required_fields)
-    |> unique_constraint(:adapter,
+    |> validate_required(:adapter)
+    |> unique_constraint(:base,
       name: :auth_providers_account_id_adapter_index,
       message: "this provider is already enabled"
     )
-    |> unique_constraint(:adapter,
+    |> unique_constraint(:base,
       name: :auth_providers_account_id_oidc_adapter_index,
       message: "this provider is already connected"
     )
-    |> put_change(:created_by, :system)
+    |> validate_provisioner()
+    |> validate_required(@required_fields)
+  end
+
+  defp validate_provisioner(changeset) do
+    with false <- has_errors?(changeset, :adapter),
+         {_data_or_changes, adapter} <- fetch_field(changeset, :adapter) do
+      capabilities = Domain.Auth.Adapters.fetch_capabilities!(adapter)
+      provisioners = Keyword.fetch!(capabilities, :provisioners)
+      default_provisioner = Keyword.fetch!(capabilities, :default_provisioner)
+
+      changeset
+      |> validate_inclusion(:provisioner, provisioners)
+      |> put_default_value(:provisioner, default_provisioner)
+    else
+      _ -> changeset
+    end
   end
 
   def disable_provider(%Provider{} = provider) do

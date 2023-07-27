@@ -96,6 +96,22 @@ defmodule Domain.Actors do
     end
   end
 
+  def fetch_groups_count_grouped_by_provider_id(%Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      {:ok, groups} =
+        Group.Query.group_by_provider_id()
+        |> Authorizer.for_subject(subject)
+        |> Repo.list()
+
+      groups =
+        Enum.reduce(groups, %{}, fn %{provider_id: id, count: count}, acc ->
+          Map.put(acc, id, count)
+        end)
+
+      {:ok, groups}
+    end
+  end
+
   def fetch_actor_by_id(id, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
          true <- Validator.valid_uuid?(id) do
@@ -144,7 +160,7 @@ defmodule Domain.Actors do
       ) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
          :ok <- Auth.ensure_has_access_to(subject, provider),
-         changeset = Actor.Changeset.create_changeset(provider, attrs),
+         changeset = Actor.Changeset.create_changeset(provider.account_id, attrs),
          {:ok, data} <- Ecto.Changeset.apply_action(changeset, :validate) do
       granted_permissions = Auth.fetch_type_permissions!(data.type)
 
@@ -162,7 +178,7 @@ defmodule Domain.Actors do
 
   def create_actor(%Auth.Provider{} = provider, provider_identifier, attrs) do
     Ecto.Multi.new()
-    |> Ecto.Multi.insert(:actor, Actor.Changeset.create_changeset(provider, attrs))
+    |> Ecto.Multi.insert(:actor, Actor.Changeset.create_changeset(provider.account_id, attrs))
     |> Ecto.Multi.run(:identity, fn _repo, %{actor: actor} ->
       Auth.create_identity(actor, provider, provider_identifier)
     end)

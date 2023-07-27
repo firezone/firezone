@@ -1,6 +1,6 @@
-defmodule Web.SettingsLive.IdentityProviders.New.SAML do
+defmodule Web.SettingsLive.IdentityProviders.SAML.New do
   use Web, :live_view
-  import Web.SettingsLive.IdentityProviders.New.Components
+  import Web.SettingsLive.IdentityProviders.SAML.Components
 
   # TODO: Use a changeset for this
   @form_initializer %{
@@ -31,7 +31,7 @@ defmodule Web.SettingsLive.IdentityProviders.New.SAML do
 
     {:noreply,
      push_navigate(socket,
-       to: ~p"/#{socket.assigns.subject.account}/settings/identity_providers/#{idp.id}"
+       to: ~p"/#{socket.assigns.subject.account}/settings/identity_providers/saml/#{idp.id}"
      )}
   end
 
@@ -44,7 +44,7 @@ defmodule Web.SettingsLive.IdentityProviders.New.SAML do
       <.breadcrumb path={~p"/#{@account}/settings/identity_providers/new"}>
         Create Identity Provider
       </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/settings/identity_providers/new/saml"}>SAML</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/settings/identity_providers/saml/new"}>SAML</.breadcrumb>
     </.breadcrumbs>
     <.header>
       <:title>

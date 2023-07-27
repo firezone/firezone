@@ -63,6 +63,15 @@ defmodule Domain.Auth.Identity.Query do
     lock(queryable, "FOR UPDATE")
   end
 
+  def group_by_provider_id(queryable \\ all()) do
+    queryable
+    |> group_by([identities: identities], identities.provider_id)
+    |> select([identities: identities], %{
+      provider_id: identities.provider_id,
+      count: count(identities.id)
+    })
+  end
+
   def with_preloaded_assoc(queryable \\ all(), type \\ :left, assoc) do
     queryable
     |> with_assoc(type, assoc)

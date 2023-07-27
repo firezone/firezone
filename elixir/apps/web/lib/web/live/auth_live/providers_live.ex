@@ -2,6 +2,36 @@ defmodule Web.Auth.ProvidersLive do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
   alias Domain.{Auth, Accounts}
 
+  def mount(%{"account_id" => account_id}, _session, socket) do
+    with {:ok, account} <- Accounts.fetch_account_by_id(account_id),
+         {:ok, [_ | _] = providers} <- Auth.list_active_providers_for_account(account) do
+      providers_by_adapter =
+        providers
+        |> Enum.group_by(fn provider ->
+          parent_adapter =
+            provider
+            |> Auth.fetch_provider_capabilities!()
+            |> Keyword.get(:parent_adapter)
+
+          parent_adapter || provider.adapter
+        end)
+        |> Map.drop([:token])
+
+      {:ok, socket,
+       temporary_assigns: [
+         account: account,
+         providers_by_adapter: providers_by_adapter,
+         page_title: "Sign in"
+       ]}
+    else
+      {:ok, []} ->
+        raise Web.LiveErrors.NotFoundError
+
+      {:error, :not_found} ->
+        raise Web.LiveErrors.NotFoundError
+    end
+  end
+
   def render(assigns) do
     ~H"""
     <section class="bg-gray-50 dark:bg-gray-900">
@@ -148,10 +178,16 @@ defmodule Web.Auth.ProvidersLive do
 
   def openid_connect_button(assigns) do
     ~H"""
-    <a
-      href={~p"/#{@provider.account_id}/sign_in/providers/#{@provider.id}/redirect"}
-      class="w-full inline-flex items-center justify-center py-2.5 px-5 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-gray-900 focus:z-10 focus:ring-4 focus:ring-gray-200 dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700"
-    >
+    <a href={~p"/#{@provider.account_id}/sign_in/providers/#{@provider.id}/redirect"} class={~w[
+          w-full inline-flex items-center justify-center py-2.5 px-5
+          bg-white rounded-lg
+          text-sm font-medium text-gray-900
+          focus:outline-none
+          border border-gray-200
+          hover:bg-gray-100 hover:text-gray-900
+          focus:z-10 focus:ring-4 focus:ring-gray-200
+          dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400
+          dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700]}>
       Log in with <%= @provider.name %>
     </a>
     """
@@ -159,32 +195,5 @@ defmodule Web.Auth.ProvidersLive do
 
   def adapter_enabled?(providers_by_adapter, adapter) do
     Map.get(providers_by_adapter, adapter, []) != []
-  end
-
-  def mount(%{"account_id" => account_id}, _session, socket) do
-    with {:ok, account} <- Accounts.fetch_account_by_id(account_id),
-         {:ok, [_ | _] = providers} <- Auth.list_active_providers_for_account(account) do
-      providers_by_adapter =
-        providers
-        |> Enum.group_by(fn provider ->
-          provider
-          |> Auth.fetch_provider_capabilities!()
-          |> Keyword.fetch!(:login_flow_group)
-        end)
-        |> Map.delete(nil)
-
-      {:ok, socket,
-       temporary_assigns: [
-         account: account,
-         providers_by_adapter: providers_by_adapter,
-         page_title: "Sign in"
-       ]}
-    else
-      {:ok, []} ->
-        raise Web.LiveErrors.NotFoundError
-
-      {:error, :not_found} ->
-        raise Web.LiveErrors.NotFoundError
-    end
   end
 end

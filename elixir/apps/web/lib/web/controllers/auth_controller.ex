@@ -34,6 +34,7 @@ defmodule Web.AuthController do
       conn
       |> Web.Auth.renew_session()
       |> Web.Auth.put_subject_in_session(subject)
+      |> delete_session(:user_return_to)
       |> redirect(to: redirect_to)
     else
       {:error, :not_found} ->
@@ -94,6 +95,7 @@ defmodule Web.AuthController do
       conn
       |> Web.Auth.renew_session()
       |> Web.Auth.put_subject_in_session(subject)
+      |> delete_session(:user_return_to)
       |> redirect(to: redirect_to)
     else
       {:error, :not_found} ->
@@ -114,7 +116,7 @@ defmodule Web.AuthController do
   end
 
   @doc """
-  This controller redirects user to IdP for authentication while persisting
+  This controller redirects user to IdP during sign in for authentication while persisting
   verification state to prevent various attacks on OpenID Connect.
   """
   def redirect_to_idp(conn, %{"account_id" => account_id, "provider_id" => provider_id}) do
@@ -122,15 +124,7 @@ defmodule Web.AuthController do
       redirect_url =
         url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
 
-      {:ok, authorization_url, {state, code_verifier}} =
-        OpenIDConnect.authorization_uri(provider, redirect_url)
-
-      key = state_cookie_key(provider.id)
-      value = :erlang.term_to_binary({state, code_verifier})
-
-      conn
-      |> put_resp_cookie(key, value, @state_cookie_options)
-      |> redirect(external: authorization_url)
+      redirect_to_idp(conn, redirect_url, provider)
     else
       {:error, :not_found} ->
         conn
@@ -139,8 +133,20 @@ defmodule Web.AuthController do
     end
   end
 
+  def redirect_to_idp(%Plug.Conn{} = conn, redirect_url, %Domain.Auth.Provider{} = provider) do
+    {:ok, authorization_url, {state, code_verifier}} =
+      OpenIDConnect.authorization_uri(provider, redirect_url)
+
+    key = state_cookie_key(provider.id)
+    value = :erlang.term_to_binary({state, code_verifier})
+
+    conn
+    |> put_resp_cookie(key, value, @state_cookie_options)
+    |> redirect(external: authorization_url)
+  end
+
   @doc """
-  This controller handles IdP redirect back to the Firezone.
+  This controller handles IdP redirect back to the Firezone when user signs in.
   """
   def handle_idp_callback(conn, %{
         "account_id" => account_id,
@@ -148,56 +154,56 @@ defmodule Web.AuthController do
         "state" => state,
         "code" => code
       }) do
-    key = state_cookie_key(provider_id)
+    with {:ok, code_verifier, conn} <- verify_state_and_fetch_verifier(conn, provider_id, state) do
+      payload = {
+        url(~p"/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"),
+        code_verifier,
+        code
+      }
 
-    with {:ok, code_verifier} <- fetch_verified_state(conn, key, state),
-         {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-         payload =
-           {
-             url(~p"/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"),
-             code_verifier,
-             code
-           },
-         {:ok, subject} <- Web.Auth.sign_in(conn, provider, payload) do
-      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
+      with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
+           {:ok, subject} <- Web.Auth.sign_in(conn, provider, payload) do
+        redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
 
-      conn
-      |> delete_resp_cookie(key, @state_cookie_options)
-      |> Web.Auth.renew_session()
-      |> Web.Auth.put_subject_in_session(subject)
-      |> redirect(to: redirect_to)
-    else
-      {:error, :not_found} ->
         conn
-        |> put_flash(:error, "You can not use this method to sign in.")
-        |> redirect(to: "/#{account_id}/sign_in")
+        |> Web.Auth.renew_session()
+        |> Web.Auth.put_subject_in_session(subject)
+        |> delete_session(:user_return_to)
+        |> redirect(to: redirect_to)
+      else
+        {:error, :not_found} ->
+          conn
+          |> put_flash(:error, "You can not use this method to sign in.")
+          |> redirect(to: "/#{account_id}/sign_in")
 
-      {:error, :invalid_state} ->
+        {:error, :invalid_actor_type} ->
+          conn
+          |> put_flash(:info, "Please use client application to access Firezone.")
+          |> redirect(to: ~p"/#{account_id}")
+
+        {:error, _reason} ->
+          conn
+          |> put_flash(:error, "You can not authenticate to this account.")
+          |> redirect(to: "/#{account_id}/sign_in")
+      end
+    else
+      {:error, :invalid_state, conn} ->
         conn
         |> put_flash(:error, "Your session has expired, please try again.")
-        |> redirect(to: "/#{account_id}/sign_in")
-
-      {:error, :invalid_actor_type} ->
-        conn
-        |> put_flash(:info, "Please use client application to access Firezone.")
-        |> redirect(to: ~p"/#{account_id}")
-
-      {:error, _reason} ->
-        conn
-        |> put_flash(:error, "You can not authenticate to this account.")
         |> redirect(to: "/#{account_id}/sign_in")
     end
   end
 
-  defp fetch_verified_state(conn, key, state) do
+  def verify_state_and_fetch_verifier(conn, provider_id, state) do
+    key = state_cookie_key(provider_id)
     conn = fetch_cookies(conn, signed: [key])
 
     with {:ok, encoded_state} <- Map.fetch(conn.cookies, key),
          {persisted_state, persisted_verifier} <- :erlang.binary_to_term(encoded_state, [:safe]),
          :ok <- OpenIDConnect.ensure_states_equal(state, persisted_state) do
-      {:ok, persisted_verifier}
+      {:ok, persisted_verifier, delete_resp_cookie(conn, key, @state_cookie_options)}
     else
-      _ -> {:error, :invalid_state}
+      _ -> {:error, :invalid_state, delete_resp_cookie(conn, key, @state_cookie_options)}
     end
   end
 

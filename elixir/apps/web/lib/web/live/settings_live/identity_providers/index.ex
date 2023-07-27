@@ -1,24 +1,26 @@
 defmodule Web.SettingsLive.IdentityProviders.Index do
   use Web, :live_view
-  alias Domain.{Auth, Accounts}
+  import Web.SettingsLive.IdentityProviders.Components
+  alias Domain.{Auth, Actors}
 
-  def mount(%{"account_id" => account_id}, _session, socket) do
-    with {:ok, account} <- Accounts.fetch_account_by_id(account_id),
-         {:ok, providers} <- Auth.list_active_providers_for_account(account) do
+  def mount(_params, _session, socket) do
+    account = socket.assigns.account
+    subject = socket.assigns.subject
+
+    with {:ok, providers} <- Auth.list_active_providers_for_account(account),
+         {:ok, identities_count_by_provider_id} <-
+           Auth.fetch_identities_count_grouped_by_provider_id(subject),
+         {:ok, groups_count_by_provider_id} <-
+           Actors.fetch_groups_count_grouped_by_provider_id(subject) do
       {:ok, socket,
        temporary_assigns: [
-         account: account,
+         identities_count_by_provider_id: identities_count_by_provider_id,
+         groups_count_by_provider_id: groups_count_by_provider_id,
          providers: providers,
-         page_title: "Identity Providers"
+         page_title: "Identity Providers Settings"
        ]}
     else
-      {:error, :not_found} ->
-        socket =
-          socket
-          |> put_flash(:error, "Account not found.")
-          |> redirect(to: ~p"/#{account_id}/")
-
-        {:ok, socket}
+      _ -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -50,301 +52,102 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
         <.icon name="hero-arrow-top-right-on-square" class="-ml-1 mb-3 w-3 h-3" />
       </.link>
     </p>
-    <!-- Identity Providers Table -->
+
+    <.flash_group flash={@flash} />
+
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-          <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-            <tr>
-              <th scope="col" class="px-4 py-3">
-                <div class="flex items-center">
-                  Name
-                  <.link href="#">
-                    <.icon name="hero-chevron-up-down-solid" class="w-4 h-4 ml-1" />
-                  </.link>
-                </div>
-              </th>
-              <th scope="col" class="px-4 py-3">
-                <div class="flex items-center">
-                  Type
-                  <.link href="#">
-                    <.icon name="hero-chevron-up-down-solid" class="w-4 h-4 ml-1" />
-                  </.link>
-                </div>
-              </th>
-              <th scope="col" class="px-4 py-3">
-                <div class="flex items-center">
-                  Status
-                  <.link href="#">
-                    <.icon name="hero-chevron-up-down-solid" class="w-4 h-4 ml-1" />
-                  </.link>
-                </div>
-              </th>
-              <th scope="col" class="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr class="border-b dark:border-gray-700">
-              <th
-                scope="row"
-                class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
-              >
-                <.link
-                  navigate={
-                    ~p"/#{@account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
-                  }
-                  class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-                >
-                  Okta
-                </.link>
-              </th>
-              <td class="px-4 py-3">
-                SAML
-              </td>
-              <td class="px-4 py-3">
-                <div class="flex items-center">
-                  <span class="w-3 h-3 bg-green-500 rounded-full"></span>
-                  <span class="ml-3">
-                    Synced
-                    <.link
-                      navigate={~p"/#{@account}/actors"}
-                      class="text-blue-600 dark:text-blue-500 hover:underline"
-                    >
-                      17 users
-                    </.link>
-                    and
-                    <.link
-                      navigate={~p"/#{@account}/groups"}
-                      class="text-blue-600 dark:text-blue-500 hover:underline"
-                    >
-                      8 groups
-                    </.link>
-                    47 minutes ago
-                  </span>
-                </div>
-              </td>
-              <td class="px-4 py-3 flex items-center justify-end">
-                <button
-                  id="provider-1-dropdown-button"
-                  data-dropdown-toggle="provider-1-dropdown"
-                  class="inline-flex items-center p-0.5 text-sm font-medium text-center text-gray-500 hover:text-gray-800 rounded-lg focus:outline-none dark:text-gray-400 dark:hover:text-gray-100"
-                  type="button"
-                >
-                  <.icon name="hero-ellipsis-horizontal" class="w-5 h-5" />
-                </button>
-                <div
-                  id="provider-1-dropdown"
-                  class="hidden z-10 w-44 bg-white rounded divide-y divide-gray-100 shadow dark:bg-gray-700 dark:divide-gray-600"
-                >
-                  <ul
-                    class="py-1 text-sm text-gray-700 dark:text-gray-200"
-                    aria-labelledby="provider-1-dropdown-button"
-                  >
-                    <li>
-                      <.link
-                        href="#"
-                        class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                      >
-                        Sync now
-                      </.link>
-                    </li>
-                    <li>
-                      <.link
-                        navigate={
-                          ~p"/#{@account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
-                        }
-                        class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                      >
-                        Edit
-                      </.link>
-                    </li>
-                  </ul>
-                  <div class="py-1">
-                    <.link
-                      href="#"
-                      class="block py-2 px-4 text-sm text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 dark:text-gray-200 dark:hover:text-white"
-                    >
-                      Delete
-                    </.link>
-                  </div>
-                </div>
-              </td>
-            </tr>
-            <tr class="border-b dark:border-gray-700">
-              <th
-                scope="row"
-                class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
-              >
-                <.link
-                  navigate={
-                    ~p"/#{@account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
-                  }
-                  class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-                >
-                  Authentik
-                </.link>
-              </th>
-              <td class="px-4 py-3">
-                OIDC
-              </td>
-              <td class="px-4 py-3">
-                <div class="flex items-center">
-                  <span class="w-3 h-3 bg-green-500 rounded-full"></span>
-                  <span class="ml-3">
-                    Synced
-                    <.link
-                      class="text-blue-600 dark:text-blue-500 hover:underline"
-                      navigate={~p"/#{@account}/actors"}
-                    >
-                      67 users
-                    </.link>
-                    and
-                    <.link
-                      class="text-blue-600 dark:text-blue-500 hover:underline"
-                      navigate={~p"/#{@account}/groups"}
-                    >
-                      4 groups
-                    </.link>
-                    11 minutes ago
-                  </span>
-                </div>
-              </td>
-              <td class="px-4 py-3 flex items-center justify-end">
-                <button
-                  id="provider-2-dropdown-button"
-                  data-dropdown-toggle="provider-2-dropdown"
-                  class="inline-flex items-center p-0.5 text-sm font-medium text-center text-gray-500 hover:text-gray-800 rounded-lg focus:outline-none dark:text-gray-400 dark:hover:text-gray-100"
-                  type="button"
-                >
-                  <.icon name="hero-ellipsis-horizontal" class="w-5 h-5" />
-                </button>
-                <div
-                  id="provider-2-dropdown"
-                  class="hidden z-10 w-44 bg-white rounded divide-y divide-gray-100 shadow dark:bg-gray-700 dark:divide-gray-600"
-                >
-                  <ul
-                    class="py-1 text-sm text-gray-700 dark:text-gray-200"
-                    aria-labelledby="provider-2-dropdown-button"
-                  >
-                    <li>
-                      <.link
-                        href="#"
-                        class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                      >
-                        Sync now
-                      </.link>
-                    </li>
-                    <li>
-                      <.link
-                        navigate={
-                          ~p"/#{@account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
-                        }
-                        class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                      >
-                        Edit
-                      </.link>
-                    </li>
-                  </ul>
-                  <div class="py-1">
-                    <a
-                      href="#"
-                      class="block py-2 px-4 text-sm text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 dark:text-gray-200 dark:hover:text-white"
-                    >
-                      Delete
-                    </a>
-                  </div>
-                </div>
-              </td>
-            </tr>
-            <tr class="border-b dark:border-gray-700">
-              <th
-                scope="row"
-                class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
-              >
-                <.link
-                  navigate={
-                    ~p"/#{@account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
-                  }
-                  class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-                >
-                  Google
-                </.link>
-              </th>
-              <td class="px-4 py-3">
-                Google Workspace
-              </td>
-              <td class="px-4 py-3">
-                <div class="flex items-center">
-                  <span class="w-3 h-3 bg-green-500 rounded-full"></span>
-                  <span class="ml-3">
-                    Synced
-                    <.link
-                      class="text-blue-600 dark:text-blue-500 hover:underline"
-                      navigate={~p"/#{@account}/actors"}
-                    >
-                      221 users
-                    </.link>
-                    and
-                    <.link
-                      class="text-blue-600 dark:text-blue-500 hover:underline"
-                      navigate={~p"/#{@account}/groups"}
-                    >
-                      14 groups
-                    </.link>
-                    57 minutes ago
-                  </span>
-                </div>
-              </td>
-              <td class="px-4 py-3 flex items-center justify-end">
-                <button
-                  id="provider-2-dropdown-button"
-                  data-dropdown-toggle="provider-2-dropdown"
-                  class="inline-flex items-center p-0.5 text-sm font-medium text-center text-gray-500 hover:text-gray-800 rounded-lg focus:outline-none dark:text-gray-400 dark:hover:text-gray-100"
-                  type="button"
-                >
-                  <.icon name="hero-ellipsis-horizontal" class="w-5 h-5" />
-                </button>
-                <div
-                  id="provider-2-dropdown"
-                  class="hidden z-10 w-44 bg-white rounded divide-y divide-gray-100 shadow dark:bg-gray-700 dark:divide-gray-600"
-                >
-                  <ul
-                    class="py-1 text-sm text-gray-700 dark:text-gray-200"
-                    aria-labelledby="provider-2-dropdown-button"
-                  >
-                    <li>
-                      <.link
-                        href="#"
-                        class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                      >
-                        Sync now
-                      </.link>
-                    </li>
-                    <li>
-                      <.link
-                        navigate={
-                          ~p"/#{@account}/settings/identity_providers/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
-                        }
-                        class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                      >
-                        Edit
-                      </.link>
-                    </li>
-                  </ul>
-                  <div class="py-1">
-                    <a
-                      href="#"
-                      class="block py-2 px-4 text-sm text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 dark:text-gray-200 dark:hover:text-white"
-                    >
-                      Delete
-                    </a>
-                  </div>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <.table id="providers" rows={@providers} row_id={&"providers-#{&1.id}"}>
+        <:col :let={provider} label="Name">
+          <.link
+            navigate={view_provider(provider)}
+            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+          >
+            <%= provider.name %>
+          </.link>
+        </:col>
+        <:col :let={provider} label="Type"><%= adapter_name(provider.adapter) %></:col>
+        <:col :let={provider} label="Status">
+          <.sync_status
+            account={@account}
+            provider={provider}
+            identities_count_by_provider_id={@identities_count_by_provider_id}
+            groups_count_by_provider_id={@groups_count_by_provider_id}
+          />
+        </:col>
+      </.table>
+    </div>
+    """
+  end
+
+  def sync_status(%{provider: %{provisioner: :custom}} = assigns) do
+    ~H"""
+    <div :if={not is_nil(@provider.last_synced_at)} class="flex items-center">
+      <span class="w-3 h-3 bg-green-500 rounded-full"></span>
+      <span class="ml-3">
+        Synced
+        <.link
+          navigate={~p"/#{@account}/actors?provider_id=#{@provider.id}"}
+          class="text-blue-600 dark:text-blue-500 hover:underline"
+        >
+          <% identities_count_by_provider_id = @identities_count_by_provider_id[@provider.id] || 0 %>
+          <%= identities_count_by_provider_id %>
+          <.cardinal_number
+            number={identities_count_by_provider_id}
+            one="identity"
+            other="identities"
+          />
+        </.link>
+        and
+        <.link
+          navigate={~p"/#{@account}/groups?provider_id=#{@provider.id}"}
+          class="text-blue-600 dark:text-blue-500 hover:underline"
+        >
+          <% groups_count_by_provider_id = @groups_count_by_provider_id[@provider.id] || 0 %>
+          <%= groups_count_by_provider_id %>
+          <.cardinal_number number={groups_count_by_provider_id} one="group" other="groups" />
+        </.link>
+
+        <.relative_datetime datetime={@provider.last_synced_at} />
+      </span>
+    </div>
+    <div :if={is_nil(@provider.last_synced_at)} class="flex items-center">
+      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+      <span class="ml-3">
+        Never synced
+      </span>
+    </div>
+    """
+  end
+
+  def sync_status(%{provider: %{provisioner: provisioner}} = assigns)
+      when provisioner in [:just_in_time, :manual] do
+    ~H"""
+    <div class="flex items-center">
+      <span class="w-3 h-3 bg-green-500 rounded-full"></span>
+      <span class="ml-3">
+        Created
+        <.link
+          navigate={~p"/#{@account}/actors?provider_id=#{@provider.id}"}
+          class="text-blue-600 dark:text-blue-500 hover:underline"
+        >
+          <% identities_count_by_provider_id = @identities_count_by_provider_id[@provider.id] || 0 %>
+          <%= identities_count_by_provider_id %>
+          <.cardinal_number
+            number={identities_count_by_provider_id}
+            one="identity"
+            other="identities"
+          />
+        </.link>
+        and
+        <.link
+          navigate={~p"/#{@account}/groups?provider_id=#{@provider.id}"}
+          class="text-blue-600 dark:text-blue-500 hover:underline"
+        >
+          <% groups_count_by_provider_id = @groups_count_by_provider_id[@provider.id] || 0 %>
+          <%= groups_count_by_provider_id %>
+          <.cardinal_number number={groups_count_by_provider_id} one="group" other="groups" />
+        </.link>
+      </span>
     </div>
     """
   end

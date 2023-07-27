@@ -649,7 +649,7 @@ defmodule Domain.ActorsTest do
              }
     end
 
-    test "returns error on duplicate provider_identifier", %{
+    test "upserts the identity based on unique provider_identifier", %{
       provider: provider
     } do
       provider_identifier = AuthFixtures.random_provider_identifier(provider)

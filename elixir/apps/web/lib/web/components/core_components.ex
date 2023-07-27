@@ -47,15 +47,35 @@ defmodule Web.CoreComponents do
 
   ## Examples
 
-  <.code_block>
+  <.code_block id="foo">
     The lazy brown fox jumped over the quick dog.
   </.code_block>
   """
+  attr :id, :string, required: true
+  attr :class, :string, default: ""
+  slot :inner_block, required: true
+
   def code_block(assigns) do
     ~H"""
-    <pre class="p-4 overflow-x-auto bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-lg">
-      <code class="whitespace-pre-line"><%= render_slot(@inner_block) %></code>
-    </pre>
+    <code id={@id} phx-hook="Copy" class={[~w[
+      rounded-lg
+      text-sm text-left sm:text-base text-white
+      inline-flex items-center
+      space-x-4 p-4 pl-6
+      bg-gray-800
+      relative
+
+    ], @class]}>
+      <span class="overflow-x-auto" data-copy>
+        <%= render_slot(@inner_block) %>
+      </span>
+      <.icon name="hero-clipboard-document" data-icon class={~w[
+          absolute bottom-1 right-1
+          h-5 w-5
+          transition
+          text-gray-500 group-hover:text-white
+        ]} />
+    </code>
     """
   end
 
@@ -153,7 +173,9 @@ defmodule Web.CoreComponents do
           <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
             <%= render_slot(@title) %>
           </h1>
-          <%= render_slot(@actions) %>
+          <div class="inline-flex justify-between items-center space-x-2">
+            <%= render_slot(@actions) %>
+          </div>
         </div>
       </div>
     </div>
@@ -352,6 +374,30 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
+  Generates an error message for a form where it's not related to a specific field but rather to the form itself,
+  eg. when there is an internal error during API call or one fields not rendered as a form field is invalid.
+
+  ### Examples
+
+      <.base_error error={@form.errors[:base]} />
+  """
+  attr :error, :any, doc: "changeset error which will be rendered"
+  attr :rest, :global
+
+  def base_error(assigns) do
+    ~H"""
+    <p
+      :if={@error}
+      class="mt-3 mb-3 flex gap-3 text-m leading-6 text-rose-600 phx-no-feedback:hidden"
+      {@rest}
+    >
+      <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" />
+      <%= translate_error(@error) %>
+    </p>
+    """
+  end
+
+  @doc """
   Renders a data list.
 
   ## Examples
@@ -398,10 +444,11 @@ defmodule Web.CoreComponents do
   """
   attr :name, :string, required: true
   attr :class, :string, default: nil
+  attr :rest, :global
 
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
-    <span class={[@name, @class]} />
+    <span class={[@name, @class]} {@rest} />
     """
   end
 
@@ -555,6 +602,37 @@ defmodule Web.CoreComponents do
         </.link>
         """
     end
+  end
+
+  @doc """
+  Helps to pluralize a word based on a an cardinal number.
+
+  Cardinal numbers indicate an amount—how many of something we have: one, two, three, four, five.
+
+  Typically for English you want to set `one` and `other` options. The `other` option is used for all
+  other numbers that are not `one`. For example, if you want to pluralize the word "file" you would
+  set `one` to "file" and `other` to "files".
+  """
+  attr :number, :integer, required: true
+
+  attr :zero, :string, required: false
+  attr :one, :string, required: false
+  attr :two, :string, required: false
+  attr :few, :string, required: false
+  attr :many, :string, required: false
+  attr :other, :string, required: true
+
+  attr :rest, :global
+
+  def cardinal_number(assigns) do
+    opts = Map.take(assigns, [:zero, :one, :two, :few, :many, :other])
+    assigns = Map.put(assigns, :opts, opts)
+
+    ~H"""
+    <span data-value={@number} {@rest}>
+      <%= Web.CLDR.Number.Cardinal.pluralize(@number, :en, @opts) %>
+    </span>
+    """
   end
 
   ## JS Commands
