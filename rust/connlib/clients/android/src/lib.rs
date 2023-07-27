@@ -181,7 +181,8 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
     match Session::connect(portal_url.as_str(), portal_token, callback_handler.clone()) {
         Ok(session) => Box::into_raw(Box::new(session)),
         Err(err) => {
-            callback_handler.on_error(&err);
+            env.throw_new("java/lang/Exception", err.to_string())
+                .unwrap();
             std::ptr::null()
         }
     }
@@ -192,16 +193,19 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_disconnect(
-    _env: JNIEnv,
+    mut env: JNIEnv,
     _: JClass,
-    session_ptr: *mut Session<CallbackHandler>,
-) -> bool {
-    if session_ptr.is_null() {
-        return false;
+    session: *mut Session<CallbackHandler>,
+) {
+    if let Some(session) = session.as_mut() {
+        session.disconnect(None);
+    } else {
+        env.throw_new(
+            "java/lang/NullPointerException",
+            "Cannot disconnect because \"session\" is null",
+        )
+        .unwrap();
     }
-
-    let session = unsafe { &mut *session_ptr };
-    session.disconnect(None)
 }
 
 /// # Safety
@@ -209,16 +213,20 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_disconnect(
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_bump_sockets(
-    session_ptr: *const Session<CallbackHandler>,
-) -> bool {
-    if session_ptr.is_null() {
-        return false;
+    mut env: JNIEnv,
+    _: JClass,
+    session: *const Session<CallbackHandler>,
+) {
+    if let Some(session) = session.as_ref() {
+        // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
+        session.bump_sockets();
+    } else {
+        env.throw_new(
+            "java/lang/NullPointerException",
+            "Cannot bump sockets because \"session\" is null",
+        )
+        .unwrap();
     }
-
-    unsafe { (*session_ptr).bump_sockets() };
-
-    // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
-    true
 }
 
 /// # Safety
@@ -226,14 +234,18 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_bump_sockets(
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_connlib_disable_some_roaming_for_broken_mobile_semantics(
-    session_ptr: *const Session<CallbackHandler>,
-) -> bool {
-    if session_ptr.is_null() {
-        return false;
+    mut env: JNIEnv,
+    _: JClass,
+    session: *const Session<CallbackHandler>,
+) {
+    if let Some(session) = session.as_ref() {
+        // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
+        session.disable_some_roaming_for_broken_mobile_semantics();
+    } else {
+        env.throw_new(
+            "java/lang/NullPointerException",
+            "Cannot disable roaming because \"session\" is null",
+        )
+        .unwrap();
     }
-
-    unsafe { (*session_ptr).disable_some_roaming_for_broken_mobile_semantics() };
-
-    // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
-    true
 }
