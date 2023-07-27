@@ -137,7 +137,7 @@ defmodule Domain.ActorsTest do
   describe "new_group/0" do
     test "returns group changeset" do
       assert %Ecto.Changeset{data: %Actors.Group{}, changes: changes} = new_group()
-      assert Enum.count(changes) == 0
+      assert Enum.empty?(changes)
     end
   end
 
