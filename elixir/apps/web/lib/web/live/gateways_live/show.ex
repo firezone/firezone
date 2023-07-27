@@ -57,7 +57,7 @@ defmodule Web.GatewaysLive.Show do
             Last seen
           </:label>
           <:value>
-            <.relative_datetime relative={@gateway.last_seen_at} />
+            <.relative_datetime datetime={@gateway.last_seen_at} />
             <br />
             <%= @gateway.last_seen_at %>
           </:value>

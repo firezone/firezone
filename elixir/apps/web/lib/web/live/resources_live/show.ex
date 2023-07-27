@@ -89,7 +89,7 @@ defmodule Web.ResourcesLive.Show do
             (TODO:
             <.link
               class="text-blue-600 hover:underline"
-              navigate={~p"/#{@account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+              navigate={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
             >
               Andrew Dryga
             </.link>
