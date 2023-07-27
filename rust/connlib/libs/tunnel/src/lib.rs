@@ -48,11 +48,14 @@ pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription
 
 use index::{check_packet_index, IndexLfsr};
 
+use crate::ip_packet::MutableIpPacket;
+
 mod control_protocol;
 mod dns;
 mod index;
 mod ip_packet;
 mod peer;
+mod resource_sender;
 mod resource_table;
 
 // TODO: For now all tunnel implementations are the same
@@ -384,10 +387,19 @@ where
                         peer.send_infallible(cookie, &tunnel.callbacks).await;
                         continue;
                     }
-                    Err(_) => continue,
+                    Err(TunnResult::Err(e)) => {
+                        tracing::error!("Wireguard error: {e:?}");
+                        tunnel.callbacks().on_error(&e.into());
+                        continue;
+                    }
+                    Err(_) => {
+                        tracing::error!("Developer error: wireguard returned an unexpected error");
+                        continue;
+                    }
                 };
 
                 if !tunnel.is_wireguard_packet_ok(&parsed_packet, &peer) {
+                    tracing::error!("Wireguard packet failed verification");
                     continue;
                 }
 
@@ -401,23 +413,24 @@ where
                 // We found a peer, use it to decapsulate the message+
                 let mut flush = false;
                 match decapsulate_result {
-                    TunnResult::Done => {}
-                    TunnResult::Err(_) => continue,
+                    TunnResult::Done => {
+                        let conn_id = peer.conn_id;
+                        tracing::trace!("Wireguard connection done with peer: {conn_id}");
+                    }
+                    TunnResult::Err(err) => {
+                        tracing::error!("Error decapsulating packet: {err:?}");
+                        tunnel.callbacks().on_error(&err.into());
+                        continue;
+                    }
                     TunnResult::WriteToNetwork(packet) => {
                         flush = true;
                         peer.send_infallible(packet, &tunnel.callbacks).await;
                     }
                     TunnResult::WriteToTunnelV4(packet, addr) => {
-                        if peer.is_allowed(addr) {
-                            tracing::trace!("Writing received peer packet to iface");
-                            tunnel.write4_device_infallible(packet).await;
-                        }
+                        tunnel.send_to_resource(&peer, addr.into(), packet).await;
                     }
                     TunnResult::WriteToTunnelV6(packet, addr) => {
-                        if peer.is_allowed(addr) {
-                            tracing::trace!("Writing received peer packet to iface");
-                            tunnel.write6_device_infallible(packet).await;
-                        }
+                        tunnel.send_to_resource(&peer, addr.into(), packet).await;
                     }
                 };
 
@@ -487,8 +500,10 @@ where
                 tracing::trace!("Reading from iface {res} bytes");
 
                 if let Some(r) = dev.check_for_dns(&src[..res]) {
-                    // TODO(ipv4/ipv6)!
-                    dev.write4_device_infallible(&r[..]).await;
+                    match r {
+                        dns::SendPacket::Ipv4(r) => dev.write4_device_infallible(&r[..]).await,
+                        dns::SendPacket::Ipv6(r) => dev.write6_device_infallible(&r[..]).await,
+                    }
                     continue;
                 }
 
@@ -500,12 +515,39 @@ where
                 let (encapsulate_result, channel, peer_index, conn_id) = {
                     let peers_by_ip = dev.peers_by_ip.read();
                     match peers_by_ip.longest_match(dst_addr).map(|p| p.1) {
-                        Some(peer) => (
-                            peer.tunnel.lock().encapsulate(&src[..res], &mut dst[..]),
-                            peer.channel.clone(),
-                            peer.index,
-                            peer.conn_id,
-                        ),
+                        Some(peer) => {
+                            // TODO: check that the translation maps to the ip
+                            // (we actually have multiple ips so we need a map here)
+                            if peer.translated_resource_address.read().is_some() {
+                                let Some(mut packet) = MutableIpPacket::new(&mut src[..res])  else  {
+                                    tracing::error!("Developer error: we should never see a packet through the tunnel wire that isn't ip");
+                                    continue;
+                                };
+
+                                let resource = peer.resource.as_ref().expect("Developer error: only peers with resource should have a resource_address");
+                                let ResourceDescription::Dns(resource) = resource else {
+                                    tracing::error!("Developer error: only dns resources should have a resource_address");
+                                    continue;
+                                };
+
+                                match &mut packet {
+                                    MutableIpPacket::MutableIpv4Packet(ref mut p) => {
+                                        p.set_source(resource.ipv4)
+                                    }
+                                    MutableIpPacket::MutableIpv6Packet(ref mut p) => {
+                                        p.set_source(resource.ipv6)
+                                    }
+                                }
+
+                                packet.set_checksum();
+                            }
+                            (
+                                peer.tunnel.lock().encapsulate(&src[..res], &mut dst[..]),
+                                peer.channel.clone(),
+                                peer.index,
+                                peer.conn_id,
+                            )
+                        }
                         None => {
                             // We can buffer requests here but will drop them for now and let the upper layer reliability protocol handle this
                             if let Some(resource) = dev.get_resource(&src[..res]) {
