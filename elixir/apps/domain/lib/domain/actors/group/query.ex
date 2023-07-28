@@ -25,6 +25,7 @@ defmodule Domain.Actors.Group.Query do
   def group_by_provider_id(queryable \\ all()) do
     queryable
     |> group_by([groups: groups], groups.provider_id)
+    |> where([groups: groups], not is_nil(groups.provider_id))
     |> select([groups: groups], %{
       provider_id: groups.provider_id,
       count: count(groups.id)

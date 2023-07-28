@@ -6,8 +6,134 @@ defmodule Domain.AuthTest do
   alias Domain.Auth.Authorizer
   alias Domain.{AccountsFixtures, AuthFixtures}
 
-  # describe "fetch_provider_by_id/2"
-  # describe "fetch_active_provider_by_id/2"
+  describe "list_provider_adapters/0" do
+    test "returns list of enabled adapters for an account" do
+      assert {:ok, adapters} = list_provider_adapters()
+
+      assert adapters == %{
+               openid_connect: Domain.Auth.Adapters.OpenIDConnect,
+               google_workspace: Domain.Auth.Adapters.GoogleWorkspace
+             }
+    end
+  end
+
+  describe "fetch_provider_by_id/1" do
+    test "returns error when provider does not exist" do
+      assert fetch_provider_by_id(Ecto.UUID.generate()) == {:error, :not_found}
+    end
+
+    test "returns error when on invalid UUIDv4" do
+      assert fetch_provider_by_id("foo") == {:error, :not_found}
+    end
+
+    test "returns error when provider is deleted" do
+      account = AccountsFixtures.create_account()
+      AuthFixtures.create_userpass_provider(account: account)
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = AuthFixtures.create_email_provider(account: account)
+
+      identity =
+        AuthFixtures.create_identity(
+          actor_default_type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      subject = AuthFixtures.create_subject(identity)
+      {:ok, _provider} = delete_provider(provider, subject)
+
+      assert fetch_provider_by_id(provider.id) == {:error, :not_found}
+    end
+
+    test "returns provider" do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = AuthFixtures.create_email_provider()
+      assert {:ok, fetched_provider} = fetch_provider_by_id(provider.id)
+      assert fetched_provider.id == provider.id
+    end
+  end
+
+  describe "fetch_provider_by_id/2" do
+    setup do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "returns error when provider does not exist", %{subject: subject} do
+      assert fetch_provider_by_id(Ecto.UUID.generate(), subject) ==
+               {:error, :not_found}
+    end
+
+    test "returns error when on invalid UUIDv4", %{subject: subject} do
+      assert fetch_provider_by_id("foo", subject) == {:error, :not_found}
+    end
+
+    test "returns error when provider is deleted", %{account: account, subject: subject} do
+      provider = AuthFixtures.create_userpass_provider(account: account)
+      {:ok, _provider} = delete_provider(provider, subject)
+
+      assert fetch_provider_by_id(provider.id, subject) == {:error, :not_found}
+    end
+
+    test "returns provider", %{account: account, subject: subject} do
+      provider = AuthFixtures.create_userpass_provider(account: account)
+      assert {:ok, fetched_provider} = fetch_provider_by_id(provider.id, subject)
+      assert fetched_provider.id == provider.id
+    end
+  end
+
+  describe "fetch_active_provider_by_id/2" do
+    setup do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "returns error when provider does not exist", %{subject: subject} do
+      assert fetch_active_provider_by_id(Ecto.UUID.generate(), subject) ==
+               {:error, :not_found}
+    end
+
+    test "returns error when on invalid UUIDv4", %{subject: subject} do
+      assert fetch_active_provider_by_id("foo", subject) == {:error, :not_found}
+    end
+
+    test "returns error when provider is disabled", %{account: account, subject: subject} do
+      provider = AuthFixtures.create_userpass_provider(account: account)
+      {:ok, _provider} = disable_provider(provider, subject)
+      assert fetch_active_provider_by_id(provider.id, subject) == {:error, :not_found}
+    end
+
+    test "returns error when provider is deleted", %{account: account, subject: subject} do
+      provider = AuthFixtures.create_userpass_provider(account: account)
+      {:ok, _provider} = delete_provider(provider, subject)
+
+      assert fetch_active_provider_by_id(provider.id, subject) == {:error, :not_found}
+    end
+
+    test "returns provider", %{account: account, subject: subject} do
+      provider = AuthFixtures.create_userpass_provider(account: account)
+      assert {:ok, fetched_provider} = fetch_active_provider_by_id(provider.id, subject)
+      assert fetched_provider.id == provider.id
+    end
+  end
 
   describe "fetch_active_provider_by_id/1" do
     test "returns error when provider does not exist" do
@@ -83,6 +209,45 @@ defmodule Domain.AuthTest do
 
       assert {:ok, [provider]} = list_active_providers_for_account(account)
       assert provider.id == userpass_provider.id
+    end
+  end
+
+  describe "new_provider/2" do
+    setup do
+      account = AccountsFixtures.create_account()
+
+      {bypass, [provider_adapter_config]} =
+        AuthFixtures.start_openid_providers(["google"])
+
+      %{
+        account: account,
+        provider_adapter_config: provider_adapter_config,
+        bypass: bypass
+      }
+    end
+
+    test "returns changeset with given changes", %{
+      account: account,
+      provider_adapter_config: provider_adapter_config
+    } do
+      assert changeset = new_provider(account)
+      assert %Ecto.Changeset{data: %Domain.Auth.Provider{}} = changeset
+      assert changeset.changes == %{account_id: account.id, created_by: :system}
+
+      provider_attrs =
+        AuthFixtures.provider_attrs(
+          adapter: :openid_connect,
+          adapter_config: provider_adapter_config
+        )
+
+      assert changeset = new_provider(account, provider_attrs)
+      assert %Ecto.Changeset{data: %Domain.Auth.Provider{}} = changeset
+      assert changeset.changes.name == provider_attrs.name
+      assert changeset.changes.provisioner == provider_attrs.provisioner
+      assert changeset.changes.adapter == provider_attrs.adapter
+
+      assert changeset.changes.adapter_config.changes.client_id ==
+               provider_attrs.adapter_config["client_id"]
     end
   end
 
@@ -255,6 +420,31 @@ defmodule Domain.AuthTest do
 
       assert provider.created_by == :identity
       assert provider.created_by_identity_id == subject.identity.id
+    end
+  end
+
+  describe "change_provider/2" do
+    setup do
+      account = AccountsFixtures.create_account()
+
+      {provider, bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_google_workspace_provider(account: account)
+
+      %{
+        account: account,
+        provider: provider,
+        bypass: bypass
+      }
+    end
+
+    test "returns changeset with given changes", %{provider: provider} do
+      provider_attrs = AuthFixtures.provider_attrs()
+
+      assert changeset = change_provider(provider, provider_attrs)
+      assert %Ecto.Changeset{data: %Domain.Auth.Provider{}} = changeset
+
+      assert changeset.changes.name == provider_attrs.name
     end
   end
 
@@ -702,6 +892,18 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "fetch_provider_capabilities!/1" do
+    test "returns provider capabilities" do
+      provider = AuthFixtures.create_userpass_provider()
+
+      assert fetch_provider_capabilities!(provider) == [
+               provisioners: [:manual],
+               default_provisioner: :manual,
+               parent_adapter: nil
+             ]
+    end
+  end
+
   describe "fetch_identity_by_id/1" do
     test "returns error when identity does not exist" do
       assert fetch_identity_by_id(Ecto.UUID.generate()) == {:error, :not_found}
@@ -711,6 +913,35 @@ defmodule Domain.AuthTest do
       identity = AuthFixtures.create_identity()
       assert {:ok, fetched_identity} = fetch_identity_by_id(identity.id)
       assert fetched_identity.id == identity.id
+    end
+  end
+
+  describe "fetch_identities_count_grouped_by_provider_id/1" do
+    test "returns count of actor identities by provider id" do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      {google_provider, _bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_openid_connect_provider(account: account)
+
+      {vault_provider, _bypass} =
+        AuthFixtures.start_openid_providers(["vault"])
+        |> AuthFixtures.create_openid_connect_provider(account: account)
+
+      AuthFixtures.create_identity(account: account, provider: google_provider)
+      AuthFixtures.create_identity(account: account, provider: vault_provider)
+      AuthFixtures.create_identity(account: account, provider: vault_provider)
+
+      assert fetch_identities_count_grouped_by_provider_id(subject) ==
+               {:ok,
+                %{
+                  identity.provider_id => 1,
+                  google_provider.id => 1,
+                  vault_provider.id => 2
+                }}
     end
   end
 

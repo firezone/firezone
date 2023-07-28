@@ -327,7 +327,6 @@ defmodule Domain.Auth do
 
   # Sign Up / In / Off
 
-  # TODO: add actor_id or subject to attach identity to an existing subject
   def sign_in(%Provider{} = provider, id_or_provider_identifier, secret, user_agent, remote_ip) do
     identity_queryable =
       Identity.Query.by_provider_id(provider.id)

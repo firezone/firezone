@@ -146,6 +146,15 @@ defmodule Domain.AuthFixtures do
     provider
   end
 
+  def disable_provider(provider) do
+    provider = Repo.preload(provider, :account)
+    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: provider.account)
+    identity = create_identity(account: provider.account, actor: actor)
+    subject = create_subject(identity)
+    {:ok, group} = Auth.disable_provider(provider, subject)
+    group
+  end
+
   def create_identity(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 

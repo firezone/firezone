@@ -472,6 +472,61 @@ defmodule Domain.ActorsTest do
     end
   end
 
+  describe "fetch_groups_count_grouped_by_provider_id/1" do
+    test "returns empty map when there are no groups" do
+      subject = AuthFixtures.create_subject()
+      assert fetch_groups_count_grouped_by_provider_id(subject) == {:ok, %{}}
+    end
+
+    test "returns count of actor groups by provider id" do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      {google_provider, _bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_openid_connect_provider(account: account)
+
+      {vault_provider, _bypass} =
+        AuthFixtures.start_openid_providers(["vault"])
+        |> AuthFixtures.create_openid_connect_provider(account: account)
+
+      ActorsFixtures.create_group(
+        account: account,
+        subject: subject
+      )
+
+      ActorsFixtures.create_group(
+        account: account,
+        subject: subject,
+        provider: google_provider,
+        provider_identifier: Ecto.UUID.generate()
+      )
+
+      ActorsFixtures.create_group(
+        account: account,
+        subject: subject,
+        provider: vault_provider,
+        provider_identifier: Ecto.UUID.generate()
+      )
+
+      ActorsFixtures.create_group(
+        account: account,
+        subject: subject,
+        provider: vault_provider,
+        provider_identifier: Ecto.UUID.generate()
+      )
+
+      assert fetch_groups_count_grouped_by_provider_id(subject) ==
+               {:ok,
+                %{
+                  google_provider.id => 1,
+                  vault_provider.id => 2
+                }}
+    end
+  end
+
   describe "fetch_actor_by_id/2" do
     test "returns error when actor is not found" do
       subject = AuthFixtures.create_subject()

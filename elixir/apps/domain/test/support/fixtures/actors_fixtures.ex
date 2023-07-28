@@ -17,6 +17,12 @@ defmodule Domain.ActorsFixtures do
         AccountsFixtures.create_account()
       end)
 
+    {provider, attrs} =
+      Map.pop(attrs, :provider)
+
+    {provider_identifier, attrs} =
+      Map.pop(attrs, :provider_identifier)
+
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->
         actor = create_actor(type: :account_admin_user, account: account)
@@ -27,7 +33,14 @@ defmodule Domain.ActorsFixtures do
     attrs = group_attrs(attrs)
 
     {:ok, group} = Actors.create_group(attrs, subject)
-    group
+
+    if provider do
+      group
+      |> Ecto.Changeset.change(provider_id: provider.id, provider_identifier: provider_identifier)
+      |> Repo.update!()
+    else
+      group
+    end
   end
 
   # def create_provider_group(attrs \\ %{}) do
