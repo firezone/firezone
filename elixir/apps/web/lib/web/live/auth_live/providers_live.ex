@@ -1,33 +1,29 @@
 defmodule Web.Auth.ProvidersLive do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
-  alias Domain.{Auth, Accounts}
+  alias Domain.Auth
 
-  def mount(%{"account_id" => account_id}, _session, socket) do
-    with {:ok, account} <- Accounts.fetch_account_by_id(account_id),
-         {:ok, [_ | _] = providers} <- Auth.list_active_providers_for_account(account) do
-      providers_by_adapter =
-        providers
-        |> Enum.group_by(fn provider ->
-          parent_adapter =
-            provider
-            |> Auth.fetch_provider_capabilities!()
-            |> Keyword.get(:parent_adapter)
+  def mount(_params, _session, socket) do
+    case Auth.list_active_providers_for_account(socket.assigns.account) do
+      {:ok, [_ | _] = providers} ->
+        providers_by_adapter =
+          providers
+          |> Enum.group_by(fn provider ->
+            parent_adapter =
+              provider
+              |> Auth.fetch_provider_capabilities!()
+              |> Keyword.get(:parent_adapter)
 
-          parent_adapter || provider.adapter
-        end)
-        |> Map.drop([:token])
+            parent_adapter || provider.adapter
+          end)
+          |> Map.drop([:token])
 
-      {:ok, socket,
-       temporary_assigns: [
-         account: account,
-         providers_by_adapter: providers_by_adapter,
-         page_title: "Sign in"
-       ]}
-    else
+        {:ok, socket,
+         temporary_assigns: [
+           providers_by_adapter: providers_by_adapter,
+           page_title: "Sign in"
+         ]}
+
       {:ok, []} ->
-        raise Web.LiveErrors.NotFoundError
-
-      {:error, :not_found} ->
         raise Web.LiveErrors.NotFoundError
     end
   end
