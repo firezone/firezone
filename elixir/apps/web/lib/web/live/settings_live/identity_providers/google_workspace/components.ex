@@ -77,7 +77,6 @@ defmodule Web.SettingsLive.IdentityProviders.GoogleWorkspace.Components do
                   label="Client ID"
                   autocomplete="off"
                   field={adapter_config_form[:client_id]}
-                  value="1064313638613-0bttveunfv27l72s3h6th13kk16pj9l1.apps.googleusercontent.com"
                   required
                 />
               </div>
@@ -87,7 +86,6 @@ defmodule Web.SettingsLive.IdentityProviders.GoogleWorkspace.Components do
                   label="Client secret"
                   autocomplete="off"
                   field={adapter_config_form[:client_secret]}
-                  value="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"
                   required
                 />
               </div>
