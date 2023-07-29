@@ -1,17 +1,24 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use std::{net::Ipv4Addr, str::FromStr};
-
-use firezone_client_connlib::{
-    get_user_agent, Callbacks, Error, ResourceDescription, Session, TunnelAddresses,
+use std::{
+    net::{Ipv4Addr, Ipv6Addr},
+    str::FromStr,
 };
+
+use firezone_client_connlib::{get_user_agent, Callbacks, Error, ResourceDescription, Session};
 use url::Url;
 
 #[derive(Clone)]
 pub struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
-    fn on_set_interface_config(&self, _tunnel_addresses: TunnelAddresses, _dns_address: Ipv4Addr) {}
+    fn on_set_interface_config(
+        &self,
+        _tunnel_address_v4: Ipv4Addr,
+        _tunnel_address_v6: Ipv6Addr,
+        _dns_address: Ipv4Addr,
+    ) {
+    }
 
     fn on_tunnel_ready(&self) {
         tracing::trace!("Tunnel connected");

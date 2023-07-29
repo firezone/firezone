@@ -12,8 +12,8 @@ import os.log
 // This is so that the app stays buildable even when the FFI changes.
 
 // TODO: https://github.com/chinedufn/swift-bridge/issues/150
-extension SwiftConnlibError: @unchecked Sendable {}
-extension SwiftConnlibError: Error {}
+extension RustString: @unchecked Sendable {}
+extension RustString: Error {}
 
 public protocol CallbackHandlerDelegate: AnyObject {
   func onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String)
@@ -21,19 +21,19 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onAddRoute(_: String)
   func onRemoveRoute(_: String)
   func onUpdateResources(resourceList: String)
-  func onDisconnect(error: Error)
-  func onError(error: Error)
+  func onDisconnect(error: Optional<String>)
+  func onError(error: String)
 }
 
 public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
   private let logger = Logger(subsystem: "dev.firezone.firezone", category: "callbackhandler")
 
-  func onSetInterfaceConfig(tunnelAddresses: TunnelAddresses, dnsAddress: RustString) {
-    logger.debug("CallbackHandler.onSetInterfaceConfig: IPv4: \(tunnelAddresses.address4.toString(), privacy: .public), IPv6: \(tunnelAddresses.address6.toString(), privacy: .public), DNS: \(dnsAddress.toString(), privacy: .public)")
+  func onSetInterfaceConfig(tunnelAddressIPv4: RustString, tunnelAddressIPv6: RustString, dnsAddress: RustString) {
+    logger.debug("CallbackHandler.onSetInterfaceConfig: IPv4: \(tunnelAddressIPv4.toString(), privacy: .public), IPv6: \(tunnelAddressIPv6.toString(), privacy: .public), DNS: \(dnsAddress.toString(), privacy: .public)")
     delegate?.onSetInterfaceConfig(
-      tunnelAddressIPv4: tunnelAddresses.address4.toString(),
-      tunnelAddressIPv6: tunnelAddresses.address6.toString(),
+      tunnelAddressIPv4: tunnelAddressIPv4.toString(),
+      tunnelAddressIPv6: tunnelAddressIPv6.toString(),
       dnsAddress: dnsAddress.toString()
     )
   }
@@ -58,14 +58,18 @@ public class CallbackHandler {
     delegate?.onUpdateResources(resourceList: resourceList.toString())
   }
 
-  func onDisconnect(error: SwiftConnlibError) {
-    logger.debug("CallbackHandler.onDisconnect: \(error, privacy: .public)")
-    // TODO: convert `error` to `Optional` by checking for `None` case
-    delegate?.onDisconnect(error: error)
+  func onDisconnect(error: RustString) {
+    logger.debug("CallbackHandler.onDisconnect: \(error.toString(), privacy: .public)")
+    let error = error.toString()
+    var optional_error = Optional.some(error)
+    if error.isEmpty {
+      optional_error = Optional.none
+    }
+    delegate?.onDisconnect(error: optional_error)
   }
 
-  func onError(error: SwiftConnlibError) {
-    logger.debug("CallbackHandler.onError: \(error, privacy: .public)")
-    delegate?.onError(error: error)
+  func onError(error: RustString) {
+    logger.debug("CallbackHandler.onError: \(error.toString(), privacy: .public)")
+    delegate?.onError(error: error.toString())
   }
 }
