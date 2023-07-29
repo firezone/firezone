@@ -5,7 +5,7 @@ use libc::{
     CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE, IPPROTO_IP, O_NONBLOCK, PF_SYSTEM, SOCK_DGRAM,
     SOCK_STREAM, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
 };
-use libs_common::{Callbacks, Error, Result, TunnelAddresses, DNS_SENTINEL};
+use libs_common::{Callbacks, Error, Result, DNS_SENTINEL};
 use std::{
     ffi::{c_int, c_short, c_uchar},
     io,
@@ -268,13 +268,7 @@ impl IfaceConfig {
         config: &InterfaceConfig,
         callbacks: &impl Callbacks,
     ) -> Result<()> {
-        callbacks.on_set_interface_config(
-            TunnelAddresses {
-                address4: config.ipv4,
-                address6: config.ipv6,
-            },
-            DNS_SENTINEL,
-        );
+        callbacks.on_set_interface_config(config.ipv4, config.ipv6, DNS_SENTINEL);
         Ok(())
     }
 

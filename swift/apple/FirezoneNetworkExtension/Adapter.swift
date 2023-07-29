@@ -330,12 +330,12 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  public func onDisconnect(error: Error) {
+  public func onDisconnect(error: Optional<String>) {
     // Unimplemented
   }
 
-  public func onError(error: Error) {
+  public func onError(error: String) {
     let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
-    logger.log(level: .error, "Internal connlib error: \(String(describing: error), privacy: .public)")
+    logger.log(level: .error, "Internal connlib error: \(error, privacy: .public)")
   }
 }

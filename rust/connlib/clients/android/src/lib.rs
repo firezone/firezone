@@ -3,12 +3,12 @@
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
 
-use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session, TunnelAddresses};
+use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session};
 use jni::{
     objects::{JClass, JObject, JString, JValue},
     JNIEnv,
 };
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// This should be called once after the library is loaded by the system.
 #[allow(non_snake_case)]
@@ -29,7 +29,12 @@ pub extern "system" fn Java_dev_firezone_connlib_Logger_init(_: JNIEnv, _: JClas
 pub struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
-    fn on_set_interface_config(&self, _tunnel_addresses: TunnelAddresses, _dns_address: Ipv4Addr) {
+    fn on_set_interface_config(
+        &self,
+        _tunnel_address_v4: Ipv4Addr,
+        _tunnel_address_v6: Ipv6Addr,
+        _dns_address: Ipv4Addr,
+    ) {
         todo!()
     }
 
