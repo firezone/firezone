@@ -222,6 +222,7 @@ impl IfaceConfig {
 
         Ok(())
     }
+
     #[tracing::instrument(level = "trace", skip(self, _callbacks))]
     pub async fn set_iface_config(
         &mut self,
@@ -253,16 +254,6 @@ impl IfaceConfig {
             .add(self.0.interface_index, config.ipv6.into(), 128)
             .execute()
             .await?;
-
-        //TODO!
-        /*
-        let name: String = self.name.clone().try_into()?;
-        for dns in &config.dns {
-            //resolvconf::set_dns(&name, dns).await?;
-        }
-        */
-
-        //nftables::enable_masquerade((config.ipv4_masquerade, config.ipv6_masquerade)).await?;
 
         Ok(())
     }

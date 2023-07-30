@@ -1,11 +1,13 @@
 use async_trait::async_trait;
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use boringtun::x25519::{PublicKey, StaticSecret};
+use parking_lot::Mutex;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_core::OsRng;
 use std::{
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
+    sync::Arc,
     time::Duration,
 };
 use tokio::{runtime::Runtime, sync::mpsc::Receiver};
@@ -14,7 +16,6 @@ use uuid::Uuid;
 
 use crate::{
     control::{MessageResult, PhoenixChannel, PhoenixSenderWithTopic},
-    error_type::ErrorType,
     messages::{Key, ResourceDescription, ResourceDescriptionCidr},
     Error, Result,
 };
@@ -44,31 +45,20 @@ pub trait ControlSession<T, CB: Callbacks> {
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session<T, U, V, R, M, CB: Callbacks> {
-    runtime: Option<Runtime>,
+    runtime: Arc<Mutex<Option<Runtime>>>,
     callbacks: CB,
     _phantom: PhantomData<(T, U, V, R, M)>,
 }
 
-/// Resource list that will be displayed to the users.
-#[derive(Debug)]
-pub struct ResourceList {
-    pub resources: Vec<String>,
-}
-
-/// Tunnel addresses to be surfaced to the client apps.
-#[derive(Debug)]
-pub struct TunnelAddresses {
-    /// IPv4 Address.
-    pub address4: Ipv4Addr,
-    /// IPv6 Address.
-    pub address6: Ipv6Addr,
-}
-
-// Evaluate doing this not static
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
     /// Called when the tunnel address is set.
-    fn on_set_interface_config(&self, tunnel_addresses: TunnelAddresses, dns_address: Ipv4Addr);
+    fn on_set_interface_config(
+        &self,
+        tunnel_address_v4: Ipv4Addr,
+        tunnel_address_v6: Ipv6Addr,
+        dns_address: Ipv4Addr,
+    );
     /// Called when the tunnel is connected.
     fn on_tunnel_ready(&self);
     /// Called when when a route is added.
@@ -76,23 +66,22 @@ pub trait Callbacks: Clone + Send + Sync {
     /// Called when when a route is removed.
     fn on_remove_route(&self, route: String);
     /// Called when the resource list changes.
-    fn on_update_resources(&self, resource_list: ResourceList);
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>);
     /// Called when the tunnel is disconnected.
-    fn on_disconnect(&self);
-    /// Called when there's an error.
     ///
-    /// # Parameters
-    /// - `error`: The actual error that happened.
-    /// - `error_type`: Whether the error should terminate the session or not.
-    fn on_error(&self, error: &Error, error_type: ErrorType);
+    /// If the tunnel disconnected due to a fatal error, `error` is the error
+    /// that caused the disconnect.
+    fn on_disconnect(&self, error: Option<&Error>);
+    /// Called when there's a recoverable error.
+    fn on_error(&self, error: &Error);
 }
 
 macro_rules! fatal_error {
-    ($result:expr, $c:expr) => {
+    ($result:expr, $rt:expr, $cb:expr) => {
         match $result {
             Ok(res) => res,
-            Err(e) => {
-                $c.on_error(&e, ErrorType::Fatal);
+            Err(err) => {
+                Self::disconnect_inner($rt, $cb, Some(err));
                 return;
             }
         }
@@ -112,6 +101,7 @@ where
     /// (Used for the gateways).
     pub fn wait_for_ctrl_c(&mut self) -> Result<()> {
         self.runtime
+            .lock()
             .as_ref()
             .ok_or(Error::NoRuntime)?
             .block_on(async {
@@ -138,32 +128,63 @@ where
         // Big question here however is how do we get the result? We could block here await the result and spawn a new task.
         // but then platforms should know that this function is blocking.
 
-        let portal_url = portal_url.try_into().map_err(|_| Error::UriError)?;
-
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()?;
-
-        if cfg!(feature = "mock") {
-            Self::connect_mock(callbacks.clone());
-        } else {
-            Self::connect_inner(&runtime, portal_url, token, callbacks.clone());
-        }
-
-        Ok(Self {
-            runtime: Some(runtime),
+        let this = Self {
+            runtime: Mutex::new(Some(
+                tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()?,
+            ))
+            .into(),
             callbacks,
             _phantom: PhantomData,
-        })
+        };
+
+        {
+            let runtime_disconnector = Arc::clone(&this.runtime);
+            let callbacks = this.callbacks.clone();
+            let default_panic_hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                let err = info
+                    .payload()
+                    .downcast_ref::<&str>()
+                    .map(|s| Error::Panic(s.to_string()))
+                    .unwrap_or(Error::PanicNonStringPayload);
+                Self::disconnect_inner(&runtime_disconnector, &callbacks, Some(err));
+                default_panic_hook(info);
+            }));
+        }
+
+        if cfg!(feature = "mock") {
+            Self::connect_mock(this.callbacks.clone());
+        } else {
+            Self::connect_inner(
+                Arc::clone(&this.runtime),
+                portal_url.try_into().map_err(|_| Error::UriError)?,
+                token,
+                this.callbacks.clone(),
+            );
+        }
+
+        Ok(this)
     }
 
-    fn connect_inner(runtime: &Runtime, portal_url: Url, token: String, callbacks: CB) {
-        runtime.spawn(async move {
+    fn connect_inner(
+        runtime: Arc<Mutex<Option<Runtime>>>,
+        portal_url: Url,
+        token: String,
+        callbacks: CB,
+    ) {
+        let runtime_disconnector = Arc::clone(&runtime);
+        runtime.lock().as_ref().unwrap().spawn(async move {
             let private_key = StaticSecret::random_from_rng(OsRng);
             let self_id = uuid::Uuid::new_v4();
             let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
 
-            let connect_url = fatal_error!(get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix), callbacks);
+            let connect_url = fatal_error!(
+                get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix),
+                &runtime_disconnector,
+                &callbacks
+            );
 
 
             // This is kinda hacky, the buffer size is 1 so that we make sure that we
@@ -184,7 +205,11 @@ where
             // Used to send internal messages
             let topic = T::socket_path().to_string();
             let internal_sender = connection.sender_with_topic(topic.clone());
-            fatal_error!(T::start(private_key, control_plane_receiver, internal_sender, callbacks.clone()).await, callbacks);
+            fatal_error!(
+                T::start(private_key, control_plane_receiver, internal_sender, callbacks.clone()).await,
+                &runtime_disconnector,
+                &callbacks
+            );
 
             tokio::spawn(async move {
                 let mut exponential_backoff = ExponentialBackoffBuilder::default().build();
@@ -193,18 +218,15 @@ where
                     let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
                     if let Some(t) = exponential_backoff.next_backoff() {
                         tracing::warn!("Error during connection to the portal, retrying in {} seconds", t.as_secs());
-                        match result {
-                            Ok(()) => callbacks.on_error(&tokio_tungstenite::tungstenite::Error::ConnectionClosed.into(), ErrorType::Recoverable),
-                            Err(e) => callbacks.on_error(&e, ErrorType::Recoverable)
-                        }
+                        callbacks.on_error(&result.err().unwrap_or(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed)));
                         tokio::time::sleep(t).await;
                     } else {
                         tracing::error!("Connection to the portal error, check your internet or the status of the portal.\nDisconnecting interface.");
-                        match result {
-                            Ok(()) => callbacks.on_error(&crate::Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed), ErrorType::Fatal),
-                            Err(e) => callbacks.on_error(&e, ErrorType::Fatal)
-                        }
-                        break;
+                        fatal_error!(
+                            result.and(Err(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed))),
+                            &runtime_disconnector,
+                            &callbacks
+                        );
                     }
                 }
 
@@ -216,10 +238,8 @@ where
     fn connect_mock(callbacks: CB) {
         std::thread::sleep(Duration::from_secs(1));
         callbacks.on_set_interface_config(
-            TunnelAddresses {
-                address4: "100.100.111.2".parse().unwrap(),
-                address6: "fd00:0222:2021:1111::2".parse().unwrap(),
-            },
+            "100.100.111.2".parse().unwrap(),
+            "fd00:0222:2021:1111::2".parse().unwrap(),
             DNS_SENTINEL,
         );
         callbacks.on_tunnel_ready();
@@ -240,24 +260,16 @@ where
             for resource in &resources {
                 callbacks.on_add_route(serde_json::to_string(&resource.address).unwrap());
             }
-            callbacks.on_update_resources(ResourceList {
-                resources: resources
+            callbacks.on_update_resources(
+                resources
                     .into_iter()
-                    .map(|resource| {
-                        serde_json::to_string(&ResourceDescription::Cidr(resource)).unwrap()
-                    })
+                    .map(ResourceDescription::Cidr)
                     .collect(),
-            });
+            );
         });
     }
 
-    /// Cleanup a [Session].
-    ///
-    /// For now this just drops the runtime, which should drop all pending tasks.
-    /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
-    pub fn disconnect(&mut self) -> bool {
-        self.callbacks.on_disconnect();
-
+    fn disconnect_inner(runtime: &Mutex<Option<Runtime>>, callbacks: &CB, error: Option<Error>) {
         // 1. Close the websocket connection
         // 2. Free the device handle (UNIX)
         // 3. Close the file descriptor (UNIX)
@@ -269,7 +281,17 @@ where
         // So always yield and if you spawn a blocking tasks rewrite this.
         // Furthermore, we will depend on Drop impls to do the list above so,
         // implement them :)
-        self.runtime = None;
+        *runtime.lock() = None;
+
+        callbacks.on_disconnect(error.as_ref());
+    }
+
+    /// Cleanup a [Session].
+    ///
+    /// For now this just drops the runtime, which should drop all pending tasks.
+    /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
+    pub fn disconnect(&mut self, error: Option<Error>) -> bool {
+        Self::disconnect_inner(&self.runtime, &self.callbacks, error);
         true
     }
 

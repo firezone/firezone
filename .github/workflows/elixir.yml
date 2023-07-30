@@ -305,7 +305,7 @@ jobs:
           - 8200:8200/tcp
         options: --cap-add=IPC_LOCK
     steps:
-      - uses: nanasess/setup-chromedriver@v1
+      - uses: nanasess/setup-chromedriver@v2
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "26.0.2"

@@ -4,7 +4,6 @@
 //! we are using the same version across our own crates.
 
 pub mod error;
-pub mod error_type;
 
 mod session;
 
@@ -14,9 +13,7 @@ pub mod messages;
 pub use error::ConnlibError as Error;
 pub use error::Result;
 
-pub use session::{
-    Callbacks, ControlSession, ResourceList, Session, TunnelAddresses, DNS_SENTINEL,
-};
+pub use session::{Callbacks, ControlSession, Session, DNS_SENTINEL};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";

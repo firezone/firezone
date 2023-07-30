@@ -12,52 +12,64 @@ import os.log
 // This is so that the app stays buildable even when the FFI changes.
 
 // TODO: https://github.com/chinedufn/swift-bridge/issues/150
-extension SwiftConnlibError: @unchecked Sendable {}
-extension SwiftConnlibError: Error {}
+extension RustString: @unchecked Sendable {}
+extension RustString: Error {}
 
 public protocol CallbackHandlerDelegate: AnyObject {
-  func onConnect(tunnelAddressIPv4: String, tunnelAddressIPv6: String)
+  func onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String)
+  func onTunnelReady()
+  func onAddRoute(_: String)
+  func onRemoveRoute(_: String)
   func onUpdateResources(resourceList: String)
-  func onDisconnect()
-  func onError(error: Error, isRecoverable: Bool)
+  func onDisconnect(error: Optional<String>)
+  func onError(error: String)
 }
 
 public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
   private let logger = Logger(subsystem: "dev.firezone.firezone", category: "callbackhandler")
 
-  func onSetInterfaceConfig(tunnelAddresses: TunnelAddresses, dnsAddress: RustString) {
-    logger.debug("CallbackHandler.onSetInterfaceConfig: IPv4: \(tunnelAddresses.address4.toString(), privacy: .public), IPv6: \(tunnelAddresses.address6.toString(), privacy: .public), DNS: \(dnsAddress.toString(), privacy: .public)")
-    // Unimplemented
+  func onSetInterfaceConfig(tunnelAddressIPv4: RustString, tunnelAddressIPv6: RustString, dnsAddress: RustString) {
+    logger.debug("CallbackHandler.onSetInterfaceConfig: IPv4: \(tunnelAddressIPv4.toString(), privacy: .public), IPv6: \(tunnelAddressIPv6.toString(), privacy: .public), DNS: \(dnsAddress.toString(), privacy: .public)")
+    delegate?.onSetInterfaceConfig(
+      tunnelAddressIPv4: tunnelAddressIPv4.toString(),
+      tunnelAddressIPv6: tunnelAddressIPv6.toString(),
+      dnsAddress: dnsAddress.toString()
+    )
   }
 
   func onTunnelReady() {
     logger.debug("CallbackHandler.onTunnelReady")
-    // Unimplemented
+    delegate?.onTunnelReady()
   }
 
   func onAddRoute(route: RustString) {
     logger.debug("CallbackHandler.onAddRoute: \(route.toString(), privacy: .public)")
-    // Unimplemented
+    delegate?.onAddRoute(route.toString())
   }
 
   func onRemoveRoute(route: RustString) {
     logger.debug("CallbackHandler.onRemoveRoute: \(route.toString(), privacy: .public)")
-    // Unimplemented
+    delegate?.onRemoveRoute(route.toString())
   }
 
-  func onUpdateResources(resourceList: ResourceList) {
-    logger.debug("CallbackHandler.onUpdateResources: \(resourceList.resources.toString(), privacy: .public)")
-    delegate?.onUpdateResources(resourceList: resourceList.resources.toString())
+  func onUpdateResources(resourceList: RustString) {
+    logger.debug("CallbackHandler.onUpdateResources: \(resourceList.toString(), privacy: .public)")
+    delegate?.onUpdateResources(resourceList: resourceList.toString())
   }
 
-  func onDisconnect() {
-    logger.debug("CallbackHandler.onDisconnect")
-    delegate?.onDisconnect()
+  func onDisconnect(error: RustString) {
+    logger.debug("CallbackHandler.onDisconnect: \(error.toString(), privacy: .public)")
+    let error = error.toString()
+    var optional_error = Optional.some(error)
+    if error.isEmpty {
+      optional_error = Optional.none
+    }
+    delegate?.onDisconnect(error: optional_error)
   }
 
-  func onError(error: SwiftConnlibError, error_type: SwiftErrorType) {
-    logger.debug("CallbackHandler.onError: \(error, privacy: .public) (\(error_type == .Recoverable ? "Recoverable" : "Fatal", privacy: .public)")
-    delegate?.onError(error: error, isRecoverable: error_type == .Recoverable)
+  func onError(error: RustString) {
+    logger.debug("CallbackHandler.onError: \(error.toString(), privacy: .public)")
+    delegate?.onError(error: error.toString())
   }
 }

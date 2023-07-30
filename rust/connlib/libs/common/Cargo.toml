@@ -13,9 +13,9 @@ base64 = { version = "0.21", default-features = false, features = ["std"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
-tokio-tungstenite = { version = "0.18", default-features = false, features = ["connect", "handshake"] }
+tokio-tungstenite = { version = "0.19", default-features = false, features = ["connect", "handshake"] }
 webrtc = { version = "0.8" }
-uuid = { version = "1.3", default-features = false, features = ["std", "v4", "serde"] }
+uuid = { version = "1.4", default-features = false, features = ["std", "v4", "serde"] }
 thiserror = { version = "1.0", default-features = false }
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
@@ -29,6 +29,7 @@ boringtun = { workspace = true }
 os_info = { version = "3", default-features = false }
 rand = { version = "0.8", default-features = false, features = ["std"] }
 chrono = { workspace = true }
+parking_lot = "0.12"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 swift-bridge = { workspace = true }
