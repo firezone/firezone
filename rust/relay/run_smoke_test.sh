@@ -19,7 +19,7 @@ NC=$(echo -e '\033[0m')
 target_directory=$(cargo metadata --format-version 1 | jq -r '.target_directory')
 client="$target_directory/debug/examples/client"
 gateway="$target_directory/debug/examples/gateway"
-relay="$target_directory/debug/relay"
+relay="$target_directory/debug/fz-relay"
 
 export PUBLIC_IP4_ADDR=127.0.0.1;
 export LISTEN_IP4_ADDR=127.0.0.1;

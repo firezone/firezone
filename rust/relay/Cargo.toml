@@ -1,12 +1,16 @@
 [package]
 name = "relay"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 license = "APL-2.0"
 authors = ["firezone developers"]
 description = "An opinionated TURN server implementation"
 homepage = "https://firezone.dev"
 repository = "https://github.com/firezone/firezone"
+
+[[bin]]
+name = "fz-relay"
+path = "src/main.rs"
 
 [package.metadata.deb]
 name = "firezone-relay"
