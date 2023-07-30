@@ -17,6 +17,10 @@ use crate::{IpStack, TimeEvents};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::gauge::Gauge;
+use prometheus_client::registry::Registry;
 use rand::Rng;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
@@ -67,6 +71,10 @@ pub struct Server<R> {
     nonces: Nonces,
 
     time_events: TimeEvents<TimedAction>,
+
+    allocations_gauge: Gauge,
+    responses_counter: Family<ResponsesTotalLabels, Counter>,
+    data_relayed_counter: Counter,
 }
 
 /// The commands returned from a [`Server`].
@@ -140,8 +148,33 @@ impl<R> Server<R>
 where
     R: Rng,
 {
-    pub fn new(public_address: impl Into<IpStack<Ipv4Addr, Ipv6Addr>>, mut rng: R) -> Self {
+    pub fn new(
+        public_address: impl Into<IpStack<Ipv4Addr, Ipv6Addr>>,
+        mut rng: R,
+        registry: &mut Registry,
+    ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
+
+        let allocations_gauge = Gauge::default();
+        registry.register(
+            "allocations_total",
+            "The number of active allocations",
+            allocations_gauge.clone(),
+        );
+
+        let responses_counter = Family::<ResponsesTotalLabels, Counter>::default();
+        registry.register(
+            "responses",
+            "The number of responses",
+            responses_counter.clone(),
+        );
+
+        let data_relayed_counter = Counter::default();
+        registry.register(
+            "data_relayed_bytes",
+            "The number of bytes relayed",
+            data_relayed_counter.clone(),
+        );
 
         Self {
             decoder: Default::default(),
@@ -158,6 +191,9 @@ where
             rng,
             time_events: TimeEvents::default(),
             nonces: Default::default(),
+            allocations_gauge,
+            responses_counter,
+            data_relayed_counter,
         }
     }
 
@@ -298,6 +334,8 @@ where
         }
 
         tracing::debug!(target: "relay", "Relaying {} bytes", bytes.len());
+
+        self.data_relayed_counter.inc_by(bytes.len() as u64);
 
         let data = ChannelData::new(*channel_number, bytes).to_bytes();
 
@@ -475,6 +513,7 @@ where
 
         self.clients_by_allocation.insert(allocation.id, sender);
         self.allocations.insert(sender, allocation);
+        self.allocations_gauge.inc();
 
         Ok(())
     }
@@ -662,6 +701,8 @@ where
 
         tracing::debug!(target: "relay", "Relaying {} bytes", data.len());
 
+        self.data_relayed_counter.inc_by(data.len() as u64);
+
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(data);
             tracing::trace!(target: "wire", %hex_bytes, "sending bytes");
@@ -762,6 +803,8 @@ where
     }
 
     fn send_message(&mut self, message: Message<Attribute>, recipient: SocketAddr) {
+        let method = message.method();
+        let class = message.class();
         tracing::trace!(target: "relay",  method = %message.method().as_str(), class = %message.class().as_str(), "Sending message");
 
         let Ok(bytes) = self.encoder.encode_into_bytes(message) else {
@@ -778,6 +821,27 @@ where
             payload: bytes,
             recipient,
         });
+
+        // record metrics
+        let response_class = match class {
+            MessageClass::SuccessResponse => ResponseClass::Success,
+            MessageClass::ErrorResponse => ResponseClass::Error,
+            _ => return,
+        };
+        let message_type = match method {
+            BINDING => MessageType::Binding,
+            ALLOCATE => MessageType::Allocate,
+            REFRESH => MessageType::Refresh,
+            CHANNEL_BIND => MessageType::ChannelBind,
+            CREATE_PERMISSION => MessageType::CreatePermission,
+            _ => return,
+        };
+        self.responses_counter
+            .get_or_create(&ResponsesTotalLabels {
+                class: response_class,
+                message: message_type,
+            })
+            .inc();
     }
 
     fn get_allocation(&self, id: &AllocationId) -> Option<&Allocation> {
@@ -790,15 +854,16 @@ where
         let Some(client) = self.clients_by_allocation.remove(&id) else {
             return;
         };
-
         let allocation = self
             .allocations
             .remove(&client)
             .expect("internal state mismatch");
+
         let port = allocation.port;
 
         self.allocations_by_port.remove(&port);
 
+        self.allocations_gauge.dec();
         self.pending_commands.push_back(Command::FreeAllocation {
             id,
             family: allocation.first_relay_addr.family(),
@@ -1026,6 +1091,27 @@ stun_codec::define_attribute_enums!(
         AdditionalAddressFamily
     ]
 );
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, prometheus_client::encoding::EncodeLabelSet)]
+struct ResponsesTotalLabels {
+    class: ResponseClass,
+    message: MessageType,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, prometheus_client::encoding::EncodeLabelValue)]
+enum ResponseClass {
+    Success,
+    Error,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, prometheus_client::encoding::EncodeLabelValue)]
+enum MessageType {
+    Binding,
+    Allocate,
+    ChannelBind,
+    CreatePermission,
+    Refresh,
+}
 
 #[cfg(test)]
 mod tests {

@@ -3,6 +3,7 @@ use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
 use phoenix_channel::{Error, Event, PhoenixChannel};
+use prometheus_client::registry::Registry;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use relay::{
@@ -98,7 +99,8 @@ async fn main() -> Result<()> {
         }
     };
 
-    let server = Server::new(public_addr, make_rng(args.rng_seed));
+    let mut metric_registry = Registry::with_prefix("relay");
+    let server = Server::new(public_addr, make_rng(args.rng_seed), &mut metric_registry);
 
     let channel = if let Some(token) = args.portal_token {
         let mut url = args.portal_ws_url.clone();
@@ -162,7 +164,8 @@ async fn main() -> Result<()> {
         None
     };
 
-    let mut eventloop = Eventloop::new(server, channel, listen_addr)?;
+    let mut eventloop = Eventloop::new(server, channel, listen_addr, &mut metric_registry)?;
+    // tokio::spawn(relay::metrics::serve(args.listen_ip4_addr, metric_registry));
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
@@ -225,6 +228,7 @@ where
         server: Server<R>,
         channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
         listen_address: IpStack<Ipv4Addr, Ipv6Addr>,
+        _: &mut Registry,
     ) -> Result<Self> {
         let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);
         let (inbound_data_sender, inbound_data_receiver) = mpsc::channel(10);
