@@ -255,7 +255,7 @@ where
         if let Some(ip6) = listen_address.as_v6() {
             tokio::spawn(main_udp_socket_task(
                 (*ip6).into(),
-                inbound_data_sender.clone(),
+                inbound_data_sender,
                 outbound_ip6_data_receiver,
             ));
         }
@@ -338,13 +338,13 @@ where
                 continue; // Attempt to process more commands.
             }
 
-            // Priority 4: Handle time-sensitive tasks:
+            // Priority 2: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
                 self.server.handle_deadline_reached(SystemTime::now());
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 4: Handle relayed data (we prioritize latency for existing allocations over making new ones)
+            // Priority 3: Handle relayed data (we prioritize latency for existing allocations over making new ones)
             if let Poll::Ready(Some((data, sender, allocation))) =
                 self.relay_data_receiver.poll_next_unpin(cx)
             {
@@ -352,20 +352,16 @@ where
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 5: Accept new allocations / answer STUN requests etc
-            if let Poll::Ready((buffer, sender)) = self
-                .inbound_data_receiver
-                .poll_next_unpin(cx)
-                .map(|maybe_item| {
-                    maybe_item.context("Channel to primary UDP socket task has been closed")
-                })?
+            // Priority 4: Accept new allocations / answer STUN requests etc
+            if let Poll::Ready(Some((buffer, sender))) =
+                self.inbound_data_receiver.poll_next_unpin(cx)
             {
                 self.server
                     .handle_client_input(&buffer, sender, SystemTime::now());
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 6: Handle portal messages
+            // Priority 5: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
                 Some(Poll::Ready(Ok(Event::InboundMessage {
                     msg: InboundPortalMessage::Init {},
