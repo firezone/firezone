@@ -70,9 +70,12 @@ fn make_std_socket(socket_addr: SocketAddr) -> Result<std::net::UdpSocket> {
     };
     let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
 
-    socket.set_only_v6(true)?;
-    socket.bind(&socket_addr.into())?;
+    if socket_addr.is_ipv6() {
+        socket.set_only_v6(true)?;
+    }
+
     socket.set_nonblocking(true)?;
+    socket.bind(&socket_addr.into())?;
 
     Ok(socket.into())
 }
