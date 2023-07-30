@@ -114,4 +114,4 @@ jobs:
         with:
           tool: cargo-deb
 
-      - run: cargo deb --package relay
+      - run: cargo deb --package relay # TODO: Should we set the build revision here? How do we want to version this?
