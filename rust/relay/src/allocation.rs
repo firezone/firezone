@@ -21,7 +21,7 @@ pub struct Allocation {
 }
 
 impl Allocation {
-    pub fn new(
+    pub fn new_ip4(
         relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
         id: AllocationId,
         listen_ip4_addr: Ipv4Addr,

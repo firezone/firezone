@@ -247,10 +247,10 @@ where
                         Pin::new(&mut self.sleep).reset(deadline);
                     }
                     Command::ForwardData { id, data, receiver } => {
-                        let mut allocation = match self.allocations.entry(id) {
+                        let mut allocation = match self.allocations.entry((id, receiver.family())) {
                             Entry::Occupied(entry) => entry,
                             Entry::Vacant(_) => {
-                                tracing::debug!(allocation = %id, "Unknown allocation");
+                                tracing::debug!(allocation = %id, family = %receiver.family(), "Unknown allocation");
                                 continue;
                             }
                         };
