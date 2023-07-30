@@ -29,6 +29,7 @@ phoenix-channel = { path = "../phoenix-channel" }
 url = "2.4.0"
 serde = { version = "1.0.171", features = ["derive"] }
 trackable = "1.3.0"
+socket2 = "0.5.3"
 
 [dev-dependencies]
 webrtc = { version = "0.8" }

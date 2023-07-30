@@ -1,3 +1,4 @@
+use crate::{AddressFamily, SocketAddrExt};
 use anyhow::Result;
 use std::net::SocketAddr;
 use std::task::{ready, Context, Poll};
@@ -14,7 +15,7 @@ pub struct UdpSocket {
 impl UdpSocket {
     pub async fn bind(addr: impl Into<SocketAddr>) -> Result<Self> {
         Ok(Self {
-            inner: tokio::net::UdpSocket::bind(addr.into()).await?,
+            inner: tokio::net::UdpSocket::from_std(make_std_socket(addr.into())?)?,
             recv_buf: [0u8; MAX_UDP_SIZE],
         })
     }
@@ -51,4 +52,23 @@ impl UdpSocket {
 
         Poll::Ready(Ok(()))
     }
+}
+
+/// Creates an [std::net::UdpSocket] via the [socket2] library that is configured for our needs.
+///
+/// Most importantly, this sets the `IPV6_V6ONLY` flag to ensure we disallow IP4-mapped IPv6 addresses and can bind to IP4 and IP6 addresses on the same port.
+fn make_std_socket(socket_addr: SocketAddr) -> Result<std::net::UdpSocket> {
+    use socket2::*;
+
+    let domain = match socket_addr.family() {
+        AddressFamily::V4 => Domain::IPV4,
+        AddressFamily::V6 => Domain::IPV6,
+    };
+    let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+
+    socket.set_only_v6(true)?;
+    socket.bind(&socket_addr.into())?;
+    socket.set_nonblocking(true)?;
+
+    Ok(socket.into())
 }
