@@ -220,7 +220,7 @@ where
                     } => {
                         self.allocations.insert(
                             (id, AddressFamily::V4),
-                            Allocation::new_ip4(
+                            Allocation::new(
                                 self.relay_data_sender.clone(),
                                 id,
                                 self.listen_ip4_address,
