@@ -35,6 +35,40 @@ pub enum IpStack<T4, T6> {
     Dual { ip4: T4, ip6: T6 },
 }
 
+impl<T4, T6> IpStack<T4, T6> {
+    pub fn as_v4(&self) -> Option<&T4> {
+        match self {
+            IpStack::Ip4(ip4) => Some(ip4),
+            IpStack::Ip6(_) => None,
+            IpStack::Dual { ip4, .. } => Some(ip4),
+        }
+    }
+
+    pub fn as_v4_mut(&mut self) -> Option<&mut T4> {
+        match self {
+            IpStack::Ip4(ip4) => Some(ip4),
+            IpStack::Ip6(_) => None,
+            IpStack::Dual { ip4, .. } => Some(ip4),
+        }
+    }
+
+    pub fn as_v6(&self) -> Option<&T6> {
+        match self {
+            IpStack::Ip4(_) => None,
+            IpStack::Ip6(ip6) => Some(ip6),
+            IpStack::Dual { ip6, .. } => Some(ip6),
+        }
+    }
+
+    pub fn as_v6_mut(&mut self) -> Option<&mut T6> {
+        match self {
+            IpStack::Ip4(_) => None,
+            IpStack::Ip6(ip6) => Some(ip6),
+            IpStack::Dual { ip6, .. } => Some(ip6),
+        }
+    }
+}
+
 impl From<Ipv4Addr> for IpStack<Ipv4Addr, Ipv6Addr> {
     fn from(value: Ipv4Addr) -> Self {
         IpStack::Ip4(value)

@@ -24,11 +24,9 @@ impl Allocation {
     pub fn new(
         relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
         id: AllocationId,
-        listen_addr: impl Into<IpAddr>,
+        listen_addr: IpAddr,
         port: u16,
     ) -> Self {
-        let listen_addr = listen_addr.into();
-
         let (client_to_peer_sender, client_to_peer_receiver) = mpsc::channel(MAX_BUFFERED_ITEMS);
 
         let task = tokio::spawn(async move {
