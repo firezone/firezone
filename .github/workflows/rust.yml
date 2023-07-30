@@ -113,4 +113,3 @@ jobs:
         with:
           workspaces: ./rust
       - run: ./run_smoke_test.sh
-
