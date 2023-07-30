@@ -1,0 +1,23 @@
+[Unit]
+Description=Firezone TURN relay
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/fz-relay
+
+# DON'T FILL ANY OF THESE INTO FILE. USE `systemctl edit fz-relay.service` INSTEAD.
+
+Environment=PUBLIC_IP4_ADDR=
+Environment=LISTEN_IP4_ADDR=
+
+Environment=PUBLIC_IP6_ADDR=
+Environment=LISTEN_IP6_ADDR=
+
+# The token to use for authenticating with the firezone portal, when omitted, the relay will start without connecting to the portal.
+Environment=PORTAL_TOKEN=
+
+# Set this to "true" to enable JSON logging compatible with GCP's structured logging.
+Environment=JSON=
+
+[Install]
+WantedBy=multi-user.target
