@@ -351,6 +351,11 @@ where
         }
     }
 
+    /// An allocation failed.
+    pub fn handle_allocation_failed(&mut self, id: AllocationId) {
+        self.delete_allocation(id)
+    }
+
     /// Return the next command to be executed.
     pub fn next_command(&mut self) -> Option<Command> {
         self.pending_commands.pop_front()

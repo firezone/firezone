@@ -1,3 +1,4 @@
+mod allocation;
 mod auth;
 mod net_ext;
 mod rfc8656;
@@ -10,6 +11,7 @@ mod udp_socket;
 #[cfg(feature = "proptest")]
 pub mod proptest;
 
+pub use allocation::Allocation;
 pub use net_ext::{IpAddrExt, SocketAddrExt};
 pub use rfc8656::AddressFamily;
 pub use server::{
