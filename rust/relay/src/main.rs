@@ -45,6 +45,11 @@ struct Args {
     /// Must not be a wildcard-address.
     #[arg(long, env)]
     listen_ip6_addr: Option<Ipv6Addr>,
+    /// The address of the local interface where we should serve the prometheus metrics.
+    ///
+    /// The metrics will be available at `http://<metrics_addr>/metrics`.
+    #[arg(long, env)]
+    metrics_addr: Option<SocketAddr>,
     /// The websocket URL of the portal server to connect to.
     #[arg(long, env, default_value = "wss://api.firezone.dev")]
     portal_ws_url: Url,
@@ -165,7 +170,10 @@ async fn main() -> Result<()> {
     };
 
     let mut eventloop = Eventloop::new(server, channel, listen_addr, &mut metric_registry)?;
-    // tokio::spawn(relay::metrics::serve(args.listen_ip4_addr, metric_registry));
+
+    if let Some(metrics_addr) = args.metrics_addr {
+        tokio::spawn(relay::metrics::serve(metrics_addr, metric_registry));
+    }
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
