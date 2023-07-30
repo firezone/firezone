@@ -34,7 +34,7 @@ impl Allocation {
                 unreachable!()
             };
 
-            tracing::warn!("Allocation task for {id} failed: {e}");
+            tracing::warn!(allocation = %id, "Task for IP4 allocation failed: {e:#}");
 
             // With the task stopping, the channel will be closed and any attempt to send data to it will fail.
         });
