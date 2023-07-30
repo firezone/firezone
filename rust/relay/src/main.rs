@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
-use futures::{future, FutureExt, StreamExt};
+use futures::{future, FutureExt, SinkExt, StreamExt};
 use phoenix_channel::{Error, Event, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -9,7 +9,8 @@ use relay::{
     AddressFamily, Allocation, AllocationId, Command, Server, Sleep, SocketAddrExt, UdpSocket,
 };
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
+use std::convert::Infallible;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::pin::Pin;
 use std::task::Poll;
@@ -169,7 +170,8 @@ fn make_rng(seed: Option<u64>) -> StdRng {
 }
 
 struct Eventloop<R> {
-    ip4_socket: UdpSocket,
+    inbound_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
+    outbound_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
     listen_ip4_address: Ipv4Addr,
     server: Server<R>,
     channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
@@ -177,8 +179,6 @@ struct Eventloop<R> {
     relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     relay_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr, AllocationId)>,
     sleep: Sleep,
-
-    client_send_buffer: VecDeque<(Vec<u8>, SocketAddr)>,
 }
 
 impl<R> Eventloop<R>
@@ -190,18 +190,27 @@ where
         channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
         listen_ip4_address: Ipv4Addr,
     ) -> Result<Self> {
-        let (sender, receiver) = mpsc::channel(1);
+        let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);
+        let (inbound_data_sender, inbound_data_receiver) = mpsc::channel(10);
+        let (outbound_data_sender, outbound_data_receiver) =
+            mpsc::channel::<(Vec<u8>, SocketAddr)>(10);
+
+        tokio::spawn(main_udp_socket_task(
+            listen_ip4_address,
+            inbound_data_sender,
+            outbound_data_receiver,
+        ));
 
         Ok(Self {
-            ip4_socket: UdpSocket::bind((listen_ip4_address, 3478))?,
+            inbound_data_receiver,
+            outbound_data_sender,
             listen_ip4_address,
             server,
             channel,
             allocations: Default::default(),
-            relay_data_sender: sender,
-            relay_data_receiver: receiver,
+            relay_data_sender,
+            relay_data_receiver,
             sleep: Sleep::default(),
-            client_send_buffer: Default::default(),
         })
     }
 
@@ -211,7 +220,17 @@ where
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
                     Command::SendMessage { payload, recipient } => {
-                        self.client_send_buffer.push_back((payload, recipient));
+                        if let Err(e) = self.outbound_data_sender.try_send((payload, recipient)) {
+                            if e.is_disconnected() {
+                                return Poll::Ready(Err(anyhow!(
+                                    "Channel to primary UDP socket task has been closed"
+                                )));
+                            }
+
+                            if e.is_full() {
+                                tracing::warn!(%recipient, "Dropping message because channel to primary UDP socket task is full");
+                            }
+                        }
                     }
                     Command::CreateAllocation {
                         id,
@@ -265,23 +284,7 @@ where
                 continue; // Attempt to process more commands.
             }
 
-            // Priority 2: Flush data to the socket.
-            if let Some((payload, recipient)) = self.client_send_buffer.pop_front() {
-                match self.ip4_socket.try_send_to(&payload, recipient, cx)? {
-                    Poll::Ready(()) => {
-                        continue;
-                    }
-                    Poll::Pending => {
-                        // Yield early if we cannot send data.
-                        // Continuing the event loop here would cause `client_send_buffer` to potentially grow faster than we can send data.
-
-                        self.client_send_buffer.push_front((payload, recipient));
-                        return Poll::Pending;
-                    }
-                }
-            }
-
-            // Priority 3: Handle time-sensitive tasks:
+            // Priority 4: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
                 self.server.handle_deadline_reached(SystemTime::now());
                 continue; // Handle potentially new commands.
@@ -296,9 +299,15 @@ where
             }
 
             // Priority 5: Accept new allocations / answer STUN requests etc
-            if let Poll::Ready((buffer, sender)) = self.ip4_socket.poll_recv(cx)? {
+            if let Poll::Ready((buffer, sender)) = self
+                .inbound_data_receiver
+                .poll_next_unpin(cx)
+                .map(|maybe_item| {
+                    maybe_item.context("Channel to primary UDP socket task has been closed")
+                })?
+            {
                 self.server
-                    .handle_client_input(buffer.filled(), sender, SystemTime::now());
+                    .handle_client_input(&buffer, sender, SystemTime::now());
                 continue; // Handle potentially new commands.
             }
 
@@ -347,6 +356,27 @@ where
             }
 
             return Poll::Pending;
+        }
+    }
+}
+
+async fn main_udp_socket_task(
+    listen_ip4_address: Ipv4Addr,
+    mut inbound_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
+    mut outbound_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
+) -> Result<Infallible> {
+    let mut socket = UdpSocket::bind((listen_ip4_address, 3478))?;
+
+    loop {
+        tokio::select! {
+            result = socket.recv() => {
+                let (data, sender) = result?;
+                inbound_data_sender.send((data.to_vec(), sender)).await?;
+            }
+            maybe_item = outbound_data_receiver.next() => {
+                let (data, recipient) = maybe_item.context("Outbound data channel closed")?;
+                socket.send_to(data.as_ref(), recipient).await?;
+            }
         }
     }
 }
