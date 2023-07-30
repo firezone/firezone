@@ -2,7 +2,7 @@ use bytecodec::{DecodeExt, EncodeExt};
 use rand::rngs::mock::StepRng;
 use relay::{
     AddressFamily, Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData,
-    ClientMessage, Command, Refresh, Server,
+    ClientMessage, Command, IpStack, Refresh, Server,
 };
 use std::collections::HashMap;
 use std::iter;
@@ -424,7 +424,7 @@ struct TestServer {
 }
 
 impl TestServer {
-    fn new(relay_public_addr: impl Into<relay::IpAddr>) -> Self {
+    fn new(relay_public_addr: impl Into<IpStack<Ipv4Addr, Ipv6Addr>>) -> Self {
         Self {
             server: Server::new(relay_public_addr, StepRng::new(0, 0)),
             id_to_port: Default::default(),

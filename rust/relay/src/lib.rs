@@ -25,28 +25,30 @@ pub(crate) use time_events::TimeEvents;
 
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-/// Enumerates all possible IP address types, including dual-stack operation of IPv4 and IPv6.
+/// Describes the IP stack of a relay server.
+///
+/// This type is generic over the particular type that is associated with each IP version which allows it to be used for addresses, sockets and other data structures.
 #[derive(Debug, Copy, Clone)]
-pub enum IpAddr {
-    Ip4Only(Ipv4Addr),
-    Ip6Only(Ipv6Addr),
-    DualStack { ip4: Ipv4Addr, ip6: Ipv6Addr },
+pub enum IpStack<T4, T6> {
+    Ip4Only(T4),
+    Ip6Only(T6),
+    DualStack { ip4: T4, ip6: T6 },
 }
 
-impl From<Ipv4Addr> for IpAddr {
+impl From<Ipv4Addr> for IpStack<Ipv4Addr, Ipv6Addr> {
     fn from(value: Ipv4Addr) -> Self {
-        IpAddr::Ip4Only(value)
+        IpStack::Ip4Only(value)
     }
 }
 
-impl From<Ipv6Addr> for IpAddr {
+impl From<Ipv6Addr> for IpStack<Ipv4Addr, Ipv6Addr> {
     fn from(value: Ipv6Addr) -> Self {
-        IpAddr::Ip6Only(value)
+        IpStack::Ip6Only(value)
     }
 }
 
-impl From<(Ipv4Addr, Ipv6Addr)> for IpAddr {
+impl From<(Ipv4Addr, Ipv6Addr)> for IpStack<Ipv4Addr, Ipv6Addr> {
     fn from((ip4, ip6): (Ipv4Addr, Ipv6Addr)) -> Self {
-        IpAddr::DualStack { ip4, ip6 }
+        IpStack::DualStack { ip4, ip6 }
     }
 }

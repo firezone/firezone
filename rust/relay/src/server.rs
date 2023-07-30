@@ -13,14 +13,14 @@ use crate::rfc8656::{
     RequestedAddressFamily,
 };
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
-use crate::{IpAddr, TimeEvents};
+use crate::{IpStack, TimeEvents};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
 use rand::Rng;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
@@ -47,7 +47,7 @@ pub struct Server<R> {
     decoder: client_message::Decoder,
     encoder: MessageEncoder<Attribute>,
 
-    public_address: IpAddr,
+    public_address: IpStack<Ipv4Addr, Ipv6Addr>,
 
     /// All client allocations, indexed by client's socket address.
     allocations: HashMap<SocketAddr, Allocation>,
@@ -140,7 +140,7 @@ impl<R> Server<R>
 where
     R: Rng,
 {
-    pub fn new(public_address: impl Into<IpAddr>, mut rng: R) -> Self {
+    pub fn new(public_address: impl Into<IpStack<Ipv4Addr, Ipv6Addr>>, mut rng: R) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
         Self {
@@ -924,7 +924,7 @@ fn error_response(
 }
 
 fn derive_relay_addresses(
-    public_address: IpAddr,
+    public_address: IpStack<Ipv4Addr, Ipv6Addr>,
     requested_addr_family: Option<&RequestedAddressFamily>,
     additional_addr_family: Option<&AdditionalAddressFamily>,
 ) -> Result<(std::net::IpAddr, Option<std::net::IpAddr>), ErrorCode> {
@@ -934,16 +934,16 @@ fn derive_relay_addresses(
         additional_addr_family.map(|a| a.address_family()),
     ) {
         (
-            IpAddr::Ip4Only(addr) | IpAddr::DualStack { ip4: addr, .. },
+            IpStack::Ip4Only(addr) | IpStack::DualStack { ip4: addr, .. },
             None | Some(AddressFamily::V4),
             None,
         ) => Ok((addr.into(), None)),
         (
-            IpAddr::Ip6Only(addr) | IpAddr::DualStack { ip6: addr, .. },
+            IpStack::Ip6Only(addr) | IpStack::DualStack { ip6: addr, .. },
             Some(AddressFamily::V6),
             None,
         ) => Ok((addr.into(), None)),
-        (IpAddr::DualStack { ip4, ip6 }, None, Some(AddressFamily::V6)) => {
+        (IpStack::DualStack { ip4, ip6 }, None, Some(AddressFamily::V6)) => {
             Ok((ip4.into(), Some(ip6.into())))
         }
         (_, Some(_), Some(_)) => Err(BadRequest.into()),
@@ -1040,7 +1040,7 @@ mod tests {
     #[test]
     fn requested_and_additional_is_bad_request() {
         let error_code = derive_relay_addresses(
-            IpAddr::Ip4Only(Ipv4Addr::LOCALHOST),
+            IpStack::Ip4Only(Ipv4Addr::LOCALHOST),
             Some(&RequestedAddressFamily::new(AddressFamily::V4)),
             Some(&AdditionalAddressFamily::new(AddressFamily::V6)),
         )
@@ -1054,7 +1054,7 @@ mod tests {
     #[test]
     fn requested_address_family_not_available_is_not_supported() {
         let error_code = derive_relay_addresses(
-            IpAddr::Ip4Only(Ipv4Addr::LOCALHOST),
+            IpStack::Ip4Only(Ipv4Addr::LOCALHOST),
             Some(&RequestedAddressFamily::new(AddressFamily::V6)),
             None,
         )
@@ -1063,7 +1063,7 @@ mod tests {
         assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
 
         let error_code = derive_relay_addresses(
-            IpAddr::Ip6Only(Ipv6Addr::LOCALHOST),
+            IpStack::Ip6Only(Ipv6Addr::LOCALHOST),
             Some(&RequestedAddressFamily::new(AddressFamily::V4)),
             None,
         )
@@ -1072,7 +1072,7 @@ mod tests {
         assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
 
         let error_code =
-            derive_relay_addresses(IpAddr::Ip6Only(Ipv6Addr::LOCALHOST), None, None).unwrap_err();
+            derive_relay_addresses(IpStack::Ip6Only(Ipv6Addr::LOCALHOST), None, None).unwrap_err();
 
         assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT)
     }
@@ -1081,7 +1081,7 @@ mod tests {
     #[test]
     fn additional_address_family_ip4_is_bad_request() {
         let error_code = derive_relay_addresses(
-            IpAddr::Ip4Only(Ipv4Addr::LOCALHOST),
+            IpStack::Ip4Only(Ipv4Addr::LOCALHOST),
             None,
             Some(&AdditionalAddressFamily::new(AddressFamily::V4)),
         )
