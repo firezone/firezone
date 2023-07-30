@@ -271,7 +271,7 @@ where
                 continue; // Attempt to process more commands.
             }
 
-            // Priority 3: Forward data to allocations.
+            // Priority 2: Forward data to allocations.
             if let Some((data, receiver, id)) = self.allocation_send_buffer.pop_front() {
                 let Some(allocation) = self.allocations.get_mut(&id) else {
                     tracing::debug!("Unknown allocation {id}");
@@ -314,13 +314,13 @@ where
                 continue;
             }
 
-            // Priority 4: Handle time-sensitive tasks:
+            // Priority 3: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
                 self.server.handle_deadline_reached(SystemTime::now());
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 5: Handle relayed data (we prioritize latency for existing allocations over making new ones)
+            // Priority 4: Handle relayed data (we prioritize latency for existing allocations over making new ones)
             if let Poll::Ready(Some((data, sender, allocation))) =
                 self.relay_data_receiver.poll_next_unpin(cx)
             {
@@ -328,7 +328,7 @@ where
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 6: Accept new allocations / answer STUN requests etc
+            // Priority 5: Accept new allocations / answer STUN requests etc
             if let Poll::Ready((buffer, sender)) = self
                 .inbound_data_receiver
                 .poll_next_unpin(cx)
@@ -341,7 +341,7 @@ where
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 7: Handle portal messages
+            // Priority 6: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
                 Some(Poll::Ready(Ok(Event::InboundMessage {
                     msg: InboundPortalMessage::Init {},
