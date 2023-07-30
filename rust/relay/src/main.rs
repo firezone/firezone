@@ -329,12 +329,8 @@ where
             }
 
             // Priority 5: Accept new allocations / answer STUN requests etc
-            if let Poll::Ready((buffer, sender)) = self
-                .inbound_data_receiver
-                .poll_next_unpin(cx)
-                .map(|maybe_item| {
-                    maybe_item.context("Channel to primary UDP socket task has been closed")
-                })?
+            if let Poll::Ready(Some((buffer, sender))) =
+                self.inbound_data_receiver.poll_next_unpin(cx)
             {
                 self.server
                     .handle_client_input(&buffer, sender, SystemTime::now());
