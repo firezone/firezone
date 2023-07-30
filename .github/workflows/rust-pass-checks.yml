@@ -37,3 +37,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
+  relay_smoke:
+    name: Smoke-test relay
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+
