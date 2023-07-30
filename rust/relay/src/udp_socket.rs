@@ -13,7 +13,7 @@ pub struct UdpSocket {
 }
 
 impl UdpSocket {
-    pub async fn bind(addr: impl Into<SocketAddr>) -> Result<Self> {
+    pub fn bind(addr: impl Into<SocketAddr>) -> Result<Self> {
         Ok(Self {
             inner: tokio::net::UdpSocket::from_std(make_std_socket(addr.into())?)?,
             recv_buf: [0u8; MAX_UDP_SIZE],

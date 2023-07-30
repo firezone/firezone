@@ -88,7 +88,7 @@ async fn forward_incoming_relay_data(
     listen_addr: IpAddr,
     port: u16,
 ) -> Result<Infallible> {
-    let mut socket = UdpSocket::bind((listen_addr, port)).await?;
+    let mut socket = UdpSocket::bind((listen_addr, port))?;
 
     loop {
         tokio::select! {

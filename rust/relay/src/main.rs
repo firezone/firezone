@@ -126,7 +126,7 @@ async fn main() -> Result<()> {
         None
     };
 
-    let mut eventloop = Eventloop::new(server, channel, args.listen_ip4_addr).await?;
+    let mut eventloop = Eventloop::new(server, channel, args.listen_ip4_addr)?;
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
@@ -185,7 +185,7 @@ impl<R> Eventloop<R>
 where
     R: Rng,
 {
-    async fn new(
+    fn new(
         server: Server<R>,
         channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
         listen_ip4_address: Ipv4Addr,
@@ -193,7 +193,7 @@ where
         let (sender, receiver) = mpsc::channel(1);
 
         Ok(Self {
-            ip4_socket: UdpSocket::bind((listen_ip4_address, 3478)).await?,
+            ip4_socket: UdpSocket::bind((listen_ip4_address, 3478))?,
             listen_ip4_address,
             server,
             channel,
