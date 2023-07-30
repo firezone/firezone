@@ -5,7 +5,7 @@ After=network.target
 [Service]
 ExecStart=/usr/bin/fz-relay
 
-# DON'T FILL ANY OF THESE INTO FILE. USE `systemctl edit fz-relay.service` INSTEAD.
+# DON'T SET ANY OF THESE IN THIS FILE. USE `systemctl edit fz-relay.service` INSTEAD.
 
 Environment=PUBLIC_IP4_ADDR=
 Environment=LISTEN_IP4_ADDR=
