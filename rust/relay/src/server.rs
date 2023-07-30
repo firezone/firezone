@@ -934,16 +934,14 @@ fn derive_relay_addresses(
         additional_addr_family.map(|a| a.address_family()),
     ) {
         (
-            IpStack::Ip4Only(addr) | IpStack::DualStack { ip4: addr, .. },
+            IpStack::Ip4(addr) | IpStack::Dual { ip4: addr, .. },
             None | Some(AddressFamily::V4),
             None,
         ) => Ok((addr.into(), None)),
-        (
-            IpStack::Ip6Only(addr) | IpStack::DualStack { ip6: addr, .. },
-            Some(AddressFamily::V6),
-            None,
-        ) => Ok((addr.into(), None)),
-        (IpStack::DualStack { ip4, ip6 }, None, Some(AddressFamily::V6)) => {
+        (IpStack::Ip6(addr) | IpStack::Dual { ip6: addr, .. }, Some(AddressFamily::V6), None) => {
+            Ok((addr.into(), None))
+        }
+        (IpStack::Dual { ip4, ip6 }, None, Some(AddressFamily::V6)) => {
             Ok((ip4.into(), Some(ip6.into())))
         }
         (_, Some(_), Some(_)) => Err(BadRequest.into()),
@@ -1040,7 +1038,7 @@ mod tests {
     #[test]
     fn requested_and_additional_is_bad_request() {
         let error_code = derive_relay_addresses(
-            IpStack::Ip4Only(Ipv4Addr::LOCALHOST),
+            IpStack::Ip4(Ipv4Addr::LOCALHOST),
             Some(&RequestedAddressFamily::new(AddressFamily::V4)),
             Some(&AdditionalAddressFamily::new(AddressFamily::V6)),
         )
@@ -1054,7 +1052,7 @@ mod tests {
     #[test]
     fn requested_address_family_not_available_is_not_supported() {
         let error_code = derive_relay_addresses(
-            IpStack::Ip4Only(Ipv4Addr::LOCALHOST),
+            IpStack::Ip4(Ipv4Addr::LOCALHOST),
             Some(&RequestedAddressFamily::new(AddressFamily::V6)),
             None,
         )
@@ -1063,7 +1061,7 @@ mod tests {
         assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
 
         let error_code = derive_relay_addresses(
-            IpStack::Ip6Only(Ipv6Addr::LOCALHOST),
+            IpStack::Ip6(Ipv6Addr::LOCALHOST),
             Some(&RequestedAddressFamily::new(AddressFamily::V4)),
             None,
         )
@@ -1072,7 +1070,7 @@ mod tests {
         assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
 
         let error_code =
-            derive_relay_addresses(IpStack::Ip6Only(Ipv6Addr::LOCALHOST), None, None).unwrap_err();
+            derive_relay_addresses(IpStack::Ip6(Ipv6Addr::LOCALHOST), None, None).unwrap_err();
 
         assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT)
     }
@@ -1081,7 +1079,7 @@ mod tests {
     #[test]
     fn additional_address_family_ip4_is_bad_request() {
         let error_code = derive_relay_addresses(
-            IpStack::Ip4Only(Ipv4Addr::LOCALHOST),
+            IpStack::Ip4(Ipv4Addr::LOCALHOST),
             None,
             Some(&AdditionalAddressFamily::new(AddressFamily::V4)),
         )
