@@ -17,7 +17,7 @@ impl<'a> ChannelData<'a> {
         }
 
         let channel_number = u16::from_be_bytes([data[0], data[1]]);
-        if channel_number < 0x4000 || channel_number > 0x7FFF {
+        if !(0x4000..=0x7FFF).contains(&channel_number) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "channel number out of bounds",
