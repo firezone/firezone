@@ -11,7 +11,12 @@ repository = "https://github.com/firezone/firezone"
 [package.metadata.deb]
 name = "firezone-relay"
 maintainer-scripts = "debian/"
-systemd-units = { start = false, unit-scripts = ".", unit-name = "fz-relay" }
+
+[package.metadata.deb.systemd-units]
+start = false # Don't directly start the relay after installation, it needs to be configured first.
+enable = true # Enable the relay to be started on boot.
+unit-scripts = "."
+unit-name = "fz-relay"
 
 [dependencies]
 anyhow = "1.0.71"
