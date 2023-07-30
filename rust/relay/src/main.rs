@@ -176,7 +176,6 @@ struct Eventloop<R> {
     sleep: Sleep,
 
     client_send_buffer: VecDeque<(Vec<u8>, SocketAddr)>,
-    allocation_send_buffer: VecDeque<(Vec<u8>, SocketAddr, AllocationId)>,
 }
 
 impl<R> Eventloop<R>
@@ -200,7 +199,6 @@ where
             relay_data_receiver: receiver,
             sleep: Sleep::default(),
             client_send_buffer: Default::default(),
-            allocation_send_buffer: Default::default(),
         })
     }
 
@@ -235,7 +233,14 @@ where
                         Pin::new(&mut self.sleep).reset(deadline);
                     }
                     Command::ForwardData { id, data, receiver } => {
-                        self.allocation_send_buffer.push_back((data, receiver, id));
+                        let Some(allocation) = self.allocations.get_mut(&id) else {
+                            tracing::debug!(allocation = %id, "Unknown allocation");
+                            continue;
+                        };
+
+                        if allocation.send(data, receiver).is_err() {
+                            self.server.handle_allocation_failed(id)
+                        }
                     }
                 }
 
@@ -258,56 +263,13 @@ where
                 }
             }
 
-            // Priority 3: Forward data to allocations.
-            if let Some((data, receiver, id)) = self.allocation_send_buffer.pop_front() {
-                let Some(allocation) = self.allocations.get_mut(&id) else {
-                    tracing::debug!("Unknown allocation {id}");
-                    continue;
-                };
-
-                match allocation.sender.poll_ready(cx) {
-                    Poll::Ready(Ok(())) => {}
-                    Poll::Ready(Err(_)) => {
-                        debug_assert!(
-                            false,
-                            "poll_ready to never fail because we own the other end of the channel"
-                        );
-                    }
-                    Poll::Pending => {
-                        // Same as above, we need to yield early if we cannot send data.
-                        // The task will be woken up once there is space in the channel.
-
-                        self.allocation_send_buffer.push_front((data, receiver, id));
-                        return Poll::Pending;
-                    }
-                }
-
-                match allocation.sender.try_send((data, receiver)) {
-                    Ok(()) => {}
-                    Err(e) if e.is_full() => {
-                        let (data, receiver) = e.into_inner();
-
-                        self.allocation_send_buffer.push_front((data, receiver, id));
-                        return Poll::Pending;
-                    }
-                    Err(_) => {
-                        debug_assert!(
-                            false,
-                            "try_send to never fail because we own the other end of the channel"
-                        );
-                    }
-                };
-
-                continue;
-            }
-
-            // Priority 4: Handle time-sensitive tasks:
+            // Priority 3: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
                 self.server.handle_deadline_reached(SystemTime::now());
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 5: Handle relayed data (we prioritize latency for existing allocations over making new ones)
+            // Priority 4: Handle relayed data (we prioritize latency for existing allocations over making new ones)
             if let Poll::Ready(Some((data, sender, allocation))) =
                 self.relay_data_receiver.poll_next_unpin(cx)
             {
@@ -315,14 +277,14 @@ where
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 6: Accept new allocations / answer STUN requests etc
+            // Priority 5: Accept new allocations / answer STUN requests etc
             if let Poll::Ready((buffer, sender)) = self.ip4_socket.poll_recv(cx)? {
                 self.server
                     .handle_client_input(buffer.filled(), sender, SystemTime::now());
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 7: Handle portal messages
+            // Priority 6: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
                 Some(Poll::Ready(Ok(Event::InboundMessage {
                     msg: InboundPortalMessage::Init {},
