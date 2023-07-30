@@ -7,6 +7,9 @@ use std::convert::Infallible;
 use std::net::{Ipv4Addr, SocketAddr};
 use tokio::task;
 
+/// The maximum amount of items that can be buffered in the channel to the allocation task.
+const MAX_BUFFERED_ITEMS: usize = 10;
+
 pub struct Allocation {
     id: AllocationId,
 
@@ -24,7 +27,7 @@ impl Allocation {
         listen_ip4_addr: Ipv4Addr,
         port: u16,
     ) -> Self {
-        let (client_to_peer_sender, client_to_peer_receiver) = mpsc::channel(10);
+        let (client_to_peer_sender, client_to_peer_receiver) = mpsc::channel(MAX_BUFFERED_ITEMS);
 
         let task = tokio::spawn(async move {
             let Err(e) = forward_incoming_relay_data(relay_data_sender, client_to_peer_receiver, id, listen_ip4_addr, port).await else {
@@ -43,6 +46,12 @@ impl Allocation {
     }
 
     /// Send data to a peer on this allocation.
+    ///
+    /// In case the channel is full, we will simply drop the packet and log a warning.
+    /// In normal operation, this should not happen but if for some reason, the allocation task cannot keep up with the incoming data, we need to drop packets somewhere to avoid unbounded memory growth.
+    ///
+    /// All our data is relayed over UDP which by design is an unreliable protocol.
+    /// Thus, any application running on top of this relay must already account for potential packet loss.
     pub fn send(&mut self, data: Vec<u8>, recipient: SocketAddr) -> Result<()> {
         match self.sender.try_send((data, recipient)) {
             Ok(()) => Ok(()),
