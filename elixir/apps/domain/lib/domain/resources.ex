@@ -1,8 +1,11 @@
 defmodule Domain.Resources do
   alias Domain.{Repo, Validator, Auth}
+  alias Domain.Gateways
   alias Domain.Resources.{Authorizer, Resource}
 
-  def fetch_resource_by_id(id, %Auth.Subject{} = subject) do
+  def fetch_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
     required_permissions =
       {:one_of,
        [
@@ -15,6 +18,10 @@ defmodule Domain.Resources do
       Resource.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
+      |> case do
+        {:ok, resource} -> {:ok, Repo.preload(resource, preload)}
+        {:error, reason} -> {:error, reason}
+      end
     else
       false -> {:error, :not_found}
       other -> other
@@ -30,7 +37,9 @@ defmodule Domain.Resources do
     end
   end
 
-  def list_resources(%Auth.Subject{} = subject) do
+  def list_resources(%Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
     required_permissions =
       {:one_of,
        [
@@ -40,9 +49,50 @@ defmodule Domain.Resources do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       # TODO: maybe we need to also enrich the data and show if it's online or not
-      Resource.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list()
+      {:ok, resources} =
+        Resource.Query.all()
+        |> Authorizer.for_subject(subject)
+        |> Repo.list()
+
+      {:ok, Repo.preload(resources, preload)}
+    end
+  end
+
+  def count_resources_for_gateway(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_resources_permission(),
+         Authorizer.view_available_resources_permission()
+       ]}
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
+      count =
+        Resource.Query.all()
+        |> Authorizer.for_subject(subject)
+        |> Resource.Query.by_gateway_group_id(gateway.group_id)
+        |> Repo.aggregate(:count)
+
+      {:ok, count}
+    end
+  end
+
+  def list_resources_for_gateway(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_resources_permission(),
+         Authorizer.view_available_resources_permission()
+       ]}
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
+      resources =
+        Resource.Query.all()
+        |> Resource.Query.by_account_id(subject.account.id)
+        |> Resource.Query.by_gateway_group_id(gateway.group_id)
+        |> Repo.all()
+
+      {:ok, resources}
     end
   end
 

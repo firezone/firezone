@@ -8,10 +8,10 @@ export default function JoinOurCommunity() {
         <h2 className="mb-4 text-4xl tracking-tight font-bold text-neutral-900 ">
           Join our community
         </h2>
-        <p className="mx-2 my-4 text-xl max-w-screen-lg text-center text-primary-900 ">
+        <h3 className="mx-2 my-4 text-xl max-w-screen-lg text-center text-neutral-800 tracking-tight">
           Participate in Firezone's development, suggest new features, and
           collaborate with other Firezone users.
-        </p>
+        </h3>
       </div>
       <div className="gap-4 items-center pt-4 px-4 mx-auto max-w-screen-lg lg:grid lg:grid-cols-3 xl:gap-8 sm:pt-8 lg:px-6 ">
         <div className="py-8 rounded-md shadow-md text-center bg-white">

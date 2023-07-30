@@ -2,10 +2,7 @@
 use std::{collections::HashMap, net::IpAddr, ptr::NonNull};
 
 use ip_network_table::IpNetworkTable;
-use libs_common::{
-    messages::{Id, ResourceDescription},
-    ResourceList,
-};
+use libs_common::messages::{Id, ResourceDescription};
 
 // Oh boy... here we go
 /// The resource table type
@@ -50,6 +47,14 @@ impl ResourceTable {
     /// Gets the resource by id
     pub fn get_by_id(&self, id: &Id) -> Option<&ResourceDescription> {
         self.id_table.get(id)
+    }
+
+    /// Gets the resource by name
+    pub fn get_by_name(&self, name: impl AsRef<str>) -> Option<&ResourceDescription> {
+        // SAFETY: if we found the pointer, due to our internal consistency rules it is in the id_table
+        self.dns_name
+            .get(name.as_ref())
+            .map(|m| unsafe { m.as_ref() })
     }
 
     // SAFETY: resource_description must still be in storage since we are going to reference it.
@@ -152,11 +157,7 @@ impl ResourceTable {
         }
     }
 
-    pub fn resource_list(&self) -> Result<ResourceList, serde_json::Error> {
-        self.id_table
-            .values()
-            .map(serde_json::to_string)
-            .collect::<Result<_, _>>()
-            .map(|resources| ResourceList { resources })
+    pub fn resource_list(&self) -> Vec<ResourceDescription> {
+        self.id_table.values().cloned().collect()
     }
 }

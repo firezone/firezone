@@ -1,17 +1,24 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use std::{net::Ipv4Addr, str::FromStr};
-
-use firezone_client_connlib::{
-    get_user_agent, Callbacks, Error, ErrorType, ResourceList, Session, TunnelAddresses,
+use std::{
+    net::{Ipv4Addr, Ipv6Addr},
+    str::FromStr,
 };
+
+use firezone_client_connlib::{get_user_agent, Callbacks, Error, ResourceDescription, Session};
 use url::Url;
 
 #[derive(Clone)]
 pub struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
-    fn on_set_interface_config(&self, _tunnel_addresses: TunnelAddresses, _dns_address: Ipv4Addr) {}
+    fn on_set_interface_config(
+        &self,
+        _tunnel_address_v4: Ipv4Addr,
+        _tunnel_address_v6: Ipv6Addr,
+        _dns_address: Ipv4Addr,
+    ) {
+    }
 
     fn on_tunnel_ready(&self) {
         tracing::trace!("Tunnel connected");
@@ -21,19 +28,16 @@ impl Callbacks for CallbackHandler {
 
     fn on_remove_route(&self, _route: String) {}
 
-    fn on_update_resources(&self, resource_list: ResourceList) {
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
         tracing::trace!("Resources updated, current list: {resource_list:?}");
     }
 
-    fn on_disconnect(&self) {
-        tracing::trace!("Tunnel disconnected");
+    fn on_disconnect(&self, error: Option<&Error>) {
+        tracing::trace!("Tunnel disconnected: {error:?}");
     }
 
-    fn on_error(&self, error: &Error, error_type: ErrorType) {
-        match error_type {
-            ErrorType::Recoverable => tracing::warn!("Encountered error: {error}"),
-            ErrorType::Fatal => panic!("Encountered fatal error: {error}"),
-        }
+    fn on_error(&self, error: &Error) {
+        tracing::warn!("Encountered recoverable error: {error}");
     }
 }
 
@@ -54,7 +58,7 @@ fn main() -> Result<()> {
     let mut session = Session::connect(url, secret, CallbackHandler).unwrap();
     tracing::info!("Started new session");
     session.wait_for_ctrl_c().unwrap();
-    session.disconnect();
+    session.disconnect(None);
     Ok(())
 }
 

@@ -11,10 +11,7 @@ use boringtun::{
 };
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::{
-    error_type::ErrorType::{Fatal, Recoverable},
-    Callbacks,
-};
+use libs_common::{Callbacks, DNS_SENTINEL};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -52,7 +49,9 @@ pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription
 use index::{check_packet_index, IndexLfsr};
 
 mod control_protocol;
+mod dns;
 mod index;
+mod ip_packet;
 mod peer;
 mod resource_table;
 
@@ -215,13 +214,11 @@ where
     /// Once added, when a packet for the resource is intercepted a new data channel will be created
     /// and packets will be wrapped with wireguard and sent through it.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn add_resource(&self, resource_description: ResourceDescription) {
+    pub async fn add_resource(&self, resource_description: ResourceDescription) -> Result<()> {
         {
             let mut iface_config = self.iface_config.lock().await;
             for ip in resource_description.ips() {
-                if let Err(err) = iface_config.add_route(&ip, self.callbacks()).await {
-                    self.callbacks.on_error(&err, Fatal);
-                }
+                iface_config.add_route(&ip, self.callbacks()).await?;
             }
         }
         let resource_list = {
@@ -229,12 +226,8 @@ where
             resources.insert(resource_description);
             resources.resource_list()
         };
-        match resource_list {
-            Ok(resource_list) => {
-                self.callbacks.on_update_resources(resource_list);
-            }
-            Err(err) => self.callbacks.on_error(&err.into(), Fatal),
-        }
+        self.callbacks.on_update_resources(resource_list);
+        Ok(())
     }
 
     /// Sets the interface configuration and starts background tasks.
@@ -250,6 +243,9 @@ where
                 .up()
                 .await
                 .expect("Couldn't initiate interface");
+            iface_config
+                .add_route(&DNS_SENTINEL.into(), self.callbacks())
+                .await?;
         }
 
         self.start_timers();
@@ -440,13 +436,13 @@ where
 
     async fn write4_device_infallible(&self, packet: &[u8]) {
         if let Err(e) = self.device_channel.write4(packet).await {
-            self.callbacks.on_error(&e.into(), Recoverable);
+            self.callbacks.on_error(&e.into());
         }
     }
 
     async fn write6_device_infallible(&self, packet: &[u8]) {
         if let Err(e) = self.device_channel.write6(packet).await {
-            self.callbacks.on_error(&e.into(), Recoverable);
+            self.callbacks.on_error(&e.into());
         }
     }
 
@@ -476,17 +472,25 @@ where
                             Ok(res) => res,
                             Err(err) => {
                                 tracing::error!("Couldn't read packet from interface: {err}");
-                                dev.callbacks.on_error(&err.into(), Recoverable);
+                                dev.callbacks.on_error(&err.into());
                                 continue;
                             }
                         },
                         Err(err) => {
                             tracing::error!("Couldn't obtain iface mtu: {err}");
-                            dev.callbacks.on_error(&err, Recoverable);
+                            dev.callbacks.on_error(&err);
                             continue;
                         }
                     }
                 };
+
+                tracing::trace!("Reading from iface {res} bytes");
+
+                if let Some(r) = dev.check_for_dns(&src[..res]) {
+                    // TODO(ipv4/ipv6)!
+                    dev.write4_device_infallible(&r[..]).await;
+                    continue;
+                }
 
                 let dst_addr = match Tunn::dst_address(&src[..res]) {
                     Some(addr) => addr,
@@ -525,7 +529,7 @@ where
                                             // Not a deadlock because this is a different task
                                             dev.awaiting_connection.lock().remove(&id);
                                             tracing::error!("couldn't start protocol for new connection to resource: {e}");
-                                            dev.callbacks.on_error(&e, Recoverable);
+                                            dev.callbacks.on_error(&e);
                                         }
                                     });
                                 }
@@ -544,7 +548,7 @@ where
                     }
                     TunnResult::Err(e) => {
                         tracing::error!(message = "Encapsulate error for resource corresponding to {dst_addr}", error = ?e);
-                        dev.callbacks.on_error(&e.into(), Recoverable);
+                        dev.callbacks.on_error(&e.into());
                     }
                     TunnResult::WriteToNetwork(packet) => {
                         tracing::trace!("writing iface packet to peer: {dst_addr}");
@@ -565,11 +569,11 @@ where
                                         tracing::error!(
                                             "Problem while trying to close channel: {e:?}"
                                         );
-                                        dev.callbacks().on_error(&e.into(), Recoverable);
+                                        dev.callbacks().on_error(&e.into());
                                     }
                                 }
                             }
-                            dev.callbacks.on_error(&e.into(), Recoverable);
+                            dev.callbacks.on_error(&e.into());
                         }
                     }
                     _ => panic!("Unexpected result from encapsulate"),

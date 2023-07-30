@@ -1,6 +1,8 @@
-**Note**: 🚧 The `main` branch is undergoing major restructuring in preparation for the 1.0 release 🚧.
+**Note**: 🚧 The `main` branch is undergoing major restructuring in preparation
+for the 1.0 release 🚧.
 
-See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) for the branch tracking the latest 0.7 release.
+See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) for
+the branch tracking the latest 0.7 release.
 
 <!-- FIXME
 [Read the announcement](https://www.firezone.dev/blog/announcing-1.0).
@@ -33,30 +35,39 @@ See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) for 
 ## [Firezone](https://www.firezone.dev/?utm_source=readme) is a self-hosted VPN server and Linux firewall
 
 - Manage remote access through an intuitive web interface and CLI utility.
-- [Deploy on your own infrastructure](https://docs.firezone.dev/deploy?utm_source=readme) to keep control of your network traffic.
-- Built on [WireGuard®](https://www.wireguard.com/) to be stable, performant, and lightweight.
+- [Deploy on your own infrastructure](https://docs.firezone.dev/deploy?utm_source=readme)
+  to keep control of your network traffic.
+- Built on [WireGuard®](https://www.wireguard.com/) to be stable, performant,
+  and lightweight.
 
 ![Firezone Architecture](https://user-images.githubusercontent.com/52545545/183804397-ae81ca4e-6972-41f9-80d4-b431a077119d.png)
 
 ## Get Started
 
-Follow our [deploy guide](https://docs.firezone.dev/deploy) to install your self-hosted instance of Firezone.
+Follow our [deploy guide](https://docs.firezone.dev/deploy) to install your
+self-hosted instance of Firezone.
 
-Or, if you're on a [supported platform](https://docs.firezone.dev/deploy/docker/supported-platforms?utm_source=readme),
-try our [auto-install script](https://docs.firezone.dev/deploy/docker/#option-1-automatic-install).
+Or, if you're on a
+[supported platform](https://docs.firezone.dev/deploy/docker/supported-platforms?utm_source=readme),
+try our
+[auto-install script](https://docs.firezone.dev/deploy/docker/#option-1-automatic-install).
 
-Using Firezone in production at your organization? Contact us to learn about our [Enterprise Plan](https://www.firezone.dev/contact/sales?utm_source=readme).
+Using Firezone in production at your organization? Contact us to learn about our
+[Enterprise Plan](https://www.firezone.dev/contact/sales?utm_source=readme).
 
 ## Features
 
 ![firezone-usage](https://user-images.githubusercontent.com/52545545/147392573-fe4cb936-a0a8-436f-a69b-c0a9587de58b.gif)
 
-- **Fast:** Uses WireGuard® to be [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
-- **SSO Integration:** Authenticate using any identity provider with an OpenID Connect (OIDC) connector.
+- **Fast:** Uses WireGuard® to be
+  [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
+- **SSO Integration:** Authenticate using any identity provider with an OpenID
+  Connect (OIDC) connector.
 - **Containerized:** All dependencies are bundled via Docker.
 - **Simple:** Takes minutes to set up. Manage via a simple CLI.
 - **Secure:** Runs unprivileged. HTTPS enforced. Encrypted cookies.
-- **Firewall included:** Uses Linux [nftables](https://netfilter.org) to block unwanted egress traffic.
+- **Firewall included:** Uses Linux [nftables](https://netfilter.org) to block
+  unwanted egress traffic.
 
 ### Anti-features
 
@@ -69,16 +80,16 @@ Firezone is **not:**
 
 ## Documentation
 
-Additional documentation on general usage, troubleshooting, and configuration can be found at
-[https://docs.firezone.dev](https://docs.firezone.dev).
+Additional documentation on general usage, troubleshooting, and configuration
+can be found at [https://docs.firezone.dev](https://docs.firezone.dev).
 
 ## Get Help
 
 If you're looking for help installing, configuring, or using Firezone, check our
 community support options:
 
-1. [Discussion Forums](https://discourse.firez.one/?utm_source=readme): Ask questions, report
-   bugs, and suggest features.
+1. [Discussion Forums](https://discourse.firez.one/?utm_source=readme): Ask
+   questions, report bugs, and suggest features.
 1. [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w):
    Join live discussions, meet other users, and get to know the contributors.
 1. [Open a PR](https://github.com/firezone/firezone/issues): Contribute a bugfix
@@ -95,10 +106,11 @@ If you need help deploying or maintaining Firezone for your business, consider
 
 [![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith&style=for-the-badge)](https://cloudsmith.com)
 
-Package repository hosting is graciously provided by [Cloudsmith](https://cloudsmith.com).
-Cloudsmith is the only fully hosted, cloud-native, universal package management solution, that
-enables your organization to create, store and share packages in any format, to any place, with total
-confidence.
+Package repository hosting is graciously provided by
+[Cloudsmith](https://cloudsmith.com). Cloudsmith is the only fully hosted,
+cloud-native, universal package management solution, that enables your
+organization to create, store and share packages in any format, to any place,
+with total confidence.
 
 ## Developing and Contributing
 
@@ -110,6 +122,15 @@ See [SECURITY.md](SECURITY.md).
 
 ## License
 
-See [LICENSE](LICENSE).
+Portions of this software are licensed as follows:
+
+- All content residing under the "elixir/" directory of this repository, if that
+  directory exists, is licensed under the "Elastic License 2.0" license defined
+  in "elixir/LICENSE".
+- All third party components incorporated into the Firezone Software are
+  licensed under the original license provided by the owner of the applicable
+  component.
+- Content outside of the above mentioned directories or restrictions above is
+  available under the "Apache 2.0 License" license as defined in "LICENSE".
 
 WireGuard® is a registered trademark of Jason A. Donenfeld.

@@ -5,6 +5,7 @@
 //
 import Foundation
 import NetworkExtension
+import FirezoneKit
 import os.log
 
 public enum AdapterError: Error {
@@ -31,11 +32,7 @@ private enum State {
 public class Adapter {
   private let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
 
-  // Maintain a handle to the currently instantiated tunnel adapter 🤮
-  public static var currentAdapter: Adapter?
-
-  // Maintain a reference to the initialized callback handler
-  public static var callbackHandler: CallbackHandler?
+  private var callbackHandler: CallbackHandler
 
   // Latest applied NETunnelProviderNetworkSettings
   public var lastNetworkSettings: NEPacketTunnelNetworkSettings?
@@ -52,19 +49,16 @@ public class Adapter {
   /// Adapter state.
   private var state: State = .stopped
 
+  /// Keep track of resources
+  private var displayableResources = DisplayableResources()
+
   public init(with packetTunnelProvider: NEPacketTunnelProvider) {
     self.packetTunnelProvider = packetTunnelProvider
-
-    // There must be a better way than making this a static class var...
-    Self.currentAdapter = self
-    Self.callbackHandler = CallbackHandler()
-    Self.callbackHandler?.delegate = self
+    self.callbackHandler = CallbackHandler()
+    self.callbackHandler.delegate = self
   }
 
   deinit {
-    // Remove static var reference
-    Self.currentAdapter = nil
-
     // Cancel network monitor
     networkMonitor?.cancel()
 
@@ -94,7 +88,7 @@ public class Adapter {
       do {
         try self.setNetworkSettings(self.generateNetworkSettings(ipv4Routes: [], ipv6Routes: []))
         self.state = .started(
-          try WrappedSession.connect("http://localhost:4568", "test-token", Self.callbackHandler!)
+          try WrappedSession.connect("http://localhost:4568", "test-token", self.callbackHandler)
         )
         self.networkMonitor = networkMonitor
         completionHandler(nil)
@@ -127,6 +121,17 @@ public class Adapter {
 
       completionHandler(nil)
     }
+  }
+
+  public func getDisplayableResourcesIfVersionDifferentFrom(
+    referenceVersionString: String, completionHandler: @escaping (DisplayableResources?) -> Void) {
+      workQueue.async {
+        if referenceVersionString == self.displayableResources.versionString {
+          completionHandler(nil)
+        } else {
+          completionHandler(self.displayableResources)
+        }
+      }
   }
 
   public func generateNetworkSettings(
@@ -254,14 +259,16 @@ public class Adapter {
   private func didReceivePathUpdate(path: Network.NWPath) {
     #if os(macOS)
       if case .started(let wrappedSession) = self.state {
-        wrappedSession.bumpSockets()
+        self.logger.log(level: .debug, "Suppressing call to bumpSockets()")
+        // wrappedSession.bumpSockets()
       }
     #elseif os(iOS)
       switch self.state {
       case .started(let wrappedSession):
         if path.status == .satisfied {
-          wrappedSession.disableSomeRoamingForBrokenMobileSemantics()
-          wrappedSession.bumpSockets()
+          self.logger.log(level: .debug, "Suppressing calls to disableSomeRoamingForBrokenMobileSemantics() and bumpSockets()")
+          // wrappedSession.disableSomeRoamingForBrokenMobileSemantics()
+          // wrappedSession.bumpSockets()
         } else {
           //self.logger.log(.debug, "Connectivity offline, pausing backend.")
           self.state = .temporaryShutdown
@@ -277,7 +284,7 @@ public class Adapter {
           try self.setNetworkSettings(self.lastNetworkSettings!)
 
           self.state = .started(
-            try WrappedSession.connect("http://localhost:4568", "test-token", Self.callbackHandler!)
+            try WrappedSession.connect("http://localhost:4568", "test-token", self.callbackHandler)
           )
         } catch {
           self.logger.log(level: .debug, "Failed to restart backend: \(error.localizedDescription)")
@@ -294,72 +301,41 @@ public class Adapter {
 }
 
 extension Adapter: CallbackHandlerDelegate {
-  public func onConnect(tunnelAddressIPv4: String, tunnelAddressIPv6: String) {
-    let addresses4 = [tunnelAddressIPv4]
-    let addresses6 = [tunnelAddressIPv6]
-    let ipv4Routes =
-    Adapter.currentAdapter?.lastNetworkSettings?.ipv4Settings?.includedRoutes ?? []
-    let ipv6Routes =
-    Adapter.currentAdapter?.lastNetworkSettings?.ipv6Settings?.includedRoutes ?? []
-
-    _ = setTunnelSettingsKeepingSomeExisting(
-      addresses4: addresses4, addresses6: addresses6, ipv4Routes: ipv4Routes, ipv6Routes: ipv6Routes
-    )
-  }
-
-  public func onUpdateResources(resourceList: String) {
-    let addresses4 =
-    self.lastNetworkSettings?.ipv4Settings?.addresses ?? ["100.100.111.2"]
-    let addresses6 =
-    self.lastNetworkSettings?.ipv6Settings?.addresses ?? [
-      "fd00:0222:2021:1111::2"
-    ]
-
-    // TODO: Use actual passed in resources to achieve split tunnel
-    let ipv4Routes = [NEIPv4Route(destinationAddress: "100.64.0.0", subnetMask: "255.192.0.0")]
-    let ipv6Routes = [
-      NEIPv6Route(destinationAddress: "fd00:0222:2021:1111::0", networkPrefixLength: 64)
-    ]
-
-    _ = setTunnelSettingsKeepingSomeExisting(
-      addresses4: addresses4, addresses6: addresses6, ipv4Routes: ipv4Routes, ipv6Routes: ipv6Routes
-    )
-  }
-
-  public func onDisconnect() {
+  public func onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String) {
     // Unimplemented
   }
 
-  public func onError(error: Error, isRecoverable: Bool) {
-    let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
-    logger.log(level: .error, "Internal connlib error: \(String(describing: error), privacy: .public)")
+  public func onTunnelReady() {
+    // Unimplemented
   }
 
-  private func setTunnelSettingsKeepingSomeExisting(
-    addresses4: [String], addresses6: [String], ipv4Routes: [NEIPv4Route], ipv6Routes: [NEIPv6Route]
-  ) -> Bool {
-    let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
+  public func onAddRoute(_: String) {
+    // Unimplemented
+  }
 
-    do {
-      /* If the tunnel interface addresses are being updated, it's impossible for the tunnel to
-       stay up due to the way WireGuard works. Still, we try not to change the tunnel's routes
-       here Just In Case™.
-       */
-      try self.setNetworkSettings(
-        self.generateNetworkSettings(
-          addresses4: addresses4,
-          addresses6: addresses6,
-          ipv4Routes: ipv4Routes,
-          ipv6Routes: ipv6Routes
-        )
-      )
+  public func onRemoveRoute(_: String) {
+    // Unimplemented
+  }
 
-      return true
-    } catch let error {
-      logger.log(level: .debug, "Error setting adapter settings: \(String(describing: error))")
-
-      return false
+  public func onUpdateResources(resourceList: String) {
+    workQueue.async {
+      let jsonString = "[\(resourceList)]"
+      guard let jsonData = jsonString.data(using: .utf8) else {
+        return
+      }
+      guard let networkResources = try? JSONDecoder().decode([NetworkResource].self, from: jsonData) else {
+        return
+      }
+      self.displayableResources.update(resources: networkResources.map { $0.displayableResource })
     }
   }
 
+  public func onDisconnect(error: Optional<String>) {
+    // Unimplemented
+  }
+
+  public func onError(error: String) {
+    let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
+    logger.log(level: .error, "Internal connlib error: \(error, privacy: .public)")
+  }
 }

@@ -5,6 +5,7 @@ defmodule Web.SettingsLive.IdentityProviders.New.Components do
   use Phoenix.Component
   use Web, :verified_routes
   import Web.CoreComponents
+  import Web.FormComponents
 
   @doc """
   Conditionally renders form fields corresponding to a given provisioning strategy type.

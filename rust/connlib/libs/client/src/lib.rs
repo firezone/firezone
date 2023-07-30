@@ -18,8 +18,6 @@ pub type Session<CB> = libs_common::Session<
     CB,
 >;
 
-pub use libs_common::{
-    error_type::ErrorType, get_user_agent, Callbacks, Error, ResourceList, TunnelAddresses,
-};
+pub use libs_common::{get_user_agent, messages::ResourceDescription, Callbacks, Error};
 use messages::Messages;
 use messages::ReplyMessages;

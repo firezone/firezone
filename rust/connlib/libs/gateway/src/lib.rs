@@ -19,4 +19,4 @@ pub type Session<CB> = libs_common::Session<
     CB,
 >;
 
-pub use libs_common::{error_type::ErrorType, Callbacks, Error, ResourceList, TunnelAddresses};
+pub use libs_common::{messages::ResourceDescription, Callbacks, Error};
