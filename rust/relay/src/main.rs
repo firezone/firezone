@@ -6,6 +6,7 @@ use phoenix_channel::{Error, Event, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use relay::{Allocation, AllocationId, Command, Server, Sleep, UdpSocket};
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::pin::Pin;
@@ -233,13 +234,17 @@ where
                         Pin::new(&mut self.sleep).reset(deadline);
                     }
                     Command::ForwardData { id, data, receiver } => {
-                        let Some(allocation) = self.allocations.get_mut(&id) else {
-                            tracing::debug!(allocation = %id, "Unknown allocation");
-                            continue;
+                        let mut allocation = match self.allocations.entry(id) {
+                            Entry::Occupied(entry) => entry,
+                            Entry::Vacant(_) => {
+                                tracing::debug!(allocation = %id, "Unknown allocation");
+                                continue;
+                            }
                         };
 
-                        if allocation.send(data, receiver).is_err() {
-                            self.server.handle_allocation_failed(id)
+                        if allocation.get_mut().send(data, receiver).is_err() {
+                            self.server.handle_allocation_failed(id);
+                            allocation.remove();
                         }
                     }
                 }

@@ -34,8 +34,9 @@ impl Allocation {
                 unreachable!()
             };
 
-            // TODO: Do we need to clean this up in the server? It will eventually timeout if not refreshed.
             tracing::warn!("Allocation task for {id} failed: {e}");
+
+            // With the task stopping, the channel will be closed and any attempt to send data to it will fail.
         });
 
         Self {
