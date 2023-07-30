@@ -37,3 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
+  rust_build-relay-debian-package:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
