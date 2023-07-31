@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.72"
-clap = { version = "4.3.2", features = ["derive", "env"] }
+clap = { version = "4.3.19", features = ["derive", "env"] }
 bytecodec = "0.4.15"
 futures = "0.3.28"
 hex = "0.4.3"
