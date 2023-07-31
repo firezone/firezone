@@ -30,8 +30,11 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
         {:ok, _uri} ->
           [{:discovery_document_uri, "is not a valid URL"}]
 
-        {:error, reason} ->
-          [{:discovery_document_uri, "is invalid. Reason: #{inspect(reason)}"}]
+        {:error, {404, _body}} ->
+          [{:discovery_document_uri, "does not exist"}]
+
+        {:error, {status, _body}} ->
+          [{:discovery_document_uri, "is invalid, got #{status} HTTP response"}]
       end
     end)
   end
