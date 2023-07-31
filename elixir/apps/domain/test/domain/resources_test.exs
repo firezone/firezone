@@ -430,17 +430,15 @@ defmodule Domain.ResourcesTest do
       refute is_nil(resource.ipv4)
       refute is_nil(resource.ipv6)
 
-      assert [
-               %Domain.Resources.Connection{
-                 resource_id: resource_id,
-                 gateway_group_id: gateway_group_id,
-                 account_id: account_id
-               }
-             ] = resource.connections
+      assert resource.created_by == :identity
+      assert resource.created_by_identity_id == subject.identity.id
 
-      assert resource_id == resource.id
-      assert gateway_group_id == gateway.group_id
-      assert account_id == account.id
+      assert [%Domain.Resources.Connection{} = connection] = resource.connections
+      assert connection.resource_id == resource.id
+      assert connection.gateway_group_id == gateway.group_id
+      assert connection.account_id == account.id
+      assert connection.created_by == :identity
+      assert connection.created_by_identity_id == subject.identity.id
 
       assert [
                %Domain.Resources.Resource.Filter{ports: ["80", "433"], protocol: :tcp},

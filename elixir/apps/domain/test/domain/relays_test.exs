@@ -175,7 +175,13 @@ defmodule Domain.RelaysTest do
       assert {:ok, group} = create_group(attrs, subject)
       assert group.id
       assert group.name == "foo"
-      assert [%Relays.Token{}] = group.tokens
+
+      assert group.created_by == :identity
+      assert group.created_by_identity_id == subject.identity.id
+
+      assert [%Relays.Token{} = token] = group.tokens
+      assert token.created_by == :identity
+      assert token.created_by_identity_id == subject.identity.id
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -223,7 +229,13 @@ defmodule Domain.RelaysTest do
       assert {:ok, group} = create_global_group(attrs)
       assert group.id
       assert group.name == "foo"
-      assert [%Relays.Token{}] = group.tokens
+
+      assert group.created_by == :system
+      assert is_nil(group.created_by_identity_id)
+
+      assert [%Relays.Token{} = token] = group.tokens
+      assert token.created_by == :system
+      assert is_nil(token.created_by_identity_id)
     end
   end
 

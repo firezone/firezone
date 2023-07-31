@@ -117,6 +117,7 @@ defmodule Domain.Config do
 
   if Mix.env() != :test do
     defdelegate fetch_env!(app, key), to: Application
+    defdelegate get_env(app, key, default \\ nil), to: Application
   else
     def put_env_override(app \\ :domain, key, value) do
       Process.put(pdict_key_function(app, key), value)
@@ -139,6 +140,20 @@ defmodule Domain.Config do
     """
     def fetch_env!(app, key) do
       application_env = Application.fetch_env!(app, key)
+
+      pdict_key_function(app, key)
+      |> Domain.Config.Resolver.fetch_process_env()
+      |> case do
+        {:ok, override} ->
+          override
+
+        :error ->
+          application_env
+      end
+    end
+
+    def get_env(app, key, default \\ nil) do
+      application_env = Application.get_env(app, key, default)
 
       pdict_key_function(app, key)
       |> Domain.Config.Resolver.fetch_process_env()
