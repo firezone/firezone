@@ -30,7 +30,7 @@ defmodule Domain.Jobs.Executors.Global do
 
       UPDATE my_table SET processing_cancelled_at = NOW() WHERE id = ?;
 
-  Even though this does not prove fully fledged job queue, it is a good enough solution
+  Even though this does not provide a fully fledged job queue, it is a good enough solution
   for many use cases like refreshing tokens, deactivating users and even dispatching
   emails, while keeping the code simple, company-owned, maintainable and easy to reason about.
 
@@ -60,10 +60,10 @@ defmodule Domain.Jobs.Executors.Global do
     # `random_notify_name` is used to avoid name conflicts in a cluster during deployments and
     # network splits, it randomly selects one of the duplicate pids for registration,
     # and sends the message {global_name_conflict, Name} to the other pid so that they stop
-    # tying to claim job queue leadership.
+    # trying to claim job queue leadership.
     with :no <- :global.register_name(name, self(), &:global.random_notify_name/3),
          pid when is_pid(pid) <- :global.whereis_name(name) do
-      # we monitor the leader process so that we start a race to become a new leader with it's down
+      # we monitor the leader process so that we start a race to become a new leader when it's down
       monitor_ref = Process.monitor(pid)
       {:ok, {{{module, function}, interval, config}, {:fallback, pid, monitor_ref}}, :hibernate}
     else
@@ -149,7 +149,7 @@ defmodule Domain.Jobs.Executors.Global do
   end
 
   # tick is scheduled by using a timeout message instead of `:timer.send_interval/2`,
-  # because we jobs to overlap if they take too long to execute
+  # because we don't want jobs to overlap if they take too long to execute
   defp schedule_tick(interval) do
     _ = Process.send_after(self(), :tick, interval)
     :ok

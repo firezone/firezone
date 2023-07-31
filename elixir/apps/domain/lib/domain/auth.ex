@@ -323,8 +323,6 @@ defmodule Domain.Auth do
     end
   end
 
-  # Attaching new identity to existing actor
-
   # Sign Up / In / Off
 
   def sign_in(%Provider{} = provider, id_or_provider_identifier, secret, user_agent, remote_ip) do
