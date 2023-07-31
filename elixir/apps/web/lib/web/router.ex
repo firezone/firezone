@@ -58,7 +58,7 @@ defmodule Web.Router do
 
       # Adapter-specific routes
       ## Email
-      live "/providers/email/:provider_id", Auth.Email, :confirm
+      live "/providers/email/:provider_id", Auth.Email
     end
 
     scope "/providers/:provider_id" do
