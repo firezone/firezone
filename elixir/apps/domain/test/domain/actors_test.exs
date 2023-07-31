@@ -196,6 +196,20 @@ defmodule Domain.ActorsTest do
     # updates membmers (removes old and adds new)
   end
 
+  describe "group_synced?/1" do
+    test "returns true for synced groups" do
+      account = AccountsFixtures.create_account()
+      provider = AuthFixtures.create_userpass_provider(account: account)
+      group = ActorsFixtures.create_group(account: account, provider: provider)
+      assert group_synced?(group)
+    end
+
+    test "returns false for manually created groups" do
+      group = ActorsFixtures.create_group()
+      assert group_synced?(group) == false
+    end
+  end
+
   describe "create_group/2" do
     setup do
       account = AccountsFixtures.create_account()

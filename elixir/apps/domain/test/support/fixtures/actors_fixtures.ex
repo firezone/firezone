@@ -21,7 +21,9 @@ defmodule Domain.ActorsFixtures do
       Map.pop(attrs, :provider)
 
     {provider_identifier, attrs} =
-      Map.pop(attrs, :provider_identifier)
+      Map.pop_lazy(attrs, :provider_identifier, fn ->
+        Ecto.UUID.generate()
+      end)
 
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->

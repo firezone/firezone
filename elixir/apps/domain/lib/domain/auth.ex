@@ -90,6 +90,14 @@ defmodule Domain.Auth do
     end
   end
 
+  def list_providers_for_account(%Accounts.Account{} = account, %Subject{} = subject) do
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()),
+         :ok <- Accounts.ensure_has_access_to(subject, account) do
+      Provider.Query.by_account_id(account.id)
+      |> Repo.list()
+    end
+  end
+
   def list_active_providers_for_account(%Accounts.Account{} = account) do
     Provider.Query.by_account_id(account.id)
     |> Provider.Query.not_disabled()

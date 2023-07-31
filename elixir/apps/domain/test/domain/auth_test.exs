@@ -186,6 +186,46 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "list_providers_for_account/2" do
+    test "returns all not soft-deleted providers for a given account" do
+      account = AccountsFixtures.create_account()
+
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      AuthFixtures.create_userpass_provider(account: account)
+      email_provider = AuthFixtures.create_email_provider(account: account)
+      token_provider = AuthFixtures.create_token_provider(account: account)
+
+      identity =
+        AuthFixtures.create_identity(
+          actor_default_type: :account_admin_user,
+          account: account,
+          provider: email_provider
+        )
+
+      subject = AuthFixtures.create_subject(identity)
+
+      {:ok, _provider} = disable_provider(token_provider, subject)
+      {:ok, _provider} = delete_provider(email_provider, subject)
+
+      assert {:ok, providers} = list_providers_for_account(account, subject)
+      assert length(providers) == 2
+    end
+
+    test "returns error when subject can not manage providers" do
+      account = AccountsFixtures.create_account()
+
+      identity =
+        AuthFixtures.create_identity(actor_default_type: :account_admin_user, account: account)
+
+      subject = AuthFixtures.create_subject(identity)
+      subject = AuthFixtures.remove_permissions(subject)
+
+      assert list_providers_for_account(account, subject) ==
+               {:error,
+                {:unauthorized, [missing_permissions: [Authorizer.manage_providers_permission()]]}}
+    end
+  end
+
   describe "list_active_providers_for_account/1" do
     test "returns active providers for a given account" do
       account = AccountsFixtures.create_account()
