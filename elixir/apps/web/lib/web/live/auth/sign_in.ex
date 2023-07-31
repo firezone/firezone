@@ -24,10 +24,7 @@ defmodule Web.Auth.SignIn do
          page_title: "Sign in"
        ]}
     else
-      {:error, :not_found} ->
-        raise Web.LiveErrors.NotFoundError
-
-      {:ok, []} ->
+      _other ->
         raise Web.LiveErrors.NotFoundError
     end
   end
