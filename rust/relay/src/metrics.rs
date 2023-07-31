@@ -5,15 +5,13 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Router, Server};
 use prometheus_client::registry::Registry;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 const CONTENT_TYPE: &str = "application/openmetrics-text;charset=utf-8;version=1.0.0";
-const PORT: u16 = 8080;
 
-pub async fn serve(addr: impl Into<IpAddr>, registry: Registry) -> Result<()> {
+pub async fn serve(addr: impl Into<SocketAddr>, registry: Registry) -> Result<()> {
     let addr = addr.into();
-    let addr = SocketAddr::new(addr, PORT);
 
     let service = Router::new()
         .route("/metrics", get(metrics))
