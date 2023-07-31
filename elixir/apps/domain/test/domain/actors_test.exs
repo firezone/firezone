@@ -290,6 +290,16 @@ defmodule Domain.ActorsTest do
       assert membership.changes.account_id == account.id
       assert membership.changes.actor_id == actor.id
     end
+
+    test "raises if group is synced" do
+      account = AccountsFixtures.create_account()
+      provider = AuthFixtures.create_userpass_provider(account: account)
+      group = ActorsFixtures.create_group(account: account, provider: provider)
+
+      assert_raise ArgumentError, "can't change synced groups", fn ->
+        change_group(group, %{})
+      end
+    end
   end
 
   describe "update_group/3" do
@@ -375,6 +385,16 @@ defmodule Domain.ActorsTest do
                 {:unauthorized,
                  [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
     end
+
+    test "raises if group is synced", %{
+      account: account,
+      subject: subject
+    } do
+      provider = AuthFixtures.create_userpass_provider(account: account)
+      group = ActorsFixtures.create_group(account: account, provider: provider)
+
+      assert update_group(group, %{}, subject) == {:error, :synced_group}
+    end
   end
 
   describe "delete_group/2" do
@@ -418,6 +438,16 @@ defmodule Domain.ActorsTest do
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+    end
+
+    test "raises if group is synced", %{
+      account: account,
+      subject: subject
+    } do
+      provider = AuthFixtures.create_userpass_provider(account: account)
+      group = ActorsFixtures.create_group(account: account, provider: provider)
+
+      assert delete_group(group, subject) == {:error, :synced_group}
     end
   end
 

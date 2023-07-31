@@ -56,6 +56,9 @@ defmodule Domain.Actors do
     end
   end
 
+  def group_synced?(%Group{provider_id: nil}), do: false
+  def group_synced?(%Group{}), do: true
+
   def create_group(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       subject.account
@@ -64,13 +67,19 @@ defmodule Domain.Actors do
     end
   end
 
-  def change_group(%Group{} = group, attrs \\ %{}) do
+  def change_group(group, attrs \\ %{})
+
+  def change_group(%Group{provider_id: nil} = group, attrs) do
     group
     |> Repo.preload(:memberships)
     |> Group.Changeset.update_changeset(attrs)
   end
 
-  def update_group(%Group{} = group, attrs, %Auth.Subject{} = subject) do
+  def change_group(%Group{}, _attrs) do
+    raise ArgumentError, "can't change synced groups"
+  end
+
+  def update_group(%Group{provider_id: nil} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       group
       |> Repo.preload(:memberships)
@@ -79,13 +88,21 @@ defmodule Domain.Actors do
     end
   end
 
-  def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
+  def update_group(%Group{}, _attrs, %Auth.Subject{}) do
+    {:error, :synced_group}
+  end
+
+  def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
       |> Group.Query.by_account_id(subject.account.id)
       |> Repo.fetch_and_update(with: &Group.Changeset.delete_changeset/1)
     end
+  end
+
+  def delete_group(%Group{}, %Auth.Subject{}) do
+    {:error, :synced_group}
   end
 
   def fetch_count_by_type(type, %Auth.Subject{} = subject) do
