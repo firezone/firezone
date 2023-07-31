@@ -11,6 +11,9 @@ defmodule Domain.Gateways.Group do
 
     has_many :connections, Domain.Resources.Connection, foreign_key: :gateway_group_id
 
+    field :created_by, Ecto.Enum, values: ~w[identity]a
+    belongs_to :created_by_identity, Domain.Auth.Identity
+
     field :deleted_at, :utc_datetime_usec
     timestamps()
   end

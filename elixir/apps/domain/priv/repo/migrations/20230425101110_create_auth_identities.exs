@@ -21,7 +21,8 @@ defmodule Domain.Repo.Migrations.CreateAuthIdentities do
     end
 
     create(
-      index(:auth_identities, [:provider_id, :provider_identifier],
+      index(:auth_identities, [:account_id, :provider_id, :provider_identifier],
+        name: :auth_identities_account_id_provider_id_provider_identifier_idx,
         where: "deleted_at IS NULL",
         unique: true
       )

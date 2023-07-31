@@ -1,16 +1,15 @@
 defmodule Domain.Actors.Actor.Changeset do
   use Domain, :changeset
-  alias Domain.Auth
   alias Domain.Actors
 
-  def create_changeset(%Auth.Provider{} = provider, attrs) do
+  def create_changeset(account_id, attrs) do
     %Actors.Actor{}
     |> cast(attrs, ~w[type name]a)
     |> validate_required(~w[type name]a)
-    |> put_change(:account_id, provider.account_id)
+    |> put_change(:account_id, account_id)
   end
 
-  def set_actor_type(actor, type) when type in [:account_user, :account_admin_user] do
+  def set_actor_type(actor, type) do
     actor
     |> change()
     |> put_change(:type, type)

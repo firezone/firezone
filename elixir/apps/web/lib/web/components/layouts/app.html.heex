@@ -84,7 +84,7 @@
         <ul class="py-1 text-gray-700 dark:text-gray-300" aria-labelledby="dropdown">
           <li>
             <a
-              href={~p"/#{@subject.account.id}/sign_out"}
+              href={~p"/#{@account}/sign_out"}
               class="block py-2 px-4 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
             >
               Sign out
@@ -95,189 +95,45 @@
     </div>
   </div>
 </nav>
-<!-- Sidebar -->
-<aside
-  class="fixed top-0 left-0 z-40 w-64 h-screen pt-14 pb-8 transition-transform -translate-x-full bg-white border-r border-gray-200 md:translate-x-0 dark:bg-gray-800 dark:border-gray-700"
-  aria-label="Sidenav"
-  id="drawer-navigation"
->
-  <div class="overflow-y-auto py-5 px-3 h-full bg-white dark:bg-gray-800">
-    <form action="#" method="GET" class="md:hidden mb-2">
-      <label for="sidebar-search" class="sr-only">Search</label>
-      <div class="relative">
-        <div class="flex absolute inset-y-0 left-0 items-center pl-3 pointer-events-none">
-          <svg
-            class="w-5 h-5 text-gray-500 dark:text-gray-400"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              fill-rule="evenodd"
-              clip-rule="evenodd"
-              d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
-            >
-            </path>
-          </svg>
-        </div>
-        <input
-          type="text"
-          name="search"
-          id="sidebar-search"
-          class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-          placeholder="Search"
-        />
-      </div>
-    </form>
-    <ul class="space-y-2">
-      <li>
-        <.link
-          navigate={~p"/#{@subject.account}/dashboard"}
-          class="flex items-center p-2 text-base font-medium text-gray-900 rounded-lg dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 group"
-        >
-          <.icon
-            name="hero-chart-bar-square-solid"
-            class="w-6 h-6 text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
-          />
-          <span class="ml-3">Dashboard</span>
-        </.link>
-      </li>
-      <li>
-        <button
-          type="button"
-          class="flex items-center p-2 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-          aria-controls="dropdown-pages"
-          data-collapse-toggle="dropdown-pages"
-        >
-          <.icon
-            name="hero-user-group-solid"
-            class="w-6 h-6 text-gray-500 transition duration-75 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-white"
-          />
-          <span class="flex-1 ml-3 text-left whitespace-nowrap">Organization</span>
-          <.icon
-            name="hero-chevron-down-solid"
-            class="w-6 h-6 text-gray-500 transition duration-75 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-white"
-          />
-        </button>
-        <ul id="dropdown-pages" class="py-2 space-y-2">
-          <li>
-            <.link
-              navigate={~p"/#{@subject.account}/users"}
-              class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-            >
-              Users
-            </.link>
-          </li>
-          <li>
-            <.link
-              navigate={~p"/#{@subject.account}/groups"}
-              class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-            >
-              Groups
-            </.link>
-          </li>
-          <li>
-            <.link
-              navigate={~p"/#{@subject.account}/devices"}
-              class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-            >
-              Devices
-            </.link>
-          </li>
-        </ul>
-      </li>
-      <li>
-        <.link
-          navigate={~p"/#{@subject.account}/gateways"}
-          class="flex items-center p-2 text-base font-medium text-gray-900 rounded-lg dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 group"
-        >
-          <.icon
-            name="hero-arrow-left-on-rectangle-solid"
-            class="w-6 h-6 text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
-          />
-          <span class="flex-1 ml-3 text-left whitespace-nowrap">Gateways</span>
-        </.link>
-      </li>
-      <li>
-        <.link
-          navigate={~p"/#{@subject.account}/resources"}
-          class="flex items-center p-2 text-base font-medium text-gray-900 rounded-lg dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 group"
-        >
-          <.icon
-            name="hero-server-stack-solid"
-            class="w-6 h-6 text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
-          />
-          <span class="flex-1 ml-3 text-left whitespace-nowrap">Resources</span>
-        </.link>
-      </li>
-      <li>
-        <.link
-          navigate={~p"/#{@subject.account}/policies"}
-          class="flex items-center p-2 text-base font-medium text-gray-900 rounded-lg dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 group"
-        >
-          <.icon
-            name="hero-shield-check-solid"
-            class="w-6 h-6 text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
-          />
-          <span class="flex-1 ml-3 text-left whitespace-nowrap">Policies</span>
-        </.link>
-      </li>
-      <li>
-        <button
-          type="button"
-          class="flex items-center p-2 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-          aria-controls="dropdown-settings"
-          data-collapse-toggle="dropdown-settings"
-        >
-          <.icon
-            name="hero-cog-solid"
-            class="w-6 h-6 text-gray-500 transition duration-75 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-white"
-          />
-          <span class="flex-1 ml-3 text-left whitespace-nowrap">Settings</span>
-          <.icon
-            name="hero-chevron-down-solid"
-            class="w-6 h-6 text-gray-500 transition duration-75 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-white"
-          />
-        </button>
-        <ul id="dropdown-settings" class="py-2 space-y-2">
-          <li>
-            <.link
-              navigate={~p"/#{@subject.account}/settings/account"}
-              class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-            >
-              Account
-            </.link>
-          </li>
-          <li>
-            <.link
-              navigate={~p"/#{@subject.account}/settings/identity_providers"}
-              class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-            >
-              Identity Providers
-            </.link>
-          </li>
-          <li>
-            <.link
-              navigate={~p"/#{@subject.account}/settings/dns"}
-              class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-            >
-              DNS
-            </.link>
-          </li>
-          <li>
-            <.link
-              navigate={~p"/#{@subject.account}/settings/api_tokens"}
-              class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-            >
-              API
-            </.link>
-          </li>
-        </ul>
-      </li>
-    </ul>
-  </div>
-  <.status_page_widget />
-</aside>
+
+<.sidebar>
+  <.sidebar_item navigate={~p"/#{@account}/dashboard"} icon="hero-chart-bar-square-solid">
+    Dashboard
+  </.sidebar_item>
+
+  <.sidebar_item_group id="organization">
+    <:name>Organization</:name>
+
+    <:item navigate={~p"/#{@account}/actors"}>Users</:item>
+    <:item navigate={~p"/#{@account}/groups"}>Groups</:item>
+    <:item navigate={~p"/#{@account}/devices"}>Devices</:item>
+  </.sidebar_item_group>
+
+  <.sidebar_item navigate={~p"/#{@account}/gateways"} icon="hero-arrow-left-on-rectangle-solid">
+    Gateways
+  </.sidebar_item>
+
+  <.sidebar_item navigate={~p"/#{@account}/resources"} icon="hero-server-stack-solid">
+    Resources
+  </.sidebar_item>
+
+  <.sidebar_item navigate={~p"/#{@account}/policies"} icon="hero-shield-check-solid">
+    Policies
+  </.sidebar_item>
+
+  <.sidebar_item_group id="settings">
+    <:name>Settings</:name>
+
+    <:item navigate={~p"/#{@account}/settings/account"}>Account</:item>
+    <:item navigate={~p"/#{@account}/settings/identity_providers"}>Identity Providers</:item>
+    <:item navigate={~p"/#{@account}/settings/dns"}>DNS</:item>
+    <:item navigate={~p"/#{@account}/settings/api_tokens"}>API</:item>
+  </.sidebar_item_group>
+
+  <:bottom>
+    <.status_page_widget />
+  </:bottom>
+</.sidebar>
 
 <main class="md:ml-64 h-auto pt-16">
   <%= @inner_content %>

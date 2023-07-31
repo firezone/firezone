@@ -1,23 +1,25 @@
 defmodule Domain.Resources.Resource.Changeset do
   use Domain, :changeset
-  alias Domain.{Accounts, Network}
+  alias Domain.{Auth, Accounts, Network}
   alias Domain.Resources.{Resource, Connection}
 
   @fields ~w[address name type]a
   @update_fields ~w[name]a
   @required_fields ~w[address type]a
 
-  def create_changeset(%Accounts.Account{} = account, attrs) do
+  def create_changeset(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Resource{}
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)
     |> changeset()
     |> put_change(:account_id, account.id)
+    |> validate_address()
     |> cast_assoc(:connections,
-      with: &Connection.Changeset.changeset(account.id, &1, &2),
+      with: &Connection.Changeset.changeset(account.id, &1, &2, subject),
       required: true
     )
-    |> validate_address()
+    |> put_change(:created_by, :identity)
+    |> put_change(:created_by_identity_id, subject.identity.id)
   end
 
   def finalize_create_changeset(%Resource{} = resource, ipv4, ipv6) do
@@ -71,13 +73,13 @@ defmodule Domain.Resources.Resource.Changeset do
     end
   end
 
-  def update_changeset(%Resource{} = resource, attrs) do
+  def update_changeset(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     resource
     |> cast(attrs, @update_fields)
     |> validate_required(@required_fields)
     |> changeset()
     |> cast_assoc(:connections,
-      with: &Connection.Changeset.changeset(resource.account_id, &1, &2),
+      with: &Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
       required: true
     )
   end

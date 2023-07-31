@@ -1,7 +1,6 @@
 defmodule Domain.Auth.Adapters.Email do
   use Supervisor
   alias Domain.Repo
-  alias Domain.Accounts
   alias Domain.Auth.{Identity, Provider, Adapter}
 
   @behaviour Adapter
@@ -21,6 +20,15 @@ defmodule Domain.Auth.Adapters.Email do
   end
 
   @impl true
+  def capabilities do
+    [
+      provisioners: [:manual],
+      default_provisioner: :manual,
+      parent_adapter: nil
+    ]
+  end
+
+  @impl true
   def identity_changeset(%Provider{} = provider, %Ecto.Changeset{} = changeset) do
     {state, virtual_state} = identity_create_state(provider)
 
@@ -32,10 +40,11 @@ defmodule Domain.Auth.Adapters.Email do
   end
 
   @impl true
-  def ensure_provisioned_for_account(%Ecto.Changeset{} = changeset, %Accounts.Account{} = account) do
+  def provider_changeset(%Ecto.Changeset{} = changeset) do
     %{
       outbound_email_adapter: outbound_email_adapter
-    } = Domain.Config.fetch_resolved_configs!(account.id, [:outbound_email_adapter])
+    } =
+      Domain.Config.fetch_resolved_configs!(changeset.data.account_id, [:outbound_email_adapter])
 
     if is_nil(outbound_email_adapter) do
       Ecto.Changeset.add_error(changeset, :adapter, "email adapter is not configured")
@@ -45,8 +54,13 @@ defmodule Domain.Auth.Adapters.Email do
   end
 
   @impl true
-  def ensure_deprovisioned(%Ecto.Changeset{} = changeset) do
-    changeset
+  def ensure_provisioned(%Provider{} = provider) do
+    {:ok, provider}
+  end
+
+  @impl true
+  def ensure_deprovisioned(%Provider{} = provider) do
+    {:ok, provider}
   end
 
   defp identity_create_state(%Provider{} = _provider) do
@@ -63,7 +77,6 @@ defmodule Domain.Auth.Adapters.Email do
     }
   end
 
-  # XXX: Send actual email here once web has templates
   def request_sign_in_token(%Identity{} = identity) do
     identity = Repo.preload(identity, :provider)
     {state, virtual_state} = identity_create_state(identity.provider)
@@ -101,7 +114,7 @@ defmodule Domain.Auth.Adapters.Email do
             :invalid_secret
 
           true ->
-            Identity.Changeset.update_provider_state(identity, %{}, %{})
+            Identity.Changeset.update_identity_provider_state(identity, %{}, %{})
         end
       end
     )

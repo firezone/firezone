@@ -173,7 +173,13 @@ defmodule Domain.GatewaysTest do
       assert group.id
       assert group.name_prefix == "foo"
       assert group.tags == ["bar"]
-      assert [%Gateways.Token{}] = group.tokens
+
+      assert group.created_by == :identity
+      assert group.created_by_identity_id == subject.identity.id
+
+      assert [%Gateways.Token{} = token] = group.tokens
+      assert token.created_by == :identity
+      assert token.created_by_identity_id == subject.identity.id
     end
 
     test "returns error when subject has no permission to manage groups", %{

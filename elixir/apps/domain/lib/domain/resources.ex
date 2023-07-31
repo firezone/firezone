@@ -98,7 +98,7 @@ defmodule Domain.Resources do
 
   def create_resource(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      changeset = Resource.Changeset.create_changeset(subject.account, attrs)
+      changeset = Resource.Changeset.create_changeset(subject.account, attrs, subject)
 
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:resource, changeset, returning: true)
@@ -145,7 +145,7 @@ defmodule Domain.Resources do
   def update_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       resource
-      |> Resource.Changeset.update_changeset(attrs)
+      |> Resource.Changeset.update_changeset(attrs, subject)
       |> Repo.update()
       |> case do
         {:ok, resource} ->

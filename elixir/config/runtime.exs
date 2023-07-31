@@ -48,6 +48,9 @@ if config_env() == :prod do
     key_base: compile_config!(:auth_token_key_base),
     salt: compile_config!(:auth_token_salt)
 
+  config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
+    finch_transport_opts: compile_config!(:http_client_ssl_opts)
+
   ###############################
   ##### Web #####################
   ###############################

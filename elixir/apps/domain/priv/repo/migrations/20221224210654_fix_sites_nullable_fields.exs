@@ -52,7 +52,10 @@ defmodule Domain.Repo.Migrations.FixSitesNullableFields do
 
     external_url =
       if is_nil(external_url_var) || String.length(external_url_var) == 0 do
-        Logger.warn("EXTERNAL_URL is empty! Using #{substitute} as basis for WireGuard endpoint.")
+        Logger.warning(
+          "EXTERNAL_URL is empty! Using #{substitute} as basis for WireGuard endpoint."
+        )
+
         substitute
       else
         external_url_var
@@ -61,7 +64,7 @@ defmodule Domain.Repo.Migrations.FixSitesNullableFields do
     parsed_host = URI.parse(external_url).host
 
     if is_nil(parsed_host) do
-      Logger.warn(
+      Logger.warning(
         "EXTERNAL_URL doesn't seem to contain a valid URL. Assuming https://#{external_url}."
       )
 

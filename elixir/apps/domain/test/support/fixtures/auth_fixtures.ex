@@ -17,6 +17,10 @@ defmodule Domain.AuthFixtures do
     Ecto.UUID.generate()
   end
 
+  def random_provider_identifier(%Domain.Auth.Provider{adapter: :google_workspace}) do
+    Ecto.UUID.generate()
+  end
+
   def random_provider_identifier(%Domain.Auth.Provider{adapter: :token}) do
     Ecto.UUID.generate()
   end
@@ -29,7 +33,9 @@ defmodule Domain.AuthFixtures do
     Enum.into(attrs, %{
       name: "provider-#{counter()}",
       adapter: :email,
-      adapter_config: %{}
+      adapter_config: %{},
+      created_by: :system,
+      provisioner: :manual
     })
   end
 
@@ -56,11 +62,59 @@ defmodule Domain.AuthFixtures do
       end)
 
     attrs =
-      %{adapter: :openid_connect, adapter_config: provider_attrs}
+      %{
+        adapter: :openid_connect,
+        adapter_config: provider_attrs,
+        provisioner: :just_in_time
+      }
       |> Map.merge(attrs)
       |> provider_attrs()
 
     {:ok, provider} = Auth.create_provider(account, attrs)
+
+    provider =
+      provider
+      |> Ecto.Changeset.change(
+        disabled_at: nil,
+        adapter_state: %{}
+      )
+      |> Repo.update!()
+
+    {provider, bypass}
+  end
+
+  def create_google_workspace_provider({bypass, [provider_attrs]}, attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    {account, attrs} =
+      Map.pop_lazy(attrs, :account, fn ->
+        AccountsFixtures.create_account()
+      end)
+
+    attrs =
+      %{
+        adapter: :google_workspace,
+        adapter_config: provider_attrs,
+        provisioner: :custom
+      }
+      |> Map.merge(attrs)
+      |> provider_attrs()
+
+    {:ok, provider} = Auth.create_provider(account, attrs)
+
+    provider =
+      provider
+      |> Ecto.Changeset.change(
+        disabled_at: nil,
+        adapter_state: %{
+          "access_token" => "OIDC_ACCESS_TOKEN",
+          "refresh_token" => "OIDC_REFRESH_TOKEN",
+          "expires_at" => DateTime.utc_now() |> DateTime.add(1, :day),
+          "claims" => "openid email profile offline_access"
+        }
+      )
+      |> Repo.update!()
+
     {provider, bypass}
   end
 
@@ -90,6 +144,15 @@ defmodule Domain.AuthFixtures do
 
     {:ok, provider} = Auth.create_provider(account, attrs)
     provider
+  end
+
+  def disable_provider(provider) do
+    provider = Repo.preload(provider, :account)
+    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: provider.account)
+    identity = create_identity(account: provider.account, actor: actor)
+    subject = create_subject(identity)
+    {:ok, group} = Auth.disable_provider(provider, subject)
+    group
   end
 
   def create_identity(attrs \\ %{}) do
@@ -133,7 +196,7 @@ defmodule Domain.AuthFixtures do
       end)
 
     {:ok, identity} =
-      Auth.create_identity(actor, provider, provider_identifier, provider_virtual_state)
+      Auth.upsert_identity(actor, provider, provider_identifier, provider_virtual_state)
 
     if state = Map.get(attrs, :provider_state) do
       identity
@@ -199,8 +262,10 @@ defmodule Domain.AuthFixtures do
     openid_connect_providers_attrs =
       discovery_document_url
       |> openid_connect_providers_attrs()
-      |> Enum.filter(&(&1["id"] in provider_names))
-      |> Enum.map(fn config ->
+      |> Enum.filter(fn {name, _config} ->
+        name in provider_names
+      end)
+      |> Enum.map(fn {_name, config} ->
         config
         |> Enum.into(%{})
         |> Map.merge(overrides)
@@ -211,90 +276,66 @@ defmodule Domain.AuthFixtures do
 
   def openid_connect_provider_attrs(overrides \\ %{}) do
     Enum.into(overrides, %{
-      "id" => "google",
       "discovery_document_uri" => "https://firezone.example.com/.well-known/openid-configuration",
       "client_id" => "google-client-id-#{counter()}",
       "client_secret" => "google-client-secret",
-      "redirect_uri" => "https://firezone.example.com/auth/oidc/google/callback/",
       "response_type" => "code",
-      "scope" => "openid email profile",
-      "label" => "OIDC Google"
+      "scope" => "openid email profile"
     })
   end
 
   defp openid_connect_providers_attrs(discovery_document_url) do
-    [
-      %{
-        "id" => "google",
+    %{
+      "google" => %{
         "discovery_document_uri" => discovery_document_url,
         "client_id" => "google-client-id-#{counter()}",
         "client_secret" => "google-client-secret",
-        "redirect_uri" => "https://firezone.example.com/auth/oidc/google/callback/",
         "response_type" => "code",
-        "scope" => "openid email profile",
-        "label" => "OIDC Google"
+        "scope" => "openid email profile"
       },
-      %{
-        "id" => "okta",
+      "okta" => %{
         "discovery_document_uri" => discovery_document_url,
         "client_id" => "okta-client-id-#{counter()}",
         "client_secret" => "okta-client-secret",
-        "redirect_uri" => "https://firezone.example.com/auth/oidc/okta/callback/",
         "response_type" => "code",
-        "scope" => "openid email profile offline_access",
-        "label" => "OIDC Okta"
+        "scope" => "openid email profile offline_access"
       },
-      %{
-        "id" => "auth0",
+      "auth0" => %{
         "discovery_document_uri" => discovery_document_url,
         "client_id" => "auth0-client-id-#{counter()}",
         "client_secret" => "auth0-client-secret",
-        "redirect_uri" => "https://firezone.example.com/auth/oidc/auth0/callback/",
         "response_type" => "code",
-        "scope" => "openid email profile",
-        "label" => "OIDC Auth0"
+        "scope" => "openid email profile"
       },
-      %{
-        "id" => "azure",
+      "azure" => %{
         "discovery_document_uri" => discovery_document_url,
         "client_id" => "azure-client-id-#{counter()}",
         "client_secret" => "azure-client-secret",
-        "redirect_uri" => "https://firezone.example.com/auth/oidc/azure/callback/",
         "response_type" => "code",
-        "scope" => "openid email profile offline_access",
-        "label" => "OIDC Azure"
+        "scope" => "openid email profile offline_access"
       },
-      %{
-        "id" => "onelogin",
+      "onelogin" => %{
         "discovery_document_uri" => discovery_document_url,
         "client_id" => "onelogin-client-id-#{counter()}",
         "client_secret" => "onelogin-client-secret",
-        "redirect_uri" => "https://firezone.example.com/auth/oidc/onelogin/callback/",
         "response_type" => "code",
-        "scope" => "openid email profile offline_access",
-        "label" => "OIDC Onelogin"
+        "scope" => "openid email profile offline_access"
       },
-      %{
-        "id" => "keycloak",
+      "keycloak" => %{
         "discovery_document_uri" => discovery_document_url,
         "client_id" => "keycloak-client-id-#{counter()}",
         "client_secret" => "keycloak-client-secret",
-        "redirect_uri" => "https://firezone.example.com/auth/oidc/keycloak/callback/",
         "response_type" => "code",
-        "scope" => "openid email profile offline_access",
-        "label" => "OIDC Keycloak"
+        "scope" => "openid email profile offline_access"
       },
-      %{
-        "id" => "vault",
+      "vault" => %{
         "discovery_document_uri" => discovery_document_url,
         "client_id" => "vault-client-id-#{counter()}",
         "client_secret" => "vault-client-secret",
-        "redirect_uri" => "https://firezone.example.com/auth/oidc/vault/callback/",
         "response_type" => "code",
-        "scope" => "openid email profile offline_access",
-        "label" => "OIDC Vault"
+        "scope" => "openid email profile offline_access"
       }
-    ]
+    }
   end
 
   def jwks_attrs do

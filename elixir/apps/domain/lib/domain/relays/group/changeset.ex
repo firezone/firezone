@@ -1,5 +1,6 @@
 defmodule Domain.Relays.Group.Changeset do
   use Domain, :changeset
+  alias Domain.Auth
   alias Domain.Accounts
   alias Domain.Relays
 
@@ -10,29 +11,42 @@ defmodule Domain.Relays.Group.Changeset do
     |> changeset(attrs)
     |> cast_assoc(:tokens,
       with: fn _token, _attrs ->
-        Domain.Relays.Token.Changeset.create_changeset()
+        Relays.Token.Changeset.create_changeset()
       end,
       required: true
     )
+    |> put_change(:created_by, :system)
   end
 
-  def create_changeset(%Accounts.Account{} = account, attrs) do
+  def create_changeset(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Relays.Group{account: account}
     |> changeset(attrs)
     |> cast_assoc(:tokens,
       with: fn _token, _attrs ->
-        Domain.Relays.Token.Changeset.create_changeset(account)
+        Relays.Token.Changeset.create_changeset(account, subject)
       end,
       required: true
     )
     |> put_change(:account_id, account.id)
+    |> put_change(:created_by, :identity)
+    |> put_change(:created_by_identity_id, subject.identity.id)
+  end
+
+  def update_changeset(%Relays.Group{} = group, attrs, %Auth.Subject{} = subject) do
+    changeset(group, attrs)
+    |> cast_assoc(:tokens,
+      with: fn _token, _attrs ->
+        Relays.Token.Changeset.create_changeset(group.account, subject)
+      end,
+      required: true
+    )
   end
 
   def update_changeset(%Relays.Group{} = group, attrs) do
     changeset(group, attrs)
     |> cast_assoc(:tokens,
       with: fn _token, _attrs ->
-        Domain.Relays.Token.Changeset.create_changeset(group.account)
+        Relays.Token.Changeset.create_changeset()
       end,
       required: true
     )

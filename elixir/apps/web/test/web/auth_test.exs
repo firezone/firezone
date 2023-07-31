@@ -30,10 +30,6 @@ defmodule Web.AuthTest do
     test "redirects to dashboard after sign in as account admin", %{admin_subject: subject} do
       assert signed_in_path(subject) == ~p"/#{subject.account}/dashboard"
     end
-
-    test "redirects to account landing after sign in as account user", %{user_subject: subject} do
-      assert signed_in_path(subject) == ~p"/#{subject.account}"
-    end
   end
 
   describe "put_subject_in_session/2" do
@@ -153,7 +149,7 @@ defmodule Web.AuthTest do
   end
 
   describe "redirect_if_user_is_authenticated/2" do
-    test "redirects if user is authenticated", %{conn: conn, user_subject: subject} do
+    test "redirects if user is authenticated", %{conn: conn, admin_subject: subject} do
       conn =
         conn
         |> assign(:subject, subject)

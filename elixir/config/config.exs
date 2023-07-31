@@ -49,6 +49,10 @@ config :domain, Domain.Auth,
   key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S1",
   salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej1"
 
+config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
+  endpoint: "https://admin.googleapis.com",
+  finch_transport_opts: []
+
 ###############################
 ##### Web #####################
 ###############################
@@ -146,6 +150,9 @@ config :domain,
 
 config :openid_connect,
   finch_transport_opts: []
+
+config :ex_cldr,
+  default_locale: "en"
 
 config :mime, :types, %{
   "application/xml" => ["xml"]

@@ -15,6 +15,9 @@ defmodule Domain.Auth.Identity do
 
     belongs_to :account, Domain.Accounts.Account
 
+    field :created_by, Ecto.Enum, values: ~w[system provider identity]a
+    belongs_to :created_by_identity, Domain.Auth.Identity
+
     field :deleted_at, :utc_datetime_usec
   end
 end

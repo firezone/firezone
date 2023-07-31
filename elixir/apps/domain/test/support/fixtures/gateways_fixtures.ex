@@ -50,17 +50,24 @@ defmodule Domain.GatewaysFixtures do
         AccountsFixtures.create_account()
       end)
 
-    group =
+    {group, attrs} =
       case Map.pop(attrs, :group, %{}) do
         {%Gateways.Group{} = group, _attrs} ->
-          group
+          {group, attrs}
 
-        {group_attrs, _attrs} ->
+        {group_attrs, attrs} ->
           group_attrs = Enum.into(group_attrs, %{account: account})
-          create_group(group_attrs)
+          {create_group(group_attrs), attrs}
       end
 
-    Gateways.Token.Changeset.create_changeset(account)
+    {subject, _attrs} =
+      Map.pop_lazy(attrs, :subject, fn ->
+        actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+        identity = AuthFixtures.create_identity(account: account, actor: actor)
+        AuthFixtures.create_subject(identity)
+      end)
+
+    Gateways.Token.Changeset.create_changeset(account, subject)
     |> Ecto.Changeset.put_change(:group_id, group.id)
     |> Repo.insert!()
   end

@@ -67,6 +67,21 @@ defmodule Web do
     end
   end
 
+  def component_library do
+    quote do
+      use Phoenix.Component
+
+      # Core UI components and translation
+      unquote(components())
+
+      # Shortcut for generating JS commands
+      alias Phoenix.LiveView.JS
+
+      # Routes generation with the ~p sigil
+      unquote(verified_routes())
+    end
+  end
+
   def xml do
     quote do
       import Phoenix.Template, only: [embed_templates: 1]
@@ -97,11 +112,9 @@ defmodule Web do
     quote do
       # HTML escaping functionality
       import Phoenix.HTML
+
       # Core UI components and translation
-      import Web.CoreComponents
-      import Web.FormComponents
-      import Web.TableComponents
-      import Web.Gettext
+      unquote(components())
 
       # Shortcut for generating JS commands
       alias Phoenix.LiveView.JS
@@ -117,6 +130,16 @@ defmodule Web do
         endpoint: Web.Endpoint,
         router: Web.Router,
         statics: Web.static_paths()
+    end
+  end
+
+  def components do
+    quote do
+      import Web.CoreComponents
+      import Web.FormComponents
+      import Web.TableComponents
+      import Web.NavigationComponents
+      import Web.Gettext
     end
   end
 

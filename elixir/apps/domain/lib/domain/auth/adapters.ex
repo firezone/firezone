@@ -1,11 +1,11 @@
 defmodule Domain.Auth.Adapters do
   use Supervisor
-  alias Domain.Accounts
   alias Domain.Auth.{Provider, Identity}
 
   @adapters %{
     email: Domain.Auth.Adapters.Email,
     openid_connect: Domain.Auth.Adapters.OpenIDConnect,
+    google_workspace: Domain.Auth.Adapters.GoogleWorkspace,
     userpass: Domain.Auth.Adapters.UserPass,
     token: Domain.Auth.Adapters.Token
   }
@@ -21,32 +21,63 @@ defmodule Domain.Auth.Adapters do
     Supervisor.init(@adapter_modules, strategy: :one_for_one)
   end
 
+  def list_adapters do
+    enabled_adapters = Domain.Config.compile_config!(:auth_provider_adapters)
+    enabled_idp_adapters = enabled_adapters -- ~w[token email userpass]a
+    {:ok, Map.take(@adapters, enabled_idp_adapters)}
+  end
+
+  def fetch_capabilities!(%Provider{} = provider) do
+    adapter = fetch_provider_adapter!(provider)
+    adapter.capabilities()
+  end
+
+  def fetch_capabilities!(adapter) when is_atom(adapter) do
+    fetch_adapter!(adapter).capabilities()
+  end
+
   def identity_changeset(%Ecto.Changeset{} = changeset, %Provider{} = provider, provider_attrs) do
-    adapter = fetch_adapter!(provider)
+    adapter = fetch_provider_adapter!(provider)
     changeset = Ecto.Changeset.put_change(changeset, :provider_virtual_state, provider_attrs)
     %Ecto.Changeset{} = adapter.identity_changeset(provider, changeset)
   end
 
-  def ensure_provisioned_for_account(
-        %Ecto.Changeset{changes: %{adapter: adapter}} = changeset,
-        %Accounts.Account{} = account
-      )
+  def provider_changeset(%Ecto.Changeset{changes: %{adapter: adapter}} = changeset)
       when adapter in @adapter_names do
     adapter = Map.fetch!(@adapters, adapter)
-    %Ecto.Changeset{} = adapter.ensure_provisioned_for_account(changeset, account)
+    %Ecto.Changeset{} = adapter.provider_changeset(changeset)
   end
 
-  def ensure_provisioned_for_account(%Ecto.Changeset{} = changeset, %Accounts.Account{}) do
+  def provider_changeset(%Ecto.Changeset{data: %{adapter: adapter}} = changeset)
+      when adapter in @adapter_names do
+    adapter = Map.fetch!(@adapters, adapter)
+    %Ecto.Changeset{} = adapter.provider_changeset(changeset)
+  end
+
+  def provider_changeset(%Ecto.Changeset{} = changeset) do
     changeset
   end
 
-  def ensure_deprovisioned(%Ecto.Changeset{data: %Provider{} = provider} = changeset) do
-    adapter = fetch_adapter!(provider)
-    %Ecto.Changeset{} = adapter.ensure_deprovisioned(changeset)
+  def ensure_provisioned(%Provider{} = provider) do
+    adapter = fetch_provider_adapter!(provider)
+
+    case adapter.ensure_provisioned(provider) do
+      {:ok, provider} -> {:ok, provider}
+      {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
+    end
+  end
+
+  def ensure_deprovisioned(%Provider{} = provider) do
+    adapter = fetch_provider_adapter!(provider)
+
+    case adapter.ensure_deprovisioned(provider) do
+      {:ok, provider} -> {:ok, provider}
+      {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
+    end
   end
 
   def verify_secret(%Provider{} = provider, %Identity{} = identity, secret) do
-    adapter = fetch_adapter!(provider)
+    adapter = fetch_provider_adapter!(provider)
 
     case adapter.verify_secret(identity, secret) do
       {:ok, %Identity{} = identity, expires_at} -> {:ok, identity, expires_at}
@@ -56,10 +87,10 @@ defmodule Domain.Auth.Adapters do
     end
   end
 
-  def verify_identity(%Provider{} = provider, payload) do
-    adapter = fetch_adapter!(provider)
+  def verify_and_update_identity(%Provider{} = provider, payload) do
+    adapter = fetch_provider_adapter!(provider)
 
-    case adapter.verify_identity(provider, payload) do
+    case adapter.verify_and_update_identity(provider, payload) do
       {:ok, %Identity{} = identity, expires_at} -> {:ok, identity, expires_at}
       {:error, :not_found} -> {:error, :not_found}
       {:error, :invalid} -> {:error, :invalid}
@@ -68,7 +99,11 @@ defmodule Domain.Auth.Adapters do
     end
   end
 
-  defp fetch_adapter!(provider) do
+  defp fetch_provider_adapter!(%Provider{} = provider) do
     Map.fetch!(@adapters, provider.adapter)
+  end
+
+  defp fetch_adapter!(adapter_name) do
+    Map.fetch!(@adapters, adapter_name)
   end
 end
