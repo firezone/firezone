@@ -1,3 +1,4 @@
+mod allocation;
 mod auth;
 mod rfc8656;
 mod server;
@@ -10,6 +11,7 @@ pub mod metrics;
 #[cfg(feature = "proptest")]
 pub mod proptest;
 
+pub use allocation::Allocation;
 pub use server::{
     Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, Command,
     CreatePermission, Refresh, Server,
