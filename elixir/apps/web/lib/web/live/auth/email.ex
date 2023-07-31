@@ -1,4 +1,4 @@
-defmodule Web.Auth.EmailLive do
+defmodule Web.Auth.Email do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
 
   def render(assigns) do

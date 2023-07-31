@@ -1,4 +1,4 @@
-defmodule Web.Auth.SettingsLive.IdentityProviders.GoogleWorkspace.EditLiveTest do
+defmodule Web.Auth.SettingsLive.IdentityProviders.GoogleWorkspace.EditTest do
   use Web.ConnCase, async: true
   alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 

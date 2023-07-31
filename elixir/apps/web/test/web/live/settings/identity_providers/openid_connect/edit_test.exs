@@ -1,4 +1,4 @@
-defmodule Web.Auth.SettingsLive.IdentityProviders.OpenIDConnect.EditLiveTest do
+defmodule Web.Auth.SettingsLive.IdentityProviders.OpenIDConnect.EditTest do
   use Web.ConnCase, async: true
   alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 

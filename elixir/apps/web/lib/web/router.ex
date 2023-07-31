@@ -98,49 +98,49 @@ defmodule Web.Router do
         {Web.Auth, :ensure_account_admin_user_actor},
         {Web.Auth, :mount_account}
       ] do
-      live "/dashboard", DashboardLive
+      live "/dashboard", Dashboard
 
-      scope "/actors", UsersLive do
+      scope "/actors", Users do
         live "/", Index
         live "/new", New
         live "/:id/edit", Edit
         live "/:id", Show
       end
 
-      scope "/groups", GroupsLive do
+      scope "/groups", Groups do
         live "/", Index
         live "/new", New
         live "/:id/edit", Edit
         live "/:id", Show
       end
 
-      scope "/devices", DevicesLive do
+      scope "/devices", Devices do
         live "/", Index
         live "/:id", Show
       end
 
-      scope "/gateways", GatewaysLive do
-        live "/", Index
-        live "/new", New
-        live "/:id/edit", Edit
-        live "/:id", Show
-      end
-
-      scope "/resources", ResourcesLive do
+      scope "/gateways", Gateways do
         live "/", Index
         live "/new", New
         live "/:id/edit", Edit
         live "/:id", Show
       end
 
-      scope "/policies", PoliciesLive do
+      scope "/resources", Resources do
         live "/", Index
         live "/new", New
         live "/:id/edit", Edit
         live "/:id", Show
       end
 
-      scope "/settings", SettingsLive do
+      scope "/policies", Policies do
+        live "/", Index
+        live "/new", New
+        live "/:id/edit", Edit
+        live "/:id", Show
+      end
+
+      scope "/settings", Settings do
         live "/account", Account
 
         scope "/identity_providers", IdentityProviders do

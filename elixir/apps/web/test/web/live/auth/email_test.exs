@@ -1,4 +1,4 @@
-defmodule Web.Auth.EmailLiveTest do
+defmodule Web.Auth.EmailTest do
   use Web.ConnCase, async: true
   alias Domain.{AccountsFixtures, AuthFixtures}
 

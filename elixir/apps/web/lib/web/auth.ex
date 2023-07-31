@@ -190,7 +190,7 @@ defmodule Web.Auth do
   Use the `on_mount` lifecycle macro in LiveViews to mount or authenticate
   the subject:
 
-      defmodule Web.PageLive do
+      defmodule Web.Page do
         use Web, :live_view
 
         on_mount {Web.UserAuth, :mount_subject}

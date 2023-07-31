@@ -1,4 +1,4 @@
-defmodule Web.LandingLive do
+defmodule Web.Landing do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
 
   def render(assigns) do

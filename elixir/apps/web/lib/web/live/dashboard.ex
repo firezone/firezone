@@ -1,4 +1,4 @@
-defmodule Web.DashboardLive do
+defmodule Web.Dashboard do
   use Web, :live_view
 
   def render(assigns) do
