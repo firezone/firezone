@@ -6,35 +6,37 @@ defmodule Web.SettingsLive.IdentityProviders.GoogleWorkspace.Connect do
   use Web, :controller
   alias Domain.Auth.Adapters.GoogleWorkspace
 
-  def redirect_to_idp(conn, %{"account_id" => account_id, "provider_id" => provider_id}) do
+  def redirect_to_idp(conn, %{"provider_id" => provider_id}) do
+    account = conn.assigns.account
+
     with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id) do
       redirect_url =
         url(
-          ~p"/#{provider.account_id}/settings/identity_providers/google_workspace/#{provider.id}/handle_callback"
+          ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}/handle_callback"
         )
 
       Web.AuthController.redirect_to_idp(conn, redirect_url, provider)
     else
       {:error, :not_found} ->
         conn
-        |> put_flash(:error, "Provider is disabled or does not exist.")
-        |> redirect(to: ~p"/#{account_id}/settings/identity_providers")
+        |> put_flash(:error, "Provider does not exist.")
+        |> redirect(to: ~p"/#{account}/settings/identity_providers")
     end
   end
 
   def handle_idp_callback(conn, %{
-        "account_id" => account_id,
         "provider_id" => provider_id,
         "state" => state,
         "code" => code
       }) do
+    account = conn.assigns.account
+    subject = conn.assigns.subject
+
     with {:ok, code_verifier, conn} <-
            Web.AuthController.verify_state_and_fetch_verifier(conn, provider_id, state) do
-      subject = conn.assigns.subject
-
       payload = {
         url(
-          ~p"/#{account_id}/settings/identity_providers/google_workspace/#{provider_id}/handle_callback"
+          ~p"/#{account}/settings/identity_providers/google_workspace/#{provider_id}/handle_callback"
         ),
         code_verifier,
         code
@@ -46,35 +48,35 @@ defmodule Web.SettingsLive.IdentityProviders.GoogleWorkspace.Connect do
            attrs = %{adapter_state: identity.provider_state, disabled_at: nil},
            {:ok, _provider} <- Domain.Auth.update_provider(provider, attrs, subject) do
         redirect(conn,
-          to: ~p"/#{account_id}/settings/identity_providers/google_workspace/#{provider_id}"
+          to: ~p"/#{account}/settings/identity_providers/google_workspace/#{provider_id}"
         )
       else
         {:error, :expired_token} ->
           conn
           |> put_flash(:error, "The provider returned an expired token, please try again.")
           |> redirect(
-            to: ~p"/#{account_id}/settings/identity_providers/google_workspace/#{provider_id}"
+            to: ~p"/#{account}/settings/identity_providers/google_workspace/#{provider_id}"
           )
 
         {:error, :invalid_token} ->
           conn
           |> put_flash(:error, "The provider returned an invalid token, please try again.")
           |> redirect(
-            to: ~p"/#{account_id}/settings/identity_providers/google_workspace/#{provider_id}"
+            to: ~p"/#{account}/settings/identity_providers/google_workspace/#{provider_id}"
           )
 
         {:error, :not_found} ->
           conn
-          |> put_flash(:error, "Provider is disabled or does not exist.")
+          |> put_flash(:error, "Provider does not exist.")
           |> redirect(
-            to: ~p"/#{account_id}/settings/identity_providers/google_workspace/#{provider_id}"
+            to: ~p"/#{account}/settings/identity_providers/google_workspace/#{provider_id}"
           )
 
         {:error, _reason} ->
           conn
           |> put_flash(:error, "You can not authenticate to this account.")
           |> redirect(
-            to: ~p"/#{account_id}/settings/identity_providers/google_workspace/#{provider_id}"
+            to: ~p"/#{account}/settings/identity_providers/google_workspace/#{provider_id}"
           )
       end
     else
@@ -82,7 +84,7 @@ defmodule Web.SettingsLive.IdentityProviders.GoogleWorkspace.Connect do
         conn
         |> put_flash(:error, "Your session has expired, please try again.")
         |> redirect(
-          to: ~p"/#{account_id}/settings/identity_providers/google_workspace/#{provider_id}"
+          to: ~p"/#{account}/settings/identity_providers/google_workspace/#{provider_id}"
         )
     end
   end

@@ -7,7 +7,7 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
     account = socket.assigns.account
     subject = socket.assigns.subject
 
-    with {:ok, providers} <- Auth.list_active_providers_for_account(account),
+    with {:ok, providers} <- Auth.list_providers_for_account(account, subject),
          {:ok, identities_count_by_provider_id} <-
            Auth.fetch_identities_count_grouped_by_provider_id(subject),
          {:ok, groups_count_by_provider_id} <-
@@ -67,6 +67,9 @@ defmodule Web.SettingsLive.IdentityProviders.Index do
         </:col>
         <:col :let={provider} label="Type"><%= adapter_name(provider.adapter) %></:col>
         <:col :let={provider} label="Status">
+          <.status provider={provider} />
+        </:col>
+        <:col :let={provider} label="Sync Status">
           <.sync_status
             account={@account}
             provider={provider}

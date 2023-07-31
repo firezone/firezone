@@ -362,11 +362,12 @@ defmodule Web.CoreComponents do
   @doc """
   Generates a generic error message.
   """
+  attr :rest, :global
   slot :inner_block, required: true
 
   def error(assigns) do
     ~H"""
-    <p class="mt-3 flex gap-3 text-sm leading-6 text-rose-600 phx-no-feedback:hidden">
+    <p class="mt-3 flex gap-3 text-sm leading-6 text-rose-600 phx-no-feedback:hidden" {@rest}>
       <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" />
       <%= render_slot(@inner_block) %>
     </p>
@@ -379,15 +380,19 @@ defmodule Web.CoreComponents do
 
   ### Examples
 
-      <.base_error error={@form.errors[:base]} />
+      <.base_error form={@form} field={:base} />
   """
-  attr :error, :any, doc: "changeset error which will be rendered"
+  attr :form, :any, required: true, doc: "the form"
+  attr :field, :atom, doc: "field name"
   attr :rest, :global
 
   def base_error(assigns) do
+    assigns = assign_new(assigns, :error, fn -> assigns.form.errors[assigns.field] end)
+
     ~H"""
     <p
       :if={@error}
+      data-validation-error-for={"#{@form.id}[#{@field}]"}
       class="mt-3 mb-3 flex gap-3 text-m leading-6 text-rose-600 phx-no-feedback:hidden"
       {@rest}
     >
@@ -573,7 +578,7 @@ defmodule Web.CoreComponents do
 
     ~H"""
     <span title={@datetime}>
-      <%= Cldr.DateTime.Relative.to_string(@datetime, Web.CLDR, relative_to: @relative_to) %>
+      <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to) %>
     </span>
     """
   end
@@ -605,7 +610,7 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Helps to pluralize a word based on a an cardinal number.
+  Helps to pluralize a word based on a cardinal number.
 
   Cardinal numbers indicate an amount—how many of something we have: one, two, three, four, five.
 

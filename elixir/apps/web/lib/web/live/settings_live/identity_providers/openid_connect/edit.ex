@@ -33,7 +33,7 @@ defmodule Web.SettingsLive.IdentityProviders.OpenIDConnect.Edit do
       socket =
         redirect(socket,
           to:
-            ~p"/#{socket.assigns.account}/settings/identity_providers/google_workspace/#{provider}/redirect"
+            ~p"/#{socket.assigns.account}/settings/identity_providers/openid_connect/#{provider}/redirect"
         )
 
       {:noreply, socket}
@@ -50,7 +50,7 @@ defmodule Web.SettingsLive.IdentityProviders.OpenIDConnect.Edit do
         Identity Providers Settings
       </.breadcrumb>
       <.breadcrumb path={
-        ~p"/#{@account}/settings/identity_providers/google_workspace/#{@form.data}/edit"
+        ~p"/#{@account}/settings/identity_providers/openid_connect/#{@form.data}/edit"
       }>
         Edit <%= # {@form.data.name} %>
       </.breadcrumb>

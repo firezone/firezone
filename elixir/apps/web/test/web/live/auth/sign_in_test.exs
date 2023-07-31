@@ -1,4 +1,4 @@
-defmodule Web.Auth.ProvidersLiveTest do
+defmodule Web.Auth.SignInLiveTest do
   use Web.ConnCase, async: true
   alias Domain.{AccountsFixtures, AuthFixtures}
 

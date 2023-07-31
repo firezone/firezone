@@ -87,7 +87,7 @@ defmodule Web.FormComponents do
         />
         <%= @label %>
       </label>
-      <.error :for={msg <- @errors}><%= msg %></.error>
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
     </div>
     """
   end
@@ -104,7 +104,7 @@ defmodule Web.FormComponents do
         <option :if={@prompt} value=""><%= @prompt %></option>
         <%= Phoenix.HTML.Form.options_for_select(@options, @value) %>
       </select>
-      <.error :for={msg <- @errors}><%= msg %></.error>
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
     </div>
     """
   end
@@ -124,7 +124,7 @@ defmodule Web.FormComponents do
         ]}
         {@rest}
       ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
-      <.error :for={msg <- @errors}><%= msg %></.error>
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
     </div>
     """
   end
@@ -148,7 +148,7 @@ defmodule Web.FormComponents do
         ]}
         {@rest}
       />
-      <.error :for={msg <- @errors}><%= msg %></.error>
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
     </div>
     """
   end

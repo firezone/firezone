@@ -40,7 +40,7 @@ defmodule Web.SettingsLive.IdentityProviders.OpenIDConnect.Components do
             2. Configure client
           </h2>
 
-          <.base_error error={@form.errors[:base]} />
+          <.base_error form={@form} field={:base} />
 
           <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
             <div>
