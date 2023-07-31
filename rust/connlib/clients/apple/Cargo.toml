@@ -7,7 +7,7 @@ edition = "2021"
 mock = ["firezone-client-connlib/mock"]
 
 [build-dependencies]
-anyhow = "1.0.71"
+anyhow = "1.0.72"
 diva = "0.1.0"
 swift-bridge-build = "0.1.52"
 walkdir = "2.3.3"
