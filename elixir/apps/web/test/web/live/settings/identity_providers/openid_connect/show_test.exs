@@ -94,13 +94,13 @@ defmodule Web.Auth.SettingsLive.IdentityProviders.OpenIDConnect.ShowTest do
     )
     |> Repo.update!()
 
-    reenabled =
+    enabled =
       lv
       |> element("button", "Enable Identity Provider")
       |> render_click()
       |> Floki.find("table")
 
-    assert table_to_text(reenabled) == [
+    assert table_to_text(enabled) == [
              [provider.name],
              ["Active"],
              ["OpenID Connect"],

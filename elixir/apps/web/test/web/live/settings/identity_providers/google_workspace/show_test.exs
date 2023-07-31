@@ -86,13 +86,13 @@ defmodule Web.Auth.SettingsLive.IdentityProviders.GoogleWorkspace.ShowTest do
     )
     |> Repo.update!()
 
-    reenabled =
+    enabled =
       lv
       |> element("button", "Enable Identity Provider")
       |> render_click()
       |> Floki.find("table")
 
-    assert table_to_text(reenabled) == [
+    assert table_to_text(enabled) == [
              [provider.name],
              ["Active"],
              [provider.adapter_config["client_id"]],
