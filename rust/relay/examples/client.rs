@@ -64,7 +64,7 @@ async fn new_turn_client() -> Result<Client, Error> {
         realm: "firezone".to_owned(),
         software: String::new(),
         rto_in_ms: 0,
-        conn: Arc::new(UdpSocket::bind("0.0.0.0:0").await?),
+        conn: Arc::new(UdpSocket::bind("127.0.0.1:0").await?),
         vnet: None,
     })
     .await?;
