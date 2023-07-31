@@ -1,4 +1,4 @@
-defmodule Web.SettingsLive.IdentityProviders.SAML.Show do
+defmodule Web.Settings.IdentityProviders.SAML.Show do
   use Web, :live_view
   alias Domain.Auth
 

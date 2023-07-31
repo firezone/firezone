@@ -1,4 +1,4 @@
-defmodule Web.ResourcesLive.New do
+defmodule Web.Resources.New do
   use Web, :live_view
 
   alias Domain.Gateways

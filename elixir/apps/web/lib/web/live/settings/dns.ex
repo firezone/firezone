@@ -1,4 +1,4 @@
-defmodule Web.SettingsLive.DNS do
+defmodule Web.Settings.DNS do
   use Web, :live_view
 
   def render(assigns) do

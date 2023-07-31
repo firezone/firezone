@@ -1,4 +1,4 @@
-defmodule Web.Auth.SettingsLive.IdentityProviders.GoogleWorkspace.Connect do
+defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.Connect do
   use Web.ConnCase, async: true
   alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 

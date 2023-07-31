@@ -1,4 +1,4 @@
-defmodule Web.SettingsLive.IdentityProviders.GoogleWorkspace.Components do
+defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
   use Web, :component_library
 
   def provider_form(assigns) do

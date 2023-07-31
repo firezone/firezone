@@ -1,4 +1,4 @@
-defmodule Web.PoliciesLive.Index do
+defmodule Web.Policies.Index do
   use Web, :live_view
 
   def render(assigns) do

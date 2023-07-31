@@ -1,4 +1,4 @@
-defmodule Web.SettingsLive.IdentityProviders.SAML.Components do
+defmodule Web.Settings.IdentityProviders.SAML.Components do
   @moduledoc """
   Provides components that can be shared across forms.
   """

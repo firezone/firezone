@@ -1,4 +1,4 @@
-defmodule Web.SettingsLive.IdentityProviders.OpenIDConnect.Components do
+defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
   use Web, :component_library
 
   def provider_form(assigns) do

@@ -1,4 +1,4 @@
-defmodule Web.Auth.SettingsLive.IdentityProviders.IndexTest do
+defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
   use Web.ConnCase, async: true
   alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 

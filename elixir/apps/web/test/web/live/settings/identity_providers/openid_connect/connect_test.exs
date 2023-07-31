@@ -1,4 +1,4 @@
-defmodule Web.Auth.SettingsLive.IdentityProviders.OpenIDConnect.Connect do
+defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.Connect do
   use Web.ConnCase, async: true
   alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 

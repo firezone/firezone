@@ -1,4 +1,4 @@
-defmodule Web.UsersLive.Show do
+defmodule Web.Users.Show do
   use Web, :live_view
 
   def render(assigns) do

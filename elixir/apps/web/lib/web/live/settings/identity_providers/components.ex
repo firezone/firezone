@@ -1,4 +1,4 @@
-defmodule Web.SettingsLive.IdentityProviders.Components do
+defmodule Web.Settings.IdentityProviders.Components do
   use Web, :component_library
 
   def status(%{provider: %{deleted_at: deleted_at}} = assigns) when not is_nil(deleted_at) do

@@ -1,4 +1,4 @@
-defmodule Web.DevicesLive.Index do
+defmodule Web.Devices.Index do
   use Web, :live_view
 
   def render(assigns) do

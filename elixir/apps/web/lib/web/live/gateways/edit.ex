@@ -1,4 +1,4 @@
-defmodule Web.GatewaysLive.Edit do
+defmodule Web.Gateways.Edit do
   use Web, :live_view
 
   alias Domain.Gateways

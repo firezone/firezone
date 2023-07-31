@@ -1,4 +1,4 @@
-defmodule Web.GatewaysLive.Index do
+defmodule Web.Gateways.Index do
   use Web, :live_view
 
   alias Domain.Gateways

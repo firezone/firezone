@@ -1,4 +1,4 @@
-defmodule Web.GroupsLive.Show do
+defmodule Web.Groups.Show do
   use Web, :live_view
 
   def render(assigns) do

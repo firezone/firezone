@@ -1,6 +1,6 @@
-defmodule Web.SettingsLive.IdentityProviders.Index do
+defmodule Web.Settings.IdentityProviders.Index do
   use Web, :live_view
-  import Web.SettingsLive.IdentityProviders.Components
+  import Web.Settings.IdentityProviders.Components
   alias Domain.{Auth, Actors}
 
   def mount(_params, _session, socket) do

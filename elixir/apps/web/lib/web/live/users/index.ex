@@ -1,4 +1,4 @@
-defmodule Web.UsersLive.Index do
+defmodule Web.Users.Index do
   use Web, :live_view
 
   def render(assigns) do

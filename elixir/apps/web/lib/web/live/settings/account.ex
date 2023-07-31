@@ -1,4 +1,4 @@
-defmodule Web.SettingsLive.Account do
+defmodule Web.Settings.Account do
   use Web, :live_view
 
   def render(assigns) do

@@ -1,4 +1,4 @@
-defmodule Web.SettingsLive.IdentityProviders.New do
+defmodule Web.Settings.IdentityProviders.New do
   use Web, :live_view
   alias Domain.Auth
 

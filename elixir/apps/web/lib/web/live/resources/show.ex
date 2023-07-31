@@ -1,4 +1,4 @@
-defmodule Web.ResourcesLive.Show do
+defmodule Web.Resources.Show do
   use Web, :live_view
 
   alias Domain.Resources

@@ -1,6 +1,6 @@
-defmodule Web.SettingsLive.IdentityProviders.OpenIDConnect.Show do
+defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
   use Web, :live_view
-  import Web.SettingsLive.IdentityProviders.Components
+  import Web.Settings.IdentityProviders.Components
   alias Domain.Auth
 
   def mount(%{"provider_id" => provider_id}, _session, socket) do

@@ -1,4 +1,4 @@
-defmodule Web.SettingsLive.IdentityProviders.OpenIDConnect.Connect do
+defmodule Web.Settings.IdentityProviders.OpenIDConnect.Connect do
   @doc """
   This controller is similar to Web.AuthController, but it is used to connect IdP account
   to the actor and provider rather than logging in using it.

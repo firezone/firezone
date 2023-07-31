@@ -1,4 +1,4 @@
-defmodule Web.PoliciesLive.Show do
+defmodule Web.Policies.Show do
   use Web, :live_view
 
   def render(assigns) do

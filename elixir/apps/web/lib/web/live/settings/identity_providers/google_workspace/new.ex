@@ -1,6 +1,6 @@
-defmodule Web.SettingsLive.IdentityProviders.GoogleWorkspace.New do
+defmodule Web.Settings.IdentityProviders.GoogleWorkspace.New do
   use Web, :live_view
-  import Web.SettingsLive.IdentityProviders.GoogleWorkspace.Components
+  import Web.Settings.IdentityProviders.GoogleWorkspace.Components
   alias Domain.Auth
 
   def mount(_params, _session, socket) do

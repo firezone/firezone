@@ -54,11 +54,11 @@ defmodule Web.Router do
         Web.Sandbox,
         {Web.Auth, :redirect_if_user_is_authenticated}
       ] do
-      live "/", Auth.SignInLive
+      live "/", Auth.SignIn
 
       # Adapter-specific routes
       ## Email
-      live "/providers/email/:provider_id", Auth.EmailLive, :confirm
+      live "/providers/email/:provider_id", Auth.Email, :confirm
     end
 
     scope "/providers/:provider_id" do
@@ -193,8 +193,8 @@ defmodule Web.Router do
 
     live_session :landing,
       on_mount: [Web.Sandbox] do
-      live "/:account_id/", LandingLive
-      live "/", LandingLive
+      live "/:account_id/", Landing
+      live "/", Landing
     end
   end
 end

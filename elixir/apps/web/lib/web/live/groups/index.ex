@@ -1,4 +1,4 @@
-defmodule Web.GroupsLive.Index do
+defmodule Web.Groups.Index do
   use Web, :live_view
 
   def render(assigns) do

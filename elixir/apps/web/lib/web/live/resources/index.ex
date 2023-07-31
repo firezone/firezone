@@ -1,4 +1,4 @@
-defmodule Web.ResourcesLive.Index do
+defmodule Web.Resources.Index do
   use Web, :live_view
 
   alias Domain.Resources
