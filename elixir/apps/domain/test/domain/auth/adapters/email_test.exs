@@ -40,27 +40,36 @@ defmodule Domain.Auth.Adapters.EmailTest do
     end
   end
 
-  describe "ensure_provisioned_for_account/2" do
+  describe "provider_changeset/1" do
     test "returns changeset as is" do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
       account = AccountsFixtures.create_account()
-      changeset = %Ecto.Changeset{}
-      assert ensure_provisioned_for_account(changeset, account) == changeset
+      changeset = %Ecto.Changeset{data: %Domain.Auth.Provider{account_id: account.id}}
+      assert provider_changeset(changeset) == changeset
     end
 
     test "returns error when email adapter is not configured" do
       account = AccountsFixtures.create_account()
-      changeset = %Ecto.Changeset{}
-      changeset = ensure_provisioned_for_account(changeset, account)
+      changeset = %Ecto.Changeset{data: %Domain.Auth.Provider{account_id: account.id}}
+      changeset = provider_changeset(changeset)
       assert changeset.errors == [adapter: {"email adapter is not configured", []}]
     end
   end
 
+  describe "ensure_provisioned/1" do
+    test "does nothing for a provider" do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = AuthFixtures.create_email_provider()
+      assert ensure_provisioned(provider) == {:ok, provider}
+    end
+  end
+
   describe "ensure_deprovisioned/1" do
-    test "returns changeset as is" do
-      changeset = %Ecto.Changeset{}
-      assert ensure_deprovisioned(changeset) == changeset
+    test "does nothing for a provider" do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = AuthFixtures.create_email_provider()
+      assert ensure_deprovisioned(provider) == {:ok, provider}
     end
   end
 

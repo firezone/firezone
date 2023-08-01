@@ -3,16 +3,17 @@ use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
 use phoenix_channel::{Error, Event, PhoenixChannel};
+use prometheus_client::registry::Registry;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use relay::{AllocationId, Command, Server, Sleep, UdpSocket};
-use std::collections::{HashMap, VecDeque};
+use relay::{Allocation, AllocationId, Command, Server, Sleep, UdpSocket};
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::pin::Pin;
 use std::task::Poll;
 use std::time::SystemTime;
-use tokio::task;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -31,6 +32,11 @@ struct Args {
     /// Must not be a wildcard-address.
     #[arg(long, env)]
     listen_ip4_addr: Ipv4Addr,
+    /// The address of the local interface where we should serve the prometheus metrics.
+    ///
+    /// The metrics will be available at `http://<metrics_addr>/metrics`.
+    #[arg(long, env)]
+    metrics_addr: Option<SocketAddr>,
     /// The websocket URL of the portal server to connect to.
     #[arg(long, env, default_value = "wss://api.firezone.dev")]
     portal_ws_url: Url,
@@ -68,7 +74,13 @@ async fn main() -> Result<()> {
         tracing_subscriber::fmt().with_env_filter(env_filter).init()
     }
 
-    let server = Server::new(args.public_ip4_addr, make_rng(args.rng_seed));
+    let mut metric_registry = Registry::with_prefix("relay");
+
+    let server = Server::new(
+        args.public_ip4_addr,
+        make_rng(args.rng_seed),
+        &mut metric_registry,
+    );
 
     let channel = if let Some(token) = args.portal_token {
         let mut url = args.portal_ws_url.clone();
@@ -125,7 +137,12 @@ async fn main() -> Result<()> {
         None
     };
 
-    let mut eventloop = Eventloop::new(server, channel, args.listen_ip4_addr).await?;
+    let mut eventloop =
+        Eventloop::new(server, channel, args.listen_ip4_addr, &mut metric_registry).await?;
+
+    if let Some(metrics_addr) = args.metrics_addr {
+        tokio::spawn(relay::metrics::serve(metrics_addr, metric_registry));
+    }
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
@@ -168,7 +185,8 @@ fn make_rng(seed: Option<u64>) -> StdRng {
 }
 
 struct Eventloop<R> {
-    ip4_socket: UdpSocket,
+    inbound_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
+    outbound_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
     listen_ip4_address: Ipv4Addr,
     server: Server<R>,
     channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
@@ -176,17 +194,6 @@ struct Eventloop<R> {
     relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     relay_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr, AllocationId)>,
     sleep: Sleep,
-
-    client_send_buffer: VecDeque<(Vec<u8>, SocketAddr)>,
-    allocation_send_buffer: VecDeque<(Vec<u8>, SocketAddr, AllocationId)>,
-}
-
-struct Allocation {
-    /// The handle to the task that is running the allocation.
-    ///
-    /// Stored here to make resource-cleanup easy.
-    handle: task::JoinHandle<()>,
-    sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
 }
 
 impl<R> Eventloop<R>
@@ -197,20 +204,29 @@ where
         server: Server<R>,
         channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
         listen_ip4_address: Ipv4Addr,
+        _: &mut Registry,
     ) -> Result<Self> {
-        let (sender, receiver) = mpsc::channel(1);
+        let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);
+        let (inbound_data_sender, inbound_data_receiver) = mpsc::channel(10);
+        let (outbound_data_sender, outbound_data_receiver) =
+            mpsc::channel::<(Vec<u8>, SocketAddr)>(10);
+
+        tokio::spawn(main_udp_socket_task(
+            listen_ip4_address,
+            inbound_data_sender,
+            outbound_data_receiver,
+        ));
 
         Ok(Self {
-            ip4_socket: UdpSocket::bind((listen_ip4_address, 3478)).await?,
+            inbound_data_receiver,
+            outbound_data_sender,
             listen_ip4_address,
             server,
             channel,
             allocations: Default::default(),
-            relay_data_sender: sender,
-            relay_data_receiver: receiver,
+            relay_data_sender,
+            relay_data_receiver,
             sleep: Sleep::default(),
-            client_send_buffer: Default::default(),
-            allocation_send_buffer: Default::default(),
         })
     }
 
@@ -220,7 +236,17 @@ where
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
                     Command::SendMessage { payload, recipient } => {
-                        self.client_send_buffer.push_back((payload, recipient));
+                        if let Err(e) = self.outbound_data_sender.try_send((payload, recipient)) {
+                            if e.is_disconnected() {
+                                return Poll::Ready(Err(anyhow!(
+                                    "Channel to primary UDP socket task has been closed"
+                                )));
+                            }
+
+                            if e.is_full() {
+                                tracing::warn!(%recipient, "Dropping message because channel to primary UDP socket task is full");
+                            }
+                        }
                     }
                     Command::AllocateAddresses { id, port } => {
                         self.allocations.insert(
@@ -245,79 +271,31 @@ where
                         Pin::new(&mut self.sleep).reset(deadline);
                     }
                     Command::ForwardData { id, data, receiver } => {
-                        self.allocation_send_buffer.push_back((data, receiver, id));
+                        let mut allocation = match self.allocations.entry(id) {
+                            Entry::Occupied(entry) => entry,
+                            Entry::Vacant(_) => {
+                                tracing::debug!(allocation = %id, "Unknown allocation");
+                                continue;
+                            }
+                        };
+
+                        if allocation.get_mut().send(data, receiver).is_err() {
+                            self.server.handle_allocation_failed(id);
+                            allocation.remove();
+                        }
                     }
                 }
 
                 continue; // Attempt to process more commands.
             }
 
-            // Priority 2: Flush data to the socket.
-            if let Some((payload, recipient)) = self.client_send_buffer.pop_front() {
-                match self.ip4_socket.try_send_to(&payload, recipient, cx)? {
-                    Poll::Ready(()) => {
-                        continue;
-                    }
-                    Poll::Pending => {
-                        // Yield early if we cannot send data.
-                        // Continuing the event loop here would cause `client_send_buffer` to potentially grow faster than we can send data.
-
-                        self.client_send_buffer.push_front((payload, recipient));
-                        return Poll::Pending;
-                    }
-                }
-            }
-
-            // Priority 3: Forward data to allocations.
-            if let Some((data, receiver, id)) = self.allocation_send_buffer.pop_front() {
-                let Some(allocation) = self.allocations.get_mut(&id) else {
-                    tracing::debug!("Unknown allocation {id}");
-                    continue;
-                };
-
-                match allocation.sender.poll_ready(cx) {
-                    Poll::Ready(Ok(())) => {}
-                    Poll::Ready(Err(_)) => {
-                        debug_assert!(
-                            false,
-                            "poll_ready to never fail because we own the other end of the channel"
-                        );
-                    }
-                    Poll::Pending => {
-                        // Same as above, we need to yield early if we cannot send data.
-                        // The task will be woken up once there is space in the channel.
-
-                        self.allocation_send_buffer.push_front((data, receiver, id));
-                        return Poll::Pending;
-                    }
-                }
-
-                match allocation.sender.try_send((data, receiver)) {
-                    Ok(()) => {}
-                    Err(e) if e.is_full() => {
-                        let (data, receiver) = e.into_inner();
-
-                        self.allocation_send_buffer.push_front((data, receiver, id));
-                        return Poll::Pending;
-                    }
-                    Err(_) => {
-                        debug_assert!(
-                            false,
-                            "try_send to never fail because we own the other end of the channel"
-                        );
-                    }
-                };
-
-                continue;
-            }
-
-            // Priority 4: Handle time-sensitive tasks:
+            // Priority 2: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
                 self.server.handle_deadline_reached(SystemTime::now());
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 5: Handle relayed data (we prioritize latency for existing allocations over making new ones)
+            // Priority 3: Handle relayed data (we prioritize latency for existing allocations over making new ones)
             if let Poll::Ready(Some((data, sender, allocation))) =
                 self.relay_data_receiver.poll_next_unpin(cx)
             {
@@ -325,14 +303,16 @@ where
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 6: Accept new allocations / answer STUN requests etc
-            if let Poll::Ready((buffer, sender)) = self.ip4_socket.poll_recv(cx)? {
+            // Priority 4: Accept new allocations / answer STUN requests etc
+            if let Poll::Ready(Some((buffer, sender))) =
+                self.inbound_data_receiver.poll_next_unpin(cx)
+            {
                 self.server
-                    .handle_client_input(buffer.filled(), sender, SystemTime::now());
+                    .handle_client_input(&buffer, sender, SystemTime::now());
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 7: Handle portal messages
+            // Priority 5: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
                 Some(Poll::Ready(Ok(Event::InboundMessage {
                     msg: InboundPortalMessage::Init {},
@@ -381,55 +361,22 @@ where
     }
 }
 
-impl Allocation {
-    fn new(
-        relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
-        id: AllocationId,
-        listen_ip4_addr: Ipv4Addr,
-        port: u16,
-    ) -> Self {
-        let (client_to_peer_sender, client_to_peer_receiver) = mpsc::channel(1);
-
-        let task = tokio::spawn(async move {
-            let Err(e) = forward_incoming_relay_data(relay_data_sender, client_to_peer_receiver, id, listen_ip4_addr, port).await else {
-                unreachable!()
-            };
-
-            // TODO: Do we need to clean this up in the server? It will eventually timeout if not refreshed.
-            tracing::warn!("Allocation task for {id} failed: {e}");
-        });
-
-        Self {
-            handle: task,
-            sender: client_to_peer_sender,
-        }
-    }
-}
-
-impl Drop for Allocation {
-    fn drop(&mut self) {
-        self.handle.abort();
-    }
-}
-
-async fn forward_incoming_relay_data(
-    mut relayed_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
-    mut client_to_peer_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
-    id: AllocationId,
-    listen_ip4_addr: Ipv4Addr,
-    port: u16,
+async fn main_udp_socket_task(
+    listen_ip4_address: Ipv4Addr,
+    mut inbound_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
+    mut outbound_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
 ) -> Result<Infallible> {
-    let mut socket = UdpSocket::bind((listen_ip4_addr, port)).await?;
+    let mut socket = UdpSocket::bind((listen_ip4_address, 3478)).await?;
 
     loop {
         tokio::select! {
             result = socket.recv() => {
                 let (data, sender) = result?;
-                relayed_data_sender.send((data.to_vec(), sender, id)).await?;
+                inbound_data_sender.send((data.to_vec(), sender)).await?;
             }
-
-            Some((data, recipient)) = client_to_peer_receiver.next() => {
-                socket.send_to(&data, recipient).await?;
+            maybe_item = outbound_data_receiver.next() => {
+                let (data, recipient) = maybe_item.context("Outbound data channel closed")?;
+                socket.send_to(data.as_ref(), recipient).await?;
             }
         }
     }

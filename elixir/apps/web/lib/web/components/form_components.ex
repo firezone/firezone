@@ -87,7 +87,7 @@ defmodule Web.FormComponents do
         />
         <%= @label %>
       </label>
-      <.error :for={msg <- @errors}><%= msg %></.error>
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
     </div>
     """
   end
@@ -104,7 +104,7 @@ defmodule Web.FormComponents do
         <option :if={@prompt} value=""><%= @prompt %></option>
         <%= Phoenix.HTML.Form.options_for_select(@options, @value) %>
       </select>
-      <.error :for={msg <- @errors}><%= msg %></.error>
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
     </div>
     """
   end
@@ -124,7 +124,7 @@ defmodule Web.FormComponents do
         ]}
         {@rest}
       ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
-      <.error :for={msg <- @errors}><%= msg %></.error>
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
     </div>
     """
   end
@@ -142,12 +142,13 @@ defmodule Web.FormComponents do
         class={[
           "bg-gray-50 p-2.5 block w-full rounded-lg border text-gray-900 focus:ring-primary-600 text-sm",
           "phx-no-feedback:border-gray-300 phx-no-feedback:focus:border-primary-600",
+          "disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200 disabled:shadow-none",
           "border-gray-300 focus:border-primary-600",
           @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
         {@rest}
       />
-      <.error :for={msg <- @errors}><%= msg %></.error>
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
     </div>
     """
   end
@@ -173,6 +174,49 @@ defmodule Web.FormComponents do
   ### Buttons ###
 
   @doc """
+  Render a button group.
+  """
+  slot :first, required: true, doc: "First button"
+  slot :middle, required: false, doc: "Middle button(s)"
+  slot :last, required: true, doc: "Last button"
+
+  def button_group(assigns) do
+    ~H"""
+    <div class="inline-flex rounded-md shadow-sm" role="group">
+      <button type="button" class={~w[
+          px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200
+          rounded-l-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
+          focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
+          dark:text-white dark:hover:text-white dark:hover:bg-gray-600
+          dark:focus:ring-blue-500 dark:focus:text-white
+        ]}>
+        <%= render_slot(@first) %>
+      </button>
+      <%= for middle <- @middle do %>
+        <button type="button" class={~w[
+            px-4 py-2 text-sm font-medium text-gray-900 bg-white border-t border-b
+            border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
+            focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
+            dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500
+            dark:focus:text-white
+          ]}>
+          <%= render_slot(middle) %>
+        </button>
+      <% end %>
+      <button type="button" class={~w[
+          px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200
+          rounded-r-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
+          focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
+          dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500
+          dark:focus:text-white
+        ]}>
+        <%= render_slot(@last) %>
+      </button>
+    </div>
+    """
+  end
+
+  @doc """
   Renders a button.
 
   ## Examples
@@ -182,7 +226,7 @@ defmodule Web.FormComponents do
   """
   attr :type, :string, default: nil
   attr :class, :string, default: nil
-  attr :rest, :global, include: ~w(disabled form name value)
+  attr :rest, :global, include: ~w(disabled form name value navigate)
 
   slot :inner_block, required: true
 
@@ -239,14 +283,15 @@ defmodule Web.FormComponents do
       Edit user
     </.delete_button>
   """
-  attr :phx_click, :string, doc: "Action to perform when the button is clicked"
   slot :inner_block, required: true
+  attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
   def delete_button(assigns) do
     ~H"""
     <button
       type="button"
       class="text-red-600 inline-flex items-center hover:text-white border border-red-600 hover:bg-red-600 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:border-red-500 dark:text-red-500 dark:hover:text-white dark:hover:bg-red-600 dark:focus:ring-red-900"
+      {@rest}
     >
       <!-- XXX: Fix icon for dark mode -->
       <!-- <.icon name="hero-trash-solid" class="text-red-600 w-5 h-5 mr-1 -ml-1" /> -->
@@ -260,7 +305,7 @@ defmodule Web.FormComponents do
 
   ## Examples
 
-    <.add_button navigate={~p"/users/new"}>
+    <.add_button navigate={~p"/actors/new"}>
       Add user
     </.add_button>
   """

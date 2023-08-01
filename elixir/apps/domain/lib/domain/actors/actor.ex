@@ -8,8 +8,10 @@ defmodule Domain.Actors.Actor do
 
     has_many :identities, Domain.Auth.Identity
 
-    # belongs_to :group, Domain.Actors.Group
     belongs_to :account, Domain.Accounts.Account
+
+    has_many :memberships, Domain.Actors.Membership, on_replace: :delete
+    has_many :groups, through: [:memberships, :group]
 
     field :disabled_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec

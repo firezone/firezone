@@ -1,7 +1,7 @@
 defmodule Domain.Auth.Adapters.OpenIDConnect do
   use Supervisor
   alias Domain.Repo
-  alias Domain.Accounts
+  alias Domain.Actors
   alias Domain.Auth.{Identity, Provider, Adapter}
   alias Domain.Auth.Adapters.OpenIDConnect.{Settings, State, PKCE}
   require Logger
@@ -21,6 +21,15 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   @impl true
+  def capabilities do
+    [
+      provisioners: [:just_in_time],
+      default_provisioner: :just_in_time,
+      parent_adapter: :openid_connect
+    ]
+  end
+
+  @impl true
   def identity_changeset(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
     changeset
     |> Domain.Validator.trim_change(:provider_identifier)
@@ -29,8 +38,9 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   @impl true
-  def ensure_provisioned_for_account(%Ecto.Changeset{} = changeset, %Accounts.Account{}) do
-    Domain.Changeset.cast_polymorphic_embed(changeset, :adapter_config,
+  def provider_changeset(%Ecto.Changeset{} = changeset) do
+    changeset
+    |> Domain.Changeset.cast_polymorphic_embed(:adapter_config,
       required: true,
       with: fn current_attrs, attrs ->
         Ecto.embedded_load(Settings, current_attrs, :json)
@@ -40,8 +50,13 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   @impl true
-  def ensure_deprovisioned(%Ecto.Changeset{} = changeset) do
-    changeset
+  def ensure_provisioned(%Provider{} = provider) do
+    {:ok, provider}
+  end
+
+  @impl true
+  def ensure_deprovisioned(%Provider{} = provider) do
+    {:ok, provider}
   end
 
   def authorization_uri(%Provider{} = provider, redirect_uri) when is_binary(redirect_uri) do
@@ -71,8 +86,9 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   @impl true
-  def verify_identity(%Provider{} = provider, {redirect_uri, code_verifier, code}) do
-    sync_identity(provider, %{
+  def verify_and_update_identity(%Provider{} = provider, {redirect_uri, code_verifier, code}) do
+    provider
+    |> sync_identity(%{
       grant_type: "authorization_code",
       redirect_uri: redirect_uri,
       code: code,
@@ -87,6 +103,24 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     end
   end
 
+  def verify_and_upsert_identity(
+        %Actors.Actor{} = actor,
+        %Provider{} = provider,
+        {redirect_uri, code_verifier, code}
+      ) do
+    token_params = %{
+      grant_type: "authorization_code",
+      redirect_uri: redirect_uri,
+      code: code,
+      code_verifier: code_verifier
+    }
+
+    with {:ok, provider_identifier, identity_state} <-
+           fetch_identity_state(provider, token_params) do
+      Domain.Auth.upsert_identity(actor, provider, provider_identifier, identity_state)
+    end
+  end
+
   def refresh_token(%Identity{} = identity) do
     identity = Repo.preload(identity, :provider)
 
@@ -96,13 +130,17 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     })
   end
 
-  defp sync_identity(%Provider{} = provider, token_params) do
+  defp fetch_identity_state(%Provider{} = provider, token_params) do
     config = config_for_provider(provider)
 
     with {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
          {:ok, userinfo} <- OpenIDConnect.fetch_userinfo(config, tokens["access_token"]) do
       # TODO: sync groups
+      # TODO: refresh the access token so it doesn't expire
+      # TODO: first admin user token that configured provider should used for periodic syncs
+      # TODO: active status for relays, gateways in list functions
+      # TODO: JIT provisioning
       expires_at =
         cond do
           not is_nil(tokens["expires_in"]) ->
@@ -117,26 +155,14 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
       provider_identifier = claims["sub"]
 
-      Identity.Query.by_provider_id(provider.id)
-      |> Identity.Query.by_provider_identifier(provider_identifier)
-      |> Repo.fetch_and_update(
-        with: fn identity ->
-          Identity.Changeset.update_provider_state(
-            identity,
-            %{
-              access_token: tokens["access_token"],
-              refresh_token: tokens["refresh_token"],
-              expires_at: expires_at,
-              userinfo: userinfo,
-              claims: claims
-            }
-          )
-        end
-      )
-      |> case do
-        {:ok, identity} -> {:ok, identity, expires_at}
-        {:error, reason} -> {:error, reason}
-      end
+      {:ok, provider_identifier,
+       %{
+         access_token: tokens["access_token"],
+         refresh_token: tokens["refresh_token"],
+         expires_at: expires_at,
+         userinfo: userinfo,
+         claims: claims
+       }}
     else
       {:error, {:invalid_jwt, "invalid exp claim: token has expired"}} ->
         {:error, :expired_token}
@@ -151,6 +177,23 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         )
 
         {:error, :internal_error}
+    end
+  end
+
+  defp sync_identity(%Provider{} = provider, token_params) do
+    with {:ok, provider_identifier, identity_state} <-
+           fetch_identity_state(provider, token_params) do
+      Identity.Query.by_provider_id(provider.id)
+      |> Identity.Query.by_provider_identifier(provider_identifier)
+      |> Repo.fetch_and_update(
+        with: fn identity ->
+          Identity.Changeset.update_identity_provider_state(identity, identity_state)
+        end
+      )
+      |> case do
+        {:ok, identity} -> {:ok, identity, identity_state.expires_at}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 

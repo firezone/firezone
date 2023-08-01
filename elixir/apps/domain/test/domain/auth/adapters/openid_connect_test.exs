@@ -35,16 +35,16 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     end
   end
 
-  describe "ensure_provisioned_for_account/2" do
+  describe "provider_changeset/1" do
     test "returns changeset errors in invalid adapter config" do
       account = AccountsFixtures.create_account()
       changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, %{})
-      assert %Ecto.Changeset{} = changeset = ensure_provisioned_for_account(changeset, account)
+      assert %Ecto.Changeset{} = changeset = provider_changeset(changeset)
       assert errors_on(changeset) == %{adapter_config: ["can't be blank"]}
 
       attrs = AuthFixtures.provider_attrs(adapter: :openid_connect, adapter_config: %{})
       changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, attrs)
-      assert %Ecto.Changeset{} = changeset = ensure_provisioned_for_account(changeset, account)
+      assert %Ecto.Changeset{} = changeset = provider_changeset(changeset)
 
       assert errors_on(changeset) == %{
                adapter_config: %{
@@ -71,7 +71,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
       changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, attrs)
 
-      assert %Ecto.Changeset{} = changeset = ensure_provisioned_for_account(changeset, account)
+      assert %Ecto.Changeset{} = changeset = provider_changeset(changeset)
       assert {:ok, provider} = Repo.insert(changeset)
 
       assert provider.name == attrs.name
@@ -87,10 +87,27 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     end
   end
 
+  describe "ensure_provisioned/1" do
+    test "does nothing for a provider" do
+      account = AccountsFixtures.create_account()
+
+      {provider, _bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_openid_connect_provider(account: account)
+
+      assert ensure_provisioned(provider) == {:ok, provider}
+    end
+  end
+
   describe "ensure_deprovisioned/1" do
-    test "returns changeset as is" do
-      changeset = %Ecto.Changeset{}
-      assert ensure_deprovisioned(changeset) == changeset
+    test "does nothing for a provider" do
+      account = AccountsFixtures.create_account()
+
+      {provider, _bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_openid_connect_provider(account: account)
+
+      assert ensure_deprovisioned(provider) == {:ok, provider}
     end
   end
 
@@ -143,7 +160,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     end
   end
 
-  describe "verify_identity/2" do
+  describe "verify_and_update_identity/2" do
     setup do
       account = AccountsFixtures.create_account()
 
@@ -170,7 +187,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, identity, expires_at} = verify_identity(provider, payload)
+      assert {:ok, identity, expires_at} = verify_and_update_identity(provider, payload)
 
       assert identity.provider_state == %{
                access_token: nil,
@@ -212,7 +229,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, identity, _expires_at} = verify_identity(provider, payload)
+      assert {:ok, identity, _expires_at} = verify_and_update_identity(provider, payload)
 
       assert identity.provider_state.access_token == "MY_ACCESS_TOKEN"
       assert identity.provider_state.refresh_token == "MY_REFRESH_TOKEN"
@@ -237,7 +254,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_identity(provider, payload) == {:error, :expired}
+      assert verify_and_update_identity(provider, payload) == {:error, :expired}
     end
 
     test "returns error when token is invalid", %{
@@ -252,7 +269,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_identity(provider, payload) == {:error, :invalid}
+      assert verify_and_update_identity(provider, payload) == {:error, :invalid}
     end
 
     test "returns error when identity does not exist", %{
@@ -277,7 +294,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_identity(provider, payload) == {:error, :not_found}
+      assert verify_and_update_identity(provider, payload) == {:error, :not_found}
     end
 
     test "returns error when identity does not belong to provider", %{
@@ -302,7 +319,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_identity(provider, payload) == {:error, :not_found}
+      assert verify_and_update_identity(provider, payload) == {:error, :not_found}
     end
 
     test "returns error when provider is down", %{
@@ -315,7 +332,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_identity(provider, payload) == {:error, :internal_error}
+      assert verify_and_update_identity(provider, payload) == {:error, :internal_error}
     end
   end
 

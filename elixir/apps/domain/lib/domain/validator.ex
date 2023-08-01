@@ -390,6 +390,14 @@ defmodule Domain.Validator do
     end)
   end
 
+  def copy_change(changeset, from, to) do
+    case fetch_change(changeset, from) do
+      {:ok, nil} -> changeset
+      {:ok, value} -> put_change(changeset, to, value)
+      :error -> changeset
+    end
+  end
+
   @doc """
   Returns `true` when binary representation of Ecto UUID is valid, otherwise - `false`.
   """
