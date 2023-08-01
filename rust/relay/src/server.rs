@@ -984,6 +984,16 @@ fn error_response(
     message
 }
 
+/// Derive the relay address for the client based on the request and the supported IP stack of the relay server.
+///
+/// By default, a client gets an IPv4 address.
+/// They can request an _additional_ IPv6 address or only an IPv6 address.
+/// This is handled with two different STUN attributes: [AdditionalAddressFamily] and [RequestedAddressFamily].
+///
+/// The specification mandates certain checks for how these attributes can be used.
+/// In a nutshell, the requirements constrain the use such that there is only one way of doing things.
+/// For example, it is disallowed to use [RequestedAddressFamily] for IPv6 and requested and an IPv4 address via [AdditionalAddressFamily].
+/// If this is desired, clients should simply use [AdditionalAddressFamily] for IPv6.
 fn derive_relay_addresses(
     public_address: IpStack,
     requested_addr_family: Option<&RequestedAddressFamily>,
