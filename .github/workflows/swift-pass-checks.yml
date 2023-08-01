@@ -13,10 +13,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  swift_draft-release:
-    runs-on: ubuntu-latest
-    steps:
-      - run: 'echo "No build required"'
   swift_build:
     strategy:
       matrix:
