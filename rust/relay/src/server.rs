@@ -24,7 +24,7 @@ use prometheus_client::registry::Registry;
 use rand::Rng;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
@@ -51,7 +51,7 @@ pub struct Server<R> {
     decoder: client_message::Decoder,
     encoder: MessageEncoder<Attribute>,
 
-    public_address: IpStack<Ipv4Addr, Ipv6Addr>,
+    public_address: IpStack,
 
     /// All client allocations, indexed by client's socket address.
     allocations: HashMap<SocketAddr, Allocation>,
@@ -148,11 +148,7 @@ impl<R> Server<R>
 where
     R: Rng,
 {
-    pub fn new(
-        public_address: impl Into<IpStack<Ipv4Addr, Ipv6Addr>>,
-        mut rng: R,
-        registry: &mut Registry,
-    ) -> Self {
+    pub fn new(public_address: impl Into<IpStack>, mut rng: R, registry: &mut Registry) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
         let allocations_gauge = Gauge::default();
@@ -750,8 +746,8 @@ where
         &mut self,
         now: SystemTime,
         lifetime: &Lifetime,
-        first_relay_addr: std::net::IpAddr,
-        second_relay_addr: Option<std::net::IpAddr>,
+        first_relay_addr: IpAddr,
+        second_relay_addr: Option<IpAddr>,
     ) -> Allocation {
         // First, find an unused port.
 
@@ -918,8 +914,8 @@ struct Allocation {
     port: u16,
     expires_at: SystemTime,
 
-    first_relay_addr: std::net::IpAddr,
-    second_relay_addr: Option<std::net::IpAddr>,
+    first_relay_addr: IpAddr,
+    second_relay_addr: Option<IpAddr>,
 }
 
 struct Channel {
@@ -989,10 +985,10 @@ fn error_response(
 }
 
 fn derive_relay_addresses(
-    public_address: IpStack<Ipv4Addr, Ipv6Addr>,
+    public_address: IpStack,
     requested_addr_family: Option<&RequestedAddressFamily>,
     additional_addr_family: Option<&AdditionalAddressFamily>,
-) -> Result<(std::net::IpAddr, Option<std::net::IpAddr>), ErrorCode> {
+) -> Result<(IpAddr, Option<IpAddr>), ErrorCode> {
     match (
         public_address,
         requested_addr_family.map(|r| r.address_family()),

@@ -219,7 +219,7 @@ struct Eventloop<R> {
     inbound_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
     outbound_ip4_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
     outbound_ip6_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
-    listen_address: IpStack<Ipv4Addr, Ipv6Addr>,
+    listen_address: IpStack,
     server: Server<R>,
     channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
     allocations: HashMap<(AllocationId, AddressFamily), Allocation>,
@@ -235,7 +235,7 @@ where
     fn new(
         server: Server<R>,
         channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
-        listen_address: IpStack<Ipv4Addr, Ipv6Addr>,
+        listen_address: IpStack,
         _: &mut Registry,
     ) -> Result<Self> {
         let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);

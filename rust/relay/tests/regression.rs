@@ -425,7 +425,7 @@ struct TestServer {
 }
 
 impl TestServer {
-    fn new(relay_public_addr: impl Into<IpStack<Ipv4Addr, Ipv6Addr>>) -> Self {
+    fn new(relay_public_addr: impl Into<IpStack>) -> Self {
         Self {
             server: Server::new(
                 relay_public_addr,
