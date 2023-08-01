@@ -22,7 +22,7 @@ where
     }
 
     async fn update_and_send_packet(&self, packet: &mut [u8], dst_addr: IpAddr) {
-        let Some(mut pkt) = MutableIpPacket::new(packet) else {return};
+        let Some(mut pkt) = MutableIpPacket::new(packet) else { return };
         pkt.set_dst(dst_addr);
         pkt.set_checksum();
 
