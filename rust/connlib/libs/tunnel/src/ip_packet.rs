@@ -74,12 +74,26 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
+    pub(crate) fn set_dst(&mut self, dst: IpAddr) {
+        match (self, dst) {
+            (Self::MutableIpv4Packet(p), IpAddr::V4(d)) => p.set_destination(d),
+            (Self::MutableIpv6Packet(p), IpAddr::V6(d)) => p.set_destination(d),
+            _ => {}
+        }
+    }
+
     pub(crate) fn set_len(&mut self, total_len: usize, payload_len: usize) {
         match self {
             Self::MutableIpv4Packet(p) => p.set_total_length(total_len as u16),
             Self::MutableIpv6Packet(p) => p.set_payload_length(payload_len as u16),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Version {
+    Ipv4,
+    Ipv6,
 }
 
 #[derive(Debug, PartialEq)]
@@ -94,6 +108,13 @@ impl<'a> IpPacket<'a> {
             4 => Ipv4Packet::new(data).map(Into::into),
             6 => Ipv6Packet::new(data).map(Into::into),
             _ => None,
+        }
+    }
+
+    pub(crate) fn version(&self) -> Version {
+        match self {
+            IpPacket::Ipv4Packet(_) => Version::Ipv4,
+            IpPacket::Ipv6Packet(_) => Version::Ipv6,
         }
     }
 

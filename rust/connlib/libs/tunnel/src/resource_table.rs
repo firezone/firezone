@@ -36,6 +36,10 @@ impl ResourceTable {
         }
     }
 
+    pub fn values(&self) -> impl Iterator<Item = &ResourceDescription> {
+        self.id_table.values()
+    }
+
     /// Gets the resource by ip
     pub fn get_by_ip(&self, ip: impl Into<IpAddr>) -> Option<&ResourceDescription> {
         // SAFETY: if we found the pointer, due to our internal consistency rules it is in the id_table

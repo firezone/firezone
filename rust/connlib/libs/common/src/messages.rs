@@ -110,6 +110,13 @@ impl ResourceDescription {
             ResourceDescription::Cidr(r) => r.id,
         }
     }
+
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        match self {
+            ResourceDescription::Dns(r) => r.ipv4 == ip || r.ipv6 == ip,
+            ResourceDescription::Cidr(r) => r.address.contains(ip),
+        }
+    }
 }
 
 /// Description of a resource that maps to a CIDR.
