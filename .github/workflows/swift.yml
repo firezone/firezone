@@ -32,8 +32,6 @@ jobs:
     defaults:
       run:
         working-directory: ./swift
-    needs:
-      - swift_draft-release
     steps:
       - uses: actions/checkout@v3
       - run: rustup show
