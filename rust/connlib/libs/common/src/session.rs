@@ -50,19 +50,15 @@ pub struct Session<T, U, V, R, M, CB: Callbacks> {
     _phantom: PhantomData<(T, U, V, R, M)>,
 }
 
-/// Tunnel addresses to be surfaced to the client apps.
-#[derive(Debug)]
-pub struct TunnelAddresses {
-    /// IPv4 Address.
-    pub address4: Ipv4Addr,
-    /// IPv6 Address.
-    pub address6: Ipv6Addr,
-}
-
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
     /// Called when the tunnel address is set.
-    fn on_set_interface_config(&self, tunnel_addresses: TunnelAddresses, dns_address: Ipv4Addr);
+    fn on_set_interface_config(
+        &self,
+        tunnel_address_v4: Ipv4Addr,
+        tunnel_address_v6: Ipv6Addr,
+        dns_address: Ipv4Addr,
+    );
     /// Called when the tunnel is connected.
     fn on_tunnel_ready(&self);
     /// Called when when a route is added.
@@ -242,10 +238,8 @@ where
     fn connect_mock(callbacks: CB) {
         std::thread::sleep(Duration::from_secs(1));
         callbacks.on_set_interface_config(
-            TunnelAddresses {
-                address4: "100.100.111.2".parse().unwrap(),
-                address6: "fd00:0222:2021:1111::2".parse().unwrap(),
-            },
+            "100.100.111.2".parse().unwrap(),
+            "fd00:0222:2021:1111::2".parse().unwrap(),
             DNS_SENTINEL,
         );
         callbacks.on_tunnel_ready();
@@ -276,8 +270,6 @@ where
     }
 
     fn disconnect_inner(runtime: &Mutex<Option<Runtime>>, callbacks: &CB, error: Option<Error>) {
-        callbacks.on_disconnect(error.as_ref());
-
         // 1. Close the websocket connection
         // 2. Free the device handle (UNIX)
         // 3. Close the file descriptor (UNIX)
@@ -290,6 +282,8 @@ where
         // Furthermore, we will depend on Drop impls to do the list above so,
         // implement them :)
         *runtime.lock() = None;
+
+        callbacks.on_disconnect(error.as_ref());
     }
 
     /// Cleanup a [Session].

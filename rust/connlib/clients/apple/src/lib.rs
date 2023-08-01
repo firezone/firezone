@@ -2,48 +2,14 @@
 // Swift bridge generated code triggers this below
 #![allow(improper_ctypes, non_camel_case_types)]
 
-use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session, TunnelAddresses};
-use std::{net::Ipv4Addr, sync::Arc};
+use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session};
+use std::{
+    net::{Ipv4Addr, Ipv6Addr},
+    sync::Arc,
+};
 
 #[swift_bridge::bridge]
 mod ffi {
-    #[swift_bridge(swift_repr = "struct")]
-    struct TunnelAddresses {
-        address4: String,
-        address6: String,
-    }
-
-    // TODO: Duplicating these enum variants from `libs/common/src/error.rs` is
-    // brittle/noisy/tedious
-    enum SwiftConnlibError {
-        // `swift-bridge` doesn't seem to support `Option` for Swift function
-        // arguments...
-        None,
-        Io,
-        Base64DecodeError,
-        Base64DecodeSliceError,
-        RequestError,
-        PortalConnectionError,
-        UriError,
-        SerializeError,
-        IceError,
-        IceDataError,
-        SendChannelError,
-        ConnectionEstablishError,
-        WireguardError,
-        NoRuntime,
-        UnknownResource,
-        ControlProtocolError,
-        IfaceRead,
-        Other,
-        InvalidTunnelName,
-        NetlinkErrorIo,
-        NoIface,
-        NoMtu,
-        Panic(String),
-        PanicNonStringPayload,
-    }
-
     extern "Rust" {
         type WrappedSession;
 
@@ -52,7 +18,7 @@ mod ffi {
             portal_url: String,
             token: String,
             callback_handler: CallbackHandler,
-        ) -> Result<WrappedSession, SwiftConnlibError>;
+        ) -> Result<WrappedSession, String>;
 
         #[swift_bridge(swift_name = "bumpSockets")]
         fn bump_sockets(&self) -> bool;
@@ -67,7 +33,12 @@ mod ffi {
         type CallbackHandler;
 
         #[swift_bridge(swift_name = "onSetInterfaceConfig")]
-        fn on_set_interface_config(&self, tunnelAddresses: TunnelAddresses, dnsAddress: String);
+        fn on_set_interface_config(
+            &self,
+            tunnelAddressIPv4: String,
+            tunnelAddressIPv6: String,
+            dnsAddress: String,
+        );
 
         #[swift_bridge(swift_name = "onTunnelReady")]
         fn on_tunnel_ready(&self);
@@ -82,55 +53,10 @@ mod ffi {
         fn on_update_resources(&self, resourceList: String);
 
         #[swift_bridge(swift_name = "onDisconnect")]
-        fn on_disconnect(&self, error: SwiftConnlibError);
+        fn on_disconnect(&self, error: String);
 
         #[swift_bridge(swift_name = "onError")]
-        fn on_error(&self, error: SwiftConnlibError);
-    }
-}
-
-impl<'a> From<&'a Error> for ffi::SwiftConnlibError {
-    fn from(val: &'a Error) -> Self {
-        match val {
-            Error::Io(..) => Self::Io,
-            Error::Base64DecodeError(..) => Self::Base64DecodeError,
-            Error::Base64DecodeSliceError(..) => Self::Base64DecodeSliceError,
-            Error::RequestError(..) => Self::RequestError,
-            Error::PortalConnectionError(..) => Self::PortalConnectionError,
-            Error::UriError => Self::UriError,
-            Error::SerializeError(..) => Self::SerializeError,
-            Error::IceError(..) => Self::IceError,
-            Error::IceDataError(..) => Self::IceDataError,
-            Error::SendChannelError => Self::SendChannelError,
-            Error::ConnectionEstablishError => Self::ConnectionEstablishError,
-            Error::WireguardError(..) => Self::WireguardError,
-            Error::NoRuntime => Self::NoRuntime,
-            Error::UnknownResource => Self::UnknownResource,
-            Error::ControlProtocolError => Self::ControlProtocolError,
-            Error::IfaceRead(..) => Self::IfaceRead,
-            Error::Other(..) => Self::Other,
-            Error::InvalidTunnelName => Self::InvalidTunnelName,
-            Error::NetlinkErrorIo(_) => Self::NetlinkErrorIo,
-            Error::NoIface => Self::NoIface,
-            Error::NoMtu => Self::NoMtu,
-            Error::Panic(msg) => Self::Panic(msg.into()),
-            Error::PanicNonStringPayload => Self::PanicNonStringPayload,
-        }
-    }
-}
-
-impl From<Error> for ffi::SwiftConnlibError {
-    fn from(val: Error) -> Self {
-        (&val).into()
-    }
-}
-
-impl From<TunnelAddresses> for ffi::TunnelAddresses {
-    fn from(value: TunnelAddresses) -> Self {
-        Self {
-            address4: value.address4.to_string(),
-            address6: value.address6.to_string(),
-        }
+        fn on_error(&self, error: String);
     }
 }
 
@@ -152,9 +78,17 @@ unsafe impl Sync for ffi::CallbackHandler {}
 pub struct CallbackHandler(Arc<ffi::CallbackHandler>);
 
 impl Callbacks for CallbackHandler {
-    fn on_set_interface_config(&self, tunnel_addresses: TunnelAddresses, dns_address: Ipv4Addr) {
-        self.0
-            .on_set_interface_config(tunnel_addresses.into(), dns_address.to_string())
+    fn on_set_interface_config(
+        &self,
+        tunnel_address_v4: Ipv4Addr,
+        tunnel_address_v6: Ipv6Addr,
+        dns_address: Ipv4Addr,
+    ) {
+        self.0.on_set_interface_config(
+            tunnel_address_v4.to_string(),
+            tunnel_address_v6.to_string(),
+            dns_address.to_string(),
+        )
     }
 
     fn on_tunnel_ready(&self) {
@@ -177,15 +111,12 @@ impl Callbacks for CallbackHandler {
     }
 
     fn on_disconnect(&self, error: Option<&Error>) {
-        self.0.on_disconnect(
-            error
-                .map(Into::into)
-                .unwrap_or(ffi::SwiftConnlibError::None),
-        )
+        self.0
+            .on_disconnect(error.map(ToString::to_string).unwrap_or_default())
     }
 
     fn on_error(&self, error: &Error) {
-        self.0.on_error(error.into())
+        self.0.on_error(error.to_string())
     }
 }
 
@@ -194,14 +125,14 @@ impl WrappedSession {
         portal_url: String,
         token: String,
         callback_handler: ffi::CallbackHandler,
-    ) -> Result<Self, ffi::SwiftConnlibError> {
-        Ok(Self {
-            session: Session::connect(
-                portal_url.as_str(),
-                token,
-                CallbackHandler(callback_handler.into()),
-            )?,
-        })
+    ) -> Result<Self, String> {
+        Session::connect(
+            portal_url.as_str(),
+            token,
+            CallbackHandler(callback_handler.into()),
+        )
+        .map(|session| Self { session })
+        .map_err(|err| err.to_string())
     }
 
     fn bump_sockets(&self) -> bool {

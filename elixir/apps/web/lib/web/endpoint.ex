@@ -33,7 +33,7 @@ defmodule Web.Endpoint do
     socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket
 
     plug Phoenix.LiveReloader
-    plug Phoenix.CodeReloader, reloadable_apps: [:domain, :web]
+    plug Phoenix.CodeReloader
     plug Phoenix.Ecto.CheckRepoStatus, otp_app: :domain
   end
 

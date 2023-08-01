@@ -1,5 +1,6 @@
 defmodule Domain.Relays.Token.Changeset do
   use Domain, :changeset
+  alias Domain.Auth
   alias Domain.Accounts
   alias Domain.Relays
 
@@ -10,11 +11,14 @@ defmodule Domain.Relays.Token.Changeset do
     |> put_hash(:value, to: :hash)
     |> assoc_constraint(:group)
     |> check_constraint(:hash, name: :hash_not_null, message: "can't be blank")
+    |> put_change(:created_by, :system)
   end
 
-  def create_changeset(%Accounts.Account{} = account) do
+  def create_changeset(%Accounts.Account{} = account, %Auth.Subject{} = subject) do
     create_changeset()
     |> put_change(:account_id, account.id)
+    |> put_change(:created_by, :identity)
+    |> put_change(:created_by_identity_id, subject.identity.id)
   end
 
   def use_changeset(%Relays.Token{} = token) do

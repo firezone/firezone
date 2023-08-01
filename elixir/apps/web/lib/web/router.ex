@@ -54,11 +54,11 @@ defmodule Web.Router do
         Web.Sandbox,
         {Web.Auth, :redirect_if_user_is_authenticated}
       ] do
-      live "/", Auth.ProvidersLive, :new
+      live "/", Auth.SignIn
 
       # Adapter-specific routes
       ## Email
-      live "/providers/email/:provider_id", Auth.EmailLive, :confirm
+      live "/providers/email/:provider_id", Auth.Email
     end
 
     scope "/providers/:provider_id" do
@@ -86,11 +86,6 @@ defmodule Web.Router do
     pipe_through [:browser]
 
     get "/sign_out", AuthController, :sign_out
-
-    live_session :landing,
-      on_mount: [Web.Sandbox] do
-      live "/", LandingLive
-    end
   end
 
   scope "/:account_id", Web do
@@ -100,55 +95,106 @@ defmodule Web.Router do
       on_mount: [
         Web.Sandbox,
         {Web.Auth, :ensure_authenticated},
-        {Web.Auth, :ensure_account_admin_user_actor}
+        {Web.Auth, :ensure_account_admin_user_actor},
+        {Web.Auth, :mount_account}
       ] do
-      live "/dashboard", DashboardLive
+      live "/dashboard", Dashboard
 
-      # Users
-      live "/users", UsersLive.Index
-      live "/users/new", UsersLive.New
-      live "/users/:id/edit", UsersLive.Edit
-      live "/users/:id", UsersLive.Show
+      scope "/actors", Users do
+        live "/", Index
+        live "/new", New
+        live "/:id/edit", Edit
+        live "/:id", Show
+      end
 
-      # Groups
-      live "/groups", GroupsLive.Index
-      live "/groups/new", GroupsLive.New
-      live "/groups/:id/edit", GroupsLive.Edit
-      live "/groups/:id", GroupsLive.Show
+      scope "/groups", Groups do
+        live "/", Index
+        live "/new", New
+        live "/:id/edit", Edit
+        live "/:id", Show
+      end
 
-      # Devices
-      live "/devices", DevicesLive.Index
-      live "/devices/:id", DevicesLive.Show
+      scope "/devices", Devices do
+        live "/", Index
+        live "/:id", Show
+      end
 
-      # Gateways
-      live "/gateways", GatewaysLive.Index
-      live "/gateways/new", GatewaysLive.New
-      live "/gateways/:id/edit", GatewaysLive.Edit
-      live "/gateways/:id", GatewaysLive.Show
+      scope "/gateways", Gateways do
+        live "/", Index
+        live "/new", New
+        live "/:id/edit", Edit
+        live "/:id", Show
+      end
 
-      # Resources
-      live "/resources", ResourcesLive.Index
-      live "/resources/new", ResourcesLive.New
-      live "/resources/:id/edit", ResourcesLive.Edit
-      live "/resources/:id", ResourcesLive.Show
+      scope "/resources", Resources do
+        live "/", Index
+        live "/new", New
+        live "/:id/edit", Edit
+        live "/:id", Show
+      end
 
-      # Policies
-      live "/policies", PoliciesLive.Index
-      live "/policies/new", PoliciesLive.New
-      live "/policies/:id/edit", PoliciesLive.Edit
-      live "/policies/:id", PoliciesLive.Show
+      scope "/policies", Policies do
+        live "/", Index
+        live "/new", New
+        live "/:id/edit", Edit
+        live "/:id", Show
+      end
 
-      # Settings
-      live "/settings/account", SettingsLive.Account
-      live "/settings/identity_providers", SettingsLive.IdentityProviders.Index
-      live "/settings/identity_providers/new", SettingsLive.IdentityProviders.New
-      live "/settings/identity_providers/new/oidc", SettingsLive.IdentityProviders.New.OIDC
-      live "/settings/identity_providers/new/saml", SettingsLive.IdentityProviders.New.SAML
-      live "/settings/identity_providers/:id", SettingsLive.IdentityProviders.Show
-      live "/settings/identity_providers/:id/edit", SettingsLive.IdentityProviders.Edit
-      live "/settings/dns", SettingsLive.Dns
-      live "/settings/api_tokens", SettingsLive.ApiTokens.Index
-      live "/settings/api_tokens/new", SettingsLive.ApiTokens.New
+      scope "/settings", Settings do
+        live "/account", Account
+
+        scope "/identity_providers", IdentityProviders do
+          live "/", Index
+          live "/new", New
+
+          scope "/saml", SAML do
+            live "/new", New
+            live "/:provider_id", Show
+            live "/:provider_id/edit", Edit
+          end
+
+          scope "/openid_connect", OpenIDConnect do
+            live "/new", New
+            live "/:provider_id", Show
+            live "/:provider_id/edit", Edit
+
+            # OpenID Connection
+            get "/:provider_id/redirect", Connect, :redirect_to_idp
+            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
+          end
+
+          scope "/google_workspace", GoogleWorkspace do
+            live "/new", New
+            live "/:provider_id", Show
+            live "/:provider_id/edit", Edit
+
+            # OpenID Connection
+            get "/:provider_id/redirect", Connect, :redirect_to_idp
+            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
+          end
+
+          scope "/system", System do
+            live "/:provider_id", Show
+          end
+        end
+
+        live "/dns", DNS
+
+        scope "/api_tokens", APITokens do
+          live "/", Index
+          live "/new", New
+        end
+      end
+    end
+  end
+
+  scope "/", Web do
+    pipe_through [:browser]
+
+    live_session :landing,
+      on_mount: [Web.Sandbox] do
+      live "/:account_id/", Landing
+      live "/", Landing
     end
   end
 end

@@ -19,18 +19,6 @@ defaults:
     working-directory: ./rust
 
 jobs:
-  rust_draft-release:
-    runs-on: ubuntu-latest
-    outputs:
-      tag_name: ${{ steps.release_drafter.outputs.tag_name }}
-    steps:
-      - uses: release-drafter/release-drafter@v5
-        with:
-          commitish: main
-        id: release_drafter
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   rust_test:
     strategy:
       fail-fast: false
@@ -96,3 +84,19 @@ jobs:
           workspaces: ./rust
       - run: sudo apt-get install -y musl-tools
       - run: cargo build --bin relay --target x86_64-unknown-linux-musl
+
+  rust_smoke-test-relay:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./rust/relay
+    steps:
+      - uses: actions/checkout@v3
+
+      # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
+      # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
+      - run: ./run_smoke_test.sh

@@ -5,9 +5,6 @@ defmodule Web.Auth do
   def signed_in_path(%Auth.Subject{actor: %{type: :account_admin_user}} = subject),
     do: ~p"/#{subject.account}/dashboard"
 
-  def signed_in_path(%Auth.Subject{actor: %{type: :account_user}} = subject),
-    do: ~p"/#{subject.account}"
-
   def put_subject_in_session(conn, %Auth.Subject{} = subject) do
     {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
 
@@ -15,6 +12,42 @@ defmodule Web.Auth do
     |> Plug.Conn.put_session(:signed_in_at, DateTime.utc_now())
     |> Plug.Conn.put_session(:session_token, session_token)
     |> Plug.Conn.put_session(:live_socket_id, "actors_sessions:#{subject.actor.id}")
+  end
+
+  @doc """
+  This is a wrapper around `Domain.Auth.sign_in/5` that fails authentication and redirects
+  to app install instructions for the users that should not have access to the control plane UI.
+  """
+  def sign_in(conn, provider, provider_identifier, secret) do
+    case Domain.Auth.sign_in(
+           provider,
+           provider_identifier,
+           secret,
+           conn.assigns.user_agent,
+           conn.remote_ip
+         ) do
+      {:ok, %Auth.Subject{actor: %{type: :account_admin_user}} = subject} ->
+        {:ok, subject}
+
+      {:ok, %Auth.Subject{}} ->
+        {:error, :invalid_actor_type}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def sign_in(conn, provider, payload) do
+    case Domain.Auth.sign_in(provider, payload, conn.assigns.user_agent, conn.remote_ip) do
+      {:ok, %Auth.Subject{actor: %{type: :account_admin_user}} = subject} ->
+        {:ok, subject}
+
+      {:ok, %Auth.Subject{}} ->
+        {:error, :invalid_actor_type}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -147,12 +180,17 @@ defmodule Web.Auth do
     * `:redirect_if_user_is_authenticated` - authenticates the user from the session.
       Redirects to signed_in_path if there's a logged user.
 
+    * `:mount_account` - takes `account_id` from path params and loads the given account
+      into the socket assigns using the `subject` mounted via `:mount_subject`. This is useful
+      because some actions can be performed by superadmin users on behalf of other accounts
+      so we can't really rely on `subject.account` in a lot of places.
+
   ## Examples
 
   Use the `on_mount` lifecycle macro in LiveViews to mount or authenticate
   the subject:
 
-      defmodule Web.PageLive do
+      defmodule Web.Page do
         use Web, :live_view
 
         on_mount {Web.UserAuth, :mount_subject}
@@ -169,10 +207,14 @@ defmodule Web.Auth do
     {:cont, mount_subject(socket, params, session)}
   end
 
+  def on_mount(:mount_account, params, session, socket) do
+    {:cont, mount_account(socket, params, session)}
+  end
+
   def on_mount(:ensure_authenticated, params, session, socket) do
     socket = mount_subject(socket, params, session)
 
-    if socket.assigns.subject do
+    if socket.assigns[:subject] do
       {:cont, socket}
     else
       socket =
@@ -187,18 +229,18 @@ defmodule Web.Auth do
   def on_mount(:ensure_account_admin_user_actor, params, session, socket) do
     socket = mount_subject(socket, params, session)
 
-    if socket.assigns.subject.actor.type == :account_admin_user do
+    if socket.assigns[:subject].actor.type == :account_admin_user do
       {:cont, socket}
     else
-      raise Ecto.NoResultsError
+      raise Web.LiveErrors.NotFoundError
     end
   end
 
   def on_mount(:redirect_if_user_is_authenticated, params, session, socket) do
     socket = mount_subject(socket, params, session)
 
-    if socket.assigns.subject do
-      {:halt, Phoenix.LiveView.redirect(socket, to: signed_in_path(socket.assigns.subject))}
+    if socket.assigns[:subject] do
+      {:halt, Phoenix.LiveView.redirect(socket, to: signed_in_path(socket.assigns[:subject]))}
     else
       {:cont, socket}
     end
@@ -213,6 +255,20 @@ defmodule Web.Auth do
            {:ok, subject} <- Domain.Auth.sign_in(token, user_agent, remote_ip),
            true <- params["account_id"] == subject.account.id do
         subject
+      else
+        _ -> nil
+      end
+    end)
+  end
+
+  defp mount_account(
+         %{assigns: %{subject: subject}} = socket,
+         %{"account_id" => account_id},
+         _session
+       ) do
+    Phoenix.Component.assign_new(socket, :account, fn ->
+      with {:ok, account} <- Domain.Accounts.fetch_account_by_id(account_id, subject) do
+        account
       else
         _ -> nil
       end

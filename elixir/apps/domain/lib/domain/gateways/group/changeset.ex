@@ -1,14 +1,22 @@
 defmodule Domain.Gateways.Group.Changeset do
   use Domain, :changeset
-  alias Domain.Accounts
+  alias Domain.{Auth, Accounts}
   alias Domain.Gateways
 
   @fields ~w[name_prefix tags]a
 
-  def create_changeset(%Accounts.Account{} = account, attrs) do
+  def create_changeset(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Gateways.Group{account: account}
     |> changeset(attrs)
     |> put_change(:account_id, account.id)
+    |> put_change(:created_by, :identity)
+    |> put_change(:created_by_identity_id, subject.identity.id)
+    |> cast_assoc(:tokens,
+      with: fn _token, _attrs ->
+        Gateways.Token.Changeset.create_changeset(account, subject)
+      end,
+      required: true
+    )
   end
 
   def update_changeset(%Gateways.Group{} = group, attrs) do
@@ -32,12 +40,6 @@ defmodule Domain.Gateways.Group.Changeset do
     end)
     |> validate_required(@fields)
     |> unique_constraint(:name_prefix, name: :gateway_groups_account_id_name_prefix_index)
-    |> cast_assoc(:tokens,
-      with: fn _token, _attrs ->
-        Domain.Gateways.Token.Changeset.create_changeset(group.account)
-      end,
-      required: true
-    )
   end
 
   def delete_changeset(%Gateways.Group{} = group) do

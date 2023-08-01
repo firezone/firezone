@@ -28,12 +28,14 @@ config :web, Web.Endpoint,
   ],
   live_reload: [
     patterns: [
+      ~r"apps/config/.*(exs)$",
       ~r"apps/domain/lib/domain/.*(ex|eex|heex)$",
       ~r"apps/web/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"apps/web/priv/gettext/.*(po)$",
       ~r"apps/web/lib/web/.*(ex|eex|heex)$"
     ]
   ],
+  reloadable_apps: [:domain, :web],
   server: true
 
 root_path =

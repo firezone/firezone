@@ -1,6 +1,6 @@
 defmodule Web.AuthControllerTest do
   use Web.ConnCase, async: true
-  alias Domain.{AccountsFixtures, AuthFixtures}
+  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   setup do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
@@ -103,8 +103,16 @@ defmodule Web.AuthControllerTest do
       provider = AuthFixtures.create_userpass_provider(account: account)
       password = "Firezone1234"
 
+      actor =
+        ActorsFixtures.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
       identity =
         AuthFixtures.create_identity(
+          actor: actor,
           account: account,
           provider: provider,
           provider_virtual_state: %{"password" => password, "password_confirmation" => password}
@@ -123,7 +131,9 @@ defmodule Web.AuthControllerTest do
           }
         )
 
+      assert conn.assigns.flash == %{}
       assert redirected_to(conn) == "/foo/bar"
+      assert is_nil(get_session(conn, :user_return_to))
     end
 
     test "redirects to the dashboard when credentials are valid and return path is empty", %{
@@ -161,10 +171,18 @@ defmodule Web.AuthControllerTest do
       provider = AuthFixtures.create_userpass_provider(account: account)
       password = "Firezone1234"
 
+      actor =
+        ActorsFixtures.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
       identity =
         AuthFixtures.create_identity(
           account: account,
           provider: provider,
+          actor: actor,
           provider_virtual_state: %{"password" => password, "password_confirmation" => password}
         )
 
@@ -308,7 +326,15 @@ defmodule Web.AuthControllerTest do
     test "redirects to the return to path when credentials are valid", %{conn: conn} do
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+
+      actor =
+        ActorsFixtures.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
 
       conn =
         conn
@@ -321,7 +347,9 @@ defmodule Web.AuthControllerTest do
           }
         )
 
+      assert conn.assigns.flash == %{}
       assert redirected_to(conn) == "/foo/bar"
+      assert is_nil(get_session(conn, :user_return_to))
     end
 
     test "redirects to the dashboard when credentials are valid and return path is empty", %{
@@ -349,7 +377,15 @@ defmodule Web.AuthControllerTest do
     test "renews the session when credentials are valid", %{conn: conn} do
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+
+      actor =
+        ActorsFixtures.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
 
       conn =
         conn
