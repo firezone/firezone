@@ -76,6 +76,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     connection_request.relays,
                     connection_request.device.id,
                     connection_request.expires_at,
+                    connection_request.resource,
                 )
                 .await
             {

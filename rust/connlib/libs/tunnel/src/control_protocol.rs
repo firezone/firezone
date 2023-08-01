@@ -4,9 +4,10 @@ use boringtun::{
 };
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
+use tracing::instrument;
 
 use libs_common::{
-    messages::{Id, Key, Relay, RequestConnection},
+    messages::{Id, Key, Relay, RequestConnection, ResourceDescription},
     Callbacks, Error, Result,
 };
 use rand_core::OsRng;
@@ -21,11 +22,14 @@ use webrtc::{
 
 use crate::{peer::Peer, ControlSignal, PeerConfig, Tunnel};
 
+mod candidate_parser;
+
 impl<C, CB> Tunnel<C, CB>
 where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
+    #[instrument(level = "trace", skip(self, data_channel, peer_config))]
     async fn handle_channel_open(
         self: &Arc<Self>,
         data_channel: Arc<RTCDataChannel>,
@@ -33,7 +37,12 @@ where
         peer_config: PeerConfig,
         expires_at: Option<DateTime<Utc>>,
         conn_id: Id,
+        resources: Option<ResourceDescription>,
     ) -> Result<()> {
+        tracing::trace!(
+            "New datachannel opened for peer with ips: {:?}",
+            peer_config.ips
+        );
         let channel = data_channel.detach().await?;
         let tunn = Tunn::new(
             self.private_key.clone(),
@@ -51,6 +60,7 @@ where
             channel,
             expires_at,
             conn_id,
+            resources,
         ));
 
         {
@@ -174,7 +184,7 @@ where
                     preshared_key: p_key,
                 };
 
-                if let Err(e) = tunnel.handle_channel_open(d, index, peer_config, None, resource_id).await {
+                if let Err(e) = tunnel.handle_channel_open(d, index, peer_config, None, resource_id, None).await {
                     tracing::error!("Couldn't establish wireguard link after channel was opened: {e}");
                     tunnel.callbacks.on_error(&e);
                     tunnel.cleanup_connection(resource_id);
@@ -185,6 +195,7 @@ where
 
         let offer = peer_connection.create_offer(None).await?;
         let mut gather_complete = peer_connection.gathering_complete_promise().await;
+        // TODO: Remove tunnel ip from offer
         peer_connection.set_local_description(offer).await?;
 
         // FIXME: timeout here! (but probably don't even bother because we need to implement ICE trickle)
@@ -192,7 +203,7 @@ where
         let local_description = peer_connection
             .local_description()
             .await
-            .expect("set_local_description was just called above");
+            .expect("Developer error: set_local_description was just called above");
 
         self.peer_connections
             .lock()
@@ -207,7 +218,7 @@ where
 
     /// Called when a response to [Tunnel::request_connection] is ready.
     ///
-    /// Once this is called if everything goes fine a new tunnel should be started between the 2 peers.
+    /// Once this is called, if everything goes fine, a new tunnel should be started between the 2 peers.
     ///
     /// # Parameters
     /// - `resource_id`: Id of the resource that responded.
@@ -217,7 +228,7 @@ where
     pub async fn recieved_offer_response(
         self: &Arc<Self>,
         resource_id: Id,
-        rtc_sdp: RTCSessionDescription,
+        mut rtc_sdp: RTCSessionDescription,
         gateway_public_key: PublicKey,
     ) -> Result<()> {
         let peer_connection = self
@@ -229,6 +240,16 @@ where
         self.gateway_public_keys
             .lock()
             .insert(resource_id, gateway_public_key);
+        let mut sdp = rtc_sdp.unmarshal()?;
+
+        // We don't want to allow tunnel-over-tunnel as it leads to some weirdness
+        // I'm sure there are some edge-cases where we want that but let's tackle that when it comes up
+        self.sdp_remove_resource_attributes(&mut sdp.attributes);
+        for m in sdp.media_descriptions.iter_mut() {
+            self.sdp_remove_resource_attributes(&mut m.attributes);
+        }
+        rtc_sdp.sdp = sdp.marshal();
+
         peer_connection.set_remote_description(rtc_sdp).await?;
         Ok(())
     }
@@ -258,6 +279,7 @@ where
         relays: Vec<Relay>,
         client_id: Id,
         expires_at: DateTime<Utc>,
+        resource: ResourceDescription,
     ) -> Result<RTCSessionDescription> {
         let peer_connection = self.initialize_peer_request(relays).await?;
         let index = self.next_index();
@@ -273,6 +295,7 @@ where
             let data_channel = Arc::clone(&d);
             let peer = peer.clone();
             let tunnel = Arc::clone(&tunnel);
+            let resource = resource.clone();
             Box::pin(async move {
                 d.on_open(Box::new(move || {
                     tracing::trace!("new data channel opened!");
@@ -294,6 +317,7 @@ where
                                 peer,
                                 Some(expires_at),
                                 client_id,
+                                Some(resource),
                             )
                             .await
                         {
@@ -318,6 +342,7 @@ where
 
         peer_connection.set_remote_description(sdp_session).await?;
 
+        // TODO: remove tunnel IP from answer
         let mut gather_complete = peer_connection.gathering_complete_promise().await;
         let answer = peer_connection.create_answer(None).await?;
         peer_connection.set_local_description(answer).await?;

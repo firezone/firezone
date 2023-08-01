@@ -1,7 +1,7 @@
 use std::{net::IpAddr, sync::Arc};
 
 use crate::{
-    ip_packet::{to_dns, IpPacket, MutableIpPacket},
+    ip_packet::{to_dns, IpPacket, MutableIpPacket, Version},
     ControlSignal, Tunnel,
 };
 use domain::base::{
@@ -13,6 +13,11 @@ use pnet_packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, Pac
 
 const DNS_TTL: u32 = 300;
 const UDP_HEADER_SIZE: usize = 8;
+
+pub(crate) enum SendPacket {
+    Ipv4(Vec<u8>),
+    Ipv6(Vec<u8>),
+}
 
 // We don't need to support multiple questions/qname in a single query because
 // nobody does it and since this run with each packet we want to squeeze as much optimization
@@ -92,8 +97,9 @@ where
         Some(answer_builder.finish())
     }
 
-    pub(crate) fn check_for_dns(self: &Arc<Self>, buf: &[u8]) -> Option<Vec<u8>> {
+    pub(crate) fn check_for_dns(self: &Arc<Self>, buf: &[u8]) -> Option<SendPacket> {
         let packet = IpPacket::new(buf)?;
+        let version = packet.version();
         if packet.destination() != IpAddr::from(DNS_SENTINEL) {
             return None;
         }
@@ -112,9 +118,14 @@ where
                     question.qtype(),
                     resource,
                 )?;
-                return self.build_response(buf, response);
+                let response = self.build_response(buf, response);
+                return response.map(|pkt| match version {
+                    Version::Ipv4 => SendPacket::Ipv4(pkt),
+                    Version::Ipv6 => SendPacket::Ipv6(pkt),
+                });
             }
         }
+
         None
     }
 }
