@@ -519,7 +519,7 @@ where
                             // TODO: check that the translation maps to the ip
                             // (we actually have multiple ips so we need a map here)
                             if peer.translated_resource_address.read().is_some() {
-                                let Some(mut packet) = MutableIpPacket::new(&mut src[..res])  else  {
+                                let Some(mut packet) = MutableIpPacket::new(&mut src[..res]) else  {
                                     tracing::error!("Developer error: we should never see a packet through the tunnel wire that isn't ip");
                                     continue;
                                 };
