@@ -394,15 +394,6 @@ jobs:
           name: Elixir Acceptance Test Report
           path: elixir/_build/test/lib/*/test-junit-report.xml
           reporter: java-junit
-  # elixir/draft-release:
-  #   runs-on: ubuntu-latest
-  #   outputs:
-  #     tag_name: ${{ steps.release_drafter.outputs.tag_name }}
-  #   steps:
-  #     - uses: release-drafter/release-drafter@v5
-  #       id: release_drafter
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   elixir_web-container-build:
     runs-on: ubuntu-latest
     defaults:

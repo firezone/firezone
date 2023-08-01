@@ -19,18 +19,6 @@ defaults:
     working-directory: ./rust
 
 jobs:
-  rust_draft-release:
-    runs-on: ubuntu-latest
-    outputs:
-      tag_name: ${{ steps.release_drafter.outputs.tag_name }}
-    steps:
-      - uses: release-drafter/release-drafter@v5
-        with:
-          commitish: main
-        id: release_drafter
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   rust_test:
     strategy:
       fail-fast: false

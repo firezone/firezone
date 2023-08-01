@@ -12,10 +12,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  rust_draft-release:
-    runs-on: ubuntu-latest
-    steps:
-      - run: 'echo "No build required"'
   rust_test:
     strategy:
       matrix:
@@ -27,10 +23,6 @@ jobs:
           - windows-2019
           - windows-2022
     runs-on: ${{ matrix.runs-on }}
-    steps:
-      - run: 'echo "No build required"'
-  rust_build-android:
-    runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
   rust_cross-compile-relay: # cross is separate from test because cross-compiling yields different artifacts and we cannot reuse the cache.

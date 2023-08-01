@@ -16,18 +16,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  swift_draft-release:
-    runs-on: ubuntu-latest
-    outputs:
-      tag_name: ${{ steps.release_drafter.outputs.tag_name }}
-    steps:
-      - uses: release-drafter/release-drafter@v5
-        with:
-          commitish: main
-        id: release_drafter
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   swift_build:
     strategy:
       matrix:
