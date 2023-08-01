@@ -18,7 +18,7 @@ export default function EarlyAccess() {
         <div className="grid flex gap-4 lg:grid-cols-2">
           <div className="flex items-center justify-center lg:justify-start">
             <div className="flex-wrap px-2">
-              <h1 className="mb-4 text-4xl sm:text-5xl justify-center lg:justify-end font-extrabold tracking-tight text-neutral-900 xl:text-6xl">
+              <h1 className="mb-4 text-5xl sm:text-6xl text-center justify-center lg:justify-end font-extrabold tracking-tight text-neutral-900 xl:text-6xl">
                 Request early access
               </h1>
               <h2 className="flex flex-wrap mb-4 text-lg tracking-tight text-neutral-800 sm:text-xl justify-center lg:justify-end">
