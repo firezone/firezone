@@ -21,7 +21,7 @@ defmodule Web.Users.Show do
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
-      <.breadcrumb path={~p"/#{@account}/actors"}>Users</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/#{@actor.id}"}>
         <%= @actor.name %>
       </.breadcrumb>
@@ -40,7 +40,7 @@ defmodule Web.Users.Show do
     <div class="bg-white dark:bg-gray-800 overflow-hidden lg:w-3/4 mb-4">
       <h5 class="bg-slate-200 p-4 text-2xl font-bold text-gray-900 dark:text-white">User Info</h5>
       <.vertical_table>
-        <.vertical_table_row label_width="w-1/5">
+        <.vertical_table_row label_class="w-1/5">
           <:label>Name</:label>
           <:value><%= @actor.name %></:value>
         </.vertical_table_row>
@@ -87,17 +87,17 @@ defmodule Web.Users.Show do
     """
   end
 
-  attr :rest, :global
+  attr(:rest, :global)
 
-  slot :provider
-  slot :identity
-  slot :last_auth
+  slot(:provider)
+  slot(:identity)
+  slot(:last_auth)
 
   def identity(assigns) do
     ~H"""
     <div {@rest}>
       <.vertical_table class="table-fixed">
-        <.vertical_table_row label_width="w-1/5">
+        <.vertical_table_row label_class="w-1/5">
           <:label>Provider</:label>
           <:value><%= render_slot(@provider) %></:value>
         </.vertical_table_row>

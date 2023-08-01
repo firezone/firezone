@@ -255,8 +255,8 @@ defmodule Web.TableComponents do
       </.vertical_table_row>
   """
 
-  attr :label_width, :string, default: nil
-  attr :value_width, :string, default: nil
+  attr :label_class, :string, default: nil
+  attr :value_class, :string, default: nil
 
   slot :label, doc: "the slot for rendering the label of a row"
   slot :value, doc: "the slot for rendering the value of a row"
@@ -269,12 +269,12 @@ defmodule Web.TableComponents do
         class={[
           "text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap",
           "bg-gray-50 dark:text-white dark:bg-gray-800",
-          @label_width
+          @label_class
         ]}
       >
         <%= render_slot(@label) %>
       </th>
-      <td class={["px-6 py-4", @value_width]}>
+      <td class={["px-6 py-4", @value_class]}>
         <%= render_slot(@value) %>
       </td>
     </tr>

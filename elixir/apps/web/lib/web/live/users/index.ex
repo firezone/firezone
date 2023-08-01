@@ -9,14 +9,22 @@ defmodule Web.Users.Index do
     {:ok, assign(socket, actors: actors)}
   end
 
+  defp actor_icon(type) do
+    case type do
+      :account_user -> "hero-user-circle-solid"
+      :account_admin_user -> "hero-user-circle-solid"
+      :service_account -> "hero-server-solid"
+    end
+  end
+
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
-      <.breadcrumb path={~p"/#{@account}/actors"}>Users</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
     </.breadcrumbs>
     <.header>
       <:title>
-        All users
+        All Actors
       </:title>
       <:actions>
         <.add_button navigate={~p"/#{@account}/actors/new"}>
@@ -27,26 +35,29 @@ defmodule Web.Users.Index do
     <!-- Users Table -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <.resource_filter />
-      <.table id="users" rows={@actors} row_id={&"user-#{&1.id}"}>
-        <:col :let={user} label="NAME" sortable="false">
+      <.table id="actors" rows={@actors} row_id={&"user-#{&1.id}"}>
+        <:col :let={actor} label="TYPE" sortable="false">
+          <.icon name={actor_icon(actor.type)} class="w-5 h-5" />
+        </:col>
+        <:col :let={actor} label="NAME" sortable="false">
           <.link
-            navigate={~p"/#{@account}/actors/#{user.id}"}
+            navigate={~p"/#{@account}/actors/#{actor.id}"}
             class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
           >
-            <%= user.name %>
+            <%= actor.name %>
           </.link>
         </:col>
-        <:col :let={user} label="IDENTIFIERS" sortable="false">
-          <%= for identity <- user.identities do %>
+        <:col :let={actor} label="IDENTIFIERS" sortable="false">
+          <%= for identity <- actor.identities do %>
             <%= "#{identity.provider.name}: #{identity.provider_identifier}" %>
             <br />
           <% end %>
         </:col>
-        <:col :let={_user} label="GROUPS" sortable="false">
+        <:col :let={_actor} label="GROUPS" sortable="false">
           <!-- TODO: Determine how user groups will work -->
           <%= "TODO Admin, Engineering, 3 more..." %>
         </:col>
-        <:col :let={_user} label="LAST ACTIVE" sortable="false">
+        <:col :let={_actor} label="LAST ACTIVE" sortable="false">
           <!-- TODO: Determine what last active means for a user -->
           <%= "TODO Today at 2:30pm" %>
         </:col>
@@ -100,6 +111,17 @@ defmodule Web.Users.Index do
           </div>
         </form>
       </div>
+      <.button_group>
+        <:first>
+          All
+        </:first>
+        <:middle>
+          Users
+        </:middle>
+        <:last>
+          Service Accounts
+        </:last>
+      </.button_group>
     </div>
     """
   end

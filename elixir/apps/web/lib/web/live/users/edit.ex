@@ -12,7 +12,7 @@ defmodule Web.Users.Edit do
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
-      <.breadcrumb path={~p"/#{@account}/actors"}>Users</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/#{@actor.id}"}>
         <%= @actor.name %>
       </.breadcrumb>
