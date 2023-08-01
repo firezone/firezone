@@ -90,7 +90,7 @@ where
                 }
                 ResourceDescription::Cidr(r) => {
                     if r.address.contains(dst) {
-                        let Some(dst_addr) = Self::get_matching_version_ip(addr, dst) else {return};
+                        let Some(dst_addr) = Self::get_matching_version_ip(addr, dst) else { return };
                         (dst_addr, None)
                     } else {
                         tracing::warn!(
