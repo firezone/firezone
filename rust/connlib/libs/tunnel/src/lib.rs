@@ -38,7 +38,7 @@ use std::{
 
 use libs_common::{
     messages::{Id, Interface as InterfaceConfig, ResourceDescription},
-    Result,
+    CallbackErrorFacade, Result,
 };
 
 use device_channel::{create_iface, DeviceChannel};
@@ -146,7 +146,7 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     resources: RwLock<ResourceTable>,
     control_signaler: C,
     gateway_public_keys: Mutex<HashMap<Id, PublicKey>>,
-    callbacks: CB,
+    callbacks: CallbackErrorFacade<CB>,
 }
 
 impl<C, CB> Tunnel<C, CB>
@@ -208,7 +208,7 @@ where
             resources,
             awaiting_connection,
             control_signaler,
-            callbacks,
+            callbacks: CallbackErrorFacade(callbacks),
         })
     }
 
@@ -229,7 +229,7 @@ where
             resources.insert(resource_description);
             resources.resource_list()
         };
-        self.callbacks.on_update_resources(resource_list);
+        self.callbacks.on_update_resources(resource_list)?;
         Ok(())
     }
 
@@ -254,7 +254,7 @@ where
         self.start_timers();
         self.start_iface_handler();
 
-        self.callbacks.on_tunnel_ready();
+        self.callbacks.on_tunnel_ready()?;
 
         tracing::trace!("Started background loops");
 
@@ -389,7 +389,7 @@ where
                     }
                     Err(TunnResult::Err(e)) => {
                         tracing::error!("Wireguard error: {e:?}");
-                        tunnel.callbacks().on_error(&e.into());
+                        let _ = tunnel.callbacks().on_error(&e.into());
                         continue;
                     }
                     Err(_) => {
@@ -419,7 +419,7 @@ where
                     }
                     TunnResult::Err(err) => {
                         tracing::error!("Error decapsulating packet: {err:?}");
-                        tunnel.callbacks().on_error(&err.into());
+                        let _ = tunnel.callbacks().on_error(&err.into());
                         continue;
                     }
                     TunnResult::WriteToNetwork(packet) => {
@@ -449,13 +449,13 @@ where
 
     async fn write4_device_infallible(&self, packet: &[u8]) {
         if let Err(e) = self.device_channel.write4(packet).await {
-            self.callbacks.on_error(&e.into());
+            let _ = self.callbacks.on_error(&e.into());
         }
     }
 
     async fn write6_device_infallible(&self, packet: &[u8]) {
         if let Err(e) = self.device_channel.write6(packet).await {
-            self.callbacks.on_error(&e.into());
+            let _ = self.callbacks.on_error(&e.into());
         }
     }
 
@@ -485,13 +485,13 @@ where
                             Ok(res) => res,
                             Err(err) => {
                                 tracing::error!("Couldn't read packet from interface: {err}");
-                                dev.callbacks.on_error(&err.into());
+                                let _ = dev.callbacks.on_error(&err.into());
                                 continue;
                             }
                         },
                         Err(err) => {
                             tracing::error!("Couldn't obtain iface mtu: {err}");
-                            dev.callbacks.on_error(&err);
+                            let _ = dev.callbacks.on_error(&err);
                             continue;
                         }
                     }
@@ -571,7 +571,7 @@ where
                                             // Not a deadlock because this is a different task
                                             dev.awaiting_connection.lock().remove(&id);
                                             tracing::error!("couldn't start protocol for new connection to resource: {e}");
-                                            dev.callbacks.on_error(&e);
+                                            let _ = dev.callbacks.on_error(&e);
                                         }
                                     });
                                 }
@@ -590,7 +590,7 @@ where
                     }
                     TunnResult::Err(e) => {
                         tracing::error!(message = "Encapsulate error for resource corresponding to {dst_addr}", error = ?e);
-                        dev.callbacks.on_error(&e.into());
+                        let _ = dev.callbacks.on_error(&e.into());
                     }
                     TunnResult::WriteToNetwork(packet) => {
                         tracing::trace!("writing iface packet to peer: {dst_addr}");
@@ -611,11 +611,11 @@ where
                                         tracing::error!(
                                             "Problem while trying to close channel: {e:?}"
                                         );
-                                        dev.callbacks().on_error(&e.into());
+                                        let _ = dev.callbacks().on_error(&e.into());
                                     }
                                 }
                             }
-                            dev.callbacks.on_error(&e.into());
+                            let _ = dev.callbacks.on_error(&e.into());
                         }
                     }
                     _ => panic!("Unexpected result from encapsulate"),
@@ -628,7 +628,7 @@ where
         self.next_index.lock().next()
     }
 
-    pub fn callbacks(&self) -> &CB {
+    pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
 }

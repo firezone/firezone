@@ -6,9 +6,11 @@
 use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session};
 use jni::{
     objects::{JClass, JObject, JString, JValue},
+    strings::JNIString,
     JNIEnv, JavaVM,
 };
 use std::net::{Ipv4Addr, Ipv6Addr};
+use thiserror::Error;
 
 /// This should be called once after the library is loaded by the system.
 #[allow(non_snake_case)]
@@ -41,32 +43,76 @@ impl Clone for CallbackHandler {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum CallbackError {
+    #[error("Failed to attach current thread as daemon: {0}")]
+    AttachCurrentThreadFailed(#[source] jni::errors::Error),
+    #[error("Failed to serialize JSON: {0}")]
+    SerializeFailed(#[from] serde_json::Error),
+    #[error("Failed to create string `{name}`: {source}")]
+    NewStringFailed {
+        name: &'static str,
+        source: jni::errors::Error,
+    },
+    #[error("Failed to call method `{name}`: {source}")]
+    CallMethodFailed {
+        name: &'static str,
+        source: jni::errors::Error,
+    },
+}
+
 impl CallbackHandler {
-    fn env<T>(&self, f: impl FnOnce(JNIEnv) -> T) -> T {
-        f(self.vm.attach_current_thread_as_daemon().unwrap())
+    fn env<T>(
+        &self,
+        f: impl FnOnce(JNIEnv) -> Result<T, CallbackError>,
+    ) -> Result<T, CallbackError> {
+        self.vm
+            .attach_current_thread_as_daemon()
+            .map_err(CallbackError::AttachCurrentThreadFailed)
+            .and_then(f)
     }
 }
 
-fn call_method(env: &mut JNIEnv, this: &JObject, name: &str, sig: &str, args: &[JValue]) {
-    match env.call_method(this, name, sig, args) {
-        Ok(val) => log::trace!("`{name}` returned `{val:?}`"),
-        Err(err) => log::error!("Failed to call `{name}`: {err}"),
-    }
+fn call_method(
+    env: &mut JNIEnv,
+    this: &JObject,
+    name: &'static str,
+    sig: &str,
+    args: &[JValue],
+) -> Result<(), CallbackError> {
+    env.call_method(this, name, sig, args)
+        .map(|val| log::trace!("`{name}` returned `{val:?}`"))
+        .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
 impl Callbacks for CallbackHandler {
+    type Error = CallbackError;
+
     fn on_set_interface_config(
         &self,
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-    ) {
+    ) -> Result<(), Self::Error> {
         self.env(|mut env| {
-            let tunnel_address_v4 = env.new_string(tunnel_address_v4.to_string()).unwrap();
-            let tunnel_address_v6 = env.new_string(tunnel_address_v6.to_string()).unwrap();
+            let tunnel_address_v4 =
+                env.new_string(tunnel_address_v4.to_string())
+                    .map_err(|source| CallbackError::NewStringFailed {
+                        name: "tunnel_address_v4",
+                        source,
+                    })?;
+            let tunnel_address_v6 =
+                env.new_string(tunnel_address_v6.to_string())
+                    .map_err(|source| CallbackError::NewStringFailed {
+                        name: "tunnel_address_v6",
+                        source,
+                    })?;
             let dns_address = env
-                .new_string(serde_json::to_string(&dns_address).unwrap())
-                .unwrap();
+                .new_string(serde_json::to_string(&dns_address)?)
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "dns_address",
+                    source,
+                })?;
             call_method(
                 &mut env,
                 &self.callback_handler,
@@ -81,84 +127,167 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_tunnel_ready(&self) {
+    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
         self.env(|mut env| {
             call_method(&mut env, &self.callback_handler, "onTunnelReady", "()", &[])
         })
     }
 
-    fn on_add_route(&self, route: String) {
+    fn on_add_route(&self, route: String) -> Result<(), Self::Error> {
         self.env(|mut env| {
             let route = env
-                .new_string(serde_json::to_string(&route).unwrap())
-                .unwrap();
+                .new_string(serde_json::to_string(&route)?)
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "route",
+                    source,
+                })?;
             call_method(
                 &mut env,
                 &self.callback_handler,
                 "onAddRoute",
                 "(Ljava/lang/String;)",
                 &[JValue::from(&route)],
-            );
+            )
         })
     }
 
-    fn on_remove_route(&self, route: String) {
+    fn on_remove_route(&self, route: String) -> Result<(), Self::Error> {
         self.env(|mut env| {
             let route = env
-                .new_string(serde_json::to_string(&route).unwrap())
-                .unwrap();
+                .new_string(serde_json::to_string(&route)?)
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "route",
+                    source,
+                })?;
             call_method(
                 &mut env,
                 &self.callback_handler,
                 "onRemoveRoute",
                 "(Ljava/lang/String;)",
                 &[JValue::from(&route)],
-            );
+            )
         })
     }
 
-    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
+    fn on_update_resources(
+        &self,
+        resource_list: Vec<ResourceDescription>,
+    ) -> Result<(), Self::Error> {
         self.env(|mut env| {
             let resource_list = env
-                .new_string(serde_json::to_string(&resource_list).unwrap())
-                .unwrap();
+                .new_string(serde_json::to_string(&resource_list)?)
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "resource_list",
+                    source,
+                })?;
             call_method(
                 &mut env,
                 &self.callback_handler,
                 "onUpdateResources",
                 "(Ljava/lang/String;)",
                 &[JValue::from(&resource_list)],
-            );
+            )
         })
     }
 
-    fn on_disconnect(&self, error: Option<&Error>) {
+    fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
         self.env(|mut env| {
             let error = env
-                .new_string(serde_json::to_string(&error.map(ToString::to_string)).unwrap())
-                .unwrap();
+                .new_string(serde_json::to_string(&error.map(ToString::to_string))?)
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "error",
+                    source,
+                })?;
             call_method(
                 &mut env,
                 &self.callback_handler,
                 "onDisconnect",
                 "(Ljava/lang/String;)",
                 &[JValue::from(&error)],
-            );
+            )
         })
     }
 
-    fn on_error(&self, error: &Error) {
+    fn on_error(&self, error: &Error) -> Result<(), Self::Error> {
         self.env(|mut env| {
-            let error = env.new_string(error.to_string()).unwrap();
+            let error = env.new_string(error.to_string()).map_err(|source| {
+                CallbackError::NewStringFailed {
+                    name: "error",
+                    source,
+                }
+            })?;
             call_method(
                 &mut env,
                 &self.callback_handler,
                 "onError",
                 "(Ljava/lang/String;)",
                 &[JValue::from(&error)],
-            );
+            )
         })
     }
+}
+
+fn throw(env: &mut JNIEnv, class: &str, msg: impl Into<JNIString>) {
+    if let Err(err) = env.throw_new(class, msg) {
+        // We can't panic, since unwinding across the FFI boundary is UB...
+        log::error!("failed to throw Java exception: {err}");
+    }
+}
+
+fn catch_and_throw<F: FnOnce(&mut JNIEnv) -> R, R>(env: &mut JNIEnv, f: F) -> Option<R> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(env)))
+        .map_err(|info| {
+            log::error!("catching Rust panic");
+            throw(
+                env,
+                "java/lang/Exception",
+                match info.downcast_ref::<&str>() {
+                    Some(msg) => format!("Rust panicked: {msg}"),
+                    None => "Rust panicked with no message".to_owned(),
+                },
+            );
+        })
+        .ok()
+}
+
+#[derive(Debug, Error)]
+enum ConnectError {
+    #[error("Failed to access {name:?}: {source}")]
+    StringInvalid {
+        name: &'static str,
+        source: jni::errors::Error,
+    },
+    #[error("Failed to get Java VM: {0}")]
+    GetJavaVmFailed(#[source] jni::errors::Error),
+    #[error(transparent)]
+    ConnectFailed(#[from] Error),
+}
+
+fn connect(
+    env: &mut JNIEnv,
+    portal_url: JString,
+    portal_token: JString,
+    callback_handler: JObject<'static>,
+) -> Result<Session<CallbackHandler>, ConnectError> {
+    let portal_url = String::from(env.get_string(&portal_url).map_err(|source| {
+        ConnectError::StringInvalid {
+            name: "portal_url",
+            source,
+        }
+    })?);
+    let portal_token = env
+        .get_string(&portal_token)
+        .map_err(|source| ConnectError::StringInvalid {
+            name: "portal_token",
+            source,
+        })?
+        .into();
+    let callback_handler = CallbackHandler {
+        vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
+        callback_handler,
+    };
+    Session::connect(portal_url.as_str(), portal_token, callback_handler.clone())
+        .map_err(Into::into)
 }
 
 /// # Safety
@@ -172,20 +301,15 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
     portal_token: JString,
     callback_handler: JObject<'static>,
 ) -> *const Session<CallbackHandler> {
-    let portal_url = String::from(env.get_string(&portal_url).unwrap());
-    let portal_token = env.get_string(&portal_token).unwrap().into();
-    let callback_handler = CallbackHandler {
-        vm: env.get_java_vm().unwrap(),
-        callback_handler,
-    };
-    match Session::connect(portal_url.as_str(), portal_token, callback_handler.clone()) {
-        Ok(session) => Box::into_raw(Box::new(session)),
-        Err(err) => {
-            env.throw_new("java/lang/Exception", err.to_string())
-                .unwrap();
-            std::ptr::null()
+    if let Some(result) = catch_and_throw(&mut env, |env| {
+        connect(env, portal_url, portal_token, callback_handler)
+    }) {
+        match result {
+            Ok(session) => return Box::into_raw(Box::new(session)),
+            Err(err) => throw(&mut env, "java/lang/Exception", err.to_string()),
         }
     }
+    std::ptr::null()
 }
 
 /// # Safety
@@ -198,13 +322,15 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_disconnect(
     session: *mut Session<CallbackHandler>,
 ) {
     if let Some(session) = session.as_mut() {
-        session.disconnect(None);
+        catch_and_throw(&mut env, |_| {
+            session.disconnect(None);
+        });
     } else {
-        env.throw_new(
+        throw(
+            &mut env,
             "java/lang/NullPointerException",
             "Cannot disconnect because \"session\" is null",
-        )
-        .unwrap();
+        );
     }
 }
 
@@ -218,14 +344,16 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_bump_sockets(
     session: *const Session<CallbackHandler>,
 ) {
     if let Some(session) = session.as_ref() {
-        // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
-        session.bump_sockets();
+        catch_and_throw(&mut env, |_| {
+            // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
+            session.bump_sockets();
+        });
     } else {
-        env.throw_new(
+        throw(
+            &mut env,
             "java/lang/NullPointerException",
             "Cannot bump sockets because \"session\" is null",
-        )
-        .unwrap();
+        );
     }
 }
 
@@ -239,13 +367,15 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_disable_some_roaming_for
     session: *const Session<CallbackHandler>,
 ) {
     if let Some(session) = session.as_ref() {
-        // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
-        session.disable_some_roaming_for_broken_mobile_semantics();
+        catch_and_throw(&mut env, |_| {
+            // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
+            session.disable_some_roaming_for_broken_mobile_semantics();
+        });
     } else {
-        env.throw_new(
+        throw(
+            &mut env,
             "java/lang/NullPointerException",
             "Cannot disable roaming because \"session\" is null",
-        )
-        .unwrap();
+        );
     }
 }

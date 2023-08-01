@@ -1,7 +1,7 @@
 use super::InterfaceConfig;
 use ip_network::IpNetwork;
 use libc::{close, open, O_RDWR};
-use libs_common::{Callbacks, Error, Result, DNS_SENTINEL};
+use libs_common::{CallbackErrorFacade, Callbacks, Error, Result, DNS_SENTINEL};
 use std::{
     os::fd::{AsRawFd, RawFd},
     sync::Arc,
@@ -73,13 +73,17 @@ impl IfaceConfig {
     pub async fn set_iface_config(
         &mut self,
         config: &InterfaceConfig,
-        callbacks: &impl Callbacks,
+        callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
         callbacks.on_set_interface_config(config.ipv4, config.ipv6, DNS_SENTINEL);
         Ok(())
     }
 
-    pub async fn add_route(&mut self, route: &IpNetwork, callbacks: &impl Callbacks) -> Result<()> {
+    pub async fn add_route(
+        &mut self,
+        route: &IpNetwork,
+        callbacks: &CallbackErrorFacade<impl Callbacks>,
+    ) -> Result<()> {
         callbacks.on_add_route(serde_json::to_string(route)?);
         Ok(())
     }
