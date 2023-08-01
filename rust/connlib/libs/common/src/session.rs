@@ -402,19 +402,18 @@ where
     ///
     /// For now this just drops the runtime, which should drop all pending tasks.
     /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
-    pub fn disconnect(&mut self, error: Option<Error>) -> bool {
-        Self::disconnect_inner(&self.runtime, &self.callbacks, error);
-        true
+    pub fn disconnect(&mut self, error: Option<Error>) {
+        Self::disconnect_inner(&self.runtime, &self.callbacks, error)
     }
 
-    /// TODO
-    pub fn bump_sockets(&self) -> bool {
-        true
+    // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#L177
+    pub fn bump_sockets(&self) {
+        tracing::error!("`bump_sockets` is unimplemented");
     }
 
-    /// TODO
-    pub fn disable_some_roaming_for_broken_mobile_semantics(&self) -> bool {
-        true
+    // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
+    pub fn disable_some_roaming_for_broken_mobile_semantics(&self) {
+        tracing::error!("`bump_sockets` is unimplemented");
     }
 }
 

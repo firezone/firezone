@@ -22,12 +22,12 @@ mod ffi {
         ) -> Result<WrappedSession, String>;
 
         #[swift_bridge(swift_name = "bumpSockets")]
-        fn bump_sockets(&self) -> bool;
+        fn bump_sockets(&self);
 
         #[swift_bridge(swift_name = "disableSomeRoamingForBrokenMobileSemantics")]
-        fn disable_some_roaming_for_broken_mobile_semantics(&self) -> bool;
+        fn disable_some_roaming_for_broken_mobile_semantics(&self);
 
-        fn disconnect(&mut self) -> bool;
+        fn disconnect(&mut self);
     }
 
     extern "Swift" {
@@ -142,17 +142,16 @@ impl WrappedSession {
         .map_err(|err| err.to_string())
     }
 
-    fn bump_sockets(&self) -> bool {
-        // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#L177
-        todo!()
+    fn bump_sockets(&self) {
+        self.session.bump_sockets()
     }
 
-    fn disable_some_roaming_for_broken_mobile_semantics(&self) -> bool {
-        // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
-        todo!()
+    fn disable_some_roaming_for_broken_mobile_semantics(&self) {
+        self.session
+            .disable_some_roaming_for_broken_mobile_semantics()
     }
 
-    fn disconnect(&mut self) -> bool {
+    fn disconnect(&mut self) {
         self.session.disconnect(None)
     }
 }

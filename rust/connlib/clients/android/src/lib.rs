@@ -354,7 +354,6 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_bump_sockets(
 ) {
     if let Some(session) = session.as_ref() {
         catch_and_throw(&mut env, |_| {
-            // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
             session.bump_sockets();
         });
     } else {
@@ -377,7 +376,6 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_disable_some_roaming_for
 ) {
     if let Some(session) = session.as_ref() {
         catch_and_throw(&mut env, |_| {
-            // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
             session.disable_some_roaming_for_broken_mobile_semantics();
         });
     } else {
