@@ -97,7 +97,7 @@ jobs:
       - run: sudo apt-get install -y musl-tools
       - run: cargo build --bin relay --target x86_64-unknown-linux-musl
 
-  rust_relay-smoke-test:
+  rust_smoke-test-relay:
     runs-on: ubuntu-latest
     defaults:
       run:

@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  rust_relay-smoke-test:
+  rust_smoke-test-relay:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
