@@ -6,7 +6,8 @@ defmodule Domain.Devices.Device.Changeset do
   @upsert_fields ~w[external_id name public_key]a
   @conflict_replace_fields ~w[public_key
                               last_seen_user_agent last_seen_remote_ip
-                              last_seen_version last_seen_at]a
+                              last_seen_version last_seen_at
+                              updated_at]a
   @update_fields ~w[name]a
   @required_fields @upsert_fields
 

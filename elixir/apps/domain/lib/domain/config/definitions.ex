@@ -444,13 +444,13 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(
     :auth_provider_adapters,
-    {
-      :array,
-      ",",
-      {:parameterized, Ecto.Enum,
-       Ecto.Enum.init(values: ~w[email openid_connect userpass token]a)}
-    },
-    default: ~w[email openid_connect token]a
+    {:array, ",", {:parameterized, Ecto.Enum, Ecto.Enum.init(values: ~w[
+      email
+      openid_connect google_workspace
+      userpass
+      token
+    ]a)}},
+    default: ~w[email openid_connect google_workspace token]a
   )
 
   ##############################################

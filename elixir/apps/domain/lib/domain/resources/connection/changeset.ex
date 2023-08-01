@@ -1,8 +1,15 @@
 defmodule Domain.Resources.Connection.Changeset do
   use Domain, :changeset
+  alias Domain.Auth
 
   @fields ~w[gateway_group_id]a
   @required_fields @fields
+
+  def changeset(account_id, connection, attrs, %Auth.Subject{} = subject) do
+    changeset(account_id, connection, attrs)
+    |> put_change(:created_by, :identity)
+    |> put_change(:created_by_identity_id, subject.identity.id)
+  end
 
   def changeset(account_id, connection, attrs) do
     connection

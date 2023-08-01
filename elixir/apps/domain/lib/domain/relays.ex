@@ -43,7 +43,7 @@ defmodule Domain.Relays do
   def create_group(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       subject.account
-      |> Group.Changeset.create_changeset(attrs)
+      |> Group.Changeset.create_changeset(attrs, subject)
       |> Repo.insert()
     end
   end
@@ -69,7 +69,7 @@ defmodule Domain.Relays do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       group
       |> Repo.preload(:account)
-      |> Group.Changeset.update_changeset(attrs)
+      |> Group.Changeset.update_changeset(attrs, subject)
       |> Repo.update()
     end
   end
