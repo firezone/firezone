@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use boringtun::x25519::{PublicKey, StaticSecret};
+use ip_network::IpNetwork;
 use parking_lot::Mutex;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_core::OsRng;
@@ -68,9 +69,9 @@ pub trait Callbacks: Clone + Send + Sync {
     /// Called when the tunnel is connected.
     fn on_tunnel_ready(&self) -> StdResult<(), Self::Error>;
     /// Called when when a route is added.
-    fn on_add_route(&self, route: String) -> StdResult<(), Self::Error>;
+    fn on_add_route(&self, route: IpNetwork) -> StdResult<(), Self::Error>;
     /// Called when when a route is removed.
-    fn on_remove_route(&self, route: String) -> StdResult<(), Self::Error>;
+    fn on_remove_route(&self, route: IpNetwork) -> StdResult<(), Self::Error>;
     /// Called when the resource list changes.
     fn on_update_resources(
         &self,
@@ -118,7 +119,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         result
     }
 
-    fn on_add_route(&self, route: String) -> Result<()> {
+    fn on_add_route(&self, route: IpNetwork) -> Result<()> {
         let result = self
             .0
             .on_add_route(route)
@@ -129,7 +130,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         result
     }
 
-    fn on_remove_route(&self, route: String) -> Result<()> {
+    fn on_remove_route(&self, route: IpNetwork) -> Result<()> {
         let result = self
             .0
             .on_remove_route(route)
@@ -357,7 +358,7 @@ where
                     },
                 ];
                 for resource in &resources {
-                    callbacks.on_add_route(serde_json::to_string(&resource.address)?)?;
+                    callbacks.on_add_route(resource.address)?;
                 }
                 callbacks.on_update_resources(
                     resources

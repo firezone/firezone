@@ -3,6 +3,7 @@
 #![allow(improper_ctypes, non_camel_case_types)]
 
 use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session};
+use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     sync::Arc,
@@ -97,12 +98,12 @@ impl Callbacks for CallbackHandler {
         Ok(self.0.on_tunnel_ready())
     }
 
-    fn on_add_route(&self, route: String) -> Result<(), Self::Error> {
-        Ok(self.0.on_add_route(route))
+    fn on_add_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
+        Ok(self.0.on_add_route(route.to_string()))
     }
 
-    fn on_remove_route(&self, route: String) -> Result<(), Self::Error> {
-        Ok(self.0.on_remove_route(route))
+    fn on_remove_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
+        Ok(self.0.on_remove_route(route.to_string()))
     }
 
     fn on_update_resources(

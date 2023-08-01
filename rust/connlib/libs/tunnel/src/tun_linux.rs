@@ -179,7 +179,7 @@ fn get_last_error() -> Error {
 impl IfaceConfig {
     pub async fn add_route(
         &mut self,
-        route: &IpNetwork,
+        route: IpNetwork,
         _callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
         let req = self

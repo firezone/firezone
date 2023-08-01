@@ -302,7 +302,7 @@ where
                     Box::pin(async move {
                         {
                             let mut iface_config = tunnel.iface_config.lock().await;
-                            for ip in &peer.ips {
+                            for &ip in &peer.ips {
                                 if let Err(e) = iface_config.add_route(ip, tunnel.callbacks()).await
                                 {
                                     let _ = tunnel.callbacks.on_error(&e);

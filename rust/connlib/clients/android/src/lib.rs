@@ -4,6 +4,7 @@
 // ecosystem, so it's used here for consistency.
 
 use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session};
+use ip_network::IpNetwork;
 use jni::{
     objects::{JClass, JObject, JString, JValue},
     strings::JNIString,
@@ -107,12 +108,12 @@ impl Callbacks for CallbackHandler {
                         name: "tunnel_address_v6",
                         source,
                     })?;
-            let dns_address = env
-                .new_string(serde_json::to_string(&dns_address)?)
-                .map_err(|source| CallbackError::NewStringFailed {
+            let dns_address = env.new_string(dns_address.to_string()).map_err(|source| {
+                CallbackError::NewStringFailed {
                     name: "dns_address",
                     source,
-                })?;
+                }
+            })?;
             call_method(
                 &mut env,
                 &self.callback_handler,
@@ -133,14 +134,14 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_add_route(&self, route: String) -> Result<(), Self::Error> {
+    fn on_add_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
         self.env(|mut env| {
-            let route = env
-                .new_string(serde_json::to_string(&route)?)
-                .map_err(|source| CallbackError::NewStringFailed {
+            let route = env.new_string(route.to_string()).map_err(|source| {
+                CallbackError::NewStringFailed {
                     name: "route",
                     source,
-                })?;
+                }
+            })?;
             call_method(
                 &mut env,
                 &self.callback_handler,
@@ -151,14 +152,14 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_remove_route(&self, route: String) -> Result<(), Self::Error> {
+    fn on_remove_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
         self.env(|mut env| {
-            let route = env
-                .new_string(serde_json::to_string(&route)?)
-                .map_err(|source| CallbackError::NewStringFailed {
+            let route = env.new_string(route.to_string()).map_err(|source| {
+                CallbackError::NewStringFailed {
                     name: "route",
                     source,
-                })?;
+                }
+            })?;
             call_method(
                 &mut env,
                 &self.callback_handler,

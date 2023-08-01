@@ -221,7 +221,7 @@ where
         {
             let mut iface_config = self.iface_config.lock().await;
             for ip in resource_description.ips() {
-                iface_config.add_route(&ip, self.callbacks()).await?;
+                iface_config.add_route(ip, self.callbacks()).await?;
             }
         }
         let resource_list = {
@@ -247,7 +247,7 @@ where
                 .await
                 .expect("Couldn't initiate interface");
             iface_config
-                .add_route(&DNS_SENTINEL.into(), self.callbacks())
+                .add_route(DNS_SENTINEL.into(), self.callbacks())
                 .await?;
         }
 

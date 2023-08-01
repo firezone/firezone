@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     str::FromStr,
@@ -27,11 +28,11 @@ impl Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_add_route(&self, _route: String) -> Result<(), Self::Error> {
+    fn on_add_route(&self, _route: IpNetwork) -> Result<(), Self::Error> {
         Ok(())
     }
 
-    fn on_remove_route(&self, _route: String) -> Result<(), Self::Error> {
+    fn on_remove_route(&self, _route: IpNetwork) -> Result<(), Self::Error> {
         Ok(())
     }
 

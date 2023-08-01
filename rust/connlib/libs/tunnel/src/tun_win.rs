@@ -17,7 +17,7 @@ impl IfaceConfig {
 
     pub async fn add_route(
         &mut self,
-        _route: &IpNetwork,
+        _route: IpNetwork,
         _callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
         todo!()

@@ -81,11 +81,10 @@ impl IfaceConfig {
 
     pub async fn add_route(
         &mut self,
-        route: &IpNetwork,
+        route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
-        callbacks.on_add_route(serde_json::to_string(route)?);
-        Ok(())
+        callbacks.on_add_route(route)
     }
 
     pub async fn up(&mut self) -> Result<()> {
