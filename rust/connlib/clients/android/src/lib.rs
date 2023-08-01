@@ -114,15 +114,23 @@ impl Callbacks for CallbackHandler {
                     source,
                 }
             })?;
+            // TODO: Don't hardcode this string here!
+            let dns_fallback_strategy = env.new_string("upstream_resolver").map_err(|source| {
+                CallbackError::NewStringFailed {
+                    name: "dns_fallback_strategy",
+                    source,
+                }
+            })?;
             call_method(
                 &mut env,
                 &self.callback_handler,
                 "onSetInterfaceConfig",
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)",
                 &[
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
                     JValue::from(&dns_address),
+                    JValue::from(&dns_fallback_strategy),
                 ],
             )
         })
