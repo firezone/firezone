@@ -75,17 +75,10 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     pub(crate) fn set_dst(&mut self, dst: IpAddr) {
-        match self {
-            MutableIpPacket::MutableIpv4Packet(p) => {
-                if let IpAddr::V4(d) = dst {
-                    p.set_destination(d)
-                }
-            }
-            MutableIpPacket::MutableIpv6Packet(p) => {
-                if let IpAddr::V6(d) = dst {
-                    p.set_destination(d)
-                }
-            }
+        match (self, dst) {
+            (Self::MutableIpv4Packet(p), IpAddr::V4(d)) => p.set_destination(d),
+            (Self::MutableIpv6Packet(p), IpAddr::V6(d)) => p.set_destination(d),
+            _ => {}
         }
     }
 

@@ -119,10 +119,10 @@ where
                     resource,
                 )?;
                 let response = self.build_response(buf, response);
-                match version {
-                    Version::Ipv4 => return response.map(SendPacket::Ipv4),
-                    Version::Ipv6 => return response.map(SendPacket::Ipv6),
-                }
+                return response.map(|pkt| match version {
+                    Version::Ipv4 => SendPacket::Ipv4(pkt),
+                    Version::Ipv6 => SendPacket::Ipv6(pkt),
+                });
             }
         }
 

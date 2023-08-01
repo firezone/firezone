@@ -14,11 +14,7 @@ where
     CB: Callbacks + 'static,
 {
     fn get_matching_version_ip(addr: IpAddr, ip: IpAddr) -> Option<IpAddr> {
-        if (addr.is_ipv4() && ip.is_ipv4()) || (addr.is_ipv6() && ip.is_ipv6()) {
-            Some(ip)
-        } else {
-            None
-        }
+        ((addr.is_ipv4() && ip.is_ipv4()) || (addr.is_ipv6() && ip.is_ipv6())).then_some(ip)
     }
 
     async fn update_and_send_packet(&self, packet: &mut [u8], dst_addr: IpAddr) {
@@ -94,8 +90,8 @@ where
                         (dst_addr, None)
                     } else {
                         tracing::warn!(
-                        "client tried to hijack the tunnel for range outside what it's allowed."
-                    );
+                            "client tried to hijack the tunnel for range outside what it's allowed."
+                        );
                         return;
                     }
                 }

@@ -245,9 +245,9 @@ where
         // We don't want to allow tunnel-over-tunnel as it leads to some weirdness
         // I'm sure there are some edge-cases where we want that but let's tackle that when it comes up
         self.sdp_remove_resource_attributes(&mut sdp.attributes);
-        sdp.media_descriptions.iter_mut().for_each(|m| {
+        for m in sdp.media_descriptions.iter_mut() {
             self.sdp_remove_resource_attributes(&mut m.attributes);
-        });
+        }
         rtc_sdp.sdp = sdp.marshal();
 
         peer_connection.set_remote_description(rtc_sdp).await?;
