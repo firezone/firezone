@@ -40,7 +40,7 @@ where
         resources: Option<ResourceDescription>,
     ) -> Result<()> {
         tracing::trace!(
-            "New datachannel openned for peer with ips: {:?}",
+            "New datachannel opened for peer with ips: {:?}",
             peer_config.ips
         );
         let channel = data_channel.detach().await?;

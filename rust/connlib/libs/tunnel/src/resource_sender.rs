@@ -103,7 +103,7 @@ where
 
             self.update_and_send_packet(packet, dst_addr).await;
         } else {
-            tracing::warn!("Recieved packet from peer with an unallowed ip: {addr}");
+            tracing::warn!("Received packet from peer with an unallowed ip: {addr}");
         }
     }
 }

@@ -28,7 +28,7 @@ pub(crate) struct Peer {
     // This can have the following problem:
     // 1. Peer sends packet to address.com and it resolves to 1.1.1.1
     // 2. Now Peer sends another packet to address.com but it resolves to 2.2.2.2
-    // 3. We recieve an outstanding response(or push) from 1.1.1.1
+    // 3. We receive an outstanding response(or push) from 1.1.1.1
     // This response(or push) is ignored, since we store only the last.
     // so, TODO: store multiple ips and expire them.
     // Note that this case is quite an unlikely edge case so I wouldn't prioritize this fix
