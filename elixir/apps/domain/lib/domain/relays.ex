@@ -156,7 +156,7 @@ defmodule Domain.Relays do
       connected_relays
       |> Map.keys()
       |> Relay.Query.by_ids()
-      |> Relay.Query.by_account_id(resource.account_id)
+      |> Relay.Query.public_or_by_account_id(resource.account_id)
       |> Repo.all()
       |> Enum.map(fn relay ->
         %{metas: [%{secret: stamp_secret}]} = Map.get(connected_relays, relay.id)

@@ -32,6 +32,22 @@ defmodule API.Gateway.Channel do
     {:noreply, socket}
   end
 
+  def handle_info({:allow_access, attrs}, socket) do
+    %{
+      device_id: device_id,
+      resource_id: resource_id,
+      authorization_expires_at: authorization_expires_at
+    } = attrs
+
+    resource = Resources.fetch_resource_by_id!(resource_id)
+
+    push(socket, "allow_access", %{
+      device_id: device_id,
+      resource: Views.Resource.render(resource),
+      expires_at: DateTime.to_unix(authorization_expires_at, :second)
+    })
+  end
+
   def handle_info({:request_connection, {channel_pid, socket_ref}, attrs}, socket) do
     %{
       device_id: device_id,
