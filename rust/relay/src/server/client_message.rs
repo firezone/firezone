@@ -1,4 +1,5 @@
 use crate::auth::{generate_password, split_username, systemtime_from_unix, FIREZONE};
+use crate::rfc8656::{AdditionalAddressFamily, AddressFamily, RequestedAddressFamily};
 use crate::server::channel_data::ChannelData;
 use crate::server::UDP_TRANSPORT;
 use crate::Attribute;
@@ -121,37 +122,26 @@ pub struct Allocate {
     lifetime: Option<Lifetime>,
     username: Option<Username>,
     nonce: Option<Nonce>,
+    requested_address_family: Option<RequestedAddressFamily>,
+    additional_address_family: Option<AdditionalAddressFamily>,
 }
 
 impl Allocate {
-    pub fn new_authenticated_udp(
+    pub fn new_authenticated_udp_implicit_ip4(
         transaction_id: TransactionId,
         lifetime: Option<Lifetime>,
         username: Username,
         relay_secret: &str,
         nonce: Uuid,
     ) -> Self {
-        let requested_transport = RequestedTransport::new(UDP_TRANSPORT);
-        let nonce = Nonce::new(nonce.as_hyphenated().to_string()).expect("len(uuid) < 128");
-
-        let mut message =
-            Message::<Attribute>::new(MessageClass::Request, ALLOCATE, transaction_id);
-        message.add_attribute(requested_transport.clone().into());
-        message.add_attribute(username.clone().into());
-        message.add_attribute(nonce.clone().into());
-
-        if let Some(lifetime) = &lifetime {
-            message.add_attribute(lifetime.clone().into());
-        }
-
-        let (expiry, salt) = split_username(username.name()).expect("a valid username");
-        let expiry_systemtime = systemtime_from_unix(expiry);
-
-        let password = generate_password(relay_secret, expiry_systemtime, salt);
-
-        let message_integrity =
-            MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)
-                .unwrap();
+        let (requested_transport, nonce, message_integrity) = Self::make_attributes(
+            transaction_id,
+            &lifetime,
+            &username,
+            relay_secret,
+            nonce,
+            None,
+        );
 
         Self {
             transaction_id,
@@ -160,6 +150,38 @@ impl Allocate {
             lifetime,
             username: Some(username),
             nonce: Some(nonce),
+            requested_address_family: None, // IPv4 is the default.
+            additional_address_family: None,
+        }
+    }
+
+    pub fn new_authenticated_udp_ip6(
+        transaction_id: TransactionId,
+        lifetime: Option<Lifetime>,
+        username: Username,
+        relay_secret: &str,
+        nonce: Uuid,
+    ) -> Self {
+        let requested_address_family = RequestedAddressFamily::new(AddressFamily::V6);
+
+        let (requested_transport, nonce, message_integrity) = Self::make_attributes(
+            transaction_id,
+            &lifetime,
+            &username,
+            relay_secret,
+            nonce,
+            Some(requested_address_family.clone()),
+        );
+
+        Self {
+            transaction_id,
+            message_integrity: Some(message_integrity),
+            requested_transport,
+            lifetime,
+            username: Some(username),
+            nonce: Some(nonce),
+            requested_address_family: Some(requested_address_family),
+            additional_address_family: None,
         }
     }
 
@@ -184,7 +206,45 @@ impl Allocate {
             lifetime,
             username: None,
             nonce: None,
+            requested_address_family: None,
+            additional_address_family: None,
         }
+    }
+
+    fn make_attributes(
+        transaction_id: TransactionId,
+        lifetime: &Option<Lifetime>,
+        username: &Username,
+        relay_secret: &str,
+        nonce: Uuid,
+        requested_address_family: Option<RequestedAddressFamily>,
+    ) -> (RequestedTransport, Nonce, MessageIntegrity) {
+        let requested_transport = RequestedTransport::new(UDP_TRANSPORT);
+        let nonce = Nonce::new(nonce.as_hyphenated().to_string()).expect("len(uuid) < 128");
+
+        let mut message =
+            Message::<Attribute>::new(MessageClass::Request, ALLOCATE, transaction_id);
+        message.add_attribute(requested_transport.clone().into());
+        message.add_attribute(username.clone().into());
+        message.add_attribute(nonce.clone().into());
+
+        if let Some(requested_address_family) = requested_address_family {
+            message.add_attribute(requested_address_family.into());
+        }
+
+        if let Some(lifetime) = &lifetime {
+            message.add_attribute(lifetime.clone().into());
+        }
+
+        let (expiry, salt) = split_username(username.name()).expect("a valid username");
+        let expiry_systemtime = systemtime_from_unix(expiry);
+
+        let password = generate_password(relay_secret, expiry_systemtime, salt);
+
+        let message_integrity =
+            MessageIntegrity::new_long_term_credential(&message, username, &FIREZONE, &password)
+                .unwrap();
+        (requested_transport, nonce, message_integrity)
     }
 
     pub fn parse(message: &Message<Attribute>) -> Result<Self, Message<Attribute>> {
@@ -197,6 +257,8 @@ impl Allocate {
             .clone();
         let lifetime = message.get_attribute::<Lifetime>().cloned();
         let username = message.get_attribute::<Username>().cloned();
+        let requested_address_family = message.get_attribute::<RequestedAddressFamily>().cloned();
+        let additional_address_family = message.get_attribute::<AdditionalAddressFamily>().cloned();
 
         Ok(Allocate {
             transaction_id,
@@ -205,6 +267,8 @@ impl Allocate {
             lifetime,
             username,
             nonce,
+            requested_address_family,
+            additional_address_family,
         })
     }
 
@@ -230,6 +294,14 @@ impl Allocate {
 
     pub fn nonce(&self) -> Option<&Nonce> {
         self.nonce.as_ref()
+    }
+
+    pub fn requested_address_family(&self) -> Option<&RequestedAddressFamily> {
+        self.requested_address_family.as_ref()
+    }
+
+    pub fn additional_address_family(&self) -> Option<&AdditionalAddressFamily> {
+        self.additional_address_family.as_ref()
     }
 }
 
