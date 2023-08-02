@@ -59,6 +59,29 @@ export default function EarlyAccess() {
           </div>
         </div>
       </div>
+      {/*
+          Feature section 1: Flexible, zero-trust access controls, as granular as you need them
+
+Looking to replace your VPN with a zero-trust approach? With Firezone 1.0 you have the flexibility to implement zero-trust access according to your organization's needs. Protect everything from an entire subnet all the way down to individual applications, and everything in between. Firezone intelligently routes allowed traffic to protected resources, leaving them invisible to unauthorized outsiders.
+        * Say goodbye to opening firewall ports into your protected networks. Firezone 1.0 performs automatic NAT traversal to establish the shortest path between your end-users and protected resources. That means your users will enjoy a lower-latency experience and leave your protected resources invisible to the public internet, minimizing your attack surface.
+
+
+Feature section 2: Effortless scalability
+
+Sick of overloaded VPN tunnels slowing you down? The Firezone 1.0 Gateway scales effortlessly to meet your bandwidth and availability needs.
+
+* Deploy Gateways in groups to provide automatic failover and load balancing to protected Resources
+* Need more capacity? Simply deploy more Gateways and they'll intelligently failover and load balance for each other.
+*
+* Feature section 3: Authenticate with virtually any Identity Provider
+
+Firezone 1.0 supports Generic OIDC, SAML 2.0, and Google Workspace authentication providers to authenticate and authorize your users with your existing identity solution. Not using an Identity Provider? No problem, use our magic link authentication provider to manage access with emails only.
+
+* Automatically provision users and groups using just-in-time provisioning support
+* Automatically de-provision employees who've left with our directory sync integration
+*
+* Feature section 4: Built on WireGuard for performance and security
+      */}
       <section className="bg-gradient-to-b from-white to-primary-50 border-t border-neutral-200 pb-14">
         <div className="mx-auto lg:max-w-screen-lg max-w-screen-sm">
           <div className="py-14 mx-auto">
