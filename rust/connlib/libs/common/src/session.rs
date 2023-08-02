@@ -393,9 +393,7 @@ where
         // implement them :)
         *runtime.lock() = None;
 
-        if let Err(err) = callbacks.on_disconnect(error.as_ref()) {
-            tracing::error!("`on_disconnect` failed: {err}");
-        }
+        let _ = callbacks.on_disconnect(error.as_ref());
     }
 
     /// Cleanup a [Session].
