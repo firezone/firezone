@@ -112,7 +112,7 @@ public class Adapter {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      logger.debug("Adapter.start")
+      self.logger.debug("Adapter.start")
       guard case .stoppedTunnel = self.state else {
         completionHandler(.invalidState)
         return
@@ -120,14 +120,14 @@ public class Adapter {
 
       self.callbackHandler.delegate = self
 
-      logger.debug("Adapter.start: Starting connlib")
+      self.logger.debug("Adapter.start: Starting connlib")
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(self.portalURLString, self.token, self.callbackHandler),
           onStarted: completionHandler
         )
       } catch let error {
-        logger.error("Adapter.start: Error: \(error, privacy: .public)")
+        self.logger.error("Adapter.start: Error: \(error, privacy: .public)")
         self.state = .stoppedTunnel
         completionHandler(AdapterError.connlibConnectError(error))
       }
@@ -140,17 +140,17 @@ public class Adapter {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      logger.debug("Adapter.stop")
+      self.logger.debug("Adapter.stop")
 
       switch self.state {
         case .stoppedTunnel, .stoppingTunnel:
           break
         case .tunnelReady(let session):
-          logger.debug("Adapter.stop: Shutting down connlib")
+          self.logger.debug("Adapter.stop: Shutting down connlib")
           self.state = .stoppingTunnel(session: session, onStopped: completionHandler)
           _ = session.disconnect()
         case .startingTunnel(let session, let onStarted):
-          logger.debug("Adapter.stop: Shutting down connlib before tunnel ready")
+          self.logger.debug("Adapter.stop: Shutting down connlib before tunnel ready")
           self.state = .stoppingTunnel(session: session, onStopped: {
             onStarted?(AdapterError.stoppedByRequestWhileStarting)
             completionHandler()
@@ -207,7 +207,7 @@ extension Adapter {
       case .startingTunnel(let session, let onStarted):
         if path.status == .satisfied {
         } else {
-          logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
+          self.logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
           onStarted?(nil)
           self.packetTunnelProvider?.reasserting = true
           self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
@@ -217,13 +217,13 @@ extension Adapter {
 
       case .tunnelReady(let session):
         if path.status == .satisfied {
-          logger.debug("Suppressing calls to disableSomeRoamingForBrokenMobileSemantics() and bumpSockets()")
+          self.logger.debug("Suppressing calls to disableSomeRoamingForBrokenMobileSemantics() and bumpSockets()")
           // #if os(iOS)
           // wrappedSession.disableSomeRoamingForBrokenMobileSemantics()
           // #endif
           // wrappedSession.bumpSockets()
         } else {
-          logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
+          self.logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
           self.packetTunnelProvider?.reasserting = true
           self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
           _ = session.disconnect()
@@ -235,7 +235,7 @@ extension Adapter {
       case .stoppedTunnelTemporarily:
         guard path.status == .satisfied else { return }
 
-        logger.debug("Adapter.didReceivePathUpdate: Back online. Starting connlib.")
+        self.logger.debug("Adapter.didReceivePathUpdate: Back online. Starting connlib.")
 
         do {
           self.state = .startingTunnel(
@@ -250,9 +250,9 @@ extension Adapter {
             }
           )
         } catch let error as AdapterError {
-          logger.error("Adapter.didReceivePathUpdate: Error: \(error, privacy: .public)")
+          self.logger.error("Adapter.didReceivePathUpdate: Error: \(error, privacy: .public)")
         } catch {
-          logger.error("Adapter.didReceivePathUpdate: Unknown error: \(error, privacy: .public) (fatal)")
+          self.logger.error("Adapter.didReceivePathUpdate: Unknown error: \(error, privacy: .public) (fatal)")
         }
 
       case .stoppingTunnel, .stoppedTunnel:
@@ -269,7 +269,7 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      logger.debug("Adapter.onSetInterfaceConfig")
+      self.logger.debug("Adapter.onSetInterfaceConfig")
 
       switch self.state {
         case .startingTunnel:
@@ -295,17 +295,17 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      logger.debug("Adapter.onTunnelReady")
+      self.logger.debug("Adapter.onTunnelReady")
       guard case .startingTunnel(let session, let onStarted) = self.state else {
-        logger.error("Adapter.onTunnelReady: Unexpected state: \(self.state, privacy: .public)")
+        self.logger.error("Adapter.onTunnelReady: Unexpected state: \(self.state, privacy: .public)")
         return
       }
       guard let networkSettings = self.networkSettings else {
-        logger.error("Adapter.onTunnelReady: No network settings")
+        self.logger.error("Adapter.onTunnelReady: No network settings")
         return
       }
       guard let packetTunnelProvider = self.packetTunnelProvider else {
-        logger.error("Adapter.onTunnelReady: No packet tunnel provider")
+        self.logger.error("Adapter.onTunnelReady: No packet tunnel provider")
         return
       }
       networkSettings.apply(on: packetTunnelProvider, logger: self.logger) { error in
@@ -325,13 +325,13 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      logger.debug("Adapter.onAddRoute(\(route, privacy: .public))")
+      self.logger.debug("Adapter.onAddRoute(\(route, privacy: .public))")
       guard let networkSettings = self.networkSettings else {
-        logger.error("Adapter.onAddRoute: No network settings")
+        self.logger.error("Adapter.onAddRoute: No network settings")
         return
       }
       guard let packetTunnelProvider = self.packetTunnelProvider else {
-        logger.error("Adapter.onAddRoute: No packet tunnel provider")
+        self.logger.error("Adapter.onAddRoute: No packet tunnel provider")
         return
       }
 
@@ -346,13 +346,13 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      logger.debug("Adapter.onRemoveRoute(\(route, privacy: .public))")
+      self.logger.debug("Adapter.onRemoveRoute(\(route, privacy: .public))")
       guard let networkSettings = self.networkSettings else {
-        logger.error("Adapter.onRemoveRoute: No network settings")
+        self.logger.error("Adapter.onRemoveRoute: No network settings")
         return
       }
       guard let packetTunnelProvider = self.packetTunnelProvider else {
-        logger.error("Adapter.onRemoveRoute: No packet tunnel provider")
+        self.logger.error("Adapter.onRemoveRoute: No packet tunnel provider")
         return
       }
       networkSettings.removeRoute(route)
@@ -366,7 +366,7 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      logger.debug("Adapter.onUpdateResources")
+      self.logger.debug("Adapter.onUpdateResources")
       let jsonString = resourceList
       guard let jsonData = jsonString.data(using: .utf8) else {
         return
@@ -380,11 +380,11 @@ extension Adapter: CallbackHandlerDelegate {
 
       // Update DNS in case resource domains is changing
       guard let networkSettings = self.networkSettings else {
-        logger.error("Adapter.onUpdateResources: No network settings")
+        self.logger.error("Adapter.onUpdateResources: No network settings")
         return
       }
       guard let packetTunnelProvider = self.packetTunnelProvider else {
-        logger.error("Adapter.onUpdateResources: No packet tunnel provider")
+        self.logger.error("Adapter.onUpdateResources: No packet tunnel provider")
         return
       }
       let updatedResourceDomains = networkResources.compactMap { $0.resourceLocation.domain }
@@ -399,9 +399,9 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      logger.debug("Adapter.onDisconnect")
+      self.logger.debug("Adapter.onDisconnect")
       if let errorMessage = error {
-        logger.error("Connlib disconnected with unrecoverable error: \(errorMessage, privacy: .public)")
+        self.logger.error("Connlib disconnected with unrecoverable error: \(errorMessage, privacy: .public)")
         switch self.state {
           case .stoppingTunnel(session: _, let onStopped):
             onStopped?()
@@ -419,7 +419,7 @@ extension Adapter: CallbackHandlerDelegate {
             self.state = .stoppedTunnel
         }
       } else {
-        logger.debug("Connlib disconnected")
+        self.logger.debug("Connlib disconnected")
         switch self.state {
           case .stoppingTunnel(session: _, let onStopped):
             onStopped?()
@@ -436,6 +436,6 @@ extension Adapter: CallbackHandlerDelegate {
   }
 
   public func onError(error: String) {
-    logger.error("Internal connlib error: \(error, privacy: .public)")
+    self.logger.error("Internal connlib error: \(error, privacy: .public)")
   }
 }
