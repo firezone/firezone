@@ -87,43 +87,49 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
     ) -> Result<(), Self::Error> {
-        Ok(self.0.on_set_interface_config(
+        self.0.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
             dns_address.to_string(),
-        ))
+        );
+        Ok(())
     }
 
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        Ok(self.0.on_tunnel_ready())
+        self.0.on_tunnel_ready();
+        Ok(())
     }
 
     fn on_add_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
-        Ok(self.0.on_add_route(route.to_string()))
+        self.0.on_add_route(route.to_string());
+        Ok(())
     }
 
     fn on_remove_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
-        Ok(self.0.on_remove_route(route.to_string()))
+        self.0.on_remove_route(route.to_string());
+        Ok(())
     }
 
     fn on_update_resources(
         &self,
         resource_list: Vec<ResourceDescription>,
     ) -> Result<(), Self::Error> {
-        Ok(self.0.on_update_resources(
+        self.0.on_update_resources(
             serde_json::to_string(&resource_list)
                 .expect("developer error: failed to serialize resource list"),
-        ))
+        );
+        Ok(())
     }
 
     fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
-        Ok(self
-            .0
-            .on_disconnect(error.map(ToString::to_string).unwrap_or_default()))
+        self.0
+            .on_disconnect(error.map(ToString::to_string).unwrap_or_default());
+        Ok(())
     }
 
     fn on_error(&self, error: &Error) -> Result<(), Self::Error> {
-        Ok(self.0.on_error(error.to_string()))
+        self.0.on_error(error.to_string());
+        Ok(())
     }
 }
 
