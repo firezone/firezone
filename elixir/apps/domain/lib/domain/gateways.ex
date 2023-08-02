@@ -102,10 +102,17 @@ defmodule Domain.Gateways do
   end
 
   def fetch_gateway_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_gateways_permission(),
+         Authorizer.connect_gateways_permission()
+       ]}
 
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Validator.valid_uuid?(id) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
       Gateway.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
@@ -158,6 +165,21 @@ defmodule Domain.Gateways do
     {:ok, gateways}
   end
 
+  def gateway_can_connect_to_resource?(%Gateway{} = gateway, %Resources.Resource{} = resource) do
+    connected_gateway_ids = Presence.list("gateways:#{resource.account_id}") |> Map.keys()
+
+    cond do
+      gateway.id not in connected_gateway_ids ->
+        false
+
+      not Resources.connected?(resource, gateway) ->
+        false
+
+      true ->
+        true
+    end
+  end
+
   def change_gateway(%Gateway{} = gateway, attrs \\ %{}) do
     Gateway.Changeset.update_changeset(gateway, attrs)
   end
@@ -207,6 +229,19 @@ defmodule Domain.Gateways do
       Gateway.Query.by_id(gateway.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Gateway.Changeset.delete_changeset/1)
+    end
+  end
+
+  def load_balance_gateways(gateways) do
+    Enum.random(gateways)
+  end
+
+  def load_balance_gateways(gateways, preferred_gateway_ids) do
+    gateways
+    |> Enum.filter(&(&1.id in preferred_gateway_ids))
+    |> case do
+      [] -> load_balance_gateways(gateways)
+      preferred_gateways -> load_balance_gateways(preferred_gateways)
     end
   end
 
