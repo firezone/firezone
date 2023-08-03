@@ -5,7 +5,7 @@ use libc::{
     IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN, IFNAMSIZ, O_NONBLOCK, O_RDWR,
 };
 use libs_common::{Callbacks, Error, Result};
-use netlink_packet_route::rtnl::link::nlas::Nla;
+use netlink_packet_route::{rtnl::link::nlas::Nla, RT_SCOPE_UNIVERSE};
 use rtnetlink::{new_connection, Handle};
 use std::{
     ffi::{c_int, c_short, c_uchar},
@@ -21,8 +21,7 @@ pub(crate) struct IfaceConfig(pub(crate) Arc<IfaceDevice>);
 
 const TUNSETIFF: u64 = 0x4004_54ca;
 const TUN_FILE: &[u8] = b"/dev/net/tun\0";
-const RT_SCOPE_LINK: u8 = 253;
-const RT_PROT_UNSPEC: u8 = 0;
+const RT_PROT_STATIC: u8 = 4;
 
 #[repr(C)]
 union IfrIfru {
@@ -188,19 +187,17 @@ impl IfaceConfig {
             .route()
             .add()
             .output_interface(self.0.interface_index)
-            .protocol(RT_PROT_UNSPEC)
-            .scope(RT_SCOPE_LINK);
+            .protocol(RT_PROT_STATIC)
+            .scope(RT_SCOPE_UNIVERSE);
         match route {
             IpNetwork::V4(ipnet) => {
                 req.v4()
-                    .source_prefix(ipnet.network_address(), ipnet.netmask())
                     .destination_prefix(ipnet.network_address(), ipnet.netmask())
                     .execute()
                     .await?
             }
             IpNetwork::V6(ipnet) => {
                 req.v6()
-                    .source_prefix(ipnet.network_address(), ipnet.netmask())
                     .destination_prefix(ipnet.network_address(), ipnet.netmask())
                     .execute()
                     .await?
