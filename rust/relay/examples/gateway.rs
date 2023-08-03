@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
 }
 
 async fn ping_pong(socket: UdpSocket, relay_addr: SocketAddr) -> Result<(), Error> {
-    for _ in 0..1000 {
+    for _ in 0..1 {
         let ping = rand::random::<[u8; 32]>();
 
         socket.send_to(&ping, relay_addr).await?;
