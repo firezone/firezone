@@ -1,19 +1,52 @@
 defmodule Web.Gateways.Show do
   use Web, :live_view
-
   alias Domain.Gateways
-  alias Domain.Resources
 
   def mount(%{"id" => id} = _params, _session, socket) do
-    {:ok, gateway} = Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: :group)
-    {:ok, resources} = Resources.list_resources_for_gateway(gateway, socket.assigns.subject)
-    {:ok, assign(socket, gateway: gateway, resources: resources)}
+    with {:ok, gateway} <-
+           Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: :group) do
+      :ok = Gateways.subscribe_for_gateways_presence_in_group(gateway.group)
+      {:ok, assign(socket, gateway: gateway)}
+    else
+      {:error, :not_found} -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _account_id, payload: payload},
+        socket
+      ) do
+    if Map.has_key?(payload.joins, socket.assigns.gateway.id) or
+         Map.has_key?(payload.leaves, socket.assigns.gateway.id) do
+      {:ok, gateway} =
+        Gateways.fetch_gateway_by_id(socket.assigns.gateway.id, socket.assigns.subject,
+          preload: :group
+        )
+
+      {:noreply, assign(socket, gateway: gateway)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("delete", _params, socket) do
+    {:ok, _gateway} = Gateways.delete_gateway(socket.assigns.gateway, socket.assigns.subject)
+
+    socket =
+      redirect(socket,
+        to: ~p"/#{socket.assigns.account}/gateway_groups/#{socket.assigns.gateway.group}"
+      )
+
+    {:noreply, socket}
   end
 
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
-      <.breadcrumb path={~p"/#{@account}/gateways"}>Gateways</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/gateway_groups"}>Gateway Instance Groups</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/gateway_groups/#{@gateway.group}"}>
+        <%= @gateway.group.name_prefix %>
+      </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/gateways/#{@gateway}"}>
         <%= @gateway.name_suffix %>
       </.breadcrumb>
@@ -41,7 +74,7 @@ defmodule Web.Gateways.Show do
         <.vertical_table_row>
           <:label>Status</:label>
           <:value>
-            <.badge type="success">TODO: Online</.badge>
+            <.connection_status schema={@gateway} />
           </:value>
         </.vertical_table_row>
         <.vertical_table_row>
@@ -58,8 +91,6 @@ defmodule Web.Gateways.Show do
           </:label>
           <:value>
             <.relative_datetime datetime={@gateway.last_seen_at} />
-            <br />
-            <%= @gateway.last_seen_at %>
           </:value>
         </.vertical_table_row>
         <.vertical_table_row>
@@ -79,11 +110,15 @@ defmodule Web.Gateways.Show do
           <:value>TODO: 4.43 GB up, 1.23 GB down</:value>
         </.vertical_table_row>
         <.vertical_table_row>
-          <:label>Gateway Version</:label>
+          <:label>Version</:label>
           <:value>
-            <%= "Gateway Version: #{@gateway.last_seen_version}" %>
-            <br />
-            <%= "User Agent: #{@gateway.last_seen_user_agent}" %>
+            <%= @gateway.last_seen_version %>
+          </:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>User Agent</:label>
+          <:value>
+            <%= @gateway.last_seen_user_agent %>
           </:value>
         </.vertical_table_row>
         <.vertical_table_row>
@@ -92,36 +127,13 @@ defmodule Web.Gateways.Show do
         </.vertical_table_row>
       </.vertical_table>
     </div>
-    <!-- Linked Resources table -->
-    <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
-      <div class="col-span-full mb-4 xl:mb-2">
-        <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
-          Linked Resources
-        </h1>
-      </div>
-    </div>
-    <div class="relative overflow-x-auto">
-      <.table id="resources" rows={@resources}>
-        <:col :let={resource} label="NAME">
-          <.link
-            navigate={~p"/#{@account}/resources/#{resource.id}"}
-            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-          >
-            <%= resource.name %>
-          </.link>
-        </:col>
-        <:col :let={resource} label="ADDRESS">
-          <%= resource.address %>
-        </:col>
-      </.table>
-    </div>
 
     <.header>
       <:title>
         Danger zone
       </:title>
       <:actions>
-        <.delete_button>
+        <.delete_button phx-click="delete">
           Delete Gateway
         </.delete_button>
       </:actions>

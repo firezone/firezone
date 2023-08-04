@@ -21,6 +21,7 @@ defmodule API.Device.Channel do
   @impl true
   def handle_info(:after_join, socket) do
     API.Endpoint.subscribe("device:#{socket.assigns.device.id}")
+    :ok = Devices.connect_device(socket.assigns.device)
 
     {:ok, resources} = Domain.Resources.list_resources(socket.assigns.subject)
 
@@ -29,8 +30,6 @@ defmodule API.Device.Channel do
         resources: Views.Resource.render_many(resources),
         interface: Views.Interface.render(socket.assigns.device)
       })
-
-    :ok = Devices.connect_device(socket.assigns.device)
 
     {:noreply, socket}
   end
