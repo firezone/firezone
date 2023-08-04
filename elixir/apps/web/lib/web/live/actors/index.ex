@@ -1,55 +1,80 @@
-defmodule Web.Devices.Index do
+defmodule Web.Actors.Index do
   use Web, :live_view
 
-  alias Domain.Devices
+  alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    {_, devices} = Devices.list_devices(socket.assigns.subject, preload: :actor)
+    {_, actors} = Actors.list_actors(socket.assigns.subject, preload: [identities: :provider])
 
-    {:ok, assign(socket, devices: devices)}
+    {:ok, assign(socket, actors: actors)}
+  end
+
+  defp actor_icon(type) do
+    case type do
+      :account_user -> "hero-user-circle-solid"
+      :account_admin_user -> "hero-user-circle-solid"
+      :service_account -> "hero-server-solid"
+    end
   end
 
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
-      <.breadcrumb path={~p"/#{@account}/devices"}>Devices</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
     </.breadcrumbs>
     <.header>
       <:title>
-        All devices
+        All Actors
       </:title>
+      <:actions>
+        <.add_button navigate={~p"/#{@account}/actors/new"}>
+          Add a new user
+        </.add_button>
+      </:actions>
     </.header>
-    <!-- Devices Table -->
+    <!-- Users Table -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <.resource_filter />
-      <.table id="devices" rows={@devices} row_id={&"device-#{&1.id}"}>
-        <:col :let={device} label="CLIENT" sortable="true">
+      <.table id="actors" rows={@actors} row_id={&"user-#{&1.id}"}>
+        <:col :let={actor} label="TYPE" sortable="false">
+          <.icon name={actor_icon(actor.type)} class="w-5 h-5" />
+        </:col>
+        <:col :let={actor} label="NAME" sortable="false">
           <.link
-            navigate={~p"/#{@account}/devices/#{device.id}"}
+            navigate={~p"/#{@account}/actors/#{actor.id}"}
             class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
           >
-            <%= device.name %>
+            <%= actor.name %>
           </.link>
         </:col>
-        <:col :let={device} label="USER" sortable="true">
-          <.link
-            navigate={~p"/#{@account}/actors/#{device.actor.id}"}
-            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-          >
-            <%= device.actor.name %>
-          </.link>
+        <:col :let={actor} label="IDENTIFIERS" sortable="false">
+          <%= for identity <- actor.identities do %>
+            <%= "#{identity.provider.name}: #{identity.provider_identifier}" %>
+            <br />
+          <% end %>
         </:col>
-        <:col :let={_device} label="STATUS" sortable="true">
-          <.badge type="success">
-            TODO: Online
-          </.badge>
+        <:col :let={_actor} label="GROUPS" sortable="false">
+          <!-- TODO: Determine how user groups will work -->
+          <%= "TODO Admin, Engineering, 3 more..." %>
         </:col>
-        <:action :let={device}>
+        <:col :let={_actor} label="LAST ACTIVE" sortable="false">
+          <!-- TODO: Determine what last active means for a user -->
+          <%= "TODO Today at 2:30pm" %>
+        </:col>
+        <:action>
           <.link
-            navigate={~p"/#{@account}/devices/#{device.id}"}
+            navigate={~p"/#{@account}/actors/#{@subject.actor.id}"}
             class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
           >
             Show
+          </.link>
+        </:action>
+        <:action>
+          <.link
+            navigate={~p"/#{@account}/actors/#{@subject.actor.id}/edit"}
+            class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+          >
+            Edit
           </.link>
         </:action>
         <:action>
@@ -57,11 +82,11 @@ defmodule Web.Devices.Index do
             href="#"
             class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
           >
-            TODO: Archive
+            Delete
           </a>
         </:action>
       </.table>
-      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/devices"} />
+      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/actors"} />
     </div>
     """
   end
@@ -91,10 +116,10 @@ defmodule Web.Devices.Index do
           All
         </:first>
         <:middle>
-          Online
+          Users
         </:middle>
         <:last>
-          Archived
+          Service Accounts
         </:last>
       </.button_group>
     </div>

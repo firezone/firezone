@@ -55,7 +55,7 @@ defmodule Web.NavigationComponents do
   end
 
   attr :id, :string, required: true, doc: "ID of the nav group container"
-  # attr :icon, :string, required: true
+  attr :icon, :string, required: true
   # attr :navigate, :string, required: true
 
   slot :name, required: true
@@ -77,7 +77,7 @@ defmodule Web.NavigationComponents do
         aria-controls={"dropdown-#{@id}"}
         data-collapse-toggle={"dropdown-#{@id}"}
       >
-        <.icon name="hero-user-group-solid" class={~w[
+        <.icon name={@icon} class={~w[
           w-6 h-6 text-gray-500
           transition duration-75
           group-hover:text-gray-900

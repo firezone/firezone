@@ -624,6 +624,17 @@ defmodule Domain.ActorsTest do
                 {:unauthorized,
                  [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
     end
+
+    test "associations are preloaded when opts given" do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      {:ok, actor} = fetch_actor_by_id(actor.id, subject, preload: :identities)
+
+      assert Ecto.assoc_loaded?(actor.identities) == true
+    end
   end
 
   describe "fetch_actor_by_id/1" do
@@ -703,6 +714,22 @@ defmodule Domain.ActorsTest do
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+    end
+
+    test "associations are preloaded when opts given" do
+      account = AccountsFixtures.create_account()
+
+      actor1 = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity1 = AuthFixtures.create_identity(account: account, actor: actor1)
+      subject = AuthFixtures.create_subject(identity1)
+
+      actor2 = ActorsFixtures.create_actor(type: :account_user, account: account)
+      AuthFixtures.create_identity(account: account, actor: actor2)
+
+      {:ok, actors} = list_actors(subject, preload: :identities)
+      assert length(actors) == 2
+
+      assert Enum.all?(actors, fn a -> Ecto.assoc_loaded?(a.identities) end) == true
     end
   end
 
