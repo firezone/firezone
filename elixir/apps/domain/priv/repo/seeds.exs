@@ -146,6 +146,31 @@ end
 
 IO.puts("")
 
+user_iphone =
+  Domain.Devices.upsert_device(
+    %{
+      name: "FZ User iPhone",
+      external_id: Ecto.UUID.generate(),
+      public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412"
+    },
+    unprivileged_subject
+  )
+
+admin_iphone =
+  Domain.Devices.upsert_device(
+    %{
+      name: "FZ Admin iPhone",
+      external_id: Ecto.UUID.generate(),
+      public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412"
+    },
+    admin_subject
+  )
+
+IO.puts("Devices created")
+IO.puts("")
+
 relay_group =
   account
   |> Relays.Group.Changeset.create_changeset(

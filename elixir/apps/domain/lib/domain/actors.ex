@@ -129,12 +129,18 @@ defmodule Domain.Actors do
     end
   end
 
-  def fetch_actor_by_id(id, %Auth.Subject{} = subject) do
+  def fetch_actor_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
          true <- Validator.valid_uuid?(id) do
       Actor.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
+      |> case do
+        {:ok, actor} -> {:ok, Repo.preload(actor, preload)}
+        {:error, reason} -> {:error, reason}
+      end
     else
       false -> {:error, :not_found}
       other -> other
@@ -156,14 +162,17 @@ defmodule Domain.Actors do
   end
 
   def list_actors(%Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      {hydrate, _opts} = Keyword.pop(opts, :hydrate, [])
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+    {hydrate, _opts} = Keyword.pop(opts, :hydrate, [])
 
-      Actor.Query.all()
-      |> Authorizer.for_subject(subject)
-      # TODO: add filters
-      |> hydrate_fields(hydrate)
-      |> Repo.list()
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      {:ok, actors} =
+        Actor.Query.all()
+        |> Authorizer.for_subject(subject)
+        |> hydrate_fields(hydrate)
+        |> Repo.list()
+
+      {:ok, Repo.preload(actors, preload)}
     end
   end
 
