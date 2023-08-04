@@ -58,15 +58,6 @@ resource "google_project_service" "monitoring" {
   depends_on = [google_project_service.stackdriver]
 }
 
-resource "google_project_service" "clouddebugger" {
-  project = var.project_id
-  service = "clouddebugger.googleapis.com"
-
-  disable_on_destroy = false
-
-  depends_on = [google_project_service.stackdriver]
-}
-
 resource "google_project_service" "cloudprofiler" {
   project = var.project_id
   service = "cloudprofiler.googleapis.com"

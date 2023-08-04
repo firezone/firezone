@@ -182,7 +182,6 @@ resource "google_compute_instance_template" "application" {
     google_project_service.stackdriver,
     google_project_service.logging,
     google_project_service.monitoring,
-    google_project_service.clouddebugger,
     google_project_service.cloudprofiler,
     google_project_service.cloudtrace,
     google_project_service.servicenetworking,
