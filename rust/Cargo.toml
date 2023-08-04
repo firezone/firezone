@@ -21,3 +21,4 @@ swift-bridge = "0.1.52"
 # (the `patch` section can't be used for build deps...)
 [patch.crates-io]
 ring = { git = "https://github.com/firezone/ring", branch = "v0.16.20-cc-fix" }
+webrtc = { git = "https://github.com/firezone/webrtc", rev = "85bf9c8" }
