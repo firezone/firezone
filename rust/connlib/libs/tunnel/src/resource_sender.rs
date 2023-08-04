@@ -3,10 +3,9 @@ use std::{
     sync::Arc,
 };
 
+use crate::{ip_packet::MutableIpPacket, peer::Peer, ControlSignal, Tunnel};
 use boringtun::noise::Tunn;
 use libs_common::{messages::ResourceDescription, Callbacks, Error};
-
-use crate::{ip_packet::MutableIpPacket, peer::Peer, ControlSignal, Tunnel};
 
 impl<C, CB> Tunnel<C, CB>
 where
@@ -21,12 +20,15 @@ where
         let Some(mut pkt) = MutableIpPacket::new(packet) else { return };
         pkt.set_dst(dst_addr);
         pkt.set_checksum();
+        pkt.set_icmpv6_checksum();
 
         match dst_addr {
-            IpAddr::V4(_) => {
+            IpAddr::V4(addr) => {
+                tracing::trace!("Sending to packet to {addr}");
                 self.write4_device_infallible(packet).await;
             }
-            IpAddr::V6(_) => {
+            IpAddr::V6(addr) => {
+                tracing::trace!("Sending to packet to {addr}");
                 self.write6_device_infallible(packet).await;
             }
         }
@@ -38,7 +40,7 @@ where
                 // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
                 // and we just trust gateways.
                 // In gateways this should never happen.
-                tracing::trace!("Writing to interface");
+                tracing::trace!("Writing to interface with addr: {addr}");
                 match addr {
                     IpAddr::V4(_) => self.write4_device_infallible(packet).await,
                     IpAddr::V6(_) => self.write6_device_infallible(packet).await,
