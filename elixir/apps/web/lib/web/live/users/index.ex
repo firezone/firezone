@@ -1,4 +1,4 @@
-defmodule Web.Users.Index do
+defmodule Web.Actors.Index do
   use Web, :live_view
 
   alias Domain.Actors

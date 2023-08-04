@@ -1,4 +1,4 @@
-defmodule Web.Users.Edit do
+defmodule Web.Actors.Edit do
   use Web, :live_view
 
   alias Domain.Actors
