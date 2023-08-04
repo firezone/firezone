@@ -244,6 +244,8 @@ defmodule Web.Auth do
     if socket.assigns[:subject] do
       {:cont, socket}
     else
+      account = socket.assigns[:account] || params["account_id"]
+
       socket =
         socket
         |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
