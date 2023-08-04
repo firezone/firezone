@@ -90,7 +90,7 @@ impl ResourceDescription {
             ResourceDescription::Cidr(_) => None,
         }
     }
-    
+
     pub fn ips(&self) -> Vec<IpNetwork> {
         match self {
             ResourceDescription::Dns(r) => vec![r.ipv4.into(), r.ipv6.into()],
