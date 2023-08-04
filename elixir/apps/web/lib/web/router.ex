@@ -100,7 +100,7 @@ defmodule Web.Router do
       ] do
       live "/dashboard", Dashboard
 
-      scope "/actors", Users do
+      scope "/actors", Actors do
         live "/", Index
         live "/new", New
         live "/:id/edit", Edit
