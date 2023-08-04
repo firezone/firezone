@@ -6,14 +6,18 @@ use crate::{
 };
 use domain::base::{
     iana::{Class, Rcode, Rtype},
-    Message, MessageBuilder, ToDname,
+    Dname, Message, MessageBuilder, ParsedDname, ToDname,
 };
 use libs_common::{messages::ResourceDescription, Callbacks, DNS_SENTINEL};
 use pnet_packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, PacketSize};
 
 const DNS_TTL: u32 = 300;
 const UDP_HEADER_SIZE: usize = 8;
+const REVERSE_DNS_ADDRESS_END: &str = "arpa";
+const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
+const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
 
+#[derive(Debug, Clone)]
 pub(crate) enum SendPacket {
     Ipv4(Vec<u8>),
     Ipv6(Vec<u8>),
@@ -92,7 +96,17 @@ where
                     domain::rdata::Aaaa::from(resource.ipv6()?),
                 ))
                 .ok()?,
-            _ => todo!(),
+            Rtype::Ptr => answer_builder
+                .push((
+                    qname,
+                    Class::In,
+                    DNS_TTL,
+                    domain::rdata::Ptr::<ParsedDname<_>>::new(
+                        resource.dns_name()?.parse::<Dname<Vec<u8>>>().ok()?.into(),
+                    ),
+                ))
+                .ok()?,
+            _ => return None,
         }
         Some(answer_builder.finish())
     }
@@ -105,27 +119,61 @@ where
         }
         let datagram = packet.as_udp()?;
         let message = to_dns(&datagram)?;
+        if message.header().qr() {
+            return None;
+        }
         let question = message.first_question()?;
-        if matches!(question.qtype(), Rtype::A | Rtype::Aaaa) && !message.header().qr() {
-            if let Some(resource) = self
+        let resource = match question.qtype() {
+            Rtype::A | Rtype::Aaaa => self
                 .resources
                 .read()
                 .get_by_name(&ToDname::to_cow(question.qname()).to_string())
-            {
-                let response = self.build_dns_with_answer(
-                    message,
-                    question.qname(),
-                    question.qtype(),
-                    resource,
-                )?;
-                let response = self.build_response(buf, response);
-                return response.map(|pkt| match version {
-                    Version::Ipv4 => SendPacket::Ipv4(pkt),
-                    Version::Ipv6 => SendPacket::Ipv6(pkt),
-                });
-            }
-        }
+                .cloned(),
+            Rtype::Ptr => {
+                let dns_parts = ToDname::to_cow(question.qname()).to_string();
+                let mut dns_parts = dns_parts.split('.').rev();
+                if !dns_parts
+                    .next()
+                    .is_some_and(|d| d == REVERSE_DNS_ADDRESS_END)
+                {
+                    return None;
+                }
+                let ip: IpAddr = match dns_parts.next() {
+                    Some(REVERSE_DNS_ADDRESS_V4) => {
+                        let mut ip = [0u8; 4];
+                        for i in ip.iter_mut() {
+                            *i = dns_parts.next()?.parse().ok()?;
+                        }
+                        ip.into()
+                    }
+                    Some(REVERSE_DNS_ADDRESS_V6) => {
+                        let mut ip = [0u8; 16];
+                        for i in ip.iter_mut() {
+                            *i = u8::from_str_radix(
+                                &format!("{}{}", dns_parts.next()?, dns_parts.next()?),
+                                16,
+                            )
+                            .ok()?;
+                        }
+                        ip.into()
+                    }
+                    _ => return None,
+                };
 
-        None
+                if dns_parts.next().is_some() {
+                    return None;
+                }
+
+                self.resources.read().get_by_ip(ip).cloned()
+            }
+            _ => return None,
+        };
+        let response =
+            self.build_dns_with_answer(message, question.qname(), question.qtype(), &resource?)?;
+        let response = self.build_response(buf, response);
+        response.map(|pkt| match version {
+            Version::Ipv4 => SendPacket::Ipv4(pkt),
+            Version::Ipv6 => SendPacket::Ipv6(pkt),
+        })
     }
 }
