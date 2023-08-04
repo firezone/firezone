@@ -2,6 +2,7 @@ use anyhow::Result;
 use redis::AsyncCommands;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::UdpSocket;
 use webrtc::turn::client::*;
 use webrtc::turn::Error;
@@ -32,6 +33,10 @@ async fn main() -> Result<()> {
     // The webrtc-rs client has no concept of explicitly creating a channel.
     // Instead, it will implicitly create one when trying to send data to a remote.
     relay_conn.send_to(b"HOLEPUNCH", gateway_addr).await?;
+
+    // `webrtc-ts` does not block on the creation of the channel binding.
+    // Wait for some amount of time here to avoid race conditions.
+    tokio::time::sleep(Duration::from_millis(10)).await;
 
     println!("Created channel to gateway");
 
