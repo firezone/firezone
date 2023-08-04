@@ -178,18 +178,17 @@ private extension NetworkSettings {
 
   private static func ipv4SubnetMask(networkPrefixLength: Int) -> String {
     precondition(networkPrefixLength >= 0 && networkPrefixLength <= 32)
-    var prefixLength = networkPrefixLength
-    var subnetMaskComponents: [String] = []
-    while prefixLength >= 8 {
-      subnetMaskComponents.append("255")
-      prefixLength -= 8
+    let mask: UInt32 = 0xFFFFFFFF
+    let maxPrefixLength = 32
+    let octets = 4
+
+    let subnetMask = mask & (mask << (maxPrefixLength - networkPrefixLength))
+    var parts: [String] = []
+    for idx in 0...(octets - 1) {
+      let part = String(UInt32(0x000000FF) & (subnetMask >> ((octets - 1 - idx) * 8)), radix: 10)
+      parts.append(part)
     }
-    let mask = ["0", "128", "192", "224", "240", "248", "252", "254"]
-    while subnetMaskComponents.count < 4 {
-      subnetMaskComponents.append(mask[prefixLength])
-      prefixLength = 0
-    }
-    precondition(subnetMaskComponents.count == 4)
-    return subnetMaskComponents.joined(separator: ".")
+
+    return parts.joined(separator: ".")
   }
 }
