@@ -120,12 +120,25 @@ impl Callbacks for CallbackHandler {
     }
 }
 
+fn init_logging() {
+    use tracing_subscriber::layer::SubscriberExt as _;
+    let collector = tracing_subscriber::registry().with(tracing_oslog::OsLogger::new(
+        "dev.firezone.connlib",
+        "default",
+    ));
+    // This will fail if called more than once, but that doesn't really matter.
+    if tracing::subscriber::set_global_default(collector).is_ok() {
+        tracing::debug!("subscribed to logging");
+    }
+}
+
 impl WrappedSession {
     fn connect(
         portal_url: String,
         token: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
+        init_logging();
         Session::connect(
             portal_url.as_str(),
             token,
