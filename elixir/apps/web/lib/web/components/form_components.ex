@@ -28,7 +28,7 @@ defmodule Web.FormComponents do
   attr :type, :string,
     default: "text",
     values: ~w(checkbox color date datetime-local email file hidden month number password
-               range radio search select tel text textarea time url week)
+               range radio search select tel text textarea taglist time url week)
 
   attr :field, Phoenix.HTML.FormField,
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
@@ -130,6 +130,52 @@ defmodule Web.FormComponents do
   end
 
   # All other inputs text, datetime-local, url, password, etc. are handled here...
+  def input(%{type: "taglist"} = assigns) do
+    values =
+      if is_nil(assigns.value),
+        do: [],
+        else: Enum.map(assigns.value, &Phoenix.HTML.Form.normalize_value("text", &1))
+
+    assigns = assign(assigns, :values, values)
+
+    ~H"""
+    <div phx-feedback-for={@name}>
+      <.label for={@id}><%= @label %></.label>
+
+      <div :for={{value, index} <- Enum.with_index(@values)} class="flex mt-2">
+        <input
+          type="text"
+          name={"#{@name}[]"}
+          id={@id}
+          value={value}
+          class={[
+            "bg-gray-50 p-2.5 block w-full rounded-lg border text-gray-900 focus:ring-primary-600 text-sm",
+            "phx-no-feedback:border-gray-300 phx-no-feedback:focus:border-primary-600",
+            "disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200 disabled:shadow-none",
+            "border-gray-300 focus:border-primary-600",
+            @errors != [] && "border-rose-400 focus:border-rose-400"
+          ]}
+          {@rest}
+        />
+        <.button
+          type="button"
+          phx-click={"delete:#{@name}"}
+          phx-value-index={index}
+          class="align-middle ml-2 inline-block whitespace-nowrap"
+        >
+          <.icon name="hero-minus" /> Delete
+        </.button>
+      </div>
+
+      <.button type="button" phx-click={"add:#{@name}"} class="mt-2">
+        <.icon name="hero-plus" /> Add
+      </.button>
+
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+    </div>
+    """
+  end
+
   def input(assigns) do
     ~H"""
     <div phx-feedback-for={@name}>

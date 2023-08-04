@@ -18,7 +18,8 @@ defmodule API.Gateway.Channel do
 
   @impl true
   def handle_info(:after_join, socket) do
-    API.Endpoint.subscribe("gateway:#{socket.assigns.gateway.id}")
+    :ok = Gateways.connect_gateway(socket.assigns.gateway)
+    :ok = API.Endpoint.subscribe("gateway:#{socket.assigns.gateway.id}")
 
     push(socket, "init", %{
       interface: Views.Interface.render(socket.assigns.gateway),
@@ -26,8 +27,6 @@ defmodule API.Gateway.Channel do
       ipv4_masquerade_enabled: true,
       ipv6_masquerade_enabled: true
     })
-
-    :ok = Gateways.connect_gateway(socket.assigns.gateway)
 
     {:noreply, socket}
   end

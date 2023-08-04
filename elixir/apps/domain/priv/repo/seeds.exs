@@ -291,7 +291,7 @@ IO.puts("")
 gateway_group =
   account
   |> Gateways.Group.Changeset.create_changeset(
-    %{name_prefix: "mycro-aws-gws", tokens: [%{}]},
+    %{name_prefix: "mycro-aws-gws", tags: ["aws", "in-da-cloud"], tokens: [%{}]},
     admin_subject
   )
   |> Repo.insert!()
