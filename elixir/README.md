@@ -1,15 +1,22 @@
 # Welcome to Elixir-land!
 
-This README provides an overview for running and managing Firezone's Elixir-based control plane.
+This README provides an overview for running and managing Firezone's
+Elixir-based control plane.
 
 ## Running Control Plane for local development
 
-You can use the [Top-Level Docker Compose](../docker-compose.yml) to start any services locally. The `web` and `api` compose services are built application releases that are pretty much the same as the ones we run in production, while the `elixir` compose service runs raw Elixir code, without a built release.
+You can use the [Top-Level Docker Compose](../docker-compose.yml) to start any
+services locally. The `web` and `api` compose services are built application
+releases that are pretty much the same as the ones we run in production, while
+the `elixir` compose service runs raw Elixir code, without a built release.
 
-This means you'll want to use the `elixir` compose service to run Mix tasks and any Elixir code on-the-fly, but you can't do that in `web`/`api` so easily because Elixir strips out Mix and other tooling [when building an application release](https://hexdocs.pm/mix/Mix.Tasks.Release.html).
+This means you'll want to use the `elixir` compose service to run Mix tasks and
+any Elixir code on-the-fly, but you can't do that in `web`/`api` so easily
+because Elixir strips out Mix and other tooling
+[when building an application release](https://hexdocs.pm/mix/Mix.Tasks.Release.html).
 
-`elixir` additionally caches `_build` and `node_modules` to speed up compilation time and syncs
-`/apps`, `/config` and other folders with the host machine.
+`elixir` additionally caches `_build` and `node_modules` to speed up compilation
+time and syncs `/apps`, `/config` and other folders with the host machine.
 
 ```bash
 # Make sure to run this every time code in elixir/ changes,
@@ -55,7 +62,14 @@ Now you can verify that it's working by connecting to a websocket:
 
 ```elixir
 ❯ export GATEWAY_TOKEN_FROM_SEEDS="SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAJXr4emIAWIAAVGA.jz0s-NohxgdAXeRMjIQ9kLBOyd7CmKXWi2FHY-Op8GM"
-❯ websocat --header="User-Agent: iOS/12.7 (iPhone) connlib/0.7.412" "ws://127.0.0.1:8081/gateway/websocket?token=${GATEWAY_TOKEN_FROM_SEEDS}&external_id=thisisrandomandpersistent&name_suffix=kkX1&public_key=kceI60D6PrwOIiGoVz6hD7VYCgD1H57IVQlPJTTieUE="
+❯ websocat --header="User-Agent: iOS/12.7 (iPhone) connlib/0.7.412" "ws://127.0.0.1:13000/gateway/websocket?token=${GATEWAY_TOKEN_FROM_SEEDS}&external_id=thisisrandomandpersistent&name_suffix=kkX1&public_key=kceI60D6PrwOIiGoVz6hD7VYCgD1H57IVQlPJTTieUE="
+
+# After this you need to join the `gateway` topic.
+# For details on this structure see https://hexdocs.pm/phoenix/Phoenix.Socket.Message.html
+❯ {"event":"phx_join","topic":"gateway","payload":{},"ref":"unique_string_ref","join_ref":"unique_join_ref"}
+
+{"ref":"unique_string_ref","payload":{"status":"ok","response":{}},"topic":"gateway","event":"phx_reply"}
+{"ref":null,"payload":{"interface":{"ipv6":"fd00:2011:1111::35:f630","ipv4":"100.77.125.87"},"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true},"topic":"gateway","event":"init"}
 ```
 
 </details>
@@ -71,7 +85,7 @@ Now you can verify that it's working by connecting to a websocket:
 
 # After this you need to join the `relay` topic and pass a `stamp_secret` in the payload.
 # For details on this structure see https://hexdocs.pm/phoenix/Phoenix.Socket.Message.html
-> {"event":"phx_join","topic":"relay","payload":{"stamp_secret":"makemerandomplz"},"ref":"unique_string_ref","join_ref":"unique_join_ref"}
+❯ {"event":"phx_join","topic":"relay","payload":{"stamp_secret":"makemerandomplz"},"ref":"unique_string_ref","join_ref":"unique_join_ref"}
 
 {"event":"phx_reply","payload":{"response":{},"status":"ok"},"ref":"unique_string_ref","topic":"relay"}
 {"event":"init","payload":{},"ref":null,"topic":"relay"}
@@ -109,12 +123,15 @@ Now you can verify that it's working by connecting to a websocket:
 
 ```
 
-Note: when you run multiple commands it can hang because Phoenix expects a heartbeat packet every 5 seconds, so it can kill your websocket if you send commands slower than that.
+Note: when you run multiple commands it can hang because Phoenix expects a
+heartbeat packet every 5 seconds, so it can kill your websocket if you send
+commands slower than that.
 
 </details>
 <br />
 
-You can reset the database (eg. when there is a migration that breaks data model for unreleased versions) using following command:
+You can reset the database (eg. when there is a migration that breaks data model
+for unreleased versions) using following command:
 
 ```bash
 ❯ docker-compose run elixir /bin/sh -c "cd apps/domain && mix ecto.reset"
@@ -162,8 +179,9 @@ Interactive Elixir (1.14.3) - press Ctrl+C to exit (type h() ENTER for help)
 iex(web@127.0.0.1)1>
 ```
 
-From `iex` shell you can run any Elixir code, for example you can emulate a full flow using process messages,
-just keep in mind that you need to run seeds before executing this example:
+From `iex` shell you can run any Elixir code, for example you can emulate a full
+flow using process messages, just keep in mind that you need to run seeds before
+executing this example:
 
 ```elixir
 [gateway | _rest_gateways] = Domain.Repo.all(Domain.Gateways.Gateway)
@@ -174,9 +192,11 @@ relay_secret = Domain.Crypto.rand_string()
 :ok = Domain.Relays.connect_relay(relay, relay_secret)
 ```
 
-Now if you connect and list resources there will be one online because there is a relay and gateway online.
+Now if you connect and list resources there will be one online because there is
+a relay and gateway online.
 
-Some of the functions require authorization, here is how you can obtain a subject:
+Some of the functions require authorization, here is how you can obtain a
+subject:
 
 ```elixir
 user_agent = "User-Agent: iOS/12.7 (iPhone) connlib/0.7.412"
@@ -205,9 +225,13 @@ account_id = "c89bcc8c-9392-4dae-a40d-888aef6d28e0"
 
 ## Connecting to a staging or production instances
 
-We use Google Cloud Platform for all our staging and production infrastructure. You'll need access to this env to perform the commands below; to get and access you need to add yourself to `project_owners` in `main.tf` for each of the [environments](../terraform/environments).
+We use Google Cloud Platform for all our staging and production infrastructure.
+You'll need access to this env to perform the commands below; to get and access
+you need to add yourself to `project_owners` in `main.tf` for each of the
+[environments](../terraform/environments).
 
-This is a danger zone so first of all, ALWAYS make sure on which environment your code is running:
+This is a danger zone so first of all, ALWAYS make sure on which environment
+your code is running:
 
 ```bash
 ❯ gcloud config get project
