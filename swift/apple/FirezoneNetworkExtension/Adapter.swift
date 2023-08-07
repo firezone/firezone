@@ -205,8 +205,7 @@ extension Adapter {
     switch self.state {
 
       case .startingTunnel(let session, let onStarted):
-        if path.status == .satisfied {
-        } else {
+        if path.status != .satisfied {
           self.logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
           onStarted?(nil)
           self.packetTunnelProvider?.reasserting = true
