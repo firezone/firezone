@@ -2,8 +2,8 @@ defmodule Web.Auth.SignIn do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
   alias Domain.{Auth, Accounts}
 
-  def mount(%{"account_id" => account_id}, _session, socket) do
-    with {:ok, account} <- Accounts.fetch_account_by_id(account_id),
+  def mount(%{"account_id_or_slug" => account_id_or_slug}, _session, socket) do
+    with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, [_ | _] = providers} <- Auth.list_active_providers_for_account(account) do
       providers_by_adapter =
         providers

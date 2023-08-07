@@ -9,7 +9,7 @@ defmodule Web.Router do
     plug :fetch_live_flash
     plug :put_root_layout, {Web.Layouts, :root}
     plug :fetch_user_agent
-    plug :fetch_subject
+    plug :fetch_subject_and_account
   end
 
   pipeline :api do
@@ -46,7 +46,7 @@ defmodule Web.Router do
     end
   end
 
-  scope "/:account_id/sign_in", Web do
+  scope "/:account_id_or_slug/sign_in", Web do
     pipe_through [:browser, :redirect_if_user_is_authenticated]
 
     live_session :redirect_if_user_is_authenticated,
@@ -75,20 +75,13 @@ defmodule Web.Router do
     end
   end
 
-  scope "/:account_id/scim/v2", Web do
-    pipe_through [:api]
-
-    get "/", ScimController, :index
-    # TODO: SCIM endpoints
-  end
-
-  scope "/:account_id", Web do
+  scope "/:account_id_or_slug", Web do
     pipe_through [:browser]
 
     get "/sign_out", AuthController, :sign_out
   end
 
-  scope "/:account_id", Web do
+  scope "/:account_id_or_slug", Web do
     pipe_through [:browser, :ensure_authenticated_admin]
 
     live_session :ensure_authenticated,
@@ -193,7 +186,7 @@ defmodule Web.Router do
 
     live_session :landing,
       on_mount: [Web.Sandbox] do
-      live "/:account_id/", Landing
+      live "/:account_id_or_slug/", Landing
       live "/", Landing
     end
   end
