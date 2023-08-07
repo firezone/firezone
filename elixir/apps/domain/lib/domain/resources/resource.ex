@@ -17,7 +17,7 @@ defmodule Domain.Resources.Resource do
 
     belongs_to :account, Domain.Accounts.Account
     has_many :connections, Domain.Resources.Connection, on_replace: :delete
-    has_many :gateway_groups, through: [:connections, :gateway_group]
+    has_many :gateway_groups, through: [:connections, :gateway_group], where: [deleted_at: nil]
 
     field :created_by, Ecto.Enum, values: ~w[identity]a
     belongs_to :created_by_identity, Domain.Auth.Identity
