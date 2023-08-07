@@ -305,7 +305,7 @@ defmodule Web.AuthControllerTest do
         )
 
       assert conn.assigns.flash == %{
-               "info" => "Please use client a application to access Firezone."
+               "info" => "Please use a client application to access Firezone."
              }
 
       assert redirected_to(conn) == ~p"/#{account.id}/"
