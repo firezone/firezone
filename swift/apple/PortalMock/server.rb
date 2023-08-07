@@ -6,7 +6,7 @@ require 'erb'
 set :bind, '0.0.0.0'
 set :port, 4568
 
-get '/auth' do
+get '/handle_client_auth_callback' do
   dest = params['dest']
   ERB.new("<h1>Auth page</h1><a href=\"/redirect?dest=#{dest}\">Proceed</a>").result(binding)
 end
