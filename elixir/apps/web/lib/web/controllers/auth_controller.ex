@@ -22,31 +22,28 @@ defmodule Web.AuthController do
   def verify_credentials(conn, %{
         "account_id_or_slug" => account_id_or_slug,
         "provider_id" => provider_id,
-        "userpass" => %{
-          "provider_identifier" => provider_identifier,
-          "secret" => secret
-        }
+        "userpass" =>
+          %{
+            "provider_identifier" => provider_identifier,
+            "secret" => secret
+          } = form
       }) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-         {:ok, subject} <- Web.Auth.sign_in(conn, provider, provider_identifier, secret) do
-      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
-
-      conn
-      |> Web.Auth.renew_session()
-      |> Web.Auth.put_subject_in_session(subject)
-      |> delete_session(:user_return_to)
-      |> redirect(to: redirect_to)
+         {:ok, subject} <-
+           Domain.Auth.sign_in(
+             provider,
+             provider_identifier,
+             secret,
+             conn.assigns.user_agent,
+             conn.remote_ip
+           ) do
+      Web.Auth.signed_in_redirect(conn, subject, form["client_platform"])
     else
       {:error, :not_found} ->
         conn
         |> put_flash(:userpass_provider_identifier, String.slice(provider_identifier, 0, 160))
         |> put_flash(:error, "You can not use this method to sign in.")
         |> redirect(to: "/#{account_id_or_slug}/sign_in")
-
-      {:error, :invalid_actor_type} ->
-        conn
-        |> put_flash(:info, "Please use client application to access Firezone.")
-        |> redirect(to: ~p"/#{account_id_or_slug}")
 
       {:error, _reason} ->
         conn
@@ -62,9 +59,10 @@ defmodule Web.AuthController do
   def request_magic_link(conn, %{
         "account_id_or_slug" => account_id_or_slug,
         "provider_id" => provider_id,
-        "email" => %{
-          "provider_identifier" => provider_identifier
-        }
+        "email" =>
+          %{
+            "provider_identifier" => provider_identifier
+          } = form
       }) do
     _ =
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
@@ -75,7 +73,9 @@ defmodule Web.AuthController do
         |> Web.Mailer.deliver()
       end
 
-    redirect(conn, to: "/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}")
+    conn
+    |> put_session(:client_platform, form["client_platform"])
+    |> redirect(to: "/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}")
   end
 
   @doc """
@@ -89,24 +89,24 @@ defmodule Web.AuthController do
         "secret" => secret
       }) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-         {:ok, subject} <- Web.Auth.sign_in(conn, provider, identity_id, secret) do
-      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
+         {:ok, subject} <-
+           Domain.Auth.sign_in(
+             provider,
+             identity_id,
+             secret,
+             conn.assigns.user_agent,
+             conn.remote_ip
+           ) do
+      client_platform = get_session(conn, :client_platform)
 
       conn
-      |> Web.Auth.renew_session()
-      |> Web.Auth.put_subject_in_session(subject)
-      |> delete_session(:user_return_to)
-      |> redirect(to: redirect_to)
+      |> delete_session(:client_platform)
+      |> Web.Auth.signed_in_redirect(subject, client_platform)
     else
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "You can not use this method to sign in.")
         |> redirect(to: "/#{account_id_or_slug}/sign_in")
-
-      {:error, :invalid_actor_type} ->
-        conn
-        |> put_flash(:info, "Please use client application to access Firezone.")
-        |> redirect(to: ~p"/#{account_id_or_slug}")
 
       {:error, _reason} ->
         conn
@@ -119,11 +119,16 @@ defmodule Web.AuthController do
   This controller redirects user to IdP during sign in for authentication while persisting
   verification state to prevent various attacks on OpenID Connect.
   """
-  def redirect_to_idp(conn, %{
-        "account_id_or_slug" => account_id_or_slug,
-        "provider_id" => provider_id
-      }) do
+  def redirect_to_idp(
+        conn,
+        %{
+          "account_id_or_slug" => account_id_or_slug,
+          "provider_id" => provider_id
+        } = params
+      ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
+      conn = put_session(conn, :client_platform, params["client_platform"])
+
       redirect_url =
         url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
 
@@ -165,24 +170,18 @@ defmodule Web.AuthController do
       }
 
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-           {:ok, subject} <- Web.Auth.sign_in(conn, provider, payload) do
-        redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
+           {:ok, subject} <-
+             Domain.Auth.sign_in(provider, payload, conn.assigns.user_agent, conn.remote_ip) do
+        client_platform = get_session(conn, :client_platform)
 
         conn
-        |> Web.Auth.renew_session()
-        |> Web.Auth.put_subject_in_session(subject)
-        |> delete_session(:user_return_to)
-        |> redirect(to: redirect_to)
+        |> delete_session(:client_platform)
+        |> Web.Auth.signed_in_redirect(subject, client_platform)
       else
         {:error, :not_found} ->
           conn
           |> put_flash(:error, "You can not use this method to sign in.")
           |> redirect(to: "/#{account_id_or_slug}/sign_in")
-
-        {:error, :invalid_actor_type} ->
-          conn
-          |> put_flash(:info, "Please use client application to access Firezone.")
-          |> redirect(to: ~p"/#{account_id_or_slug}")
 
         {:error, _reason} ->
           conn

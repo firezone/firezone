@@ -2,7 +2,7 @@ defmodule Web.Auth.SignIn do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
   alias Domain.{Auth, Accounts}
 
-  def mount(%{"account_id_or_slug" => account_id_or_slug}, _session, socket) do
+  def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, [_ | _] = providers} <- Auth.list_active_providers_for_account(account) do
       providers_by_adapter =
@@ -19,6 +19,7 @@ defmodule Web.Auth.SignIn do
 
       {:ok, socket,
        temporary_assigns: [
+         params: Map.take(params, ["client_platform"]),
          account: account,
          providers_by_adapter: providers_by_adapter,
          page_title: "Sign in"
@@ -53,6 +54,7 @@ defmodule Web.Auth.SignIn do
                 <.providers_group_form
                   adapter="openid_connect"
                   providers={@providers_by_adapter[:openid_connect]}
+                  params={@params}
                 />
               </:item>
 
@@ -65,6 +67,7 @@ defmodule Web.Auth.SignIn do
                   adapter="userpass"
                   provider={List.first(@providers_by_adapter[:userpass])}
                   flash={@flash}
+                  params={@params}
                 />
               </:item>
 
@@ -77,6 +80,7 @@ defmodule Web.Auth.SignIn do
                   adapter="email"
                   provider={List.first(@providers_by_adapter[:email])}
                   flash={@flash}
+                  params={@params}
                 />
               </:item>
             </.intersperse_blocks>
@@ -100,7 +104,7 @@ defmodule Web.Auth.SignIn do
   def providers_group_form(%{adapter: "openid_connect"} = assigns) do
     ~H"""
     <div class="space-y-3 items-center">
-      <.openid_connect_button :for={provider <- @providers} provider={provider} />
+      <.openid_connect_button :for={provider <- @providers} provider={provider} params={@params} />
     </div>
     """
   end
@@ -118,6 +122,8 @@ defmodule Web.Auth.SignIn do
       id="userpass_form"
       phx-update="ignore"
     >
+      <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
+
       <.input
         field={@userpass_form[:provider_identifier]}
         type="text"
@@ -156,6 +162,8 @@ defmodule Web.Auth.SignIn do
       id="email_form"
       phx-update="ignore"
     >
+      <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
+
       <.input
         field={@email_form[:provider_identifier]}
         type="email"
@@ -175,7 +183,9 @@ defmodule Web.Auth.SignIn do
 
   def openid_connect_button(assigns) do
     ~H"""
-    <a href={~p"/#{@provider.account_id}/sign_in/providers/#{@provider.id}/redirect"} class={~w[
+    <a
+      href={~p"/#{@provider.account_id}/sign_in/providers/#{@provider}/redirect?#{@params}"}
+      class={~w[
           w-full inline-flex items-center justify-center py-2.5 px-5
           bg-white rounded-lg
           text-sm font-medium text-gray-900
@@ -184,7 +194,8 @@ defmodule Web.Auth.SignIn do
           hover:bg-gray-100 hover:text-gray-900
           focus:z-10 focus:ring-4 focus:ring-gray-200
           dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400
-          dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700]}>
+          dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700]}
+    >
       Log in with <%= @provider.name %>
     </a>
     """

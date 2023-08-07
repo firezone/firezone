@@ -214,6 +214,89 @@ defmodule Web.AuthControllerTest do
       assert subject.identity.last_seen_remote_ip.address == {127, 0, 0, 1}
       assert subject.identity.last_seen_at
     end
+
+    test "redirects to the platform link when credentials are valid for account users", %{
+      conn: conn
+    } do
+      account = AccountsFixtures.create_account()
+      provider = AuthFixtures.create_userpass_provider(account: account)
+      password = "Firezone1234"
+
+      actor =
+        ActorsFixtures.create_actor(
+          type: :account_user,
+          account: account,
+          provider: provider
+        )
+
+      identity =
+        AuthFixtures.create_identity(
+          actor: actor,
+          account: account,
+          provider: provider,
+          provider_virtual_state: %{"password" => password, "password_confirmation" => password}
+        )
+
+      conn =
+        conn
+        |> post(
+          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
+          %{
+            "userpass" => %{
+              "provider_identifier" => identity.provider_identifier,
+              "secret" => password,
+              "client_platform" => "ios"
+            }
+          }
+        )
+
+      assert conn.assigns.flash == %{}
+      assert redirected_to(conn) =~ "firezone://handle_client_auth_callback?token="
+      assert is_nil(get_session(conn, :user_return_to))
+    end
+
+    test "redirects account users to app install page when mobile platform is invalid", %{
+      conn: conn
+    } do
+      account = AccountsFixtures.create_account()
+      provider = AuthFixtures.create_userpass_provider(account: account)
+      password = "Firezone1234"
+
+      actor =
+        ActorsFixtures.create_actor(
+          type: :account_user,
+          account: account,
+          provider: provider
+        )
+
+      identity =
+        AuthFixtures.create_identity(
+          actor: actor,
+          account: account,
+          provider: provider,
+          provider_virtual_state: %{"password" => password, "password_confirmation" => password}
+        )
+
+      conn =
+        conn
+        |> post(
+          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
+          %{
+            "userpass" => %{
+              "provider_identifier" => identity.provider_identifier,
+              "secret" => password,
+              "client_platform" => "platform"
+            }
+          }
+        )
+
+      assert conn.assigns.flash == %{
+               "info" => "Please use client application to access Firezone."
+             }
+
+      assert redirected_to(conn) == ~p"/#{account.id}/"
+      assert is_nil(get_session(conn, :user_return_to))
+    end
   end
 
   describe "request_magic_link/2" do
@@ -245,6 +328,38 @@ defmodule Web.AuthControllerTest do
       end)
 
       assert redirected_to(conn) == "/#{account.id}/sign_in/providers/email/#{provider.id}"
+    end
+
+    test "persists client platform name", %{conn: conn} do
+      account = AccountsFixtures.create_account()
+      provider = AuthFixtures.create_email_provider(account: account)
+      identity = AuthFixtures.create_identity(account: account, provider: provider)
+
+      conn =
+        post(
+          conn,
+          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/request_magic_link",
+          %{
+            "email" => %{
+              "provider_identifier" => identity.provider_identifier,
+              "client_platform" => "platform"
+            }
+          }
+        )
+
+      assert_email_sent(fn email ->
+        assert email.subject == "Firezone Sign In Link"
+
+        verify_sign_in_token_path =
+          "/#{account.id}/sign_in/providers/#{provider.id}/verify_sign_in_token"
+
+        assert email.text_body =~ "#{verify_sign_in_token_path}"
+        assert email.text_body =~ "identity_id=#{identity.id}"
+        assert email.text_body =~ "secret="
+      end)
+
+      assert redirected_to(conn) == "/#{account.id}/sign_in/providers/email/#{provider.id}"
+      assert get_session(conn, :client_platform) == "platform"
     end
 
     test "does not return error if provider is not found", %{conn: conn} do
@@ -374,6 +489,32 @@ defmodule Web.AuthControllerTest do
       assert redirected_to(conn) == "/#{account.id}/dashboard"
     end
 
+    test "redirects to the platform link when credentials are valid for account users", %{
+      conn: conn
+    } do
+      account = AccountsFixtures.create_account()
+      provider = AuthFixtures.create_email_provider(account: account)
+
+      identity =
+        AuthFixtures.create_identity(
+          actor_default_type: :account_user,
+          account: account,
+          provider: provider
+        )
+
+      conn =
+        conn
+        |> put_session(:client_platform, "ios")
+        |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+          "identity_id" => identity.id,
+          "secret" => identity.provider_virtual_state.sign_in_token
+        })
+
+      assert conn.assigns.flash == %{}
+      assert redirected_to(conn) =~ "firezone://handle_client_auth_callback?token="
+      assert is_nil(get_session(conn, :client_platform))
+    end
+
     test "renews the session when credentials are valid", %{conn: conn} do
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
@@ -454,6 +595,21 @@ defmodule Web.AuthControllerTest do
                "scope" => "openid email profile",
                "state" => state
              }
+    end
+
+    test "persists client platform name", %{conn: conn} do
+      account = AccountsFixtures.create_account()
+
+      {provider, _bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_openid_connect_provider(account: account)
+
+      conn =
+        get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", %{
+          "client_platform" => "platform"
+        })
+
+      assert get_session(conn, :client_platform) == "platform"
     end
   end
 
@@ -594,6 +750,45 @@ defmodule Web.AuthControllerTest do
       assert subject.identity.last_seen_user_agent == "testing"
       assert subject.identity.last_seen_remote_ip.address == {127, 0, 0, 1}
       assert subject.identity.last_seen_at
+    end
+
+    test "redirects to the platform link when credentials are valid for account users", %{
+      account: account,
+      provider: provider,
+      bypass: bypass,
+      conn: conn,
+      redirected_conn: redirected_conn
+    } do
+      identity =
+        AuthFixtures.create_identity(
+          actor_default_type: :account_user,
+          account: account,
+          provider: provider
+        )
+
+      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_userinfo(bypass)
+
+      cookie_key = "fz_auth_state_#{provider.id}"
+      redirected_conn = fetch_cookies(redirected_conn)
+      {state, _verifier} = redirected_conn.cookies[cookie_key] |> :erlang.binary_to_term([:safe])
+      %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
+
+      conn =
+        conn
+        |> put_req_cookie(cookie_key, signed_state)
+        |> put_session(:foo, "bar")
+        |> put_session(:preferred_locale, "en_US")
+        |> put_session(:client_platform, "ios")
+        |> get(~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback", %{
+          "state" => state,
+          "code" => "MyFakeCode"
+        })
+
+      assert conn.assigns.flash == %{}
+      assert redirected_to(conn) =~ "firezone://handle_client_auth_callback?token="
+      assert is_nil(get_session(conn, :client_platform))
     end
   end
 

@@ -6,7 +6,7 @@ defmodule Web.Auth do
     do: ~p"/#{subject.account}/dashboard"
 
   def put_subject_in_session(conn, %Auth.Subject{} = subject) do
-    {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
+    {:ok, session_token} = Auth.create_session_token_from_subject(subject)
 
     conn
     |> Plug.Conn.put_session(:signed_in_at, DateTime.utc_now())
@@ -15,38 +15,46 @@ defmodule Web.Auth do
   end
 
   @doc """
-  This is a wrapper around `Domain.Auth.sign_in/5` that fails authentication and redirects
-  to app install instructions for the users that should not have access to the control plane UI.
+  Redirects the signed in user depending on the actor type.
+
+  The account admin users are sent to dashboard or a return path if it's stored in session.
+
+  The account users are only expect to authorize using client apps.
+  If the platform is known, we direct them to the application through a deep link or an app link;
+  if not, we guide them to the install instructions accompanied by an error message.
   """
-  def sign_in(conn, provider, provider_identifier, secret) do
-    case Domain.Auth.sign_in(
-           provider,
-           provider_identifier,
-           secret,
-           conn.assigns.user_agent,
-           conn.remote_ip
-         ) do
-      {:ok, %Auth.Subject{actor: %{type: :account_admin_user}} = subject} ->
-        {:ok, subject}
+  def signed_in_redirect(
+        conn,
+        %Auth.Subject{actor: %{type: :account_admin_user}} = subject,
+        _client_platform
+      ) do
+    redirect_to = Plug.Conn.get_session(conn, :user_return_to) || signed_in_path(subject)
 
-      {:ok, %Auth.Subject{}} ->
-        {:error, :invalid_actor_type}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    conn
+    |> Web.Auth.renew_session()
+    |> Web.Auth.put_subject_in_session(subject)
+    |> Plug.Conn.delete_session(:user_return_to)
+    |> Phoenix.Controller.redirect(to: redirect_to)
   end
 
-  def sign_in(conn, provider, payload) do
-    case Domain.Auth.sign_in(provider, payload, conn.assigns.user_agent, conn.remote_ip) do
-      {:ok, %Auth.Subject{actor: %{type: :account_admin_user}} = subject} ->
-        {:ok, subject}
+  def signed_in_redirect(
+        conn,
+        %Auth.Subject{actor: %{type: :account_user}} = subject,
+        client_platform
+      ) do
+    platform_redirect_urls =
+      Domain.Config.fetch_env!(:web, __MODULE__)
+      |> Keyword.fetch!(:platform_redirect_urls)
 
-      {:ok, %Auth.Subject{}} ->
-        {:error, :invalid_actor_type}
+    if redirect_to = Map.get(platform_redirect_urls, client_platform) do
+      {:ok, client_token} = Auth.create_session_token_from_subject(subject)
 
-      {:error, reason} ->
-        {:error, reason}
+      conn
+      |> Phoenix.Controller.redirect(external: "#{redirect_to}?token=#{URI.encode(client_token)}")
+    else
+      conn
+      |> Phoenix.Controller.put_flash(:info, "Please use client application to access Firezone.")
+      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}/")
     end
   end
 
