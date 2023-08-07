@@ -93,7 +93,7 @@ config :web,
 config :web, Web.Auth,
   platform_redirect_urls: %{
     "apple" => "firezone://handle_client_auth_callback",
-    "android" => "https://app.firezone.dev/handle_client_auth_callback"
+    "android" => "https://app.firez.one/handle_client_auth_callback"
   }
 
 config :web, Web.Plugs.SecureHeaders,

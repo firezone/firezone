@@ -19,7 +19,7 @@ defmodule Web.Auth do
 
   The account admin users are sent to dashboard or a return path if it's stored in session.
 
-  The account users are only expect to authorize using client apps.
+  The account users are only expected to authenticate using client apps.
   If the platform is known, we direct them to the application through a deep link or an app link;
   if not, we guide them to the install instructions accompanied by an error message.
   """
@@ -63,7 +63,10 @@ defmodule Web.Auth do
       |> Phoenix.Controller.redirect(external: "#{redirect_to}?#{query}")
     else
       conn
-      |> Phoenix.Controller.put_flash(:info, "Please use client application to access Firezone.")
+      |> Phoenix.Controller.put_flash(
+        :info,
+        "Please use a client application to access Firezone."
+      )
       |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}/")
     end
   end

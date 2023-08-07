@@ -260,7 +260,7 @@ defmodule Web.AuthControllerTest do
       assert redirected_to = redirected_to(conn)
       assert redirected_to_uri = URI.parse(redirected_to)
       assert redirected_to_uri.scheme == "https"
-      assert redirected_to_uri.host == "app.firezone.dev"
+      assert redirected_to_uri.host == "app.firez.one"
       assert redirected_to_uri.path == "/handle_client_auth_callback"
 
       assert %{
@@ -305,7 +305,7 @@ defmodule Web.AuthControllerTest do
         )
 
       assert conn.assigns.flash == %{
-               "info" => "Please use client application to access Firezone."
+               "info" => "Please use client a application to access Firezone."
              }
 
       assert redirected_to(conn) == ~p"/#{account.id}/"
