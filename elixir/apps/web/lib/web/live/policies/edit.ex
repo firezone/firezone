@@ -1,20 +1,28 @@
 defmodule Web.Policies.Edit do
   use Web, :live_view
 
+  alias Domain.Policies
+
+  def mount(%{"id" => id} = _params, _session, socket) do
+    {:ok, policy} = Policies.fetch_policy_by_id(id, socket.assigns.subject)
+
+    {:ok, assign(socket, policy: policy)}
+  end
+
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
       <.breadcrumb path={~p"/#{@account}/policies"}>Policies</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/policies/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}>
-        Engineering access to GitLab
+      <.breadcrumb path={~p"/#{@account}/policies/#{@policy.id}"}>
+        <%= @policy.name %>
       </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/policies/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}>
+      <.breadcrumb path={~p"/#{@account}/policies/#{@policy.id}/edit"}>
         Edit
       </.breadcrumb>
     </.breadcrumbs>
     <.header>
       <:title>
-        Edit Policy <code>Engineering access to GitLab</code>
+        Edit Policy <code><%= @policy.name %></code>
       </:title>
     </.header>
     <!-- Edit Policy -->
@@ -27,24 +35,21 @@ defmodule Web.Policies.Edit do
               <.label for="name">
                 Name
               </.label>
-              <input
+              <.input
                 autocomplete="off"
                 type="text"
                 name="name"
                 id="policy-name"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                value="Engineering access to GitLab"
+                placeholder="Name of Policy"
+                value={@policy.name}
                 required
               />
             </div>
           </div>
           <div class="flex items-center space-x-4">
-            <button
-              type="submit"
-              class="text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:outline-none focus:ring-primary-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800"
-            >
+            <.button type="submit" class="btn btn-primary">
               Save
-            </button>
+            </.button>
           </div>
         </form>
       </div>
