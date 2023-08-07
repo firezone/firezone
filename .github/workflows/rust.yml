@@ -91,6 +91,9 @@ jobs:
     needs:
       - rust_test
       - rust_smoke-test-relay
+    permissions:
+      contents: read
+      id-token: "write"
     env:
       PACKAGE: relay
       REGISTRY: us-east1-docker.pkg.dev
@@ -147,6 +150,9 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - rust_test
+    permissions:
+      contents: read
+      id-token: "write"
     env:
       PACKAGE: gateway
       REGISTRY: us-east1-docker.pkg.dev
