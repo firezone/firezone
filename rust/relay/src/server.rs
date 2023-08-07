@@ -229,10 +229,24 @@ where
                 self.queue_error_response(sender, error_code);
             }
             // Parsing the bytes failed.
-            Err(client_message::Error::BadChannelData(_)) => {}
-            Err(client_message::Error::DecodeStun(_)) => {}
-            Err(client_message::Error::UnknownMessageType(_)) => {}
-            Err(client_message::Error::Eof) => {}
+            Err(client_message::Error::BadChannelData(ref error)) => {
+                tracing::debug!(
+                    error = error as &dyn std::error::Error,
+                    "failed to decode channel data"
+                )
+            }
+            Err(client_message::Error::DecodeStun(ref error)) => {
+                tracing::debug!(
+                    error = error as &dyn std::error::Error,
+                    "failed to decode stun packet"
+                )
+            }
+            Err(client_message::Error::UnknownMessageType(t)) => {
+                tracing::debug!(r#type = %t, "unknown STUN message type")
+            }
+            Err(client_message::Error::Eof) => {
+                tracing::debug!("unexpected EOF while parsing message")
+            }
         };
     }
 

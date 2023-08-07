@@ -84,12 +84,20 @@ pub struct ResourceDescriptionDns {
 }
 
 impl ResourceDescription {
+    pub fn dns_name(&self) -> Option<&str> {
+        match self {
+            ResourceDescription::Dns(r) => Some(&r.name),
+            ResourceDescription::Cidr(_) => None,
+        }
+    }
+
     pub fn ips(&self) -> Vec<IpNetwork> {
         match self {
             ResourceDescription::Dns(r) => vec![r.ipv4.into(), r.ipv6.into()],
             ResourceDescription::Cidr(r) => vec![r.address],
         }
     }
+
     pub fn ipv4(&self) -> Option<Ipv4Addr> {
         match self {
             ResourceDescription::Dns(r) => Some(r.ipv4),

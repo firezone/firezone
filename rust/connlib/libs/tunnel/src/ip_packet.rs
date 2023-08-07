@@ -2,6 +2,7 @@ use std::net::IpAddr;
 
 use domain::base::message::Message;
 use pnet_packet::{
+    icmpv6::{self, MutableIcmpv6Packet},
     ip::{IpNextHeaderProtocol, IpNextHeaderProtocols},
     ipv4::{checksum, Ipv4Packet, MutableIpv4Packet},
     ipv6::{Ipv6Packet, MutableIpv6Packet},
@@ -53,6 +54,24 @@ impl<'a> MutableIpPacket<'a> {
         self.to_immutable()
             .is_udp()
             .then(|| MutableUdpPacket::new(self.payload_mut()))
+            .flatten()
+    }
+
+    pub fn set_icmpv6_checksum(&mut self) {
+        let (src_addr, dst_addr) = match self {
+            MutableIpPacket::MutableIpv4Packet(_) => return,
+            MutableIpPacket::MutableIpv6Packet(p) => (p.get_source(), p.get_destination()),
+        };
+        if let Some(mut pkt) = self.as_icmpv6() {
+            let checksum = icmpv6::checksum(&pkt.to_immutable(), &src_addr, &dst_addr);
+            pkt.set_checksum(checksum);
+        }
+    }
+
+    fn as_icmpv6(&mut self) -> Option<MutableIcmpv6Packet> {
+        self.to_immutable()
+            .is_icmpv6()
+            .then(|| MutableIcmpv6Packet::new(self.payload_mut()))
             .flatten()
     }
 
@@ -116,6 +135,10 @@ impl<'a> IpPacket<'a> {
             IpPacket::Ipv4Packet(_) => Version::Ipv4,
             IpPacket::Ipv6Packet(_) => Version::Ipv6,
         }
+    }
+
+    pub(crate) fn is_icmpv6(&self) -> bool {
+        self.next_header() == IpNextHeaderProtocols::Icmpv6
     }
 
     pub(crate) fn next_header(&self) -> IpNextHeaderProtocol {
