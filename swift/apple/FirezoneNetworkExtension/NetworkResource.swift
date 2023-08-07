@@ -17,6 +17,13 @@ public struct NetworkResource: Decodable {
         case .cidr(let cidrAddress): return cidrAddress
       }
     }
+
+    var domain: String? {
+      switch self {
+        case .dns(let domain, ipv4: _, ipv6: _): return domain
+        case .cidr(cidrAddress: _): return nil
+      }
+    }
   }
 
   let name: String

@@ -16,7 +16,7 @@ extension RustString: @unchecked Sendable {}
 extension RustString: Error {}
 
 public protocol CallbackHandlerDelegate: AnyObject {
-  func onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String)
+  func onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String, dnsFallbackStrategy: String)
   func onTunnelReady()
   func onAddRoute(_: String)
   func onRemoveRoute(_: String)
@@ -34,7 +34,8 @@ public class CallbackHandler {
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),
       tunnelAddressIPv6: tunnelAddressIPv6.toString(),
-      dnsAddress: dnsAddress.toString()
+      dnsAddress: dnsAddress.toString(),
+      dnsFallbackStrategy: "system_resolver" // Will come from a onSetInterfaceConfig arg eventually
     )
   }
 
