@@ -237,6 +237,8 @@ defmodule Web.AuthControllerTest do
           provider_virtual_state: %{"password" => password, "password_confirmation" => password}
         )
 
+      csrf_token = Ecto.UUID.generate()
+
       conn =
         conn
         |> post(
@@ -245,14 +247,26 @@ defmodule Web.AuthControllerTest do
             "userpass" => %{
               "provider_identifier" => identity.provider_identifier,
               "secret" => password,
-              "client_platform" => "ios"
+              "client_platform" => "android",
+              "client_csrf_token" => csrf_token
             }
           }
         )
 
       assert conn.assigns.flash == %{}
-      assert redirected_to(conn) =~ "firezone://handle_client_auth_callback?token="
+
       assert is_nil(get_session(conn, :user_return_to))
+
+      assert redirected_to = redirected_to(conn)
+      assert redirected_to_uri = URI.parse(redirected_to)
+      assert redirected_to_uri.scheme == "https"
+      assert redirected_to_uri.host == "app.firezone.dev"
+      assert redirected_to_uri.path == "/handle_client_auth_callback"
+
+      assert %{
+               "client_auth_token" => _token,
+               "client_csrf_token" => ^csrf_token
+             } = URI.decode_query(redirected_to_uri.query)
     end
 
     test "redirects account users to app install page when mobile platform is invalid", %{
@@ -504,14 +518,14 @@ defmodule Web.AuthControllerTest do
 
       conn =
         conn
-        |> put_session(:client_platform, "ios")
+        |> put_session(:client_platform, "apple")
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => identity.provider_virtual_state.sign_in_token
         })
 
       assert conn.assigns.flash == %{}
-      assert redirected_to(conn) =~ "firezone://handle_client_auth_callback?token="
+      assert redirected_to(conn) =~ "firezone://handle_client_auth_callback?client_auth_token="
       assert is_nil(get_session(conn, :client_platform))
     end
 
@@ -780,14 +794,14 @@ defmodule Web.AuthControllerTest do
         |> put_req_cookie(cookie_key, signed_state)
         |> put_session(:foo, "bar")
         |> put_session(:preferred_locale, "en_US")
-        |> put_session(:client_platform, "ios")
+        |> put_session(:client_platform, "apple")
         |> get(~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback", %{
           "state" => state,
           "code" => "MyFakeCode"
         })
 
       assert conn.assigns.flash == %{}
-      assert redirected_to(conn) =~ "firezone://handle_client_auth_callback?token="
+      assert redirected_to(conn) =~ "firezone://handle_client_auth_callback?client_auth_token="
       assert is_nil(get_session(conn, :client_platform))
     end
   end

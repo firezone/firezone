@@ -19,7 +19,7 @@ defmodule Web.Auth.SignIn do
 
       {:ok, socket,
        temporary_assigns: [
-         params: Map.take(params, ["client_platform"]),
+         params: Map.take(params, ["client_platform", "client_csrf_token"]),
          account: account,
          providers_by_adapter: providers_by_adapter,
          page_title: "Sign in"

@@ -26,7 +26,8 @@ defmodule Web.Auth do
   def signed_in_redirect(
         conn,
         %Auth.Subject{actor: %{type: :account_admin_user}} = subject,
-        _client_platform
+        _client_platform,
+        _client_csrf_token
       ) do
     redirect_to = Plug.Conn.get_session(conn, :user_return_to) || signed_in_path(subject)
 
@@ -40,7 +41,8 @@ defmodule Web.Auth do
   def signed_in_redirect(
         conn,
         %Auth.Subject{actor: %{type: :account_user}} = subject,
-        client_platform
+        client_platform,
+        client_csrf_token
       ) do
     platform_redirect_urls =
       Domain.Config.fetch_env!(:web, __MODULE__)
@@ -49,8 +51,16 @@ defmodule Web.Auth do
     if redirect_to = Map.get(platform_redirect_urls, client_platform) do
       {:ok, client_token} = Auth.create_session_token_from_subject(subject)
 
+      query =
+        %{
+          client_auth_token: client_token,
+          client_csrf_token: client_csrf_token
+        }
+        |> Enum.reject(&is_nil(elem(&1, 1)))
+        |> URI.encode_query()
+
       conn
-      |> Phoenix.Controller.redirect(external: "#{redirect_to}?token=#{URI.encode(client_token)}")
+      |> Phoenix.Controller.redirect(external: "#{redirect_to}?#{query}")
     else
       conn
       |> Phoenix.Controller.put_flash(:info, "Please use client application to access Firezone.")

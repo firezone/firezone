@@ -37,7 +37,9 @@ defmodule Web.AuthController do
              conn.assigns.user_agent,
              conn.remote_ip
            ) do
-      Web.Auth.signed_in_redirect(conn, subject, form["client_platform"])
+      client_platform = form["client_platform"]
+      client_csrf_token = form["client_csrf_token"]
+      Web.Auth.signed_in_redirect(conn, subject, client_platform, client_csrf_token)
     else
       {:error, :not_found} ->
         conn
@@ -75,6 +77,7 @@ defmodule Web.AuthController do
 
     conn
     |> put_session(:client_platform, form["client_platform"])
+    |> put_session(:client_csrf_token, form["client_csrf_token"])
     |> redirect(to: "/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}")
   end
 
@@ -98,10 +101,12 @@ defmodule Web.AuthController do
              conn.remote_ip
            ) do
       client_platform = get_session(conn, :client_platform)
+      client_csrf_token = get_session(conn, :client_csrf_token)
 
       conn
       |> delete_session(:client_platform)
-      |> Web.Auth.signed_in_redirect(subject, client_platform)
+      |> delete_session(:client_csrf_token)
+      |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
     else
       {:error, :not_found} ->
         conn
@@ -128,6 +133,7 @@ defmodule Web.AuthController do
       ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
       conn = put_session(conn, :client_platform, params["client_platform"])
+      conn = put_session(conn, :client_csrf_token, params["client_csrf_token"])
 
       redirect_url =
         url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
@@ -173,10 +179,12 @@ defmodule Web.AuthController do
            {:ok, subject} <-
              Domain.Auth.sign_in(provider, payload, conn.assigns.user_agent, conn.remote_ip) do
         client_platform = get_session(conn, :client_platform)
+        client_csrf_token = get_session(conn, :client_csrf_token)
 
         conn
         |> delete_session(:client_platform)
-        |> Web.Auth.signed_in_redirect(subject, client_platform)
+        |> delete_session(:client_csrf_token)
+        |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
       else
         {:error, :not_found} ->
           conn
