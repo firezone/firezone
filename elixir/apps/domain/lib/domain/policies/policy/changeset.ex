@@ -15,6 +15,24 @@ defmodule Domain.Policies.Policy.Changeset do
     |> put_change(:account_id, subject.account.id)
     |> put_change(:created_by, :identity)
     |> put_change(:created_by_identity_id, subject.identity.id)
+  end
+
+  def update_changeset(%Policy{} = policy, attrs) do
+    policy
+    |> cast(attrs, @update_fields)
+    |> validate_required(@required_fields)
+    |> changeset()
+  end
+
+  def delete_changeset(%Policy{} = policy) do
+    policy
+    |> change()
+    |> put_change(:deleted_at, DateTime.utc_now())
+  end
+
+  defp changeset(changeset) do
+    changeset
+    |> validate_length(:name, min: 1, max: 255)
     |> unique_constraint([:account_id, :name],
       message: "Policy Name already exists",
       error_key: :name
@@ -36,23 +54,5 @@ defmodule Domain.Policies.Policy.Changeset do
       name: :policies_resource_id_fkey,
       message: "Not allowed to create policies for resources outside of your account"
     )
-  end
-
-  def update_changeset(%Policy{} = policy, attrs) do
-    policy
-    |> cast(attrs, @update_fields)
-    |> validate_required(@required_fields)
-    |> changeset()
-  end
-
-  def delete_changeset(%Policy{} = policy) do
-    policy
-    |> change()
-    |> put_change(:deleted_at, DateTime.utc_now())
-  end
-
-  defp changeset(changeset) do
-    changeset
-    |> validate_length(:name, min: 1, max: 255)
   end
 end

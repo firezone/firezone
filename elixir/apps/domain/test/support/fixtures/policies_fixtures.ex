@@ -26,15 +26,23 @@ defmodule Domain.PoliciesFixtures do
         AuthFixtures.create_subject(identity)
       end)
 
+    {actor_group, attrs} =
+      Map.pop_lazy(attrs, :actor_group, fn ->
+        ActorsFixtures.create_group(account: account, subject: subject)
+      end)
+
     {actor_group_id, attrs} =
       Map.pop_lazy(attrs, :actor_group, fn ->
-        actor = ActorsFixtures.create_group(account: account, subject: subject)
-        actor.id
+        actor_group.id
+      end)
+
+    {resource, attrs} =
+      Map.pop_lazy(attrs, :resource, fn ->
+        ResourcesFixtures.create_resource(account: account, subject: subject)
       end)
 
     {resource_id, attrs} =
       Map.pop_lazy(attrs, :resource, fn ->
-        resource = ResourcesFixtures.create_resource(account: account, subject: subject)
         resource.id
       end)
 
@@ -46,37 +54,6 @@ defmodule Domain.PoliciesFixtures do
 
     policy
   end
-
-  # def create_resource(attrs \\ %{}) do
-  #  attrs = resource_attrs(attrs)
-
-  #  {account, attrs} =
-  #    Map.pop_lazy(attrs, :account, fn ->
-  #      AccountsFixtures.create_account()
-  #    end)
-
-  #  {connections, attrs} =
-  #    Map.pop_lazy(attrs, :gateway_groups, fn ->
-  #      Enum.map(1..2, fn _ ->
-  #        gateway = GatewaysFixtures.create_gateway(account: account)
-  #        %{gateway_group_id: gateway.group_id}
-  #      end)
-  #    end)
-
-  #  {subject, attrs} =
-  #    Map.pop_lazy(attrs, :subject, fn ->
-  #      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-  #      identity = AuthFixtures.create_identity(account: account, actor: actor)
-  #      AuthFixtures.create_subject(identity)
-  #    end)
-
-  #  {:ok, resource} =
-  #    attrs
-  #    |> Map.put(:connections, connections)
-  #    |> Domain.Resources.create_resource(subject)
-
-  #  resource
-  # end
 
   defp counter do
     System.unique_integer([:positive])

@@ -135,11 +135,11 @@ defmodule Domain.PoliciesTest do
     test "returns changeset error on empty params", %{subject: subject} do
       assert {:error, changeset} = create_policy(%{}, subject)
 
-      assert changeset.errors == [
-               name: {"can't be blank", [validation: :required]},
-               actor_group_id: {"can't be blank", [validation: :required]},
-               resource_id: {"can't be blank", [validation: :required]}
-             ]
+      assert errors_on(changeset) == %{
+               name: ["can't be blank"],
+               actor_group_id: ["can't be blank"],
+               resource_id: ["can't be blank"]
+             }
     end
 
     test "returns changeset error on invalid params", %{subject: subject} do
@@ -149,9 +149,7 @@ defmodule Domain.PoliciesTest do
                  subject
                )
 
-      assert changeset.errors == [
-               name: {"is invalid", [{:type, :string}, {:validation, :cast}]}
-             ]
+      assert errors_on(changeset) == %{name: ["is invalid"]}
     end
 
     test "returns error when subject has no permission to manage policies", %{subject: subject} do
@@ -177,25 +175,16 @@ defmodule Domain.PoliciesTest do
       resource = ResourcesFixtures.create_resource(account: account)
       other_actor_group = ActorsFixtures.create_group(account: other_account)
 
-      assert {:error, changeset} =
-               create_policy(
-                 %{
-                   account_id: account.id,
-                   name: "yikes",
-                   actor_group_id: other_actor_group.id,
-                   resource_id: resource.id
-                 },
-                 subject
-               )
+      attrs = %{
+        account_id: account.id,
+        name: "yikes",
+        actor_group_id: other_actor_group.id,
+        resource_id: resource.id
+      }
 
-      assert changeset.errors == [
-               actor_group:
-                 {"does not exist",
-                  [
-                    {:constraint, :assoc},
-                    {:constraint_name, "policies_actor_group_id_fkey"}
-                  ]}
-             ]
+      assert {:error, changeset} = create_policy(attrs, subject)
+
+      assert errors_on(changeset) == %{actor_group: ["does not exist"]}
     end
 
     test "returns changeset error when trying to create policy with another account resource", %{
@@ -207,25 +196,17 @@ defmodule Domain.PoliciesTest do
       other_resource = ResourcesFixtures.create_resource(account: other_account)
       actor_group = ActorsFixtures.create_group(account: account)
 
-      assert {:error, changeset} =
-               create_policy(
-                 %{
-                   account_id: account.id,
-                   name: "yikes",
-                   actor_group_id: actor_group.id,
-                   resource_id: other_resource.id
-                 },
-                 subject
-               )
+      attrs = %{
+        account_id: account.id,
+        name: "yikes",
+        actor_group_id: actor_group.id,
+        resource_id: other_resource.id
+      }
 
-      assert changeset.errors == [
-               resource:
-                 {"does not exist",
-                  [
-                    {:constraint, :assoc},
-                    {:constraint_name, "policies_resource_id_fkey"}
-                  ]}
-             ]
+      assert {:error, changeset} =
+               create_policy(attrs, subject)
+
+      assert errors_on(changeset) == %{resource: ["does not exist"]}
     end
   end
 
@@ -254,9 +235,7 @@ defmodule Domain.PoliciesTest do
                  subject
                )
 
-      assert changeset.errors == [
-               name: {"is invalid", [{:type, :string}, {:validation, :cast}]}
-             ]
+      assert errors_on(changeset) == %{name: ["is invalid"]}
     end
 
     test "allows update to name", %{policy: policy, subject: subject} do
@@ -365,7 +344,7 @@ defmodule Domain.PoliciesTest do
       other_identity = AuthFixtures.create_identity(account: other_account, actor: other_actor)
       other_subject = AuthFixtures.create_subject(other_identity)
 
-      assert {:error, :not_found} = delete_policy(policy, other_subject)
+      assert delete_policy(policy, other_subject) == {:error, :not_found}
     end
   end
 end
