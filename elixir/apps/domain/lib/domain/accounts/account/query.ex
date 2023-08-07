@@ -9,4 +9,8 @@ defmodule Domain.Accounts.Account.Query do
   def by_id(queryable \\ all(), id) do
     where(queryable, [account: account], account.id == ^id)
   end
+
+  def by_slug(queryable \\ all(), slug) do
+    where(queryable, [account: account], account.slug == ^slug)
+  end
 end

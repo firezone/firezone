@@ -20,7 +20,7 @@ defmodule Web.AuthController do
   This is a callback for the UserPass provider which checks login and password to authenticate the user.
   """
   def verify_credentials(conn, %{
-        "account_id" => account_id,
+        "account_id_or_slug" => account_id_or_slug,
         "provider_id" => provider_id,
         "userpass" => %{
           "provider_identifier" => provider_identifier,
@@ -41,18 +41,18 @@ defmodule Web.AuthController do
         conn
         |> put_flash(:userpass_provider_identifier, String.slice(provider_identifier, 0, 160))
         |> put_flash(:error, "You can not use this method to sign in.")
-        |> redirect(to: "/#{account_id}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}/sign_in")
 
       {:error, :invalid_actor_type} ->
         conn
         |> put_flash(:info, "Please use client application to access Firezone.")
-        |> redirect(to: ~p"/#{account_id}")
+        |> redirect(to: ~p"/#{account_id_or_slug}")
 
       {:error, _reason} ->
         conn
         |> put_flash(:userpass_provider_identifier, String.slice(provider_identifier, 0, 160))
         |> put_flash(:error, "Invalid username or password.")
-        |> redirect(to: "/#{account_id}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}/sign_in")
     end
   end
 
@@ -60,7 +60,7 @@ defmodule Web.AuthController do
   This is a callback for the Email provider which sends login link.
   """
   def request_magic_link(conn, %{
-        "account_id" => account_id,
+        "account_id_or_slug" => account_id_or_slug,
         "provider_id" => provider_id,
         "email" => %{
           "provider_identifier" => provider_identifier
@@ -75,7 +75,7 @@ defmodule Web.AuthController do
         |> Web.Mailer.deliver()
       end
 
-    redirect(conn, to: "/#{account_id}/sign_in/providers/email/#{provider_id}")
+    redirect(conn, to: "/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}")
   end
 
   @doc """
@@ -83,7 +83,7 @@ defmodule Web.AuthController do
   to authenticate a user.
   """
   def verify_sign_in_token(conn, %{
-        "account_id" => account_id,
+        "account_id_or_slug" => account_id_or_slug,
         "provider_id" => provider_id,
         "identity_id" => identity_id,
         "secret" => secret
@@ -101,17 +101,17 @@ defmodule Web.AuthController do
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "You can not use this method to sign in.")
-        |> redirect(to: "/#{account_id}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}/sign_in")
 
       {:error, :invalid_actor_type} ->
         conn
         |> put_flash(:info, "Please use client application to access Firezone.")
-        |> redirect(to: ~p"/#{account_id}")
+        |> redirect(to: ~p"/#{account_id_or_slug}")
 
       {:error, _reason} ->
         conn
         |> put_flash(:error, "The sign in link is invalid or expired.")
-        |> redirect(to: "/#{account_id}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}/sign_in")
     end
   end
 
@@ -119,7 +119,10 @@ defmodule Web.AuthController do
   This controller redirects user to IdP during sign in for authentication while persisting
   verification state to prevent various attacks on OpenID Connect.
   """
-  def redirect_to_idp(conn, %{"account_id" => account_id, "provider_id" => provider_id}) do
+  def redirect_to_idp(conn, %{
+        "account_id_or_slug" => account_id_or_slug,
+        "provider_id" => provider_id
+      }) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
       redirect_url =
         url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
@@ -129,7 +132,7 @@ defmodule Web.AuthController do
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "You can not use this method to sign in.")
-        |> redirect(to: "/#{account_id}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}/sign_in")
     end
   end
 
@@ -149,14 +152,14 @@ defmodule Web.AuthController do
   This controller handles IdP redirect back to the Firezone when user signs in.
   """
   def handle_idp_callback(conn, %{
-        "account_id" => account_id,
+        "account_id_or_slug" => account_id_or_slug,
         "provider_id" => provider_id,
         "state" => state,
         "code" => code
       }) do
     with {:ok, code_verifier, conn} <- verify_state_and_fetch_verifier(conn, provider_id, state) do
       payload = {
-        url(~p"/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"),
+        url(~p"/#{account_id_or_slug}/sign_in/providers/#{provider_id}/handle_callback"),
         code_verifier,
         code
       }
@@ -174,23 +177,23 @@ defmodule Web.AuthController do
         {:error, :not_found} ->
           conn
           |> put_flash(:error, "You can not use this method to sign in.")
-          |> redirect(to: "/#{account_id}/sign_in")
+          |> redirect(to: "/#{account_id_or_slug}/sign_in")
 
         {:error, :invalid_actor_type} ->
           conn
           |> put_flash(:info, "Please use client application to access Firezone.")
-          |> redirect(to: ~p"/#{account_id}")
+          |> redirect(to: ~p"/#{account_id_or_slug}")
 
         {:error, _reason} ->
           conn
           |> put_flash(:error, "You can not authenticate to this account.")
-          |> redirect(to: "/#{account_id}/sign_in")
+          |> redirect(to: "/#{account_id_or_slug}/sign_in")
       end
     else
       {:error, :invalid_state, conn} ->
         conn
         |> put_flash(:error, "Your session has expired, please try again.")
-        |> redirect(to: "/#{account_id}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}/sign_in")
     end
   end
 
@@ -211,9 +214,9 @@ defmodule Web.AuthController do
     @state_cookie_key_prefix <> provider_id
   end
 
-  def sign_out(conn, %{"account_id" => account_id}) do
+  def sign_out(conn, %{"account_id_or_slug" => account_id_or_slug}) do
     conn
     |> Auth.sign_out()
-    |> redirect(to: ~p"/#{account_id}/sign_in")
+    |> redirect(to: ~p"/#{account_id_or_slug}/sign_in")
   end
 end

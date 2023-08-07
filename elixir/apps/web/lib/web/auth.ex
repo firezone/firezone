@@ -97,12 +97,18 @@ defmodule Web.Auth do
   @doc """
   Fetches the session token from the session and assigns the subject to the connection.
   """
-  def fetch_subject(%Plug.Conn{} = conn, _opts) do
+  def fetch_subject_and_account(%Plug.Conn{} = conn, _opts) do
     with token when not is_nil(token) <- Plug.Conn.get_session(conn, :session_token),
          {:ok, subject} <-
            Domain.Auth.sign_in(token, conn.assigns.user_agent, conn.remote_ip),
-         true <- conn.path_params["account_id"] == subject.account.id do
-      Plug.Conn.assign(conn, :subject, subject)
+         {:ok, account} <-
+           Domain.Accounts.fetch_account_by_id_or_slug(
+             conn.path_params["account_id_or_slug"],
+             subject
+           ) do
+      conn
+      |> Plug.Conn.assign(:account, account)
+      |> Plug.Conn.assign(:subject, subject)
     else
       _ -> conn
     end
@@ -133,7 +139,7 @@ defmodule Web.Auth do
       conn
       |> Phoenix.Controller.put_flash(:error, "You must log in to access this page.")
       |> maybe_store_return_to()
-      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id"]}/sign_in")
+      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}/sign_in")
       |> Plug.Conn.halt()
     end
   end
@@ -246,14 +252,13 @@ defmodule Web.Auth do
     end
   end
 
-  defp mount_subject(socket, params, session) do
+  defp mount_subject(socket, _params, session) do
     Phoenix.Component.assign_new(socket, :subject, fn ->
       user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
       remote_ip = Phoenix.LiveView.get_connect_info(socket, :peer_data).address
 
       with token when not is_nil(token) <- session["session_token"],
-           {:ok, subject} <- Domain.Auth.sign_in(token, user_agent, remote_ip),
-           true <- params["account_id"] == subject.account.id do
+           {:ok, subject} <- Domain.Auth.sign_in(token, user_agent, remote_ip) do
         subject
       else
         _ -> nil
@@ -263,11 +268,12 @@ defmodule Web.Auth do
 
   defp mount_account(
          %{assigns: %{subject: subject}} = socket,
-         %{"account_id" => account_id},
+         %{"account_id_or_slug" => account_id_or_slug},
          _session
        ) do
     Phoenix.Component.assign_new(socket, :account, fn ->
-      with {:ok, account} <- Domain.Accounts.fetch_account_by_id(account_id, subject) do
+      with {:ok, account} <-
+             Domain.Accounts.fetch_account_by_id_or_slug(account_id_or_slug, subject) do
         account
       else
         _ -> nil
