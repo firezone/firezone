@@ -40,7 +40,7 @@ impl Peer {
     pub(crate) async fn send_infallible<CB: Callbacks>(&self, data: &[u8], callbacks: &CB) {
         if let Err(e) = self.channel.write(&Bytes::copy_from_slice(data)).await {
             tracing::error!("Couldn't send packet to connected peer: {e}");
-            callbacks.on_error(&e.into());
+            let _ = callbacks.on_error(&e.into());
         }
     }
 
