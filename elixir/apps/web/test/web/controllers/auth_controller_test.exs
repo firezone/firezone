@@ -163,7 +163,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == "/#{account.id}/dashboard"
+      assert redirected_to(conn) == "/#{account.slug}/dashboard"
     end
 
     test "renews the session when credentials are valid", %{conn: conn} do
@@ -507,7 +507,7 @@ defmodule Web.AuthControllerTest do
           "secret" => identity.provider_virtual_state.sign_in_token
         })
 
-      assert redirected_to(conn) == "/#{account.id}/dashboard"
+      assert redirected_to(conn) == "/#{account.slug}/dashboard"
     end
 
     test "redirects to the platform link when credentials are valid for account users", %{
@@ -799,7 +799,7 @@ defmodule Web.AuthControllerTest do
           "code" => "MyFakeCode"
         })
 
-      assert redirected_to(conn) == "/#{account.id}/dashboard"
+      assert redirected_to(conn) == "/#{account.slug}/dashboard"
 
       assert %{
                "live_socket_id" => "actors_sessions:" <> socket_id,

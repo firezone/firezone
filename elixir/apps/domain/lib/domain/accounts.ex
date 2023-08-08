@@ -61,4 +61,14 @@ defmodule Domain.Accounts do
       {:error, :unauthorized}
     end
   end
+
+  def generate_unique_slug do
+    slug_candidate = Domain.NameGenerator.generate_slug()
+
+    if Account.Query.by_slug(slug_candidate) |> Repo.one() do
+      generate_unique_slug()
+    else
+      slug_candidate
+    end
+  end
 end
