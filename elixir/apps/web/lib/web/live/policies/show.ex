@@ -3,12 +3,14 @@ defmodule Web.Policies.Show do
   alias Domain.Policies
 
   def mount(%{"id" => id} = _params, _session, socket) do
-    {:ok, policy} =
-      Policies.fetch_policy_by_id(id, socket.assigns.subject,
-        preload: [:actor_group, :resource, [created_by_identity: :actor]]
-      )
-
-    {:ok, assign(socket, policy: policy)}
+    with {:ok, policy} <-
+           Policies.fetch_policy_by_id(id, socket.assigns.subject,
+             preload: [:actor_group, :resource, [created_by_identity: :actor]]
+           ) do
+      {:ok, assign(socket, policy: policy)}
+    else
+      _other -> raise Web.LiveErrors.NotFoundError
+    end
   end
 
   defp pretty_print_date(date) do
@@ -19,7 +21,7 @@ defmodule Web.Policies.Show do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
       <.breadcrumb path={~p"/#{@account}/policies"}>Policies</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/policies/#{@policy.id}"}>
+      <.breadcrumb path={~p"/#{@account}/policies/#{@policy}"}>
         <%= @policy.name %>
       </.breadcrumb>
     </.breadcrumbs>
@@ -28,7 +30,7 @@ defmodule Web.Policies.Show do
         Viewing Policy <code><%= @policy.name %></code>
       </:title>
       <:actions>
-        <.edit_button navigate={~p"/#{@account}/policies/#{@policy.id}/edit"}>
+        <.edit_button navigate={~p"/#{@account}/policies/#{@policy}/edit"}>
           Edit Policy
         </.edit_button>
       </:actions>

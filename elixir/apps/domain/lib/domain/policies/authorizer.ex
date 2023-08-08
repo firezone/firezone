@@ -28,9 +28,9 @@ defmodule Domain.Policies.Authorizer do
       has_permission?(subject, manage_policies_permission()) ->
         Policy.Query.by_account_id(queryable, subject.account.id)
 
-      # TODO: for end users we must return only policies that user has access to
       has_permission?(subject, view_available_policies_permission()) ->
-        Policy.Query.by_account_id(queryable, subject.account.id)
+        queryable
+        |> Policy.Query.by_account_id(subject.account.id)
         |> Policy.Query.by_actor_id(subject.actor.id)
     end
   end

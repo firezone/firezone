@@ -4,16 +4,18 @@ defmodule Web.Policies.New do
   alias Domain.{Resources, Actors}
 
   def mount(_params, _session, socket) do
-    {:ok, resources} = Resources.list_resources(socket.assigns.subject)
-    {:ok, actor_groups} = Actors.list_groups(socket.assigns.subject)
+    with {:ok, resources} <- Resources.list_resources(socket.assigns.subject),
+         {:ok, actor_groups} <- Actors.list_groups(socket.assigns.subject) do
+      socket =
+        assign(socket,
+          resources: resources,
+          actor_groups: actor_groups
+        )
 
-    socket =
-      assign(socket,
-        resources: resources,
-        actor_groups: actor_groups
-      )
-
-    {:ok, socket}
+      {:ok, socket}
+    else
+      _other -> raise Web.LiveErrors.NotFoundError
+    end
   end
 
   def render(assigns) do

@@ -3,10 +3,12 @@ defmodule Web.Policies.Index do
   alias Domain.Policies
 
   def mount(_params, _session, socket) do
-    {:ok, policies} =
-      Policies.list_policies(socket.assigns.subject, preload: [:actor_group, :resource])
-
-    {:ok, assign(socket, policies: policies)}
+    with {:ok, policies} <-
+           Policies.list_policies(socket.assigns.subject, preload: [:actor_group, :resource]) do
+      {:ok, assign(socket, policies: policies)}
+    else
+      _other -> raise Web.LiveErrors.NotFoundError
+    end
   end
 
   def render(assigns) do
@@ -30,7 +32,7 @@ defmodule Web.Policies.Index do
       <.table id="policies" rows={@policies} row_id={&"policies-#{&1.id}"}>
         <:col :let={policy} label="NAME">
           <.link
-            navigate={~p"/#{@account}/policies/#{policy.id}"}
+            navigate={~p"/#{@account}/policies/#{policy}"}
             class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
           >
             <%= policy.name %>
