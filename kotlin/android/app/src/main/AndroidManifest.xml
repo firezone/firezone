@@ -67,7 +67,7 @@
             </intent-filter>
         </service>
             <receiver
-                android:name=".features.session.backend.BootShutdownReceiver"
+                android:name="dev.firezone.android.features.session.backend.BootShutdownReceiver"
                 android:exported="true">
                 <intent-filter>
                     <action android:name="android.intent.action.ACTION_SHUTDOWN" />
