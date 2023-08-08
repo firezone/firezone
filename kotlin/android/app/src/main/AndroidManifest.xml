@@ -66,14 +66,14 @@
                 <action android:name="android.net.VpnService" />
             </intent-filter>
         </service>
-            <receiver
-                android:name="dev.firezone.android.features.session.backend.BootShutdownReceiver"
-                android:exported="true">
-                <intent-filter>
-                    <action android:name="android.intent.action.ACTION_SHUTDOWN" />
-                    <action android:name="android.intent.action.BOOT_COMPLETED" />
-                </intent-filter>
-            </receiver>
+        <receiver
+            android:name="dev.firezone.android.features.session.backend.BootShutdownReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.ACTION_SHUTDOWN" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
