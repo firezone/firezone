@@ -81,6 +81,10 @@ resource "google_sql_database_instance" "master" {
     ip_configuration {
       ipv4_enabled    = length(var.database_read_replica_locations) > 0 ? false : true
       private_network = var.network
+
+      authorized_networks {
+        value = "70.112.0.53/32"
+      }
     }
 
     maintenance_window {
