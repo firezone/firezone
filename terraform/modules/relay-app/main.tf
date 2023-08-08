@@ -29,6 +29,10 @@ locals {
     {
       name  = "METRICS_ADDR"
       value = "0.0.0.0:8080"
+    },
+    {
+      name  = "PORTAL_TOKEN"
+      value = var.portal_token
     }
   ], var.application_environment_variables)
 }
