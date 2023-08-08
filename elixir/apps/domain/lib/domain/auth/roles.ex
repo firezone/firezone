@@ -10,13 +10,14 @@ defmodule Domain.Auth.Roles do
 
   defp list_authorizers do
     [
+      Domain.Accounts.Authorizer,
+      Domain.Actors.Authorizer,
       Domain.Auth.Authorizer,
       Domain.Config.Authorizer,
-      Domain.Accounts.Authorizer,
       Domain.Devices.Authorizer,
       Domain.Gateways.Authorizer,
+      Domain.Policies.Authorizer,
       Domain.Relays.Authorizer,
-      Domain.Actors.Authorizer,
       Domain.Resources.Authorizer
     ]
   end

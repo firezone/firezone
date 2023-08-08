@@ -1,4 +1,4 @@
-alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources}
+alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources, Policies}
 
 # Seeds can be run both with MIX_ENV=prod and MIX_ENV=test, for test env we don't have
 # an adapter configured and creation of email provider will fail, so we will override it here.
@@ -56,6 +56,20 @@ IO.puts("")
     adapter_config: %{}
   })
 
+{:ok, other_email_provider} =
+  Auth.create_provider(other_account, %{
+    name: "email",
+    adapter: :email,
+    adapter_config: %{}
+  })
+
+{:ok, other_userpass_provider} =
+  Auth.create_provider(other_account, %{
+    name: "UserPass",
+    adapter: :userpass,
+    adapter_config: %{}
+  })
+
 unprivileged_actor_email = "firezone-unprivileged-1@localhost"
 admin_actor_email = "firezone@localhost"
 
@@ -87,6 +101,39 @@ unprivileged_actor_userpass_identity =
   maybe_repo_update.(unprivileged_actor_userpass_identity,
     id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5"
   )
+
+# Other Account Users
+other_unprivileged_actor_email = "other-unprivileged-1@localhost"
+other_admin_actor_email = "other@localhost"
+
+{:ok, other_unprivileged_actor} =
+  Actors.create_actor(other_email_provider, other_unprivileged_actor_email, %{
+    type: :account_user,
+    name: "Other Unprivileged"
+  })
+
+{:ok, other_admin_actor} =
+  Actors.create_actor(other_email_provider, other_admin_actor_email, %{
+    type: :account_admin_user,
+    name: "Other Admin"
+  })
+
+{:ok, other_unprivileged_actor_userpass_identity} =
+  Auth.create_identity(
+    other_unprivileged_actor,
+    other_userpass_provider,
+    other_unprivileged_actor_email,
+    %{
+      "password" => "Firezone1234",
+      "password_confirmation" => "Firezone1234"
+    }
+  )
+
+{:ok, _other_admin_actor_userpass_identity} =
+  Auth.create_identity(other_admin_actor, other_userpass_provider, other_admin_actor_email, %{
+    "password" => "Firezone1234",
+    "password_confirmation" => "Firezone1234"
+  })
 
 if client_secret = System.get_env("SEEDS_GOOGLE_OIDC_CLIENT_SECRET") do
   {:ok, google_provider} =
@@ -169,6 +216,41 @@ admin_iphone =
   )
 
 IO.puts("Devices created")
+IO.puts("")
+
+IO.puts("Created Actor Groups: ")
+
+{:ok, eng_group} = Actors.create_group(%{name: "Engineering"}, admin_subject)
+{:ok, finance_group} = Actors.create_group(%{name: "Finance"}, admin_subject)
+{:ok, all_group} = Actors.create_group(%{name: "All Employees"}, admin_subject)
+
+for group <- [eng_group, finance_group, all_group] do
+  IO.puts("  Name: #{group.name}  ID: #{group.id}")
+end
+
+Actors.update_group(
+  eng_group,
+  %{memberships: [%{actor_id: admin_subject.actor.id}]},
+  admin_subject
+)
+
+Actors.update_group(
+  finance_group,
+  %{memberships: [%{actor_id: unprivileged_subject.actor.id}]},
+  admin_subject
+)
+
+Actors.update_group(
+  all_group,
+  %{
+    memberships: [
+      %{actor_id: admin_subject.actor.id},
+      %{actor_id: unprivileged_subject.actor.id}
+    ]
+  },
+  admin_subject
+)
+
 IO.puts("")
 
 relay_group =
@@ -262,7 +344,7 @@ IO.puts("    Public Key: #{gateway2.public_key}")
 IO.puts("    IPv4: #{gateway2.ipv4} IPv6: #{gateway2.ipv6}")
 IO.puts("")
 
-{:ok, dns_resource} =
+{:ok, dns_google_resource} =
   Resources.create_resource(
     %{
       type: :dns,
@@ -272,7 +354,7 @@ IO.puts("")
     admin_subject
   )
 
-{:ok, dns_resource} =
+{:ok, dns_gitlab_resource} =
   Resources.create_resource(
     %{
       type: :dns,
@@ -299,8 +381,37 @@ IO.puts("")
   )
 
 IO.puts("Created resources:")
-IO.puts("  #{dns_resource.address} - DNS - #{dns_resource.ipv4} - gateways: #{gateway_name}")
+
+IO.puts(
+  "  #{dns_google_resource.address} - DNS - #{dns_google_resource.ipv4} - gateways: #{gateway_name}"
+)
+
+IO.puts(
+  "  #{dns_gitlab_resource.address} - DNS - #{dns_gitlab_resource.ipv4} - gateways: #{gateway_name}"
+)
+
 IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
+IO.puts("")
+
+Policies.create_policy(
+  %{
+    name: "Eng Access To Gitlab",
+    actor_group_id: eng_group.id,
+    resource_id: dns_gitlab_resource.id
+  },
+  admin_subject
+)
+
+Policies.create_policy(
+  %{
+    name: "All Access To Network",
+    actor_group_id: all_group.id,
+    resource_id: cidr_resource.id
+  },
+  admin_subject
+)
+
+IO.puts("Policies Created")
 IO.puts("")
 
 {:ok, unprivileged_subject_session_token} =
