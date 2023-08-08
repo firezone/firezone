@@ -139,7 +139,7 @@ jobs:
           context: rust/
           cache-from: type=gha,scope=${{ env.PACKAGE }}-${{ github.sha }}
           cache-to: type=gha,mode=max,scope=${{ env.PACKAGE }}-${{ github.sha }}
-          file: rust/Dockerfile.dev
+          file: rust/Dockerfile
           push: true
           tags:
             ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{
@@ -198,7 +198,7 @@ jobs:
           context: rust/
           cache-from: type=gha,scope=${{ env.PACKAGE }}-${{ github.sha }}
           cache-to: type=gha,mode=max,scope=${{ env.PACKAGE }}-${{ github.sha }}
-          file: rust/Dockerfile.dev
+          file: rust/Dockerfile
           push: true
           tags:
             ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{

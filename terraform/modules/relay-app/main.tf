@@ -29,6 +29,10 @@ locals {
     {
       name  = "RUST_LOG"
       value = var.observability_log_level
+    },
+    {
+      name  = "RUST_LOG"
+      value = var.observability_log_level
     }
   ], var.application_environment_variables)
 }
