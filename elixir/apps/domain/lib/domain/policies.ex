@@ -58,7 +58,7 @@ defmodule Domain.Policies do
     end
   end
 
-  def update_policy(policy, attrs, %Auth.Subject{} = subject) do
+  def update_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
     required_permissions =
       {:one_of, [Authorizer.manage_policies_permission()]}
 
