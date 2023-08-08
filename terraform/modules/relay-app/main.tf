@@ -30,7 +30,7 @@ locals {
       name  = "RUST_LOG"
       value = var.observability_log_level
     }
-  ], local.application_environment_variables)
+  ], var.application_environment_variables)
 }
 
 # Fetch most recent COS image
@@ -164,7 +164,7 @@ resource "google_compute_instance_template" "application" {
         containers = [{
           name  = local.application_name != null ? local.application_name : var.image
           image = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
-          env   = local.application_environment_variables
+          env   = local.environment_variables
         }]
 
         volumes = []
