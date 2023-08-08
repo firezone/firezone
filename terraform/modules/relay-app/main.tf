@@ -23,6 +23,7 @@ locals {
 
   environment_variables = merge({
     LISTEN_ADDRESS_DISCOVERY_METHOD = "gce_metadata"
+    RUST_LOG                        = var.observability_log_level
   }, var.application_environment_variables)
 }
 
@@ -157,7 +158,7 @@ resource "google_compute_instance_template" "application" {
         containers = [{
           name  = local.application_name != null ? local.application_name : var.image
           image = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
-          env   = var.application_environment_variables
+          env   = local.application_environment_variables
         }]
 
         volumes = []
