@@ -344,7 +344,7 @@ defmodule Web.AuthTest do
     } do
       session_token = "invalid_token"
       session = conn |> put_session(:session_token, session_token) |> get_session()
-      params = %{}
+      params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:halt, updated_socket} =
                on_mount(:ensure_authenticated, params, session, socket)
@@ -360,7 +360,7 @@ defmodule Web.AuthTest do
       admin_subject: subject
     } do
       session = conn |> get_session()
-      params = %{}
+      params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:halt, updated_socket} =
                on_mount(:ensure_authenticated, params, session, socket)
