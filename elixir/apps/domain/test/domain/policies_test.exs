@@ -101,7 +101,7 @@ defmodule Domain.PoliciesTest do
     end
 
     test "returns all policies for account admin subject", %{account: account} do
-      actor = ActorsFixtures.create_actor(type: :account_user, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -111,6 +111,30 @@ defmodule Domain.PoliciesTest do
 
       assert {:ok, policies} = list_policies(subject)
       assert length(policies) == 2
+    end
+
+    test "returns select policies for non-admin subject", %{account: account, subject: subject} do
+      unprivileged_actor = ActorsFixtures.create_actor(type: :account_user, account: account)
+
+      unpriviledged_identity =
+        AuthFixtures.create_identity(account: account, actor: unprivileged_actor)
+
+      unprivileged_subject = AuthFixtures.create_subject(unpriviledged_identity)
+
+      actor_group = ActorsFixtures.create_group(account: account, subject: subject)
+
+      Domain.Actors.update_group(
+        actor_group,
+        %{memberships: [%{actor_id: unprivileged_actor.id}]},
+        subject
+      )
+
+      PoliciesFixtures.create_policy(account: account, actor_group: actor_group)
+      PoliciesFixtures.create_policy(account: account)
+      PoliciesFixtures.create_policy()
+
+      assert {:ok, policies} = list_policies(unprivileged_subject)
+      assert length(policies) == 1
     end
 
     test "returns error when subject has no permission to view policies", %{subject: subject} do
