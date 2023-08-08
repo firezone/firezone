@@ -1,15 +1,22 @@
 # Welcome to Elixir-land!
 
-This README provides an overview for running and managing Firezone's Elixir-based control plane.
+This README provides an overview for running and managing Firezone's
+Elixir-based control plane.
 
 ## Running Control Plane for local development
 
-You can use the [Top-Level Docker Compose](../docker-compose.yml) to start any services locally. The `web` and `api` compose services are built application releases that are pretty much the same as the ones we run in production, while the `elixir` compose service runs raw Elixir code, without a built release.
+You can use the [Top-Level Docker Compose](../docker-compose.yml) to start any
+services locally. The `web` and `api` compose services are built application
+releases that are pretty much the same as the ones we run in production, while
+the `elixir` compose service runs raw Elixir code, without a built release.
 
-This means you'll want to use the `elixir` compose service to run Mix tasks and any Elixir code on-the-fly, but you can't do that in `web`/`api` so easily because Elixir strips out Mix and other tooling [when building an application release](https://hexdocs.pm/mix/Mix.Tasks.Release.html).
+This means you'll want to use the `elixir` compose service to run Mix tasks and
+any Elixir code on-the-fly, but you can't do that in `web`/`api` so easily
+because Elixir strips out Mix and other tooling
+[when building an application release](https://hexdocs.pm/mix/Mix.Tasks.Release.html).
 
-`elixir` additionally caches `_build` and `node_modules` to speed up compilation time and syncs
-`/apps`, `/config` and other folders with the host machine.
+`elixir` additionally caches `_build` and `node_modules` to speed up compilation
+time and syncs `/apps`, `/config` and other folders with the host machine.
 
 ```bash
 # Make sure to run this every time code in elixir/ changes,
@@ -44,7 +51,8 @@ This means you'll want to use the `elixir` compose service to run Mix tasks and 
 # or
 ❯ docker-compose run elixir /bin/sh -c "cd apps/domain && mix ecto.seed"
 
-# Start the API service for control plane sockets while listening to STDIN (where you will see all the logs)
+# Start the API service for control plane sockets while listening to STDIN
+# (where you will see all the logs)
 ❯ docker-compose up api --build
 ```
 
@@ -109,12 +117,15 @@ Now you can verify that it's working by connecting to a websocket:
 
 ```
 
-Note: when you run multiple commands it can hang because Phoenix expects a heartbeat packet every 5 seconds, so it can kill your websocket if you send commands slower than that.
+Note: when you run multiple commands it can hang because Phoenix expects a
+heartbeat packet every 5 seconds, so it can kill your websocket if you send
+commands slower than that.
 
 </details>
 <br />
 
-You can reset the database (eg. when there is a migration that breaks data model for unreleased versions) using following command:
+You can reset the database (eg. when there is a migration that breaks data model
+for unreleased versions) using following command:
 
 ```bash
 ❯ docker-compose run elixir /bin/sh -c "cd apps/domain && mix ecto.reset"
@@ -162,8 +173,9 @@ Interactive Elixir (1.14.3) - press Ctrl+C to exit (type h() ENTER for help)
 iex(web@127.0.0.1)1>
 ```
 
-From `iex` shell you can run any Elixir code, for example you can emulate a full flow using process messages,
-just keep in mind that you need to run seeds before executing this example:
+From `iex` shell you can run any Elixir code, for example you can emulate a full
+flow using process messages, just keep in mind that you need to run seeds before
+executing this example:
 
 ```elixir
 [gateway | _rest_gateways] = Domain.Repo.all(Domain.Gateways.Gateway)
@@ -174,9 +186,11 @@ relay_secret = Domain.Crypto.rand_string()
 :ok = Domain.Relays.connect_relay(relay, relay_secret)
 ```
 
-Now if you connect and list resources there will be one online because there is a relay and gateway online.
+Now if you connect and list resources there will be one online because there is
+a relay and gateway online.
 
-Some of the functions require authorization, here is how you can obtain a subject:
+Some of the functions require authorization, here is how you can obtain a
+subject:
 
 ```elixir
 user_agent = "User-Agent: iOS/12.7 (iPhone) connlib/0.7.412"
@@ -205,9 +219,13 @@ account_id = "c89bcc8c-9392-4dae-a40d-888aef6d28e0"
 
 ## Connecting to a staging or production instances
 
-We use Google Cloud Platform for all our staging and production infrastructure. You'll need access to this env to perform the commands below; to get and access you need to add yourself to `project_owners` in `main.tf` for each of the [environments](../terraform/environments).
+We use Google Cloud Platform for all our staging and production infrastructure.
+You'll need access to this env to perform the commands below; to get and access
+you need to add yourself to `project_owners` in `main.tf` for each of the
+[environments](../terraform/environments).
 
-This is a danger zone so first of all, ALWAYS make sure on which environment your code is running:
+This is a danger zone so first of all, ALWAYS make sure on which environment
+your code is running:
 
 ```bash
 ❯ gcloud config get project
@@ -245,4 +263,36 @@ Erlang/OTP 25 [erts-13.1.4] [source] [64-bit] [smp:1:1] [ds:1:1:10] [async-threa
 
 Interactive Elixir (1.14.3) - press Ctrl+C to exit (type h() ENTER for help)
 iex(api@api-b02t.us-east1-d.c.firezone-staging.internal)1>
+```
+
+### Creating an account on staging instance using CLI
+
+```elixir
+❯ gcloud compute ssh web-3vmw
+
+andrew@web-3vmw ~ $ docker ps --format json | jq '"\(.ID) \(.Image)"'
+"09eff3c0ebe8 us-east1-docker.pkg.dev/firezone-staging/firezone/web:b9c11007a4e230ab28f0138afc98188b1956dfd3"
+
+andrew@web-3vmw ~ $ docker exec -it 09eff3c0ebe8 bin/web remote
+Erlang/OTP 26 [erts-14.0.2] [source] [64-bit] [smp:1:1] [ds:1:1:20] [async-threads:1] [jit]
+
+Interactive Elixir (1.15.2) - press Ctrl+C to exit (type h() ENTER for help)
+
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)1> {:ok, account} = Domain.Accounts.create_account(%{name: "Firezone", slug: "firezone"})
+{:ok, ...}
+
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)2> {:ok, magic_link_provider} = Domain.Auth.create_provider(account, %{name: "Magic Link", adapter: :email, adapter_config: %{}})
+{:ok, ...}
+
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)3> {:ok, actor} = Domain.Actors.create_actor(magic_link_provider, "a@firezone.dev", %{type: :account_admin_user, name: "Andrii Dryga"})
+{:ok, ...}
+
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)4> identity = hd(actor.identities)
+...
+
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)5> {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity)
+{:ok, ...}
+
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)6> Web.Mailer.AuthEmail.sign_in_link_email(identity) |> Web.Mailer.deliver()
+{:ok, %{id: "d24dbe9a-d0f5-4049-ac0d-0df793725a80"}}
 ```
