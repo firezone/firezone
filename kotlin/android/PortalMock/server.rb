@@ -9,7 +9,7 @@ set :port, 4568
 
 get '/:slug/sign_in' do
   csrfToken = params['client_csrf_token']
-  ERB.new("<h1>Auth page</h1><a href=\"/redirect?client_csrf_token=#{csrfToken}&client_platform=android\">Proceed</a>")
+  ERB.new("<h1>Auth page</h1><a href=\"/redirect?client_csrf_token=#{csrfToken}\">Proceed</a>")
      .result(binding)
 end
 
