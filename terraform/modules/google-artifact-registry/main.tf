@@ -19,7 +19,12 @@ resource "google_artifact_registry_repository" "firezone" {
   ]
 }
 
-data "google_iam_policy" "github_actions" {
+data "google_iam_policy" "artifacts_policy" {
+  binding {
+    role    = "roles/artifactregistry.reader"
+    members = ["allUsers"]
+  }
+
   binding {
     role    = "roles/artifactregistry.writer"
     members = var.writers
@@ -31,5 +36,5 @@ resource "google_artifact_registry_repository_iam_policy" "policy" {
   location   = google_artifact_registry_repository.firezone.location
   repository = google_artifact_registry_repository.firezone.name
 
-  policy_data = data.google_iam_policy.github_actions.policy_data
+  policy_data = data.google_iam_policy.artifacts_policy.policy_data
 }
