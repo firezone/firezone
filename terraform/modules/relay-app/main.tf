@@ -33,6 +33,10 @@ locals {
     {
       name  = "PORTAL_TOKEN"
       value = var.portal_token
+    },
+    {
+      name  = "PORTAL_WS_URL"
+      value = var.portal_websocket_url
     }
   ], var.application_environment_variables)
 }
