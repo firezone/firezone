@@ -5,7 +5,7 @@ use libc::{
     CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE, IPPROTO_IP, O_NONBLOCK, PF_SYSTEM, SOCK_DGRAM,
     SOCK_STREAM, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
 };
-use libs_common::{Callbacks, Error, Result, DNS_SENTINEL};
+use libs_common::{CallbackErrorFacade, Callbacks, Error, Result, DNS_SENTINEL};
 use std::{
     ffi::{c_int, c_short, c_uchar},
     io,
@@ -266,15 +266,17 @@ impl IfaceConfig {
     pub async fn set_iface_config(
         &mut self,
         config: &InterfaceConfig,
-        callbacks: &impl Callbacks,
+        callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
-        callbacks.on_set_interface_config(config.ipv4, config.ipv6, DNS_SENTINEL);
-        Ok(())
+        callbacks.on_set_interface_config(config.ipv4, config.ipv6, DNS_SENTINEL)
     }
 
-    pub async fn add_route(&mut self, route: &IpNetwork, callbacks: &impl Callbacks) -> Result<()> {
-        callbacks.on_add_route(serde_json::to_string(route)?);
-        Ok(())
+    pub async fn add_route(
+        &mut self,
+        route: IpNetwork,
+        callbacks: &CallbackErrorFacade<impl Callbacks>,
+    ) -> Result<()> {
+        callbacks.on_add_route(route)
     }
 
     pub async fn up(&mut self) -> Result<()> {

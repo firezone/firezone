@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     str::FromStr,
@@ -11,32 +12,46 @@ use url::Url;
 pub struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
+    type Error = std::convert::Infallible;
+
     fn on_set_interface_config(
         &self,
         _tunnel_address_v4: Ipv4Addr,
         _tunnel_address_v6: Ipv6Addr,
         _dns_address: Ipv4Addr,
-    ) {
+    ) -> Result<(), Self::Error> {
+        Ok(())
     }
 
-    fn on_tunnel_ready(&self) {
+    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
         tracing::trace!("Tunnel connected with address");
+        Ok(())
     }
 
-    fn on_add_route(&self, _route: String) {}
+    fn on_add_route(&self, _route: IpNetwork) -> Result<(), Self::Error> {
+        Ok(())
+    }
 
-    fn on_remove_route(&self, _route: String) {}
+    fn on_remove_route(&self, _route: IpNetwork) -> Result<(), Self::Error> {
+        Ok(())
+    }
 
-    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
+    fn on_update_resources(
+        &self,
+        resource_list: Vec<ResourceDescription>,
+    ) -> Result<(), Self::Error> {
         tracing::trace!("Resources updated, current list: {resource_list:?}");
+        Ok(())
     }
 
-    fn on_disconnect(&self, error: Option<&Error>) {
+    fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
         tracing::trace!("Tunnel disconnected: {error:?}");
+        Ok(())
     }
 
-    fn on_error(&self, error: &Error) {
+    fn on_error(&self, error: &Error) -> Result<(), Self::Error> {
         tracing::warn!("Encountered recoverable error: {error}");
+        Ok(())
     }
 }
 

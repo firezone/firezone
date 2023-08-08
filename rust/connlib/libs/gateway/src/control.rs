@@ -90,12 +90,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         .await
                     {
                         tunnel.cleanup_connection(connection_request.device.id);
-                        tunnel.callbacks().on_error(&err);
+                        let _ = tunnel.callbacks().on_error(&err);
                     }
                 }
                 Err(err) => {
                     tunnel.cleanup_connection(connection_request.device.id);
-                    tunnel.callbacks().on_error(&err);
+                    let _ = tunnel.callbacks().on_error(&err);
                 }
             }
         });
