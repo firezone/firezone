@@ -17,7 +17,7 @@ defmodule Domain.Policies.Policy.Query do
   def by_actor_id(queryable \\ all(), actor_id) do
     queryable
     |> join(:inner, [policies: policies], ag in assoc(policies, :actor_group), as: :actor_groups)
-    |> join(:inner, [actor_groups: actor_groups], a in assoc(actor_groups, :actors), as: :actors)
-    |> where([actors: actors], actors.id == ^actor_id)
+    |> join(:inner, [actor_groups: actor_groups], a in assoc(actor_groups, :memberships), as: :actor_group_memberships)
+    |> where([memberships: memberships], memberships.actor_id == ^actor_id)
   end
 end
