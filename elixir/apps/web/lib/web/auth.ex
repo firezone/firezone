@@ -247,7 +247,7 @@ defmodule Web.Auth do
       socket =
         socket
         |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
-        |> Phoenix.LiveView.redirect(to: ~p"/#{socket.assigns.account}/sign_in")
+        |> Phoenix.LiveView.redirect(to: ~p"/#{params["account_id_or_slug"]}/sign_in")
 
       {:halt, socket}
     end
