@@ -69,7 +69,7 @@ defmodule Domain.Policies do
     end
   end
 
-  def delete_policy(policy, %Auth.Subject{} = subject) do
+  def delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
     required_permissions =
       {:one_of, [Authorizer.manage_policies_permission()]}
 
