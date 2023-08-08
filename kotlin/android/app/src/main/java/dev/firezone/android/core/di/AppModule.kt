@@ -42,10 +42,4 @@ object AppModule {
     internal fun provideSessionManager(
         sharedPreferences: SharedPreferences
     ): SessionManager = SessionManager(sharedPreferences)
-
-    @Provides
-    internal fun provideBroadcastReceiver(
-        @MainImmediateDispatcher coroutineDispatcher: CoroutineDispatcher,
-        sessionManager: SessionManager,
-    ): BootShutdownReceiver = BootShutdownReceiver(coroutineDispatcher, sessionManager)
 }

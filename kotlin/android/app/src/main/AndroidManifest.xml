@@ -49,8 +49,6 @@
             <intent-filter
                 android:label="@string/app_name"
                 android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
@@ -66,6 +64,7 @@
                 <action android:name="android.net.VpnService" />
             </intent-filter>
         </service>
+
         <receiver
             android:name="dev.firezone.android.features.session.backend.BootShutdownReceiver"
             android:exported="true">

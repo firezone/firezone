@@ -11,11 +11,11 @@ internal class BootShutdownReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (Intent.ACTION_BOOT_COMPLETED == intent.action) {
             Log.d("BootShutdownReceiver", "Boot completed. Attempting to connect.")
-            // TODO: Inject sessionManager to connect on boot
-            // sessionManager.connect()
+            // TODO: Retrieve the session manager from the application context.
+            //sessionManager.connect()
         } else if (Intent.ACTION_SHUTDOWN == intent.action) {
             Log.d("BootShutdownReceiver", "Shutting down. Attempting to disconnect.")
-            // TODO: Inject sessionManager to disconnect on shutdown
+            // TODO: Retrieve the session manager from the application context.
             // sessionManager.disconnect()
         }
     }
