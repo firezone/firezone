@@ -207,7 +207,6 @@ services:
       app:
         ipv4_address: 172.28.0.101
         ipv6_address: 2001:3990:3990::101
-    command: "--allow-insecure-ws"
 
   api:
     build:
