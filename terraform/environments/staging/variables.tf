@@ -8,6 +8,11 @@ variable "web_image_tag" {
   description = "Image tag for the web service"
 }
 
+variable "relay_image_tag" {
+  type        = string
+  description = "Image tag for the relay service"
+}
+
 variable "slack_alerts_channel" {
   type        = string
   description = "Slack channel which will receive monitoring alerts"

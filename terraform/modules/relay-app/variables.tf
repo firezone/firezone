@@ -14,10 +14,10 @@ variable "compute_instance_type" {
 }
 
 variable "instances" {
-  type = map(string(map(string(object({
+  type = map(object({
     type     = string
     replicas = number
-  })))))
+  }))
 
   description = "List deployment locations for the application."
 }
@@ -75,16 +75,6 @@ variable "observability_log_level" {
   nullable = false
   default  = "info"
 
-  validation {
-    condition = (
-      contains(
-        ["trace", "debug", "info", "warn", "error"],
-        var.observability_log_level
-      )
-    )
-    error_message = "Invalid log level."
-  }
-
   description = "Sets RUST_LOG environment variable which applications should use to configure Rust Logger. Default: 'info'."
 }
 
@@ -116,41 +106,29 @@ variable "application_labels" {
   description = "Labels to add to all created by this module resources."
 }
 
-variable "application_ports" {
-  type = list(object({
+variable "health_check" {
+  type = object({
     name     = string
     protocol = string
     port     = number
 
-    health_check = object({
-      initial_delay_sec   = number
-      check_interval_sec  = optional(number)
-      timeout_sec         = optional(number)
-      healthy_threshold   = optional(number)
-      unhealthy_threshold = optional(number)
+    initial_delay_sec   = number
+    check_interval_sec  = optional(number)
+    timeout_sec         = optional(number)
+    healthy_threshold   = optional(number)
+    unhealthy_threshold = optional(number)
 
-      tcp_health_check = optional(object({}))
-
-      http_health_check = optional(object({
-        host         = optional(string)
-        request_path = optional(string)
-        port         = optional(string)
-        response     = optional(string)
-      }))
-
-      https_health_check = optional(object({
-        host         = optional(string)
-        request_path = optional(string)
-        port         = optional(string)
-        response     = optional(string)
-      }))
-    })
-  }))
+    http_health_check = optional(object({
+      host         = optional(string)
+      request_path = optional(string)
+      port         = optional(string)
+      response     = optional(string)
+    }))
+  })
 
   nullable = false
-  default  = []
 
-  description = "List of ports to expose for the application. One of ports MUST be named 'http' for auth healing policy to work."
+  description = "Health check which will be used for auto healing policy."
 }
 
 variable "application_environment_variables" {

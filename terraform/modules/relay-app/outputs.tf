@@ -7,5 +7,5 @@ output "target_tags" {
 }
 
 output "instances" {
-  value = google_compute_region_instance_group_manager.application
+  value = local.instances
 }

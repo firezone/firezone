@@ -8,12 +8,22 @@ locals {
     version     = local.application_version
   }, var.application_labels)
 
-  application_ports_by_name = { for port in var.application_ports : port.name => port }
-
   google_health_check_ip_ranges = [
     "130.211.0.0/22",
     "35.191.0.0/16"
   ]
+
+  instances = [for zone, params in var.instances : {
+    for index in range(0, params.replicas) : "${zone}-${index}" => {
+      name = "${zone}-${index}"
+      type = params.type
+      zone = zone
+    }
+  }]
+
+  environment_variables = merge({
+    LISTEN_ADDRESS_DISCOVERY_METHOD = "gce_metadata"
+  }, var.application_environment_variables)
 }
 
 # Fetch most recent COS image
@@ -85,15 +95,16 @@ resource "google_project_iam_member" "cloudtrace" {
   member = "serviceAccount:${google_service_account.application.email}"
 }
 
-# Deploy the app
 resource "google_compute_instance_template" "application" {
+  for_each = var.instances
+
   project = var.project_id
 
-  name_prefix = "${local.application_name}-"
+  name_prefix = "${local.application_name}-${each.key}-"
 
   description = "This template is used to create ${local.application_name} instances."
 
-  machine_type = var.compute_instance_type
+  machine_type = each.value.type
 
   can_ip_forward = false
 
@@ -116,8 +127,12 @@ resource "google_compute_instance_template" "application" {
   }
 
   network_interface {
-    network    = var.vpc_network
-    stack_type = "IPV4_IPV6"
+    network = var.vpc_network
+
+    access_config {
+      network_tier = "PREMIUM"
+      # Ephimerical IP address
+    }
   }
 
   service_account {
@@ -167,7 +182,6 @@ resource "google_compute_instance_template" "application" {
     google_project_service.stackdriver,
     google_project_service.logging,
     google_project_service.monitoring,
-    google_project_service.clouddebugger,
     google_project_service.cloudprofiler,
     google_project_service.cloudtrace,
     google_project_service.servicenetworking,
@@ -186,92 +200,57 @@ resource "google_compute_instance_template" "application" {
 
 # Create health checks for the application ports
 resource "google_compute_health_check" "port" {
-  for_each = { for port in var.application_ports : port.name => port if try(port.health_check, null) != null }
-
   project = var.project_id
 
-  name = "${local.application_name}-${each.key}"
+  name = "${local.application_name}-${var.health_check.name}"
 
-  check_interval_sec  = each.value.health_check.check_interval_sec != null ? each.value.health_check.check_interval_sec : 5
-  timeout_sec         = each.value.health_check.timeout_sec != null ? each.value.health_check.timeout_sec : 5
-  healthy_threshold   = each.value.health_check.healthy_threshold != null ? each.value.health_check.healthy_threshold : 2
-  unhealthy_threshold = each.value.health_check.unhealthy_threshold != null ? each.value.health_check.unhealthy_threshold : 2
+  check_interval_sec  = var.health_check.check_interval_sec != null ? var.health_check.check_interval_sec : 5
+  timeout_sec         = var.health_check.timeout_sec != null ? var.health_check.timeout_sec : 5
+  healthy_threshold   = var.health_check.healthy_threshold != null ? var.health_check.healthy_threshold : 2
+  unhealthy_threshold = var.health_check.unhealthy_threshold != null ? var.health_check.unhealthy_threshold : 2
 
   log_config {
     enable = false
   }
 
-  dynamic "tcp_health_check" {
-    for_each = try(each.value.health_check.tcp_health_check, null)[*]
+  http_health_check {
+    port = var.health_check.port
 
-    content {
-      port = each.value.port
-
-      response = lookup(tcp_health_check.value, "response", null)
-    }
-  }
-
-  dynamic "http_health_check" {
-    for_each = try(each.value.health_check.http_health_check, null)[*]
-
-    content {
-      port = each.value.port
-
-      host         = lookup(http_health_check.value, "host", null)
-      request_path = lookup(http_health_check.value, "request_path", null)
-      response     = lookup(http_health_check.value, "response", null)
-    }
-  }
-
-  dynamic "https_health_check" {
-    for_each = try(each.value.health_check.https_health_check, null)[*]
-
-    content {
-      port = each.value.port
-
-      host         = lookup(https_health_check.value, "host", null)
-      request_path = lookup(https_health_check.value, "request_path", null)
-      response     = lookup(http_health_check.value, "response", null)
-    }
+    host         = var.health_check.http_health_check.host
+    request_path = var.health_check.http_health_check.request_path
+    response     = var.health_check.http_health_check.response
   }
 }
 
 # Use template to deploy zonal instance group
-resource "google_compute_region_instance_group_manager" "application" {
+resource "google_compute_instance_group_manager" "application" {
+  for_each = var.instances
+
   project = var.project_id
 
   name = "${local.application_name}-group"
 
-  base_instance_name        = local.application_name
-  region                    = var.compute_instance_region
-  distribution_policy_zones = var.compute_instance_availability_zones
+  base_instance_name = local.application_name
+  zone               = each.key
 
-  target_size = var.scaling_horizontal_replicas
+  target_size = each.value.replicas
 
   wait_for_instances        = true
   wait_for_instances_status = "STABLE"
 
   version {
-    instance_template = google_compute_instance_template.application.self_link
+    instance_template = google_compute_instance_template.application[each.key].self_link
   }
 
-  dynamic "named_port" {
-    for_each = var.application_ports
-
-    content {
-      name = named_port.value.name
-      port = named_port.value.port
-    }
+  named_port {
+    name = "stun"
+    port = 3478
   }
 
-  dynamic "auto_healing_policies" {
-    for_each = try([google_compute_health_check.port["http"].self_link], [])
+  auto_healing_policies {
+    initial_delay_sec = var.health_check.initial_delay_sec
 
-    content {
-      initial_delay_sec = local.application_ports_by_name["http"].health_check.initial_delay_sec
-
-      health_check = auto_healing_policies.value
-    }
+    health_check = google_compute_health_check.port.self_link
   }
 
   update_policy {
@@ -279,7 +258,7 @@ resource "google_compute_region_instance_group_manager" "application" {
     minimal_action = "REPLACE"
 
     max_unavailable_fixed = 1
-    max_surge_fixed       = max(1, var.scaling_horizontal_replicas - 1)
+    max_surge_fixed       = max(1, each.value.replicas - 1)
   }
 
   depends_on = [
@@ -310,37 +289,28 @@ resource "google_compute_security_policy" "default" {
   }
 }
 
-# Open HTTP(S) ports for the load balancer
+# Open ports for the web
 resource "google_compute_firewall" "http" {
   project = var.project_id
 
   name    = "${local.application_name}-firewall-lb-to-instances"
   network = var.vpc_network
 
-  source_ranges = local.google_load_balancer_ip_ranges
+  source_ranges = ["0.0.0.0/0"]
   target_tags   = ["app-${local.application_name}"]
 
-  dynamic "allow" {
-    for_each = var.application_ports
-
-    content {
-      protocol = allow.value.protocol
-      ports    = [allow.value.port]
-    }
+  allow {
+    protocol = "tcp"
+    ports    = ["3478", "49152-65535"]
   }
 
-  # We also enable UDP to allow QUIC if it's enabled
-  dynamic "allow" {
-    for_each = var.application_ports
-
-    content {
-      protocol = "udp"
-      ports    = [allow.value.port]
-    }
+  allow {
+    protocol = "udp"
+    ports    = ["3478", "49152-65535"]
   }
 }
 
-## Open HTTP(S) ports for the health checks
+## Open metrics port for the health checks
 resource "google_compute_firewall" "http-health-checks" {
   project = var.project_id
 
@@ -350,13 +320,9 @@ resource "google_compute_firewall" "http-health-checks" {
   source_ranges = local.google_health_check_ip_ranges
   target_tags   = ["app-${local.application_name}"]
 
-  dynamic "allow" {
-    for_each = var.application_ports
-
-    content {
-      protocol = allow.value.protocol
-      ports    = [allow.value.port]
-    }
+  allow {
+    protocol = var.health_check.protocol
+    ports    = [var.health_check.port]
   }
 }
 
