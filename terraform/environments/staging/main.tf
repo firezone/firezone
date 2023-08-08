@@ -1,6 +1,7 @@
 locals {
   project_owners = [
     "a@firezone.dev",
+    "bmanifold@firezone.dev",
     "gabriel@firezone.dev",
     "jamil@firezone.dev"
   ]
@@ -209,6 +210,7 @@ resource "random_password" "web_db_password" {
   length = 16
 }
 
+# TODO: raname it to "firezone"
 resource "google_sql_user" "web" {
   project = module.google-cloud-project.project.project_id
 
@@ -342,6 +344,10 @@ locals {
     {
       name  = "OUTBOUND_EMAIL_ADAPTER"
       value = "Elixir.Swoosh.Adapters.Postmark"
+    },
+    {
+      name  = "OUTBOUND_EMAIL_FROM"
+      value = "support@firez.one"
     },
     {
       name  = "OUTBOUND_EMAIL_ADAPTER_OPTS"
@@ -538,54 +544,65 @@ resource "google_project_iam_member" "application" {
 
 # Deploy relays
 module "relays" {
+  count = var.relay_portal_token != null ? 1 : 0
+
   source     = "../../modules/relay-app"
   project_id = module.google-cloud-project.project.project_id
 
   instances = {
-    "asia-east1-a" = {
+    # "asia-east1" = {
+    #   type     = "n1-standard-1"
+    #   replicas = 1
+    #   zones = ["asia-east1-a"]
+    # }
+
+    # "asia-south1" = {
+    #   type     = "n1-standard-1"
+    #   replicas = 1
+    #   zones = ["asia-south1-a"]
+    # }
+
+    # "australia-southeast1" = {
+    #   type     = "n1-standard-1"
+    #   replicas = 1
+    #   zones = ["australia-southeast1-a"]
+    # }
+
+    # "me-central1" = {
+    #   type     = "n2-standard-2"
+    #   replicas = 1
+    #   zones = ["me-central1-a"]
+    # }
+
+    # "europe-west1" = {
+    #   type     = "n1-standard-1"
+    #   replicas = 1
+    #   zones = ["europe-west1-d"]
+    # }
+
+    # "southamerica-east1" = {
+    #   type     = "n1-standard-1"
+    #   replicas = 1
+    #   zones = ["southamerica-east1-b"]
+    # }
+
+    "us-east1" = {
       type     = "n1-standard-1"
       replicas = 1
+      zones    = ["us-east1-d"]
     }
 
-    "asia-south1-a" = {
+    "us-west2" = {
       type     = "n1-standard-1"
       replicas = 1
+      zones    = ["us-west2-b"]
     }
 
-    "australia-southeast1-a" = {
-      type     = "n1-standard-1"
-      replicas = 1
-    }
-
-    "me-central1-a" = {
-      type     = "n2-standard-2"
-      replicas = 1
-    }
-
-    "europe-west1-d" = {
-      type     = "n1-standard-1"
-      replicas = 1
-    }
-
-    "southamerica-east1-b" = {
-      type     = "n1-standard-1"
-      replicas = 1
-    }
-
-    "us-east1-d" = {
-      type     = "n1-standard-1"
-      replicas = 1
-    }
-
-    "us-west2-b" = {
-      type     = "n1-standard-1"
-      replicas = 1
-    }
-
-    "us-central1-b" = {
-      type     = "n1-standard-1"
-      replicas = 1
-    }
+    # "us-central1" = {
+    #   type     = "n1-standard-1"
+    #   replicas = 1
+    #   zones = ["us-central1-b"]
+    # }
   }
 
   vpc_network = "projects/${module.google-cloud-project.project.project_id}/global/networks/default"
@@ -604,7 +621,7 @@ module "relays" {
   health_check = {
     name     = "metrics"
     protocol = "TCP"
-    port     = 80
+    port     = 8080
 
     initial_delay_sec = 30
 
@@ -613,10 +630,12 @@ module "relays" {
     healthy_threshold   = 1
     unhealthy_threshold = 2
 
-    http_health_check = {}
+    http_health_check = {
+      request_path = "/metrics"
+    }
   }
 
-  application_environment_variables = []
+  portal_token = var.relay_portal_token
 }
 
 # Enable SSH on staging

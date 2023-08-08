@@ -17,6 +17,7 @@ variable "instances" {
   type = map(object({
     type     = string
     replicas = number
+    zones    = list(string)
   }))
 
   description = "List deployment locations for the application."
@@ -141,4 +142,13 @@ variable "application_environment_variables" {
   default  = []
 
   description = "List of environment variables to set for all application containers."
+}
+
+################################################################################
+## Firezone
+################################################################################
+
+variable "portal_token" {
+  type        = string
+  description = "Portal token to use for authentication."
 }

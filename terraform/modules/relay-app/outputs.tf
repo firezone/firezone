@@ -7,5 +7,5 @@ output "target_tags" {
 }
 
 output "instances" {
-  value = local.instances
+  value = var.instances
 }

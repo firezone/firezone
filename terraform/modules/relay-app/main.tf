@@ -13,14 +13,6 @@ locals {
     "35.191.0.0/16"
   ]
 
-  instances = [for zone, params in var.instances : {
-    for index in range(0, params.replicas) : "${zone}-${index}" => {
-      name = "${zone}-${index}"
-      type = params.type
-      zone = zone
-    }
-  }]
-
   environment_variables = concat([
     {
       name  = "LISTEN_ADDRESS_DISCOVERY_METHOD"
@@ -31,8 +23,12 @@ locals {
       value = var.observability_log_level
     },
     {
-      name  = "RUST_LOG"
-      value = var.observability_log_level
+      name  = "JSON_LOG"
+      value = "true"
+    },
+    {
+      name  = "METRICS_ADDR"
+      value = "0.0.0.0:8080"
     }
   ], var.application_environment_variables)
 }
@@ -234,15 +230,17 @@ resource "google_compute_health_check" "port" {
 }
 
 # Use template to deploy zonal instance group
-resource "google_compute_instance_group_manager" "application" {
+resource "google_compute_region_instance_group_manager" "application" {
   for_each = var.instances
 
   project = var.project_id
 
-  name = "${local.application_name}-group"
+  name = "${local.application_name}-group-${each.key}"
 
   base_instance_name = local.application_name
-  zone               = each.key
+
+  region                    = each.key
+  distribution_policy_zones = each.value.zones
 
   target_size = each.value.replicas
 
@@ -268,8 +266,8 @@ resource "google_compute_instance_group_manager" "application" {
     type           = "PROACTIVE"
     minimal_action = "REPLACE"
 
-    max_unavailable_fixed = 1
-    max_surge_fixed       = max(1, each.value.replicas - 1)
+    max_unavailable_fixed = 0
+    max_surge_fixed       = max(length(each.value.zones), each.value.replicas - 1)
   }
 
   depends_on = [
@@ -301,7 +299,7 @@ resource "google_compute_security_policy" "default" {
 }
 
 # Open ports for the web
-resource "google_compute_firewall" "http" {
+resource "google_compute_firewall" "stun-turn" {
   project = var.project_id
 
   name    = "${local.application_name}-firewall-lb-to-instances"
@@ -349,7 +347,7 @@ resource "google_compute_firewall" "egress-ipv4" {
   destination_ranges = ["0.0.0.0/0"]
 
   allow {
-    protocol = "all"
+    protocol = "udp"
   }
 }
 
@@ -364,6 +362,6 @@ resource "google_compute_firewall" "egress-ipv6" {
   destination_ranges = ["::/0"]
 
   allow {
-    protocol = "all"
+    protocol = "udp"
   }
 }
