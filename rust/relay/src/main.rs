@@ -58,9 +58,6 @@ struct Args {
     /// If omitted, we won't connect to the portal on startup.
     #[arg(long, env)]
     portal_token: Option<String>,
-    /// Whether to allow connecting to the portal over an insecure connection.
-    #[arg(long)]
-    allow_insecure_ws: bool,
     /// A seed to use for all randomness operations.
     ///
     /// Only available in debug builds.
@@ -109,9 +106,6 @@ async fn main() -> Result<()> {
 
     let channel = if let Some(token) = args.portal_token {
         let mut url = args.portal_ws_url.clone();
-        if url.scheme() == "ws" && !args.allow_insecure_ws {
-            bail!("Refusing to connect to portal over insecure connection, pass --allow-insecure-ws to override")
-        }
         if !url.path().is_empty() {
             tracing::warn!("Overwriting path component of portal URL with '/relay/websocket'");
         }
