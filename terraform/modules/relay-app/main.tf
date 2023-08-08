@@ -21,10 +21,16 @@ locals {
     }
   }]
 
-  environment_variables = merge({
-    LISTEN_ADDRESS_DISCOVERY_METHOD = "gce_metadata"
-    RUST_LOG                        = var.observability_log_level
-  }, var.application_environment_variables)
+  environment_variables = concat([
+    {
+      name  = "LISTEN_ADDRESS_DISCOVERY_METHOD"
+      value = "gce_metadata"
+    },
+    {
+      name  = "RUST_LOG"
+      value = var.observability_log_level
+    }
+  ], local.application_environment_variables)
 }
 
 # Fetch most recent COS image
