@@ -30,15 +30,17 @@ final class AuthStore: ObservableObject {
   @Dependency(\.auth) private var auth
   @Dependency(\.settingsClient) private var settingsClient
 
+  private let authBaseURL: URL
   private var cancellables = Set<AnyCancellable>()
 
   @Published private(set) var authResponse: AuthResponse?
 
   private init() {
+    self.authBaseURL = Self.getAuthBaseURLFromInfoPlist()
     Task {
-      self.authResponse = await {
-        guard let portalURL = settingsClient.fetchSettings()?.portalURL else {
-          logger.debug("No portal URL found in settings")
+      self.authResponse = await { () -> AuthResponse? in
+        guard let teamId = settingsClient.fetchSettings()?.teamId else {
+          logger.debug("No team-id found in settings")
           return nil
         }
         guard let token = try? await keychain.token() else {
@@ -49,6 +51,7 @@ final class AuthStore: ObservableObject {
           logger.debug("Actor not found in keychain")
           return nil
         }
+        let portalURL = self.authURL(teamId: teamId)
         guard let authResponse = try? AuthResponse(portalURL: portalURL, token: token, actorName: actorName) else {
           logger.debug("Token or Actor recovered from keychain is invalid")
           return nil
@@ -73,9 +76,10 @@ final class AuthStore: ObservableObject {
       .store(in: &cancellables)
   }
 
-  func signIn(portalURL: URL) async throws {
+  func signIn(teamId: String) async throws {
     logger.trace("\(#function)")
 
+    let portalURL = authURL(teamId: teamId)
     let authResponse = try await auth.signIn(portalURL)
     self.authResponse = authResponse
   }
@@ -83,14 +87,36 @@ final class AuthStore: ObservableObject {
   func signIn() async throws {
     logger.trace("\(#function)")
 
-    let portalURL = try settingsClient.fetchSettings().flatMap(\.portalURL)
-      .unwrap(throwing: FirezoneError.missingPortalURL)
-    try await signIn(portalURL: portalURL)
+    guard let teamId = settingsClient.fetchSettings()?.teamId else {
+      logger.debug("No team-id found in settings")
+      throw FirezoneError.missingTeamId
+    }
+
+    try await signIn(teamId: teamId)
   }
 
   func signOut() {
     logger.trace("\(#function)")
 
     authResponse = nil
+  }
+
+  static func getAuthBaseURLFromInfoPlist() -> URL {
+    let infoPlistDictionary = Bundle.main.infoDictionary
+    guard let urlScheme = (infoPlistDictionary?["AuthURLScheme"] as? String), !urlScheme.isEmpty else {
+      fatalError("AuthURLScheme missing in Info.plist. Please define AUTH_URL_SCHEME, AUTH_URL_HOST, CONTROL_PLANE_URL_SCHEME, and CONTROL_PLANE_URL_HOST in Server.xcconfig.")
+    }
+    guard let urlHost = (infoPlistDictionary?["AuthURLHost"] as? String), !urlHost.isEmpty else {
+      fatalError("AuthURLHost missing in Info.plist. Please define AUTH_URL_SCHEME, AUTH_URL_HOST, CONTROL_PLANE_URL_SCHEME, and CONTROL_PLANE_URL_HOST in Server.xcconfig.")
+    }
+    let urlString = "\(urlScheme)://\(urlHost)/"
+    guard let url = URL(string: urlString) else {
+      fatalError("Cannot form valid URL from string: \(urlString)")
+    }
+    return url
+  }
+
+  func authURL(teamId: String) -> URL {
+    self.authBaseURL.appendingPathComponent(teamId)
   }
 }

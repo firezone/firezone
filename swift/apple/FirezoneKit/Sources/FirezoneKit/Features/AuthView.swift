@@ -20,13 +20,13 @@ final class AuthViewModel: ObservableObject {
   private var cancellables = Set<AnyCancellable>()
 
   func signInButtonTapped() async {
-    guard let portalURL = settingsClient.fetchSettings()?.portalURL else {
+    guard let teamId = settingsClient.fetchSettings()?.teamId else {
       settingsUndefined()
       return
     }
 
     do {
-      try await authStore.signIn(portalURL: portalURL)
+      try await authStore.signIn(teamId: teamId)
     } catch {
       dump(error)
     }

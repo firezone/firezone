@@ -223,7 +223,7 @@ public final class MenuBar: NSObject {
       Task {
         do {
           try await appStore?.auth.signIn()
-        } catch FirezoneError.missingPortalURL {
+        } catch FirezoneError.missingTeamId {
           openSettingsWindow()
         } catch {
           logger.error("Error signing in: \(String(describing: error))")

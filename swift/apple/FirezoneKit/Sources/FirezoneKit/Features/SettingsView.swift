@@ -16,7 +16,7 @@ public final class SettingsViewModel: ObservableObject {
   public var onSettingsSaved: () -> Void = unimplemented()
 
   public init() {
-    settings = Settings(portalURL: nil)
+    settings = Settings()
 
     if let storedSettings = settingsClient.fetchSettings() {
       settings = storedSettings
@@ -65,11 +65,12 @@ public struct SettingsView: View {
     Form {
       Section {
         FormTextField(
-          title: "Portal URL",
-          placeholder: "http://localhost:4567",
+          title: "Team URL:",
+          baseURLString: AuthStore.getAuthBaseURLFromInfoPlist().absoluteString,
+          placeholder: "team-id",
           text: Binding(
-            get: { model.settings.portalURL?.absoluteString ?? "" },
-            set: { model.settings.portalURL = URL(string: $0) }
+            get: { model.settings.teamId },
+            set: { model.settings.teamId = $0 }
           )
         )
       }
@@ -94,6 +95,7 @@ public struct SettingsView: View {
 
 struct FormTextField: View {
   let title: String
+  let baseURLString: String
   let placeholder: String
   let text: Binding<String>
 
@@ -113,14 +115,19 @@ struct FormTextField: View {
       }
     #else
     HStack(spacing: 30) {
-        Spacer()
-        TextField(title, text: text, prompt: Text(placeholder))
+      Spacer()
+      VStack(alignment: .leading) {
+        Label(title, image: "")
+          .labelStyle(.titleOnly)
+          .multilineTextAlignment(.leading)
+        TextField(baseURLString, text: text, prompt: Text(placeholder))
           .autocorrectionDisabled()
-          .multilineTextAlignment(.trailing)
+          .multilineTextAlignment(.leading)
           .foregroundColor(.secondary)
           .frame(maxWidth: 360)
-        Spacer()
       }
+      Spacer()
+    }
     #endif
   }
 }
