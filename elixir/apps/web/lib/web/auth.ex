@@ -276,10 +276,10 @@ defmodule Web.Auth do
   defp mount_subject(socket, _params, session) do
     Phoenix.Component.assign_new(socket, :subject, fn ->
       user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
-      remote_ip = Phoenix.LiveView.get_connect_info(socket, :peer_data).address
+      real_ip = real_ip(socket)
 
       with token when not is_nil(token) <- session["session_token"],
-           {:ok, subject} <- Domain.Auth.sign_in(token, user_agent, remote_ip) do
+           {:ok, subject} <- Domain.Auth.sign_in(token, user_agent, real_ip) do
         subject
       else
         _ -> nil
@@ -300,5 +300,17 @@ defmodule Web.Auth do
         _ -> nil
       end
     end)
+  end
+
+  defp real_ip(socket) do
+    peer_data = Phoenix.LiveView.get_connect_info(socket, :peer_data)
+    x_headers = Phoenix.LiveView.get_connect_info(socket, :x_headers)
+
+    real_ip =
+      if is_list(x_headers) and length(x_headers) > 0 do
+        RemoteIp.from(x_headers, Web.Endpoint.real_ip_opts())
+      end
+
+    real_ip || peer_data.address
   end
 end

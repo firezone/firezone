@@ -28,6 +28,15 @@ defmodule API.Sockets do
   def handle_error(conn, %Ecto.Changeset{}),
     do: Plug.Conn.send_resp(conn, 422, "Invalid or missing connection parameters")
 
+  def real_ip(x_headers, peer_data) do
+    real_ip =
+      if is_list(x_headers) and length(x_headers) > 0 do
+        RemoteIp.from(x_headers, API.Endpoint.real_ip_opts())
+      end
+
+    real_ip || peer_data.address
+  end
+
   # if Mix.env() == :test do
   #     defp maybe_allow_sandbox_access(%{user_agent: user_agent}) do
   #       %{owner: owner_pid, repo: repos} =

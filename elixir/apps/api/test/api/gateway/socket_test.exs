@@ -9,7 +9,8 @@ defmodule API.Gateway.SocketTest do
 
   @connect_info %{
     user_agent: "iOS/12.7 (iPhone) connlib/#{@connlib_version}",
-    peer_data: %{address: {189, 172, 73, 153}}
+    peer_data: %{address: {189, 172, 73, 001}},
+    x_headers: [{"x-forwarded-for", "189.172.73.153"}]
   }
 
   describe "connect/3" do
@@ -29,7 +30,7 @@ defmodule API.Gateway.SocketTest do
       assert gateway.external_id == attrs["external_id"]
       assert gateway.public_key == attrs["public_key"]
       assert gateway.last_seen_user_agent == @connect_info.user_agent
-      assert gateway.last_seen_remote_ip.address == @connect_info.peer_data.address
+      assert gateway.last_seen_remote_ip.address == {189, 172, 73, 153}
       assert gateway.last_seen_version == @connlib_version
     end
 

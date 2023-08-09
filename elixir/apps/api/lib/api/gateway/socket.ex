@@ -11,13 +11,19 @@ defmodule API.Gateway.Socket do
 
   @impl true
   def connect(%{"token" => encrypted_secret} = attrs, socket, connect_info) do
-    %{user_agent: user_agent, peer_data: %{address: remote_ip}} = connect_info
+    %{
+      user_agent: user_agent,
+      x_headers: x_headers,
+      peer_data: peer_data
+    } = connect_info
+
+    real_ip = API.Sockets.real_ip(x_headers, peer_data)
 
     attrs =
       attrs
       |> Map.take(~w[external_id name_suffix public_key])
       |> Map.put("last_seen_user_agent", user_agent)
-      |> Map.put("last_seen_remote_ip", remote_ip)
+      |> Map.put("last_seen_remote_ip", real_ip)
 
     with {:ok, token} <- Gateways.authorize_gateway(encrypted_secret),
          {:ok, gateway} <- Gateways.upsert_gateway(token, attrs) do
