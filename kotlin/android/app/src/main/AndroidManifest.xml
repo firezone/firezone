@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -19,8 +18,7 @@
         android:screenOrientation="portrait"
         android:supportsRtl="true"
         android:theme="@style/AppTheme.Base"
-        android:usesCleartextTraffic="true"
-        tools:targetApi="29">
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".core.presentation.MainActivity"
@@ -38,11 +36,11 @@
             android:exported="false" />
 
         <activity
-            android:name="dev.firezone.android.features.auth.presentation.AuthActivity"
+            android:name="dev.firezone.android.features.auth.ui.AuthActivity"
             android:exported="false" />
 
         <activity
-            android:name="dev.firezone.android.features.applink.presentation.AppLinkHandlerActivity"
+            android:name="dev.firezone.android.features.applink.ui.AppLinkHandlerActivity"
             android:exported="true"
             android:launchMode="singleTop">
 
@@ -71,7 +69,7 @@
         </activity>
 
         <service
-            android:name="dev.firezone.connlib.$VpnService"
+            android:name="dev.firezone.connlib.VpnService"
             android:exported="true"
             android:permission="android.permission.BIND_VPN_SERVICE">
             <intent-filter>

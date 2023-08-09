@@ -19,8 +19,8 @@ class SessionCallbackImpl: SessionCallback {
         Log.d(TAG, "onSetInterfaceConfig: [IPv4:$tunnelAddressIPv4] [IPv6:$tunnelAddressIPv6] [dns:$dnsAddress]")
     }
 
-    override fun onTunnelReady(): Boolean {
-        Log.d(TAG, "onTunnelReady")
+    override fun onTunnelReady(str: String): Boolean {
+        Log.d(TAG, "onTunnelReady $str")
         return true
     }
 

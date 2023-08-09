@@ -1,5 +1,6 @@
 package dev.firezone.android.features.applink.di
 
+/*
 import android.content.SharedPreferences
 import dev.firezone.android.core.di.IoDispatcher
 import dagger.Module
@@ -9,8 +10,8 @@ import dagger.hilt.components.SingletonComponent
 import dev.firezone.android.features.applink.data.AppLinkRepository
 import dev.firezone.android.features.applink.domain.AppLinkRepositoryImpl
 import dev.firezone.android.features.applink.domain.SaveJWTUseCase
-import dev.firezone.android.features.applink.domain.ValidateCsrfTokenUseCase
-import dev.firezone.android.features.applink.presentation.AppLinkViewModel
+import dev.firezone.android.core.domain.preference.ValidateCsrfTokenUseCase
+import dev.firezone.android.features.applink.ui.AppLinkViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 
 @Module
@@ -31,3 +32,4 @@ class AppLinkModule {
         sharedPreferences: SharedPreferences
     ): AppLinkRepository = AppLinkRepositoryImpl(coroutineDispatcher, sharedPreferences)
 }
+*/

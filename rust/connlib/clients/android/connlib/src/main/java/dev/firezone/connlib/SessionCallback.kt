@@ -4,7 +4,7 @@ interface SessionCallback {
 
     fun onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String, dnsFallbackStrategy: String)
 
-    fun onTunnelReady(): Boolean
+    fun onTunnelReady(str: String): Boolean
 
     fun onAddRoute(cidrAddress: String)
 

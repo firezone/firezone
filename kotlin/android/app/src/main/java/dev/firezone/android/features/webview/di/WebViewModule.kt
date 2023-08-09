@@ -2,7 +2,7 @@ package dev.firezone.android.features.webview.di
 
 import android.content.SharedPreferences
 import dev.firezone.android.core.di.IoDispatcher
-import dev.firezone.android.features.splash.domain.GetConfigUseCase
+import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.features.webview.data.WebViewRepository
 import dev.firezone.android.features.webview.domain.SaveDeepLinkUseCase
 import dev.firezone.android.features.webview.domain.WebViewRepositoryImpl

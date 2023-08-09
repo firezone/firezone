@@ -15,15 +15,15 @@ internal class SessionManager @Inject constructor(
     private val callback: SessionCallbackImpl = SessionCallbackImpl()
 
     fun connect() {
-        val portalUrl = sharedPreferences.getString(PORTAL_URL_KEY, null)
-        val portalToken = sharedPreferences.getString(AUTH_TOKEN_KEY, null)
+        val portalUrl = sharedPreferences.getString(PORTAL_URL_KEY, null) ?: "https://portal.com"
+        val portalToken = sharedPreferences.getString(AUTH_TOKEN_KEY, null) ?: "token"
         try {
-            Log.d("Connlib", portalUrl.toString())
-            Log.d("Connlib", portalToken.toString())
+            Log.d("Connlib", portalUrl)
+            Log.d("Connlib", portalToken)
 
             sessionPtr = Session.connect(
-                portalUrl!!,
-                portalToken!!,
+                portalUrl,
+                portalToken,
                 callback
             )
             setConnectionStatus(true)
