@@ -2,6 +2,7 @@ package dev.firezone.android.features.applink.presentation
 
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import dagger.hilt.android.AndroidEntryPoint
@@ -27,6 +28,7 @@ class AppLinkHandlerActivity : AppCompatActivity(R.layout.activity_app_link_hand
             when (action) {
                 is AppLinkViewAction.AuthFlowComplete -> {
                     // Continue with onboarding
+                    Log.d("AppLinkHandlerActivity", "AuthFlowComplete")
                 }
                 is AppLinkViewAction.ShowError -> showError()
                 else -> {}

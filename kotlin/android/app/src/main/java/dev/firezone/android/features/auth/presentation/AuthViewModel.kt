@@ -32,7 +32,7 @@ internal class AuthViewModel @Inject constructor(
 
             actionMutableLiveData.postValue(
                 AuthViewAction.LaunchAuthFlow(
-                    url = "${config.portalUrl}/auth?client_csrf_token=$token&dest=https://${BuildConfig.AUTH_DEST}/callback"
+                    url = "${config.portalUrl}/sign_in?client_csrf_token=$token&client_platform=android"
                 )
             )
         }
