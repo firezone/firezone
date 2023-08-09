@@ -130,9 +130,9 @@ impl IfaceDevice {
                 sc_reserved: Default::default(),
             };
 
-            let len: *mut u32 = &mut (size_of::<sockaddr_ctl>() as u32);
+            let mut len = size_of::<sockaddr_ctl>() as u32;
             let ret = unsafe {
-                getpeername(fd, &mut addr as *mut sockaddr_ctl as _, len)
+                getpeername(fd, &mut addr as *mut sockaddr_ctl as _, &mut len as *mut socklen_t)
             };
             if ret != 0 || addr.sc_family != AF_SYSTEM as u8 {
                 continue;
