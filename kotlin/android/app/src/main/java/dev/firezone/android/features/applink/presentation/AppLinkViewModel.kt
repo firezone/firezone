@@ -28,7 +28,6 @@ internal class AppLinkViewModel @Inject constructor(
                 "handle_client_auth_callback" -> {
                     intent.data?.getQueryParameter("client_csrf_token")?.let { csrfToken ->
                         if (validateCsrfTokenUseCase(csrfToken).firstOrNull() == true) {
-                            System.loadLibrary("connlib")
                             val jwtToken = intent.data?.getQueryParameter("client_auth_token") ?: ""
                             saveJWTUseCase(jwtToken)
 
