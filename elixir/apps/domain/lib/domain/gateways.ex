@@ -26,7 +26,11 @@ defmodule Domain.Gateways do
       |> Repo.fetch()
       |> case do
         {:ok, group} ->
-          group = group |> Repo.preload(preload) |> maybe_preload_online_status()
+          group =
+            group
+            |> Repo.preload(preload)
+            |> maybe_preload_online_status()
+
           {:ok, group}
 
         {:error, reason} ->
@@ -362,24 +366,6 @@ defmodule Domain.Gateways do
     {:ok, _} =
       Presence.track(self(), "gateway_groups:#{gateway.group_id}", gateway.id, %{})
 
-    # Phoenix.PubSub.broadcast(
-    #   Domain.PubSub,
-    #   "gateways:#{gateway.account_id}",
-    #   {:connected, gateway.id}
-    # )
-
-    # Phoenix.PubSub.broadcast(
-    #   Domain.PubSub,
-    #   "gateway:#{gateway.id}",
-    #   {:connected, gateway.id}
-    # )
-
-    # Phoenix.PubSub.broadcast(
-    #   Domain.PubSub,
-    #   "gateway_group:#{gateway.group_id}",
-    #   {:connected, gateway.id}
-    # )
-
     :ok
   end
 
@@ -389,10 +375,6 @@ defmodule Domain.Gateways do
 
   def subscribe_for_gateways_presence_in_group(%Group{} = group) do
     Phoenix.PubSub.subscribe(Domain.PubSub, "gateway_groups:#{group.id}")
-  end
-
-  def fetch_gateway_config!(%Gateway{} = _gateway) do
-    Application.fetch_env!(:domain, __MODULE__)
   end
 
   defp fetch_config! do

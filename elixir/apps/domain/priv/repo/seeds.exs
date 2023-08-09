@@ -118,7 +118,7 @@ other_admin_actor_email = "other@localhost"
     name: "Other Admin"
   })
 
-{:ok, other_unprivileged_actor_userpass_identity} =
+{:ok, _other_unprivileged_actor_userpass_identity} =
   Auth.create_identity(
     other_unprivileged_actor,
     other_userpass_provider,
@@ -193,7 +193,7 @@ end
 
 IO.puts("")
 
-user_iphone =
+_user_iphone =
   Domain.Devices.upsert_device(
     %{
       name: "FZ User iPhone",
@@ -204,7 +204,7 @@ user_iphone =
     unprivileged_subject
   )
 
-admin_iphone =
+_admin_iphone =
   Domain.Devices.upsert_device(
     %{
       name: "FZ Admin iPhone",

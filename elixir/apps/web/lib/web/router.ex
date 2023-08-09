@@ -112,6 +112,17 @@ defmodule Web.Router do
         live "/:id", Show
       end
 
+      scope "/relay_groups", RelayGroups do
+        live "/", Index
+        live "/new", New
+        live "/:id/edit", Edit
+        live "/:id", Show
+      end
+
+      scope "/relays", Relays do
+        live "/:id", Show
+      end
+
       scope "/gateway_groups", GatewayGroups do
         live "/", Index
         live "/new", New
