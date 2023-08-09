@@ -149,7 +149,7 @@ impl IfaceDevice {
             };
         }
 
-        return Err(get_last_error());
+        Err(get_last_error())
     }
 
     pub fn set_non_blocking(self) -> Result<Self> {
