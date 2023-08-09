@@ -43,5 +43,21 @@ defmodule Domain.Repo.Migrations.CreateRelays do
         where: "deleted_at IS NULL AND ipv6 IS NOT NULL"
       )
     )
+
+    create(
+      index(:relays, [:ipv4],
+        unique: true,
+        name: :relays_ipv4_index,
+        where: "account_id IS NULL AND deleted_at IS NULL AND ipv4 IS NOT NULL"
+      )
+    )
+
+    create(
+      index(:relays, [:ipv6],
+        unique: true,
+        name: :relays_ipv6_index,
+        where: "account_id IS NULL AND deleted_at IS NULL AND ipv6 IS NOT NULL"
+      )
+    )
   end
 end
