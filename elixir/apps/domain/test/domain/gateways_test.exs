@@ -380,7 +380,7 @@ defmodule Domain.GatewaysTest do
 
     test "returns gateway by id", %{account: account, subject: subject} do
       gateway = GatewaysFixtures.create_gateway(account: account)
-      assert fetch_gateway_by_id(gateway.id, subject) == {:ok, gateway}
+      assert fetch_gateway_by_id(gateway.id, subject) == {:ok, %{gateway | online?: false}}
     end
 
     test "returns gateway that belongs to another actor", %{
@@ -388,7 +388,7 @@ defmodule Domain.GatewaysTest do
       subject: subject
     } do
       gateway = GatewaysFixtures.create_gateway(account: account)
-      assert fetch_gateway_by_id(gateway.id, subject) == {:ok, gateway}
+      assert fetch_gateway_by_id(gateway.id, subject) == {:ok, %{gateway | online?: false}}
     end
 
     test "returns error when gateway does not exist", %{subject: subject} do
@@ -443,12 +443,21 @@ defmodule Domain.GatewaysTest do
       account: account,
       subject: subject
     } do
-      GatewaysFixtures.create_gateway(account: account)
-      GatewaysFixtures.create_gateway(account: account)
+      offline_gateway = GatewaysFixtures.create_gateway(account: account)
+      online_gateway = GatewaysFixtures.create_gateway(account: account)
+      :ok = connect_gateway(online_gateway)
       GatewaysFixtures.create_gateway()
 
       assert {:ok, gateways} = list_gateways(subject)
       assert length(gateways) == 2
+
+      online_gateway_id = online_gateway.id
+      offline_gateway_id = offline_gateway.id
+
+      assert %{
+               true: [%{id: ^online_gateway_id}],
+               false: [%{id: ^offline_gateway_id}]
+             } = Enum.group_by(gateways, & &1.online?)
     end
 
     test "returns error when subject has no permission to manage gateways", %{

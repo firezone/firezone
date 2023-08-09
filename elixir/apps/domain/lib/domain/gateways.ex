@@ -87,7 +87,7 @@ defmodule Domain.Gateways do
         %{group | gateways: gateways}
       end)
     else
-      group
+      groups
     end
   end
 
