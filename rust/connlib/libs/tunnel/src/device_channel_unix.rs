@@ -61,7 +61,7 @@ impl DeviceChannel {
 }
 
 pub(crate) async fn create_iface() -> Result<(IfaceConfig, DeviceChannel)> {
-    let dev = Arc::new(IfaceDevice::new().await?.set_non_blocking()?);
+    let dev = Arc::new(IfaceDevice::new(None).await?.set_non_blocking()?);
     let async_dev = Arc::clone(&dev);
     let device_channel = DeviceChannel(AsyncFd::new(async_dev)?);
     let iface_config = IfaceConfig(dev);

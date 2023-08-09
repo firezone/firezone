@@ -105,7 +105,7 @@ impl IfaceDevice {
     //
     // Inspired heavily by WireGuard's implementation for Apple:
     // https://github.com/WireGuard/wireguard-apple/blob/master/Sources/WireGuardKit/WireGuardAdapter.swift
-    pub async fn new() -> Result<Self> {
+    pub async fn new(_: Option<&str>) -> Result<Self> {
         let mut info = ctl_info {
             ctl_id: 0,
             ctl_name: [0; 96],
@@ -123,21 +123,18 @@ impl IfaceDevice {
             // initialize empty sockaddr_ctl to be populated by getpeername
             let mut addr = sockaddr_ctl {
                 sc_len: size_of::<sockaddr_ctl>() as u8,
-                sc_family: 0 as u8,
-                ss_sysaddr: 0 as u16,
+                sc_family: 0,
+                ss_sysaddr: 0,
                 sc_id: info.ctl_id,
-                sc_unit: 0 as u32,
+                sc_unit: 0,
                 sc_reserved: Default::default(),
             };
 
-            if unsafe {
-                getpeername(
-                    fd,
-                    &mut addr as *mut sockaddr_ctl as _,
-                    &mut 0u32 as *mut _
-                )
-            } != 0 || addr.sc_family != AF_SYSTEM as u8
-            {
+            let len: *mut u32 = &mut (size_of::<sockaddr_ctl>() as u32);
+            let ret = unsafe {
+                getpeername(fd, &mut addr as *mut sockaddr_ctl as _, len)
+            };
+            if ret != 0 || addr.sc_family != AF_SYSTEM as u8 {
                 continue;
             }
 
