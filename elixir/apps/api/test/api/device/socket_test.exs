@@ -7,7 +7,8 @@ defmodule API.Device.SocketTest do
 
   @connect_info %{
     user_agent: "iOS/12.7 (iPhone) connlib/0.1.1",
-    peer_data: %{address: {189, 172, 73, 153}}
+    peer_data: %{address: {189, 172, 73, 001}},
+    x_headers: [{"x-forwarded-for", "189.172.73.153"}]
   }
 
   describe "connect/3" do
@@ -61,7 +62,8 @@ defmodule API.Device.SocketTest do
   defp connect_info(subject) do
     %{
       user_agent: subject.context.user_agent,
-      peer_data: %{address: subject.context.remote_ip}
+      peer_data: %{address: subject.context.remote_ip},
+      x_headers: []
     }
   end
 

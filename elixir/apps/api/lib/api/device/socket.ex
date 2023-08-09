@@ -11,9 +11,15 @@ defmodule API.Device.Socket do
 
   @impl true
   def connect(%{"token" => token} = attrs, socket, connect_info) do
-    %{user_agent: user_agent, peer_data: %{address: remote_ip}} = connect_info
+    %{
+      user_agent: user_agent,
+      x_headers: x_headers,
+      peer_data: peer_data
+    } = connect_info
 
-    with {:ok, subject} <- Auth.sign_in(token, user_agent, remote_ip),
+    real_ip = API.Sockets.real_ip(x_headers, peer_data)
+
+    with {:ok, subject} <- Auth.sign_in(token, user_agent, real_ip),
          {:ok, device} <- Devices.upsert_device(attrs, subject) do
       socket =
         socket
