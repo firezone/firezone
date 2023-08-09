@@ -76,10 +76,10 @@ impl Peer {
             allowed_ips.insert(ip, ());
         }
         let allowed_ips = RwLock::new(allowed_ips);
-        let resources = resource.and_then(|r| {
+        let resources = resource.map(|r| {
             let mut resource_table = ResourceTable::new();
             resource_table.insert(r);
-            Some(RwLock::new(resource_table))
+            RwLock::new(resource_table)
         });
         Peer {
             tunnel,
