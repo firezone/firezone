@@ -125,7 +125,7 @@ impl Callbacks for CallbackHandler {
                 &mut env,
                 &self.callback_handler,
                 "onSetInterfaceConfig",
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
                 &[
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
@@ -138,7 +138,13 @@ impl Callbacks for CallbackHandler {
 
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
         self.env(|mut env| {
-            call_method(&mut env, &self.callback_handler, "onTunnelReady", "()", &[])
+            call_method(
+                &mut env,
+                &self.callback_handler,
+                "onTunnelReady",
+                "()Z",
+                &[],
+            )
         })
     }
 
@@ -154,7 +160,7 @@ impl Callbacks for CallbackHandler {
                 &mut env,
                 &self.callback_handler,
                 "onAddRoute",
-                "(Ljava/lang/String;)",
+                "(Ljava/lang/String;)V",
                 &[JValue::from(&route)],
             )
         })
@@ -172,7 +178,7 @@ impl Callbacks for CallbackHandler {
                 &mut env,
                 &self.callback_handler,
                 "onRemoveRoute",
-                "(Ljava/lang/String;)",
+                "(Ljava/lang/String;)V",
                 &[JValue::from(&route)],
             )
         })
@@ -193,7 +199,7 @@ impl Callbacks for CallbackHandler {
                 &mut env,
                 &self.callback_handler,
                 "onUpdateResources",
-                "(Ljava/lang/String;)",
+                "(Ljava/lang/String;)V",
                 &[JValue::from(&resource_list)],
             )
         })
@@ -211,7 +217,7 @@ impl Callbacks for CallbackHandler {
                 &mut env,
                 &self.callback_handler,
                 "onDisconnect",
-                "(Ljava/lang/String;)",
+                "(Ljava/lang/String;)Z",
                 &[JValue::from(&error)],
             )
         })
@@ -229,7 +235,7 @@ impl Callbacks for CallbackHandler {
                 &mut env,
                 &self.callback_handler,
                 "onError",
-                "(Ljava/lang/String;)",
+                "(Ljava/lang/String;)Z",
                 &[JValue::from(&error)],
             )
         })
