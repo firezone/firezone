@@ -30,7 +30,7 @@ class NetworkSettings {
   let tunnelAddressIPv4: String
   let tunnelAddressIPv6: String
   let dnsAddress: String
-    
+
     // In theory we could update the MTU dynamically based on the network environment,
     // but 1280 is guaranteed to work everywhere.
   let tunnelMTU = NSNumber(1280)
@@ -154,7 +154,7 @@ class NetworkSettings {
     }
     tunnelNetworkSettings.dnsSettings = dnsSettings
     tunnelNetworkSettings.mtu = tunnelMTU
-    
+
     self.hasUnappliedChanges = false
     logger.debug("Attempting to set network settings")
     packetTunnelProvider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
