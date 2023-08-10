@@ -417,10 +417,8 @@ where
 
 fn set_ws_scheme(url: &mut Url) -> Result<()> {
     let scheme = match url.scheme() {
-        "http" => "ws",
-        "https" => "wss",
-        "ws" => "ws",
-        "wss" => "wss",
+        "http" | "ws" => "ws",
+        "https" | "wss" => "wss",
         _ => return Err(Error::UriScheme),
     };
     url.set_scheme(scheme)
