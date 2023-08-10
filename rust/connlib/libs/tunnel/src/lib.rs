@@ -273,6 +273,17 @@ where
         Ok(())
     }
 
+    async fn stop_peer(&self, index: u32, conn_id: Id) {
+        self.peers_by_ip.write().retain(|_, p| p.index != index);
+        let conn = self.peer_connections.lock().remove(&conn_id);
+        if let Some(conn) = conn {
+            if let Err(e) = conn.close().await {
+                tracing::error!("Problem while trying to close channel: {e:?}");
+                let _ = self.callbacks().on_error(&e.into());
+            }
+        }
+    }
+
     async fn peer_refresh(&self, peer: &Peer, dst_buf: &mut [u8; MAX_UDP_SIZE]) {
         let update_timers_result = peer.update_timers(&mut dst_buf[..]);
 
@@ -280,22 +291,14 @@ where
             TunnResult::Done => {}
             TunnResult::Err(WireGuardError::ConnectionExpired)
             | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-                self.peers_by_ip
-                    .write()
-                    .retain(|_, p| p.index != peer.index);
+                self.stop_peer(peer.index, peer.conn_id).await;
                 let _ = peer.shutdown().await;
-                let conn = self.peer_connections.lock().remove(&peer.conn_id);
-                if let Some(conn) = conn {
-                    if let Err(e) = conn.close().await {
-                        tracing::error!("Problem while trying to close channel: {e:?}");
-                        let _ = self.callbacks().on_error(&e.into());
-                    }
-                }
             }
             TunnResult::Err(e) => tracing::error!(message = "Timer error", error = ?e),
             TunnResult::WriteToNetwork(packet) => {
                 peer.send_infallible(packet, &self.callbacks).await
             }
+
             _ => panic!("Unexpected result from update_timers"),
         };
     }
@@ -615,16 +618,9 @@ where
                     TunnResult::Done => {}
                     TunnResult::Err(WireGuardError::ConnectionExpired)
                     | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-                        dev.peers_by_ip.write().retain(|_, p| p.index != peer_index);
-                        let _ = channel.close().await;
-                        let conn = dev.peer_connections.lock().remove(&conn_id);
-                        if let Some(conn) = conn {
-                            if let Err(e) = conn.close().await {
-                                tracing::error!("Problem while trying to close channel: {e:?}");
-                                let _ = dev.callbacks().on_error(&e.into());
-                            }
-                        }
+                        dev.stop_peer(peer_index, conn_id).await
                     }
+
                     TunnResult::Err(e) => {
                         tracing::error!(message = "Encapsulate error for resource corresponding to {dst_addr}", error = ?e);
                         let _ = dev.callbacks.on_error(&e.into());
@@ -640,17 +636,7 @@ where
                                         webrtc::sctp::Error::ErrStreamClosed
                                     )
                             ) {
-                                dev.peers_by_ip.write().retain(|_, p| p.index != peer_index);
-                                let _ = channel.close().await;
-                                let conn = dev.peer_connections.lock().remove(&conn_id);
-                                if let Some(conn) = conn {
-                                    if let Err(e) = conn.close().await {
-                                        tracing::error!(
-                                            "Problem while trying to close channel: {e:?}"
-                                        );
-                                        let _ = dev.callbacks().on_error(&e.into());
-                                    }
-                                }
+                                dev.stop_peer(peer_index, conn_id).await;
                             }
                             let _ = dev.callbacks.on_error(&e.into());
                             return;
