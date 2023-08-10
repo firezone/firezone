@@ -41,7 +41,9 @@ defmodule Web.Auth do
       query =
         %{
           client_auth_token: client_token,
-          client_csrf_token: client_csrf_token
+          client_csrf_token: client_csrf_token,
+          actor_name: subject.actor.name,
+          identity_provider_identifier: subject.identity.provider_identifier
         }
         |> Enum.reject(&is_nil(elem(&1, 1)))
         |> URI.encode_query()
