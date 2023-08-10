@@ -142,7 +142,9 @@ impl IfaceDevice {
             }
 
             if info.ctl_id == 0 {
-                if unsafe { ioctl(fd, CTLIOCGINFO, &mut info as *mut ctl_info) } != 0 {
+                let ret = unsafe { ioctl(fd, CTLIOCGINFO, &mut info as *mut ctl_info) };
+
+                if ret != 0 {
                     continue;
                 }
             }
