@@ -131,19 +131,18 @@ async fn main() -> Result<()> {
 
         tracing::info!("Connected to portal, waiting for init message",);
 
+        channel.join(
+            "relay",
+            JoinMessage {
+                stamp_secret: server.auth_secret().to_string(),
+            },
+        );
+
         loop {
-            channel.join(
-                "relay",
-                JoinMessage {
-                    stamp_secret: server.auth_secret().to_string(),
-                },
-            );
-
-            let event = future::poll_fn(|cx| channel.poll(cx))
+            match future::poll_fn(|cx| channel.poll(cx))
                 .await
-                .context("portal connection failed")?;
-
-            match event {
+                .context("portal connection failed")?
+            {
                 Event::JoinedRoom { topic } if topic == "relay" => {
                     tracing::info!("Joined relay room on portal")
                 }
