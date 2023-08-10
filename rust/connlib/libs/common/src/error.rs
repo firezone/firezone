@@ -27,6 +27,9 @@ pub enum ConnlibError {
     /// Provided string was not formatted as a URL.
     #[error("Badly formatted URI")]
     UriError,
+    /// Provided an unsupported uri string.
+    #[error("Unsupported URI scheme: Must be http://, https://, ws:// or wss://")]
+    UriScheme,
     /// Serde's serialize error.
     #[error(transparent)]
     SerializeError(#[from] serde_json::Error),

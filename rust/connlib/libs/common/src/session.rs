@@ -415,6 +415,19 @@ where
     }
 }
 
+fn set_ws_scheme(url: &mut Url) -> Result<()> {
+    let scheme = match url.scheme() {
+        "http" => "ws",
+        "https" => "wss",
+        "ws" => "ws",
+        "wss" => "wss",
+        _ => return Err(Error::UriScheme),
+    };
+    url.set_scheme(scheme)
+        .expect("Developer error: the match before this should make sure we can set this");
+    Ok(())
+}
+
 fn get_websocket_path(
     mut url: Url,
     secret: String,
@@ -423,6 +436,8 @@ fn get_websocket_path(
     external_id: &str,
     name_suffix: &str,
 ) -> Result<Url> {
+    set_ws_scheme(&mut url)?;
+
     {
         let mut paths = url.path_segments_mut().map_err(|_| Error::UriError)?;
         paths.pop_if_empty();
