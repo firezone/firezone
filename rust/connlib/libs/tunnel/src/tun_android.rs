@@ -33,7 +33,7 @@ impl IfaceDevice {
         0
     }
 
-    pub async fn new(_name: &str) -> Result<Self> {
+    pub async fn new() -> Result<Self> {
         // TODO: This won't actually work for non-root users...
         let fd = unsafe { open(b"/dev/net/tun\0".as_ptr() as _, O_RDWR) };
         // TODO: everything!
