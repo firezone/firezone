@@ -50,7 +50,7 @@ Try clearing your LaunchAgent db:
 
 **Note**: You MUST reboot after doing this!
 
-### Outdated version of NetworkExtension not loading
+### Outdated version of NetworkExtension loading
 
 If you're making changes to the Network Extension and it doesn't seem to be
 reflected when you run/debug, it could be that PluginKit is still launching your
