@@ -17,6 +17,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   static let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
 
   private var adapter: Adapter?
+  
+  // Add a first light log to the NetworkExtension
+  override init() {
+    Self.logger.log(level: .debug, "first light")
+    super.init()
+  }
 
   override func startTunnel(
     options _: [String: NSObject]? = nil,
