@@ -1,9 +1,9 @@
 use ip_network::IpNetwork;
 use libc::{
-    close, ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg, sockaddr,
-    sockaddr_ctl, sockaddr_in, socket, socklen_t, AF_INET, AF_INET6, AF_SYSTEM,
-    CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE, IPPROTO_IP, O_NONBLOCK,
-    SOCK_STREAM, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
+    close, ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg,
+    sockaddr, sockaddr_ctl, sockaddr_in, socket, socklen_t, AF_INET, AF_INET6, AF_SYSTEM,
+    CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE, IPPROTO_IP, O_NONBLOCK, SOCK_STREAM,
+    SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
 };
 use libs_common::{CallbackErrorFacade, Callbacks, Error, Result, DNS_SENTINEL};
 use std::{
@@ -131,7 +131,11 @@ impl IfaceDevice {
 
             let mut len = size_of::<sockaddr_ctl>() as u32;
             let ret = unsafe {
-                getpeername(fd, &mut addr as *mut sockaddr_ctl as _, &mut len as *mut socklen_t)
+                getpeername(
+                    fd,
+                    &mut addr as *mut sockaddr_ctl as _,
+                    &mut len as *mut socklen_t,
+                )
             };
             if ret != 0 || addr.sc_family != AF_SYSTEM as u8 {
                 continue;
