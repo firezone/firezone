@@ -156,6 +156,7 @@ class NetworkSettings {
     tunnelNetworkSettings.mtu = tunnelMTU
     
     self.hasUnappliedChanges = false
+    logger.debug("Attempting to set network settings")
     packetTunnelProvider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
       if let error = error {
         logger.error("NetworkSettings.apply: Error: \(error, privacy: .public)")

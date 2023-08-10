@@ -95,15 +95,6 @@ impl IfaceDevice {
         }
     }
 
-    // On Apple platforms, we must use a NetworkExtension for reading and writing
-    // packets if we want to be allowed in the iOS and macOS App Stores. This has the
-    // unfortunate side effect that we're not allowed to create or destroy the tunnel
-    // interface ourselves. The file descriptor should already be opened by the NetworkExtension for us
-    // by this point. So instead, we iterate through all file descriptors looking for the one corresponding
-    // to the utun interface we have access to read and write from.
-    //
-    // Credit to Jason Donenfeld (@zx2c4) for figuring this out in the WireGuard Apple app:
-    // https://github.com/WireGuard/wireguard-apple/blob/master/Sources/WireGuardKit/WireGuardAdapter.swift
     pub async fn new(_: Option<&str>) -> Result<Self> {
         let mut info = ctl_info {
             ctl_id: 0,
@@ -118,6 +109,15 @@ impl IfaceDevice {
             // initializing the array we should be using a CStr to be explicit... but this is slightly easier.
             .copy_from_slice(unsafe { &*(CTL_NAME as *const [u8] as *const [i8]) });
 
+        // On Apple platforms, we must use a NetworkExtension for reading and writing
+        // packets if we want to be allowed in the iOS and macOS App Stores. This has the
+        // unfortunate side effect that we're not allowed to create or destroy the tunnel
+        // interface ourselves. The file descriptor should already be opened by the NetworkExtension for us
+        // by this point. So instead, we iterate through all file descriptors looking for the one corresponding
+        // to the utun interface we have access to read and write from.
+        //
+        // Credit to Jason Donenfeld (@zx2c4) for this technique. See NOTICE.txt for attribution.
+        // https://github.com/WireGuard/wireguard-apple/blob/master/Sources/WireGuardKit/WireGuardAdapter.swift
         for fd in 0..1024 {
             // initialize empty sockaddr_ctl to be populated by getpeername
             let mut addr = sockaddr_ctl {
