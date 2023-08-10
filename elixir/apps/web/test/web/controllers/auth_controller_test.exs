@@ -246,10 +246,10 @@ defmodule Web.AuthControllerTest do
           %{
             "userpass" => %{
               "provider_identifier" => identity.provider_identifier,
-              "secret" => password,
-              "client_platform" => "android",
-              "client_csrf_token" => csrf_token
-            }
+              "secret" => password
+            },
+            "client_platform" => "android",
+            "client_csrf_token" => csrf_token
           }
         )
 
@@ -298,9 +298,9 @@ defmodule Web.AuthControllerTest do
           %{
             "userpass" => %{
               "provider_identifier" => identity.provider_identifier,
-              "secret" => password,
-              "client_platform" => "platform"
-            }
+              "secret" => password
+            },
+            "client_platform" => "platform"
           }
         )
 
@@ -525,8 +525,16 @@ defmodule Web.AuthControllerTest do
         })
 
       assert conn.assigns.flash == %{}
-      assert redirected_to(conn) =~ "firezone://handle_client_auth_callback?client_auth_token="
       assert is_nil(get_session(conn, :client_platform))
+
+      assert redirected_to = conn |> redirected_to() |> URI.parse()
+      assert redirected_to.scheme == "firezone"
+      assert redirected_to.host == "handle_client_auth_callback"
+
+      assert query_params = URI.decode_query(redirected_to.query)
+      assert query_params["actor_name"] == Repo.preload(identity, :actor).actor.name
+      assert not is_nil(query_params["client_auth_token"])
+      assert query_params["identity_provider_identifier"] == identity.provider_identifier
     end
 
     test "renews the session when credentials are valid", %{conn: conn} do
@@ -801,8 +809,16 @@ defmodule Web.AuthControllerTest do
         })
 
       assert conn.assigns.flash == %{}
-      assert redirected_to(conn) =~ "firezone://handle_client_auth_callback?client_auth_token="
       assert is_nil(get_session(conn, :client_platform))
+
+      assert redirected_to = conn |> redirected_to() |> URI.parse()
+      assert redirected_to.scheme == "firezone"
+      assert redirected_to.host == "handle_client_auth_callback"
+
+      assert query_params = URI.decode_query(redirected_to.query)
+      assert query_params["actor_name"] == Repo.preload(identity, :actor).actor.name
+      assert not is_nil(query_params["client_auth_token"])
+      assert query_params["identity_provider_identifier"] == identity.provider_identifier
     end
   end
 
