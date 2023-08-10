@@ -29,8 +29,8 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
             when (action) {
-                SplashViewModel.ViewAction.NavigateToVpnPermissionFragment -> findNavController().navigate(
-                    R.id.vpnPermissionFragment
+                SplashViewModel.ViewAction.NavigateToVpnPermission -> findNavController().navigate(
+                    R.id.vpnPermissionActivity
                 )
                 SplashViewModel.ViewAction.NavigateToSignInFragment -> findNavController().navigate(
                     R.id.signInFragment

@@ -8,6 +8,13 @@
 
     <!-- Text Size -->
     <dimen name="text_large">32sp</dimen>
-    <dimen name="text_body">24sp</dimen>
+    <dimen name="text_h1">96sp</dimen>
+    <dimen name="text_h2">60sp</dimen>
+    <dimen name="text_h3">48sp</dimen>
+    <dimen name="text_h4">34sp</dimen>
+    <dimen name="text_h5">24sp</dimen>
+    <dimen name="text_h6">20sp</dimen>
+    <dimen name="text_body1">16sp</dimen>
+    <dimen name="text_body2">14sp</dimen>
     <!-- Text Size -->
 </resources>

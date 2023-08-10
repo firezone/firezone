@@ -37,11 +37,6 @@
     </fragment>
 
     <fragment
-        android:id="@+id/vpnPermissionFragment"
-        android:name="dev.firezone.android.features.permission.vpn.ui.VpnPermissionFragment"
-        tools:layout="@layout/fragment_vpn_permission" />
-
-    <fragment
         android:id="@+id/onboardingFragment"
         android:name="dev.firezone.android.features.onboarding.ui.OnboardingFragment"
         tools:layout="@layout/fragment_onboarding">
@@ -92,5 +87,9 @@
             app:popExitAnim="@anim/fade_out" />
 
     </fragment>
+
+    <activity
+        android:id="@+id/vpnPermissionActivity"
+        android:name="dev.firezone.android.features.permission.vpn.ui.VpnPermissionActivity" />
 
 </navigation>

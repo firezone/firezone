@@ -1,5 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<?xml version="1.0" encoding="utf-8"?><manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -67,6 +66,10 @@
                 <data android:host="${hostName}" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name="dev.firezone.android.features.permission.vpn.ui.VpnPermissionActivity"
+            android:exported="false" />
 
         <service
             android:name="dev.firezone.connlib.VpnService"

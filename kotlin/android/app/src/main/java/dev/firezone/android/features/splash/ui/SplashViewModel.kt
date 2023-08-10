@@ -14,7 +14,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
-private const val REQUEST_DELAY = 500L
+private const val REQUEST_DELAY = 1000L
 
 @HiltViewModel
 internal class SplashViewModel @Inject constructor(
@@ -29,7 +29,7 @@ internal class SplashViewModel @Inject constructor(
             debugUserUseCase()
             delay(REQUEST_DELAY)
             if (!hasVpnPermissions(context)) {
-                actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermissionFragment)
+                actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
             } else {
                 useCase.invoke()
                     .catch {
@@ -53,7 +53,7 @@ internal class SplashViewModel @Inject constructor(
     }
 
     internal sealed class ViewAction {
-        object NavigateToVpnPermissionFragment : ViewAction()
+        object NavigateToVpnPermission : ViewAction()
         object NavigateToOnboardingFragment : ViewAction()
         object NavigateToSignInFragment : ViewAction()
         object NavigateToSessionFragment : ViewAction()
