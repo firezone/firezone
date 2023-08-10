@@ -19,7 +19,7 @@ final class AuthViewModel: ObservableObject {
 
   private var cancellables = Set<AnyCancellable>()
 
-  func logInButtonTapped() async {
+  func signInButtonTapped() async {
     guard let portalURL = settingsClient.fetchSettings()?.portalURL else {
       settingsUndefined()
       return
@@ -40,9 +40,9 @@ struct AuthView: View {
     VStack {
       Text("Welcome to Firezone").font(.largeTitle)
 
-      Button("Log in") {
+      Button("Sign in") {
         Task {
-          await model.logInButtonTapped()
+          await model.signInButtonTapped()
         }
       }
       .buttonStyle(.borderedProminent)

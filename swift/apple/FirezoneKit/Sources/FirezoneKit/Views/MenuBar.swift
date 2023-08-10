@@ -104,16 +104,16 @@ public final class MenuBar: NSObject {
       target: self
     )
 
-    private lazy var loginMenuItem = createMenuItem(
+    private lazy var signInMenuItem = createMenuItem(
       menu,
-      title: "Login",
-      action: #selector(loginButtonTapped),
+      title: "Sign in",
+      action: #selector(signInButtonTapped),
       target: self
     )
-    private lazy var logoutMenuItem = createMenuItem(
+    private lazy var signOutMenuItem = createMenuItem(
       menu,
-      title: "Logout",
-      action: #selector(logoutButtonTapped),
+      title: "Sign out",
+      action: #selector(signOutButtonTapped),
       isHidden: true,
       target: self
     )
@@ -153,8 +153,8 @@ public final class MenuBar: NSObject {
 
     private func createMenu() {
       menu.addItem(connectionMenuItem)
-      menu.addItem(loginMenuItem)
-      menu.addItem(logoutMenuItem)
+      menu.addItem(signInMenuItem)
+      menu.addItem(signOutMenuItem)
       menu.addItem(NSMenuItem.separator())
 
       menu.addItem(resourcesTitleMenuItem)
@@ -188,19 +188,19 @@ public final class MenuBar: NSObject {
 
     private func showSignedIn(_ user: String?) {
       if let user {
-        loginMenuItem.title = "Signed in as \(user)"
+        signInMenuItem.title = "Signed in as \(user)"
       } else {
-        loginMenuItem.title = "Signed in"
+        signInMenuItem.title = "Signed in"
       }
-      loginMenuItem.target = nil
-      logoutMenuItem.isHidden = false
+      signInMenuItem.target = nil
+      signOutMenuItem.isHidden = false
     }
 
     private func showSignedOut() {
-      loginMenuItem.title = "Sign in"
-      loginMenuItem.target = self
+      signInMenuItem.title = "Sign in"
+      signInMenuItem.target = self
 
-      logoutMenuItem.isHidden = true
+      signOutMenuItem.isHidden = true
     }
 
     @objc private func connectButtonTapped() {
@@ -219,7 +219,7 @@ public final class MenuBar: NSObject {
       }
     }
 
-    @objc private func loginButtonTapped() {
+    @objc private func signInButtonTapped() {
       Task {
         do {
           try await appStore?.auth.signIn()
@@ -231,7 +231,7 @@ public final class MenuBar: NSObject {
       }
     }
 
-    @objc private func logoutButtonTapped() {
+    @objc private func signOutButtonTapped() {
       appStore?.auth.signOut()
     }
 
