@@ -50,7 +50,33 @@ Try clearing your LaunchAgent db:
 
 **Note**: You MUST reboot after doing this!
 
+### Outdated version of NetworkExtension not loading
+
+If you're making changes to the Network Extension and it doesn't seem to be
+reflected when you run/debug, it could be that PluginKit is still launching your
+old NetworkExtension. Try this to remove it:
+
+```bash
+pluginkit -v -m -D -i <bundle-id>
+pluginkit -a <path>
+pluginkit -r <path>
+```
+
 ## Cleaning up
+
+Occasionally you might encounter strange issues where it seems like the artifacts
+being debugged don't match the code, among other things. In these cases it's good
+to clean up using one of the methods below.
+
+### Resetting Xcode package cache
+
+Removes cached packages, built extensions, etc.
+
+```bash
+rm -rf ~/Library/Developer/Xcode/Derived\ Data
+```
+
+### Removing build artifacts
 
 To cleanup Swift build objects:
 
