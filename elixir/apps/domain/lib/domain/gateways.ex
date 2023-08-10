@@ -310,6 +310,13 @@ defmodule Domain.Gateways do
       Gateway.Query.by_id(gateway.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Gateway.Changeset.update_changeset(&1, attrs))
+      |> case do
+        {:ok, gateway} ->
+          {:ok, preload_online_status(gateway)}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -318,6 +325,13 @@ defmodule Domain.Gateways do
       Gateway.Query.by_id(gateway.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Gateway.Changeset.delete_changeset/1)
+      |> case do
+        {:ok, gateway} ->
+          {:ok, preload_online_status(gateway)}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 

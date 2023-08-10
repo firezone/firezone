@@ -380,7 +380,7 @@ defmodule Domain.GatewaysTest do
 
     test "returns gateway by id", %{account: account, subject: subject} do
       gateway = GatewaysFixtures.create_gateway(account: account)
-      assert fetch_gateway_by_id(gateway.id, subject) == {:ok, %{gateway | online?: false}}
+      assert fetch_gateway_by_id(gateway.id, subject) == {:ok, gateway}
     end
 
     test "returns gateway that belongs to another actor", %{
@@ -388,7 +388,7 @@ defmodule Domain.GatewaysTest do
       subject: subject
     } do
       gateway = GatewaysFixtures.create_gateway(account: account)
-      assert fetch_gateway_by_id(gateway.id, subject) == {:ok, %{gateway | online?: false}}
+      assert fetch_gateway_by_id(gateway.id, subject) == {:ok, gateway}
     end
 
     test "returns error when gateway does not exist", %{subject: subject} do

@@ -248,7 +248,7 @@ defmodule Domain.Relays do
   def list_connected_relays_for_resource(%Resources.Resource{} = resource) do
     connected_relays =
       Map.merge(
-        Presence.list("relays:"),
+        Presence.list("relays"),
         Presence.list("relays:#{resource.account_id}")
       )
 

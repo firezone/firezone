@@ -203,10 +203,12 @@ defmodule Domain.Actors do
   end
 
   def create_actor(%Auth.Provider{} = provider, provider_identifier, attrs) do
+    {provider_attrs, attrs} = Map.pop(attrs, "provider", %{})
+
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:actor, Actor.Changeset.create_changeset(provider.account_id, attrs))
     |> Ecto.Multi.run(:identity, fn _repo, %{actor: actor} ->
-      Auth.create_identity(actor, provider, provider_identifier)
+      Auth.create_identity(actor, provider, provider_identifier, provider_attrs)
     end)
     |> Repo.transaction()
     |> case do

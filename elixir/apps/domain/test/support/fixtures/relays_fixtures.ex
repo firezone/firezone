@@ -114,7 +114,7 @@ defmodule Domain.RelaysFixtures do
     attrs = relay_attrs(attrs)
 
     {:ok, relay} = Relays.upsert_relay(token, attrs)
-    relay
+    %{relay | online?: false}
   end
 
   def delete_relay(relay) do
