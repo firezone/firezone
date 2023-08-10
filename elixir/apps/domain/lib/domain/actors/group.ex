@@ -9,7 +9,7 @@ defmodule Domain.Actors.Group do
     field :provider_identifier, :string
 
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
-    has_many :actors, through: [:memberships, :actor]
+    has_many :actors, through: [:memberships, :actor], where: [deleted_at: nil]
 
     belongs_to :account, Domain.Accounts.Account
 

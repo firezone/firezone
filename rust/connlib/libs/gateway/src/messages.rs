@@ -71,6 +71,14 @@ pub struct RemoveResource {
     pub id: Id,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct AllowAccess {
+    pub device_id: Id,
+    pub resource: ResourceDescription,
+    #[serde(with = "ts_seconds")]
+    pub expires_at: DateTime<Utc>,
+}
+
 // These messages are the messages that can be received
 // either by a client or a gateway by the client.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -80,9 +88,7 @@ pub struct RemoveResource {
 pub enum IngressMessages {
     Init(InitGateway),
     RequestConnection(RequestConnection),
-    AddResource(ResourceDescription),
-    RemoveResource(RemoveResource),
-    UpdateResource(ResourceDescription),
+    AllowAccess(AllowAccess),
 }
 
 // These messages can be sent from a gateway

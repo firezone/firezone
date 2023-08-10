@@ -4,10 +4,12 @@ use boringtun::x25519::StaticSecret;
 use firezone_tunnel::{ControlSignal, Tunnel};
 use libs_common::{
     control::{MessageResult, PhoenixSenderWithTopic},
-    messages::ResourceDescription,
+    messages::{Id, ResourceDescription},
     Callbacks, ControlSession, Result,
 };
 use tokio::sync::mpsc::Receiver;
+
+use crate::messages::AllowAccess;
 
 use super::messages::{
     ConnectionReady, EgressMessages, IngressMessages, InitGateway, RequestConnection,
@@ -27,7 +29,11 @@ struct ControlSignaler {
 
 #[async_trait]
 impl ControlSignal for ControlSignaler {
-    async fn signal_connection_to(&self, resource: &ResourceDescription) -> Result<()> {
+    async fn signal_connection_to(
+        &self,
+        resource: &ResourceDescription,
+        _connected_gateway_ids: Vec<Id>,
+    ) -> Result<()> {
         tracing::warn!("A message to network resource: {resource:?} was discarded, gateways aren't meant to be used as clients.");
         Ok(())
     }
@@ -102,8 +108,15 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn add_resource(&self, resource: ResourceDescription) {
-        todo!()
+    fn allow_access(
+        &self,
+        AllowAccess {
+            device_id,
+            resource,
+            expires_at,
+        }: AllowAccess,
+    ) {
+        self.tunnel.allow_access(resource, device_id, expires_at)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -113,9 +126,9 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             IngressMessages::RequestConnection(connection_request) => {
                 self.connection_request(connection_request)
             }
-            IngressMessages::AddResource(resource) => self.add_resource(resource),
-            IngressMessages::RemoveResource(_) => todo!(),
-            IngressMessages::UpdateResource(_) => todo!(),
+            IngressMessages::AllowAccess(allow_access) => {
+                self.allow_access(allow_access);
+            }
         }
         Ok(())
     }

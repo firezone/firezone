@@ -169,7 +169,6 @@ defmodule Domain.Devices do
   end
 
   def connect_device(%Device{} = device) do
-    # TODO: use new Phoenix.Tracker instead
     Phoenix.PubSub.subscribe(Domain.PubSub, "actor:#{device.actor_id}")
 
     {:ok, _} =

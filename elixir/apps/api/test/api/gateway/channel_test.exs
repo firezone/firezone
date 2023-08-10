@@ -61,6 +61,44 @@ defmodule API.Gateway.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :allow_access" do
+    test "pushes allow_access message", %{
+      device: device,
+      resource: resource,
+      relay: relay,
+      socket: socket
+    } do
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      send(
+        socket.channel_pid,
+        {:allow_access,
+         %{
+           device_id: device.id,
+           resource_id: resource.id,
+           authorization_expires_at: expires_at
+         }}
+      )
+
+      assert_push "allow_access", payload
+
+      assert payload.resource == %{
+               address: resource.address,
+               id: resource.id,
+               name: resource.name,
+               type: :dns,
+               ipv4: resource.ipv4,
+               ipv6: resource.ipv6
+             }
+
+      assert payload.device_id == device.id
+      assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
+    end
+  end
+
   describe "handle_info/2 :request_connection" do
     test "pushes request_connection message", %{
       device: device,

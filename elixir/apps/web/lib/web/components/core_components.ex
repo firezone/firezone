@@ -57,25 +57,23 @@ defmodule Web.CoreComponents do
 
   def code_block(assigns) do
     ~H"""
-    <code id={@id} phx-hook="Copy" class={[~w[
-      rounded-lg
+    <div id={@id} phx-hook="Copy" class={[~w[
       text-sm text-left sm:text-base text-white
       inline-flex items-center
       space-x-4 p-4 pl-6
       bg-gray-800
       relative
-
     ], @class]}>
-      <span class="overflow-x-auto" data-copy>
+      <code class="block whitespace-nowrap overflow-x-scroll rounded-b-lg" data-copy>
         <%= render_slot(@inner_block) %>
-      </span>
+      </code>
       <.icon name="hero-clipboard-document" data-icon class={~w[
           absolute bottom-1 right-1
           h-5 w-5
           transition
           text-gray-500 group-hover:text-white
         ]} />
-    </code>
+    </div>
     """
   end
 
@@ -103,44 +101,46 @@ defmodule Web.CoreComponents do
 
   def tabs(assigns) do
     ~H"""
-    <div class="mb-4 border-b border-gray-200 dark:border-gray-700">
-      <ul
-        class="flex flex-wrap -mb-px text-sm font-medium text-center"
-        id={"#{@id}-ul"}
-        data-tabs-toggle={"##{@id}"}
-        role="tablist"
-      >
-        <%= for tab <- @tab do %>
-          <li class="mr-2" role="presentation">
-            <button
-              class={~w[
+    <div class="mb-4">
+      <div class="border-gray-200 dark:border-gray-700 bg-slate-50 rounded-t-lg">
+        <ul
+          class="flex flex-wrap text-sm font-medium text-center"
+          id={"#{@id}-ul"}
+          data-tabs-toggle={"##{@id}"}
+          role="tablist"
+        >
+          <%= for tab <- @tab do %>
+            <li class="mr-2" role="presentation">
+              <button
+                class={~w[
                 inline-block p-4 border-b-2 border-transparent rounded-t-lg
                 hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300
               ]}
-              id={"#{tab.id}-tab"}
-              data-tabs-target={"##{tab.id}"}
-              type="button"
-              role="tab"
-              aria-controls={tab.id}
-              aria-selected="false"
-            >
-              <%= tab.label %>
-            </button>
-          </li>
+                id={"#{tab.id}-tab"}
+                data-tabs-target={"##{tab.id}"}
+                type="button"
+                role="tab"
+                aria-controls={tab.id}
+                aria-selected="false"
+              >
+                <%= tab.label %>
+              </button>
+            </li>
+          <% end %>
+        </ul>
+      </div>
+      <div id={@id}>
+        <%= for tab <- @tab do %>
+          <div
+            class="hidden rounded-b-lg bg-gray-50 dark:bg-gray-800"
+            id={tab.id}
+            role="tabpanel"
+            aria-labelledby={"#{tab.id}-tab"}
+          >
+            <%= render_slot(tab) %>
+          </div>
         <% end %>
-      </ul>
-    </div>
-    <div id={@id}>
-      <%= for tab <- @tab do %>
-        <div
-          class="hidden p-4 rounded-lg bg-gray-50 dark:bg-gray-800"
-          id={tab.id}
-          role="tabpanel"
-          aria-labelledby={"#{tab.id}-tab"}
-        >
-          <%= render_slot(tab) %>
-        </div>
-      <% end %>
+      </div>
     </div>
     """
   end
@@ -483,7 +483,7 @@ defmodule Web.CoreComponents do
   ## Examples
 
   ```heex
-  <.intersperse :let={item}>
+  <.intersperse_blocks>
     <:separator>
       <span class="sep">|</span>
     </:separator>
@@ -499,7 +499,7 @@ defmodule Web.CoreComponents do
     <:item>
       settings
     </:item>
-  </.intersperse>
+  </.intersperse_blocks>
   ```
 
   Renders the following markup:
@@ -532,6 +532,7 @@ defmodule Web.CoreComponents do
   end
 
   attr :type, :string, default: "default"
+  attr :rest, :global
   slot :inner_block, required: true
 
   def badge(assigns) do
@@ -546,7 +547,7 @@ defmodule Web.CoreComponents do
     assigns = assign(assigns, colors: colors)
 
     ~H"""
-    <span class={"text-xs font-medium mr-2 px-2.5 py-0.5 rounded #{@colors[@type]}"}>
+    <span class={"text-xs font-medium mr-2 px-2.5 py-0.5 rounded #{@colors[@type]}"} {@rest}>
       <%= render_slot(@inner_block) %>
     </span>
     """
@@ -580,6 +581,29 @@ defmodule Web.CoreComponents do
     <span title={@datetime}>
       <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to) %>
     </span>
+    """
+  end
+
+  @doc """
+  Renders online or offline status using an `online?` field of the schema.
+  """
+  attr :schema, :any, required: true
+
+  def connection_status(assigns) do
+    assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
+
+    ~H"""
+    <.badge
+      type={if @schema.online?, do: "success", else: "danger"}
+      title={
+        if @schema.last_seen_at,
+          do:
+            "Last seen #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Web.CLDR, relative_to: @relative_to)}",
+          else: "Never connected"
+      }
+    >
+      <%= if @schema.online?, do: "Online", else: "Offline" %>
+    </.badge>
     """
   end
 

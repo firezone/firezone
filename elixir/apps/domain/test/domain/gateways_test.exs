@@ -404,7 +404,15 @@ defmodule Domain.GatewaysTest do
       assert fetch_gateway_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Gateways.Authorizer.manage_gateways_permission(),
+                        Gateways.Authorizer.connect_gateways_permission()
+                      ]}
+                   ]
+                 ]}}
     end
 
     # TODO: add a test that soft-deleted assocs are not preloaded
@@ -435,12 +443,21 @@ defmodule Domain.GatewaysTest do
       account: account,
       subject: subject
     } do
-      GatewaysFixtures.create_gateway(account: account)
-      GatewaysFixtures.create_gateway(account: account)
+      offline_gateway = GatewaysFixtures.create_gateway(account: account)
+      online_gateway = GatewaysFixtures.create_gateway(account: account)
+      :ok = connect_gateway(online_gateway)
       GatewaysFixtures.create_gateway()
 
       assert {:ok, gateways} = list_gateways(subject)
       assert length(gateways) == 2
+
+      online_gateway_id = online_gateway.id
+      offline_gateway_id = offline_gateway.id
+
+      assert %{
+               true: [%{id: ^online_gateway_id}],
+               false: [%{id: ^offline_gateway_id}]
+             } = Enum.group_by(gateways, & &1.online?)
     end
 
     test "returns error when subject has no permission to manage gateways", %{
@@ -462,8 +479,8 @@ defmodule Domain.GatewaysTest do
       {:ok, gateways} = list_gateways(subject, preload: [:group, :account])
       assert length(gateways) == 2
 
-      assert Enum.all?(gateways, fn g -> Ecto.assoc_loaded?(g.group) end) == true
-      assert Enum.all?(gateways, fn g -> Ecto.assoc_loaded?(g.account) end) == true
+      assert Enum.all?(gateways, &Ecto.assoc_loaded?(&1.group))
+      assert Enum.all?(gateways, &Ecto.assoc_loaded?(&1.account))
     end
   end
 
@@ -503,6 +520,37 @@ defmodule Domain.GatewaysTest do
       assert connect_gateway(gateway) == :ok
 
       assert list_connected_gateways_for_resource(resource) == {:ok, []}
+    end
+  end
+
+  describe "gateway_can_connect_to_resource?/2" do
+    test "returns true when gateway can connect to resource", %{account: account} do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+      :ok = connect_gateway(gateway)
+
+      resource =
+        ResourcesFixtures.create_resource(
+          account: account,
+          gateway_groups: [%{gateway_group_id: gateway.group_id}]
+        )
+
+      assert gateway_can_connect_to_resource?(gateway, resource)
+    end
+
+    test "returns false when gateway cannot connect to resource", %{account: account} do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+      :ok = connect_gateway(gateway)
+
+      resource = ResourcesFixtures.create_resource(account: account)
+
+      refute gateway_can_connect_to_resource?(gateway, resource)
+    end
+
+    test "returns false when gateway is offline", %{account: account} do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+      resource = ResourcesFixtures.create_resource(account: account)
+
+      refute gateway_can_connect_to_resource?(gateway, resource)
     end
   end
 
@@ -746,6 +794,37 @@ defmodule Domain.GatewaysTest do
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+    end
+  end
+
+  describe "load_balance_gateways/1" do
+    test "returns random gateway" do
+      gateways = Enum.map(1..10, fn _ -> GatewaysFixtures.create_gateway() end)
+      assert Enum.member?(gateways, load_balance_gateways(gateways))
+    end
+  end
+
+  describe "load_balance_gateways/2" do
+    test "returns random gateway if no gateways are already connected" do
+      gateways = Enum.map(1..10, fn _ -> GatewaysFixtures.create_gateway() end)
+      assert Enum.member?(gateways, load_balance_gateways(gateways, []))
+    end
+
+    test "reuses gateway that is already connected to reduce the latency" do
+      gateways = Enum.map(1..10, fn _ -> GatewaysFixtures.create_gateway() end)
+      [connected_gateway | _] = gateways
+
+      assert load_balance_gateways(gateways, [connected_gateway.id]) == connected_gateway
+    end
+
+    test "returns random gateway from the connected ones" do
+      gateways = Enum.map(1..10, fn _ -> GatewaysFixtures.create_gateway() end)
+      [connected_gateway1, connected_gateway2 | _] = gateways
+
+      assert load_balance_gateways(gateways, [connected_gateway1.id, connected_gateway2.id]) in [
+               connected_gateway1,
+               connected_gateway2
+             ]
     end
   end
 

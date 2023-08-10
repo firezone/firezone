@@ -1,50 +1,72 @@
-defmodule Web.Gateways.Index do
+defmodule Web.GatewayGroups.Index do
   use Web, :live_view
-
   alias Domain.Gateways
-  alias Domain.Resources
 
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
-    {:ok, gateways} = Gateways.list_gateways(subject, preload: :group)
 
-    {_, resources} =
-      Enum.map_reduce(gateways, %{}, fn g, acc ->
-        {:ok, count} = Resources.count_resources_for_gateway(g, subject)
-        {count, Map.put(acc, g.id, count)}
-      end)
+    with {:ok, groups} <-
+           Gateways.list_groups(subject, preload: [:gateways, connections: [:resource]]) do
+      :ok = Gateways.subscribe_for_gateways_presence_in_account(socket.assigns.account)
+      {:ok, assign(socket, groups: groups)}
+    end
+  end
 
-    grouped_gateways = Enum.group_by(gateways, fn g -> g.group end)
-
-    socket =
-      assign(socket,
-        grouped_gateways: grouped_gateways,
-        resources: resources
-      )
-
-    {:ok, socket}
+  def handle_info(%Phoenix.Socket.Broadcast{topic: "gateways:" <> _account_id}, socket) do
+    subject = socket.assigns.subject
+    {:ok, groups} = Gateways.list_groups(subject, preload: [:gateways, connections: [:resource]])
+    {:noreply, assign(socket, groups: groups)}
   end
 
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
-      <.breadcrumb path={~p"/#{@account}/gateways"}>Gateways</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/gateway_groups"}>Gateway Instance Groups</.breadcrumb>
     </.breadcrumbs>
     <.header>
       <:title>
         All gateways
       </:title>
       <:actions>
-        <.add_button navigate={~p"/#{@account}/gateways/new"}>
+        <.add_button navigate={~p"/#{@account}/gateway_groups/new"}>
           Add Instance Group
         </.add_button>
       </:actions>
     </.header>
     <!-- Gateways Table -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.resource_filter />
-      <.table_with_groups id="grouped-gateways" rows={@grouped_gateways} row_id={&"gateway-#{&1.id}"}>
-        <:col label="INSTANCE GROUP"></:col>
+      <!--<.resource_filter />-->
+      <.table_with_groups
+        id="grouped-gateways"
+        groups={@groups}
+        group_items={& &1.gateways}
+        row_id={&"gateway-#{&1.id}"}
+      >
+        <:group :let={group}>
+          <.link
+            navigate={~p"/#{@account}/gateway_groups/#{group.id}"}
+            class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
+          >
+            <%= group.name_prefix %>
+          </.link>
+          <%= if not Enum.empty?(group.tags), do: "(" <> Enum.join(group.tags, ", ") <> ")" %>
+
+          <div class="font-light flex">
+            <span class="pr-1 inline-block">Resources:</span>
+            <.intersperse_blocks>
+              <:separator><span class="pr-1">,</span></:separator>
+
+              <:item :for={connection <- group.connections}>
+                <.link
+                  navigate={~p"/#{@account}/resources/#{connection.resource}"}
+                  class="font-medium text-blue-600 dark:text-blue-500 hover:underline inline-block"
+                  phx-no-format
+                ><%= connection.resource.name %></.link>
+              </:item>
+            </.intersperse_blocks>
+          </div>
+        </:group>
+
         <:col :let={gateway} label="INSTANCE">
           <.link
             navigate={~p"/#{@account}/gateways/#{gateway.id}"}
@@ -61,39 +83,17 @@ defmodule Web.Gateways.Index do
             <%= gateway.ipv6 %>
           </code>
         </:col>
-        <:col :let={gateway} label="RESOURCES">
-          <.badge>
-            <%= @resources[gateway.id] || "0" %>
-          </.badge>
+
+        <:col :let={gateway} label="STATUS">
+          <.connection_status schema={gateway} />
         </:col>
-        <:col :let={_gateway} label="STATUS">
-          <.badge type="success">
-            TODO: Online
-          </.badge>
-        </:col>
-        <:action :let={gateway}>
-          <.link
-            navigate={~p"/#{@account}/gateways/#{gateway.id}"}
-            class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-          >
-            Show
-          </.link>
-        </:action>
-        <:action :let={_gateway}>
-          <a
-            href="#"
-            class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-          >
-            Delete
-          </a>
-        </:action>
       </.table_with_groups>
-      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/gateways"} />
+      <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/gateway_groups"} />-->
     </div>
     """
   end
 
-  defp resource_filter(assigns) do
+  def resource_filter(assigns) do
     ~H"""
     <div class="flex flex-col md:flex-row items-center justify-between space-y-3 md:space-y-0 md:space-x-4 p-4">
       <div class="w-full md:w-1/2">

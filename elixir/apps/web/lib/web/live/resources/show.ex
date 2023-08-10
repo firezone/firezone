@@ -5,13 +5,11 @@ defmodule Web.Resources.Show do
 
   def mount(%{"id" => id} = _params, _session, socket) do
     {:ok, resource} =
-      Resources.fetch_resource_by_id(id, socket.assigns.subject, preload: :gateway_groups)
+      Resources.fetch_resource_by_id(id, socket.assigns.subject,
+        preload: [:gateway_groups, created_by_identity: [:actor]]
+      )
 
     {:ok, assign(socket, resource: resource)}
-  end
-
-  defp pretty_print_date(date) do
-    "#{date.month}/#{date.day}/#{date.year} #{date.hour}:#{date.minute}:#{date.second}"
   end
 
   defp pretty_print_filter(filter) do
@@ -69,15 +67,17 @@ defmodule Web.Resources.Show do
         </.vertical_table_row>
         <.vertical_table_row>
           <:label>
-            Traffic restriction
+            Traffic Filtering Rules
           </:label>
           <:value>
-            <%= for filter <- @resource.filters do %>
+            <div :if={@resource.filters == []} %>
+              No traffic filtering rules
+            </div>
+            <div :for={filter <- @resource.filters} :if={@resource.filters != []} %>
               <code>
                 <%= pretty_print_filter(filter) %>
               </code>
-              <br />
-            <% end %>
+            </div>
           </:value>
         </.vertical_table_row>
         <.vertical_table_row>
@@ -85,15 +85,7 @@ defmodule Web.Resources.Show do
             Created
           </:label>
           <:value>
-            <%= pretty_print_date(@resource.inserted_at) %> by
-            (TODO:
-            <.link
-              class="text-blue-600 hover:underline"
-              navigate={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
-            >
-              Andrew Dryga
-            </.link>
-            )
+            <.datetime datetime={@resource.inserted_at} /> by <.owner schema={@resource} />
           </:value>
         </.vertical_table_row>
       </.vertical_table>
@@ -110,14 +102,11 @@ defmodule Web.Resources.Show do
       <.table id="gateway_instance_groups" rows={@resource.gateway_groups}>
         <:col :let={gateway_group} label="NAME">
           <.link
-            navigate={~p"/#{@account}/gateways"}
+            navigate={~p"/#{@account}/gateway_groups"}
             class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
           >
             <%= gateway_group.name_prefix %>
           </.link>
-        </:col>
-        <:col :let={_gateway_group} label="Status">
-          <.badge type="success">TODO: Online</.badge>
         </:col>
       </.table>
     </div>

@@ -6,12 +6,12 @@ defmodule Domain.Actors.Actor do
 
     field :name, :string
 
-    has_many :identities, Domain.Auth.Identity
+    has_many :identities, Domain.Auth.Identity, where: [deleted_at: nil]
 
     belongs_to :account, Domain.Accounts.Account
 
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
-    has_many :groups, through: [:memberships, :group]
+    has_many :groups, through: [:memberships, :group], where: [deleted_at: nil]
 
     field :disabled_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec

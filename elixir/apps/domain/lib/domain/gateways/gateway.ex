@@ -16,6 +16,8 @@ defmodule Domain.Gateways.Gateway do
     field :last_seen_version, :string
     field :last_seen_at, :utc_datetime_usec
 
+    field :online?, :boolean, virtual: true
+
     belongs_to :account, Domain.Accounts.Account
     belongs_to :group, Domain.Gateways.Group
     belongs_to :token, Domain.Gateways.Token

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tracing::instrument;
 
 use libs_common::{
-    messages::{Id, Key, Relay, RequestConnection, ResourceDescription},
+    messages::{Id, Key, Relay, RequestConnection, ResourceDescription, ReuseConnection},
     Callbacks, Error, Result,
 };
 use rand_core::OsRng;
@@ -24,6 +24,13 @@ use crate::{peer::Peer, ControlSignal, PeerConfig, Tunnel};
 
 mod candidate_parser;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
+pub enum Request {
+    NewConnection(RequestConnection),
+    ReuseConnection(ReuseConnection),
+}
+
 impl<C, CB> Tunnel<C, CB>
 where
     C: ControlSignal + Send + Sync + 'static,
@@ -35,9 +42,8 @@ where
         data_channel: Arc<RTCDataChannel>,
         index: u32,
         peer_config: PeerConfig,
-        expires_at: Option<DateTime<Utc>>,
         conn_id: Id,
-        resources: Option<ResourceDescription>,
+        resources: Option<(ResourceDescription, DateTime<Utc>)>,
     ) -> Result<()> {
         tracing::trace!(
             "New datachannel opened for peer with ips: {:?}",
@@ -58,13 +64,21 @@ where
             index,
             &peer_config,
             channel,
-            expires_at,
             conn_id,
             resources,
         ));
 
         {
+            // Watch out! we need 2 locks, make sure you don't lock both at the same time anywhere else
+            let mut gateway_awaiting_connection = self.gateway_awaiting_connection.lock();
             let mut peers_by_ip = self.peers_by_ip.write();
+            // In the gateway this will always be none, no harm done
+            if let Some(awaiting_ips) = gateway_awaiting_connection.remove(&conn_id) {
+                for ip in awaiting_ips {
+                    peer.add_allowed_ip(ip);
+                    peers_by_ip.insert(ip, Arc::clone(&peer));
+                }
+            }
             for ip in peer_config.ips {
                 peers_by_ip.insert(ip, Arc::clone(&peer));
             }
@@ -149,8 +163,47 @@ where
     pub async fn request_connection(
         self: &Arc<Self>,
         resource_id: Id,
+        gateway_id: Id,
         relays: Vec<Relay>,
-    ) -> Result<RequestConnection> {
+    ) -> Result<Request> {
+        self.resources_gateways
+            .lock()
+            .insert(resource_id, gateway_id);
+        let resource_description = self
+            .resources
+            .read()
+            .get_by_id(&resource_id)
+            .ok_or(Error::UnknownResource)?
+            .clone();
+        {
+            let mut gateway_awaiting_connection = self.gateway_awaiting_connection.lock();
+            if let Some(g) = gateway_awaiting_connection.get_mut(&gateway_id) {
+                g.extend(resource_description.ips());
+                return Ok(Request::ReuseConnection(ReuseConnection {
+                    resource_id,
+                    gateway_id,
+                }));
+            } else {
+                gateway_awaiting_connection.insert(gateway_id, vec![]);
+            }
+        }
+        {
+            let mut peers_by_ip = self.peers_by_ip.write();
+            let peer = peers_by_ip
+                .iter()
+                .find_map(|(_, p)| (p.conn_id == gateway_id).then_some(p))
+                .cloned();
+            if let Some(peer) = peer {
+                for ip in resource_description.ips() {
+                    peer.add_allowed_ip(ip);
+                    peers_by_ip.insert(ip, Arc::clone(&peer));
+                }
+                return Ok(Request::ReuseConnection(ReuseConnection {
+                    resource_id,
+                    gateway_id,
+                }));
+            }
+        }
         let peer_connection = self.initialize_peer_request(relays).await?;
         self.set_connection_state_update(&peer_connection);
 
@@ -161,17 +214,11 @@ where
 
         let preshared_key = StaticSecret::random_from_rng(OsRng);
         let p_key = preshared_key.clone();
-        let resource_description = tunnel
-            .resources
-            .read()
-            .get_by_id(&resource_id)
-            .expect("TODO")
-            .clone();
         data_channel.on_open(Box::new(move || {
-            tracing::trace!("new data channel opened!");
             Box::pin(async move {
+            tracing::trace!("new data channel opened!");
                 let index = tunnel.next_index();
-                let Some(gateway_public_key) = tunnel.gateway_public_keys.lock().remove(&resource_id) else {
+                let Some(gateway_public_key) = tunnel.gateway_public_keys.lock().remove(&gateway_id) else {
                     tunnel.cleanup_connection(resource_id);
                     tracing::warn!("Opened ICE channel with gateway without ever receiving public key");
                     let _ = tunnel.callbacks.on_error(&Error::ControlProtocolError);
@@ -184,7 +231,7 @@ where
                     preshared_key: p_key,
                 };
 
-                if let Err(e) = tunnel.handle_channel_open(d, index, peer_config, None, resource_id, None).await {
+                if let Err(e) = tunnel.handle_channel_open(d, index, peer_config, gateway_id, None).await {
                     tracing::error!("Couldn't establish wireguard link after channel was opened: {e}");
                     let _ = tunnel.callbacks.on_error(&e);
                     tunnel.cleanup_connection(resource_id);
@@ -207,13 +254,14 @@ where
 
         self.peer_connections
             .lock()
-            .insert(resource_id, peer_connection);
+            .insert(gateway_id, peer_connection);
 
-        Ok(RequestConnection {
+        Ok(Request::NewConnection(RequestConnection {
             resource_id,
+            gateway_id,
             device_preshared_key: Key(preshared_key.to_bytes()),
             device_rtc_session_description: local_description,
-        })
+        }))
     }
 
     /// Called when a response to [Tunnel::request_connection] is ready.
@@ -231,15 +279,21 @@ where
         mut rtc_sdp: RTCSessionDescription,
         gateway_public_key: PublicKey,
     ) -> Result<()> {
+        let gateway_id = *self
+            .resources_gateways
+            .lock()
+            .get(&resource_id)
+            .ok_or(Error::UnknownResource)?;
         let peer_connection = self
             .peer_connections
             .lock()
-            .get(&resource_id)
+            .get(&gateway_id)
             .ok_or(Error::UnknownResource)?
             .clone();
         self.gateway_public_keys
             .lock()
-            .insert(resource_id, gateway_public_key);
+            .insert(gateway_id, gateway_public_key);
+
         let mut sdp = rtc_sdp.unmarshal()?;
 
         // We don't want to allow tunnel-over-tunnel as it leads to some weirdness
@@ -248,6 +302,7 @@ where
         for m in sdp.media_descriptions.iter_mut() {
             self.sdp_remove_resource_attributes(&mut m.attributes);
         }
+
         rtc_sdp.sdp = sdp.marshal();
 
         peer_connection.set_remote_description(rtc_sdp).await?;
@@ -315,9 +370,8 @@ where
                                 data_channel,
                                 index,
                                 peer,
-                                Some(expires_at),
                                 client_id,
-                                Some(resource),
+                                Some((resource, expires_at)),
                             )
                             .await
                         {
@@ -353,6 +407,22 @@ where
             .ok_or(Error::ConnectionEstablishError)?;
 
         Ok(local_desc)
+    }
+
+    pub fn allow_access(
+        &self,
+        resource: ResourceDescription,
+        client_id: Id,
+        expires_at: DateTime<Utc>,
+    ) {
+        if let Some(peer) = self
+            .peers_by_ip
+            .write()
+            .iter_mut()
+            .find_map(|(_, p)| (p.conn_id == client_id).then_some(p))
+        {
+            peer.add_resource(resource, expires_at);
+        }
     }
 
     /// Clean up a connection to a resource.

@@ -60,7 +60,7 @@ defmodule Web.Policies.Index do
           </a>
         </:action>
       </.table>
-      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/gateways"} />
+      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/gateway_groups"} />
     </div>
     """
   end

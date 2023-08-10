@@ -3,6 +3,7 @@ defmodule Domain.Gateways.Authorizer do
   alias Domain.Gateways.{Gateway, Group}
 
   def manage_gateways_permission, do: build(Gateway, :manage)
+  def connect_gateways_permission, do: build(Gateway, :connect)
 
   @impl Domain.Auth.Authorizer
 
@@ -13,12 +14,18 @@ defmodule Domain.Gateways.Authorizer do
   end
 
   def list_permissions_for_role(_) do
-    []
+    [
+      connect_gateways_permission()
+    ]
   end
 
   @impl Domain.Auth.Authorizer
   def for_subject(queryable, %Subject{} = subject) do
     cond do
+      has_permission?(subject, connect_gateways_permission()) ->
+        # TODO: evaluate the resource policy for the subject
+        by_account_id(queryable, subject)
+
       has_permission?(subject, manage_gateways_permission()) ->
         by_account_id(queryable, subject)
     end

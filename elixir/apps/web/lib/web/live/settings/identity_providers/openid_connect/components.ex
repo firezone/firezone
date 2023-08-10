@@ -13,7 +13,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
           <.code_block
             :for={scope <- [:openid, :email, :profile]}
             id={"scope-#{scope}"}
-            class="w-full mb-4 whitespace-nowrap"
+            class="w-full mb-4 whitespace-nowrap rounded-lg"
           >
             <%= scope %>
           </.code_block>
@@ -29,7 +29,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
               ]
             }
             id={"redirect_url-#{type}"}
-            class="w-full mb-4 whitespace-nowrap"
+            class="w-full mb-4 whitespace-nowrap rounded-lg"
           >
             <%= redirect_url %>
           </.code_block>

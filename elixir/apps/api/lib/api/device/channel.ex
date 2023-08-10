@@ -21,6 +21,7 @@ defmodule API.Device.Channel do
   @impl true
   def handle_info(:after_join, socket) do
     API.Endpoint.subscribe("device:#{socket.assigns.device.id}")
+    :ok = Devices.connect_device(socket.assigns.device)
 
     {:ok, resources} = Domain.Resources.list_resources(socket.assigns.subject)
 
@@ -30,8 +31,6 @@ defmodule API.Device.Channel do
         interface: Views.Interface.render(socket.assigns.device)
       })
 
-    :ok = Devices.connect_device(socket.assigns.device)
-
     {:noreply, socket}
   end
 
@@ -40,6 +39,8 @@ defmodule API.Device.Channel do
     {:stop, :token_expired, socket}
   end
 
+  # This message is sent by the gateway when it is ready
+  # to accept the connection from the device
   def handle_info(
         {:connect, socket_ref, resource_id, gateway_public_key, rtc_session_description},
         socket
@@ -80,15 +81,23 @@ defmodule API.Device.Channel do
   end
 
   @impl true
-  def handle_in("list_relays", %{"resource_id" => resource_id}, socket) do
+  def handle_in("prepare_connection", %{"resource_id" => resource_id} = attrs, socket) do
+    connected_gateway_ids = Map.get(attrs, "connected_gateway_ids", [])
+
     with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject),
          # :ok = Resource.authorize(resource, socket.assigns.subject),
+         {:ok, [_ | _] = gateways} <-
+           Gateways.list_connected_gateways_for_resource(resource),
          {:ok, [_ | _] = relays} <- Relays.list_connected_relays_for_resource(resource) do
+      gateway = Gateways.load_balance_gateways(gateways, connected_gateway_ids)
+
       reply =
         {:ok,
          %{
            relays: Views.Relay.render_many(relays, socket.assigns.subject.expires_at),
-           resource_id: resource_id
+           resource_id: resource_id,
+           gateway_id: gateway.id,
+           gateway_remote_ip: gateway.last_seen_remote_ip
          }}
 
       {:reply, reply, socket}
@@ -98,9 +107,43 @@ defmodule API.Device.Channel do
     end
   end
 
+  # This message is sent by the device when it already has connection to a gateway,
+  # but wants to connect to a new resource
+  def handle_in(
+        "reuse_connection",
+        %{
+          "gateway_id" => gateway_id,
+          "resource_id" => resource_id
+        },
+        socket
+      ) do
+    with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject),
+         #  :ok = Resource.authorize(resource, socket.assigns.subject),
+         {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
+         true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
+      :ok =
+        API.Gateway.Channel.broadcast(
+          gateway,
+          {:allow_access,
+           %{
+             device_id: socket.assigns.device.id,
+             resource_id: resource.id,
+             authorization_expires_at: socket.assigns.subject.expires_at
+           }}
+        )
+
+      {:noreply, socket}
+    else
+      {:error, :not_found} -> {:reply, {:error, :not_found}, socket}
+      false -> {:reply, {:error, :offline}, socket}
+    end
+  end
+
+  # This message is sent by the device when it wants to connect to a new gateway
   def handle_in(
         "request_connection",
         %{
+          "gateway_id" => gateway_id,
           "resource_id" => resource_id,
           "device_rtc_session_description" => device_rtc_session_description,
           "device_preshared_key" => preshared_key
@@ -109,17 +152,15 @@ defmodule API.Device.Channel do
       ) do
     with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject),
          #  :ok = Resource.authorize(resource, socket.assigns.subject),
-         {:ok, [_ | _] = gateways} <-
-           Gateways.list_connected_gateways_for_resource(resource) do
-      gateway = Enum.random(gateways)
-
+         {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
+         true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
       :ok =
         API.Gateway.Channel.broadcast(
           gateway,
           {:request_connection, {self(), socket_ref(socket)},
            %{
              device_id: socket.assigns.device.id,
-             resource_id: resource_id,
+             resource_id: resource.id,
              authorization_expires_at: socket.assigns.subject.expires_at,
              device_rtc_session_description: device_rtc_session_description,
              device_preshared_key: preshared_key
@@ -129,7 +170,7 @@ defmodule API.Device.Channel do
       {:noreply, socket}
     else
       {:error, :not_found} -> {:reply, {:error, :not_found}, socket}
-      {:ok, []} -> {:reply, {:error, :offline}, socket}
+      false -> {:reply, {:error, :offline}, socket}
     end
   end
 end

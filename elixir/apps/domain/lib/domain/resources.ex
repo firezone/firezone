@@ -1,7 +1,7 @@
 defmodule Domain.Resources do
   alias Domain.{Repo, Validator, Auth}
   alias Domain.Gateways
-  alias Domain.Resources.{Authorizer, Resource}
+  alias Domain.Resources.{Authorizer, Resource, Connection}
 
   def fetch_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     {preload, _opts} = Keyword.pop(opts, :preload, [])
@@ -182,5 +182,14 @@ defmodule Domain.Resources do
           {:error, reason}
       end
     end
+  end
+
+  def connected?(
+        %Resource{account_id: account_id} = resource,
+        %Gateways.Gateway{account_id: account_id} = gateway
+      ) do
+    Connection.Query.by_resource_id(resource.id)
+    |> Connection.Query.by_gateway_group_id(gateway.group_id)
+    |> Repo.exists?()
   end
 end

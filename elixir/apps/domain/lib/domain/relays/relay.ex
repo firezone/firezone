@@ -14,6 +14,8 @@ defmodule Domain.Relays.Relay do
 
     field :stamp_secret, :string, virtual: true
 
+    field :online?, :boolean, virtual: true
+
     belongs_to :account, Domain.Accounts.Account
     belongs_to :group, Domain.Relays.Group
     belongs_to :token, Domain.Relays.Token

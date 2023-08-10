@@ -15,10 +15,20 @@ maybe_repo_update = fn resource, values ->
   end
 end
 
-{:ok, account} = Accounts.create_account(%{name: "Firezone Account"})
+{:ok, account} =
+  Accounts.create_account(%{
+    name: "Firezone Account",
+    slug: "firezone"
+  })
+
 account = maybe_repo_update.(account, id: "c89bcc8c-9392-4dae-a40d-888aef6d28e0")
 
-{:ok, other_account} = Accounts.create_account(%{name: "Other Corp Account"})
+{:ok, other_account} =
+  Accounts.create_account(%{
+    name: "Other Corp Account",
+    slug: "not-firezone"
+  })
+
 other_account = maybe_repo_update.(other_account, id: "9b9290bf-e1bc-4dd3-b401-511908262690")
 
 IO.puts("Created accounts: ")
@@ -31,8 +41,15 @@ IO.puts("")
 
 {:ok, email_provider} =
   Auth.create_provider(account, %{
-    name: "email",
+    name: "Email",
     adapter: :email,
+    adapter_config: %{}
+  })
+
+{:ok, token_provider} =
+  Auth.create_provider(account, %{
+    name: "Token",
+    adapter: :token,
     adapter_config: %{}
   })
 
@@ -85,6 +102,15 @@ admin_actor_email = "firezone@localhost"
     name: "Firezone Admin"
   })
 
+{:ok, service_account_actor} =
+  Actors.create_actor(token_provider, "backup-manager", %{
+    "type" => :service_account,
+    "name" => "Backup Manager",
+    "provider" => %{
+      expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
+    }
+  })
+
 {:ok, unprivileged_actor_userpass_identity} =
   Auth.create_identity(unprivileged_actor, userpass_provider, unprivileged_actor_email, %{
     "password" => "Firezone1234",
@@ -118,7 +144,7 @@ other_admin_actor_email = "other@localhost"
     name: "Other Admin"
   })
 
-{:ok, other_unprivileged_actor_userpass_identity} =
+{:ok, _other_unprivileged_actor_userpass_identity} =
   Auth.create_identity(
     other_unprivileged_actor,
     other_userpass_provider,
@@ -134,33 +160,6 @@ other_admin_actor_email = "other@localhost"
     "password" => "Firezone1234",
     "password_confirmation" => "Firezone1234"
   })
-
-if client_secret = System.get_env("SEEDS_GOOGLE_OIDC_CLIENT_SECRET") do
-  {:ok, google_provider} =
-    Auth.create_provider(account, %{
-      name: "Google Workspace",
-      adapter: :google_workspace,
-      adapter_config: %{
-        "client_id" =>
-          "1064313638613-0bttveunfv27l72s3h6th13kk16pj9l1.apps.googleusercontent.com",
-        "client_secret" => client_secret
-      }
-    })
-
-  google_provider =
-    Ecto.Changeset.change(google_provider, id: "8614a622-6c24-48aa-b1a4-2c6c04b6cbab")
-    |> Repo.update!()
-
-  google_workspace_uid = System.get_env("SEEDS_GOOGLE_WORKSPACE_USER_ID")
-
-  {:ok, _admin_actor_google_workspace_identity} =
-    Auth.create_identity(admin_actor, google_provider, google_workspace_uid, %{})
-
-  IO.puts("")
-  IO.puts("Google Workspace provider: #{google_provider.id}")
-  IO.puts("               User ID: #{google_workspace_uid}")
-  IO.puts("")
-end
 
 unprivileged_actor_token = hd(unprivileged_actor.identities).provider_virtual_state.sign_in_token
 admin_actor_token = hd(admin_actor.identities).provider_virtual_state.sign_in_token
@@ -191,9 +190,16 @@ for {type, login, password, email_token} <- [
   IO.puts("  #{login}, #{type}, password: #{password}, email token: #{email_token} (exp in 15m)")
 end
 
+service_account_identity = hd(service_account_actor.identities)
+service_account_token = service_account_identity.provider_virtual_state.secret
+
+IO.puts(
+  "  #{service_account_identity.provider_identifier}, #{service_account_actor.type}, token: #{service_account_token}"
+)
+
 IO.puts("")
 
-user_iphone =
+_user_iphone =
   Domain.Devices.upsert_device(
     %{
       name: "FZ User iPhone",
@@ -204,7 +210,7 @@ user_iphone =
     unprivileged_subject
   )
 
-admin_iphone =
+_admin_iphone =
   Domain.Devices.upsert_device(
     %{
       name: "FZ Admin iPhone",
@@ -291,7 +297,7 @@ IO.puts("")
 gateway_group =
   account
   |> Gateways.Group.Changeset.create_changeset(
-    %{name_prefix: "mycro-aws-gws", tokens: [%{}]},
+    %{name_prefix: "mycro-aws-gws", tags: ["aws", "in-da-cloud"], tokens: [%{}]},
     admin_subject
   )
   |> Repo.insert!()

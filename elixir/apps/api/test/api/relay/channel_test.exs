@@ -34,7 +34,7 @@ defmodule API.Relay.ChannelTest do
         |> socket("relay:#{relay.id}", %{relay: relay})
         |> subscribe_and_join(API.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
 
-      presence = Domain.Relays.Presence.list("relays:")
+      presence = Domain.Relays.Presence.list("relays")
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
       assert is_number(online_at)

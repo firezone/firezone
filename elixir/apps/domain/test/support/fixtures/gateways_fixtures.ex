@@ -109,7 +109,7 @@ defmodule Domain.GatewaysFixtures do
     attrs = gateway_attrs(attrs)
 
     {:ok, gateway} = Gateways.upsert_gateway(token, attrs)
-    gateway
+    %{gateway | online?: false}
   end
 
   def delete_gateway(gateway) do
