@@ -7,7 +7,6 @@
 import AuthenticationServices
 import Combine
 import Dependencies
-import JWTDecode
 import SwiftUI
 import XCTestDynamicOverlay
 

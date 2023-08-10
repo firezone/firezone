@@ -7,7 +7,6 @@
 import AuthenticationServices
 import Dependencies
 import Foundation
-import JWTDecode
 
 enum AuthClientError: Error {
   case invalidCallbackURL(URL?)
