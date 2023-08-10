@@ -19,7 +19,7 @@ use super::InterfaceConfig;
 #[derive(Debug)]
 pub(crate) struct IfaceConfig(pub(crate) Arc<IfaceDevice>);
 
-const IFACE_NAME: String = "tun-firezone".to_string();
+const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: u64 = 0x4004_54ca;
 const TUN_FILE: &[u8] = b"/dev/net/tun\0";
 const RT_PROT_STATIC: u8 = 4;
@@ -79,9 +79,7 @@ impl IfaceDevice {
     }
 
     pub async fn new() -> Result<IfaceDevice> {
-        let iface_name = IFACE_NAME.as_bytes();
-
-        debug_assert!(iface_name.len() < IFNAMSIZ);
+        debug_assert!(IFACE_NAME.as_bytes().len() < IFNAMSIZ);
 
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
             -1 => return Err(get_last_error()),
@@ -95,7 +93,7 @@ impl IfaceDevice {
             },
         };
 
-        ifr.ifr_name[..iface_name.len()].copy_from_slice(&iface_name);
+        ifr.ifr_name[..IFACE_NAME.as_bytes().len()].copy_from_slice(IFACE_NAME.as_bytes());
 
         if unsafe { ioctl(fd, TUNSETIFF as _, &ifr) } < 0 {
             return Err(get_last_error());
@@ -106,7 +104,7 @@ impl IfaceDevice {
         let interface_index = handle
             .link()
             .get()
-            .match_name(IFACE_NAME.clone())
+            .match_name(IFACE_NAME.to_string())
             .execute()
             .try_next()
             .await?
