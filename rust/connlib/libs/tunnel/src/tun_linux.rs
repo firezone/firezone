@@ -79,6 +79,10 @@ impl IfaceDevice {
     }
 
     pub async fn new() -> Result<IfaceDevice> {
+        let iface_name = IFACE_NAME.as_bytes();
+
+        debug_assert!(iface_name.len() < IFNAMSIZ);
+
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
             -1 => return Err(get_last_error()),
             fd => fd,
@@ -91,9 +95,7 @@ impl IfaceDevice {
             },
         };
 
-        debug_assert!(IFACE_NAME.len() < ifr.ifr_name.len());
-
-        ifr.ifr_name[..IFACE_NAME.len()].copy_from_slice(&IFACE_NAME);
+        ifr.ifr_name[..iface_name.len()].copy_from_slice(&iface_name);
 
         if unsafe { ioctl(fd, TUNSETIFF as _, &ifr) } < 0 {
             return Err(get_last_error());
