@@ -11,12 +11,12 @@ import JWTDecode
 
 enum AuthClientError: Error {
   case invalidCallbackURL(URL?)
-  case jwtDecoderFailure(Error)
+  case authResponseError(Error)
   case sessionFailure(Error)
 }
 
 struct AuthClient: Sendable {
-  var signIn: @Sendable (URL) async throws -> Token
+  var signIn: @Sendable (URL) async throws -> AuthResponse
 }
 
 extension AuthClient: DependencyKey {
@@ -41,7 +41,7 @@ private final class WebAuthenticationSession: NSObject,
   ASWebAuthenticationPresentationContextProviding
 {
   @MainActor
-  func signIn(_ host: URL) async throws -> Token {
+  func signIn(_ host: URL) async throws -> AuthResponse {
     try await withCheckedThrowingContinuation { continuation in
       let callbackURLScheme = "firezone"
       let session = ASWebAuthenticationSession(
@@ -61,7 +61,7 @@ private final class WebAuthenticationSession: NSObject,
         }
 
         guard
-          let jwt = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
+          let token = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
           .queryItems?
           .first(where: { $0.name == "client_auth_token" })?
           .value
@@ -69,12 +69,22 @@ private final class WebAuthenticationSession: NSObject,
           continuation.resume(throwing: AuthClientError.invalidCallbackURL(callbackURL))
           return
         }
+        
+        guard
+          let actorName = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
+          .queryItems?
+          .first(where: { $0.name == "actor_name" })?
+          .value
+        else {
+          continuation.resume(throwing: AuthClientError.invalidCallbackURL(callbackURL))
+          return
+        }
 
         do {
-          let token = try Token(portalURL: host, tokenString: jwt)
-          continuation.resume(returning: token)
+          let authResponse = try AuthResponse(portalURL: host, token: token, actorName: actorName)
+          continuation.resume(returning: authResponse)
         } catch {
-          continuation.resume(throwing: AuthClientError.jwtDecoderFailure(error))
+          continuation.resume(throwing: AuthClientError.authResponseError(error))
         }
       }
 

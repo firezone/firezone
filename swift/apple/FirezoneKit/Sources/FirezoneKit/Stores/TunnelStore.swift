@@ -56,13 +56,13 @@ final class TunnelStore: ObservableObject {
     return tunnel
   }
 
-  func start(token: Token) async throws {
+  func start(authResponse: AuthResponse) async throws {
     TunnelStore.logger.trace("\(#function)")
 
     // make sure we have latest preferences before starting
     try await tunnel.loadFromPreferences()
 
-    tunnel.protocolConfiguration = Self.makeProtocolConfiguration(token: token)
+    tunnel.protocolConfiguration = Self.makeProtocolConfiguration(authResponse: authResponse)
     tunnel.isEnabled = true
     try await tunnel.saveToPreferences()
 
@@ -120,16 +120,19 @@ final class TunnelStore: ObservableObject {
     return manager
   }
 
-  private static func makeProtocolConfiguration(token: Token? = nil) -> NETunnelProviderProtocol {
+  private static func makeProtocolConfiguration(authResponse: AuthResponse? = nil) -> NETunnelProviderProtocol {
     let proto = NETunnelProviderProtocol()
 
     proto.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
       "\($0).network-extension"
     }
-    if let token = token {
+    if let authResponse = authResponse {
       proto.providerConfiguration = [
-        "portalURL": token.portalURL.absoluteString,
-        "token": token.string
+        // TODO: We should really be storing the portalURL as "authURL" and "controlPlaneURL" explicitly
+        // instead of making the assumption the portalURL base is the control plane URL
+        "portalURL": authResponse.portalURL.baseURL?.absoluteString,
+        "token": authResponse.token,
+        "actorName": authResponse.actorName
       ]
     }
     proto.serverAddress = "Firezone addresses"

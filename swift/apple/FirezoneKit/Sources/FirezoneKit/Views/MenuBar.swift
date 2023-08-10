@@ -57,13 +57,13 @@ public final class MenuBar: NSObject {
     }
 
     private func setupObservers() {
-      appStore?.auth.$token
+      appStore?.auth.$authResponse
         .receive(on: mainQueue)
-        .sink { [weak self] token in
-          if let token {
-            self?.showLoggedIn(token.user)
+        .sink { [weak self] authResponse in
+          if let authResponse {
+            self?.showSignedIn(authResponse.actorName)
           } else {
-            self?.showLoggedOut()
+            self?.showSignedOut()
           }
         }
         .store(in: &cancellables)
@@ -186,18 +186,18 @@ public final class MenuBar: NSObject {
       return item
     }
 
-    private func showLoggedIn(_ user: String?) {
+    private func showSignedIn(_ user: String?) {
       if let user {
-        loginMenuItem.title = "Logged in as \(user)"
+        loginMenuItem.title = "Signed in as \(user)"
       } else {
-        loginMenuItem.title = "Logged in"
+        loginMenuItem.title = "Signed in"
       }
       loginMenuItem.target = nil
       logoutMenuItem.isHidden = false
     }
 
-    private func showLoggedOut() {
-      loginMenuItem.title = "Login"
+    private func showSignedOut() {
+      loginMenuItem.title = "Sign in"
       loginMenuItem.target = self
 
       logoutMenuItem.isHidden = true
@@ -208,9 +208,9 @@ public final class MenuBar: NSObject {
         appStore?.tunnel.stop()
       } else {
         Task {
-          if let token = appStore?.auth.token {
+          if let authResponse = appStore?.auth.authResponse {
             do {
-              try await appStore?.tunnel.start(token: token)
+              try await appStore?.tunnel.start(authResponse: authResponse)
             } catch {
               logger.error("error connecting to tunnel: \(String(describing: error))")
             }
