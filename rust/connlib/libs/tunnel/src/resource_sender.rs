@@ -19,16 +19,15 @@ where
     async fn update_and_send_packet(&self, packet: &mut [u8], dst_addr: IpAddr) {
         let Some(mut pkt) = MutableIpPacket::new(packet) else { return };
         pkt.set_dst(dst_addr);
-        pkt.set_checksum();
-        pkt.set_icmpv6_checksum();
+        pkt.update_checksum();
 
         match dst_addr {
             IpAddr::V4(addr) => {
-                tracing::trace!("Sending to packet to {addr}");
+                tracing::trace!("Sending packet to {addr}");
                 self.write4_device_infallible(packet).await;
             }
             IpAddr::V6(addr) => {
-                tracing::trace!("Sending to packet to {addr}");
+                tracing::trace!("Sending packet to {addr}");
                 self.write6_device_infallible(packet).await;
             }
         }
