@@ -99,11 +99,10 @@ impl IfaceDevice {
     // packets if we want to be allowed in the iOS and macOS App Stores. This has the
     // unfortunate side effect that we're not allowed to create or destroy the tunnel
     // interface ourselves. The file descriptor should already be opened by the NetworkExtension for us
-    // by this point. So instead, we iterate through the 1024 possible file descriptors
-    // looking for the one corresponding to the utun interface we have access to read and
-    // write from.
+    // by this point. So instead, we iterate through all file descriptors looking for the one corresponding
+    // to the utun interface we have access to read and write from.
     //
-    // Inspired heavily by WireGuard's implementation for Apple:
+    // Credit to Jason Donenfeld (@zx2c4) for figuring this out in the WireGuard Apple app:
     // https://github.com/WireGuard/wireguard-apple/blob/master/Sources/WireGuardKit/WireGuardAdapter.swift
     pub async fn new(_: Option<&str>) -> Result<Self> {
         let mut info = ctl_info {
