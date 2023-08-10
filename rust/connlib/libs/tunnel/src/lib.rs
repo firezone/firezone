@@ -559,8 +559,7 @@ where
                                     }
                                 }
 
-                                packet.set_checksum();
-                                packet.set_icmpv6_checksum();
+                                packet.update_checksum();
                             }
                             (
                                 peer.tunnel.lock().encapsulate(&src[..res], &mut dst[..]),
