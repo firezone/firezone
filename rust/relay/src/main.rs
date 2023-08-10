@@ -160,7 +160,7 @@ async fn main() -> Result<()> {
             }
         }
     } else {
-        tracing::info!("No portal token supplied, starting standalone mode");
+        tracing::warn!("No portal token supplied, starting standalone mode");
 
         None
     };
