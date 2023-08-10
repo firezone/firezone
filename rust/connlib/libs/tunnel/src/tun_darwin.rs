@@ -95,7 +95,7 @@ impl IfaceDevice {
         }
     }
 
-    pub async fn new(_: Option<&str>) -> Result<Self> {
+    pub async fn new() -> Result<Self> {
         let mut info = ctl_info {
             ctl_id: 0,
             ctl_name: [0; 96],
