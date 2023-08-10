@@ -1,7 +1,7 @@
 defmodule Domain.Relays do
   use Supervisor
   alias Domain.{Repo, Auth, Validator}
-  alias Domain.Resources
+  alias Domain.{Accounts, Resources}
   alias Domain.Relays.{Authorizer, Relay, Group, Token, Presence}
 
   def start_link(opts) do
@@ -16,23 +16,82 @@ defmodule Domain.Relays do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  def fetch_group_by_id(id, %Auth.Subject{} = subject) do
+  def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()),
          true <- Validator.valid_uuid?(id) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
       Group.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
+      |> case do
+        {:ok, group} ->
+          group =
+            group
+            |> Repo.preload(preload)
+            |> maybe_preload_online_status()
+
+          {:ok, group}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     else
       false -> {:error, :not_found}
       other -> other
     end
   end
 
-  def list_groups(%Auth.Subject{} = subject) do
+  def list_groups(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
-      Group.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list()
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+      {:ok, groups} =
+        Group.Query.all()
+        |> Authorizer.for_subject(subject)
+        |> Repo.list()
+
+      groups =
+        groups
+        |> Repo.preload(preload)
+        |> maybe_preload_online_statuses()
+
+      {:ok, groups}
+    end
+  end
+
+  # TODO: this is ugly!
+  defp maybe_preload_online_status(group) do
+    if Ecto.assoc_loaded?(group.relays) do
+      connected_relays = Presence.list("relay_groups:#{group.id}")
+
+      relays =
+        Enum.map(group.relays, fn relay ->
+          %{relay | online?: Map.has_key?(connected_relays, relay.id)}
+        end)
+
+      %{group | relays: relays}
+    else
+      group
+    end
+  end
+
+  defp maybe_preload_online_statuses([]), do: []
+
+  defp maybe_preload_online_statuses([group | _] = groups) do
+    connected_relays = Presence.list("relays:#{group.account_id}")
+
+    if Ecto.assoc_loaded?(group.relays) do
+      Enum.map(groups, fn group ->
+        relays =
+          Enum.map(group.relays, fn relay ->
+            %{relay | online?: Map.has_key?(connected_relays, relay.id)}
+          end)
+
+        %{group | relays: relays}
+      end)
+    else
+      groups
     end
   end
 
@@ -117,12 +176,26 @@ defmodule Domain.Relays do
     end
   end
 
-  def fetch_relay_by_id(id, %Auth.Subject{} = subject) do
+  def fetch_relay_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()),
          true <- Validator.valid_uuid?(id) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
       Relay.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
+      |> case do
+        {:ok, gateway} ->
+          gateway =
+            gateway
+            |> Repo.preload(preload)
+            |> preload_online_status()
+
+          {:ok, gateway}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     else
       false -> {:error, :not_found}
       other -> other
@@ -135,20 +208,47 @@ defmodule Domain.Relays do
     Relay.Query.by_id(id)
     |> Repo.one!()
     |> Repo.preload(preload)
+    |> preload_online_status()
   end
 
-  def list_relays(%Auth.Subject{} = subject) do
+  def list_relays(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
-      Relay.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list()
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+      {:ok, relays} =
+        Relay.Query.all()
+        |> Authorizer.for_subject(subject)
+        |> Repo.list()
+
+      relays =
+        relays
+        |> Repo.preload(preload)
+        |> preload_online_statuses(subject.account.id)
+
+      {:ok, relays}
     end
+  end
+
+  # TODO: make it function of a preload, so that we don't pull this data when we don't need to
+  defp preload_online_status(%Relay{} = relay) do
+    case Presence.get_by_key("relays:#{relay.account_id}", relay.id) do
+      [] -> %{relay | online?: false}
+      %{metas: [_ | _]} -> %{relay | online?: true}
+    end
+  end
+
+  defp preload_online_statuses(relays, account_id) do
+    connected_relays = Presence.list("relays:#{account_id}")
+
+    Enum.map(relays, fn relay ->
+      %{relay | online?: Map.has_key?(connected_relays, relay.id)}
+    end)
   end
 
   def list_connected_relays_for_resource(%Resources.Resource{} = resource) do
     connected_relays =
       Map.merge(
-        Presence.list("relays:"),
+        Presence.list("relays"),
         Presence.list("relays:#{resource.account_id}")
       )
 
@@ -156,7 +256,7 @@ defmodule Domain.Relays do
       connected_relays
       |> Map.keys()
       |> Relay.Query.by_ids()
-      |> Relay.Query.by_account_id(resource.account_id)
+      |> Relay.Query.public_or_by_account_id(resource.account_id)
       |> Repo.all()
       |> Enum.map(fn relay ->
         %{metas: [%{secret: stamp_secret}]} = Map.get(connected_relays, relay.id)
@@ -227,13 +327,32 @@ defmodule Domain.Relays do
   end
 
   def connect_relay(%Relay{} = relay, secret) do
+    scope =
+      if relay.account_id do
+        ":#{relay.account_id}"
+      else
+        ""
+      end
+
     {:ok, _} =
-      Presence.track(self(), "relays:#{relay.account_id}", relay.id, %{
+      Presence.track(self(), "relays#{scope}", relay.id, %{
         online_at: System.system_time(:second),
         secret: secret
       })
 
+    {:ok, _} =
+      Presence.track(self(), "relay_groups:#{relay.group_id}", relay.id, %{})
+
     :ok
+  end
+
+  def subscribe_for_relays_presence_in_account(%Accounts.Account{} = account) do
+    Phoenix.PubSub.subscribe(Domain.PubSub, "relays")
+    Phoenix.PubSub.subscribe(Domain.PubSub, "relays:#{account.id}")
+  end
+
+  def subscribe_for_relays_presence_in_group(%Group{} = group) do
+    Phoenix.PubSub.subscribe(Domain.PubSub, "relay_groups:#{group.id}")
   end
 
   defp fetch_config! do

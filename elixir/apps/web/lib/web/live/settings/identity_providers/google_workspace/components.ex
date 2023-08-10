@@ -22,7 +22,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               ]
             }
             id={"scope-#{name}"}
-            class="w-full mb-4 whitespace-nowrap"
+            class="w-full mb-4 whitespace-nowrap rounded-lg"
           >
             <%= scope %>
           </.code_block>
@@ -44,7 +44,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               ]
             }
             id={"redirect_url-#{type}"}
-            class="w-full mb-4 whitespace-nowrap"
+            class="w-full mb-4 whitespace-nowrap rounded-lg"
           >
             <%= redirect_url %>
           </.code_block>

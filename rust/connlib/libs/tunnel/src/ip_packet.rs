@@ -165,6 +165,13 @@ impl<'a> IpPacket<'a> {
         }
     }
 
+    pub(crate) fn source(&self) -> IpAddr {
+        match self {
+            Self::Ipv4Packet(p) => p.get_source().into(),
+            Self::Ipv6Packet(p) => p.get_source().into(),
+        }
+    }
+
     pub(crate) fn udp_checksum(&self, dgm: &UdpPacket<'_>) -> u16 {
         match self {
             Self::Ipv4Packet(p) => ipv4_checksum(dgm, &p.get_source(), &p.get_destination()),
