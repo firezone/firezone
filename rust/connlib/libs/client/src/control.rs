@@ -100,7 +100,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             )
             .await
         {
-            self.tunnel.callbacks().on_error(&e);
+            let _ = self.tunnel.callbacks().on_error(&e);
         }
     }
 
@@ -142,12 +142,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         .await
                     {
                         tunnel.cleanup_connection(resource_id);
-                        tunnel.callbacks().on_error(&err);
+                        let _ = tunnel.callbacks().on_error(&err);
                     }
                 }
                 Err(err) => {
                     tunnel.cleanup_connection(resource_id);
-                    tunnel.callbacks().on_error(&err);
+                    let _ = tunnel.callbacks().on_error(&err);
                 }
             }
         });
@@ -175,7 +175,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         tracing::error!(
                             "An offline error came back with a reference to a non-valid resource id"
                         );
-                        self.tunnel.callbacks().on_error(&Error::ControlProtocolError);
+                        let _ = self.tunnel.callbacks().on_error(&Error::ControlProtocolError);
                         return;
                     };
                     // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
@@ -183,9 +183,10 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 }
                 None => {
                     tracing::error!(
-                    "An offline portal error came without a reference that originated the error"
-                );
-                    self.tunnel
+                        "An offline portal error came without a reference that originated the error"
+                    );
+                    let _ = self
+                        .tunnel
                         .callbacks()
                         .on_error(&Error::ControlProtocolError);
                 }

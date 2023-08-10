@@ -43,10 +43,11 @@ private final class WebAuthenticationSession: NSObject,
   @MainActor
   func signIn(_ host: URL) async throws -> Token {
     try await withCheckedThrowingContinuation { continuation in
-      let callbackURLScheme = "firezone-fd0020211111"
+      let callbackURLScheme = "firezone"
       let session = ASWebAuthenticationSession(
-        url: host.appendingPathComponent("auth")
-          .appendingQueryItem(URLQueryItem(name: "dest", value: "\(callbackURLScheme)://auth")),
+        url: host.appendingPathComponent("sign_in")
+
+          .appendingQueryItem(URLQueryItem(name: "client_platform", value: "apple")),
         callbackURLScheme: callbackURLScheme
       ) { callbackURL, error in
         if let error {

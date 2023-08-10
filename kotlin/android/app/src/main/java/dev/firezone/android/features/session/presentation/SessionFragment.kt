@@ -2,6 +2,7 @@ package dev.firezone.android.features.session.presentation
 
 import android.os.Bundle
 import android.view.View
+import android.util.Log
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -22,7 +23,7 @@ internal class SessionFragment : Fragment(R.layout.fragment_session) {
 
         setupButtonListeners()
         setupActionObservers()
-
+        Log.d("SessionViewModel", "Starting session...")
         viewModel.startSession()
     }
 

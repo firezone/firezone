@@ -25,11 +25,15 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - run: 'echo "No build required"'
-  rust_cross-compile-relay: # cross is separate from test because cross-compiling yields different artifacts and we cannot reuse the cache.
+  rust_smoke-test-relay:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
-  rust_smoke-test-relay:
+  rust_relay-container-build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'
+  rust_gateway-container-build:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'

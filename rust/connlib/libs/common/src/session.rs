@@ -1,12 +1,16 @@
 use async_trait::async_trait;
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use boringtun::x25519::{PublicKey, StaticSecret};
+use ip_network::IpNetwork;
 use parking_lot::Mutex;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_core::OsRng;
 use std::{
+    error::Error as StdError,
+    fmt::{Debug, Display},
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
+    result::Result as StdResult,
     sync::Arc,
     time::Duration,
 };
@@ -46,34 +50,123 @@ pub trait ControlSession<T, CB: Callbacks> {
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session<T, U, V, R, M, CB: Callbacks> {
     runtime: Arc<Mutex<Option<Runtime>>>,
-    callbacks: CB,
+    callbacks: CallbackErrorFacade<CB>,
     _phantom: PhantomData<(T, U, V, R, M)>,
 }
 
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
+    /// Error returned when a callback fails.
+    type Error: Debug + Display + StdError;
+
     /// Called when the tunnel address is set.
     fn on_set_interface_config(
         &self,
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-    );
+    ) -> StdResult<(), Self::Error>;
     /// Called when the tunnel is connected.
-    fn on_tunnel_ready(&self);
+    fn on_tunnel_ready(&self) -> StdResult<(), Self::Error>;
     /// Called when when a route is added.
-    fn on_add_route(&self, route: String);
+    fn on_add_route(&self, route: IpNetwork) -> StdResult<(), Self::Error>;
     /// Called when when a route is removed.
-    fn on_remove_route(&self, route: String);
+    fn on_remove_route(&self, route: IpNetwork) -> StdResult<(), Self::Error>;
     /// Called when the resource list changes.
-    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>);
+    fn on_update_resources(
+        &self,
+        resource_list: Vec<ResourceDescription>,
+    ) -> StdResult<(), Self::Error>;
     /// Called when the tunnel is disconnected.
     ///
     /// If the tunnel disconnected due to a fatal error, `error` is the error
     /// that caused the disconnect.
-    fn on_disconnect(&self, error: Option<&Error>);
+    fn on_disconnect(&self, error: Option<&Error>) -> StdResult<(), Self::Error>;
     /// Called when there's a recoverable error.
-    fn on_error(&self, error: &Error);
+    fn on_error(&self, error: &Error) -> StdResult<(), Self::Error>;
+}
+
+#[derive(Clone)]
+pub struct CallbackErrorFacade<CB: Callbacks>(pub CB);
+
+impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
+    type Error = Error;
+
+    fn on_set_interface_config(
+        &self,
+        tunnel_address_v4: Ipv4Addr,
+        tunnel_address_v6: Ipv6Addr,
+        dns_address: Ipv4Addr,
+    ) -> Result<()> {
+        let result = self
+            .0
+            .on_set_interface_config(tunnel_address_v4, tunnel_address_v6, dns_address)
+            .map_err(|err| Error::OnSetInterfaceConfigFailed(err.to_string()));
+        if let Err(err) = result.as_ref() {
+            tracing::error!("{err}");
+        }
+        result
+    }
+
+    fn on_tunnel_ready(&self) -> Result<()> {
+        let result = self
+            .0
+            .on_tunnel_ready()
+            .map_err(|err| Error::OnTunnelReadyFailed(err.to_string()));
+        if let Err(err) = result.as_ref() {
+            tracing::error!("{err}");
+        }
+        result
+    }
+
+    fn on_add_route(&self, route: IpNetwork) -> Result<()> {
+        let result = self
+            .0
+            .on_add_route(route)
+            .map_err(|err| Error::OnAddRouteFailed(err.to_string()));
+        if let Err(err) = result.as_ref() {
+            tracing::error!("{err}");
+        }
+        result
+    }
+
+    fn on_remove_route(&self, route: IpNetwork) -> Result<()> {
+        let result = self
+            .0
+            .on_remove_route(route)
+            .map_err(|err| Error::OnRemoveRouteFailed(err.to_string()));
+        if let Err(err) = result.as_ref() {
+            tracing::error!("{err}");
+        }
+        result
+    }
+
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) -> Result<()> {
+        let result = self
+            .0
+            .on_update_resources(resource_list)
+            .map_err(|err| Error::OnUpdateResourcesFailed(err.to_string()));
+        if let Err(err) = result.as_ref() {
+            tracing::error!("{err}");
+        }
+        result
+    }
+
+    fn on_disconnect(&self, error: Option<&Error>) -> Result<()> {
+        if let Err(err) = self.0.on_disconnect(error) {
+            tracing::error!("`on_disconnect` failed: {err}");
+        }
+        // There's nothing we can really do if `on_disconnect` fails.
+        Ok(())
+    }
+
+    fn on_error(&self, error: &Error) -> Result<()> {
+        if let Err(err) = self.0.on_error(error) {
+            tracing::error!("`on_error` failed: {err}");
+        }
+        // There's nothing we really want to do if `on_error` fails.
+        Ok(())
+    }
 }
 
 macro_rules! fatal_error {
@@ -128,6 +221,7 @@ where
         // Big question here however is how do we get the result? We could block here await the result and spawn a new task.
         // but then platforms should know that this function is blocking.
 
+        let callbacks = CallbackErrorFacade(callbacks);
         let this = Self {
             runtime: Mutex::new(Some(
                 tokio::runtime::Builder::new_multi_thread()
@@ -155,7 +249,7 @@ where
         }
 
         if cfg!(feature = "mock") {
-            Self::connect_mock(this.callbacks.clone());
+            Self::connect_mock(Arc::clone(&this.runtime), this.callbacks.clone());
         } else {
             Self::connect_inner(
                 Arc::clone(&this.runtime),
@@ -172,7 +266,7 @@ where
         runtime: Arc<Mutex<Option<Runtime>>>,
         portal_url: Url,
         token: String,
-        callbacks: CB,
+        callbacks: CallbackErrorFacade<CB>,
     ) {
         let runtime_disconnector = Arc::clone(&runtime);
         runtime.lock().as_ref().unwrap().spawn(async move {
@@ -206,7 +300,7 @@ where
             let topic = T::socket_path().to_string();
             let internal_sender = connection.sender_with_topic(topic.clone());
             fatal_error!(
-                T::start(private_key, control_plane_receiver, internal_sender, callbacks.clone()).await,
+                T::start(private_key, control_plane_receiver, internal_sender, callbacks.0.clone()).await,
                 &runtime_disconnector,
                 &callbacks
             );
@@ -218,7 +312,7 @@ where
                     let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
                     if let Some(t) = exponential_backoff.next_backoff() {
                         tracing::warn!("Error during connection to the portal, retrying in {} seconds", t.as_secs());
-                        callbacks.on_error(&result.err().unwrap_or(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed)));
+                        let _ = callbacks.on_error(&result.err().unwrap_or(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed)));
                         tokio::time::sleep(t).await;
                     } else {
                         tracing::error!("Connection to the portal error, check your internet or the status of the portal.\nDisconnecting interface.");
@@ -235,41 +329,57 @@ where
         });
     }
 
-    fn connect_mock(callbacks: CB) {
+    fn connect_mock(runtime: Arc<Mutex<Option<Runtime>>>, callbacks: CallbackErrorFacade<CB>) {
         std::thread::sleep(Duration::from_secs(1));
-        callbacks.on_set_interface_config(
-            "100.100.111.2".parse().unwrap(),
-            "fd00:0222:2021:1111::2".parse().unwrap(),
-            DNS_SENTINEL,
+        fatal_error!(
+            callbacks.on_set_interface_config(
+                "100.100.111.2".parse().unwrap(),
+                "fd00:0222:2021:1111::2".parse().unwrap(),
+                DNS_SENTINEL,
+            ),
+            &runtime,
+            &callbacks
         );
-        callbacks.on_tunnel_ready();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_secs(3));
-            let resources = vec![
-                ResourceDescriptionCidr {
-                    id: Uuid::new_v4(),
-                    address: "8.8.4.4".parse::<Ipv4Addr>().unwrap().into(),
-                    name: "Google Public DNS IPv4".to_string(),
-                },
-                ResourceDescriptionCidr {
-                    id: Uuid::new_v4(),
-                    address: "2001:4860:4860::8844".parse::<Ipv6Addr>().unwrap().into(),
-                    name: "Google Public DNS IPv6".to_string(),
-                },
-            ];
-            for resource in &resources {
-                callbacks.on_add_route(serde_json::to_string(&resource.address).unwrap());
-            }
-            callbacks.on_update_resources(
-                resources
-                    .into_iter()
-                    .map(ResourceDescription::Cidr)
-                    .collect(),
-            );
-        });
+        fatal_error!(callbacks.on_tunnel_ready(), &runtime, &callbacks);
+        let handle = {
+            let callbacks = callbacks.clone();
+            std::thread::spawn(move || -> Result<()> {
+                std::thread::sleep(Duration::from_secs(3));
+                let resources = vec![
+                    ResourceDescriptionCidr {
+                        id: Uuid::new_v4(),
+                        address: "8.8.4.4".parse::<Ipv4Addr>().unwrap().into(),
+                        name: "Google Public DNS IPv4".to_string(),
+                    },
+                    ResourceDescriptionCidr {
+                        id: Uuid::new_v4(),
+                        address: "2001:4860:4860::8844".parse::<Ipv6Addr>().unwrap().into(),
+                        name: "Google Public DNS IPv6".to_string(),
+                    },
+                ];
+                for resource in &resources {
+                    callbacks.on_add_route(resource.address)?;
+                }
+                callbacks.on_update_resources(
+                    resources
+                        .into_iter()
+                        .map(ResourceDescription::Cidr)
+                        .collect(),
+                )
+            })
+        };
+        fatal_error!(
+            handle.join().expect("mock thread panicked"),
+            &runtime,
+            &callbacks
+        );
     }
 
-    fn disconnect_inner(runtime: &Mutex<Option<Runtime>>, callbacks: &CB, error: Option<Error>) {
+    fn disconnect_inner(
+        runtime: &Mutex<Option<Runtime>>,
+        callbacks: &CallbackErrorFacade<CB>,
+        error: Option<Error>,
+    ) {
         // 1. Close the websocket connection
         // 2. Free the device handle (UNIX)
         // 3. Close the file descriptor (UNIX)
@@ -283,26 +393,25 @@ where
         // implement them :)
         *runtime.lock() = None;
 
-        callbacks.on_disconnect(error.as_ref());
+        let _ = callbacks.on_disconnect(error.as_ref());
     }
 
     /// Cleanup a [Session].
     ///
     /// For now this just drops the runtime, which should drop all pending tasks.
     /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
-    pub fn disconnect(&mut self, error: Option<Error>) -> bool {
-        Self::disconnect_inner(&self.runtime, &self.callbacks, error);
-        true
+    pub fn disconnect(&mut self, error: Option<Error>) {
+        Self::disconnect_inner(&self.runtime, &self.callbacks, error)
     }
 
-    /// TODO
-    pub fn bump_sockets(&self) -> bool {
-        true
+    // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#L177
+    pub fn bump_sockets(&self) {
+        tracing::error!("`bump_sockets` is unimplemented");
     }
 
-    /// TODO
-    pub fn disable_some_roaming_for_broken_mobile_semantics(&self) -> bool {
-        true
+    // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
+    pub fn disable_some_roaming_for_broken_mobile_semantics(&self) {
+        tracing::error!("`disable_some_roaming_for_broken_mobile_semantics` is unimplemented");
     }
 }
 

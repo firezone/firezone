@@ -4,7 +4,7 @@ use libc::{
     close, fcntl, ioctl, open, read, sockaddr, sockaddr_in, write, F_GETFL, F_SETFL,
     IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN, IFNAMSIZ, O_NONBLOCK, O_RDWR,
 };
-use libs_common::{Callbacks, Error, Result};
+use libs_common::{CallbackErrorFacade, Callbacks, Error, Result};
 use netlink_packet_route::{rtnl::link::nlas::Nla, RT_SCOPE_UNIVERSE};
 use rtnetlink::{new_connection, Handle};
 use std::{
@@ -178,8 +178,8 @@ fn get_last_error() -> Error {
 impl IfaceConfig {
     pub async fn add_route(
         &mut self,
-        route: &IpNetwork,
-        _callbacks: &impl Callbacks,
+        route: IpNetwork,
+        _callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
         let req = self
             .0
@@ -224,7 +224,7 @@ impl IfaceConfig {
     pub async fn set_iface_config(
         &mut self,
         config: &InterfaceConfig,
-        _callbacks: &impl Callbacks,
+        _callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
         let ips = self
             .0

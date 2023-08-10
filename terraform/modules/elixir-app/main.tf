@@ -15,6 +15,15 @@ locals {
     {
       name  = "RELEASE_HOST_DISCOVERY_METHOD"
       value = "gce_metadata"
+    },
+    {
+      name = "PHOENIX_EXTERNAL_TRUSTED_PROXIES"
+      value = jsonencode([
+        "35.191.0.0/16",
+        "130.211.0.0/22",
+        google_compute_global_address.ipv4.address,
+        google_compute_global_address.ipv6.address
+      ])
     }
   ], var.application_environment_variables)
 

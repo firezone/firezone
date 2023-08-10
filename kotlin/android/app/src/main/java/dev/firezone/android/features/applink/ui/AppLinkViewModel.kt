@@ -1,6 +1,7 @@
 package dev.firezone.android.features.applink.ui
 
 import android.content.Intent
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -34,13 +35,15 @@ internal class AppLinkViewModel @Inject constructor(
                         }
                     }
                 }
-                else -> {}
+                else -> {
+                    Log.d("AppLink", "Unknown path segment: ${intent.data?.lastPathSegment}")
+                }
             }
         }
     }
 
     companion object {
-        private const val PATH_CALLBACK = "callback"
+        private const val PATH_CALLBACK = "handle_client_auth_callback"
         private const val QUERY_CLIENT_CSRF_TOKEN = "client_csrf_token"
         private const val QUERY_CLIENT_AUTH_TOKEN = "client_auth_token"
     }

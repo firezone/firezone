@@ -60,7 +60,7 @@ where
                         let mut address = r.address.split(':');
                         let Some(dst_addr) = address.next() else {
                             tracing::error!("invalid DNS name for resource: {}", r.address);
-                            self.callbacks().on_error(&Error::InvalidResource(r.address.clone()));
+                            let _ = self.callbacks().on_error(&Error::InvalidResource(r.address.clone()));
                             return;
                         };
                         let Ok(mut dst_addr) = format!("{dst_addr}:0").to_socket_addrs() else {

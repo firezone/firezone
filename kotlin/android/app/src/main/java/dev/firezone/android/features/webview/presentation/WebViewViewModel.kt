@@ -40,7 +40,7 @@ internal class WebViewViewModel @Inject constructor(
                 .collect {
                     actionMutableLiveData.postValue(
                         WebViewViewAction.FillPortalUrl(
-                            url = "${it.portalUrl}/auth"
+                            url = "${it.portalUrl}/sign_in"
                         )
                     )
                 }
