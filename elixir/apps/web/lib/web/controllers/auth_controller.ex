@@ -19,15 +19,17 @@ defmodule Web.AuthController do
   @doc """
   This is a callback for the UserPass provider which checks login and password to authenticate the user.
   """
-  def verify_credentials(conn, %{
-        "account_id_or_slug" => account_id_or_slug,
-        "provider_id" => provider_id,
-        "userpass" =>
-          %{
+  def verify_credentials(
+        conn,
+        %{
+          "account_id_or_slug" => account_id_or_slug,
+          "provider_id" => provider_id,
+          "userpass" => %{
             "provider_identifier" => provider_identifier,
             "secret" => secret
-          } = form
-      }) do
+          }
+        } = params
+      ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
          {:ok, subject} <-
            Domain.Auth.sign_in(
@@ -37,8 +39,8 @@ defmodule Web.AuthController do
              conn.assigns.user_agent,
              conn.remote_ip
            ) do
-      client_platform = form["client_platform"]
-      client_csrf_token = form["client_csrf_token"]
+      client_platform = params["client_platform"]
+      client_csrf_token = params["client_csrf_token"]
       Web.Auth.signed_in_redirect(conn, subject, client_platform, client_csrf_token)
     else
       {:error, :not_found} ->
