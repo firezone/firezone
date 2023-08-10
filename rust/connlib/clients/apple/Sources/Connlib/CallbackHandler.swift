@@ -62,11 +62,11 @@ public class CallbackHandler {
   func onDisconnect(error: RustString) {
     logger.debug("CallbackHandler.onDisconnect: \(error.toString(), privacy: .public)")
     let error = error.toString()
-    var optional_error = Optional.some(error)
+    var optionalError = Optional.some(error)
     if error.isEmpty {
-      optional_error = Optional.none
+      optionalError = Optional.none
     }
-    delegate?.onDisconnect(error: optional_error)
+    delegate?.onDisconnect(error: optionalError)
   }
 
   func onError(error: RustString) {

@@ -145,8 +145,8 @@ impl IfaceDevice {
             }
 
             if addr.sc_id == info.ctl_id {
-                return Ok(Self { fd })
-            };
+                return Ok(Self { fd });
+            }
         }
 
         Err(get_last_error())
@@ -248,7 +248,6 @@ impl IfaceDevice {
 }
 
 // So, these functions take a mutable &self, this is not necessary in theory but it's correct!
-/* BEGIN mark-for-removal */
 impl IfaceConfig {
     #[tracing::instrument(level = "trace", skip(self, callbacks))]
     pub async fn set_iface_config(
@@ -268,11 +267,10 @@ impl IfaceConfig {
     }
 
     pub async fn up(&mut self) -> Result<()> {
-        tracing::error!("`up` unimplemented on macOS");
+        tracing::info!("`up` unimplemented on macOS");
         Ok(())
     }
 }
-/* END mark-for-removal */
 
 fn get_last_error() -> Error {
     Error::Io(io::Error::last_os_error())
