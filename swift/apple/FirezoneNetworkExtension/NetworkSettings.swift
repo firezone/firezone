@@ -31,6 +31,10 @@ class NetworkSettings {
   let tunnelAddressIPv6: String
   let dnsAddress: String
 
+    // In theory we could update the MTU dynamically based on the network environment,
+    // but 1280 is guaranteed to work everywhere.
+  let tunnelMTU = NSNumber(1280)
+
   // Modifiable values
   private(set) var dnsFallbackStrategy: DNSFallbackStrategy
   private(set) var routes: [String] = []
@@ -149,8 +153,10 @@ class NetworkSettings {
         dnsSettings.matchDomains = [""]
     }
     tunnelNetworkSettings.dnsSettings = dnsSettings
+    tunnelNetworkSettings.mtu = tunnelMTU
 
     self.hasUnappliedChanges = false
+    logger.debug("Attempting to set network settings")
     packetTunnelProvider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
       if let error = error {
         logger.error("NetworkSettings.apply: Error: \(error, privacy: .public)")
