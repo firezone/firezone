@@ -33,7 +33,11 @@ if [[ -n "${DEVELOPER_SDK_DIR:-}" ]]; then
   # In this case, we need to add an extra library search path for build scripts and proc-macros,
   # which run on the host instead of the target.
   # (macOS Big Sur does not have linkable libraries in /usr/lib/.)
-  export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${LIBRARY_PATH:-}"
+  if [[ "$PLATFORM_NAME" = "macosx" || "$PLATFORM_NAME" = "iphoneos" ]]; then
+    export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${LIBRARY_PATH:-}"
+  elif [[ "$PLATFORM_NAME" = "iphonesimulator" ]]; then
+    export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/iPhoneSimulator.sdk/usr/lib:${LIBRARY_PATH:-}"
+  fi
 fi
 
 TARGETS=()
