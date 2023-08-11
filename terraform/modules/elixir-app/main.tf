@@ -346,7 +346,7 @@ resource "google_compute_backend_service" "default" {
   port_name = each.value.name
   protocol  = "HTTP"
 
-  timeout_sec                     = 10
+  timeout_sec                     = 86400
   connection_draining_timeout_sec = 120
 
   enable_cdn       = false
