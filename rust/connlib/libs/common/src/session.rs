@@ -311,7 +311,7 @@ where
                     // `connection.start` calls the callback only after connecting
                     let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
                     if let Some(t) = exponential_backoff.next_backoff() {
-                        tracing::warn!("Error connecting to portal URL , retrying in {} seconds", t.as_secs());
+                        tracing::warn!("Error connecting to portal, retrying in {} seconds", t.as_secs());
                         let _ = callbacks.on_error(&result.err().unwrap_or(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed)));
                         tokio::time::sleep(t).await;
                     } else {
