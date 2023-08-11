@@ -20,11 +20,16 @@ Firezone app clients for macOS and iOS.
    cd swift/apple
    ```
 
-1. Rename and populate developer team ID file:
+1. Rename and populate xcconfig files:
 
    ```bash
    cp Firezone/xcconfig/Developer.xcconfig.template Firezone/xcconfig/Developer.xcconfig
    vim Firezone/xcconfig/Developer.xcconfig
+   ```
+
+   ```bash
+   cp Firezone/xcconfig/Server.xcconfig.template Firezone/xcconfig/Server.xcconfig
+   vim Firezone/xcconfig/Server.xcconfig
    ```
 
 1. Open project in Xcode:
