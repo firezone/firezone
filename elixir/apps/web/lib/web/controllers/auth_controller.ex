@@ -73,7 +73,9 @@ defmodule Web.AuthController do
            {:ok, identity} <-
              Domain.Auth.fetch_identity_by_provider_and_identifier(provider, provider_identifier),
            {:ok, identity} <- Domain.Auth.Adapters.Email.request_sign_in_token(identity) do
-        Web.Mailer.AuthEmail.sign_in_link_email(identity)
+        params = Map.take(form, ["client_platform", "client_csrf_token"])
+
+        Web.Mailer.AuthEmail.sign_in_link_email(identity, params)
         |> Web.Mailer.deliver()
       end
 
@@ -87,12 +89,15 @@ defmodule Web.AuthController do
   This is a callback for the Email provider which handles both form submission and redirect login link
   to authenticate a user.
   """
-  def verify_sign_in_token(conn, %{
-        "account_id_or_slug" => account_id_or_slug,
-        "provider_id" => provider_id,
-        "identity_id" => identity_id,
-        "secret" => secret
-      }) do
+  def verify_sign_in_token(
+        conn,
+        %{
+          "account_id_or_slug" => account_id_or_slug,
+          "provider_id" => provider_id,
+          "identity_id" => identity_id,
+          "secret" => secret
+        } = params
+      ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
          {:ok, subject} <-
            Domain.Auth.sign_in(
@@ -102,8 +107,8 @@ defmodule Web.AuthController do
              conn.assigns.user_agent,
              conn.remote_ip
            ) do
-      client_platform = get_session(conn, :client_platform)
-      client_csrf_token = get_session(conn, :client_csrf_token)
+      client_platform = get_session(conn, :client_platform) || params["client_platform"]
+      client_csrf_token = get_session(conn, :client_csrf_token) || params["client_csrf_token"]
 
       conn
       |> delete_session(:client_platform)

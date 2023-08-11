@@ -370,6 +370,7 @@ defmodule Web.AuthControllerTest do
         assert email.text_body =~ "#{verify_sign_in_token_path}"
         assert email.text_body =~ "identity_id=#{identity.id}"
         assert email.text_body =~ "secret="
+        assert email.text_body =~ "client_platform=platform"
       end)
 
       assert redirected_to(conn) == "/#{account.id}/sign_in/providers/email/#{provider.id}"
@@ -522,6 +523,40 @@ defmodule Web.AuthControllerTest do
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => identity.provider_virtual_state.sign_in_token
+        })
+
+      assert conn.assigns.flash == %{}
+      assert is_nil(get_session(conn, :client_platform))
+
+      assert redirected_to = conn |> redirected_to() |> URI.parse()
+      assert redirected_to.scheme == "firezone"
+      assert redirected_to.host == "handle_client_auth_callback"
+
+      assert query_params = URI.decode_query(redirected_to.query)
+      assert query_params["actor_name"] == Repo.preload(identity, :actor).actor.name
+      assert not is_nil(query_params["client_auth_token"])
+      assert query_params["identity_provider_identifier"] == identity.provider_identifier
+    end
+
+    test "platform link can be stored in URL links when session cookie is not available", %{
+      conn: conn
+    } do
+      account = AccountsFixtures.create_account()
+      provider = AuthFixtures.create_email_provider(account: account)
+
+      identity =
+        AuthFixtures.create_identity(
+          actor_default_type: :account_user,
+          account: account,
+          provider: provider
+        )
+
+      conn =
+        conn
+        |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+          "identity_id" => identity.id,
+          "secret" => identity.provider_virtual_state.sign_in_token,
+          "client_platform" => "apple"
         })
 
       assert conn.assigns.flash == %{}
