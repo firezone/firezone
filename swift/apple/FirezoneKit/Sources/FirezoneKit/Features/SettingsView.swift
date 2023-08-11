@@ -160,7 +160,6 @@ struct FormTextField: View {
             .autocorrectionDisabled()
             .multilineTextAlignment(.leading)
             .foregroundColor(.secondary)
-            .textInputAutocapitalization(.never)
             .frame(maxWidth: 360)
         }
         Spacer()
