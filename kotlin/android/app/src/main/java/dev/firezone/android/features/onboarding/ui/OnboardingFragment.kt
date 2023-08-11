@@ -59,7 +59,7 @@ internal class OnboardingFragment : Fragment(R.layout.fragment_onboarding) {
 
     private fun setupViews() {
         binding.ilUrlInput.apply {
-            prefixText = "https://${BuildConfig.FIREZONE_HOST}"
+            prefixText = "${BuildConfig.AUTH_SCHEME}://${BuildConfig.AUTH_HOST}:${BuildConfig.AUTH_PORT}/"
         }
 
         binding.etInput.apply {
