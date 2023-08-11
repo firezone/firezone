@@ -657,10 +657,9 @@ defmodule Domain.RelaysTest do
       assert Repo.aggregate(Domain.Network.Address, :count) == 0
     end
 
-    test "updates global relay when it already exists", %{
-      token: token
-    } do
+    test "updates global relay when it already exists" do
       group = RelaysFixtures.create_global_group()
+      token = hd(group.tokens)
       relay = RelaysFixtures.create_relay(group: group, token: token)
 
       attrs =

@@ -284,7 +284,7 @@ defmodule Domain.Relays do
 
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:relay, changeset,
-      conflict_target: Relay.Changeset.upsert_conflict_target(),
+      conflict_target: Relay.Changeset.upsert_conflict_target(token),
       on_conflict: Relay.Changeset.upsert_on_conflict(),
       returning: true
     )
