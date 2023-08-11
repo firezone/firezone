@@ -10,8 +10,14 @@ defmodule Domain.Relays.Relay.Changeset do
                               last_seen_version last_seen_at
                               updated_at]a
 
-  def upsert_conflict_target,
-    do: {:unsafe_fragment, ~s/(account_id, COALESCE(ipv4, ipv6)) WHERE deleted_at IS NULL/}
+  def upsert_conflict_target(%{account_id: nil}) do
+    {:unsafe_fragment, ~s/(COALESCE(ipv4, ipv6)) WHERE deleted_at IS NULL AND account_id IS NULL/}
+  end
+
+  def upsert_conflict_target(_token) do
+    {:unsafe_fragment,
+     ~s/(account_id, COALESCE(ipv4, ipv6)) WHERE deleted_at IS NULL AND account_id IS NOT NULL/}
+  end
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
