@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.core.domain.preference.DebugUserUseCase
 import dev.firezone.android.core.domain.preference.SavePortalUrlUseCase
 import javax.inject.Inject
 import kotlinx.coroutines.launch

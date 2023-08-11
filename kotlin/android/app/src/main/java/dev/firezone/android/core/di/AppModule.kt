@@ -6,13 +6,11 @@ import android.content.SharedPreferences
 import android.content.res.Resources
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import dev.firezone.android.features.session.backend.BootShutdownReceiver
 import dev.firezone.android.features.session.backend.SessionManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.CoroutineDispatcher
 
 internal const val ENCRYPTED_SHARED_PREFERENCES = "encryptedSharedPreferences"
 

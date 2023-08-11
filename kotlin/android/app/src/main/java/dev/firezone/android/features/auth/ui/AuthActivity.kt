@@ -28,8 +28,8 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(this) { action ->
             when (action) {
-                is AuthViewAction.LaunchAuthFlow -> setupWebView(action.url)
-                is AuthViewAction.ShowError -> showError()
+                is AuthViewModel.ViewAction.LaunchAuthFlow -> setupWebView(action.url)
+                is AuthViewModel.ViewAction.ShowError -> showError()
                 else -> {}
             }
         }

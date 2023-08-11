@@ -75,7 +75,7 @@
 
     <fragment
         android:id="@+id/sessionFragment"
-        android:name="dev.firezone.android.features.session.presentation.SessionFragment"
+        android:name="dev.firezone.android.features.session.ui.SessionFragment"
         tools:layout="@layout/fragment_session">
 
         <action

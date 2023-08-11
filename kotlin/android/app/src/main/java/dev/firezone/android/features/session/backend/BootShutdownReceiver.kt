@@ -4,8 +4,6 @@ import android.content.BroadcastReceiver
 import android.util.Log
 import android.content.Context
 import android.content.Intent
-import javax.inject.Inject
-import kotlinx.coroutines.CoroutineDispatcher
 
 internal class BootShutdownReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {

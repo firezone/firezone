@@ -1,4 +1,4 @@
-package dev.firezone.android.features.session.presentation
+package dev.firezone.android.features.session.ui
 
 import android.os.Bundle
 import android.view.View
@@ -10,7 +10,6 @@ import androidx.navigation.fragment.findNavController
 import dev.firezone.android.R
 import dev.firezone.android.databinding.FragmentSessionBinding
 import dagger.hilt.android.AndroidEntryPoint
-import androidx.navigation.fragment.navArgs
 
 @AndroidEntryPoint
 internal class SessionFragment : Fragment(R.layout.fragment_session) {
@@ -30,11 +29,11 @@ internal class SessionFragment : Fragment(R.layout.fragment_session) {
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
             when (action) {
-                SessionViewAction.NavigateToSignInFragment ->
+                SessionViewModel.ViewAction.NavigateToSignInFragment ->
                     findNavController().navigate(
                         SessionFragmentDirections.navigateToSignInFragment()
                     )
-                SessionViewAction.ShowError -> showError()
+                SessionViewModel.ViewAction.ShowError -> showError()
             }
         }
     }

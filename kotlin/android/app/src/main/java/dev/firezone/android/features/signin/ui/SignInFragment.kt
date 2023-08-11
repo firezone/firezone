@@ -1,6 +1,5 @@
 package dev.firezone.android.features.signin.ui
 
-import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import androidx.fragment.app.Fragment
@@ -9,7 +8,6 @@ import androidx.navigation.fragment.findNavController
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.databinding.FragmentSignInBinding
-import dev.firezone.android.features.auth.ui.AuthActivity
 import dev.firezone.android.features.splash.ui.SplashFragmentDirections
 
 @AndroidEntryPoint

@@ -1,6 +1,5 @@
-package dev.firezone.android.features.webview.presentation
+package dev.firezone.android.features.webview.ui
 
-import android.content.Intent
 import android.graphics.Bitmap
 import android.net.http.SslError
 import android.os.Bundle
@@ -14,12 +13,8 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import dev.firezone.android.R
-import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.databinding.ActivityWebViewBinding
 import dagger.hilt.android.AndroidEntryPoint
-
-private const val DEEP_LINK_PREFIX = "firezone://auth"
-private const val DEEP_LINK_KEY = "deepLink"
 
 @AndroidEntryPoint
 internal class WebViewActivity : AppCompatActivity(R.layout.activity_web_view) {
@@ -32,15 +27,12 @@ internal class WebViewActivity : AppCompatActivity(R.layout.activity_web_view) {
         binding = ActivityWebViewBinding.inflate(layoutInflater)
 
         setupActionObservers()
-
-        viewModel.onGetPortalUrl()
     }
 
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(this) { action ->
             when (action) {
-                is WebViewViewAction.FillPortalUrl -> setupWebView(action.url)
-                is WebViewViewAction.ShowError -> showError()
+                is WebViewViewModel.ViewAction.ShowError -> showError()
             }
         }
     }
@@ -96,16 +88,6 @@ internal class WebViewActivity : AppCompatActivity(R.layout.activity_web_view) {
         override fun shouldOverrideUrlLoading(
             view: WebView?, request: WebResourceRequest?
         ): Boolean {
-
-            val deepLink = request?.url.toString()
-            viewModel.onSaveToken(deepLink)
-
-            if (deepLink.startsWith(DEEP_LINK_PREFIX)) {
-                startActivity(Intent(this@WebViewActivity, MainActivity::class.java)
-                    .apply { putExtra(DEEP_LINK_KEY, deepLink) }
-                )
-                return true
-            }
             return super.shouldOverrideUrlLoading(view, request)
         }
     }

@@ -19,8 +19,8 @@ internal class AppLinkViewModel @Inject constructor(
     private val saveJWTUseCase: SaveJWTUseCase,
 ) : ViewModel() {
 
-    private val actionMutableLiveData = MutableLiveData<AppLinkViewAction>()
-    val actionLiveData: LiveData<AppLinkViewAction> = actionMutableLiveData
+    private val actionMutableLiveData = MutableLiveData<ViewAction>()
+    val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
     fun parseAppLink(intent: Intent) {
         viewModelScope.launch {
@@ -31,7 +31,7 @@ internal class AppLinkViewModel @Inject constructor(
                             val jwtToken = intent.data?.getQueryParameter(QUERY_CLIENT_AUTH_TOKEN) ?: ""
                             saveJWTUseCase(jwtToken)
 
-                            actionMutableLiveData.postValue(AppLinkViewAction.AuthFlowComplete)
+                            actionMutableLiveData.postValue(ViewAction.AuthFlowComplete)
                         }
                     }
                 }
@@ -46,5 +46,12 @@ internal class AppLinkViewModel @Inject constructor(
         private const val PATH_CALLBACK = "handle_client_auth_callback"
         private const val QUERY_CLIENT_CSRF_TOKEN = "client_csrf_token"
         private const val QUERY_CLIENT_AUTH_TOKEN = "client_auth_token"
+    }
+
+    internal sealed class ViewAction {
+
+        object AuthFlowComplete : ViewAction()
+
+        object ShowError : ViewAction()
     }
 }

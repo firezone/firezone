@@ -4,7 +4,6 @@ import dev.firezone.android.core.data.PreferenceRepository
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 
 internal class DebugUserUseCase @Inject constructor(

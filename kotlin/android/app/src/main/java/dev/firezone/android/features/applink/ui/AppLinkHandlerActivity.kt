@@ -26,11 +26,11 @@ class AppLinkHandlerActivity : AppCompatActivity(R.layout.activity_app_link_hand
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(this) { action ->
             when (action) {
-                is AppLinkViewAction.AuthFlowComplete -> {
+                is AppLinkViewModel.ViewAction.AuthFlowComplete -> {
                     // Continue with onboarding
                     Log.d("AppLinkHandlerActivity", "AuthFlowComplete")
                 }
-                is AppLinkViewAction.ShowError -> showError()
+                is AppLinkViewModel.ViewAction.ShowError -> showError()
                 else -> {}
             }
         }

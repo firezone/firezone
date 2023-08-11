@@ -31,7 +31,7 @@
         </activity>
 
         <activity
-            android:name=".features.webview.presentation.WebViewActivity"
+            android:name=".features.webview.ui.WebViewActivity"
             android:exported="false" />
 
         <activity

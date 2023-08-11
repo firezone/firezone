@@ -26,7 +26,8 @@ internal class SplashViewModel @Inject constructor(
     val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
     internal fun checkUserState(context: Context) {
         viewModelScope.launch {
-            debugUserUseCase()
+            //debugUserUseCase() // sets dummy team-id and token
+
             delay(REQUEST_DELAY)
             if (!hasVpnPermissions(context)) {
                 actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
