@@ -328,7 +328,7 @@ locals {
     # Auth
     {
       name  = "AUTH_PROVIDER_ADAPTERS"
-      value = "email,openid_connect,token"
+      value = "email,openid_connect,google_workspace,token"
     },
     # Telemetry
     {
