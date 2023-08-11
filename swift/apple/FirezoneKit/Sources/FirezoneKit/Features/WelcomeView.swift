@@ -55,7 +55,7 @@ final class WelcomeViewModel: ObservableObject {
 
     defer { bindDestination() }
 
-    if settingsClient.fetchSettings()?.portalURL == nil {
+    if settingsClient.fetchSettings()?.teamId == nil {
       destination = .undefinedSettingsAlert(.undefinedSettings)
     }
 

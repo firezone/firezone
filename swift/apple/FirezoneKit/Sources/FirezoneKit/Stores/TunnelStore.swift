@@ -9,7 +9,9 @@ import Foundation
 import NetworkExtension
 import OSLog
 
-// TODO: Can this file be removed since we're managing the tunnel in connlib?
+enum TunnelStoreError: Error {
+    case tunnelCouldNotBeStarted
+}
 
 final class TunnelStore: ObservableObject {
   private static let logger = Logger.make(for: TunnelStore.self)
@@ -32,9 +34,12 @@ final class TunnelStore: ObservableObject {
     didSet(oldValue) { oldValue?.invalidate() }
   }
 
+  private let controlPlaneURL: URL
   private var tunnelObservingTasks: [Task<Void, Never>] = []
+  private var startTunnelContinuation: CheckedContinuation<(), Error>?
 
   init(tunnel: NETunnelProviderManager) {
+    self.controlPlaneURL = Self.getControlPlaneURLFromInfoPlist()
     self.tunnel = tunnel
     tunnel.isEnabled = true
     setupTunnelObservers()
@@ -62,12 +67,18 @@ final class TunnelStore: ObservableObject {
     // make sure we have latest preferences before starting
     try await tunnel.loadFromPreferences()
 
-    tunnel.protocolConfiguration = Self.makeProtocolConfiguration(authResponse: authResponse)
+    tunnel.protocolConfiguration = Self.makeProtocolConfiguration(
+      controlPlaneURL: self.controlPlaneURL,
+      token: authResponse.token
+    )
     tunnel.isEnabled = true
     try await tunnel.saveToPreferences()
 
     let session = tunnel.connection as! NETunnelProviderSession
     try session.startTunnel()
+    try await withCheckedThrowingContinuation { continuation in
+      self.startTunnelContinuation = continuation
+    }
   }
 
   func stop() {
@@ -120,18 +131,31 @@ final class TunnelStore: ObservableObject {
     return manager
   }
 
-  private static func makeProtocolConfiguration(authResponse: AuthResponse? = nil) -> NETunnelProviderProtocol {
+  static func getControlPlaneURLFromInfoPlist() -> URL {
+    let infoPlistDictionary = Bundle.main.infoDictionary
+    guard let urlScheme = (infoPlistDictionary?["ControlPlaneURLScheme"] as? String), !urlScheme.isEmpty else {
+      fatalError("AuthURLScheme missing in Info.plist. Please define AUTH_URL_SCHEME, AUTH_URL_HOST, CONTROL_PLANE_URL_SCHEME, and CONTROL_PLANE_URL_HOST in Server.xcconfig.")
+    }
+    guard let urlHost = (infoPlistDictionary?["ControlPlaneURLHost"] as? String), !urlHost.isEmpty else {
+      fatalError("AuthURLHost missing in Info.plist. Please define AUTH_URL_SCHEME, AUTH_URL_HOST, CONTROL_PLANE_URL_SCHEME, and CONTROL_PLANE_URL_HOST in Server.xcconfig.")
+    }
+    let urlString = "\(urlScheme)://\(urlHost)/"
+    guard let url = URL(string: urlString) else {
+      fatalError("Cannot form valid URL from string: \(urlString)")
+    }
+    return url
+  }
+
+  private static func makeProtocolConfiguration(controlPlaneURL: URL? = nil, token: String? = nil) -> NETunnelProviderProtocol {
     let proto = NETunnelProviderProtocol()
 
     proto.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
       "\($0).network-extension"
     }
-    if let authResponse = authResponse {
+    if let controlPlaneURL = controlPlaneURL, let token = token {
       proto.providerConfiguration = [
-        // TODO: We should really be storing the portalURL as "authURL" and "controlPlaneURL" explicitly
-        // instead of making the assumption the portalURL base is the control plane URL
-        "portalURL": "http://localhost:8081/",
-        "token": authResponse.token
+        "controlPlaneURL": controlPlaneURL.absoluteString,
+        "token": token
       ]
     }
     proto.serverAddress = "Firezone addresses"
@@ -156,6 +180,18 @@ final class TunnelStore: ObservableObject {
             return
           }
           self.status = tunnelProvider.connection.status
+          if let startTunnelContinuation = self.startTunnelContinuation {
+            switch self.status {
+              case .connected:
+                startTunnelContinuation.resume(returning: ())
+                self.startTunnelContinuation = nil
+              case .disconnected:
+                startTunnelContinuation.resume(throwing: TunnelStoreError.tunnelCouldNotBeStarted)
+                self.startTunnelContinuation = nil
+              default:
+                break
+            }
+          }
         }
       }
     )

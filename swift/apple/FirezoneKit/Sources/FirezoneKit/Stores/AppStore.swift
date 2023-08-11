@@ -46,7 +46,8 @@ final class AppStore: ObservableObject {
       do {
         try await tunnel.start(authResponse: authResponse)
       } catch {
-        logger.error("Error starting tunnel: \(String(describing: error))")
+        logger.error("Error starting tunnel: \(String(describing: error)) -- signing out")
+        auth.signOut()
       }
     } else {
       tunnel.stop()

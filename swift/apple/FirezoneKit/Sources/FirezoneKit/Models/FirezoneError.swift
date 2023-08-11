@@ -7,5 +7,5 @@
 import Foundation
 
 enum FirezoneError: Error {
-  case missingPortalURL
+  case missingTeamId
 }

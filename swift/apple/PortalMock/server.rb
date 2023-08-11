@@ -13,5 +13,5 @@ end
 
 get '/redirect' do
   client_auth_token = File.read('./data/client_auth_token').strip
-  redirect "firezone://handle_client_auth_callback?client_auth_token=#{client_auth_token}"
+  redirect "firezone://handle_client_auth_callback?client_auth_token=#{client_auth_token}&actor_name=Foo+Bar"
 end
