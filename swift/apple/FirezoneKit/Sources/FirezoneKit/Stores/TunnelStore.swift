@@ -130,7 +130,7 @@ final class TunnelStore: ObservableObject {
       proto.providerConfiguration = [
         // TODO: We should really be storing the portalURL as "authURL" and "controlPlaneURL" explicitly
         // instead of making the assumption the portalURL base is the control plane URL
-        "portalURL": authResponse.portalURL.baseURL?.absoluteString,
+        "portalURL": "http://localhost:8081/",
         "token": authResponse.token
       ]
     }

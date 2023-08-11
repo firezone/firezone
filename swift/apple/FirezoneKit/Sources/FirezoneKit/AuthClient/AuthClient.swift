@@ -71,9 +71,11 @@ private final class WebAuthenticationSession: NSObject,
         
         guard
           let actorName = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
-          .queryItems?
-          .first(where: { $0.name == "actor_name" })?
-          .value
+            .queryItems?
+            .first(where: { $0.name == "actor_name" })?
+            .value?
+            .removingPercentEncoding?
+            .replacingOccurrences(of: "+", with: " ")
         else {
           continuation.resume(throwing: AuthClientError.invalidCallbackURL(callbackURL))
           return
