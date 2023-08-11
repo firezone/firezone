@@ -26,7 +26,7 @@ impl<'a> ChannelData<'a> {
 
         let length = u16::from_be_bytes([data[2], data[3]]);
 
-        let actual_payload_length = data.len() - 4;
+        let actual_payload_length = data.len() - 2;
 
         if actual_payload_length != length as usize {
             return Err(io::Error::new(
