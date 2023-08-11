@@ -82,11 +82,11 @@ public class Adapter {
   private var displayableResources = DisplayableResources()
 
   /// Starting parameters
-  private var portalURLString: String
+  private var controlPlaneURLString: String
   private var token: String
 
-  public init(portalURLString: String, token: String, packetTunnelProvider: NEPacketTunnelProvider) {
-    self.portalURLString = portalURLString
+  public init(controlPlaneURLString: String, token: String, packetTunnelProvider: NEPacketTunnelProvider) {
+    self.controlPlaneURLString = controlPlaneURLString
     self.token = token
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler()
@@ -123,7 +123,7 @@ public class Adapter {
       self.logger.debug("Adapter.start: Starting connlib")
       do {
         self.state = .startingTunnel(
-          session: try WrappedSession.connect(self.portalURLString, self.token, self.callbackHandler),
+          session: try WrappedSession.connect(self.controlPlaneURLString, self.token, self.callbackHandler),
           onStarted: completionHandler
         )
       } catch let error {
@@ -238,7 +238,7 @@ extension Adapter {
 
         do {
           self.state = .startingTunnel(
-            session: try WrappedSession.connect(portalURLString, token, self.callbackHandler),
+            session: try WrappedSession.connect(controlPlaneURLString, token, self.callbackHandler),
             onStarted: { error in
               if let error = error {
                 self.logger.error("Adapter.didReceivePathUpdate: Error starting connlib: \(error, privacy: .public)")

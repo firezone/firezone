@@ -29,7 +29,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     let providerConfiguration = tunnelProviderProtocol.providerConfiguration
-    guard let portalURLString = providerConfiguration?["portalURL"] as? String else {
+    guard let controlPlaneURLString = providerConfiguration?["controlPlaneURL"] as? String else {
       completionHandler(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid)
       return
     }
@@ -37,7 +37,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       completionHandler(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid)
       return
     }
-    let adapter = Adapter(portalURLString: portalURLString, token: token, packetTunnelProvider: self)
+    let adapter = Adapter(controlPlaneURLString: controlPlaneURLString, token: token, packetTunnelProvider: self)
     self.adapter = adapter
     do {
       try adapter.start() { error in

@@ -212,7 +212,8 @@ public final class MenuBar: NSObject {
             do {
               try await appStore?.tunnel.start(authResponse: authResponse)
             } catch {
-              logger.error("error connecting to tunnel: \(String(describing: error))")
+              logger.error("error connecting to tunnel: \(String(describing: error)) -- signing out")
+              appStore?.auth.signOut()
             }
           }
         }
@@ -223,7 +224,7 @@ public final class MenuBar: NSObject {
       Task {
         do {
           try await appStore?.auth.signIn()
-        } catch FirezoneError.missingPortalURL {
+        } catch FirezoneError.missingTeamId {
           openSettingsWindow()
         } catch {
           logger.error("Error signing in: \(String(describing: error))")

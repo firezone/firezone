@@ -43,7 +43,8 @@ final class MainViewModel: ObservableObject {
         try await appStore.tunnel.start(authResponse: authResponse)
       }
     } catch {
-      logger.error("Error starting tunnel: \(String(describing: error))")
+      logger.error("Error starting tunnel: \(String(describing: error)) -- signing out")
+      appStore.auth.signOut()
     }
   }
 
