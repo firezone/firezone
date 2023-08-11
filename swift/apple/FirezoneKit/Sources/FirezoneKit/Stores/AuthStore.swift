@@ -32,36 +32,40 @@ final class AuthStore: ObservableObject {
 
   private var cancellables = Set<AnyCancellable>()
 
-  @Published private(set) var token: Token?
+  @Published private(set) var authResponse: AuthResponse?
 
   private init() {
     Task {
-      self.token = await {
+      self.authResponse = await {
         guard let portalURL = settingsClient.fetchSettings()?.portalURL else {
           logger.debug("No portal URL found in settings")
           return nil
         }
-        guard let tokenString = try? await keychain.tokenString() else {
-          logger.debug("Token string not found in keychain")
+        guard let token = try? await keychain.token() else {
+          logger.debug("Token not found in keychain")
           return nil
         }
-        guard let token = try? Token(portalURL: portalURL, tokenString: tokenString) else {
-          logger.debug("Token string recovered from keychain is invalid")
+        guard let actorName = try? await keychain.actorName() else {
+          logger.debug("Actor not found in keychain")
+          return nil
+        }
+        guard let authResponse = try? AuthResponse(portalURL: portalURL, token: token, actorName: actorName) else {
+          logger.debug("Token or Actor recovered from keychain is invalid")
           return nil
         }
         logger.debug("Token recovered from keychain.")
-        return token
+        return authResponse
       }()
     }
 
-    $token.dropFirst()
-      .sink { [weak self] token in
+    $authResponse.dropFirst()
+      .sink { [weak self] authResponse in
         Task { [weak self] in
-          if let token {
-            try? await self?.keychain.save(tokenString: token.string)
-            self?.logger.debug("token saved on keychain.")
+          if let authResponse {
+            try? await self?.keychain.save(token: authResponse.token, actorName: authResponse.actorName)
+            self?.logger.debug("authResponse saved on keychain.")
           } else {
-            try? await self?.keychain.deleteTokenString()
+            try? await self?.keychain.deleteAuthResponse()
             self?.logger.debug("token deleted from keychain.")
           }
         }
@@ -72,8 +76,8 @@ final class AuthStore: ObservableObject {
   func signIn(portalURL: URL) async throws {
     logger.trace("\(#function)")
 
-    let token = try await auth.signIn(portalURL)
-    self.token = token
+    let authResponse = try await auth.signIn(portalURL)
+    self.authResponse = authResponse
   }
 
   func signIn() async throws {
@@ -87,6 +91,6 @@ final class AuthStore: ObservableObject {
   func signOut() {
     logger.trace("\(#function)")
 
-    token = nil
+    authResponse = nil
   }
 }

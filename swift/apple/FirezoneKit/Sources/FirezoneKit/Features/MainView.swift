@@ -17,8 +17,8 @@ final class MainViewModel: ObservableObject {
 
   private let appStore: AppStore
 
-  var token: Token? {
-    appStore.auth.token
+  var authResponse: AuthResponse? {
+    appStore.auth.authResponse
   }
 
   var status: NEVPNStatus {
@@ -39,8 +39,8 @@ final class MainViewModel: ObservableObject {
 
   func startTunnel() async {
     do {
-      if let token = token {
-        try await appStore.tunnel.start(token: token)
+      if let authResponse = authResponse {
+        try await appStore.tunnel.start(authResponse: authResponse)
       }
     } catch {
       logger.error("Error starting tunnel: \(String(describing: error))")
@@ -59,7 +59,7 @@ struct MainView: View {
     VStack(spacing: 56) {
       VStack {
         Text("Authenticated").font(.title)
-        Text(model.token?.user ?? "").foregroundColor(.secondary)
+        Text(model.authResponse?.actorName ?? "").foregroundColor(.secondary)
       }
 
       Button("Sign out") {

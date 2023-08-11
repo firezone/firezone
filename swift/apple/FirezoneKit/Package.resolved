@@ -10,15 +10,6 @@
       }
     },
     {
-      "identity" : "jwtdecode.swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/auth0/JWTDecode.swift",
-      "state" : {
-        "revision" : "7918a343e674c7707e0be120bb4e21d679be014c",
-        "version" : "3.0.1"
-      }
-    },
-    {
       "identity" : "swift-case-paths",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/swift-case-paths",
