@@ -59,14 +59,14 @@ final class WelcomeViewModel: ObservableObject {
       destination = .undefinedSettingsAlert(.undefinedSettings)
     }
 
-    appStore.auth.$token
+    appStore.auth.$authResponse
       .receive(on: mainQueue)
-      .sink(receiveValue: { [weak self] token in
+      .sink(receiveValue: { [weak self] authResponse in
         guard let self else {
           return
         }
 
-        if token != nil {
+        if authResponse != nil {
           self.state = .authenticated(MainViewModel(appStore: self.appStore))
         } else {
           self.state = .unauthenticated(AuthViewModel())

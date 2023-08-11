@@ -15,7 +15,6 @@ let package = Package(
     // Dependencies declare other packages that this package depends on.
     .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "0.1.3"),
     .package(url: "https://github.com/pointfreeco/swiftui-navigation", from: "0.5.0"),
-    .package(url: "https://github.com/auth0/JWTDecode.swift", from: "3.0.0"),
   ],
   targets: [
     .target(
@@ -24,7 +23,6 @@ let package = Package(
         .product(name: "SwiftUINavigation", package: "swiftui-navigation"),
         .product(name: "_SwiftUINavigationState", package: "swiftui-navigation"),
         .product(name: "Dependencies", package: "swift-dependencies"),
-        .product(name: "JWTDecode", package: "JWTDecode.swift"),
       ]
     ),
     .testTarget(

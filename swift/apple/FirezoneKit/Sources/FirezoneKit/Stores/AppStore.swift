@@ -31,20 +31,20 @@ final class AppStore: ObservableObject {
     }
     .store(in: &cancellables)
 
-    auth.$token
+    auth.$authResponse
       .receive(on: mainQueue)
-      .sink { [weak self] token in
+      .sink { [weak self] authResponse in
         Task { [weak self] in
-          await self?.handleTokenChanged(token)
+          await self?.handleAuthResponseChanged(authResponse)
         }
       }
       .store(in: &cancellables)
   }
 
-  private func handleTokenChanged(_ token: Token?) async {
-    if let token = token {
+  private func handleAuthResponseChanged(_ authResponse: AuthResponse?) async {
+    if let authResponse = authResponse {
       do {
-        try await tunnel.start(token: token)
+        try await tunnel.start(authResponse: authResponse)
       } catch {
         logger.error("Error starting tunnel: \(String(describing: error))")
       }

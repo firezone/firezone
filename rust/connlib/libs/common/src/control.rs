@@ -93,7 +93,7 @@ where
     /// Furthermore, it calls the given callback once it connects to the portal.
     #[tracing::instrument(level = "trace", skip(self, cb))]
     pub async fn start(&mut self, topics: Vec<String>, cb: impl FnOnce()) -> Result<()> {
-        tracing::trace!("Trying to connect to the portal...");
+        tracing::trace!("Trying to connect to portal URL {}...", self.uri);
 
         let (ws_stream, _) = connect_async(make_request(&self.uri)?).await?;
         cb();

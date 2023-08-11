@@ -57,13 +57,13 @@ public final class MenuBar: NSObject {
     }
 
     private func setupObservers() {
-      appStore?.auth.$token
+      appStore?.auth.$authResponse
         .receive(on: mainQueue)
-        .sink { [weak self] token in
-          if let token {
-            self?.showLoggedIn(token.user)
+        .sink { [weak self] authResponse in
+          if let authResponse {
+            self?.showSignedIn(authResponse.actorName)
           } else {
-            self?.showLoggedOut()
+            self?.showSignedOut()
           }
         }
         .store(in: &cancellables)
@@ -104,16 +104,16 @@ public final class MenuBar: NSObject {
       target: self
     )
 
-    private lazy var loginMenuItem = createMenuItem(
+    private lazy var signInMenuItem = createMenuItem(
       menu,
-      title: "Login",
-      action: #selector(loginButtonTapped),
+      title: "Sign in",
+      action: #selector(signInButtonTapped),
       target: self
     )
-    private lazy var logoutMenuItem = createMenuItem(
+    private lazy var signOutMenuItem = createMenuItem(
       menu,
-      title: "Logout",
-      action: #selector(logoutButtonTapped),
+      title: "Sign out",
+      action: #selector(signOutButtonTapped),
       isHidden: true,
       target: self
     )
@@ -153,8 +153,8 @@ public final class MenuBar: NSObject {
 
     private func createMenu() {
       menu.addItem(connectionMenuItem)
-      menu.addItem(loginMenuItem)
-      menu.addItem(logoutMenuItem)
+      menu.addItem(signInMenuItem)
+      menu.addItem(signOutMenuItem)
       menu.addItem(NSMenuItem.separator())
 
       menu.addItem(resourcesTitleMenuItem)
@@ -186,21 +186,21 @@ public final class MenuBar: NSObject {
       return item
     }
 
-    private func showLoggedIn(_ user: String?) {
+    private func showSignedIn(_ user: String?) {
       if let user {
-        loginMenuItem.title = "Logged in as \(user)"
+        signInMenuItem.title = "Signed in as \(user)"
       } else {
-        loginMenuItem.title = "Logged in"
+        signInMenuItem.title = "Signed in"
       }
-      loginMenuItem.target = nil
-      logoutMenuItem.isHidden = false
+      signInMenuItem.target = nil
+      signOutMenuItem.isHidden = false
     }
 
-    private func showLoggedOut() {
-      loginMenuItem.title = "Login"
-      loginMenuItem.target = self
+    private func showSignedOut() {
+      signInMenuItem.title = "Sign in"
+      signInMenuItem.target = self
 
-      logoutMenuItem.isHidden = true
+      signOutMenuItem.isHidden = true
     }
 
     @objc private func connectButtonTapped() {
@@ -208,9 +208,9 @@ public final class MenuBar: NSObject {
         appStore?.tunnel.stop()
       } else {
         Task {
-          if let token = appStore?.auth.token {
+          if let authResponse = appStore?.auth.authResponse {
             do {
-              try await appStore?.tunnel.start(token: token)
+              try await appStore?.tunnel.start(authResponse: authResponse)
             } catch {
               logger.error("error connecting to tunnel: \(String(describing: error))")
             }
@@ -219,7 +219,7 @@ public final class MenuBar: NSObject {
       }
     }
 
-    @objc private func loginButtonTapped() {
+    @objc private func signInButtonTapped() {
       Task {
         do {
           try await appStore?.auth.signIn()
@@ -231,7 +231,7 @@ public final class MenuBar: NSObject {
       }
     }
 
-    @objc private func logoutButtonTapped() {
+    @objc private func signOutButtonTapped() {
       appStore?.auth.signOut()
     }
 

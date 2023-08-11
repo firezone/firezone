@@ -64,16 +64,16 @@ pluginkit -r <path>
 
 ## Cleaning up
 
-Occasionally you might encounter strange issues where it seems like the artifacts
-being debugged don't match the code, among other things. In these cases it's good
-to clean up using one of the methods below.
+Occasionally you might encounter strange issues where it seems like the
+artifacts being debugged don't match the code, among other things. In these
+cases it's good to clean up using one of the methods below.
 
 ### Resetting Xcode package cache
 
 Removes cached packages, built extensions, etc.
 
 ```bash
-rm -rf ~/Library/Developer/Xcode/Derived\ Data
+rm -rf ~/Library/Developer/Xcode/DerivedData
 ```
 
 ### Removing build artifacts
