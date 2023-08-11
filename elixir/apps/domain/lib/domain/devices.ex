@@ -27,8 +27,6 @@ defmodule Domain.Devices do
   end
 
   def fetch_device_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
-
     required_permissions =
       {:one_of,
        [
@@ -38,12 +36,22 @@ defmodule Domain.Devices do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Validator.valid_uuid?(id) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
       Device.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
-        {:ok, device} -> {:ok, Repo.preload(device, preload)}
-        {:error, reason} -> {:error, reason}
+        {:ok, device} ->
+          device =
+            device
+            |> Repo.preload(preload)
+            |> preload_online_status()
+
+          {:ok, device}
+
+        {:error, reason} ->
+          {:error, reason}
       end
     else
       false -> {:error, :not_found}
@@ -57,6 +65,7 @@ defmodule Domain.Devices do
     Device.Query.by_id(id)
     |> Repo.one!()
     |> Repo.preload(preload)
+    |> preload_online_status()
   end
 
   def list_devices(%Auth.Subject{} = subject, opts \\ []) do
@@ -74,6 +83,10 @@ defmodule Domain.Devices do
         Device.Query.all()
         |> Authorizer.for_subject(subject)
         |> Repo.list()
+
+      devices =
+        devices
+        |> preload_online_statuses()
 
       {:ok, Repo.preload(devices, preload)}
     end
@@ -93,13 +106,36 @@ defmodule Domain.Devices do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Validator.valid_uuid?(actor_id) do
-      Device.Query.by_actor_id(actor_id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.list()
+      {:ok, devices} =
+        Device.Query.by_actor_id(actor_id)
+        |> Authorizer.for_subject(subject)
+        |> Repo.list()
+
+      devices =
+        devices
+        |> preload_online_statuses()
+
+      {:ok, devices}
     else
       false -> {:error, :not_found}
       other -> other
     end
+  end
+
+  # TODO: this is ugly!
+  defp preload_online_status(device) do
+    connected_devices = Presence.list("devices:#{device.id}")
+    %{device | online?: Map.has_key?(connected_devices, device.id)}
+  end
+
+  defp preload_online_statuses([]), do: []
+
+  defp preload_online_statuses([device | _] = devices) do
+    connected_devices = Presence.list("devices:#{device.account_id}")
+
+    Enum.map(devices, fn device ->
+      %{device | online?: Map.has_key?(connected_devices, device.id)}
+    end)
   end
 
   def change_device(%Device{} = device, attrs \\ %{}) do
@@ -145,6 +181,13 @@ defmodule Domain.Devices do
       Device.Query.by_id(device.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Device.Changeset.update_changeset(&1, attrs))
+      |> case do
+        {:ok, device} ->
+          {:ok, preload_online_status(device)}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -169,12 +212,12 @@ defmodule Domain.Devices do
   end
 
   def connect_device(%Device{} = device) do
-    Phoenix.PubSub.subscribe(Domain.PubSub, "actor:#{device.actor_id}")
-
     {:ok, _} =
       Presence.track(self(), "devices:#{device.account_id}", device.id, %{
         online_at: System.system_time(:second)
       })
+
+    {:ok, _} = Presence.track(self(), "actor_devices:#{device.actor_id}", device.id, %{})
 
     :ok
   end
