@@ -18,6 +18,10 @@ public final class SettingsViewModel: ObservableObject {
   public init() {
     settings = Settings()
 
+    load()
+  }
+
+  func load() {
     if let storedSettings = settingsClient.fetchSettings() {
       settings = storedSettings
     }
@@ -64,7 +68,18 @@ public struct SettingsView: View {
 
   #if os(macOS)
     private var mac: some View {
-      form
+      VStack(spacing: 50) {
+        form
+        HStack(spacing: 30) {
+          Button("Cancel", action: {
+            self.cancelButtonTapped()
+          })
+          Button("Save", action: {
+            self.saveButtonTapped()
+          })
+          .disabled(!isTeamIdValid(model.settings.teamId))
+        }
+      }
     }
   #endif
 
@@ -82,15 +97,9 @@ public struct SettingsView: View {
         )
       }
     }
-    .navigationTitle("Settings")
+    .navigationTitle("Settings - Firezone")
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
-        #if os(macOS)
-        Button("Done") {
-          self.doneButtonTapped()
-        }
-        .disabled(!isTeamIdValid(model.settings.teamId))
-        #endif
       }
     }
   }
@@ -99,8 +108,13 @@ public struct SettingsView: View {
     !teamId.isEmpty && teamId.unicodeScalars.allSatisfy { teamIdAllowedCharacterSet.contains($0) }
   }
 
-  func doneButtonTapped() {
+  func saveButtonTapped() {
     model.save()
+    dismiss()
+  }
+
+  func cancelButtonTapped() {
+    model.load()
     dismiss()
   }
 }
