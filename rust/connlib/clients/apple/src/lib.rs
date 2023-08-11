@@ -136,8 +136,8 @@ impl Callbacks for CallbackHandler {
 fn init_logging() {
     use tracing_subscriber::layer::SubscriberExt as _;
     let collector = tracing_subscriber::registry().with(tracing_oslog::OsLogger::new(
-        "dev.firezone.connlib",
-        "default",
+        "dev.firezone.firezone",
+        "connlib",
     ));
     // This will fail if called more than once, but that doesn't really matter.
     if tracing::subscriber::set_global_default(collector).is_ok() {
