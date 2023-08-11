@@ -1775,6 +1775,31 @@ defmodule Domain.AuthTest do
       assert DateTime.diff(reconstructed_subject.expires_at, subject.expires_at) <= 1
     end
 
+    test "returns subject on success for client token", %{
+      subject: subject,
+      user_agent: user_agent
+    } do
+      {:ok, token} = create_client_token_from_subject(subject)
+
+      <<a::size(8), b::size(8), c::size(8), d::size(8)>> =
+        <<System.unique_integer([:positive])::32>>
+
+      # Client sessions are not binded to a specific user agent or remote ip
+      remote_ip = {a, b, c, d}
+      user_agent = user_agent <> "+b1"
+
+      assert {:ok, reconstructed_subject} = sign_in(token, user_agent, remote_ip)
+
+      assert reconstructed_subject.identity.id == subject.identity.id
+      assert reconstructed_subject.actor.id == subject.actor.id
+      assert reconstructed_subject.account.id == subject.account.id
+      assert reconstructed_subject.permissions == subject.permissions
+      assert reconstructed_subject.context != subject.context
+      assert reconstructed_subject.context.user_agent == user_agent
+      assert reconstructed_subject.context.remote_ip == remote_ip
+      assert DateTime.diff(reconstructed_subject.expires_at, subject.expires_at) <= 1
+    end
+
     test "returns subject on success for service account token", %{
       account: account,
       user_agent: user_agent,
@@ -1822,7 +1847,7 @@ defmodule Domain.AuthTest do
       assert updated_identity.last_seen_user_agent != identity.last_seen_user_agent
     end
 
-    test "returns error when token is created with a different remote ip", %{
+    test "returns error when session token is created with a different remote ip", %{
       subject: subject,
       user_agent: user_agent
     } do
@@ -1830,7 +1855,7 @@ defmodule Domain.AuthTest do
       assert sign_in(token, user_agent, {127, 0, 0, 1}) == {:error, :unauthorized}
     end
 
-    test "returns error when token is created with a different user agent", %{
+    test "returns error when session token is created with a different user agent", %{
       subject: subject,
       remote_ip: remote_ip
     } do
@@ -1857,6 +1882,14 @@ defmodule Domain.AuthTest do
       identity = AuthFixtures.create_identity()
       subject = AuthFixtures.create_subject(identity)
       assert {:ok, _token} = create_session_token_from_subject(subject)
+    end
+  end
+
+  describe "create_client_token_from_subject/1" do
+    test "returns valid client token for a given subject" do
+      identity = AuthFixtures.create_identity()
+      subject = AuthFixtures.create_subject(identity)
+      assert {:ok, _token} = create_client_token_from_subject(subject)
     end
   end
 

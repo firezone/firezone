@@ -420,9 +420,9 @@ Policies.create_policy(
 IO.puts("Policies Created")
 IO.puts("")
 
-{:ok, unprivileged_subject_session_token} =
-  Auth.create_session_token_from_subject(unprivileged_subject)
+{:ok, unprivileged_subject_client_token} =
+  Auth.create_client_token_from_subject(unprivileged_subject)
 
 IO.puts("Created device tokens:")
-IO.puts("  #{unprivileged_actor_email} token: #{unprivileged_subject_session_token}")
+IO.puts("  #{unprivileged_actor_email} token: #{unprivileged_subject_client_token}")
 IO.puts("")
