@@ -613,7 +613,7 @@ module "relays" {
   image      = "relay"
   image_tag  = var.relay_image_tag
 
-  observability_log_level = "debug"
+  observability_log_level = "debug,relay=trace"
 
   application_name    = "relay"
   application_version = "0-0-1"
