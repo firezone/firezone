@@ -6,13 +6,13 @@ import android.content.SharedPreferences
 import android.content.res.Resources
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import dev.firezone.android.features.session.backend.BootShutdownReceiver
 import dev.firezone.android.features.session.backend.SessionManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.CoroutineDispatcher
+import dev.firezone.android.core.domain.preference.GetConfigUseCase
+import dev.firezone.android.core.domain.preference.SaveIsConnectedUseCase
 
 internal const val ENCRYPTED_SHARED_PREFERENCES = "encryptedSharedPreferences"
 
@@ -40,6 +40,7 @@ object AppModule {
 
     @Provides
     internal fun provideSessionManager(
-        sharedPreferences: SharedPreferences
-    ): SessionManager = SessionManager(sharedPreferences)
+        getConfigUseCase: GetConfigUseCase,
+        saveIsConnectedUseCase: SaveIsConnectedUseCase,
+    ): SessionManager = SessionManager(getConfigUseCase, saveIsConnectedUseCase)
 }
