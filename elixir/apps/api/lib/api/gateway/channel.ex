@@ -45,6 +45,8 @@ defmodule API.Gateway.Channel do
       resource: Views.Resource.render(resource),
       expires_at: DateTime.to_unix(authorization_expires_at, :second)
     })
+
+    {:noreply, socket}
   end
 
   def handle_info({:request_connection, {channel_pid, socket_ref}, attrs}, socket) do
