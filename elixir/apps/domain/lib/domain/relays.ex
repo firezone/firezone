@@ -79,13 +79,18 @@ defmodule Domain.Relays do
   defp maybe_preload_online_statuses([]), do: []
 
   defp maybe_preload_online_statuses([group | _] = groups) do
+    connected_global_relays = Presence.list("relays")
     connected_relays = Presence.list("relays:#{group.account_id}")
 
     if Ecto.assoc_loaded?(group.relays) do
       Enum.map(groups, fn group ->
         relays =
           Enum.map(group.relays, fn relay ->
-            %{relay | online?: Map.has_key?(connected_relays, relay.id)}
+            online? =
+              Map.has_key?(connected_relays, relay.id) or
+                Map.has_key?(connected_global_relays, relay.id)
+
+            %{relay | online?: online?}
           end)
 
         %{group | relays: relays}
