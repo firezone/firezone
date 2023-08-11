@@ -8,7 +8,7 @@ import Dependencies
 import Foundation
 import OSLog
 
-extension Logger {
+public extension Logger {
   static func make(for type: (some Any).Type) -> Logger {
     make(category: String(describing: type))
   }

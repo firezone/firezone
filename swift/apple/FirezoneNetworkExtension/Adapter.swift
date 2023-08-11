@@ -6,7 +6,7 @@
 import Foundation
 import NetworkExtension
 import FirezoneKit
-import os.log
+import OSLog
 
 public enum AdapterError: Error {
   /// Failure to perform an operation in such state.
@@ -55,7 +55,7 @@ public class Adapter {
   typealias StartTunnelCompletionHandler = ((AdapterError?) -> Void)
   typealias StopTunnelCompletionHandler = (() -> Void)
 
-  private let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
+  private let logger = Logger.make(category: "packet-tunnel")
 
   private var callbackHandler: CallbackHandler
 
