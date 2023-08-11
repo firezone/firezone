@@ -7,7 +7,7 @@
 
     <fragment
         android:id="@+id/splashFragment"
-        android:name="dev.firezone.android.features.splash.presentation.SplashFragment"
+        android:name="dev.firezone.android.features.splash.ui.SplashFragment"
         tools:layout="@layout/fragment_onboarding">
 
         <action
@@ -38,7 +38,7 @@
 
     <fragment
         android:id="@+id/onboardingFragment"
-        android:name="dev.firezone.android.features.onboarding.presentation.OnboardingFragment"
+        android:name="dev.firezone.android.features.onboarding.ui.OnboardingFragment"
         tools:layout="@layout/fragment_onboarding">
 
         <action
@@ -52,7 +52,7 @@
 
     <fragment
         android:id="@+id/signInFragment"
-        android:name="dev.firezone.android.features.signin.presentation.SignInFragment"
+        android:name="dev.firezone.android.features.signin.ui.SignInFragment"
         tools:layout="@layout/fragment_sign_in">
 
         <action
@@ -75,7 +75,7 @@
 
     <fragment
         android:id="@+id/sessionFragment"
-        android:name="dev.firezone.android.features.session.presentation.SessionFragment"
+        android:name="dev.firezone.android.features.session.ui.SessionFragment"
         tools:layout="@layout/fragment_session">
 
         <action
@@ -87,5 +87,9 @@
             app:popExitAnim="@anim/fade_out" />
 
     </fragment>
+
+    <activity
+        android:id="@+id/vpnPermissionActivity"
+        android:name="dev.firezone.android.features.permission.vpn.ui.VpnPermissionActivity" />
 
 </navigation>
