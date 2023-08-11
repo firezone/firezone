@@ -24,6 +24,10 @@ locals {
         google_compute_global_address.ipv4.address,
         google_compute_global_address.ipv6.address
       ])
+    },
+    {
+      name  = "LOG_LEVEL"
+      value = var.observability_log_level
     }
   ], var.application_environment_variables)
 
