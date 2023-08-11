@@ -32,7 +32,7 @@ android {
             manifestPlaceholders.hostName = "app.firez.one"
             buildConfigField("String", "AUTH_HOST", "\"localhost\"")
             buildConfigField("String", "AUTH_SCHEME", "\"http\"")
-            buildConfigField("String", "AUTH_PORT", "8080")
+            buildConfigField("Integer", "AUTH_PORT", "8080")
             buildConfigField("String", "CONTROL_PLANE_URL", "\"ws://localhost:8081/\"")
 
             resValue "string", "app_name", "\"Firezone (Dev)\""
@@ -44,7 +44,7 @@ android {
             manifestPlaceholders.hostName = "app.firezone.dev"
             buildConfigField("String", "AUTH_HOST", "\"app.firezone.dev\"")
             buildConfigField("String", "AUTH_SCHEME", "\"https\"")
-            buildConfigField("String", "AUTH_PORT", "443")
+            buildConfigField("Integer", "AUTH_PORT", "443")
             buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firezone.dev/\"")
 
             resValue "string", "app_name", "\"Firezone\""

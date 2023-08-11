@@ -1,6 +1,7 @@
 package dev.firezone.android.features.session.backend
 
 import android.util.Log
+import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.core.domain.preference.SaveIsConnectedUseCase
 import dev.firezone.connlib.Logger
@@ -22,7 +23,7 @@ internal class SessionManager @Inject constructor(
                 Log.d("Connlib", "jwt: ${config.jwt}")
 
                 sessionPtr = Session.connect(
-                    config.controlPlaneUrl,
+                    BuildConfig.CONTROL_PLANE_URL,
                     config.jwt,
                     callback
                 )
