@@ -90,7 +90,7 @@ private final class WebAuthenticationSession: NSObject,
       }
 
       session.presentationContextProvider = self
-      
+
       // We want to load any SSO cookies that the user may have set in their default browser
       session.prefersEphemeralWebBrowserSession = false
 
