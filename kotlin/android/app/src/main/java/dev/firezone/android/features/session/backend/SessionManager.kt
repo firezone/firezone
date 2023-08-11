@@ -22,7 +22,7 @@ internal class SessionManager @Inject constructor(
                 Log.d("Connlib", "jwt: ${config.jwt}")
 
                 sessionPtr = Session.connect(
-                    config.portalUrl,
+                    config.controlPlaneUrl,
                     config.jwt,
                     callback
                 )
