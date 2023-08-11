@@ -113,13 +113,13 @@ async fn main() -> Result<()> {
         url.set_path("relay/websocket");
         url.query_pairs_mut().append_pair("token", &token);
 
-        if let Some(listen_ip4_addr) = args.listen_ip4_addr {
+        if let Some(public_ip4_addr) = args.public_ip4_addr {
             url.query_pairs_mut()
-                .append_pair("ipv4", &listen_ip4_addr.to_string());
+                .append_pair("ipv4", &public_ip4_addr.to_string());
         }
-        if let Some(listen_ip6_addr) = args.listen_ip6_addr {
+        if let Some(public_ip6_addr) = args.public_ip6_addr {
             url.query_pairs_mut()
-                .append_pair("ipv6", &listen_ip6_addr.to_string());
+                .append_pair("ipv6", &public_ip6_addr.to_string());
         }
 
         let mut channel = PhoenixChannel::<InboundPortalMessage, ()>::connect(
