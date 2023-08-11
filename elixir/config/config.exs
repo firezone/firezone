@@ -100,7 +100,8 @@ config :web, Web.Plugs.SecureHeaders,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}'",
     "img-src 'self' data: https://www.gravatar.com",
-    "style-src 'self' 'unsafe-inline'"
+    "style-src 'self' 'unsafe-inline'",
+    "connect-src 'self' https://firezone.statuspage.io"
   ]
 
 ###############################

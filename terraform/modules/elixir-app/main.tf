@@ -24,6 +24,10 @@ locals {
         google_compute_global_address.ipv4.address,
         google_compute_global_address.ipv6.address
       ])
+    },
+    {
+      name  = "LOG_LEVEL"
+      value = var.observability_log_level
     }
   ], var.application_environment_variables)
 
@@ -346,7 +350,7 @@ resource "google_compute_backend_service" "default" {
   port_name = each.value.name
   protocol  = "HTTP"
 
-  timeout_sec                     = 10
+  timeout_sec                     = 86400
   connection_draining_timeout_sec = 120
 
   enable_cdn       = false

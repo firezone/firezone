@@ -474,8 +474,17 @@ defmodule Domain.RelaysTest do
       RelaysFixtures.create_relay(account: account)
       RelaysFixtures.create_relay()
 
+      group = RelaysFixtures.create_global_group()
+      relay = RelaysFixtures.create_relay(group: group)
+
       assert {:ok, relays} = list_relays(subject)
-      assert length(relays) == 2
+      assert length(relays) == 3
+      refute Enum.any?(relays, & &1.online?)
+
+      :ok = connect_relay(relay, Ecto.UUID.generate())
+      assert {:ok, relays} = list_relays(subject)
+      assert length(relays) == 3
+      assert Enum.any?(relays, & &1.online?)
     end
 
     test "returns error when subject has no permission to manage relays", %{
@@ -657,10 +666,9 @@ defmodule Domain.RelaysTest do
       assert Repo.aggregate(Domain.Network.Address, :count) == 0
     end
 
-    test "updates global relay when it already exists", %{
-      token: token
-    } do
+    test "updates global relay when it already exists" do
       group = RelaysFixtures.create_global_group()
+      token = hd(group.tokens)
       relay = RelaysFixtures.create_relay(group: group, token: token)
 
       attrs =

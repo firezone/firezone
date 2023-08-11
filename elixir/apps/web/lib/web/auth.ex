@@ -36,7 +36,7 @@ defmodule Web.Auth do
       |> Keyword.fetch!(:platform_redirect_urls)
 
     if redirect_to = Map.get(platform_redirect_urls, client_platform) do
-      {:ok, client_token} = Auth.create_session_token_from_subject(subject)
+      {:ok, client_token} = Auth.create_client_token_from_subject(subject)
 
       query =
         %{

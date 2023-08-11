@@ -238,10 +238,15 @@ defmodule Domain.Relays do
   end
 
   defp preload_online_statuses(relays, account_id) do
+    connected_global_relays = Presence.list("relays")
     connected_relays = Presence.list("relays:#{account_id}")
 
     Enum.map(relays, fn relay ->
-      %{relay | online?: Map.has_key?(connected_relays, relay.id)}
+      online? =
+        Map.has_key?(connected_relays, relay.id) or
+          Map.has_key?(connected_global_relays, relay.id)
+
+      %{relay | online?: online?}
     end)
   end
 
@@ -284,7 +289,7 @@ defmodule Domain.Relays do
 
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:relay, changeset,
-      conflict_target: Relay.Changeset.upsert_conflict_target(),
+      conflict_target: Relay.Changeset.upsert_conflict_target(token),
       on_conflict: Relay.Changeset.upsert_on_conflict(),
       returning: true
     )
