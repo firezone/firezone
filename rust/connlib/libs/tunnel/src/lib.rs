@@ -44,6 +44,7 @@ use libs_common::{
 use device_channel::{create_iface, DeviceChannel};
 use tun::IfaceConfig;
 
+pub use control_protocol::Request;
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 use index::{check_packet_index, IndexLfsr};
@@ -125,9 +126,14 @@ pub trait ControlSignal {
     /// Signals to the control plane an intent to initiate a connection to the given resource.
     ///
     /// Used when a packet is found to a resource we have no connection stablished but is within the list of resources available for the client.
-    async fn signal_connection_to(&self, resource: &ResourceDescription) -> Result<()>;
+    async fn signal_connection_to(
+        &self,
+        resource: &ResourceDescription,
+        connected_gateway_ids: Vec<Id>,
+    ) -> Result<()>;
 }
 
+// TODO: We should use newtypes for each kind of Id
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets
 /// to communicate between peers.
 pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
@@ -142,8 +148,10 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<Id, Arc<RTCPeerConnection>>>,
     awaiting_connection: Mutex<HashSet<Id>>,
+    gateway_awaiting_connection: Mutex<HashMap<Id, Vec<IpNetwork>>>,
+    resources_gateways: Mutex<HashMap<Id, Id>>,
     webrtc_api: API,
-    resources: RwLock<ResourceTable>,
+    resources: RwLock<ResourceTable<ResourceDescription>>,
     control_signaler: C,
     gateway_public_keys: Mutex<HashMap<Id, PublicKey>>,
     callbacks: CallbackErrorFacade<CB>,
@@ -176,6 +184,8 @@ where
         let resources = Default::default();
         let awaiting_connection = Default::default();
         let gateway_public_keys = Default::default();
+        let resources_gateways = Default::default();
+        let gateway_awaiting_connection = Default::default();
 
         // ICE
         let mut media_engine = MediaEngine::default();
@@ -207,7 +217,9 @@ where
             device_channel,
             resources,
             awaiting_connection,
+            gateway_awaiting_connection,
             control_signaler,
+            resources_gateways,
             callbacks: CallbackErrorFacade(callbacks),
         })
     }
@@ -261,18 +273,32 @@ where
         Ok(())
     }
 
+    async fn stop_peer(&self, index: u32, conn_id: Id) {
+        self.peers_by_ip.write().retain(|_, p| p.index != index);
+        let conn = self.peer_connections.lock().remove(&conn_id);
+        if let Some(conn) = conn {
+            if let Err(e) = conn.close().await {
+                tracing::error!("Problem while trying to close channel: {e:?}");
+                let _ = self.callbacks().on_error(&e.into());
+            }
+        }
+    }
+
     async fn peer_refresh(&self, peer: &Peer, dst_buf: &mut [u8; MAX_UDP_SIZE]) {
         let update_timers_result = peer.update_timers(&mut dst_buf[..]);
 
         match update_timers_result {
             TunnResult::Done => {}
-            TunnResult::Err(WireGuardError::ConnectionExpired) => {
-                tracing::error!("Connection expired");
+            TunnResult::Err(WireGuardError::ConnectionExpired)
+            | TunnResult::Err(WireGuardError::NoCurrentSession) => {
+                self.stop_peer(peer.index, peer.conn_id).await;
+                let _ = peer.shutdown().await;
             }
             TunnResult::Err(e) => tracing::error!(message = "Timer error", error = ?e),
             TunnResult::WriteToNetwork(packet) => {
                 peer.send_infallible(packet, &self.callbacks).await
             }
+
             _ => panic!("Unexpected result from update_timers"),
         };
     }
@@ -293,7 +319,8 @@ where
         let mut peers_by_ip = self.peers_by_ip.write();
 
         for (_, peer) in peers_by_ip.iter() {
-            if !peer.is_valid() {
+            peer.expire_resources();
+            if peer.is_emptied() {
                 tracing::trace!("Peer connection with index {} expired", peer.index);
                 let conn = self.peer_connections.lock().remove(&peer.conn_id);
                 let p = peer.clone();
@@ -309,7 +336,7 @@ where
             }
         }
 
-        peers_by_ip.retain(|_, p| p.is_valid());
+        peers_by_ip.retain(|_, p| !p.is_emptied());
     }
 
     fn start_peers_refresh_timer(self: &Arc<Self>) {
@@ -413,10 +440,7 @@ where
                 // We found a peer, use it to decapsulate the message+
                 let mut flush = false;
                 match decapsulate_result {
-                    TunnResult::Done => {
-                        let conn_id = peer.conn_id;
-                        tracing::trace!("Wireguard connection done with peer: {conn_id}");
-                    }
+                    TunnResult::Done => {}
                     TunnResult::Err(err) => {
                         tracing::error!("Error decapsulating packet: {err:?}");
                         let _ = tunnel.callbacks().on_error(&err.into());
@@ -460,7 +484,6 @@ where
     }
 
     fn get_resource(&self, buff: &[u8]) -> Option<ResourceDescription> {
-        // TODO: Check if DNS packet, in that case parse and get dns
         let addr = Tunn::dst_address(buff)?;
         let resources = self.resources.read();
         match addr {
@@ -513,18 +536,15 @@ where
                 };
 
                 let (encapsulate_result, channel, peer_index, conn_id) = {
-                    let peers_by_ip = dev.peers_by_ip.read();
-                    match peers_by_ip.longest_match(dst_addr).map(|p| p.1) {
+                    match dev.peers_by_ip.read().longest_match(dst_addr).map(|p| p.1) {
                         Some(peer) => {
-                            // TODO: check that the translation maps to the ip
-                            // (we actually have multiple ips so we need a map here)
-                            if peer.translated_resource_address.read().is_some() {
-                                let Some(mut packet) = MutableIpPacket::new(&mut src[..res]) else  {
+                            let Some(mut packet) = MutableIpPacket::new(&mut src[..res]) else  {
                                     tracing::error!("Developer error: we should never see a packet through the tunnel wire that isn't ip");
                                     continue;
                                 };
-
-                                let resource = peer.resource.as_ref().expect("Developer error: only peers with resource should have a resource_address");
+                            if let Some(resource) =
+                                peer.get_translation(packet.to_immutable().source())
+                            {
                                 let ResourceDescription::Dns(resource) = resource else {
                                     tracing::error!("Developer error: only dns resources should have a resource_address");
                                     continue;
@@ -539,8 +559,7 @@ where
                                     }
                                 }
 
-                                packet.set_checksum();
-                                packet.set_icmpv6_checksum();
+                                packet.update_checksum();
                             }
                             (
                                 peer.tunnel.lock().encapsulate(&src[..res], &mut dst[..]),
@@ -563,10 +582,22 @@ where
                                     awaiting_connection.insert(id);
                                     let dev = Arc::clone(&dev);
 
+                                    let mut connected_gateway_ids: Vec<_> = dev
+                                        .gateway_awaiting_connection
+                                        .lock()
+                                        .clone()
+                                        .into_keys()
+                                        .collect();
+                                    connected_gateway_ids.extend(
+                                        dev.resources_gateways.lock().values().collect::<Vec<_>>(),
+                                    );
+                                    tracing::trace!(
+                                        "Currently connected gateways: {connected_gateway_ids:?}"
+                                    );
                                     tokio::spawn(async move {
                                         if let Err(e) = dev
                                             .control_signaler
-                                            .signal_connection_to(&resource)
+                                            .signal_connection_to(&resource, connected_gateway_ids)
                                             .await
                                         {
                                             // Not a deadlock because this is a different task
@@ -583,12 +614,12 @@ where
                 };
 
                 match encapsulate_result {
-                    TunnResult::Done => {
-                        tracing::trace!(
-                            "tunnel for resource corresponding to {dst_addr} was finalized"
-                        );
-                        dev.peers_by_ip.write().retain(|_, p| p.index != peer_index);
+                    TunnResult::Done => {}
+                    TunnResult::Err(WireGuardError::ConnectionExpired)
+                    | TunnResult::Err(WireGuardError::NoCurrentSession) => {
+                        dev.stop_peer(peer_index, conn_id).await
                     }
+
                     TunnResult::Err(e) => {
                         tracing::error!(message = "Encapsulate error for resource corresponding to {dst_addr}", error = ?e);
                         let _ = dev.callbacks.on_error(&e.into());
@@ -604,19 +635,10 @@ where
                                         webrtc::sctp::Error::ErrStreamClosed
                                     )
                             ) {
-                                dev.peers_by_ip.write().retain(|_, p| p.index != peer_index);
-                                let _ = channel.close().await;
-                                let conn = dev.peer_connections.lock().remove(&conn_id);
-                                if let Some(conn) = conn {
-                                    if let Err(e) = conn.close().await {
-                                        tracing::error!(
-                                            "Problem while trying to close channel: {e:?}"
-                                        );
-                                        let _ = dev.callbacks().on_error(&e.into());
-                                    }
-                                }
+                                dev.stop_peer(peer_index, conn_id).await;
                             }
                             let _ = dev.callbacks.on_error(&e.into());
+                            return;
                         }
                     }
                     _ => panic!("Unexpected result from encapsulate"),

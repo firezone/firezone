@@ -75,6 +75,8 @@ defmodule Domain.Jobs.Executors.GlobalTest do
     Process.exit(leader_pid, :kill)
     assert_receive {:EXIT, ^leader_pid, :killed}
 
+    Process.sleep(100)
+
     %{leader: [new_leader_pid], fallback: [fallback_pid]} =
       Enum.group_by([fallback1_pid, fallback2_pid], fn pid ->
         case :sys.get_state(pid) do

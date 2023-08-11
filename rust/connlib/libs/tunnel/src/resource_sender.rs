@@ -19,16 +19,15 @@ where
     async fn update_and_send_packet(&self, packet: &mut [u8], dst_addr: IpAddr) {
         let Some(mut pkt) = MutableIpPacket::new(packet) else { return };
         pkt.set_dst(dst_addr);
-        pkt.set_checksum();
-        pkt.set_icmpv6_checksum();
+        pkt.update_checksum();
 
         match dst_addr {
             IpAddr::V4(addr) => {
-                tracing::trace!("Sending to packet to {addr}");
+                tracing::trace!("Sending packet to {addr}");
                 self.write4_device_infallible(packet).await;
             }
             IpAddr::V6(addr) => {
-                tracing::trace!("Sending to packet to {addr}");
+                tracing::trace!("Sending packet to {addr}");
                 self.write6_device_infallible(packet).await;
             }
         }
@@ -36,7 +35,7 @@ where
 
     pub(crate) async fn send_to_resource(&self, peer: &Arc<Peer>, addr: IpAddr, packet: &mut [u8]) {
         if peer.is_allowed(addr) {
-            let Some(resource) = &peer.resource else {
+            let Some(resources) = &peer.resources else {
                 // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
                 // and we just trust gateways.
                 // In gateways this should never happen.
@@ -53,38 +52,38 @@ where
                 return;
             };
 
+            let Some(resource) = resources.read().get_by_ip(dst).map(|r| r.0.clone()) else {
+                tracing::warn!(
+                    "client tried to hijack the tunnel for resource itsn't allowed."
+                );
+                return;
+            };
+
             let (dst_addr, _dst_port) = match resource {
                 // Note: for now no translation is needed for the ip since we do a peer/connection per resource
                 ResourceDescription::Dns(r) => {
-                    if r.ipv4 == dst || r.ipv6 == dst {
-                        let mut address = r.address.split(':');
-                        let Some(dst_addr) = address.next() else {
+                    let mut address = r.address.split(':');
+                    let Some(dst_addr) = address.next() else {
                             tracing::error!("invalid DNS name for resource: {}", r.address);
                             let _ = self.callbacks().on_error(&Error::InvalidResource(r.address.clone()));
                             return;
                         };
-                        let Ok(mut dst_addr) = format!("{dst_addr}:0").to_socket_addrs() else {
+                    let Ok(mut dst_addr) = format!("{dst_addr}:0").to_socket_addrs() else {
                             tracing::warn!("Couldn't resolve name addr: {addr}");
                             return;
                         };
-                        let Some(dst_addr) = dst_addr.find_map(|d| Self::get_matching_version_ip(addr, d.ip())) else {
+                    let Some(dst_addr) = dst_addr.find_map(|d| Self::get_matching_version_ip(addr, d.ip())) else {
                             tracing::warn!("Couldn't resolve name addr: {addr}");
                             return;
                         };
-                        peer.update_translated_resource_address(dst_addr);
-                        (
-                            dst_addr,
-                            address
-                                .next()
-                                .map(str::parse::<u16>)
-                                .and_then(std::result::Result::ok),
-                        )
-                    } else {
-                        tracing::warn!(
-                            "client tried to hijack the tunnel for resource itsn't allowed."
-                        );
-                        return;
-                    }
+                    peer.update_translated_resource_address(r.id, dst_addr);
+                    (
+                        dst_addr,
+                        address
+                            .next()
+                            .map(str::parse::<u16>)
+                            .and_then(std::result::Result::ok),
+                    )
                 }
                 ResourceDescription::Cidr(r) => {
                     if r.address.contains(dst) {

@@ -60,7 +60,7 @@ where
         let mut pkt = MutableIpPacket::new(&mut res_buf)?;
         let udp_checksum = pkt.to_immutable().udp_checksum(&pkt.as_immutable_udp()?);
         pkt.as_udp()?.set_checksum(udp_checksum);
-        pkt.set_checksum();
+        pkt.set_ipv4_checksum();
         Some(res_buf)
     }
 

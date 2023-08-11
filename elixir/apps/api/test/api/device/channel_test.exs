@@ -111,9 +111,9 @@ defmodule API.Device.ChannelTest do
     end
   end
 
-  describe "handle_in/3 list_relays" do
+  describe "handle_in/3 prepare_connection" do
     test "returns error when resource is not found", %{socket: socket} do
-      ref = push(socket, "list_relays", %{"resource_id" => Ecto.UUID.generate()})
+      ref = push(socket, "prepare_connection", %{"resource_id" => Ecto.UUID.generate()})
       assert_reply ref, :error, :not_found
     end
 
@@ -121,24 +121,58 @@ defmodule API.Device.ChannelTest do
       dns_resource: resource,
       socket: socket
     } do
-      ref = push(socket, "list_relays", %{"resource_id" => resource.id})
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :error, :offline
     end
 
-    test "returns list of online relays", %{
+    test "returns error when all gateways are offline", %{
+      dns_resource: resource,
+      socket: socket
+    } do
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      assert_reply ref, :error, :offline
+    end
+
+    test "returns error when all gateways connected to the resource are offline", %{
       account: account,
       dns_resource: resource,
       socket: socket
     } do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      assert_reply ref, :error, :offline
+    end
+
+    test "returns online gateway and relays connected to the resource", %{
+      account: account,
+      dns_resource: resource,
+      gateway: gateway,
+      socket: socket
+    } do
+      # Online Relay
       global_relay_group = RelaysFixtures.create_global_group()
       global_relay = RelaysFixtures.create_relay(group: global_relay_group, ipv6: nil)
       relay = RelaysFixtures.create_relay(account: account)
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
-      ref = push(socket, "list_relays", %{"resource_id" => resource.id})
+      # Online Gateway
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
-      assert_reply ref, :ok, %{relays: relays, resource_id: ^resource_id}
+
+      assert_reply ref, :ok, %{
+        relays: relays,
+        gateway_id: gateway_id,
+        gateway_remote_ip: gateway_last_seen_remote_ip,
+        resource_id: ^resource_id
+      }
+
+      assert gateway_id == gateway.id
+      assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
 
       ipv4_stun_uri = "stun:#{relay.ipv4}:#{relay.port}"
       ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
@@ -181,16 +215,100 @@ defmodule API.Device.ChannelTest do
       assert is_binary(salt)
 
       :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
-      ref = push(socket, "list_relays", %{"resource_id" => resource.id})
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :ok, %{relays: relays}
       assert length(relays) == 6
     end
   end
 
-  describe "handle_in/3 request_connection" do
-    test "returns error when resource is not found", %{socket: socket} do
+  describe "handle_in/3 reuse_connection" do
+    test "returns error when resource is not found", %{gateway: gateway, socket: socket} do
       attrs = %{
         "resource_id" => Ecto.UUID.generate(),
+        "gateway_id" => gateway.id
+      }
+
+      ref = push(socket, "reuse_connection", attrs)
+      assert_reply ref, :error, :not_found
+    end
+
+    test "returns error when gateway is not found", %{dns_resource: resource, socket: socket} do
+      attrs = %{
+        "resource_id" => resource.id,
+        "gateway_id" => Ecto.UUID.generate()
+      }
+
+      ref = push(socket, "reuse_connection", attrs)
+      assert_reply ref, :error, :not_found
+    end
+
+    test "returns error when gateway is not connected to resource", %{
+      account: account,
+      dns_resource: resource,
+      socket: socket
+    } do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      attrs = %{
+        "resource_id" => resource.id,
+        "gateway_id" => gateway.id
+      }
+
+      ref = push(socket, "reuse_connection", attrs)
+      assert_reply ref, :error, :offline
+    end
+
+    test "returns error when gateway is offline", %{
+      dns_resource: resource,
+      gateway: gateway,
+      socket: socket
+    } do
+      attrs = %{
+        "resource_id" => resource.id,
+        "gateway_id" => gateway.id
+      }
+
+      ref = push(socket, "reuse_connection", attrs)
+      assert_reply ref, :error, :offline
+    end
+
+    test "broadcasts allow_access to the gateways and then returns connect message", %{
+      dns_resource: resource,
+      gateway: gateway,
+      device: device,
+      socket: socket
+    } do
+      resource_id = resource.id
+      device_id = device.id
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+      Phoenix.PubSub.subscribe(Domain.PubSub, API.Gateway.Socket.id(gateway))
+
+      attrs = %{
+        "resource_id" => resource.id,
+        "gateway_id" => gateway.id
+      }
+
+      push(socket, "reuse_connection", attrs)
+
+      assert_receive {:allow_access, payload}
+
+      assert %{
+               resource_id: ^resource_id,
+               device_id: ^device_id,
+               authorization_expires_at: authorization_expires_at
+             } = payload
+
+      assert authorization_expires_at == socket.assigns.subject.expires_at
+    end
+  end
+
+  describe "handle_in/3 request_connection" do
+    test "returns error when resource is not found", %{gateway: gateway, socket: socket} do
+      attrs = %{
+        "resource_id" => Ecto.UUID.generate(),
+        "gateway_id" => gateway.id,
         "device_rtc_session_description" => "RTC_SD",
         "device_preshared_key" => "PSK"
       }
@@ -199,12 +317,29 @@ defmodule API.Device.ChannelTest do
       assert_reply ref, :error, :not_found
     end
 
-    test "returns error when all gateways are offline", %{
+    test "returns error when gateway is not found", %{dns_resource: resource, socket: socket} do
+      attrs = %{
+        "resource_id" => resource.id,
+        "gateway_id" => Ecto.UUID.generate(),
+        "device_rtc_session_description" => "RTC_SD",
+        "device_preshared_key" => "PSK"
+      }
+
+      ref = push(socket, "request_connection", attrs)
+      assert_reply ref, :error, :not_found
+    end
+
+    test "returns error when gateway is not connected to resource", %{
+      account: account,
       dns_resource: resource,
       socket: socket
     } do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
       attrs = %{
         "resource_id" => resource.id,
+        "gateway_id" => gateway.id,
         "device_rtc_session_description" => "RTC_SD",
         "device_preshared_key" => "PSK"
       }
@@ -213,19 +348,17 @@ defmodule API.Device.ChannelTest do
       assert_reply ref, :error, :offline
     end
 
-    test "returns error when all gateways connected to the resource are offline", %{
-      account: account,
+    test "returns error when gateway is offline", %{
       dns_resource: resource,
+      gateway: gateway,
       socket: socket
     } do
       attrs = %{
         "resource_id" => resource.id,
+        "gateway_id" => gateway.id,
         "device_rtc_session_description" => "RTC_SD",
         "device_preshared_key" => "PSK"
       }
-
-      gateway = GatewaysFixtures.create_gateway(account: account)
-      :ok = Domain.Gateways.connect_gateway(gateway)
 
       ref = push(socket, "request_connection", attrs)
       assert_reply ref, :error, :offline
@@ -246,6 +379,7 @@ defmodule API.Device.ChannelTest do
 
       attrs = %{
         "resource_id" => resource.id,
+        "gateway_id" => gateway.id,
         "device_rtc_session_description" => "RTC_SD",
         "device_preshared_key" => "PSK"
       }

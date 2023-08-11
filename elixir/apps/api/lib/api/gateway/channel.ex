@@ -18,7 +18,8 @@ defmodule API.Gateway.Channel do
 
   @impl true
   def handle_info(:after_join, socket) do
-    API.Endpoint.subscribe("gateway:#{socket.assigns.gateway.id}")
+    :ok = Gateways.connect_gateway(socket.assigns.gateway)
+    :ok = API.Endpoint.subscribe("gateway:#{socket.assigns.gateway.id}")
 
     push(socket, "init", %{
       interface: Views.Interface.render(socket.assigns.gateway),
@@ -27,7 +28,23 @@ defmodule API.Gateway.Channel do
       ipv6_masquerade_enabled: true
     })
 
-    :ok = Gateways.connect_gateway(socket.assigns.gateway)
+    {:noreply, socket}
+  end
+
+  def handle_info({:allow_access, attrs}, socket) do
+    %{
+      device_id: device_id,
+      resource_id: resource_id,
+      authorization_expires_at: authorization_expires_at
+    } = attrs
+
+    resource = Resources.fetch_resource_by_id!(resource_id)
+
+    push(socket, "allow_access", %{
+      device_id: device_id,
+      resource: Views.Resource.render(resource),
+      expires_at: DateTime.to_unix(authorization_expires_at, :second)
+    })
 
     {:noreply, socket}
   end

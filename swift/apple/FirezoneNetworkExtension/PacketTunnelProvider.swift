@@ -22,6 +22,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     options _: [String: NSObject]? = nil,
     completionHandler: @escaping (Error?) -> Void
   ) {
+    Self.logger.trace("\(#function)")
     guard let tunnelProviderProtocol = self.protocolConfiguration as? NETunnelProviderProtocol else {
       completionHandler(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid)
       return
