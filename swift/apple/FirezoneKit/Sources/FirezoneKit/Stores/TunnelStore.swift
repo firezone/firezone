@@ -9,7 +9,9 @@ import Foundation
 import NetworkExtension
 import OSLog
 
-// TODO: Can this file be removed since we're managing the tunnel in connlib?
+enum TunnelStoreError: Error {
+    case tunnelCouldNotBeStarted
+}
 
 final class TunnelStore: ObservableObject {
   private static let logger = Logger.make(for: TunnelStore.self)
@@ -34,6 +36,7 @@ final class TunnelStore: ObservableObject {
 
   private let controlPlaneURL: URL
   private var tunnelObservingTasks: [Task<Void, Never>] = []
+  private var startTunnelContinuation: CheckedContinuation<(), Error>?
 
   init(tunnel: NETunnelProviderManager) {
     self.controlPlaneURL = Self.getControlPlaneURLFromInfoPlist()
@@ -73,6 +76,9 @@ final class TunnelStore: ObservableObject {
 
     let session = tunnel.connection as! NETunnelProviderSession
     try session.startTunnel()
+    try await withCheckedThrowingContinuation { continuation in
+      self.startTunnelContinuation = continuation
+    }
   }
 
   func stop() {
@@ -174,6 +180,18 @@ final class TunnelStore: ObservableObject {
             return
           }
           self.status = tunnelProvider.connection.status
+          if let startTunnelContinuation = self.startTunnelContinuation {
+            switch self.status {
+              case .connected:
+                startTunnelContinuation.resume(returning: ())
+                self.startTunnelContinuation = nil
+              case .disconnected:
+                startTunnelContinuation.resume(throwing: TunnelStoreError.tunnelCouldNotBeStarted)
+                self.startTunnelContinuation = nil
+              default:
+                break
+            }
+          }
         }
       }
     )
