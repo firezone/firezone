@@ -33,8 +33,15 @@ public struct SettingsView: View {
   @ObservedObject var model: SettingsViewModel
   @Environment(\.dismiss) var dismiss
 
+  let teamIdAllowedCharacterSet: CharacterSet
+
   public init(model: SettingsViewModel) {
     self.model = model
+    self.teamIdAllowedCharacterSet = {
+      var pathAllowed = CharacterSet.urlPathAllowed
+      pathAllowed.remove("/")
+      return pathAllowed
+    }()
   }
 
   public var body: some View {
@@ -82,9 +89,14 @@ public struct SettingsView: View {
         Button("Done") {
           self.doneButtonTapped()
         }
+        .disabled(!isTeamIdValid(model.settings.teamId))
         #endif
       }
     }
+  }
+
+  private func isTeamIdValid(_ teamId: String) -> Bool {
+    !teamId.isEmpty && teamId.unicodeScalars.allSatisfy { teamIdAllowedCharacterSet.contains($0) }
   }
 
   func doneButtonTapped() {

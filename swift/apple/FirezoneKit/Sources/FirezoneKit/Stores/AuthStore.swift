@@ -87,7 +87,7 @@ final class AuthStore: ObservableObject {
   func signIn() async throws {
     logger.trace("\(#function)")
 
-    guard let teamId = settingsClient.fetchSettings()?.teamId else {
+    guard let teamId = settingsClient.fetchSettings()?.teamId, !teamId.isEmpty else {
       logger.debug("No team-id found in settings")
       throw FirezoneError.missingTeamId
     }

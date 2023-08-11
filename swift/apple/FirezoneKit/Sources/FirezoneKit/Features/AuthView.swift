@@ -20,7 +20,7 @@ final class AuthViewModel: ObservableObject {
   private var cancellables = Set<AnyCancellable>()
 
   func signInButtonTapped() async {
-    guard let teamId = settingsClient.fetchSettings()?.teamId else {
+    guard let teamId = settingsClient.fetchSettings()?.teamId, !teamId.isEmpty else {
       settingsUndefined()
       return
     }
