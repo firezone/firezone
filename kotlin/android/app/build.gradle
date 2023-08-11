@@ -30,7 +30,7 @@ android {
 
             // Debug Config
             manifestPlaceholders.hostName = "app.firez.one"
-            buildConfigField("String", "AUTH_DEST", "\"app.firez.one\"")
+            buildConfigField("String", "FIREZONE_HOST", "\"app.firez.one\"")
 
             resValue "string", "app_name", "\"Firezone (Dev)\""
         }
@@ -39,7 +39,7 @@ android {
 
             // Release Config
             manifestPlaceholders.hostName = "app.firezone.dev"
-            buildConfigField("String", "AUTH_DEST", "\"app.firezone.dev\"")
+            buildConfigField("String", "FIREZONE_HOST", "\"app.firezone.dev\"")
 
             resValue "string", "app_name", "\"Firezone\""
 

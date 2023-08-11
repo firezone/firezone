@@ -1,32 +1,33 @@
 package dev.firezone.android.features.session.backend
 
-import android.content.SharedPreferences
 import android.util.Log
+import dev.firezone.android.core.domain.preference.GetConfigUseCase
+import dev.firezone.android.core.domain.preference.SaveIsConnectedUseCase
 import dev.firezone.connlib.Logger
 import dev.firezone.connlib.Session
 import javax.inject.Inject
 
-private const val PORTAL_URL_KEY = "portalUrl"
-private const val AUTH_TOKEN_KEY = "authToken"
-
 internal class SessionManager @Inject constructor(
-    private val sharedPreferences: SharedPreferences
+    private val getConfigUseCase: GetConfigUseCase,
+    private val saveIsConnectedUseCase: SaveIsConnectedUseCase,
 ) {
     private val callback: SessionCallbackImpl = SessionCallbackImpl()
 
     fun connect() {
-        val portalUrl = sharedPreferences.getString(PORTAL_URL_KEY, null) ?: "https://portal.com"
-        val portalToken = sharedPreferences.getString(AUTH_TOKEN_KEY, null) ?: "token"
         try {
-            Log.d("Connlib", portalUrl)
-            Log.d("Connlib", portalToken)
+            val config = getConfigUseCase.sync()
 
-            sessionPtr = Session.connect(
-                portalUrl,
-                portalToken,
-                callback
-            )
-            setConnectionStatus(true)
+            if (config.portalUrl != null && config.jwt != null) {
+                Log.d("Connlib", "portalUrl: ${config.portalUrl}")
+                Log.d("Connlib", "jwt: ${config.jwt}")
+
+                sessionPtr = Session.connect(
+                    config.portalUrl,
+                    config.jwt,
+                    callback
+                )
+                setConnectionStatus(true)
+            }
         } catch (exception: Exception) {
             Log.e("Connection error:", exception.message.toString())
         }
@@ -42,7 +43,7 @@ internal class SessionManager @Inject constructor(
     }
 
     private fun setConnectionStatus(value: Boolean) {
-        sharedPreferences.edit().putBoolean("isConnected", value).apply()
+        saveIsConnectedUseCase.sync(value)
     }
 
     internal companion object {

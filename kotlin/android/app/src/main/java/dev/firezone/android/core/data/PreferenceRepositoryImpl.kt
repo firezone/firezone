@@ -13,14 +13,14 @@ internal class PreferenceRepositoryImpl @Inject constructor(
     private val sharedPreferences: SharedPreferences
 ) : PreferenceRepository {
 
+    override fun getConfigSync(): Config = Config(
+        portalUrl = sharedPreferences.getString(PORTAL_URL_KEY, null),
+        isConnected = sharedPreferences.getBoolean(IS_CONNECTED_KEY, false),
+        jwt = sharedPreferences.getString(JWT_KEY, null),
+    )
+
     override fun getConfig(): Flow<Config> = flow {
-        emit(
-            Config(
-                portalUrl = sharedPreferences.getString(PORTAL_URL_KEY, null),
-                isConnected = sharedPreferences.getBoolean(IS_CONNECTED_KEY, false),
-                jwt = sharedPreferences.getString(JWT_KEY, null),
-            )
-        )
+        emit(getConfigSync())
     }.flowOn(coroutineDispatcher)
 
     override fun savePortalUrl(value: String): Flow<Unit> = flow {
@@ -38,6 +38,19 @@ internal class PreferenceRepositoryImpl @Inject constructor(
                 .edit()
                 .putString(JWT_KEY, value)
                 .apply()
+        )
+    }.flowOn(coroutineDispatcher)
+
+    override fun saveIsConnectedSync(value: Boolean) {
+        sharedPreferences
+            .edit()
+            .putBoolean(IS_CONNECTED_KEY, value)
+            .apply()
+    }
+
+    override fun saveIsConnected(value: Boolean): Flow<Unit> = flow {
+        emit(
+            saveIsConnectedSync(value)
         )
     }.flowOn(coroutineDispatcher)
 

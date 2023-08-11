@@ -10,6 +10,7 @@ import androidx.fragment.app.viewModels
 import dev.firezone.android.R
 import dev.firezone.android.databinding.FragmentOnboardingBinding
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.BuildConfig
 import dev.firezone.android.features.auth.ui.AuthActivity
 
 @AndroidEntryPoint
@@ -21,7 +22,7 @@ internal class OnboardingFragment : Fragment(R.layout.fragment_onboarding) {
         super.onViewCreated(view, savedInstanceState)
         binding = FragmentOnboardingBinding.bind(view)
 
-        setupInputListener()
+        setupViews()
         setupStateObservers()
         setupActionObservers()
         setupButtonListener()
@@ -56,7 +57,11 @@ internal class OnboardingFragment : Fragment(R.layout.fragment_onboarding) {
         }
     }
 
-    private fun setupInputListener() {
+    private fun setupViews() {
+        binding.ilUrlInput.apply {
+            prefixText = "https://${BuildConfig.FIREZONE_HOST}"
+        }
+
         binding.etInput.apply {
             imeOptions = EditorInfo.IME_ACTION_DONE
             setOnClickListener { isCursorVisible = true }
@@ -65,11 +70,13 @@ internal class OnboardingFragment : Fragment(R.layout.fragment_onboarding) {
             }
             requestFocus()
         }
-    }
 
-    private fun setupButtonListener() {
         binding.btLogin.setOnClickListener {
             viewModel.onSaveOnboardingCompleted()
         }
+    }
+
+    private fun setupButtonListener() {
+
     }
 }

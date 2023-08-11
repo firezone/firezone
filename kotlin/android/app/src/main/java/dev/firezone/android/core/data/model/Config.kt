@@ -1,7 +1,7 @@
 package dev.firezone.android.core.data.model
 
 internal data class Config(
-    var portalUrl: String?,
-    var isConnected: Boolean = false,
-    var jwt: String?,
+    val portalUrl: String?,
+    val isConnected: Boolean = false,
+    val jwt: String?,
 )

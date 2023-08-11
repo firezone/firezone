@@ -9,4 +9,7 @@ internal class GetConfigUseCase @Inject constructor(
     private val repository: PreferenceRepository
 ) {
     operator fun invoke(): Flow<Config> = repository.getConfig()
+
+    fun sync(): Config = repository.getConfigSync()
+
 }

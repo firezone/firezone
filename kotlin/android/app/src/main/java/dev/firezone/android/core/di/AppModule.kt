@@ -11,6 +11,8 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import dev.firezone.android.core.domain.preference.GetConfigUseCase
+import dev.firezone.android.core.domain.preference.SaveIsConnectedUseCase
 
 internal const val ENCRYPTED_SHARED_PREFERENCES = "encryptedSharedPreferences"
 
@@ -38,6 +40,7 @@ object AppModule {
 
     @Provides
     internal fun provideSessionManager(
-        sharedPreferences: SharedPreferences
-    ): SessionManager = SessionManager(sharedPreferences)
+        getConfigUseCase: GetConfigUseCase,
+        saveIsConnectedUseCase: SaveIsConnectedUseCase,
+    ): SessionManager = SessionManager(getConfigUseCase, saveIsConnectedUseCase)
 }
