@@ -16,7 +16,7 @@ extension KeychainStorage {
     guard let token else { return nil }
     return token
   }
-  
+
   func actorName() async throws -> String? {
     let actorName = try await load(KeychainStorage.actorNameKey).flatMap { data in
       String(data: data, encoding: .utf8)
@@ -28,7 +28,7 @@ extension KeychainStorage {
 
   func save(token: String, actorName: String?) async throws {
     try await store(KeychainStorage.tokenKey, token.data(using: .utf8)!)
-    
+
     if let actorName {
       try await store(KeychainStorage.actorNameKey, actorName.data(using: .utf8)!)
     }
