@@ -1,1 +1,3 @@
 target/
+clients/android/connlib/build/
+clients/android/connlib/jniLibs/
