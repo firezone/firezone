@@ -80,14 +80,6 @@ export default function Page() {
       linkedinUrl: "https://linkedin.com/in/andrew-dryga-bb382557",
     },
     {
-      name: "Francesca Lovebloom",
-      title: "Senior Systems Engineer",
-      imgSrc: gravatar("fran@firezone.dev", 200),
-      twitterUrl: "https://twitter.com/franlovebloom",
-      githubUrl: "https://github.com/francesca64",
-      linkedinUrl: "https://linkedin.com/in/francesca-lovebloom",
-    },
-    {
       name: "Brian Manifold",
       title: "Senior Full-stack Engineer",
       imgSrc: "/images/avatars/brian.png",
