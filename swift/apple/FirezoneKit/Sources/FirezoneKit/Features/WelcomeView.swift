@@ -43,7 +43,7 @@ final class WelcomeViewModel: ObservableObject {
     }
   }
 
-  private let appStore: AppStore
+  public let appStore: AppStore
 
   init(appStore: AppStore) {
     self.appStore = appStore
