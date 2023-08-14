@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "215658742954",
+    "project_id": "firezone-55040",
+    "storage_bucket": "firezone-55040.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:215658742954:android:51cc714762dbfbb59e7cd3",
+        "android_client_info": {
+          "package_name": "dev.firezone.android"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "215658742954-bbgadqcdn4d743d7u9gbstbjd1ip6294.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "dev.firezone.android",
+            "certificate_hash": "ee57c4c178df1997dabb60d11b6a9a3e07cbb015"
+          }
+        },
+        {
+          "client_id": "215658742954-lgrcn41ahhr8u8juebm2q4nkacnp13d5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBcmIkMlT1ulYXmIFxQR_eCvWs24gQqBWw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "215658742954-lgrcn41ahhr8u8juebm2q4nkacnp13d5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
