@@ -84,6 +84,11 @@ final class AuthStore: ObservableObject {
     self.authResponse = authResponse
   }
 
+  func continueSignIn(appOpenedWithURL: URL) throws {
+    let authResponse = try auth.continueSignIn(appOpenedWithURL)
+    self.authResponse = authResponse
+  }
+
   func signIn() async throws {
     logger.trace("\(#function)")
 
