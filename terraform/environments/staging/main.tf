@@ -550,53 +550,53 @@ module "relays" {
   project_id = module.google-cloud-project.project.project_id
 
   instances = {
-    "asia-east1" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["asia-east1-a"]
-    }
+    # "asia-east1" = {
+    #   type     = "n1-standard-1"
+    #   replicas = 1
+    #   zones    = ["asia-east1-a"]
+    # }
 
-    "asia-south1" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["asia-south1-a"]
-    }
+    # "asia-south1" = {
+    #   type     = "n1-standard-1"
+    #   replicas = 1
+    #   zones    = ["asia-south1-a"]
+    # }
 
-    "australia-southeast1" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["australia-southeast1-a"]
-    }
+    # "australia-southeast1" = {
+    #   type     = "n1-standard-1"
+    #   replicas = 1
+    #   zones    = ["australia-southeast1-a"]
+    # }
 
-    "me-central1" = {
-      type     = "n2-standard-2"
-      replicas = 1
-      zones    = ["me-central1-a"]
-    }
+    # "me-central1" = {
+    #   type     = "n2-standard-2"
+    #   replicas = 1
+    #   zones    = ["me-central1-a"]
+    # }
 
-    "europe-west1" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["europe-west1-d"]
-    }
+    # "europe-west1" = {
+    #   type     = "n1-standard-1"
+    #   replicas = 1
+    #   zones    = ["europe-west1-d"]
+    # }
 
-    "southamerica-east1" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["southamerica-east1-b"]
-    }
+    # "southamerica-east1" = {
+    #   type     = "n1-standard-1"
+    #   replicas = 1
+    #   zones    = ["southamerica-east1-b"]
+    # }
 
-    "us-east1" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["us-east1-d"]
-    }
+    # "us-east1" = {
+    #   type     = "n1-standard-1"
+    #   replicas = 1
+    #   zones    = ["us-east1-d"]
+    # }
 
-    "us-west2" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["us-west2-b"]
-    }
+    # "us-west2" = {
+    #   type     = "n1-standard-1"
+    #   replicas = 1
+    #   zones    = ["us-west2-b"]
+    # }
 
     "us-central1" = {
       type     = "n1-standard-1"
