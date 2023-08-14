@@ -27,9 +27,6 @@ render.experimental.xml
 *.jks
 *.keystore
 
-# Google Services (e.g. APIs or Firebase)
-google-services.json
-
 # Android Profiling
 *.hprof
 
@@ -104,13 +101,6 @@ proguard/
 *.ipr
 *~
 *.swp
-
-# Keystore files
-
-# Google Services (e.g. APIs or Firebase)
-# google-services.json
-
-# Android Patch
 
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild
