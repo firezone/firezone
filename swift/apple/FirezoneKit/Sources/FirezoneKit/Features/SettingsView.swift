@@ -60,8 +60,20 @@ public struct SettingsView: View {
 
   #if os(iOS)
     private var ios: some View {
-      NavigationView {
-        form
+      NavigationView() {
+        VStack() {
+          form
+          HStack(spacing: 30) {
+            Button("Cancel", action: {
+              self.cancelButtonTapped()
+            })
+            Button("Save", action: {
+              self.saveButtonTapped()
+            })
+            .disabled(!isTeamIdValid(model.settings.teamId))
+          }
+          Spacer()
+        }
       }
     }
   #endif
@@ -87,7 +99,7 @@ public struct SettingsView: View {
     Form {
       Section {
         FormTextField(
-          title: "Team URL:",
+          title: "Team ID:",
           baseURLString: AuthStore.getAuthBaseURLFromInfoPlist().absoluteString,
           placeholder: "team-id",
           text: Binding(
@@ -97,7 +109,7 @@ public struct SettingsView: View {
         )
       }
     }
-    .navigationTitle("Settings - Firezone")
+    .navigationTitle("Settings")
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
       }
@@ -127,33 +139,31 @@ struct FormTextField: View {
 
   var body: some View {
     #if os(iOS)
-      HStack {
+      HStack(spacing: 15) {
         Text(title)
         Spacer()
-        TextField(placeholder, text: text)
-          .autocorrectionDisabled()
-          .multilineTextAlignment(.trailing)
-          .foregroundColor(.secondary)
-          .frame(maxWidth: .infinity)
-          .textInputAutocapitalization(.never)
-          .textContentType(.URL)
-          .keyboardType(.URL)
-      }
-    #else
-    HStack(spacing: 30) {
-      Spacer()
-      VStack(alignment: .leading) {
-        Label(title, image: "")
-          .labelStyle(.titleOnly)
-          .multilineTextAlignment(.leading)
         TextField(baseURLString, text: text, prompt: Text(placeholder))
           .autocorrectionDisabled()
           .multilineTextAlignment(.leading)
           .foregroundColor(.secondary)
-          .frame(maxWidth: 360)
+          .frame(maxWidth: .infinity)
+          .textInputAutocapitalization(.never)
       }
-      Spacer()
-    }
+    #else
+      HStack(spacing: 30) {
+        Spacer()
+        VStack(alignment: .leading) {
+          Label(title, image: "")
+            .labelStyle(.titleOnly)
+            .multilineTextAlignment(.leading)
+          TextField(baseURLString, text: text, prompt: Text(placeholder))
+            .autocorrectionDisabled()
+            .multilineTextAlignment(.leading)
+            .foregroundColor(.secondary)
+            .frame(maxWidth: 360)
+        }
+        Spacer()
+      }
     #endif
   }
 }
