@@ -9,7 +9,7 @@ import Dependencies
 import OSLog
 
 @MainActor
-final class AppStore: ObservableObject {
+public final class AppStore: ObservableObject {
   private let logger = Logger.make(for: AppStore.self)
 
   @Dependency(\.authStore) var auth
@@ -57,5 +57,13 @@ final class AppStore: ObservableObject {
   private func signOutAndStopTunnel() {
     tunnel.stop()
     auth.signOut()
+  }
+
+  public func continueSignIn(appOpenedWithURL: URL) {
+    do {
+      try auth.continueSignIn(appOpenedWithURL: appOpenedWithURL)
+    } catch {
+      logger.error("Error continuing auth: \(String(describing: error))")
+    }
   }
 }

@@ -17,7 +17,7 @@ public final class MenuBar: NSObject {
     let logger = Logger.make(for: MenuBar.self)
     @Dependency(\.mainQueue) private var mainQueue
 
-    private var appStore: AppStore? {
+    public private(set) var appStore: AppStore? {
       didSet {
         setupObservers()
       }

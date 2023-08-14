@@ -16,7 +16,7 @@ struct AuthResponse {
   // The opaque auth token
   let token: String
 
-  init(portalURL: URL, token: String, actorName: String?) throws {
+  init(portalURL: URL, token: String, actorName: String?) {
     self.portalURL = portalURL
     self.actorName = actorName
     self.token = token
@@ -26,14 +26,14 @@ struct AuthResponse {
 #if DEBUG
   extension AuthResponse {
     static let invalid =
-      try! AuthResponse(
+      AuthResponse(
         portalURL: URL(string: "http://localhost:4568")!,
         token: "",
         actorName: nil
       )
 
     static let valid =
-      try! AuthResponse(
+      AuthResponse(
         portalURL: URL(string: "http://localhost:4568")!,
         token: "b1zwwwAdf=",
         actorName: "foobar"
