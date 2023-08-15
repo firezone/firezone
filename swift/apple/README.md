@@ -45,6 +45,14 @@ Build the Firezone target
 [This Network Extension debugging guide](https://developer.apple.com/forums/thread/725805)
 is a great resource to use as a starting point.
 
+### Debugging on ios simulator
+
+Network Extensions
+[can't be debugged](https://developer.apple.com/forums/thread/101663) in the iOS
+simulator, so you'll need a physical iOS device or Mac to debug. We're currently
+building for the iphonesimulator target in CI to ensure the build continues
+work.
+
 ### NetworkExtension not loading (macOS)
 
 Try clearing your LaunchAgent db:
