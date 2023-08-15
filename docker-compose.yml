@@ -166,8 +166,9 @@ services:
       api:
         condition: 'service_healthy'
     networks:
-      - app
-      - resources
+      app:
+        ipv4_address: 172.28.0.105
+      resources:
 
   resource:
     image: alpine:3.18
@@ -204,7 +205,6 @@ services:
     networks:
       app:
         ipv4_address: 172.28.0.101
-        ipv6_address: 2001:3990:3990::101
 
   api:
     build:
@@ -347,11 +347,10 @@ networks:
       config:
         - subnet: 172.20.0.0/16
   app:
-    enable_ipv6: true
+    enable_ipv6: false
     ipam:
       config:
         - subnet: 172.28.0.0/16
-        - subnet: 2001:3990:3990::/64
 
 volumes:
   postgres-data:

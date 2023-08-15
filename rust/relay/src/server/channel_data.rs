@@ -25,10 +25,11 @@ impl<'a> ChannelData<'a> {
         }
 
         let length = u16::from_be_bytes([data[2], data[3]]);
+        let full_msg_length = 4usize + length as usize;
 
         let actual_payload_length = data.len() - 4;
 
-        if actual_payload_length != length as usize {
+        if data.len() < full_msg_length {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!(
@@ -39,7 +40,7 @@ impl<'a> ChannelData<'a> {
 
         Ok(ChannelData {
             channel: channel_number,
-            data: &data[4..],
+            data: &data[4..full_msg_length],
         })
     }
 
