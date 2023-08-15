@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::messages::{Connect, ConnectionDetails, EgressMessages, InitClient, Messages};
+use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use boringtun::x25519::StaticSecret;
 use libs_common::{
     control::{ErrorInfo, ErrorReply, MessageResult, PhoenixSenderWithTopic},
@@ -253,5 +254,9 @@ impl<CB: Callbacks + 'static> ControlSession<Messages, CB> for ControlPlane<CB> 
 
     fn socket_path() -> &'static str {
         "device"
+    }
+
+    fn retry_strategy() -> ExponentialBackoff {
+        ExponentialBackoffBuilder::default().build()
     }
 }
