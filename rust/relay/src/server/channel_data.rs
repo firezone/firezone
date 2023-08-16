@@ -1,6 +1,8 @@
 use bytes::{BufMut, BytesMut};
 use std::io;
 
+const HEADER_LEN: usize = 4;
+
 #[derive(Debug, PartialEq)]
 pub struct ChannelData<'a> {
     channel: u16,
@@ -9,14 +11,16 @@ pub struct ChannelData<'a> {
 
 impl<'a> ChannelData<'a> {
     pub fn parse(data: &'a [u8]) -> Result<Self, io::Error> {
-        if data.len() < 4 {
+        if data.len() < HEADER_LEN {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "channel data messages are at least 4 bytes long",
             ));
         }
 
-        let channel_number = u16::from_be_bytes([data[0], data[1]]);
+        let (header, payload) = data.split_at(HEADER_LEN);
+
+        let channel_number = u16::from_be_bytes([header[0], header[1]]);
         if !(0x4000..=0x7FFF).contains(&channel_number) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -24,23 +28,20 @@ impl<'a> ChannelData<'a> {
             ));
         }
 
-        let length = u16::from_be_bytes([data[2], data[3]]);
-        let full_msg_length = 4usize + length as usize;
+        let length = u16::from_be_bytes([header[2], header[3]]) as usize;
 
-        let actual_payload_length = data.len() - 4;
-
-        if data.len() < full_msg_length {
+        if payload.len() < length {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!(
-                    "channel data message specified {length} bytes but the payload is only {actual_payload_length} bytes"
+                    "channel data message specified {length} bytes but the payload is only {} bytes", payload.len()
                 ),
             ));
         }
 
         Ok(ChannelData {
             channel: channel_number,
-            data: &data[4..full_msg_length],
+            data: &payload[..length],
         })
     }
 
