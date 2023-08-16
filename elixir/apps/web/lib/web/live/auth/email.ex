@@ -60,7 +60,7 @@ defmodule Web.Auth.Email do
             <div :if={not is_nil(@client_platform)}>
               <p>
                 Should the provided email be registered, a sign-in token will be dispatched to your email account.
-                Please copy it to a form below to proceed with your login.
+                Please copy and paste this token into the form below to proceed with your login.
               </p>
 
               <form
