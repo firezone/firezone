@@ -161,7 +161,7 @@ defmodule FzWall.CLI.Live do
       get_filter_set_name(rule.user_id, ip_type, rule.action, layer4),
       rule.destination,
       port_type,
-      rule.port_range
+      FzHttp.Types.Int4Range.cast(rule.port_range)
     )
   end
 end
