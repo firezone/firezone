@@ -12,7 +12,7 @@ services:
     networks:
       app:
         ipv4_address: 172.28.0.99
-        ipv6_address: 2001:3990:3990::99
+        ipv6_address: fcff:3990:3990::99
 
   firezone:
     build:
@@ -149,5 +149,5 @@ networks:
     ipam:
       config:
         - subnet: 172.28.0.0/16
-        - subnet: 2001:3990:3990::/64
+        - subnet: fcff:3990:3990::/64
   isolation:
