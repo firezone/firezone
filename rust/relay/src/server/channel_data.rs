@@ -48,17 +48,13 @@ impl<'a> ChannelData<'a> {
     pub fn new(channel: u16, data: &'a [u8]) -> Self {
         debug_assert!(channel > 0x400);
         debug_assert!(channel < 0x7FFF);
+        debug_assert!(data.len() <= u16::MAX as usize);
         ChannelData { channel, data }
     }
 
+    // Panics if self.data.len() > u16::MAX
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut message = BytesMut::with_capacity(2 + 2 + self.data.len());
-
-        message.put_slice(&self.channel.to_be_bytes());
-        message.put_u16(self.data.len() as u16);
-        message.put_slice(self.data);
-
-        message.freeze().into()
+        to_bytes(self.channel, self.data.len() as u16, self.data)
     }
 
     pub fn channel(&self) -> u16 {
@@ -68,6 +64,16 @@ impl<'a> ChannelData<'a> {
     pub fn data(&self) -> &[u8] {
         self.data
     }
+}
+
+fn to_bytes(channel: u16, len: u16, payload: &[u8]) -> Vec<u8> {
+    let mut message = BytesMut::with_capacity(HEADER_LEN + (len as usize));
+
+    message.put_u16(channel);
+    message.put_u16(len);
+    message.put_slice(payload);
+
+    message.freeze().into()
 }
 
 #[cfg(all(test, feature = "proptest"))]
@@ -86,5 +92,17 @@ mod tests {
         let parsed = ChannelData::parse(&encoded).unwrap();
 
         assert_eq!(channel_data, parsed)
+    }
+
+    #[test_strategy::proptest]
+    fn channel_data_decoding(
+        #[strategy(crate::proptest::channel_number())] channel: ChannelNumber,
+        #[strategy(crate::proptest::channel_payload())] payload: (Vec<u8>, usize),
+    ) {
+        let encoded = to_bytes(channel.value(), payload.1 as u16, &payload.0);
+        let parsed = ChannelData::parse(&encoded).unwrap();
+
+        assert_eq!(channel.value(), parsed.channel);
+        assert_eq!(&payload.0[..payload.1], parsed.data)
     }
 }
