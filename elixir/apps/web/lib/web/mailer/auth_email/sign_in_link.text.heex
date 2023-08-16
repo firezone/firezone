@@ -1,11 +1,15 @@
-Magic sign-in link
-
 Dear Firezone user,
-
+<%= if is_nil(@client_platform) do %>
 Here is the magic sign-in link you requested:
 
 <%= @link %>
 
 Please copy this link and open it in your browser. It is valid for 1 hour.
+<% else %>
+Please copy the code and paste it into the Firezone application to proceed with the login:
 
+<%= @secret %>
+
+It is valid for 1 hour.
+<% end %>
 If you didn't request this, you can safely discard this email.
