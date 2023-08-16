@@ -3,7 +3,7 @@ on:
   pull_request:
   push:
     branches:
-      - master
+      - legacy
 
 jobs:
   unit-test:
@@ -216,12 +216,12 @@ jobs:
         run: mix deps.get --only $MIX_ENV
       - name: Compile
         run: mix compile
-      - name: Download master branch DB dump
+      - name: Download legacy branch DB dump
         id: download-artifact
         uses: dawidd6/action-download-artifact@v2
-        if: "!contains(github.ref, 'master')"
+        if: "!contains(github.ref, 'legacy')"
         with:
-          branch: master
+          branch: legacy
           name: db-dump
           path: apps/fz_http/priv/repo/
           search_artifacts: true
@@ -231,7 +231,7 @@ jobs:
         run: |
           mix ecto.create
       - name: Restore DB dump
-        if: "!contains(github.ref, 'master')"
+        if: "!contains(github.ref, 'legacy')"
         env:
           PGPASSWORD: postgres
         run: |
@@ -240,7 +240,7 @@ jobs:
         run: |
           mix ecto.migrate
       - name: Dump DB
-        if: "contains(github.ref, 'master')"
+        if: "contains(github.ref, 'legacy')"
         env:
           PGPASSWORD: postgres
         run: |
@@ -249,8 +249,8 @@ jobs:
             --file apps/fz_http/priv/repo/structure.sql \
             --no-acl \
             --no-owner
-      - name: Upload master branch DB dump
-        if: "contains(github.ref, 'master')"
+      - name: Upload legacy branch DB dump
+        if: "contains(github.ref, 'legacy')"
         uses: actions/upload-artifact@v3
         with:
           name: db-dump
@@ -303,7 +303,7 @@ jobs:
           - 8400:8080/tcp
           - 8443:8443/tcp
     steps:
-      - uses: nanasess/setup-chromedriver@v1
+      - uses: nanasess/setup-chromedriver@v2
       - run: |
           export DISPLAY=:99
           sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &

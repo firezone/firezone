@@ -111,11 +111,11 @@ jobs:
           sudo rm -rf /tmp/firezone*
           rm -rf omnibus/pkg/*
 
-  # Publish packages to the drafted release on merges to master so we can
+  # Publish packages to the drafted release on merges to legacy so we can
   # manually test them if needed. Then we can just publish the drafted release
   # and we're good to go.
   publish:
-    if: startsWith(github.ref, 'refs/heads/master')
+    if: startsWith(github.ref, 'refs/heads/legacy')
     needs:
       - build-package-test
       - draft-release

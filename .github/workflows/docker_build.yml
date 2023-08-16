@@ -2,7 +2,7 @@ name: Docker Build
 on:
   push:
     branches:
-      - master
+      - legacy
       - 'build/**'
 
 jobs:
