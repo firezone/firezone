@@ -109,15 +109,15 @@ services:
   firezone:
     networks:
       firezone-network:
-        ipv6_address: 2001:3990:3990::99
+        ipv6_address: fcff:3990:3990::99
 
 # ...
 networks:
   firezone-network:
     ipam:
       config:
-        - subnet: 2001:3990:3990::/64
-        - gateway: 2001:3990:3990::1
+        - subnet: fcff:3990:3990::/64
+        - gateway: fcff:3990:3990::1
 ```
 
 You also need to update the Docker daemon to enable IPv6. See our
