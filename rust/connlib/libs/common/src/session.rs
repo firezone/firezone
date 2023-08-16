@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
+use backoff::{backoff::Backoff, ExponentialBackoff};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use ip_network::IpNetwork;
 use parking_lot::Mutex;
@@ -40,6 +40,9 @@ pub trait ControlSession<T, CB: Callbacks> {
 
     /// Either "gateway" or "client" used to get the control-plane URL.
     fn socket_path() -> &'static str;
+
+    /// Retry strategy in case of disconnection for the session.
+    fn retry_strategy() -> ExponentialBackoff;
 }
 
 // TODO: Currently I'm using Session for both gateway and clients
@@ -306,7 +309,7 @@ where
             );
 
             tokio::spawn(async move {
-                let mut exponential_backoff = ExponentialBackoffBuilder::default().build();
+                let mut exponential_backoff = T::retry_strategy();
                 loop {
                     // `connection.start` calls the callback only after connecting
                     let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;

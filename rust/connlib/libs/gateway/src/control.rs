@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
+use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use boringtun::x25519::StaticSecret;
 use firezone_tunnel::{ControlSignal, Tunnel};
 use libs_common::{
@@ -163,5 +164,11 @@ impl<CB: Callbacks + 'static> ControlSession<IngressMessages, CB> for ControlPla
 
     fn socket_path() -> &'static str {
         "gateway"
+    }
+
+    fn retry_strategy() -> ExponentialBackoff {
+        ExponentialBackoffBuilder::default()
+            .with_max_elapsed_time(None)
+            .build()
     }
 }

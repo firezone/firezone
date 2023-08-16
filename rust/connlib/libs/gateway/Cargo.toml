@@ -12,6 +12,7 @@ tracing = { version = "0.1", default-features = false, features = ["std", "attri
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
 boringtun = { workspace = true }
 chrono = { workspace = true }
+backoff = { workspace = true }
 
 [dev-dependencies]
 serde_json = { version = "1.0", default-features = false, features = ["std"] }

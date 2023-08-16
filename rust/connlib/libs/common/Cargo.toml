@@ -23,7 +23,7 @@ tokio = { version = "1.28", default-features = false, features = ["rt", "rt-mult
 url = { version = "2.3.1", default-features = false }
 rand_core = { version = "0.6.4", default-features = false, features = ["std"] }
 async-trait = { version = "0.1", default-features = false }
-backoff = { version = "0.4", default-features = false }
+backoff = { workspace = true }
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 boringtun = { workspace = true }
 os_info = { version = "3", default-features = false }
