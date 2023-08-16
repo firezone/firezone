@@ -1,6 +1,6 @@
 #!/bin/bash
 FIREZONE_DEV_V4='172.28.0.0/16'
-FIREZONE_DEV_V6='2001:3990:3990::/64'
+FIREZONE_DEV_V6='fcff:3990:3990::/64'
 TABLE=333444
 
 sudo ip -4 rule del from $FIREZONE_DEV_V4 table $TABLE

@@ -65,7 +65,7 @@ services:
     networks:
       firezone-network:
         ipv4_address: 172.25.0.100
-        ipv6_address: 2001:3990:3990::99
+        ipv6_address: fcff:3990:3990::99
 
     deploy:
       <<: *default-deploy
@@ -96,5 +96,5 @@ networks:
     ipam:
       config:
         - subnet: 172.25.0.0/16
-        - subnet: 2001:3990:3990::/64
-          gateway: 2001:3990:3990::1
+        - subnet: fcff:3990:3990::/64
+          gateway: fcff:3990:3990::1
