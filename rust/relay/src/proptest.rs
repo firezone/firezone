@@ -1,5 +1,6 @@
 use crate::Binding;
 use proptest::arbitrary::any;
+use proptest::collection::vec;
 use proptest::strategy::Just;
 use proptest::strategy::Strategy;
 use proptest::string::string_regex;
@@ -27,6 +28,13 @@ pub fn allocation_lifetime() -> impl Strategy<Value = Lifetime> {
 
 pub fn channel_number() -> impl Strategy<Value = ChannelNumber> {
     (ChannelNumber::MIN..ChannelNumber::MAX).prop_map(|n| ChannelNumber::new(n).unwrap())
+}
+
+pub fn channel_payload() -> impl Strategy<Value = (Vec<u8>, usize)> {
+    vec(any::<u8>(), 0..(u16::MAX as usize)).prop_flat_map(|vec| {
+        let len = vec.len();
+        (Just(vec), 0..len)
+    })
 }
 
 pub fn username_salt() -> impl Strategy<Value = String> {
