@@ -341,7 +341,9 @@ defmodule Web.AuthControllerTest do
         assert email.text_body =~ "secret="
       end)
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in/providers/email/#{provider.id}"
+      assert redirected_to(conn) ==
+               "/#{account.id}/sign_in/providers/email/#{provider.id}?" <>
+                 "provider_identifier=#{URI.encode_www_form(identity.provider_identifier)}"
     end
 
     test "persists client platform name", %{conn: conn} do
@@ -363,17 +365,18 @@ defmodule Web.AuthControllerTest do
 
       assert_email_sent(fn email ->
         assert email.subject == "Firezone Sign In Link"
-
-        verify_sign_in_token_path =
-          "/#{account.id}/sign_in/providers/#{provider.id}/verify_sign_in_token"
-
-        assert email.text_body =~ "#{verify_sign_in_token_path}"
-        assert email.text_body =~ "identity_id=#{identity.id}"
-        assert email.text_body =~ "secret="
-        assert email.text_body =~ "client_platform=platform"
+        assert email.text_body =~ "Please copy the code and paste it into"
       end)
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in/providers/email/#{provider.id}"
+      assert url = redirected_to(conn)
+      uri = URI.parse(url)
+      assert uri.path == "/#{account.id}/sign_in/providers/email/#{provider.id}"
+
+      assert URI.decode_query(uri.query) == %{
+               "client_platform" => "platform",
+               "provider_identifier" => identity.provider_identifier
+             }
+
       assert get_session(conn, :client_platform) == "platform"
     end
 
@@ -388,7 +391,9 @@ defmodule Web.AuthControllerTest do
           %{"email" => %{"provider_identifier" => "foo"}}
         )
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in/providers/email/#{provider_id}"
+      assert redirected_to(conn) ==
+               "/#{account.id}/sign_in/providers/email/#{provider_id}?" <>
+                 "provider_identifier=foo"
     end
 
     test "does not return error if identity is not found", %{conn: conn} do
@@ -402,7 +407,8 @@ defmodule Web.AuthControllerTest do
           %{"email" => %{"provider_identifier" => "foo"}}
         )
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in/providers/email/#{provider.id}"
+      assert redirected_to(conn) ==
+               "/#{account.id}/sign_in/providers/email/#{provider.id}?provider_identifier=foo"
     end
   end
 

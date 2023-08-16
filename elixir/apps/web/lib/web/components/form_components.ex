@@ -179,7 +179,7 @@ defmodule Web.FormComponents do
   def input(assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.label for={@id}><%= @label %></.label>
+      <.label :if={not is_nil(@label)} for={@id}><%= @label %></.label>
       <input
         type={@type}
         name={@name}
@@ -306,6 +306,7 @@ defmodule Web.FormComponents do
     </.submit_button>
   """
 
+  attr :rest, :global
   slot :inner_block, required: true
 
   def submit_button(assigns) do
@@ -314,7 +315,7 @@ defmodule Web.FormComponents do
         inline-flex items-center px-5 py-2.5 mt-4 sm:mt-6 text-sm font-medium text-center text-white
         bg-primary-700 rounded-lg focus:ring-4 focus:ring-primary-200 dark:focus:ring-primary-900
         hover:bg-primary-800
-      ]}>
+      ]} {@rest}>
       <%= render_slot(@inner_block) %>
     </button>
     """

@@ -60,14 +60,17 @@ defmodule Web.AuthController do
   @doc """
   This is a callback for the Email provider which sends login link.
   """
-  def request_magic_link(conn, %{
-        "account_id_or_slug" => account_id_or_slug,
-        "provider_id" => provider_id,
-        "email" =>
-          %{
-            "provider_identifier" => provider_identifier
-          } = form
-      }) do
+  def request_magic_link(
+        conn,
+        %{
+          "account_id_or_slug" => account_id_or_slug,
+          "provider_id" => provider_id,
+          "email" =>
+            %{
+              "provider_identifier" => provider_identifier
+            } = form
+        } = params
+      ) do
     _ =
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
            {:ok, identity} <-
@@ -79,11 +82,22 @@ defmodule Web.AuthController do
         |> Web.Mailer.deliver()
       end
 
+    redirect_params = Map.take(form, ["client_platform", "provider_identifier"])
+
     conn
+    |> maybe_put_resent_flash(params)
     |> put_session(:client_platform, form["client_platform"])
     |> put_session(:client_csrf_token, form["client_csrf_token"])
-    |> redirect(to: "/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}")
+    |> redirect(
+      to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}?#{redirect_params}"
+    )
   end
+
+  defp maybe_put_resent_flash(conn, %{"resend" => "true"}),
+    do: put_flash(conn, :info, "Email was resent.")
+
+  defp maybe_put_resent_flash(conn, _params),
+    do: conn
 
   @doc """
   This is a callback for the Email provider which handles both form submission and redirect login link

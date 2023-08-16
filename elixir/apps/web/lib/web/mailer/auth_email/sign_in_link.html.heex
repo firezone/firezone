@@ -4,12 +4,28 @@
   Dear Firezone user,
 </p>
 
-<p>
-  Here is the <a href={@link} target="_blank">magic sign-in link</a>
-  you requested. It is valid for 1 hour.
-  If you didn't request this, you can safely discard this email.
-</p>
+<div :if={is_nil(@client_platform)}>
+  <p>
+    Here is the <a href={@link} target="_blank">magic sign-in link</a>
+    you requested. It is valid for 1 hour.
+    If you didn't request this, you can safely discard this email.
+  </p>
 
-<small>
-  If the link didn't work, please copy this link and open it in your browser. <%= @link %>
-</small>
+  <small>
+    If the link didn't work, please copy this link and open it in your browser. <%= @link %>
+  </small>
+</div>
+
+<div :if={not is_nil(@client_platform)}>
+  <p>
+    Please copy the code and paste it into the Firezone application to proceed with the login:
+    <div style="font-weight:bold; margin-top:1rem; margin-bottom:1rem;">
+      <code><%= @secret %></code>
+    </div>
+    It is valid for 1 hour.
+  </p>
+
+  <p>
+    If you didn't request this, you can safely discard this email.
+  </p>
+</div>
