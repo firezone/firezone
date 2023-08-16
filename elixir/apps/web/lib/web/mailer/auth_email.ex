@@ -21,6 +21,10 @@ defmodule Web.Mailer.AuthEmail do
     default_email()
     |> subject("Firezone Sign In Link")
     |> to(identity.provider_identifier)
-    |> render_body(__MODULE__, :sign_in_link, link: sign_in_link)
+    |> render_body(__MODULE__, :sign_in_link,
+      client_platform: params["client_platform"],
+      secret: identity.provider_virtual_state.sign_in_token,
+      link: sign_in_link
+    )
   end
 end
