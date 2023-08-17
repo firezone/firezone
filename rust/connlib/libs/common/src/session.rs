@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use backoff::{backoff::Backoff, ExponentialBackoff};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use ip_network::IpNetwork;
-use parking_lot::Mutex;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_core::OsRng;
 use std::{
@@ -11,7 +10,6 @@ use std::{
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
     result::Result as StdResult,
-    sync::Arc,
     time::Duration,
 };
 use tokio::{runtime::Runtime, sync::mpsc::Receiver};
@@ -52,7 +50,7 @@ pub trait ControlSession<T, CB: Callbacks> {
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session<T, U, V, R, M, CB: Callbacks> {
-    runtime: Arc<Mutex<Option<Runtime>>>,
+    runtime_stopper: tokio::sync::mpsc::Sender<()>,
     callbacks: CallbackErrorFacade<CB>,
     _phantom: PhantomData<(T, U, V, R, M)>,
 }
@@ -193,19 +191,6 @@ where
     M: From<U> + From<R> + Send + 'static + std::fmt::Debug,
     CB: Callbacks + 'static,
 {
-    /// Block on waiting for ctrl+c to terminate the runtime.
-    /// (Used for the gateways).
-    pub fn wait_for_ctrl_c(&mut self) -> Result<()> {
-        self.runtime
-            .lock()
-            .as_ref()
-            .ok_or(Error::NoRuntime)?
-            .block_on(async {
-                tokio::signal::ctrl_c().await?;
-                Ok(())
-            })
-    }
-
     /// Starts a session in the background.
     ///
     /// This will:
@@ -225,61 +210,65 @@ where
         // but then platforms should know that this function is blocking.
 
         let callbacks = CallbackErrorFacade(callbacks);
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         let this = Self {
-            runtime: Mutex::new(Some(
-                tokio::runtime::Builder::new_multi_thread()
-                    .enable_all()
-                    .build()?,
-            ))
-            .into(),
+            runtime_stopper: tx.clone(),
             callbacks,
             _phantom: PhantomData,
         };
-
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
         {
-            let runtime_disconnector = Arc::clone(&this.runtime);
             let callbacks = this.callbacks.clone();
             let default_panic_hook = std::panic::take_hook();
+            let panic_tx = tx.clone();
             std::panic::set_hook(Box::new(move |info| {
+                let tx = panic_tx.clone();
                 let err = info
                     .payload()
                     .downcast_ref::<&str>()
                     .map(|s| Error::Panic(s.to_string()))
                     .unwrap_or(Error::PanicNonStringPayload);
-                Self::disconnect_inner(&runtime_disconnector, &callbacks, Some(err));
+                Self::disconnect_inner(tx, &callbacks, Some(err));
                 default_panic_hook(info);
             }));
         }
 
         if cfg!(feature = "mock") {
-            Self::connect_mock(Arc::clone(&this.runtime), this.callbacks.clone());
+            Self::connect_mock(tx.clone(), this.callbacks.clone());
         } else {
             Self::connect_inner(
-                Arc::clone(&this.runtime),
+                &runtime,
+                tx,
                 portal_url.try_into().map_err(|_| Error::UriError)?,
                 token,
                 this.callbacks.clone(),
             );
         }
+        std::thread::spawn(move || {
+            rx.blocking_recv();
+            runtime.shutdown_background();
+        });
 
         Ok(this)
     }
 
     fn connect_inner(
-        runtime: Arc<Mutex<Option<Runtime>>>,
+        runtime: &Runtime,
+        runtime_stopper: tokio::sync::mpsc::Sender<()>,
         portal_url: Url,
         token: String,
         callbacks: CallbackErrorFacade<CB>,
     ) {
-        let runtime_disconnector = Arc::clone(&runtime);
-        runtime.lock().as_ref().unwrap().spawn(async move {
+        runtime.spawn(async move {
             let private_key = StaticSecret::random_from_rng(OsRng);
             let self_id = uuid::Uuid::new_v4();
             let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
 
             let connect_url = fatal_error!(
                 get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix),
-                &runtime_disconnector,
+                runtime_stopper,
                 &callbacks
             );
 
@@ -304,7 +293,7 @@ where
             let internal_sender = connection.sender_with_topic(topic.clone());
             fatal_error!(
                 T::start(private_key, control_plane_receiver, internal_sender, callbacks.0.clone()).await,
-                &runtime_disconnector,
+                runtime_stopper,
                 &callbacks
             );
 
@@ -313,15 +302,19 @@ where
                 loop {
                     // `connection.start` calls the callback only after connecting
                     let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
+                    tracing::warn!("Disconnected from the portal");
+                    if let Err(err) = &result {
+                        tracing::warn!("Portal connection error: {err}");
+                    }
                     if let Some(t) = exponential_backoff.next_backoff() {
                         tracing::warn!("Error connecting to portal, retrying in {} seconds", t.as_secs());
                         let _ = callbacks.on_error(&result.err().unwrap_or(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed)));
                         tokio::time::sleep(t).await;
                     } else {
-                        tracing::error!("Connection to the portal error, check your internet or the status of the portal.\nDisconnecting interface.");
+                        tracing::error!("Connection to the portal stopped, check your internet or the status of the portal.");
                         fatal_error!(
                             result.and(Err(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed))),
-                            &runtime_disconnector,
+                            runtime_stopper,
                             &callbacks
                         );
                     }
@@ -332,7 +325,10 @@ where
         });
     }
 
-    fn connect_mock(runtime: Arc<Mutex<Option<Runtime>>>, callbacks: CallbackErrorFacade<CB>) {
+    fn connect_mock(
+        runtime_stopper: tokio::sync::mpsc::Sender<()>,
+        callbacks: CallbackErrorFacade<CB>,
+    ) {
         std::thread::sleep(Duration::from_secs(1));
         fatal_error!(
             callbacks.on_set_interface_config(
@@ -340,10 +336,10 @@ where
                 "fd00:0222:2021:1111::2".parse().unwrap(),
                 DNS_SENTINEL,
             ),
-            &runtime,
+            runtime_stopper,
             &callbacks
         );
-        fatal_error!(callbacks.on_tunnel_ready(), &runtime, &callbacks);
+        fatal_error!(callbacks.on_tunnel_ready(), runtime_stopper, &callbacks);
         let handle = {
             let callbacks = callbacks.clone();
             std::thread::spawn(move || -> Result<()> {
@@ -373,13 +369,13 @@ where
         };
         fatal_error!(
             handle.join().expect("mock thread panicked"),
-            &runtime,
+            runtime_stopper,
             &callbacks
         );
     }
 
     fn disconnect_inner(
-        runtime: &Mutex<Option<Runtime>>,
+        runtime_stopper: tokio::sync::mpsc::Sender<()>,
         callbacks: &CallbackErrorFacade<CB>,
         error: Option<Error>,
     ) {
@@ -394,7 +390,12 @@ where
         // So always yield and if you spawn a blocking tasks rewrite this.
         // Furthermore, we will depend on Drop impls to do the list above so,
         // implement them :)
-        *runtime.lock() = None;
+        // if there's no reciever the runtime is already stopped
+        // there's an edge case where this is called before the thread is listening for stop threads.
+        // but I believe in that case the channel will be in a signaled state achieving the same result
+        if let Err(err) = runtime_stopper.try_send(()) {
+            tracing::error!("Couldn't stop runtime: {err}");
+        }
 
         let _ = callbacks.on_disconnect(error.as_ref());
     }
@@ -404,7 +405,7 @@ where
     /// For now this just drops the runtime, which should drop all pending tasks.
     /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
     pub fn disconnect(&mut self, error: Option<Error>) {
-        Self::disconnect_inner(&self.runtime, &self.callbacks, error)
+        Self::disconnect_inner(self.runtime_stopper.clone(), &self.callbacks, error)
     }
 
     // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#L177

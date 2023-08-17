@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use ctrlc;
 use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -45,8 +46,9 @@ impl Callbacks for CallbackHandler {
     }
 
     fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
-        tracing::trace!("Tunnel disconnected: {error:?}");
-        Ok(())
+        tracing::warn!("Tunnel disconnected: {error:?}");
+        // Note that we can't panic here, since we already hooked the panic to this function.
+        std::process::exit(0);
     }
 
     fn on_error(&self, error: &Error) -> Result<(), Self::Error> {
@@ -64,7 +66,12 @@ fn main() -> Result<()> {
     let url = parse_env_var::<Url>(URL_ENV_VAR)?;
     let secret = parse_env_var::<String>(SECRET_ENV_VAR)?;
     let mut session = Session::connect(url, secret, CallbackHandler).unwrap();
-    session.wait_for_ctrl_c().unwrap();
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    ctrlc::set_handler(move || tx.send(()).expect("Could not send stop signal on channel."))
+        .expect("Error setting Ctrl-C handler");
+    rx.recv().expect("Could not recieve ctrl-c signal");
+
     session.disconnect(None);
     Ok(())
 }
