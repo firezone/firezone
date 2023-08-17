@@ -69,7 +69,7 @@ fn main() -> Result<()> {
     let (tx, rx) = std::sync::mpsc::channel();
     ctrlc::set_handler(move || tx.send(()).expect("Could not send stop signal on channel."))
         .expect("Error setting Ctrl-C handler");
-    rx.recv().expect("Could not recieve ctrl-c signal");
+    rx.recv().expect("Could not receive ctrl-c signal");
 
     session.disconnect(None);
     Ok(())

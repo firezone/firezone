@@ -390,7 +390,7 @@ where
         // So always yield and if you spawn a blocking tasks rewrite this.
         // Furthermore, we will depend on Drop impls to do the list above so,
         // implement them :)
-        // if there's no reciever the runtime is already stopped
+        // if there's no receiver the runtime is already stopped
         // there's an edge case where this is called before the thread is listening for stop threads.
         // but I believe in that case the channel will be in a signaled state achieving the same result
         if let Err(err) = runtime_stopper.try_send(()) {
