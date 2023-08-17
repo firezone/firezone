@@ -357,9 +357,9 @@ defmodule Web.AuthControllerTest do
           ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/request_magic_link",
           %{
             "email" => %{
-              "provider_identifier" => identity.provider_identifier,
-              "client_platform" => "platform"
-            }
+              "provider_identifier" => identity.provider_identifier
+            },
+            "client_platform" => "platform"
           }
         )
 
