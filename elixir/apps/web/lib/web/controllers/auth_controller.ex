@@ -14,7 +14,7 @@ defmodule Web.AuthController do
     http_only: true
   ]
 
-  action_fallback(Web.FallbackController)
+  action_fallback Web.FallbackController
 
   @doc """
   This is a callback for the UserPass provider which checks login and password to authenticate the user.
