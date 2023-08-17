@@ -200,6 +200,8 @@ services:
     depends_on:
       api:
         condition: 'service_healthy'
+    ports: 
+      - 3478:3478/udp
     networks:
       app:
         ipv4_address: 172.28.0.101
