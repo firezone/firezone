@@ -74,7 +74,7 @@ async fn main() -> Result<()> {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
         (Some(ip4), None) => IpStack::Ip4(ip4),
         (None, Some(ip6)) => IpStack::Ip6(ip6),
-        _ => {
+        (None, None) => {
             bail!("Must listen on at least one of IPv4 or IPv6")
         }
     };
