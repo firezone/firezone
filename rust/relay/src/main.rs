@@ -13,7 +13,7 @@ use relay::{
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::task::Poll;
 use std::time::SystemTime;
@@ -26,25 +26,11 @@ use url::Url;
 #[derive(Parser, Debug)]
 struct Args {
     /// The public (i.e. internet-reachable) IPv4 address of the relay server.
-    ///
-    /// Must route to the local IPv4 interface we listen on.
     #[arg(long, env)]
     public_ip4_addr: Option<Ipv4Addr>,
-    /// The address of the local IPv4 interface we should listen on.
-    ///
-    /// Must not be a wildcard-address.
-    #[arg(long, env)]
-    listen_ip4_addr: Option<Ipv4Addr>,
     /// The public (i.e. internet-reachable) IPv6 address of the relay server.
-    ///
-    /// Must route to the local IP6 interface we listen on.
     #[arg(long, env)]
     public_ip6_addr: Option<Ipv6Addr>,
-    /// The address of the local IP6 interface we should listen on.
-    ///
-    /// Must not be a wildcard-address.
-    #[arg(long, env)]
-    listen_ip6_addr: Option<Ipv6Addr>,
     /// The address of the local interface where we should serve the prometheus metrics.
     ///
     /// The metrics will be available at `http://<metrics_addr>/metrics`.
@@ -84,20 +70,12 @@ async fn main() -> Result<()> {
         tracing_subscriber::fmt().with_env_filter(env_filter).init()
     }
 
-    let listen_addr = match (args.listen_ip4_addr, args.listen_ip6_addr) {
+    let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
         (Some(ip4), None) => IpStack::Ip4(ip4),
         (None, Some(ip6)) => IpStack::Ip6(ip6),
-        (None, None) => {
-            bail!("Must listen on at least one of IPv4 or IPv6")
-        }
-    };
-    let public_addr = match (args.public_ip4_addr, args.public_ip6_addr, listen_addr) {
-        (Some(ip4), Some(ip6), IpStack::Dual { .. }) => IpStack::Dual { ip4, ip6 },
-        (Some(ip4), None, IpStack::Ip4(_)) => IpStack::Ip4(ip4),
-        (None, Some(ip6), IpStack::Ip6(_)) => IpStack::Ip6(ip6),
         _ => {
-            bail!("Must specify a public address for each listen address")
+            bail!("Must listen on at least one of IPv4 or IPv6")
         }
     };
 
@@ -164,7 +142,7 @@ async fn main() -> Result<()> {
         None
     };
 
-    let mut eventloop = Eventloop::new(server, channel, listen_addr, &mut metric_registry)?;
+    let mut eventloop = Eventloop::new(server, channel, public_addr, &mut metric_registry)?;
 
     if let Some(metrics_addr) = args.metrics_addr {
         tokio::spawn(relay::metrics::serve(metrics_addr, metric_registry));
@@ -214,7 +192,6 @@ struct Eventloop<R> {
     inbound_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
     outbound_ip4_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
     outbound_ip6_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
-    listen_address: IpStack,
     server: Server<R>,
     channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
     allocations: HashMap<(AllocationId, AddressFamily), Allocation>,
@@ -230,7 +207,7 @@ where
     fn new(
         server: Server<R>,
         channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
-        listen_address: IpStack,
+        public_address: IpStack,
         _: &mut Registry,
     ) -> Result<Self> {
         let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);
@@ -240,16 +217,16 @@ where
         let (outbound_ip6_data_sender, outbound_ip6_data_receiver) =
             mpsc::channel::<(Vec<u8>, SocketAddr)>(10);
 
-        if let Some(ip4) = listen_address.as_v4() {
+        if public_address.as_v4().is_some() {
             tokio::spawn(main_udp_socket_task(
-                (*ip4).into(),
+                AddressFamily::V4,
                 inbound_data_sender.clone(),
                 outbound_ip4_data_receiver,
             ));
         }
-        if let Some(ip6) = listen_address.as_v6() {
+        if public_address.as_v6().is_some() {
             tokio::spawn(main_udp_socket_task(
-                (*ip6).into(),
+                AddressFamily::V6,
                 inbound_data_sender,
                 outbound_ip6_data_receiver,
             ));
@@ -259,7 +236,6 @@ where
             inbound_data_receiver,
             outbound_ip4_data_sender,
             outbound_ip6_data_sender,
-            listen_address,
             server,
             channel,
             allocations: Default::default(),
@@ -293,14 +269,9 @@ where
                         }
                     }
                     Command::CreateAllocation { id, family, port } => {
-                        let listen_addr = match family {
-                            AddressFamily::V4 => (*self.listen_address.as_v4().expect("to have listen address for IP4 if we are creating an IP4 allocation")).into(),
-                            AddressFamily::V6 => (*self.listen_address.as_v6().expect("to have listen address for IP6 if we are creating an IP6 allocation")).into(),
-                        };
-
                         self.allocations.insert(
                             (id, family),
-                            Allocation::new(self.relay_data_sender.clone(), id, listen_addr, port),
+                            Allocation::new(self.relay_data_sender.clone(), id, family, port),
                         );
                     }
                     Command::FreeAllocation { id, family } => {
@@ -406,11 +377,11 @@ where
 }
 
 async fn main_udp_socket_task(
-    listen_address: IpAddr,
+    family: AddressFamily,
     mut inbound_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
     mut outbound_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
 ) -> Result<Infallible> {
-    let mut socket = UdpSocket::bind((listen_address, 3478))?;
+    let mut socket = UdpSocket::bind(family, 3478)?;
 
     loop {
         tokio::select! {
