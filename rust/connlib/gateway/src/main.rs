@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use ctrlc;
 use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
