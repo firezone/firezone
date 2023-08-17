@@ -14,10 +14,6 @@ import SwiftUINavigation
 public final class AppViewModel: ObservableObject {
   @Published var welcomeViewModel: WelcomeViewModel?
 
-  public var appStore: AppStore? {
-    welcomeViewModel?.appStore
-  }
-
   public init() {
     Task {
       let tunnel = try await TunnelStore.loadOrCreate()
