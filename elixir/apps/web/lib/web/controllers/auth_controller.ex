@@ -65,10 +65,9 @@ defmodule Web.AuthController do
         %{
           "account_id_or_slug" => account_id_or_slug,
           "provider_id" => provider_id,
-          "email" =>
-            %{
-              "provider_identifier" => provider_identifier
-            } = form
+          "email" => %{
+            "provider_identifier" => provider_identifier
+          }
         } = params
       ) do
     _ =
@@ -76,18 +75,20 @@ defmodule Web.AuthController do
            {:ok, identity} <-
              Domain.Auth.fetch_identity_by_provider_and_identifier(provider, provider_identifier),
            {:ok, identity} <- Domain.Auth.Adapters.Email.request_sign_in_token(identity) do
-        params = Map.take(form, ["client_platform", "client_csrf_token"])
+        sign_in_link_params = Map.take(params, ["client_platform", "client_csrf_token"])
 
-        Web.Mailer.AuthEmail.sign_in_link_email(identity, params)
+        Web.Mailer.AuthEmail.sign_in_link_email(identity, sign_in_link_params)
         |> Web.Mailer.deliver()
       end
 
-    redirect_params = Map.take(form, ["client_platform", "provider_identifier"])
+    redirect_params =
+      Map.take(params, ["client_platform"])
+      |> Map.merge(%{"provider_identifier" => provider_identifier})
 
     conn
     |> maybe_put_resent_flash(params)
-    |> put_session(:client_platform, form["client_platform"])
-    |> put_session(:client_csrf_token, form["client_csrf_token"])
+    |> put_session(:client_platform, params["client_platform"])
+    |> put_session(:client_csrf_token, params["client_csrf_token"])
     |> redirect(
       to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}?#{redirect_params}"
     )
