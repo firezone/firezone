@@ -358,8 +358,8 @@ defmodule Web.AuthControllerTest do
           %{
             "email" => %{
               "provider_identifier" => identity.provider_identifier,
-              "client_platform" => "platform"
-            }
+            },
+            "client_platform" => "platform"
           }
         )
 
