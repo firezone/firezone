@@ -21,9 +21,6 @@ struct FirezoneApp: App {
     #if os(iOS)
       WindowGroup {
         AppView(model: model)
-          .onOpenURL { url in
-            model.appStore?.continueSignIn(appOpenedWithURL: url)
-          }
       }
     #else
       WindowGroup("Settings") {
@@ -46,12 +43,6 @@ struct FirezoneApp: App {
       // SwiftUI will show the first window group, so close it on launch
       let window = NSApp.windows[0]
       window.close()
-    }
-
-    func application(_: NSApplication, open urls: [URL]) {
-      if let openedWithURL = urls.first {
-        menuBar.appStore?.continueSignIn(appOpenedWithURL: openedWithURL)
-      }
     }
 
     func applicationWillTerminate(_: Notification) {}
