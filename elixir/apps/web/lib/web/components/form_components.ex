@@ -20,30 +20,33 @@ defmodule Web.FormComponents do
       <.input field={@form[:email]} type="email" />
       <.input name="my-input" errors={["oh no!"]} />
   """
-  attr :id, :any, default: nil
-  attr :name, :any
-  attr :label, :string, default: nil
-  attr :value, :any
+  attr(:id, :any, default: nil)
+  attr(:name, :any)
+  attr(:label, :string, default: nil)
+  attr(:value, :any)
 
-  attr :type, :string,
+  attr(:type, :string,
     default: "text",
     values: ~w(checkbox color date datetime-local email file hidden month number password
                range radio search select tel text textarea taglist time url week)
+  )
 
-  attr :field, Phoenix.HTML.FormField,
+  attr(:field, Phoenix.HTML.FormField,
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
+  )
 
-  attr :errors, :list, default: []
-  attr :checked, :boolean, doc: "the checked flag for checkbox and radio inputs"
-  attr :prompt, :string, default: nil, doc: "the prompt for select inputs"
-  attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
-  attr :multiple, :boolean, default: false, doc: "the multiple flag for select inputs"
+  attr(:errors, :list, default: [])
+  attr(:checked, :boolean, doc: "the checked flag for checkbox and radio inputs")
+  attr(:prompt, :string, default: nil, doc: "the prompt for select inputs")
+  attr(:options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2")
+  attr(:multiple, :boolean, default: false, doc: "the multiple flag for select inputs")
 
-  attr :rest, :global,
+  attr(:rest, :global,
     include: ~w(autocomplete cols disabled form list max maxlength min minlength
                 pattern placeholder readonly required rows size step)
+  )
 
-  slot :inner_block
+  slot(:inner_block)
 
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
     assigns
@@ -211,10 +214,10 @@ defmodule Web.FormComponents do
     """
   end
 
-  attr :name, :any
-  attr :value, :any
-  attr :checked, :boolean
-  attr :rest, :global
+  attr(:name, :any)
+  attr(:value, :any)
+  attr(:checked, :boolean)
+  attr(:rest, :global)
 
   def checkbox(assigns) do
     ~H"""
@@ -234,9 +237,9 @@ defmodule Web.FormComponents do
   @doc """
   Render a button group.
   """
-  slot :first, required: true, doc: "First button"
-  slot :middle, required: false, doc: "Middle button(s)"
-  slot :last, required: true, doc: "Last button"
+  slot(:first, required: true, doc: "First button")
+  slot(:middle, required: false, doc: "Middle button(s)")
+  slot(:last, required: true, doc: "Last button")
 
   def button_group(assigns) do
     ~H"""
@@ -282,11 +285,11 @@ defmodule Web.FormComponents do
       <.button>Send!</.button>
       <.button phx-click="go" class="ml-2">Send!</.button>
   """
-  attr :type, :string, default: nil
-  attr :class, :string, default: nil
-  attr :rest, :global, include: ~w(disabled form name value navigate)
+  attr(:type, :string, default: nil)
+  attr(:class, :string, default: nil)
+  attr(:rest, :global, include: ~w(disabled form name value navigate))
 
-  slot :inner_block, required: true
+  slot(:inner_block, required: true)
 
   def button(assigns) do
     ~H"""
@@ -318,8 +321,8 @@ defmodule Web.FormComponents do
     </.submit_button>
   """
 
-  attr :rest, :global
-  slot :inner_block, required: true
+  attr(:rest, :global)
+  slot(:inner_block, required: true)
 
   def submit_button(assigns) do
     ~H"""
@@ -342,8 +345,8 @@ defmodule Web.FormComponents do
       Edit user
     </.delete_button>
   """
-  slot :inner_block, required: true
-  attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
+  slot(:inner_block, required: true)
+  attr(:rest, :global, doc: "the arbitrary HTML attributes to add to the flash container")
 
   def delete_button(assigns) do
     ~H"""
@@ -368,8 +371,8 @@ defmodule Web.FormComponents do
       Add user
     </.add_button>
   """
-  attr :navigate, :any, required: true, doc: "Path to navigate to"
-  slot :inner_block, required: true
+  attr(:navigate, :any, required: true, doc: "Path to navigate to")
+  slot(:inner_block, required: true)
 
   def add_button(assigns) do
     ~H"""
@@ -393,8 +396,8 @@ defmodule Web.FormComponents do
       Edit user
     </.edit_button>
   """
-  attr :navigate, :any, required: true, doc: "Path to navigate to"
-  slot :inner_block, required: true
+  attr(:navigate, :any, required: true, doc: "Path to navigate to")
+  slot(:inner_block, required: true)
 
   def edit_button(assigns) do
     ~H"""
@@ -423,15 +426,16 @@ defmodule Web.FormComponents do
         </:actions>
       </.simple_form>
   """
-  attr :for, :any, required: true, doc: "the datastructure for the form"
-  attr :as, :any, default: nil, doc: "the server side parameter to collect all input under"
+  attr(:for, :any, required: true, doc: "the datastructure for the form")
+  attr(:as, :any, default: nil, doc: "the server side parameter to collect all input under")
 
-  attr :rest, :global,
+  attr(:rest, :global,
     include: ~w(autocomplete name rel action enctype method novalidate target),
     doc: "the arbitrary HTML attributes to apply to the form tag"
+  )
 
-  slot :inner_block, required: true
-  slot :actions, doc: "the slot for form actions, such as a submit button"
+  slot(:inner_block, required: true)
+  slot(:actions, doc: "the slot for form actions, such as a submit button")
 
   def simple_form(assigns) do
     ~H"""

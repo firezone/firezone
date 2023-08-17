@@ -14,7 +14,7 @@ defmodule Web.AuthController do
     http_only: true
   ]
 
-  action_fallback Web.FallbackController
+  action_fallback(Web.FallbackController)
 
   @doc """
   This is a callback for the UserPass provider which checks login and password to authenticate the user.
@@ -65,10 +65,9 @@ defmodule Web.AuthController do
         %{
           "account_id_or_slug" => account_id_or_slug,
           "provider_id" => provider_id,
-          "email" =>
-            %{
-              "provider_identifier" => provider_identifier
-            }
+          "email" => %{
+            "provider_identifier" => provider_identifier
+          }
         } = params
       ) do
     _ =
@@ -82,10 +81,9 @@ defmodule Web.AuthController do
         |> Web.Mailer.deliver()
       end
 
-    redirect_params = %{
-      "provider_identifier" => provider_identifier,
-      "client_platform" => params["client_platform"],
-    }
+    redirect_params =
+      Map.take(params, ["client_platform"])
+      |> Map.merge(%{"provider_identifier" => provider_identifier})
 
     conn
     |> maybe_put_resent_flash(params)
