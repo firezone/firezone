@@ -129,7 +129,6 @@ defmodule Web.FormComponents do
     """
   end
 
-  # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(%{type: "taglist"} = assigns) do
     values =
       if is_nil(assigns.value),
@@ -176,6 +175,19 @@ defmodule Web.FormComponents do
     """
   end
 
+  def input(%{type: "hidden"} = assigns) do
+    ~H"""
+      <input
+        type={@type}
+        name={@name}
+        id={@id}
+        value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+        {@rest}
+      />
+    """
+  end
+
+  # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
