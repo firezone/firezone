@@ -19,6 +19,7 @@ defmodule Web.ConnCase do
       import Swoosh.TestAssertions
 
       alias Domain.Repo
+      alias Domain.Fixtures
     end
   end
 

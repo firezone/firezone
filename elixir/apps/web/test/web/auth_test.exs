@@ -1,19 +1,17 @@
 defmodule Web.AuthTest do
   use Web.ConnCase, async: true
   import Web.Auth
-  alias Phoenix.LiveView
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   setup do
-    account = AccountsFixtures.create_account()
+    account = Fixtures.Accounts.create_account()
 
-    admin_actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-    admin_identity = AuthFixtures.create_identity(account: account, actor: admin_actor)
-    admin_subject = AuthFixtures.create_subject(admin_identity)
+    admin_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    admin_identity = Fixtures.Auth.create_identity(account: account, actor: admin_actor)
+    admin_subject = Fixtures.Auth.create_subject(admin_identity)
 
-    user_actor = ActorsFixtures.create_actor(type: :account_user, account: account)
-    user_identity = AuthFixtures.create_identity(account: account, actor: user_actor)
-    user_subject = AuthFixtures.create_subject(user_identity)
+    user_actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+    user_identity = Fixtures.Auth.create_identity(account: account, actor: user_actor)
+    user_subject = Fixtures.Auth.create_subject(user_identity)
 
     %{
       account: account,
@@ -226,7 +224,7 @@ defmodule Web.AuthTest do
 
   describe "on_mount: mount_subject" do
     setup context do
-      socket = %LiveView.Socket{
+      socket = %Phoenix.LiveView.Socket{
         private: %{
           connect_info: %{
             user_agent: context.admin_subject.context.user_agent,
@@ -282,7 +280,7 @@ defmodule Web.AuthTest do
       conn: conn,
       admin_subject: subject
     } do
-      socket = %LiveView.Socket{
+      socket = %Phoenix.LiveView.Socket{
         assigns: %{
           __changed__: %{},
           subject: subject
@@ -306,7 +304,7 @@ defmodule Web.AuthTest do
 
   describe "on_mount: ensure_authenticated" do
     setup context do
-      socket = %LiveView.Socket{
+      socket = %Phoenix.LiveView.Socket{
         endpoint: Web.Endpoint,
         assigns: %{__changed__: %{}, flash: %{}, account: context.account},
         private: %{
@@ -373,7 +371,7 @@ defmodule Web.AuthTest do
 
   describe "on_mount: :redirect_if_user_is_authenticated" do
     setup context do
-      socket = %LiveView.Socket{
+      socket = %Phoenix.LiveView.Socket{
         endpoint: Web.Endpoint,
         assigns: %{__changed__: %{}, flash: %{}},
         private: %{

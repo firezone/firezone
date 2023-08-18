@@ -1,9 +1,8 @@
 defmodule API.Relay.ChannelTest do
   use API.ChannelCase
-  alias Domain.RelaysFixtures
 
   setup do
-    relay = RelaysFixtures.create_relay()
+    relay = Fixtures.Relays.create_relay()
 
     stamp_secret = Domain.Crypto.rand_string()
 
@@ -24,8 +23,8 @@ defmodule API.Relay.ChannelTest do
     end
 
     test "tracks presence after join of an global relay" do
-      group = RelaysFixtures.create_global_group()
-      relay = RelaysFixtures.create_relay(group: group)
+      group = Fixtures.Relays.create_global_group()
+      relay = Fixtures.Relays.create_relay(group: group)
 
       stamp_secret = Domain.Crypto.rand_string()
 

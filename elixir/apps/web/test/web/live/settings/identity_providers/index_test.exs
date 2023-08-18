@@ -1,19 +1,17 @@
 defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
   use Web.ConnCase, async: true
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   setup do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-    account = AccountsFixtures.create_account()
-    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
     {provider, bypass} =
-      AuthFixtures.start_openid_providers(["google"])
-      |> AuthFixtures.create_openid_connect_provider(account: account)
+      Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
-    identity = AuthFixtures.create_identity(account: account, actor: actor, provider: provider)
-    subject = AuthFixtures.create_subject(identity)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+    subject = Fixtures.Auth.create_subject(identity)
 
     %{
       account: account,
@@ -42,9 +40,9 @@ defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
     subject: subject,
     conn: conn
   } do
-    email_provider = AuthFixtures.create_email_provider(account: account)
+    email_provider = Fixtures.Auth.create_email_provider(account: account)
     {:ok, _email_provider} = Domain.Auth.disable_provider(email_provider, subject)
-    userpass_provider = AuthFixtures.create_userpass_provider(account: account)
+    userpass_provider = Fixtures.Auth.create_userpass_provider(account: account)
 
     {:ok, lv, _html} =
       conn
@@ -84,8 +82,7 @@ defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
     conn: conn
   } do
     {provider, _bypass} =
-      AuthFixtures.start_openid_providers(["google"])
-      |> AuthFixtures.create_google_workspace_provider(account: account)
+      Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
     conn = authorize_conn(conn, identity)
 
@@ -102,9 +99,9 @@ defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
              "Never synced"
            ]
 
-    AuthFixtures.create_identity(account: account, provider: provider)
-    AuthFixtures.create_identity(account: account, provider: provider)
-    ActorsFixtures.create_group(account: account, provider: provider)
+    Fixtures.Auth.create_identity(account: account, provider: provider)
+    Fixtures.Auth.create_identity(account: account, provider: provider)
+    Fixtures.Actors.create_group(account: account, provider: provider)
     one_hour_ago = DateTime.utc_now() |> DateTime.add(-1, :hour)
     provider |> Ecto.Changeset.change(last_synced_at: one_hour_ago) |> Repo.update!()
 
@@ -163,9 +160,9 @@ defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
              "Created 1 identity and 0 groups"
            ]
 
-    AuthFixtures.create_identity(account: account, provider: provider)
-    AuthFixtures.create_identity(account: account, provider: provider)
-    ActorsFixtures.create_group(account: account, provider: provider)
+    Fixtures.Auth.create_identity(account: account, provider: provider)
+    Fixtures.Auth.create_identity(account: account, provider: provider)
+    Fixtures.Actors.create_group(account: account, provider: provider)
     provider |> Ecto.Changeset.change(last_synced_at: DateTime.utc_now()) |> Repo.update!()
 
     {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/identity_providers")
@@ -187,7 +184,7 @@ defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
     identity: identity,
     conn: conn
   } do
-    provider = AuthFixtures.create_token_provider(account: account)
+    provider = Fixtures.Auth.create_token_provider(account: account)
 
     conn = authorize_conn(conn, identity)
 

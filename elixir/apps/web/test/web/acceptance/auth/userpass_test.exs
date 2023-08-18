@@ -1,14 +1,13 @@
 defmodule Web.Acceptance.Auth.UserPassTest do
   use Web.AcceptanceCase, async: true
-  alias Domain.{AccountsFixtures, AuthFixtures, ActorsFixtures}
 
   feature "renders error on invalid login or password", %{session: session} do
-    account = AccountsFixtures.create_account()
-    provider = AuthFixtures.create_userpass_provider(account: account)
+    account = Fixtures.Accounts.create_account()
+    provider = Fixtures.Auth.create_userpass_provider(account: account)
     password = "Firezone1234"
 
     identity =
-      AuthFixtures.create_identity(
+      Fixtures.Auth.create_identity(
         account: account,
         provider: provider,
         provider_virtual_state: %{"password" => password, "password_confirmation" => password}
@@ -22,17 +21,17 @@ defmodule Web.Acceptance.Auth.UserPassTest do
   end
 
   feature "renders error on if identity is disabled", %{session: session} do
-    account = AccountsFixtures.create_account()
-    provider = AuthFixtures.create_userpass_provider(account: account)
+    account = Fixtures.Accounts.create_account()
+    provider = Fixtures.Auth.create_userpass_provider(account: account)
     password = "Firezone1234"
 
     identity =
-      AuthFixtures.create_identity(
+      Fixtures.Auth.create_identity(
         account: account,
         provider: provider,
         provider_virtual_state: %{"password" => password, "password_confirmation" => password}
       )
-      |> AuthFixtures.delete_identity()
+      |> Fixtures.Auth.delete_identity()
 
     session
     |> password_login_flow(account, identity.provider_identifier, password)
@@ -40,22 +39,22 @@ defmodule Web.Acceptance.Auth.UserPassTest do
   end
 
   feature "renders error on if actor is disabled", %{session: session} do
-    account = AccountsFixtures.create_account()
-    provider = AuthFixtures.create_userpass_provider(account: account)
-    provider_identifier = AuthFixtures.random_provider_identifier(provider)
+    account = Fixtures.Accounts.create_account()
+    provider = Fixtures.Auth.create_userpass_provider(account: account)
+    provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
 
     actor =
-      ActorsFixtures.create_actor(
+      Fixtures.Actors.create_actor(
         account: account,
         provider: provider,
         provider_identifier: provider_identifier
       )
-      |> ActorsFixtures.disable()
+      |> Fixtures.Actors.disable()
 
     password = "Firezone1234"
 
     identity =
-      AuthFixtures.create_identity(
+      Fixtures.Auth.create_identity(
         account: account,
         provider: provider,
         actor: actor,
@@ -68,22 +67,22 @@ defmodule Web.Acceptance.Auth.UserPassTest do
   end
 
   feature "renders error on if actor is deleted", %{session: session} do
-    account = AccountsFixtures.create_account()
-    provider = AuthFixtures.create_userpass_provider(account: account)
-    provider_identifier = AuthFixtures.random_provider_identifier(provider)
+    account = Fixtures.Accounts.create_account()
+    provider = Fixtures.Auth.create_userpass_provider(account: account)
+    provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
 
     actor =
-      ActorsFixtures.create_actor(
+      Fixtures.Actors.create_actor(
         account: account,
         provider: provider,
         provider_identifier: provider_identifier
       )
-      |> ActorsFixtures.delete()
+      |> Fixtures.Actors.delete()
 
     password = "Firezone1234"
 
     identity =
-      AuthFixtures.create_identity(
+      Fixtures.Auth.create_identity(
         account: account,
         provider: provider,
         actor: actor,
@@ -98,12 +97,12 @@ defmodule Web.Acceptance.Auth.UserPassTest do
   feature "redirects to dashboard after successful log in as account_admin_user", %{
     session: session
   } do
-    account = AccountsFixtures.create_account()
-    provider = AuthFixtures.create_userpass_provider(account: account)
+    account = Fixtures.Accounts.create_account()
+    provider = Fixtures.Auth.create_userpass_provider(account: account)
     password = "Firezone1234"
 
     identity =
-      AuthFixtures.create_identity(
+      Fixtures.Auth.create_identity(
         account: account,
         provider: provider,
         actor_default_type: :account_admin_user,
@@ -120,12 +119,12 @@ defmodule Web.Acceptance.Auth.UserPassTest do
   feature "redirects to landing page after successful log in as account_user", %{
     session: session
   } do
-    account = AccountsFixtures.create_account()
-    provider = AuthFixtures.create_userpass_provider(account: account)
+    account = Fixtures.Accounts.create_account()
+    provider = Fixtures.Auth.create_userpass_provider(account: account)
     password = "Firezone1234"
 
     identity =
-      AuthFixtures.create_identity(
+      Fixtures.Auth.create_identity(
         account: account,
         provider: provider,
         actor_default_type: :account_user,

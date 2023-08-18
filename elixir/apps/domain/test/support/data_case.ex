@@ -23,6 +23,7 @@ defmodule Domain.DataCase do
       import Domain.DataCase
 
       alias Domain.Repo
+      alias Domain.Fixtures
     end
   end
 

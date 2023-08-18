@@ -1,6 +1,5 @@
 defmodule Web.AuthControllerTest do
   use Web.ConnCase, async: true
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   setup do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
@@ -25,7 +24,7 @@ defmodule Web.AuthControllerTest do
     end
 
     test "redirects back to the form when identity does not exist", %{conn: conn} do
-      provider = AuthFixtures.create_userpass_provider()
+      provider = Fixtures.Auth.create_userpass_provider()
 
       conn =
         post(
@@ -45,11 +44,11 @@ defmodule Web.AuthControllerTest do
     end
 
     test "redirects back to the form when credentials are invalid", %{conn: conn} do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
           provider_virtual_state: %{
@@ -76,7 +75,7 @@ defmodule Web.AuthControllerTest do
     end
 
     test "trims the provider identifier to 160 characters on error redirect", %{conn: conn} do
-      provider = AuthFixtures.create_userpass_provider()
+      provider = Fixtures.Auth.create_userpass_provider()
       provider_identifier = String.duplicate("a", 161)
 
       conn =
@@ -99,19 +98,19 @@ defmodule Web.AuthControllerTest do
     end
 
     test "redirects to the return to path when credentials are valid", %{conn: conn} do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       password = "Firezone1234"
 
       actor =
-        ActorsFixtures.create_actor(
+        Fixtures.Actors.create_actor(
           type: :account_admin_user,
           account: account,
           provider: provider
         )
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           actor: actor,
           account: account,
           provider: provider,
@@ -139,12 +138,12 @@ defmodule Web.AuthControllerTest do
     test "redirects to the dashboard when credentials are valid and return path is empty", %{
       conn: conn
     } do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       password = "Firezone1234"
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           actor_default_type: :account_admin_user,
           account: account,
           provider: provider,
@@ -167,19 +166,19 @@ defmodule Web.AuthControllerTest do
     end
 
     test "renews the session when credentials are valid", %{conn: conn} do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       password = "Firezone1234"
 
       actor =
-        ActorsFixtures.create_actor(
+        Fixtures.Actors.create_actor(
           type: :account_admin_user,
           account: account,
           provider: provider
         )
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
           actor: actor,
@@ -218,19 +217,19 @@ defmodule Web.AuthControllerTest do
     test "redirects to the platform link when credentials are valid for account users", %{
       conn: conn
     } do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       password = "Firezone1234"
 
       actor =
-        ActorsFixtures.create_actor(
+        Fixtures.Actors.create_actor(
           type: :account_user,
           account: account,
           provider: provider
         )
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           actor: actor,
           account: account,
           provider: provider,
@@ -272,19 +271,19 @@ defmodule Web.AuthControllerTest do
     test "redirects account users to app install page when mobile platform is invalid", %{
       conn: conn
     } do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       password = "Firezone1234"
 
       actor =
-        ActorsFixtures.create_actor(
+        Fixtures.Actors.create_actor(
           type: :account_user,
           account: account,
           provider: provider
         )
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           actor: actor,
           account: account,
           provider: provider,
@@ -315,9 +314,9 @@ defmodule Web.AuthControllerTest do
 
   describe "request_magic_link/2" do
     test "sends a login link to the user email", %{conn: conn} do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
       conn =
         post(
@@ -347,9 +346,9 @@ defmodule Web.AuthControllerTest do
     end
 
     test "persists client platform name", %{conn: conn} do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
       conn =
         post(
@@ -381,7 +380,7 @@ defmodule Web.AuthControllerTest do
     end
 
     test "does not return error if provider is not found", %{conn: conn} do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       provider_id = Ecto.UUID.generate()
 
       conn =
@@ -397,8 +396,8 @@ defmodule Web.AuthControllerTest do
     end
 
     test "does not return error if identity is not found", %{conn: conn} do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       conn =
         post(
@@ -428,7 +427,7 @@ defmodule Web.AuthControllerTest do
     end
 
     test "redirects back to the form when identity does not exist", %{conn: conn} do
-      provider = AuthFixtures.create_email_provider()
+      provider = Fixtures.Auth.create_email_provider()
 
       conn =
         get(
@@ -445,9 +444,9 @@ defmodule Web.AuthControllerTest do
     end
 
     test "redirects back to the form when credentials are invalid", %{conn: conn} do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
       conn =
         get(conn, ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
@@ -460,17 +459,17 @@ defmodule Web.AuthControllerTest do
     end
 
     test "redirects to the return to path when credentials are valid", %{conn: conn} do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
-        ActorsFixtures.create_actor(
+        Fixtures.Actors.create_actor(
           type: :account_admin_user,
           account: account,
           provider: provider
         )
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
       conn =
         conn
@@ -491,11 +490,11 @@ defmodule Web.AuthControllerTest do
     test "redirects to the dashboard when credentials are valid and return path is empty", %{
       conn: conn
     } do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           actor_default_type: :account_admin_user,
           account: account,
           provider: provider
@@ -513,11 +512,11 @@ defmodule Web.AuthControllerTest do
     test "redirects to the platform link when credentials are valid for account users", %{
       conn: conn
     } do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           actor_default_type: :account_user,
           account: account,
           provider: provider
@@ -547,11 +546,11 @@ defmodule Web.AuthControllerTest do
     test "platform link can be stored in URL links when session cookie is not available", %{
       conn: conn
     } do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           actor_default_type: :account_user,
           account: account,
           provider: provider
@@ -579,17 +578,17 @@ defmodule Web.AuthControllerTest do
     end
 
     test "renews the session when credentials are valid", %{conn: conn} do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
-        ActorsFixtures.create_actor(
+        Fixtures.Actors.create_actor(
           type: :account_admin_user,
           account: account,
           provider: provider
         )
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
       conn =
         conn
@@ -631,11 +630,10 @@ defmodule Web.AuthControllerTest do
     end
 
     test "redirects to IdP when provider exists", %{conn: conn} do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       {provider, _bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
       conn = get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", %{})
 
@@ -661,11 +659,10 @@ defmodule Web.AuthControllerTest do
     end
 
     test "persists client platform name", %{conn: conn} do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       {provider, _bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
       conn =
         get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", %{
@@ -678,11 +675,10 @@ defmodule Web.AuthControllerTest do
 
   describe "handle_idp_callback/2" do
     setup context do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       {provider, bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
       conn = get(context.conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", %{})
 
@@ -739,14 +735,14 @@ defmodule Web.AuthControllerTest do
       conn: conn
     } do
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           actor_default_type: :account_admin_user,
           account: account,
           provider: provider
         )
 
-      subject = AuthFixtures.create_subject(identity)
-      AuthFixtures.create_userpass_provider(account: account)
+      subject = Fixtures.Auth.create_subject(identity)
+      Fixtures.Auth.create_userpass_provider(account: account)
       {:ok, _provider} = Domain.Auth.disable_provider(provider, subject)
 
       cookie_key = "fz_auth_state_#{provider.id}"
@@ -774,15 +770,15 @@ defmodule Web.AuthControllerTest do
       redirected_conn: redirected_conn
     } do
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           actor_default_type: :account_admin_user,
           account: account,
           provider: provider
         )
 
-      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      AuthFixtures.expect_userinfo(bypass)
+      {token, _claims} = Fixtures.Auth.generate_openid_connect_token(provider, identity)
+      Fixtures.Auth.expect_refresh_token(bypass, %{"id_token" => token})
+      Fixtures.Auth.expect_userinfo(bypass)
 
       cookie_key = "fz_auth_state_#{provider.id}"
       redirected_conn = fetch_cookies(redirected_conn)
@@ -823,15 +819,15 @@ defmodule Web.AuthControllerTest do
       redirected_conn: redirected_conn
     } do
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           actor_default_type: :account_user,
           account: account,
           provider: provider
         )
 
-      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      AuthFixtures.expect_userinfo(bypass)
+      {token, _claims} = Fixtures.Auth.generate_openid_connect_token(provider, identity)
+      Fixtures.Auth.expect_refresh_token(bypass, %{"id_token" => token})
+      Fixtures.Auth.expect_userinfo(bypass)
 
       cookie_key = "fz_auth_state_#{provider.id}"
       redirected_conn = fetch_cookies(redirected_conn)
@@ -867,9 +863,9 @@ defmodule Web.AuthControllerTest do
     test "redirects to the sign in page and renews the session", %{conn: conn} do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
       conn =
         conn
@@ -884,9 +880,9 @@ defmodule Web.AuthControllerTest do
     test "broadcasts to the given live_socket_id", %{conn: conn} do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
       live_socket_id = "actors_sessions:#{identity.actor_id}"
       Web.Endpoint.subscribe(live_socket_id)
@@ -902,7 +898,7 @@ defmodule Web.AuthControllerTest do
     end
 
     test "works even if user is already logged out", %{conn: conn} do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       conn =
         conn

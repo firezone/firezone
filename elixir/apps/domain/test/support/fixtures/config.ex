@@ -1,6 +1,5 @@
-defmodule Domain.ConfigFixtures do
-  alias Domain.Config
-  alias Domain.AccountsFixtures
+defmodule Domain.Fixtures.Config do
+  use Domain.Fixture
 
   def configuration_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
@@ -9,14 +8,12 @@ defmodule Domain.ConfigFixtures do
   end
 
   def upsert_configuration(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
+    attrs = configuration_attrs(attrs)
 
     {account, attrs} =
-      Map.pop_lazy(attrs, :account, fn ->
-        AccountsFixtures.create_account()
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        Fixtures.Accounts.create_account(assoc_attrs)
       end)
-
-    attrs = configuration_attrs(attrs)
 
     {:ok, configuration} =
       Config.get_account_config_by_account_id(account.id)

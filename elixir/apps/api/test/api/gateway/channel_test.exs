@@ -1,18 +1,16 @@
 defmodule API.Gateway.ChannelTest do
   use API.ChannelCase
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures, ResourcesFixtures}
-  alias Domain.{DevicesFixtures, RelaysFixtures, GatewaysFixtures}
 
   setup do
-    account = AccountsFixtures.create_account()
-    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-    identity = AuthFixtures.create_identity(actor: actor, account: account)
-    subject = AuthFixtures.create_subject(identity)
-    device = DevicesFixtures.create_device(subject: subject)
-    gateway = GatewaysFixtures.create_gateway(account: account)
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(actor: actor, account: account)
+    subject = Fixtures.Auth.create_subject(identity)
+    device = Fixtures.Devices.create_device(subject: subject)
+    gateway = Fixtures.Gateways.create_gateway(account: account)
 
     resource =
-      ResourcesFixtures.create_resource(
+      Fixtures.Resources.create_resource(
         account: account,
         gateway_groups: [%{gateway_group_id: gateway.group_id}]
       )
@@ -22,7 +20,7 @@ defmodule API.Gateway.ChannelTest do
       |> socket("gateway:#{gateway.id}", %{gateway: gateway})
       |> subscribe_and_join(API.Gateway.Channel, "gateway")
 
-    relay = RelaysFixtures.create_relay(account: account)
+    relay = Fixtures.Relays.create_relay(account: account)
 
     %{
       account: account,

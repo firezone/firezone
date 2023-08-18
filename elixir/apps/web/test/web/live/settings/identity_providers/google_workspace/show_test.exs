@@ -1,18 +1,16 @@
 defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
   use Web.ConnCase, async: true
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   setup do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-    account = AccountsFixtures.create_account()
-    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
     {provider, bypass} =
-      AuthFixtures.start_openid_providers(["google"])
-      |> AuthFixtures.create_google_workspace_provider(account: account)
+      start_and_create_google_workspace_provider(account: account)
 
-    identity = AuthFixtures.create_identity(account: account, actor: actor, provider: provider)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
 
     %{
       account: account,

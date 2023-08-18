@@ -1,6 +1,5 @@
 defmodule Web.AcceptanceCase.Vault do
   use Wallaby.DSL
-  alias Domain.AuthFixtures
 
   @vault_root_token "firezone"
   @vault_endpoint "http://127.0.0.1:8200"
@@ -83,7 +82,10 @@ defmodule Web.AcceptanceCase.Vault do
     }
 
     {provider, nil} =
-      AuthFixtures.create_openid_connect_provider({nil, [attrs]}, name: "Vault", account: account)
+      Fixtures.Auth.create_openid_connect_provider({nil, [attrs]},
+        name: "Vault",
+        account: account
+      )
 
     :ok =
       request(:put, "identity/oidc/client/firezone", %{

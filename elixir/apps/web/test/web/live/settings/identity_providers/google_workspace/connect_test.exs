@@ -1,18 +1,16 @@
 defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.Connect do
   use Web.ConnCase, async: true
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   describe "redirect_to_idp/2" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       {provider, bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_google_workspace_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, actor: actor, provider: provider)
-      subject = AuthFixtures.create_subject(identity)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+      subject = Fixtures.Auth.create_subject(identity)
 
       %{
         bypass: bypass,
@@ -39,7 +37,7 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.Connect do
     end
 
     test "redirects with an error when provider does not exist", %{identity: identity, conn: conn} do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       provider_id = Ecto.UUID.generate()
 
       conn =
@@ -97,7 +95,7 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.Connect do
 
   describe "handle_idp_callback/2" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       %{account: account}
     end
 
@@ -121,11 +119,10 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.Connect do
       conn: conn
     } do
       {provider, _bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_google_workspace_provider(account: account)
+        start_and_create_google_workspace_provider(account: account)
 
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, actor: actor, provider: provider)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
 
       conn =
         conn
@@ -150,11 +147,10 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.Connect do
       conn: conn
     } do
       {provider, bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_google_workspace_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, actor: actor, provider: provider)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
 
       redirected_conn =
         conn
@@ -165,9 +161,9 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.Connect do
           %{}
         )
 
-      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      AuthFixtures.expect_userinfo(bypass)
+      {token, _claims} = Fixtures.Auth.generate_openid_connect_token(provider, identity)
+      Fixtures.Auth.expect_refresh_token(bypass, %{"id_token" => token})
+      Fixtures.Auth.expect_userinfo(bypass)
 
       cookie_key = "fz_auth_state_#{provider.id}"
       redirected_conn = fetch_cookies(redirected_conn)

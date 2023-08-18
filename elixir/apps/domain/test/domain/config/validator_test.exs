@@ -62,7 +62,7 @@ defmodule Domain.Config.ValidatorTest do
     #     changeset: {Domain.Config.Configuration.SAMLIdentityProvider, :create_changeset, []}
     #   ]
 
-    #   attrs = Domain.ConfigFixtures.saml_identity_providers_attrs()
+    #   attrs = Domain.Fixtures.Config.saml_identity_providers_attrs()
 
     #   assert validate(:key, [attrs], type, opts) ==
     #            {:ok,

@@ -1,13 +1,12 @@
 defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.NewTest do
   use Web.ConnCase, async: true
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   setup do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-    account = AccountsFixtures.create_account()
-    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-    identity = AuthFixtures.create_identity(account: account, actor: actor)
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
 
     %{
       account: account,
@@ -57,13 +56,19 @@ defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.NewTest do
     identity: identity,
     conn: conn
   } do
-    {_bypass, [adapter_config_attrs]} = AuthFixtures.start_openid_providers(["google"])
-    adapter_config_attrs = Map.drop(adapter_config_attrs, ["response_type"])
+    bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
+
+    provider_adapter_config =
+      Fixtures.Auth.openid_connect_adapter_config(
+        discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+      )
+
+    provider_adapter_config = Map.drop(provider_adapter_config, ["response_type"])
 
     provider_attrs =
-      AuthFixtures.provider_attrs(
+      Fixtures.Auth.provider_attrs(
         adapter: :openid_connect,
-        adapter_config: adapter_config_attrs
+        adapter_config: provider_adapter_config
       )
 
     bypass = Bypass.open()
@@ -111,13 +116,19 @@ defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.NewTest do
     identity: identity,
     conn: conn
   } do
-    {_bypass, [adapter_config_attrs]} = AuthFixtures.start_openid_providers(["google"])
-    adapter_config_attrs = Map.drop(adapter_config_attrs, ["response_type"])
+    bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
+
+    provider_adapter_config =
+      Fixtures.Auth.openid_connect_adapter_config(
+        discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+      )
+
+    provider_adapter_config = Map.drop(provider_adapter_config, ["response_type"])
 
     provider_attrs =
-      AuthFixtures.provider_attrs(
+      Fixtures.Auth.provider_attrs(
         adapter: :openid_connect,
-        adapter_config: adapter_config_attrs
+        adapter_config: provider_adapter_config
       )
 
     {:ok, lv, _html} =

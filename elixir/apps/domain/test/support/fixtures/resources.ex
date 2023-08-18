@@ -1,9 +1,8 @@
-# TODO: Domain.Fixtures.Resources
-defmodule Domain.ResourcesFixtures do
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures, GatewaysFixtures}
+defmodule Domain.Fixtures.Resources do
+  use Domain.Fixture
 
   def resource_attrs(attrs \\ %{}) do
-    address = "admin-#{counter()}.mycorp.com"
+    address = "admin-#{unique_integer()}.mycorp.com"
 
     Enum.into(attrs, %{
       address: address,
@@ -20,23 +19,21 @@ defmodule Domain.ResourcesFixtures do
     attrs = resource_attrs(attrs)
 
     {account, attrs} =
-      Map.pop_lazy(attrs, :account, fn ->
-        AccountsFixtures.create_account()
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        Fixtures.Accounts.create_account(assoc_attrs)
       end)
 
     {connections, attrs} =
-      Map.pop_lazy(attrs, :gateway_groups, fn ->
+      pop_assoc_fixture(attrs, :connections, fn ->
         Enum.map(1..2, fn _ ->
-          gateway = GatewaysFixtures.create_gateway(account: account)
+          gateway = Fixtures.Gateways.create_gateway(account: account)
           %{gateway_group_id: gateway.group_id}
         end)
       end)
 
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->
-        actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-        identity = AuthFixtures.create_identity(account: account, actor: actor)
-        AuthFixtures.create_subject(identity)
+        admin_subject_for_account(account)
       end)
 
     {:ok, resource} =
@@ -45,9 +42,5 @@ defmodule Domain.ResourcesFixtures do
       |> Domain.Resources.create_resource(subject)
 
     resource
-  end
-
-  defp counter do
-    System.unique_integer([:positive])
   end
 end

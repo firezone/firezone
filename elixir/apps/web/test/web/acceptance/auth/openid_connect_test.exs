@@ -1,14 +1,13 @@
 defmodule Web.Acceptance.Auth.OpenIDConnectTest do
   use Web.AcceptanceCase, async: true
-  alias Domain.{AccountsFixtures, AuthFixtures}
 
   feature "returns error when identity did not exist", %{session: session} do
-    account = AccountsFixtures.create_account()
+    account = Fixtures.Accounts.create_account()
     Vault.setup_oidc_provider(account, @endpoint.url)
 
     oidc_login = "firezone-1"
     oidc_password = "firezone1234_oidc"
-    email = AuthFixtures.email()
+    email = Fixtures.Auth.email()
 
     {:ok, _entity_id} = Vault.upsert_user(oidc_login, email, oidc_password)
 
@@ -23,17 +22,17 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
   end
 
   feature "authenticates existing user", %{session: session} do
-    account = AccountsFixtures.create_account()
+    account = Fixtures.Accounts.create_account()
     provider = Vault.setup_oidc_provider(account, @endpoint.url)
 
     oidc_login = "firezone-1"
     oidc_password = "firezone1234_oidc"
-    email = AuthFixtures.email()
+    email = Fixtures.Auth.email()
 
     {:ok, entity_id} = Vault.upsert_user(oidc_login, email, oidc_password)
 
     identity =
-      AuthFixtures.create_identity(
+      Fixtures.Auth.create_identity(
         account: account,
         provider: provider,
         actor_default_type: :account_admin_user,

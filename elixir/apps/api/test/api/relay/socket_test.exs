@@ -3,7 +3,6 @@ defmodule API.Relay.SocketTest do
   import API.Relay.Socket, except: [connect: 3]
   alias API.Relay.Socket
   alias Domain.Relays
-  alias Domain.RelaysFixtures
 
   @connlib_version "0.1.1"
 
@@ -19,7 +18,7 @@ defmodule API.Relay.SocketTest do
     end
 
     test "creates a new relay" do
-      token = RelaysFixtures.create_token()
+      token = Fixtures.Relays.create_token()
       encrypted_secret = Relays.encode_token!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
@@ -35,8 +34,8 @@ defmodule API.Relay.SocketTest do
     end
 
     test "updates existing relay" do
-      token = RelaysFixtures.create_token()
-      existing_relay = RelaysFixtures.create_relay(token: token)
+      token = Fixtures.Relays.create_token()
+      existing_relay = Fixtures.Relays.create_relay(token: token)
       encrypted_secret = Relays.encode_token!(token)
 
       attrs = connect_attrs(token: encrypted_secret, ipv4: existing_relay.ipv4)
@@ -54,7 +53,7 @@ defmodule API.Relay.SocketTest do
 
   describe "id/1" do
     test "creates a channel for a relay" do
-      relay = RelaysFixtures.create_relay()
+      relay = Fixtures.Relays.create_relay()
       socket = socket(API.Relay.Socket, "", %{relay: relay})
 
       assert id(socket) == "relay:#{relay.id}"
@@ -62,7 +61,7 @@ defmodule API.Relay.SocketTest do
   end
 
   defp connect_attrs(attrs) do
-    RelaysFixtures.relay_attrs()
+    Fixtures.Relays.relay_attrs()
     |> Map.take(~w[ipv4 ipv6]a)
     |> Map.merge(Enum.into(attrs, %{}))
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)

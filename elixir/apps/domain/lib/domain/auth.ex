@@ -389,7 +389,7 @@ defmodule Domain.Auth do
 
   def new_identity(%Provider{} = provider, attrs \\ %{}) do
     %Identity{}
-    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.change(attrs)
     |> Adapters.identity_changeset(provider)
   end
 

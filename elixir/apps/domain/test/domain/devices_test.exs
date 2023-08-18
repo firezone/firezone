@@ -1,23 +1,21 @@
 defmodule Domain.DevicesTest do
   use Domain.DataCase, async: true
   import Domain.Devices
-  alias Domain.AccountsFixtures
-  alias Domain.{NetworkFixtures, ActorsFixtures, AuthFixtures, DevicesFixtures}
   alias Domain.Devices
 
   setup do
-    account = AccountsFixtures.create_account()
+    account = Fixtures.Accounts.create_account()
 
-    unprivileged_actor = ActorsFixtures.create_actor(type: :account_user, account: account)
+    unprivileged_actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
 
     unprivileged_identity =
-      AuthFixtures.create_identity(account: account, actor: unprivileged_actor)
+      Fixtures.Auth.create_identity(account: account, actor: unprivileged_actor)
 
-    unprivileged_subject = AuthFixtures.create_subject(unprivileged_identity)
+    unprivileged_subject = Fixtures.Auth.create_subject(unprivileged_identity)
 
-    admin_actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-    admin_identity = AuthFixtures.create_identity(account: account, actor: admin_actor)
-    admin_subject = AuthFixtures.create_subject(admin_identity)
+    admin_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    admin_identity = Fixtures.Auth.create_identity(account: account, actor: admin_actor)
+    admin_subject = Fixtures.Auth.create_subject(admin_identity)
 
     %{
       account: account,
@@ -32,10 +30,10 @@ defmodule Domain.DevicesTest do
 
   describe "count_by_account_id/0" do
     test "counts devices for an account", %{account: account} do
-      DevicesFixtures.create_device(account: account)
-      DevicesFixtures.create_device(account: account)
-      DevicesFixtures.create_device(account: account)
-      DevicesFixtures.create_device()
+      Fixtures.Devices.create_device(account: account)
+      Fixtures.Devices.create_device(account: account)
+      Fixtures.Devices.create_device(account: account)
+      Fixtures.Devices.create_device()
 
       assert count_by_account_id(account.id) == 3
     end
@@ -47,7 +45,7 @@ defmodule Domain.DevicesTest do
     end
 
     test "returns count of devices for a actor" do
-      device = DevicesFixtures.create_device()
+      device = Fixtures.Devices.create_device()
       assert count_by_actor_id(device.actor_id) == 1
     end
   end
@@ -62,14 +60,14 @@ defmodule Domain.DevicesTest do
       unprivileged_subject: subject
     } do
       device =
-        DevicesFixtures.create_device(actor: actor)
-        |> DevicesFixtures.delete_device()
+        Fixtures.Devices.create_device(actor: actor)
+        |> Fixtures.Devices.delete_device()
 
       assert fetch_device_by_id(device.id, subject) == {:error, :not_found}
     end
 
     test "returns device by id", %{unprivileged_actor: actor, unprivileged_subject: subject} do
-      device = DevicesFixtures.create_device(actor: actor)
+      device = Fixtures.Devices.create_device(actor: actor)
       assert fetch_device_by_id(device.id, subject) == {:ok, device}
     end
 
@@ -77,12 +75,12 @@ defmodule Domain.DevicesTest do
       account: account,
       unprivileged_subject: subject
     } do
-      device = DevicesFixtures.create_device(account: account)
+      device = Fixtures.Devices.create_device(account: account)
 
       subject =
         subject
-        |> AuthFixtures.remove_permissions()
-        |> AuthFixtures.add_permission(Devices.Authorizer.manage_devices_permission())
+        |> Fixtures.Auth.remove_permissions()
+        |> Fixtures.Auth.add_permission(Devices.Authorizer.manage_devices_permission())
 
       assert fetch_device_by_id(device.id, subject) == {:ok, device}
     end
@@ -90,12 +88,12 @@ defmodule Domain.DevicesTest do
     test "does not returns device that belongs to another account with manage permission", %{
       unprivileged_subject: subject
     } do
-      device = DevicesFixtures.create_device()
+      device = Fixtures.Devices.create_device()
 
       subject =
         subject
-        |> AuthFixtures.remove_permissions()
-        |> AuthFixtures.add_permission(Devices.Authorizer.manage_devices_permission())
+        |> Fixtures.Auth.remove_permissions()
+        |> Fixtures.Auth.add_permission(Devices.Authorizer.manage_devices_permission())
 
       assert fetch_device_by_id(device.id, subject) == {:error, :not_found}
     end
@@ -103,12 +101,12 @@ defmodule Domain.DevicesTest do
     test "does not return device that belongs to another actor with manage_own permission", %{
       unprivileged_subject: subject
     } do
-      device = DevicesFixtures.create_device()
+      device = Fixtures.Devices.create_device()
 
       subject =
         subject
-        |> AuthFixtures.remove_permissions()
-        |> AuthFixtures.add_permission(Devices.Authorizer.manage_own_devices_permission())
+        |> Fixtures.Auth.remove_permissions()
+        |> Fixtures.Auth.add_permission(Devices.Authorizer.manage_own_devices_permission())
 
       assert fetch_device_by_id(device.id, subject) == {:error, :not_found}
     end
@@ -121,7 +119,7 @@ defmodule Domain.DevicesTest do
     test "returns error when subject has no permission to view devices", %{
       unprivileged_subject: subject
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert fetch_device_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -147,8 +145,8 @@ defmodule Domain.DevicesTest do
       unprivileged_actor: actor,
       unprivileged_subject: subject
     } do
-      DevicesFixtures.create_device(actor: actor)
-      |> DevicesFixtures.delete_device()
+      Fixtures.Devices.create_device(actor: actor)
+      |> Fixtures.Devices.delete_device()
 
       assert list_devices(subject) == {:ok, []}
     end
@@ -156,7 +154,7 @@ defmodule Domain.DevicesTest do
     test "does not list  devices in other accounts", %{
       unprivileged_subject: subject
     } do
-      DevicesFixtures.create_device()
+      Fixtures.Devices.create_device()
 
       assert list_devices(subject) == {:ok, []}
     end
@@ -166,8 +164,8 @@ defmodule Domain.DevicesTest do
       admin_actor: other_actor,
       unprivileged_subject: subject
     } do
-      device = DevicesFixtures.create_device(actor: actor)
-      DevicesFixtures.create_device(actor: other_actor)
+      device = Fixtures.Devices.create_device(actor: actor)
+      Fixtures.Devices.create_device(actor: other_actor)
 
       assert list_devices(subject) == {:ok, [device]}
     end
@@ -177,8 +175,8 @@ defmodule Domain.DevicesTest do
       admin_actor: admin_actor,
       admin_subject: subject
     } do
-      DevicesFixtures.create_device(actor: admin_actor)
-      DevicesFixtures.create_device(actor: other_actor)
+      Fixtures.Devices.create_device(actor: admin_actor)
+      Fixtures.Devices.create_device(actor: other_actor)
 
       assert {:ok, devices} = list_devices(subject)
       assert length(devices) == 2
@@ -187,7 +185,7 @@ defmodule Domain.DevicesTest do
     test "returns error when subject has no permission to manage devices", %{
       unprivileged_subject: subject
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert list_devices(subject) ==
                {:error,
@@ -211,7 +209,7 @@ defmodule Domain.DevicesTest do
     } do
       assert list_devices_by_actor_id(Ecto.UUID.generate(), subject) == {:ok, []}
       assert list_devices_by_actor_id(actor.id, subject) == {:ok, []}
-      DevicesFixtures.create_device()
+      Fixtures.Devices.create_device()
       assert list_devices_by_actor_id(actor.id, subject) == {:ok, []}
     end
 
@@ -224,8 +222,8 @@ defmodule Domain.DevicesTest do
       unprivileged_identity: identity,
       unprivileged_subject: subject
     } do
-      DevicesFixtures.create_device(identity: identity)
-      |> DevicesFixtures.delete_device()
+      Fixtures.Devices.create_device(identity: identity)
+      |> Fixtures.Devices.delete_device()
 
       assert list_devices_by_actor_id(actor.id, subject) == {:ok, []}
     end
@@ -234,8 +232,8 @@ defmodule Domain.DevicesTest do
       unprivileged_subject: unprivileged_subject,
       admin_subject: admin_subject
     } do
-      actor = ActorsFixtures.create_actor(type: :account_user)
-      DevicesFixtures.create_device(actor: actor)
+      actor = Fixtures.Actors.create_actor(type: :account_user)
+      Fixtures.Devices.create_device(actor: actor)
 
       assert list_devices_by_actor_id(actor.id, unprivileged_subject) == {:ok, []}
       assert list_devices_by_actor_id(actor.id, admin_subject) == {:ok, []}
@@ -246,8 +244,8 @@ defmodule Domain.DevicesTest do
       admin_actor: other_actor,
       unprivileged_subject: subject
     } do
-      device = DevicesFixtures.create_device(actor: actor)
-      DevicesFixtures.create_device(actor: other_actor)
+      device = Fixtures.Devices.create_device(actor: actor)
+      Fixtures.Devices.create_device(actor: other_actor)
 
       assert list_devices_by_actor_id(actor.id, subject) == {:ok, [device]}
       assert list_devices_by_actor_id(other_actor.id, subject) == {:ok, []}
@@ -258,8 +256,8 @@ defmodule Domain.DevicesTest do
       admin_actor: admin_actor,
       admin_subject: subject
     } do
-      DevicesFixtures.create_device(actor: admin_actor)
-      DevicesFixtures.create_device(actor: other_actor)
+      Fixtures.Devices.create_device(actor: admin_actor)
+      Fixtures.Devices.create_device(actor: other_actor)
 
       assert {:ok, [_device]} = list_devices_by_actor_id(admin_actor.id, subject)
       assert {:ok, [_device]} = list_devices_by_actor_id(other_actor.id, subject)
@@ -268,7 +266,7 @@ defmodule Domain.DevicesTest do
     test "returns error when subject has no permission to manage devices", %{
       unprivileged_subject: subject
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert list_devices_by_actor_id(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -287,8 +285,8 @@ defmodule Domain.DevicesTest do
 
   describe "change_device/1" do
     test "returns changeset with given changes", %{admin_actor: actor} do
-      device = DevicesFixtures.create_device(actor: actor)
-      device_attrs = DevicesFixtures.device_attrs()
+      device = Fixtures.Devices.create_device(actor: actor)
+      device_attrs = Fixtures.Devices.device_attrs()
 
       assert changeset = change_device(device, device_attrs)
       assert %Ecto.Changeset{data: %Domain.Devices.Device{}} = changeset
@@ -322,7 +320,7 @@ defmodule Domain.DevicesTest do
       admin_subject: subject
     } do
       attrs =
-        DevicesFixtures.device_attrs()
+        Fixtures.Devices.device_attrs()
         |> Map.delete(:name)
 
       assert {:ok, device} = upsert_device(attrs, subject)
@@ -347,8 +345,8 @@ defmodule Domain.DevicesTest do
     test "updates device when it already exists", %{
       admin_subject: subject
     } do
-      device = DevicesFixtures.create_device(subject: subject)
-      attrs = DevicesFixtures.device_attrs(external_id: device.external_id)
+      device = Fixtures.Devices.create_device(subject: subject)
+      attrs = Fixtures.Devices.device_attrs(external_id: device.external_id)
 
       subject = %{
         subject
@@ -383,10 +381,10 @@ defmodule Domain.DevicesTest do
     test "does not reserve additional addresses on update", %{
       admin_subject: subject
     } do
-      device = DevicesFixtures.create_device(subject: subject)
+      device = Fixtures.Devices.create_device(subject: subject)
 
       attrs =
-        DevicesFixtures.device_attrs(
+        Fixtures.Devices.device_attrs(
           external_id: device.external_id,
           last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411",
           last_seen_remote_ip: %Postgrex.INET{address: {100, 64, 100, 100}}
@@ -410,7 +408,7 @@ defmodule Domain.DevicesTest do
       admin_subject: subject
     } do
       attrs =
-        DevicesFixtures.device_attrs()
+        Fixtures.Devices.device_attrs()
         |> Map.delete(:name)
 
       assert {:ok, _device} = upsert_device(attrs, subject)
@@ -420,7 +418,7 @@ defmodule Domain.DevicesTest do
       account: account,
       admin_subject: subject
     } do
-      attrs = DevicesFixtures.device_attrs(account: account)
+      attrs = Fixtures.Devices.device_attrs(account: account)
       assert {:ok, device} = upsert_device(attrs, subject)
 
       addresses =
@@ -435,11 +433,11 @@ defmodule Domain.DevicesTest do
       assert %{address: device.ipv6, type: :ipv6} in addresses
 
       assert_raise Ecto.ConstraintError, fn ->
-        NetworkFixtures.create_address(address: device.ipv4, account: account)
+        Fixtures.Network.create_address(address: device.ipv4, account: account)
       end
 
       assert_raise Ecto.ConstraintError, fn ->
-        NetworkFixtures.create_address(address: device.ipv6, account: account)
+        Fixtures.Network.create_address(address: device.ipv6, account: account)
       end
     end
 
@@ -447,17 +445,17 @@ defmodule Domain.DevicesTest do
       account: account,
       admin_subject: subject
     } do
-      attrs = DevicesFixtures.device_attrs(account: account)
+      attrs = Fixtures.Devices.device_attrs(account: account)
       assert {:ok, device} = upsert_device(attrs, subject)
 
-      assert %Domain.Network.Address{} = NetworkFixtures.create_address(address: device.ipv4)
-      assert %Domain.Network.Address{} = NetworkFixtures.create_address(address: device.ipv6)
+      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: device.ipv4)
+      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: device.ipv6)
     end
 
     test "returns error when subject has no permission to create devices", %{
       admin_subject: subject
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert upsert_device(%{}, subject) ==
                {:error,
@@ -468,7 +466,7 @@ defmodule Domain.DevicesTest do
 
   describe "update_device/3" do
     test "allows admin actor to update own devices", %{admin_actor: actor, admin_subject: subject} do
-      device = DevicesFixtures.create_device(actor: actor)
+      device = Fixtures.Devices.create_device(actor: actor)
       attrs = %{name: "new name"}
 
       assert {:ok, device} = update_device(device, attrs, subject)
@@ -480,7 +478,7 @@ defmodule Domain.DevicesTest do
       account: account,
       admin_subject: subject
     } do
-      device = DevicesFixtures.create_device(account: account)
+      device = Fixtures.Devices.create_device(account: account)
       attrs = %{name: "new name"}
 
       assert {:ok, device} = update_device(device, attrs, subject)
@@ -492,7 +490,7 @@ defmodule Domain.DevicesTest do
       unprivileged_actor: actor,
       unprivileged_subject: subject
     } do
-      device = DevicesFixtures.create_device(actor: actor)
+      device = Fixtures.Devices.create_device(actor: actor)
       attrs = %{name: "new name"}
 
       assert {:ok, device} = update_device(device, attrs, subject)
@@ -504,7 +502,7 @@ defmodule Domain.DevicesTest do
       account: account,
       unprivileged_subject: subject
     } do
-      device = DevicesFixtures.create_device(account: account)
+      device = Fixtures.Devices.create_device(account: account)
       attrs = %{name: "new name"}
 
       assert update_device(device, attrs, subject) ==
@@ -516,7 +514,7 @@ defmodule Domain.DevicesTest do
     test "does not allow admin actor to update devices in other accounts", %{
       admin_subject: subject
     } do
-      device = DevicesFixtures.create_device()
+      device = Fixtures.Devices.create_device()
       attrs = %{name: "new name"}
 
       assert update_device(device, attrs, subject) == {:error, :not_found}
@@ -526,7 +524,7 @@ defmodule Domain.DevicesTest do
       admin_actor: actor,
       admin_subject: subject
     } do
-      device = DevicesFixtures.create_device(actor: actor)
+      device = Fixtures.Devices.create_device(actor: actor)
       attrs = %{name: nil, public_key: nil}
 
       assert {:error, changeset} = update_device(device, attrs, subject)
@@ -535,7 +533,7 @@ defmodule Domain.DevicesTest do
     end
 
     test "returns error on invalid attrs", %{admin_actor: actor, admin_subject: subject} do
-      device = DevicesFixtures.create_device(actor: actor)
+      device = Fixtures.Devices.create_device(actor: actor)
 
       attrs = %{
         name: String.duplicate("a", 256)
@@ -552,7 +550,7 @@ defmodule Domain.DevicesTest do
       admin_actor: actor,
       admin_subject: subject
     } do
-      device = DevicesFixtures.create_device(actor: actor)
+      device = Fixtures.Devices.create_device(actor: actor)
 
       fields = Devices.Device.__schema__(:fields) -- [:name]
       value = -1
@@ -567,16 +565,16 @@ defmodule Domain.DevicesTest do
       admin_actor: actor,
       admin_subject: subject
     } do
-      device = DevicesFixtures.create_device(actor: actor)
+      device = Fixtures.Devices.create_device(actor: actor)
 
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert update_device(device, %{}, subject) ==
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Devices.Authorizer.manage_own_devices_permission()]]}}
 
-      device = DevicesFixtures.create_device()
+      device = Fixtures.Devices.create_device()
 
       assert update_device(device, %{}, subject) ==
                {:error,
@@ -587,7 +585,7 @@ defmodule Domain.DevicesTest do
 
   describe "delete_device/2" do
     test "returns error on state conflict", %{admin_actor: actor, admin_subject: subject} do
-      device = DevicesFixtures.create_device(actor: actor)
+      device = Fixtures.Devices.create_device(actor: actor)
 
       assert {:ok, deleted} = delete_device(device, subject)
       assert delete_device(deleted, subject) == {:error, :not_found}
@@ -595,7 +593,7 @@ defmodule Domain.DevicesTest do
     end
 
     test "admin can delete own devices", %{admin_actor: actor, admin_subject: subject} do
-      device = DevicesFixtures.create_device(actor: actor)
+      device = Fixtures.Devices.create_device(actor: actor)
 
       assert {:ok, deleted} = delete_device(device, subject)
       assert deleted.deleted_at
@@ -605,7 +603,7 @@ defmodule Domain.DevicesTest do
       unprivileged_actor: actor,
       admin_subject: subject
     } do
-      device = DevicesFixtures.create_device(actor: actor)
+      device = Fixtures.Devices.create_device(actor: actor)
 
       assert {:ok, deleted} = delete_device(device, subject)
       assert deleted.deleted_at
@@ -614,7 +612,7 @@ defmodule Domain.DevicesTest do
     test "admin can not delete devices in other accounts", %{
       admin_subject: subject
     } do
-      device = DevicesFixtures.create_device()
+      device = Fixtures.Devices.create_device()
 
       assert delete_device(device, subject) == {:error, :not_found}
     end
@@ -624,7 +622,7 @@ defmodule Domain.DevicesTest do
       unprivileged_actor: actor,
       unprivileged_subject: subject
     } do
-      device = DevicesFixtures.create_device(account: account, actor: actor)
+      device = Fixtures.Devices.create_device(account: account, actor: actor)
 
       assert {:ok, deleted} = delete_device(device, subject)
       assert deleted.deleted_at
@@ -634,14 +632,14 @@ defmodule Domain.DevicesTest do
       account: account,
       unprivileged_subject: subject
     } do
-      device = DevicesFixtures.create_device()
+      device = Fixtures.Devices.create_device()
 
       assert delete_device(device, subject) ==
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Devices.Authorizer.manage_devices_permission()]]}}
 
-      device = DevicesFixtures.create_device(account: account)
+      device = Fixtures.Devices.create_device(account: account)
 
       assert delete_device(device, subject) ==
                {:error,
@@ -655,16 +653,16 @@ defmodule Domain.DevicesTest do
       admin_actor: actor,
       admin_subject: subject
     } do
-      device = DevicesFixtures.create_device(actor: actor)
+      device = Fixtures.Devices.create_device(actor: actor)
 
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert delete_device(device, subject) ==
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Devices.Authorizer.manage_own_devices_permission()]]}}
 
-      device = DevicesFixtures.create_device()
+      device = Fixtures.Devices.create_device()
 
       assert delete_device(device, subject) ==
                {:error,
@@ -675,10 +673,10 @@ defmodule Domain.DevicesTest do
 
   describe "delete_actor_devices/1" do
     test "removes all devices that belong to an actor" do
-      actor = ActorsFixtures.create_actor()
-      DevicesFixtures.create_device(actor: actor)
-      DevicesFixtures.create_device(actor: actor)
-      DevicesFixtures.create_device(actor: actor)
+      actor = Fixtures.Actors.create_actor()
+      Fixtures.Devices.create_device(actor: actor)
+      Fixtures.Devices.create_device(actor: actor)
+      Fixtures.Devices.create_device(actor: actor)
 
       assert Repo.aggregate(Devices.Device.Query.all(), :count) == 3
       assert delete_actor_devices(actor) == :ok
@@ -686,8 +684,8 @@ defmodule Domain.DevicesTest do
     end
 
     test "does not remove devices that belong to another actor" do
-      actor = ActorsFixtures.create_actor()
-      DevicesFixtures.create_device()
+      actor = Fixtures.Actors.create_actor()
+      Fixtures.Devices.create_device()
 
       assert delete_actor_devices(actor) == :ok
       assert Repo.aggregate(Devices.Device.Query.all(), :count) == 1

@@ -2,12 +2,11 @@ defmodule Domain.Auth.Adapters.UserPassTest do
   use Domain.DataCase, async: true
   import Domain.Auth.Adapters.UserPass
   alias Domain.Auth
-  alias Domain.{AccountsFixtures, AuthFixtures}
 
   describe "identity_changeset/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
 
       %{
         account: account,
@@ -100,25 +99,25 @@ defmodule Domain.Auth.Adapters.UserPassTest do
 
   describe "ensure_provisioned/1" do
     test "does nothing for a provider" do
-      provider = AuthFixtures.create_userpass_provider()
+      provider = Fixtures.Auth.create_userpass_provider()
       assert ensure_provisioned(provider) == {:ok, provider}
     end
   end
 
   describe "ensure_deprovisioned/1" do
     test "does nothing for a provider" do
-      provider = AuthFixtures.create_userpass_provider()
+      provider = Fixtures.Auth.create_userpass_provider()
       assert ensure_deprovisioned(provider) == {:ok, provider}
     end
   end
 
   describe "verify_secret/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
           provider_virtual_state: %{

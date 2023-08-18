@@ -1,20 +1,18 @@
 defmodule Web.Acceptance.AuthTest do
   use Web.AcceptanceCase, async: true
-  alias Domain.{AccountsFixtures, AuthFixtures}
 
   feature "renders all sign in options", %{session: session} do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-    account = AccountsFixtures.create_account()
-    AuthFixtures.create_userpass_provider(account: account)
+    account = Fixtures.Accounts.create_account()
+    Fixtures.Auth.create_userpass_provider(account: account)
 
-    AuthFixtures.create_email_provider(account: account)
+    Fixtures.Auth.create_email_provider(account: account)
 
-    AuthFixtures.create_token_provider(account: account)
+    Fixtures.Auth.create_token_provider(account: account)
 
-    {openid_connect_provider, _bypass} =
-      AuthFixtures.start_openid_providers(["google"])
-      |> AuthFixtures.create_openid_connect_provider(account: account)
+    {openid_connect_provider, bypass} =
+      start_and_create_openid_connect_provider(account: account)
 
     session
     |> visit(~p"/#{account}/sign_in")
@@ -26,12 +24,12 @@ defmodule Web.Acceptance.AuthTest do
 
   describe "sign out" do
     feature "signs out admin user", %{session: session} do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       password = "Firezone1234"
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
           actor_default_type: :account_admin_user,
@@ -51,12 +49,12 @@ defmodule Web.Acceptance.AuthTest do
     end
 
     feature "signs out unprivileged user", %{session: session} do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       password = "Firezone1234"
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
           actor_default_type: :account_user,
@@ -74,12 +72,12 @@ defmodule Web.Acceptance.AuthTest do
   end
 
   feature "does not allow regular user to navigate to admin routes", %{session: session} do
-    account = AccountsFixtures.create_account()
-    provider = AuthFixtures.create_userpass_provider(account: account)
+    account = Fixtures.Accounts.create_account()
+    provider = Fixtures.Auth.create_userpass_provider(account: account)
     password = "Firezone1234"
 
     identity =
-      AuthFixtures.create_identity(
+      Fixtures.Auth.create_identity(
         account: account,
         provider: provider,
         actor_default_type: :account_user,
