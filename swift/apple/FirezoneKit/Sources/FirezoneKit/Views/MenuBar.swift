@@ -57,13 +57,14 @@ public final class MenuBar: NSObject {
     }
 
     private func setupObservers() {
-      appStore?.auth.$authResponse
+      appStore?.auth.$loginStatus
         .receive(on: mainQueue)
-        .sink { [weak self] authResponse in
-          if let authResponse {
-            self?.showSignedIn(authResponse.actorName)
-          } else {
-            self?.showSignedOut()
+        .sink { [weak self] loginStatus in
+          switch loginStatus {
+            case .signedIn(let authResponse):
+              self?.showSignedIn(authResponse.actorName)
+            default:
+              self?.showSignedOut()
           }
         }
         .store(in: &cancellables)
@@ -208,7 +209,7 @@ public final class MenuBar: NSObject {
         appStore?.tunnel.stop()
       } else {
         Task {
-          if let authResponse = appStore?.auth.authResponse {
+          if case .signedIn(let authResponse) = appStore?.auth.loginStatus {
             do {
               try await appStore?.tunnel.start(authResponse: authResponse)
             } catch {
