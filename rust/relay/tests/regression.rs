@@ -431,6 +431,8 @@ impl TestServer {
                 relay_public_addr,
                 StepRng::new(0, 0),
                 &mut Registry::default(),
+                49152,
+                65535,
             ),
             id_to_port: Default::default(),
         }
