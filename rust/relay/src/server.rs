@@ -145,6 +145,9 @@ impl<R> Server<R>
 where
     R: Rng,
 {
+    /// Although not explicitly recommended by the RFC, we allow the user to pass a custom
+    /// port allocation range. This is helpful when debugging, running NATed (such as in Docker),
+    /// or when deploying in production where the default range conflicts with other services.
     pub fn new(
         public_address: impl Into<IpStack>,
         mut rng: R,
@@ -175,9 +178,6 @@ where
             data_relayed_counter.clone(),
         );
 
-        // Although not explicitly recommended by the RFC, we allow the user to pass a custom range.
-        // This is helpful when debugging, running NATed (such as in Docker), or when deploying
-        // in production where the default range conflicts with other services.
         Self {
             decoder: Default::default(),
             encoder: Default::default(),

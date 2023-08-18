@@ -35,7 +35,8 @@ struct Args {
     /// The metrics will be available at `http://<metrics_addr>/metrics`.
     #[arg(long, env)]
     metrics_addr: Option<SocketAddr>,
-    /// The lowest port used for TURN allocations. See https://www.rfc-editor.org/rfc/rfc8656.html#name-allocations
+    // See https://www.rfc-editor.org/rfc/rfc8656.html#name-allocations
+    /// The lowest port used for TURN allocations.
     #[arg(long, env, default_value = "49152")]
     lowest_port: u16,
     /// The highest port used for TURN allocations.
