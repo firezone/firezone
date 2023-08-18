@@ -1,6 +1,6 @@
-use crate::{AddressFamily, SocketAddrExt};
+use crate::AddressFamily;
 use anyhow::{Context as _, Result};
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::task::{ready, Context, Poll};
 use tokio::io::ReadBuf;
 
@@ -13,10 +13,9 @@ pub struct UdpSocket {
 }
 
 impl UdpSocket {
-    pub fn bind(addr: impl Into<SocketAddr>) -> Result<Self> {
-        let addr = addr.into();
-        let std_socket = make_std_socket(addr)
-            .with_context(|| format!("Failed to bind UDP socket to {addr}"))?;
+    pub fn bind(family: AddressFamily, port: u16) -> Result<Self> {
+        let std_socket = make_wildcard_socket(family, port)
+            .with_context(|| format!("Failed to bind UDP socket for {family}"))?;
 
         Ok(Self {
             inner: tokio::net::UdpSocket::from_std(std_socket)?,
@@ -61,21 +60,25 @@ impl UdpSocket {
 /// Creates an [std::net::UdpSocket] via the [socket2] library that is configured for our needs.
 ///
 /// Most importantly, this sets the `IPV6_V6ONLY` flag to ensure we disallow IP4-mapped IPv6 addresses and can bind to IP4 and IP6 addresses on the same port.
-fn make_std_socket(socket_addr: SocketAddr) -> Result<std::net::UdpSocket> {
+fn make_wildcard_socket(family: AddressFamily, port: u16) -> Result<std::net::UdpSocket> {
     use socket2::*;
 
-    let domain = match socket_addr.family() {
+    let domain = match family {
         AddressFamily::V4 => Domain::IPV4,
         AddressFamily::V6 => Domain::IPV6,
     };
-    let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+    let address = match family {
+        AddressFamily::V4 => IpAddr::from(Ipv4Addr::UNSPECIFIED),
+        AddressFamily::V6 => IpAddr::from(Ipv6Addr::UNSPECIFIED),
+    };
 
-    if socket_addr.is_ipv6() {
+    let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+    if family == AddressFamily::V6 {
         socket.set_only_v6(true)?;
     }
 
     socket.set_nonblocking(true)?;
-    socket.bind(&socket_addr.into())?;
+    socket.bind(&SockAddr::from(SocketAddr::new(address, port)))?;
 
     Ok(socket.into())
 }
