@@ -3,8 +3,8 @@ defmodule Domain.Actors.Membership.Changeset do
 
   def group_changeset(account_id, connection, attrs) do
     connection
-    |> cast(attrs, ~w[actor_id]a)
-    |> validate_required(~w[actor_id]a)
+    |> cast(attrs, ~w[actor_id group_id]a)
+    |> validate_required_one_of(~w[actor_id group_id]a)
     |> changeset(account_id)
   end
 

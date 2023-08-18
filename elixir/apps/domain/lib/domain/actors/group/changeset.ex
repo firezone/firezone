@@ -15,23 +15,28 @@ defmodule Domain.Actors.Group.Changeset do
   # for usability reasons when the provider uses group names that can make people confused
   def upsert_on_conflict, do: {:replace, (@fields -- ~w[name]a) ++ ~w[updated_at]a}
 
-  def create_changeset(%Accounts.Account{} = account, attrs) do
-    %Actors.Group{account_id: account.id}
+  def create_changeset(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
+    %Actors.Group{}
     |> changeset(attrs)
+    |> put_change(:account_id, account.id)
     |> validate_length(:name, min: 1, max: 64)
     |> cast_assoc(:memberships,
       with: &Actors.Membership.Changeset.group_changeset(account.id, &1, &2)
     )
+    |> put_change(:created_by, :identity)
+    |> put_change(:created_by_identity_id, subject.identity.id)
   end
 
   def create_changeset(%Auth.Provider{} = provider, provider_identifier, attrs) do
     %Actors.Group{}
     |> changeset(attrs)
     |> put_change(:provider_id, provider.id)
+    |> put_change(:account_id, provider.account_id)
     |> put_change(:provider_identifier, provider_identifier)
     |> cast_assoc(:memberships,
       with: &Actors.Membership.Changeset.group_changeset(provider.account_id, &1, &2)
     )
+    |> put_change(:created_by, :provider)
   end
 
   def update_changeset(%Actors.Group{} = group, attrs) do

@@ -2,13 +2,13 @@ defmodule Web.Gateways.Show do
   use Web, :live_view
   alias Domain.Gateways
 
-  def mount(%{"id" => id} = _params, _session, socket) do
+  def mount(%{"id" => id}, _session, socket) do
     with {:ok, gateway} <-
            Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: :group) do
       :ok = Gateways.subscribe_for_gateways_presence_in_group(gateway.group)
       {:ok, assign(socket, gateway: gateway)}
     else
-      {:error, :not_found} -> raise Web.LiveErrors.NotFoundError
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
 

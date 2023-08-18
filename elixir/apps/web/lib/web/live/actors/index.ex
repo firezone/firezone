@@ -1,19 +1,26 @@
 defmodule Web.Actors.Index do
   use Web, :live_view
-
+  import Web.Actors.Components
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    {_, actors} = Actors.list_actors(socket.assigns.subject, preload: [identities: :provider])
-
-    {:ok, assign(socket, actors: actors)}
+    with {:ok, actors} <-
+           Actors.list_actors(socket.assigns.subject,
+             preload: [identities: :provider, groups: []]
+           ) do
+      {:ok, assign(socket, actors: actors)}
+    else
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    end
   end
 
-  defp actor_icon(type) do
-    case type do
-      :account_user -> "hero-user-circle-solid"
-      :account_admin_user -> "hero-user-circle-solid"
-      :service_account -> "hero-server-solid"
+  defp last_seen_at(identities) do
+    identities
+    |> Enum.reject(&is_nil(&1.last_seen_at))
+    |> Enum.max_by(& &1.last_seen_at, DateTime, fn -> nil end)
+    |> case do
+      nil -> nil
+      identity -> identity.last_seen_at
     end
   end
 
@@ -24,74 +31,45 @@ defmodule Web.Actors.Index do
     </.breadcrumbs>
     <.header>
       <:title>
-        All Actors
+        Actors
       </:title>
       <:actions>
-        <.add_button navigate={~p"/#{@account}/actors/new"}>
-          Add a new user
+        <.add_button navigate={~p"/#{@account}/actors/new_user"}>
+          Add a new User
+        </.add_button>
+        <.add_button navigate={~p"/#{@account}/actors/new_service_account"}>
+          Add a new Service Account
         </.add_button>
       </:actions>
     </.header>
-    <!-- Users Table -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.resource_filter />
+      <!--<.resource_filter />-->
       <.table id="actors" rows={@actors} row_id={&"user-#{&1.id}"}>
-        <:col :let={actor} label="TYPE" sortable="false">
-          <.icon name={actor_icon(actor.type)} class="w-5 h-5" />
-        </:col>
         <:col :let={actor} label="NAME" sortable="false">
-          <.link
-            navigate={~p"/#{@account}/actors/#{actor.id}"}
-            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-          >
-            <%= actor.name %>
-          </.link>
+          <.actor_name_and_role account={@account} actor={actor} />
         </:col>
         <:col :let={actor} label="IDENTIFIERS" sortable="false">
-          <%= for identity <- actor.identities do %>
-            <%= "#{identity.provider.name}: #{identity.provider_identifier}" %>
-            <br />
-          <% end %>
+          <.identity_identifier :for={identity <- actor.identities} identity={identity} />
         </:col>
-        <:col :let={_actor} label="GROUPS" sortable="false">
-          <!-- TODO: Determine how user groups will work -->
-          <%= "TODO Admin, Engineering, 3 more..." %>
+        <:col :let={actor} label="GROUPS" sortable="false">
+          <span :for={group <- actor.groups}>
+            <.link navigate={~p"/#{@account}/groups/#{group.id}"}>
+              <.badge>
+                <%= group.name %>
+              </.badge>
+            </.link>
+          </span>
         </:col>
-        <:col :let={_actor} label="LAST ACTIVE" sortable="false">
-          <!-- TODO: Determine what last active means for a user -->
-          <%= "TODO Today at 2:30pm" %>
+        <:col :let={actor} label="LAST SIGNED IN" sortable="false">
+          <.relative_datetime datetime={last_seen_at(actor.identities)} />
         </:col>
-        <:action>
-          <.link
-            navigate={~p"/#{@account}/actors/#{@subject.actor.id}"}
-            class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-          >
-            Show
-          </.link>
-        </:action>
-        <:action>
-          <.link
-            navigate={~p"/#{@account}/actors/#{@subject.actor.id}/edit"}
-            class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-          >
-            Edit
-          </.link>
-        </:action>
-        <:action>
-          <a
-            href="#"
-            class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-          >
-            Delete
-          </a>
-        </:action>
       </.table>
-      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/actors"} />
+      <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/actors"} />-->
     </div>
     """
   end
 
-  defp resource_filter(assigns) do
+  def resource_filter(assigns) do
     ~H"""
     <div class="flex flex-col md:flex-row items-center justify-between space-y-3 md:space-y-0 md:space-x-4 p-4">
       <div class="w-full md:w-1/2">

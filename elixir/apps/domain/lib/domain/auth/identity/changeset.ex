@@ -3,9 +3,9 @@ defmodule Domain.Auth.Identity.Changeset do
   alias Domain.Actors
   alias Domain.Auth.{Subject, Identity, Provider}
 
-  def create_identity(actor, provider, provider_identifier, %Subject{} = subject) do
+  def create_identity(actor, provider, attrs, %Subject{} = subject) do
     actor
-    |> create_identity(provider, provider_identifier)
+    |> create_identity(provider, attrs)
     |> put_change(:created_by, :identity)
     |> put_change(:created_by_identity_id, subject.identity.id)
   end
@@ -13,14 +13,19 @@ defmodule Domain.Auth.Identity.Changeset do
   def create_identity(
         %Actors.Actor{account_id: account_id} = actor,
         %Provider{account_id: account_id} = provider,
-        provider_identifier
+        attrs
       ) do
     %Identity{}
-    |> change()
+    |> cast(attrs, ~w[provider_identifier])
+    |> validate_required(~w[provider_identifier])
+    |> cast_assoc(:actor,
+      with: fn _actor, attrs ->
+        Actors.Actor.Changeset.actor_changeset(account_id, attrs)
+      end
+    )
     |> put_change(:actor_id, actor.id)
     |> put_change(:provider_id, provider.id)
     |> put_change(:account_id, account_id)
-    |> put_change(:provider_identifier, provider_identifier)
     |> unique_constraint(:provider_identifier,
       name: :auth_identities_account_id_provider_id_provider_identifier_idx
     )

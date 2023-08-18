@@ -2,7 +2,7 @@ defmodule Web.Devices.Edit do
   use Web, :live_view
   alias Domain.Devices
 
-  def mount(%{"id" => id} = _params, _session, socket) do
+  def mount(%{"id" => id}, _session, socket) do
     with {:ok, device} <- Devices.fetch_device_by_id(id, socket.assigns.subject) do
       changeset = Devices.change_device(device)
       {:ok, assign(socket, device: device, form: to_form(changeset))}

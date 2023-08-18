@@ -40,6 +40,7 @@ defmodule Domain.Auth.Authorizer do
   def list_permissions_for_role(:account_admin_user) do
     [
       manage_providers_permission(),
+      manage_own_identities_permission(),
       manage_identities_permission()
     ]
   end

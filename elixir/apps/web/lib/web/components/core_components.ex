@@ -571,15 +571,18 @@ defmodule Web.CoreComponents do
   Returns a string the represents a relative time for a given Datetime
   from the current time or a given base time
   """
-  attr :datetime, DateTime, required: true
+  attr :datetime, DateTime, default: nil
   attr :relative_to, DateTime, required: false
 
   def relative_datetime(assigns) do
     assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
 
     ~H"""
-    <span title={@datetime}>
+    <span :if={not is_nil(@datetime)} title={@datetime}>
       <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to) %>
+    </span>
+    <span :if={is_nil(@datetime)}>
+      never
     </span>
     """
   end
@@ -608,7 +611,7 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders username
+  Renders creator actor name.
   """
   attr :schema, :map, required: true
 
@@ -631,6 +634,40 @@ defmodule Web.CoreComponents do
         </.link>
         """
     end
+  end
+
+  attr :identity, :string, required: true
+
+  def identity_identifier(assigns) do
+    ~H"""
+    <span class="flex inline-flex" data-identity-id={@identity.id}>
+      <span data-provider-id={@identity.provider.id} title={@identity.provider.adapter} class={~w[
+          text-xs font-medium
+          rounded-l
+          py-0.5 pl-2.5 pr-1.5
+          text-blue-800 dark:text-blue-300
+          bg-blue-100 dark:bg-blue-900]}>
+        <%= @identity.provider.name %>
+      </span>
+      <span class={~w[
+          text-xs font-medium
+          rounded-r
+          mr-2 py-0.5 pl-1.5 pr-2.5
+          text-blue-800 dark:text-blue-300
+          bg-blue-50 dark:bg-blue-600]}>
+        <%= @identity.provider_identifier %>
+      </span>
+      <span :if={not is_nil(@identity.deleted_at)} class="text-sm">
+        (deleted)
+      </span>
+      <span :if={not is_nil(@identity.provider.disabled_at)} class="text-sm">
+        (provider disabled)
+      </span>
+      <span :if={not is_nil(@identity.deleted_at)} class="text-sm">
+        (provider deleted)
+      </span>
+    </span>
+    """
   end
 
   @doc """

@@ -101,8 +101,11 @@ defmodule Web.Router do
 
       scope "/actors", Actors do
         live "/", Index
-        live "/new", New
+        live "/new_user", NewUser
+        live "/new_service_account", NewServiceAccount
         live "/:id/edit", Edit
+        live "/:id/new_token", NewToken
+        live "/:id/new_identity", NewIdentity
         live "/:id", Show
       end
 
@@ -110,12 +113,14 @@ defmodule Web.Router do
         live "/", Index
         live "/new", New
         live "/:id/edit", Edit
+        live "/:id/edit_actors", EditActors
         live "/:id", Show
       end
 
       scope "/devices", Devices do
         live "/", Index
         live "/:id", Show
+        live "/:id/edit", Edit
       end
 
       scope "/relay_groups", RelayGroups do

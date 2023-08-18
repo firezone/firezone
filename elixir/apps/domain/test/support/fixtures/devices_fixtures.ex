@@ -41,7 +41,7 @@ defmodule Domain.DevicesFixtures do
     attrs = device_attrs(attrs)
 
     {:ok, device} = Devices.upsert_device(attrs, subject)
-    device
+    %{device | online?: false}
   end
 
   def delete_device(device) do

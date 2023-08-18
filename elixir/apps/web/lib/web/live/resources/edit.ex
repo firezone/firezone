@@ -21,7 +21,7 @@ defmodule Web.Resources.Edit do
     end
   end
 
-  def mount(%{"id" => id} = _params, _session, socket) do
+  def mount(%{"id" => id}, _session, socket) do
     {:ok, resource} =
       Resources.fetch_resource_by_id(id, socket.assigns.subject, preload: :gateway_groups)
 

@@ -2,7 +2,7 @@ defmodule Web.RelayGroups.Show do
   use Web, :live_view
   alias Domain.Relays
 
-  def mount(%{"id" => id} = _params, _session, socket) do
+  def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
            Relays.fetch_group_by_id(id, socket.assigns.subject,
              preload: [
@@ -13,7 +13,7 @@ defmodule Web.RelayGroups.Show do
       :ok = Relays.subscribe_for_relays_presence_in_group(group)
       {:ok, assign(socket, group: group)}
     else
-      {:error, :not_found} -> raise Web.LiveErrors.NotFoundError
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
 

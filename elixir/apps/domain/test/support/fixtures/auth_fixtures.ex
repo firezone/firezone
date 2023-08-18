@@ -155,6 +155,13 @@ defmodule Domain.AuthFixtures do
     group
   end
 
+  def identity_attrs(attrs \\ %{}) do
+    Enum.into(attrs, %{
+      provider_virtual_state: %{},
+      provider_identifier: Ecto.UUID.generate()
+    })
+  end
+
   def create_identity(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
@@ -177,6 +184,9 @@ defmodule Domain.AuthFixtures do
         random_provider_identifier(provider)
       end)
 
+    {provider_state, attrs} =
+      Map.pop(attrs, :provider_state)
+
     {actor_default_type, attrs} =
       Map.pop(attrs, :actor_default_type, :account_user)
 
@@ -190,17 +200,16 @@ defmodule Domain.AuthFixtures do
         )
       end)
 
-    {provider_virtual_state, attrs} =
-      Map.pop_lazy(attrs, :provider_virtual_state, fn ->
-        %{}
-      end)
+    attrs =
+      attrs
+      |> Map.put(:provider_identifier, provider_identifier)
+      |> identity_attrs()
 
-    {:ok, identity} =
-      Auth.upsert_identity(actor, provider, provider_identifier, provider_virtual_state)
+    {:ok, identity} = Auth.upsert_identity(actor, provider, attrs)
 
-    if state = Map.get(attrs, :provider_state) do
+    if provider_state do
       identity
-      |> Ecto.Changeset.change(provider_state: state)
+      |> Ecto.Changeset.change(provider_state: provider_state)
       |> Repo.update!()
     else
       identity

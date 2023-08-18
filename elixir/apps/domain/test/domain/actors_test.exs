@@ -1,9 +1,10 @@
 defmodule Domain.ActorsTest do
+  alias Domain.DevicesFixtures
   use Domain.DataCase, async: true
   import Domain.Actors
   alias Domain.Auth
   alias Domain.Actors
-  alias Domain.{AccountsFixtures, AuthFixtures, ActorsFixtures}
+  alias Domain.{AccountsFixtures, AuthFixtures, ActorsFixtures, DevicesFixtures}
 
   describe "fetch_group_by_id/2" do
     setup do
@@ -131,6 +132,103 @@ defmodule Domain.ActorsTest do
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+    end
+  end
+
+  describe "upsert_provider_groups_multi/2" do
+    setup do
+      account = AccountsFixtures.create_account()
+
+      {provider, bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_google_workspace_provider(account: account)
+
+      %{account: account, provider: provider, bypass: bypass}
+    end
+
+    test "upserts new groups", %{provider: provider} do
+      attrs_list = [
+        %{"name" => "Group:Infrastructure", "provider_identifier" => "G:GROUP_ID1"},
+        %{"name" => "OrgUnit:Engineering", "provider_identifier" => "OU:OU_ID1"}
+      ]
+
+      multi = upsert_provider_groups_multi(provider, attrs_list)
+
+      assert {:ok,
+              %{
+                plan: {upsert, []},
+                delete: {0, nil},
+                upsert: {2, nil}
+              }} = Repo.transaction(multi)
+
+      assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in upsert))
+      groups = Repo.all(Actors.Group)
+      assert length(groups) == 2
+      group_names = Enum.map(groups, & &1.name)
+      assert Enum.all?(attrs_list, &(&1["name"] in group_names))
+    end
+
+    test "updates existing groups", %{account: account, provider: provider} do
+      ActorsFixtures.create_group(
+        account: account,
+        provider: provider,
+        provider_identifier: "G:GROUP_ID1"
+      )
+
+      ActorsFixtures.create_group(
+        account: account,
+        provider: provider,
+        provider_identifier: "OU:OU_ID1"
+      )
+
+      attrs_list = [
+        %{"name" => "Group:Infrastructure", "provider_identifier" => "G:GROUP_ID1"},
+        %{"name" => "OrgUnit:Engineering", "provider_identifier" => "OU:OU_ID1"}
+      ]
+
+      multi = upsert_provider_groups_multi(provider, attrs_list)
+
+      assert {:ok,
+              %{
+                plan: {upsert, []},
+                delete: {0, nil},
+                upsert: {2, nil}
+              }} = Repo.transaction(multi)
+
+      assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in upsert))
+      assert Repo.aggregate(Actors.Group, :count) == 2
+
+      group_names = Repo.all(Actors.Group) |> Enum.map(& &1.name)
+      assert Enum.all?(attrs_list, &(&1["name"] not in group_names))
+    end
+
+    test "deletes removed groups", %{account: account, provider: provider} do
+      ActorsFixtures.create_group(
+        account: account,
+        provider: provider,
+        provider_identifier: "G:GROUP_ID1"
+      )
+
+      ActorsFixtures.create_group(
+        account: account,
+        provider: provider,
+        provider_identifier: "OU:OU_ID1"
+      )
+
+      attrs_list = []
+
+      multi = upsert_provider_groups_multi(provider, attrs_list)
+
+      assert {:ok,
+              %{
+                plan: {[], delete},
+                delete: {2, nil},
+                upsert: {0, nil}
+              }} = Repo.transaction(multi)
+
+      assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in delete))
+      assert Repo.aggregate(Actors.Group, :count) == 2
+      assert Repo.aggregate(Actors.Group.Query.all(), :count) == 0
     end
   end
 
@@ -465,7 +563,7 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "fetch_count_by_type/0" do
+  describe "fetch_actors_count_by_type/0" do
     setup do
       account = AccountsFixtures.create_account()
       actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
@@ -483,33 +581,33 @@ defmodule Domain.ActorsTest do
       account: account,
       subject: subject
     } do
-      assert fetch_count_by_type(:account_admin_user, subject) == 1
-      assert fetch_count_by_type(:account_user, subject) == 0
+      assert fetch_actors_count_by_type(:account_admin_user, subject) == 1
+      assert fetch_actors_count_by_type(:account_user, subject) == 0
 
       ActorsFixtures.create_actor(type: :account_admin_user)
       actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       assert {:ok, _actor} = delete_actor(actor, subject)
-      assert fetch_count_by_type(:account_admin_user, subject) == 1
-      assert fetch_count_by_type(:account_user, subject) == 0
+      assert fetch_actors_count_by_type(:account_admin_user, subject) == 1
+      assert fetch_actors_count_by_type(:account_user, subject) == 0
 
       ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      assert fetch_count_by_type(:account_admin_user, subject) == 2
-      assert fetch_count_by_type(:account_user, subject) == 0
+      assert fetch_actors_count_by_type(:account_admin_user, subject) == 2
+      assert fetch_actors_count_by_type(:account_user, subject) == 0
 
       ActorsFixtures.create_actor(type: :account_user)
       ActorsFixtures.create_actor(type: :account_user, account: account)
-      assert fetch_count_by_type(:account_admin_user, subject) == 2
-      assert fetch_count_by_type(:account_user, subject) == 1
+      assert fetch_actors_count_by_type(:account_admin_user, subject) == 2
+      assert fetch_actors_count_by_type(:account_user, subject) == 1
 
       for _ <- 1..5, do: ActorsFixtures.create_actor(type: :account_user, account: account)
-      assert fetch_count_by_type(:account_admin_user, subject) == 2
-      assert fetch_count_by_type(:account_user, subject) == 6
+      assert fetch_actors_count_by_type(:account_admin_user, subject) == 2
+      assert fetch_actors_count_by_type(:account_user, subject) == 6
     end
 
     test "returns error when subject can not view actors", %{subject: subject} do
       subject = AuthFixtures.remove_permissions(subject)
 
-      assert fetch_count_by_type(:foo, subject) ==
+      assert fetch_actors_count_by_type(:foo, subject) ==
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
@@ -689,7 +787,6 @@ defmodule Domain.ActorsTest do
         ])
 
       assert list_actors(subject) == {:ok, []}
-      assert list_actors(subject, hydrate: []) == {:ok, []}
     end
 
     test "returns list of actors in all types" do
@@ -900,7 +997,7 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "change_actor_type/3" do
+  describe "update_actor/3" do
     setup do
       account = AccountsFixtures.create_account()
       actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
@@ -916,16 +1013,16 @@ defmodule Domain.ActorsTest do
 
     test "allows admin to change other actors type", %{account: account, subject: subject} do
       actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      assert {:ok, %{type: :account_user}} = change_actor_type(actor, :account_user, subject)
+      assert {:ok, %{type: :account_user}} = update_actor(actor, %{type: :account_user}, subject)
 
       assert {:ok, %{type: :account_admin_user}} =
-               change_actor_type(actor, :account_admin_user, subject)
+               update_actor(actor, %{type: :account_admin_user}, subject)
 
       actor = ActorsFixtures.create_actor(type: :account_user, account: account)
-      assert {:ok, %{type: :account_user}} = change_actor_type(actor, :account_user, subject)
+      assert {:ok, %{type: :account_user}} = update_actor(actor, %{type: :account_user}, subject)
 
       assert {:ok, %{type: :account_admin_user}} =
-               change_actor_type(actor, :account_admin_user, subject)
+               update_actor(actor, %{type: :account_admin_user}, subject)
     end
 
     test "returns error when subject can not manage types", %{account: account} do
@@ -936,7 +1033,7 @@ defmodule Domain.ActorsTest do
         |> AuthFixtures.create_subject()
         |> AuthFixtures.remove_permissions()
 
-      assert change_actor_type(actor, :foo, subject) ==
+      assert update_actor(actor, %{type: :foo}, subject) ==
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
@@ -1168,6 +1265,23 @@ defmodule Domain.ActorsTest do
       assert is_nil(other_actor.deleted_at)
     end
 
+    test "deletes actor identities and devices" do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      actor_to_delete = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      AuthFixtures.create_identity(account: account, actor: actor_to_delete)
+      DevicesFixtures.create_device(account: account, actor: actor_to_delete)
+
+      assert {:ok, actor} = delete_actor(actor_to_delete, subject)
+      assert actor.deleted_at
+
+      assert Repo.aggregate(Domain.Devices.Device.Query.all(), :count) == 0
+      assert Repo.aggregate(Domain.Auth.Identity.Query.all(), :count) == 1
+    end
+
     test "returns error when trying to delete the last admin actor" do
       account = AccountsFixtures.create_account()
       actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
@@ -1196,6 +1310,18 @@ defmodule Domain.ActorsTest do
       {:ok, _other_actor} = disable_actor(other_actor, subject)
 
       assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
+    end
+
+    test "last admin check ignores service accounts" do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      actor = ActorsFixtures.create_actor(type: :service_account, account: account)
+
+      assert {:ok, actor} = delete_actor(actor, subject)
+      assert actor.deleted_at
     end
 
     test "returns error when trying to delete the last admin actor using a race condition" do

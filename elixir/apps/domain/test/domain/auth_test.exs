@@ -985,6 +985,52 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "upsert_provider_identities_multi/2" do
+    setup do
+      account = AccountsFixtures.create_account()
+
+      {provider, bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_google_workspace_provider(account: account)
+
+      %{account: account, provider: provider, bypass: bypass}
+    end
+
+    test "upserts new identities, actors and memberships", %{provider: provider} do
+      attrs_list = [
+        %{
+          "provider_identifier" => "USER_ID1",
+          "actor" => %{
+            "name" => "Brian Manifold"
+          }
+        },
+        %{
+          "provider_identifier" => "USER_ID2",
+          "actor" => %{
+            "name" => "Francesca Lovebloom"
+          }
+        }
+      ]
+
+      multi = upsert_provider_identities_multi(provider, attrs_list)
+
+      assert {:ok,
+              %{
+                plan: {upsert, []},
+                delete: {0, nil},
+                upsert: {2, nil}
+              }} = Repo.transaction(multi)
+
+      assert Enum.all?(["USER_ID1", "USER_ID2"], &(&1 in upsert))
+      groups = Repo.all(Actors.Group)
+      assert length(groups) == 2
+      group_names = Enum.map(groups, & &1.name)
+      assert Enum.all?(attrs_list, &(&1["name"] in group_names))
+      assert Enum.all?(groups, &(&1.provider_id == provider.id))
+      assert Enum.all?(groups, &(&1.created_by == :provider))
+    end
+  end
+
   describe "upsert_identity/3" do
     test "creates an identity" do
       account = AccountsFixtures.create_account()
@@ -1241,6 +1287,40 @@ defmodule Domain.AuthTest do
                       ]}
                    ]
                  ]}}
+    end
+  end
+
+  describe "delete_actor_identities/1" do
+    setup do
+      account = AccountsFixtures.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = AuthFixtures.create_email_provider(account: account)
+
+      %{
+        account: account,
+        provider: provider
+      }
+    end
+
+    test "removes all identities that belong to an actor", %{account: account, provider: provider} do
+      actor = ActorsFixtures.create_actor(account: account, provider: provider)
+      AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+
+      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 3
+      assert delete_actor_identities(actor) == :ok
+      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 0
+    end
+
+    test "does not remove identities that belong to another actor", %{
+      account: account,
+      provider: provider
+    } do
+      actor = ActorsFixtures.create_actor(account: account, provider: provider)
+      AuthFixtures.create_identity(account: account, provider: provider)
+      assert delete_actor_identities(actor) == :ok
+      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 1
     end
   end
 
@@ -1548,34 +1628,67 @@ defmodule Domain.AuthTest do
       assert subject.context.user_agent == user_agent
     end
 
-    # test "returned subject expiration depends on user type", %{
-    #   account: account,
-    #   provider: provider,
-    #   user_agent: user_agent,
-    #   remote_ip: remote_ip
-    # } do
-    #   actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-    #   identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+    test "returned expiration duration is capped at one week for account users", %{
+      bypass: bypass,
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor = ActorsFixtures.create_actor(type: :account_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
 
-    #   code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
-    #   redirect_uri = "https://example.com/"
-    #   payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      token =
+        AuthFixtures.sign_openid_connect_token(%{
+          "sub" => identity.provider_identifier,
+          "aud" => provider.adapter_config["client_id"],
+          "exp" => DateTime.utc_now() |> DateTime.add(1_000_000, :second) |> DateTime.to_unix()
+        })
 
-    #   assert {:ok, %Auth.Subject{} = subject} =
-    #            sign_in(provider, payload, user_agent, remote_ip)
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_userinfo(bypass)
 
-    #   three_hours = 3 * 60 * 60
-    #   assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
+      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-    #   actor = ActorsFixtures.create_actor(type: :account_user, account: account)
-    #   identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      assert {:ok, %Auth.Subject{} = subject} =
+               sign_in(provider, payload, user_agent, remote_ip)
 
-    #   assert {:ok, %Auth.Subject{} = subject} =
-    #            sign_in(provider, payload, user_agent, remote_ip)
+      one_week = 7 * 24 * 60 * 60
+      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
+    end
 
-    #   one_week = 7 * 24 * 60 * 60
-    #   assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
-    # end
+    test "returned expiration duration is capped at 3 hours for account users", %{
+      bypass: bypass,
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+
+      token =
+        AuthFixtures.sign_openid_connect_token(%{
+          "sub" => identity.provider_identifier,
+          "aud" => provider.adapter_config["client_id"],
+          "exp" => DateTime.utc_now() |> DateTime.add(1_000_000, :second) |> DateTime.to_unix()
+        })
+
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_userinfo(bypass)
+
+      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert {:ok, %Auth.Subject{} = subject} =
+               sign_in(provider, payload, user_agent, remote_ip)
+
+      three_hours = 3 * 60 * 60
+      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
+    end
 
     test "returns error when provider is disabled", %{
       bypass: bypass,

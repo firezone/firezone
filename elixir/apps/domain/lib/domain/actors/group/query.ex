@@ -18,7 +18,13 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.provider_id == ^provider_id)
   end
 
-  def by_provider_identifier(queryable \\ all(), provider_identifier) do
+  def by_provider_identifier(queryable \\ all(), provider_identifier)
+
+  def by_provider_identifier(queryable, {:in, provider_identifiers}) do
+    where(queryable, [groups: groups], groups.provider_identifier in ^provider_identifiers)
+  end
+
+  def by_provider_identifier(queryable, provider_identifier) do
     where(queryable, [groups: groups], groups.provider_identifier == ^provider_identifier)
   end
 

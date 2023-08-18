@@ -53,7 +53,7 @@ IO.puts("")
     adapter_config: %{}
   })
 
-{:ok, _oidc_provider} =
+{:ok, oidc_provider} =
   Auth.create_provider(account, %{
     name: "Vault",
     adapter: :openid_connect,
@@ -228,7 +228,12 @@ IO.puts("Created Actor Groups: ")
 
 {:ok, eng_group} = Actors.create_group(%{name: "Engineering"}, admin_subject)
 {:ok, finance_group} = Actors.create_group(%{name: "Finance"}, admin_subject)
-{:ok, all_group} = Actors.create_group(%{name: "All Employees"}, admin_subject)
+
+{:ok, all_group} =
+  Actors.create_group(
+    %{name: "All Employees", provider_id: oidc_provider.id, provider_identifier: "foo"},
+    admin_subject
+  )
 
 for group <- [eng_group, finance_group, all_group] do
   IO.puts("  Name: #{group.name}  ID: #{group.id}")

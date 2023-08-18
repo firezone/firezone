@@ -156,6 +156,12 @@ defmodule Domain.Jobs.Executors.Global do
   end
 
   defp execute_handler(module, function, config) do
+    Logger.metadata(
+      job_runner: __MODULE__,
+      job_execution_id: Ecto.UUID.generate(),
+      job_callback: "#{module}.#{function}/1"
+    )
+
     _ = apply(module, function, [config])
     :ok
   end

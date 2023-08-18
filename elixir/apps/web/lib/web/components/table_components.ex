@@ -14,7 +14,7 @@ defmodule Web.TableComponents do
     ~H"""
     <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
       <tr>
-        <th :for={col <- @columns} class="px-4 py-3">
+        <th :for={col <- @columns} class={["px-4 py-3", Map.get(col, :class, "")]}>
           <%= col[:label] %>
           <.icon
             :if={col[:sortable] == "true"}
@@ -102,6 +102,7 @@ defmodule Web.TableComponents do
   slot :col, required: true do
     attr :label, :string
     attr :sortable, :string
+    attr :class, :string
   end
 
   slot :action, doc: "the slot for showing user actions in the last table column"
@@ -166,6 +167,7 @@ defmodule Web.TableComponents do
   slot :col, required: true do
     attr :label, :string
     attr :sortable, :string
+    attr :class, :string
   end
 
   slot :group, required: true

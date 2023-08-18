@@ -7,6 +7,7 @@ defmodule Domain.Actors.Actor do
     field :name, :string
 
     has_many :identities, Domain.Auth.Identity, where: [deleted_at: nil]
+    has_many :devices, Domain.Devices.Device, where: [deleted_at: nil]
 
     belongs_to :account, Domain.Accounts.Account
 

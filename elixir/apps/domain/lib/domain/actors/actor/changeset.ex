@@ -2,23 +2,30 @@ defmodule Domain.Actors.Actor.Changeset do
   use Domain, :changeset
   alias Domain.Actors
 
-  def changeset(actor, attrs) do
-    actor
+  # TODO: refactor naming for changeset functions
+  # TODO: defp
+  def create_changeset(attrs) do
+    %Actors.Actor{}
     |> cast(attrs, ~w[type name]a)
     |> validate_required(~w[type name]a)
-    |> validate_length(:name, min: 1, max: 255)
-  end
-
-  def create_changeset(account_id, attrs) do
-    %Actors.Actor{}
-    |> changeset(attrs)
     |> put_change(:account_id, account_id)
   end
 
-  def set_actor_type(actor, type) do
+  def create_changeset(account_id, attrs) do
+    create_changeset(attrs)
+    |> put_change(:account_id, account_id)
+    |> cast_assoc(:memberships,
+      with: &Actors.Membership.Changeset.group_changeset(account_id, &1, &2)
+    )
+  end
+
+  def update_changeset(actor, attrs) do
     actor
-    |> change()
-    |> put_change(:type, type)
+    |> cast(attrs, ~w[type name]a)
+    |> validate_required(~w[type name]a)
+    |> cast_assoc(:memberships,
+      with: &Actors.Membership.Changeset.group_changeset(actor.account_id, &1, &2)
+    )
   end
 
   def disable_actor(actor) do

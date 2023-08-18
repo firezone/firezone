@@ -672,4 +672,25 @@ defmodule Domain.DevicesTest do
                  [missing_permissions: [Devices.Authorizer.manage_devices_permission()]]}}
     end
   end
+
+  describe "delete_actor_devices/1" do
+    test "removes all devices that belong to an actor" do
+      actor = ActorsFixtures.create_actor()
+      DevicesFixtures.create_device(actor: actor)
+      DevicesFixtures.create_device(actor: actor)
+      DevicesFixtures.create_device(actor: actor)
+
+      assert Repo.aggregate(Devices.Device.Query.all(), :count) == 3
+      assert delete_actor_devices(actor) == :ok
+      assert Repo.aggregate(Devices.Device.Query.all(), :count) == 0
+    end
+
+    test "does not remove devices that belong to another actor" do
+      actor = ActorsFixtures.create_actor()
+      DevicesFixtures.create_device()
+
+      assert delete_actor_devices(actor) == :ok
+      assert Repo.aggregate(Devices.Device.Query.all(), :count) == 1
+    end
+  end
 end

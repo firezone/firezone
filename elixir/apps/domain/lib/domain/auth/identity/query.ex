@@ -38,7 +38,17 @@ defmodule Domain.Auth.Identity.Query do
     where(queryable, [identities: identities], identities.adapter == ^adapter)
   end
 
-  def by_provider_identifier(queryable \\ all(), provider_identifier) do
+  def by_provider_identifier(queryable \\ all(), provider_identifier)
+
+  def by_provider_identifier(queryable, {:in, provider_identifiers}) do
+    where(
+      queryable,
+      [identities: identities],
+      identities.provider_identifier in ^provider_identifiers
+    )
+  end
+
+  def by_provider_identifier(queryable, provider_identifier) do
     where(
       queryable,
       [identities: identities],

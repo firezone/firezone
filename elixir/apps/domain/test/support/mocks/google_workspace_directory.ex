@@ -27,7 +27,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
                   %{"address" => "b@ext.firez.xxx"}
                 ],
                 "etag" => "\"ET-61Bnx4\"",
-                "id" => "ID4",
+                "id" => "USER_ID1",
                 "includeInGlobalAddressList" => true,
                 "ipWhitelisted" => false,
                 "isAdmin" => false,
@@ -75,7 +75,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
                   %{"address" => "f@ext.firez.xxx"}
                 ],
                 "etag" => "\"ET-c\"",
-                "id" => "ID104288977385815201534",
+                "id" => "USER_ID2",
                 "includeInGlobalAddressList" => true,
                 "ipWhitelisted" => false,
                 "isAdmin" => false,
@@ -117,11 +117,11 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
                 "creationTime" => "2022-05-31T19:17:41.000Z",
                 "customerId" => "CustomerID1",
                 "emails" => [
-                  %{"address" => "gabriel@firez.xxx", "primary" => true},
+                  %{"address" => "g@firez.xxx", "primary" => true},
                   %{"address" => "gabi@firez.xxx"}
                 ],
                 "etag" => "\"ET\"",
-                "id" => "ID2",
+                "id" => "USER_ID3",
                 "includeInGlobalAddressList" => true,
                 "ipWhitelisted" => false,
                 "isAdmin" => false,
@@ -137,14 +137,14 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
                   "fullName" => "Gabriel Steinberg",
                   "givenName" => "Gabriel"
                 },
-                "nonEditableAliases" => ["gabriel@ext.firez.xxx"],
+                "nonEditableAliases" => ["g@ext.firez.xxx"],
                 "orgUnitPath" => "/Engineering",
-                "primaryEmail" => "gabriel@firez.xxx",
+                "primaryEmail" => "g@firez.xxx",
                 "suspended" => false
               },
               %{
                 "agreedToTerms" => true,
-                "aliases" => ["jam@firez.xxx"],
+                "aliases" => ["j@firez.xxx"],
                 "archived" => false,
                 "changePasswordAtNextLogin" => false,
                 "creationTime" => "2022-04-19T21:54:21.000Z",
@@ -156,7 +156,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
                   %{"address" => "j@ext.firez.xxx"}
                 ],
                 "etag" => "\"ET-4Z0R5TBJvppLL8\"",
-                "id" => "ID1",
+                "id" => "USER_ID4",
                 "includeInGlobalAddressList" => true,
                 "ipWhitelisted" => false,
                 "isAdmin" => true,
@@ -215,9 +215,9 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
                 "description" => "Engineering team",
                 "etag" => "\"ET\"",
                 "blockInheritance" => false,
-                "orgUnitId" => "ID1",
+                "orgUnitId" => "OU_ID1",
                 "orgUnitPath" => "/Engineering",
-                "parentOrgUnitId" => "ID0",
+                "parentOrgUnitId" => "OU_ID0",
                 "parentOrgUnitPath" => "/"
               }
             ]
@@ -248,7 +248,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
             [
               %{
                 "kind" => "admin#directory#group",
-                "id" => "ID1",
+                "id" => "GROUP_ID1",
                 "etag" => "\"ET\"",
                 "email" => "i@fiez.xxx",
                 "name" => "Infrastructure",
@@ -264,20 +264,20 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
               },
               %{
                 "kind" => "admin#directory#group",
-                "id" => "ID2",
+                "id" => "GROUP_ID2",
                 "etag" => "\"ET\"",
-                "email" => "mktn@fiez.xxx",
-                "name" => "Marketing",
+                "email" => "eng@fiez.xxx",
+                "name" => "Engineering",
                 "directMembersCount" => "1",
-                "description" => "Firezone Marketing team",
+                "description" => "Firezone Engineering team",
                 "adminCreated" => true,
                 "nonEditableAliases" => [
-                  "mktn@ext.fiez.xxx"
+                  "eng@ext.fiez.xxx"
                 ]
               },
               %{
                 "kind" => "admin#directory#group",
-                "id" => "ID9c6y382yitz1j",
+                "id" => "GROUP_ID9c6y382yitz1j",
                 "etag" => "\"ET\"",
                 "email" => "sec@fiez.xxx",
                 "name" => "Security",
@@ -317,7 +317,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
               %{
                 "kind" => "admin#directory#member",
                 "etag" => "\"ET\"",
-                "id" => "115559319585605830228",
+                "id" => "USER_ID1",
                 "email" => "b@firez.xxx",
                 "role" => "MEMBER",
                 "type" => "USER",
@@ -326,7 +326,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
               %{
                 "kind" => "admin#directory#member",
                 "etag" => "\"ET\"",
-                "id" => "115559319585605830218",
+                "id" => "USER_ID4",
                 "email" => "j@firez.xxx",
                 "role" => "MEMBER",
                 "type" => "USER",
@@ -335,8 +335,8 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
               %{
                 "kind" => "admin#directory#member",
                 "etag" => "\"ET\"",
-                "id" => "115559319585605830518",
-                "email" => "f@firez.xxx",
+                "id" => "USER_ID3",
+                "email" => "g@firez.xxx",
                 "role" => "MEMBER",
                 "type" => "USER",
                 "status" => "INACTIVE"
@@ -344,7 +344,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
               %{
                 "kind" => "admin#directory#member",
                 "etag" => "\"ET\"",
-                "id" => "02xcytpi3twf80c",
+                "id" => "GROUP_ID1",
                 "email" => "eng@firez.xxx",
                 "role" => "MEMBER",
                 "type" => "GROUP",
@@ -353,7 +353,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
               %{
                 "kind" => "admin#directory#member",
                 "etag" => "\"ET\"",
-                "id" => "02xcytpi16r56td",
+                "id" => "GROUP_ID2",
                 "email" => "sec@firez.xxx",
                 "role" => "MEMBER",
                 "type" => "GROUP",

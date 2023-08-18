@@ -199,6 +199,14 @@ defmodule Domain.Devices do
     end
   end
 
+  def delete_actor_devices(%Actors.Actor{} = actor) do
+    {_count, nil} =
+      Device.Query.by_actor_id(actor.id)
+      |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
+
+    :ok
+  end
+
   def authorize_actor_device_management(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
     authorize_actor_device_management(actor.id, subject)
   end

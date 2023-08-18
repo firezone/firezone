@@ -3,7 +3,7 @@ defmodule Web.Resources.Show do
 
   alias Domain.Resources
 
-  def mount(%{"id" => id} = _params, _session, socket) do
+  def mount(%{"id" => id}, _session, socket) do
     {:ok, resource} =
       Resources.fetch_resource_by_id(id, socket.assigns.subject,
         preload: [:gateway_groups, created_by_identity: [:actor]]

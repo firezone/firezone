@@ -10,6 +10,8 @@ defmodule Domain.Auth do
     account_user: 24 * 7
   }
 
+  @max_session_duration_hours @default_session_duration_hours
+
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -46,6 +48,28 @@ defmodule Domain.Auth do
     else
       false -> {:error, :not_found}
       other -> other
+    end
+  end
+
+  @doc """
+  This functions allows to fetch singleton providers like `email` or `token`.
+  """
+  def fetch_active_provider_by_adapter(adapter, %Subject{} = subject, opts \\ [])
+      when adapter in [:email, :token, :userpass] do
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+      Provider.Query.by_adapter(adapter)
+      |> Provider.Query.not_disabled()
+      |> Authorizer.for_subject(Provider, subject)
+      |> Repo.fetch()
+      |> case do
+        {:ok, provider} ->
+          {:ok, Repo.preload(provider, preload)}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -100,6 +124,14 @@ defmodule Domain.Auth do
 
   def list_active_providers_for_account(%Accounts.Account{} = account) do
     Provider.Query.by_account_id(account.id)
+    |> Provider.Query.not_disabled()
+    |> Repo.list()
+  end
+
+  # TODO: and_provisioner == :custom
+  def list_active_providers_by_adapter_and_last_synced_at(adapter, datetime_filter) do
+    Provider.Query.by_adapter(adapter)
+    |> Provider.Query.last_synced_at(datetime_filter)
     |> Provider.Query.not_disabled()
     |> Repo.list()
   end
@@ -210,6 +242,14 @@ defmodule Domain.Auth do
 
   # Identities
 
+  def fetch_identity_by_id(id, %Subject{} = subject) do
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
+      Identity.Query.by_id(id)
+      |> Authorizer.for_subject(Identity, subject)
+      |> Repo.fetch()
+    end
+  end
+
   def fetch_identity_by_id(id) do
     Identity.Query.by_id(id)
     |> Repo.fetch()
@@ -236,11 +276,98 @@ defmodule Domain.Auth do
     end
   end
 
+  def upsert_provider_identities_multi(%Provider{} = provider, attrs_list) do
+    now = DateTime.utc_now()
+
+    attrs_by_provider_identifier =
+      for attrs <- attrs_list, into: %{} do
+        {attrs["provider_identifier"], attrs}
+      end
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.all(:identities, fn _effects_so_far ->
+      Identity.Query.by_account_id(provider.account_id)
+      |> Identity.Query.by_provider_id(provider.id)
+      |> Identity.Query.lock()
+    end)
+    |> Ecto.Multi.run(
+      :plan,
+      fn _repo, %{identities: identities} ->
+        {update, delete} =
+          Enum.reduce(identities, {[], []}, fn identity, {update, delete} ->
+            if Map.has_key?(attrs_by_provider_identifier, identity.provider_identifier) do
+              {[identity.provider_identifier] ++ update, delete}
+            else
+              {update, [identity.provider_identifier] ++ delete}
+            end
+          end)
+
+        insert = Map.keys(attrs_by_provider_identifier) -- (update ++ delete)
+
+        {:ok, {update ++ insert, delete}}
+      end
+    )
+    |> Ecto.Multi.update_all(
+      :delete,
+      fn %{plan: {_upsert, delete}} ->
+        Identity.Query.by_account_id(provider.account_id)
+        |> Identity.Query.by_provider_id(provider.id)
+        |> Identity.Query.by_provider_identifier({:in, delete})
+      end,
+      set: [deleted_at: DateTime.utc_now()]
+    )
+
+    # |> Ecto.Multi.run(
+    #   :upsert,
+    #   fn repo, %{plan: {upsert, _delete}} ->
+    #     upsert
+    #     |> Enum.reduce_while({:ok, []}, fn provider_identifier, {:ok, acc} ->
+    #       attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
+    #       changeset = Group.Changeset.create_changeset(provider, provider_identifier, attrs)
+
+    #       if changeset.valid? do
+    #         {:cont, {:ok, [changeset | acc]}}
+    #       else
+    #         {:halt, {:error, changeset}}
+    #       end
+
+    #       case Ecto.Changeset.apply_action(changeset, :insert) do
+    #         {:ok, data} ->
+    #           data =
+    #             data
+    #             |> Map.from_struct()
+    #             |> Map.take(Group.__schema__(:fields))
+    #             |> Map.reject(&is_nil(elem(&1, 1)))
+    #             |> Map.put(:inserted_at, now)
+    #             |> Map.put(:updated_at, now)
+
+    #           {:cont, {:ok, [data | acc]}}
+
+    #         {:error, _reason} ->
+    #           {:halt, {:error, changeset}}
+    #       end
+    #     end)
+    #     |> case do
+    #       {:ok, maps} ->
+    #         results =
+    #           repo.insert_all(Group, maps,
+    #             conflict_target: Group.Changeset.upsert_conflict_target(),
+    #             on_conflict: Group.Changeset.upsert_on_conflict()
+    #           )
+
+    #         {:ok, results}
+
+    #       {:error, changeset} ->
+    #         {:error, changeset}
+    #     end
+    #   end
+    # )
+  end
+
   def upsert_identity(
         %Actors.Actor{} = actor,
         %Provider{} = provider,
-        provider_identifier,
-        provider_attrs \\ %{}
+        attrs
       ) do
     Identity.Changeset.create_identity(actor, provider, provider_identifier)
     |> Adapters.identity_changeset(provider, provider_attrs)
@@ -260,21 +387,40 @@ defmodule Domain.Auth do
     )
   end
 
+  def new_identity(%Provider{} = provider, attrs \\ %{}) do
+    %Identity{}
+    |> Ecto.Changeset.change()
+    |> Adapters.identity_changeset(provider)
+  end
+
   def create_identity(
         %Actors.Actor{} = actor,
         %Provider{} = provider,
-        provider_identifier,
-        provider_attrs \\ %{}
+        attrs,
+        %Subject{} = subject
       ) do
-    Identity.Changeset.create_identity(actor, provider, provider_identifier)
-    |> Adapters.identity_changeset(provider, provider_attrs)
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
+      Identity.Changeset.create_identity(actor, provider, provider_identifier)
+      |> Adapters.identity_changeset(provider, provider_attrs)
+      |> Repo.insert()
+    else
+      {:error, :not_found} -> {:error, :token_provider_not_enabled}
+    end
+  end
+
+  def create_identity(
+        %Actors.Actor{} = actor,
+        %Provider{} = provider,
+        attrs
+      ) do
+    Identity.Changeset.create_identity(actor, provider, attrs)
+    |> Adapters.identity_changeset(provider)
     |> Repo.insert()
   end
 
   def replace_identity(
         %Identity{} = identity,
-        provider_identifier,
-        provider_attrs \\ %{},
+        attrs,
         %Subject{} = subject
       ) do
     required_permissions =
@@ -329,6 +475,14 @@ defmodule Domain.Auth do
       |> Authorizer.for_subject(Identity, subject)
       |> Repo.fetch_and_update(with: &Identity.Changeset.delete_identity/1)
     end
+  end
+
+  def delete_actor_identities(%Actors.Actor{} = actor) do
+    {_count, nil} =
+      Identity.Query.by_actor_id(actor.id)
+      |> Repo.update_all(set: [deleted_at: DateTime.utc_now(), provider_state: %{}])
+
+    :ok
   end
 
   # Sign Up / In / Off
@@ -399,7 +553,10 @@ defmodule Domain.Auth do
 
   defp build_subject_expires_at(%Actors.Actor{} = actor, expires_at) do
     default_session_duration_hours = Map.fetch!(@default_session_duration_hours, actor.type)
-    expires_at || DateTime.utc_now() |> DateTime.add(default_session_duration_hours, :hour)
+    max_session_duration_hours = Map.fetch!(@max_session_duration_hours, actor.type)
+    now = DateTime.utc_now()
+    expires_at = expires_at || DateTime.add(now, default_session_duration_hours, :hour)
+    Enum.min([expires_at, DateTime.add(now, max_session_duration_hours, :hour)])
   end
 
   # Session
