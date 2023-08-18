@@ -185,6 +185,8 @@ services:
       PORTAL_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDcyODZiNTNkLTA3M2UtNGM0MS05ZmYxLWNjODQ1MWRhZDI5OW0AAABARVg3N0dhMEhLSlVWTGdjcE1yTjZIYXRkR25mdkFEWVFyUmpVV1d5VHFxdDdCYVVkRVUzbzktRmJCbFJkSU5JS24GAFSzb0KJAWIAAVGA.waeGE26tbgkgIcMrWyck0ysv9SHIoHr0zqoM3wao84M"
       RUST_LOG: "debug"
       RUST_BACKTRACE: 1
+      TURN_LOWEST_PORT: 65525
+      TURN_HIGHEST_PORT: 65535
     build:
       context: rust
       dockerfile: Dockerfile
@@ -201,6 +203,9 @@ services:
       api:
         condition: 'service_healthy'
     ports:
+      # XXX: Only 11 ports are used for local dev / testing because Docker Desktop
+      # allocates a userland proxy process for each forwarded port X_X.
+      - "65525-65535:65525-65535/udp"
       - 3478:3478/udp
     networks:
       app:
