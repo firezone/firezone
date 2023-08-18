@@ -46,7 +46,7 @@ use uuid::Uuid;
 /// Thus, 3 out of the 5 components of a "5-tuple" are unique to an instance of [`Server`] and
 /// we can index data simply by the sender's [`SocketAddr`].
 ///
-/// Additionally, we assume to have complete ownership over the port range `LOWEST_PORT` - `HIGHEST_PORT`.
+/// Additionally, we assume to have complete ownership over the port range `lowest_port` - `highest_port`.
 pub struct Server<R> {
     decoder: client_message::Decoder,
     encoder: MessageEncoder<Attribute>,
@@ -57,6 +57,9 @@ pub struct Server<R> {
     allocations: HashMap<SocketAddr, Allocation>,
     clients_by_allocation: HashMap<AllocationId, SocketAddr>,
     allocations_by_port: HashMap<u16, AllocationId>,
+
+    lowest_port: u16,
+    highest_port: u16,
 
     channels_by_number: HashMap<u16, Channel>,
     channel_numbers_by_peer: HashMap<SocketAddr, u16>,
@@ -133,12 +136,6 @@ impl fmt::Display for AllocationId {
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-requested-transport>.
 const UDP_TRANSPORT: u8 = 17;
 
-const LOWEST_PORT: u16 = 49152;
-const HIGHEST_PORT: u16 = 65535;
-
-/// The maximum number of ports available for allocation.
-const MAX_AVAILABLE_PORTS: u16 = HIGHEST_PORT - LOWEST_PORT;
-
 /// The duration of a channel binding.
 ///
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
@@ -148,7 +145,16 @@ impl<R> Server<R>
 where
     R: Rng,
 {
-    pub fn new(public_address: impl Into<IpStack>, mut rng: R, registry: &mut Registry) -> Self {
+    /// Although not explicitly recommended by the RFC, we allow the user to pass a custom
+    /// port allocation range. This is helpful when debugging, running NATed (such as in Docker),
+    /// or when deploying in production where the default range conflicts with other services.
+    pub fn new(
+        public_address: impl Into<IpStack>,
+        mut rng: R,
+        registry: &mut Registry,
+        lowest_port: u16,
+        highest_port: u16,
+    ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
         let allocations_gauge = Gauge::default();
@@ -179,6 +185,8 @@ where
             allocations: Default::default(),
             clients_by_allocation: Default::default(),
             allocations_by_port: Default::default(),
+            lowest_port,
+            highest_port,
             channels_by_number: Default::default(),
             channel_numbers_by_peer: Default::default(),
             pending_commands: Default::default(),
@@ -441,7 +449,7 @@ where
             return Err(error_response(AllocationMismatch, &request));
         }
 
-        if self.allocations_by_port.len() == MAX_AVAILABLE_PORTS as usize {
+        if self.allocations_by_port.len() == self.max_available_ports() as usize {
             return Err(error_response(InsufficientCapacity, &request));
         }
 
@@ -766,12 +774,12 @@ where
         // First, find an unused port.
 
         assert!(
-            self.allocations_by_port.len() < MAX_AVAILABLE_PORTS as usize,
+            self.allocations_by_port.len() < self.max_available_ports() as usize,
             "No more ports available; this would loop forever"
         );
 
         let port = loop {
-            let candidate = self.rng.gen_range(LOWEST_PORT..HIGHEST_PORT);
+            let candidate = self.rng.gen_range(self.lowest_port..self.highest_port);
 
             if !self.allocations_by_port.contains_key(&candidate) {
                 break candidate;
@@ -790,6 +798,10 @@ where
             first_relay_addr,
             second_relay_addr,
         }
+    }
+
+    fn max_available_ports(&self) -> u16 {
+        self.highest_port - self.lowest_port
     }
 
     fn create_channel_binding(

@@ -32,10 +32,16 @@ struct Args {
     #[arg(long, env)]
     public_ip6_addr: Option<Ipv6Addr>,
     /// The address of the local interface where we should serve the prometheus metrics.
-    ///
     /// The metrics will be available at `http://<metrics_addr>/metrics`.
     #[arg(long, env)]
     metrics_addr: Option<SocketAddr>,
+    // See https://www.rfc-editor.org/rfc/rfc8656.html#name-allocations
+    /// The lowest port used for TURN allocations.
+    #[arg(long, env, default_value = "49152")]
+    lowest_port: u16,
+    /// The highest port used for TURN allocations.
+    #[arg(long, env, default_value = "65535")]
+    highest_port: u16,
     /// The websocket URL of the portal server to connect to.
     #[arg(long, env, default_value = "wss://api.firezone.dev")]
     portal_ws_url: Url,
@@ -80,7 +86,13 @@ async fn main() -> Result<()> {
     };
 
     let mut metric_registry = Registry::with_prefix("relay");
-    let server = Server::new(public_addr, make_rng(args.rng_seed), &mut metric_registry);
+    let server = Server::new(
+        public_addr,
+        make_rng(args.rng_seed),
+        &mut metric_registry,
+        args.lowest_port,
+        args.highest_port,
+    );
 
     let channel = if let Some(token) = args.portal_token {
         let mut url = args.portal_ws_url.clone();
