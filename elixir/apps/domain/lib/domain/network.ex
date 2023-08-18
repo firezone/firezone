@@ -4,7 +4,7 @@ defmodule Domain.Network do
 
   @cidrs %{
     ipv4: %Postgrex.INET{address: {100, 64, 0, 0}, netmask: 10},
-    ipv6: %Postgrex.INET{address: {64_768, 8_225, 4_369, 0, 0, 0, 0, 0}, netmask: 106}
+    ipv6: %Postgrex.INET{address: {0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0}, netmask: 106}
   }
 
   def cidrs, do: @cidrs
