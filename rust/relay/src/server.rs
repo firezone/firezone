@@ -145,9 +145,14 @@ impl<R> Server<R>
 where
     R: Rng,
 {
-    /// Although not explicitly recommended by the RFC, we allow the user to pass a custom
-    /// port allocation range. This is helpful when debugging, running NATed (such as in Docker),
-    /// or when deploying in production where the default range conflicts with other services.
+    /// Constructs a new [`Server`].
+    ///
+    /// # Port configuration
+    ///
+    /// The [TURN RFC](https://www.rfc-editor.org/rfc/rfc8656#section-7.2-6) recommends using the port range `49152 - 65535`.
+    /// We make this configurable here because there are several situations in which we don't want to use the full range:
+    /// - Users might already have other services deployed on the same machine that overlap with the ports the RFC recommends.
+    /// - Docker Desktop struggles with forwarding large port ranges to the host with the default networking mode.
     pub fn new(
         public_address: impl Into<IpStack>,
         mut rng: R,
