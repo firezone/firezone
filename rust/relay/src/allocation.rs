@@ -1,10 +1,11 @@
 use crate::server::AllocationId;
 use crate::udp_socket::UdpSocket;
+use crate::AddressFamily;
 use anyhow::{bail, Result};
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use std::convert::Infallible;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use tokio::task;
 
 /// The maximum amount of items that can be buffered in the channel to the allocation task.
@@ -24,17 +25,17 @@ impl Allocation {
     pub fn new(
         relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
         id: AllocationId,
-        listen_addr: IpAddr,
+        family: AddressFamily,
         port: u16,
     ) -> Self {
         let (client_to_peer_sender, client_to_peer_receiver) = mpsc::channel(MAX_BUFFERED_ITEMS);
 
         let task = tokio::spawn(async move {
-            let Err(e) = forward_incoming_relay_data(relay_data_sender, client_to_peer_receiver, id, listen_addr, port).await else {
+            let Err(e) = forward_incoming_relay_data(relay_data_sender, client_to_peer_receiver, id, family, port).await else {
                 unreachable!()
             };
 
-            tracing::warn!(allocation = %id, %listen_addr, "Allocation task failed: {e:#}");
+            tracing::warn!(allocation = %id, %family, "Allocation task failed: {e:#}");
 
             // With the task stopping, the channel will be closed and any attempt to send data to it will fail.
         });
@@ -83,10 +84,10 @@ async fn forward_incoming_relay_data(
     mut relayed_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     mut client_to_peer_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
     id: AllocationId,
-    listen_addr: IpAddr,
+    family: AddressFamily,
     port: u16,
 ) -> Result<Infallible> {
-    let mut socket = UdpSocket::bind((listen_addr, port))?;
+    let mut socket = UdpSocket::bind(family, port)?;
 
     loop {
         tokio::select! {

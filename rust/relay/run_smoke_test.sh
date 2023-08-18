@@ -22,7 +22,6 @@ gateway="$target_directory/debug/examples/gateway"
 relay="$target_directory/debug/relay"
 
 export PUBLIC_IP4_ADDR=127.0.0.1;
-export LISTEN_IP4_ADDR=127.0.0.1;
 export RNG_SEED=0;
 export RUST_LOG=relay=debug;
 
