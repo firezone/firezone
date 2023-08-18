@@ -31,9 +31,8 @@ class NetworkSettings {
   let tunnelAddressIPv6: String
   let dnsAddress: String
 
-    // In theory we could update the MTU dynamically based on the network environment,
-    // but 1280 is guaranteed to work everywhere.
-  let tunnelMTU = NSNumber(1280)
+  // WireGuard has an 80-byte overhead.
+  let tunnelOverheadBytes = NSNumber(80)
 
   // Modifiable values
   private(set) var dnsFallbackStrategy: DNSFallbackStrategy
@@ -153,7 +152,7 @@ class NetworkSettings {
         dnsSettings.matchDomains = [""]
     }
     tunnelNetworkSettings.dnsSettings = dnsSettings
-    tunnelNetworkSettings.mtu = tunnelMTU
+    tunnelNetworkSettings.tunnelOverheadBytes = tunnelOverheadBytes
 
     self.hasUnappliedChanges = false
     logger.debug("Attempting to set network settings")
