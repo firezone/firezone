@@ -52,10 +52,7 @@ final class AuthStore: ObservableObject {
           return nil
         }
         let portalURL = self.authURL(teamId: teamId)
-        guard let authResponse = try? AuthResponse(portalURL: portalURL, token: token, actorName: actorName) else {
-          logger.debug("Token or Actor recovered from keychain is invalid")
-          return nil
-        }
+        let authResponse = AuthResponse(portalURL: portalURL, token: token, actorName: actorName)
         logger.debug("Token recovered from keychain.")
         return authResponse
       }()
