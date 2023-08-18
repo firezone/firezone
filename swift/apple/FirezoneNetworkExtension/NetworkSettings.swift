@@ -110,7 +110,7 @@ class NetworkSettings {
           }
           let validNetworkPrefixLength = Self.validNetworkPrefixLength(fromString: networkPrefixLengthString, maximumValue: 32)
           let ipv4SubnetMask = Self.ipv4SubnetMask(networkPrefixLength: validNetworkPrefixLength)
-          logger.debug("NetworkSettings.apply: Adding IPv4 route: \(address) (subnet mask: \(ipv4SubnetMask))")
+          logger.debug("NetworkSettings.apply: Adding IPv4 route: \(address, privacy: .public) (subnet mask: \(ipv4SubnetMask, privacy: .public))")
           tunnelIPv4Routes.append(NEIPv4Route(destinationAddress: address, subnetMask: ipv4SubnetMask))
         }
         if groupSeparator == ":" { // IPv6 address
@@ -119,7 +119,7 @@ class NetworkSettings {
             continue
           }
           let validNetworkPrefixLength = Self.validNetworkPrefixLength(fromString: networkPrefixLengthString, maximumValue: 128)
-          logger.debug("NetworkSettings.apply: Adding IPv6 route: \(address) (prefix length: \(validNetworkPrefixLength))")
+          logger.debug("NetworkSettings.apply: Adding IPv6 route: \(address, privacy: .public) (prefix length: \(validNetworkPrefixLength, privacy: .public))")
           tunnelIPv6Routes.append(NEIPv6Route(destinationAddress: address, networkPrefixLength: NSNumber(integerLiteral: validNetworkPrefixLength)))
         }
       } else {
