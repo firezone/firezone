@@ -57,7 +57,7 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
 
     private fun setupViews() {
         binding.ilUrlInput.apply {
-            prefixText = "${BuildConfig.AUTH_SCHEME}://${BuildConfig.AUTH_HOST}:${BuildConfig.AUTH_PORT}/"
+            prefixText = SettingsViewModel.AUTH_URL
         }
 
         binding.etInput.apply {

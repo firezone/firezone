@@ -32,12 +32,16 @@ internal class AuthViewModel @Inject constructor(
 
             actionMutableLiveData.postValue(
                 ViewAction.LaunchAuthFlow(
-                    url = "${BuildConfig.AUTH_SCHEME}://${BuildConfig.AUTH_HOST}:${BuildConfig.AUTH_PORT}/${config.accountId}/sign_in?client_csrf_token=$csrfToken&client_platform=android"
+                    url = "$AUTH_URL${config.accountId}/sign_in?client_csrf_token=${config.token}&client_platform=android"
                 )
             )
         }
     } catch (e: Exception) {
         actionMutableLiveData.postValue(ViewAction.ShowError)
+    }
+
+    companion object {
+        val AUTH_URL = "${BuildConfig.AUTH_SCHEME}://${BuildConfig.AUTH_HOST}:${BuildConfig.AUTH_PORT}/"
     }
 
     internal sealed class ViewAction {

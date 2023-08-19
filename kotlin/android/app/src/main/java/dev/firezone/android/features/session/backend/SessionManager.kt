@@ -29,6 +29,7 @@ internal class SessionManager @Inject constructor(
                     config.token,
                     callback
                 )
+                Log.d("Connlib", "sessionPtr: $sessionPtr")
                 setConnectionStatus(true)
             }
         } catch (exception: Exception) {
