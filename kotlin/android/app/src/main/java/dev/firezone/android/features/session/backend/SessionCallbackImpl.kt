@@ -5,9 +5,9 @@ import dev.firezone.connlib.SessionCallback
 
 class SessionCallbackImpl: SessionCallback {
 
-    override fun onUpdateResources(resources: String) {
+    override fun onUpdateResources(resourceListJSON: String) {
         // TODO: Call into client app to update resources list and routing table
-        Log.d(TAG, "onUpdateResources: $resources")
+        Log.d(TAG, "onUpdateResources: $resourceListJSON")
     }
 
     override fun onSetInterfaceConfig(

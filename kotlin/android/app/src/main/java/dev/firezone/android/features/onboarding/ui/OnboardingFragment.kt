@@ -27,7 +27,7 @@ internal class OnboardingFragment : Fragment(R.layout.fragment_onboarding) {
         setupActionObservers()
         setupButtonListener()
 
-        viewModel.getPortalUrl()
+        viewModel.getAccountId()
     }
 
     private fun setupStateObservers() {
@@ -47,7 +47,7 @@ internal class OnboardingFragment : Fragment(R.layout.fragment_onboarding) {
                         AuthActivity::class.java
                     )
                 )
-                is OnboardingViewModel.ViewAction.FillPortalUrl -> {
+                is OnboardingViewModel.ViewAction.FillAccountId -> {
                     binding.etInput.apply {
                         setText(action.value)
                         isCursorVisible = false

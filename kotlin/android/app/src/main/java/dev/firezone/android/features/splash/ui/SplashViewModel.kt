@@ -37,9 +37,9 @@ internal class SplashViewModel @Inject constructor(
                         Log.e("Error", it.message.toString())
                     }
                     .collect { user ->
-                        if (user.portalUrl.isNullOrEmpty()) {
+                        if (user.accountId.isNullOrEmpty()) {
                             actionMutableLiveData.postValue(ViewAction.NavigateToOnboardingFragment)
-                        } else if (user.jwt.isNullOrBlank()) {
+                        } else if (user.token.isNullOrBlank()) {
                             actionMutableLiveData.postValue(ViewAction.NavigateToSignInFragment)
                         } else {
                             actionMutableLiveData.postValue(ViewAction.NavigateToSessionFragment)

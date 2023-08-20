@@ -3,7 +3,7 @@
 
 	<!-- Onboarding Fragment -->
 	<string name="onboarding_fragment_header_title">Login URL</string>
-	<string name="onboarding_fragment_input_hint">team-id</string>
+	<string name="onboarding_fragment_input_hint">account-id</string>
 	<string name="onboarding_fragment_button_text">Save</string>
 
 	<!-- Sign In Fragment -->
