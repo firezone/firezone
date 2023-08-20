@@ -1,8 +1,9 @@
 use super::InterfaceConfig;
 use ip_network::IpNetwork;
-use libc::{close, open, O_RDWR};
+use libc::{close, read, write};
 use libs_common::{CallbackErrorFacade, Callbacks, Error, Result, DNS_SENTINEL};
 use std::{
+    io,
     os::fd::{AsRawFd, RawFd},
     sync::Arc,
 };
@@ -28,30 +29,29 @@ impl Drop for IfaceDevice {
 }
 
 impl IfaceDevice {
-    fn write(&self, _buf: &[u8]) -> usize {
-        tracing::error!("`write` unimplemented on Android");
-        0
-    }
-
-    pub async fn new() -> Result<Self> {
-        // TODO: This won't actually work for non-root users...
-        let fd = unsafe { open(b"/dev/net/tun\0".as_ptr() as _, O_RDWR) };
-        // TODO: everything!
-        if fd == -1 {
-            Err(Error::Io(std::io::Error::last_os_error()))
-        } else {
-            Ok(Self { fd })
+    fn write(&self, buf: &[u8]) -> usize {
+        match unsafe { write(self.fd, buf.as_ptr() as _, buf.len() as _) } {
+            -1 => 0,
+            n => n as usize,
         }
     }
 
+    pub async fn new(fd: Option<i32>) -> Result<Self> {
+        Ok(Self {
+            fd: fd.expect("file descriptor must be provided!") as RawFd,
+        })
+    }
+
     pub fn set_non_blocking(self) -> Result<Self> {
-        tracing::error!("`set_non_blocking` unimplemented on Android");
+        // Anrdoid already opens the tun device in non-blocking mode
         Ok(self)
     }
 
     pub async fn mtu(&self) -> Result<usize> {
-        tracing::error!("`mtu` unimplemented on Android");
-        Ok(0)
+        // We stick with a hardcoded MTU of 1280 for now. This could be improved by
+        // finding the MTU of the underlying physical interface and subtracting 80
+        // from it for the WireGuard overhead.
+        Ok(1280)
     }
 
     pub fn write4(&self, src: &[u8]) -> usize {
@@ -63,8 +63,10 @@ impl IfaceDevice {
     }
 
     pub fn read<'a>(&self, dst: &'a mut [u8]) -> Result<&'a mut [u8]> {
-        tracing::error!("`read` unimplemented on Android");
-        Ok(dst)
+        match unsafe { read(self.fd, dst.as_mut_ptr() as _, dst.len()) } {
+            -1 => Err(Error::IfaceRead(io::Error::last_os_error())),
+            n => Ok(&mut dst[..n as usize]),
+        }
     }
 }
 
@@ -75,8 +77,7 @@ impl IfaceConfig {
         config: &InterfaceConfig,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
-        callbacks.on_set_interface_config(config.ipv4, config.ipv6, DNS_SENTINEL);
-        Ok(())
+        callbacks.on_set_interface_config(config.ipv4, config.ipv6, DNS_SENTINEL)
     }
 
     pub async fn add_route(

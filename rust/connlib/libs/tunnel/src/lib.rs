@@ -169,6 +169,7 @@ where
     /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
     #[tracing::instrument(level = "trace", skip(private_key, control_signaler, callbacks))]
     pub async fn new(
+        fd: Option<i32>,
         private_key: StaticSecret,
         control_signaler: C,
         callbacks: CB,
@@ -177,7 +178,7 @@ where
         let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
         let peers_by_ip = RwLock::new(IpNetworkTable::new());
         let next_index = Default::default();
-        let (iface_config, device_channel) = create_iface().await?;
+        let (iface_config, device_channel) = create_iface(fd).await?;
         let iface_config = tokio::sync::Mutex::new(iface_config);
         let device_channel = Arc::new(device_channel);
         let peer_connections = Default::default();
