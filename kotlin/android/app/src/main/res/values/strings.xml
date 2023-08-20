@@ -1,10 +1,10 @@
 <resources>
 	<string name="app_short_name">firezone</string>
 
-	<!-- Onboarding Fragment -->
-	<string name="onboarding_fragment_header_title">Login URL</string>
-	<string name="onboarding_fragment_input_hint">account-id</string>
-	<string name="onboarding_fragment_button_text">Save</string>
+	<!-- Settings Fragment -->
+	<string name="settings_fragment_header_title">Login URL</string>
+	<string name="settings_fragment_input_hint">account-id</string>
+	<string name="settings_fragment_button_text">Save</string>
 
 	<!-- Sign In Fragment -->
 	<string name="sign_in_fragment_button_text">Sign In</string>

@@ -8,6 +8,12 @@
 
     <!-- XXX: Set usesCleartextTraffic to false for added security when APIMock is removed or served over https -->
 
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+    </queries>
+
     <application
         android:name=".core.FirezoneApp"
         android:allowBackup="false"
