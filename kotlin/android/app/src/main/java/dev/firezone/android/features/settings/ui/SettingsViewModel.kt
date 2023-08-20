@@ -1,4 +1,4 @@
-package dev.firezone.android.features.onboarding.ui
+package dev.firezone.android.features.settings.ui
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -11,7 +11,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.launch
 
 @HiltViewModel
-internal class OnboardingViewModel @Inject constructor(
+internal class SettingsViewModel @Inject constructor(
     private val getConfigUseCase: GetConfigUseCase,
     private val saveAccountIdUseCase: SaveAccountIdUseCase,
 ) : ViewModel() {
@@ -34,7 +34,7 @@ internal class OnboardingViewModel @Inject constructor(
         }
     }
 
-    fun onSaveOnboardingCompleted() {
+    fun onSaveSettingsCompleted() {
         viewModelScope.launch {
             saveAccountIdUseCase(input).collect {
                 actionMutableLiveData.postValue(ViewAction.NavigateToSignInFragment)

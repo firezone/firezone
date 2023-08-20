@@ -38,7 +38,7 @@ internal class SplashViewModel @Inject constructor(
                     }
                     .collect { user ->
                         if (user.accountId.isNullOrEmpty()) {
-                            actionMutableLiveData.postValue(ViewAction.NavigateToOnboardingFragment)
+                            actionMutableLiveData.postValue(ViewAction.NavigateToSettingsFragment)
                         } else if (user.token.isNullOrBlank()) {
                             actionMutableLiveData.postValue(ViewAction.NavigateToSignInFragment)
                         } else {
@@ -55,7 +55,7 @@ internal class SplashViewModel @Inject constructor(
 
     internal sealed class ViewAction {
         object NavigateToVpnPermission : ViewAction()
-        object NavigateToOnboardingFragment : ViewAction()
+        object NavigateToSettingsFragment : ViewAction()
         object NavigateToSignInFragment : ViewAction()
         object NavigateToSessionFragment : ViewAction()
     }

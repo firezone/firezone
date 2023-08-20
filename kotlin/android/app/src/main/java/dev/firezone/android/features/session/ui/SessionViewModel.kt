@@ -18,6 +18,7 @@ internal class SessionViewModel @Inject constructor(
 
     fun startSession() {
         viewModelScope.launch {
+            
             sessionManager.connect()
         }
     }

@@ -27,7 +27,7 @@ class AppLinkHandlerActivity : AppCompatActivity(R.layout.activity_app_link_hand
         viewModel.actionLiveData.observe(this) { action ->
             when (action) {
                 is AppLinkViewModel.ViewAction.AuthFlowComplete -> {
-                    // Continue with onboarding
+                    // Continue with starting connlib session
                     Log.d("AppLinkHandlerActivity", "AuthFlowComplete")
                 }
                 is AppLinkViewModel.ViewAction.ShowError -> showError()

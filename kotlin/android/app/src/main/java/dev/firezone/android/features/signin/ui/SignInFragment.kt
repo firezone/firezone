@@ -1,5 +1,6 @@
 package dev.firezone.android.features.signin.ui
 
+import android.util.Log
 import android.os.Bundle
 import android.view.View
 import androidx.fragment.app.Fragment
@@ -21,6 +22,7 @@ internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
 
         setupActionObservers()
         setupButtonListener()
+        Log.d("SignInFragment", "Showing sign in...")
     }
 
     private fun setupActionObservers() {
@@ -42,7 +44,7 @@ internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
             }
             btSettings.setOnClickListener {
                 findNavController().navigate(
-                    SplashFragmentDirections.navigateToOnboardingFragment()
+                    SplashFragmentDirections.navigateToSettingsFragment()
                 )
             }
         }

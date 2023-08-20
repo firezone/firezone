@@ -1,4 +1,4 @@
-package dev.firezone.android.features.onboarding.ui
+package dev.firezone.android.features.settings.ui
 
 import android.content.Intent
 import android.os.Bundle
@@ -8,19 +8,19 @@ import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import dev.firezone.android.R
-import dev.firezone.android.databinding.FragmentOnboardingBinding
+import dev.firezone.android.databinding.FragmentSettingsBinding
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.features.auth.ui.AuthActivity
 
 @AndroidEntryPoint
-internal class OnboardingFragment : Fragment(R.layout.fragment_onboarding) {
+internal class SettingsFragment : Fragment(R.layout.`fragment_settings.xml`) {
 
-    private lateinit var binding: FragmentOnboardingBinding
-    private val viewModel: OnboardingViewModel by viewModels()
+    private lateinit var binding: FragmentSettingsBinding
+    private val viewModel: SettingsViewModel by viewModels()
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        binding = FragmentOnboardingBinding.bind(view)
+        binding = FragmentSettingsBinding.bind(view)
 
         setupViews()
         setupStateObservers()
@@ -41,13 +41,13 @@ internal class OnboardingFragment : Fragment(R.layout.fragment_onboarding) {
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
             when (action) {
-                OnboardingViewModel.ViewAction.NavigateToSignInFragment -> startActivity(
+                SettingsViewModel.ViewAction.NavigateToSignInFragment -> startActivity(
                     Intent(
                         requireContext(),
                         AuthActivity::class.java
                     )
                 )
-                is OnboardingViewModel.ViewAction.FillAccountId -> {
+                is SettingsViewModel.ViewAction.FillAccountId -> {
                     binding.etInput.apply {
                         setText(action.value)
                         isCursorVisible = false
@@ -72,7 +72,7 @@ internal class OnboardingFragment : Fragment(R.layout.fragment_onboarding) {
         }
 
         binding.btLogin.setOnClickListener {
-            viewModel.onSaveOnboardingCompleted()
+            viewModel.onSaveSettingsCompleted()
         }
     }
 
