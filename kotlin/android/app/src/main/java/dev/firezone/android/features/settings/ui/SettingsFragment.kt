@@ -7,6 +7,7 @@ import android.view.inputmethod.EditorInfo
 import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.navigation.fragment.findNavController
 import dev.firezone.android.R
 import dev.firezone.android.databinding.FragmentSettingsBinding
 import dagger.hilt.android.AndroidEntryPoint
@@ -41,11 +42,8 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
             when (action) {
-                SettingsViewModel.ViewAction.NavigateToSignInFragment -> startActivity(
-                    Intent(
-                        requireContext(),
-                        AuthActivity::class.java
-                    )
+                is SettingsViewModel.ViewAction.NavigateToSignInFragment -> findNavController().navigate(
+                    R.id.signInFragment
                 )
                 is SettingsViewModel.ViewAction.FillAccountId -> {
                     binding.etInput.apply {
