@@ -304,7 +304,7 @@ fn connect(
         callback_handler,
     };
     Session::connect(
-        Some(fd as i32),
+        Some(fd),
         portal_url.as_str(),
         portal_token,
         callback_handler.clone(),
