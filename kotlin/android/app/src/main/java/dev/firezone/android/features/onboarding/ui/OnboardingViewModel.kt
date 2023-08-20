@@ -6,14 +6,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.core.domain.preference.SavePortalUrlUseCase
+import dev.firezone.android.core.domain.preference.SaveAccountIdUseCase
 import javax.inject.Inject
 import kotlinx.coroutines.launch
 
 @HiltViewModel
 internal class OnboardingViewModel @Inject constructor(
     private val getConfigUseCase: GetConfigUseCase,
-    private val savePortalUrlUseCase: SavePortalUrlUseCase,
+    private val saveAccountIdUseCase: SaveAccountIdUseCase,
 ) : ViewModel() {
 
     private val stateMutableLiveData = MutableLiveData<ViewState>()
@@ -24,11 +24,11 @@ internal class OnboardingViewModel @Inject constructor(
 
     private var input = ""
 
-    fun getPortalUrl() {
+    fun getAccountId() {
         viewModelScope.launch {
             getConfigUseCase().collect {
                 actionMutableLiveData.postValue(
-                    ViewAction.FillPortalUrl(it.portalUrl.orEmpty())
+                    ViewAction.FillAccountId(it.accountId.orEmpty())
                 )
             }
         }
@@ -36,7 +36,7 @@ internal class OnboardingViewModel @Inject constructor(
 
     fun onSaveOnboardingCompleted() {
         viewModelScope.launch {
-            savePortalUrlUseCase(input).collect {
+            saveAccountIdUseCase(input).collect {
                 actionMutableLiveData.postValue(ViewAction.NavigateToSignInFragment)
             }
         }
@@ -53,7 +53,7 @@ internal class OnboardingViewModel @Inject constructor(
 
     internal sealed class ViewAction {
         object NavigateToSignInFragment : ViewAction()
-        data class FillPortalUrl(val value: String) : ViewAction()
+        data class FillAccountId(val value: String) : ViewAction()
     }
 
     internal data class ViewState(

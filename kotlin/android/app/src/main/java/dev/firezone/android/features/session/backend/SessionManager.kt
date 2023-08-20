@@ -6,6 +6,7 @@ import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.core.domain.preference.SaveIsConnectedUseCase
 import dev.firezone.connlib.Logger
 import dev.firezone.connlib.Session
+import dev.firezone.connlib.VpnService
 import javax.inject.Inject
 
 internal class SessionManager @Inject constructor(
@@ -18,13 +19,14 @@ internal class SessionManager @Inject constructor(
         try {
             val config = getConfigUseCase.sync()
 
-            if (config.portalUrl != null && config.jwt != null) {
-                Log.d("Connlib", "portalUrl: ${config.portalUrl}")
-                Log.d("Connlib", "jwt: ${config.jwt}")
+            Log.d("Connlib", "accountId: ${config.accountId}")
+            Log.d("Connlib", "token: ${config.token}")
 
+            if (config.accountId != null && config.token != null) {
                 sessionPtr = Session.connect(
+                    -1, // TODO: get fd from VpnService. See VpnBuilder#establish().detachFd()
                     BuildConfig.CONTROL_PLANE_URL,
-                    config.jwt,
+                    config.token,
                     callback
                 )
                 setConnectionStatus(true)
