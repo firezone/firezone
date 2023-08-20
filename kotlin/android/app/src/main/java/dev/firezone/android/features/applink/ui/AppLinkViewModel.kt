@@ -28,6 +28,7 @@ internal class AppLinkViewModel @Inject constructor(
                 PATH_CALLBACK -> {
                     intent.data?.getQueryParameter(QUERY_CLIENT_CSRF_TOKEN)?.let { csrfToken ->
                         if (validateCsrfTokenUseCase(csrfToken).firstOrNull() == true) {
+                            Log.d("AppLink", "Valid CSRF token. Continuing to save token...")
                             val token = intent.data?.getQueryParameter(QUERY_CLIENT_AUTH_TOKEN) ?: ""
                             saveTokenUseCase(token)
 
