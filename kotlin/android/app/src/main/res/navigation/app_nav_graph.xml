@@ -8,7 +8,7 @@
     <fragment
         android:id="@+id/splashFragment"
         android:name="dev.firezone.android.features.splash.ui.SplashFragment"
-        tools:layout="@layout/fragment_settings">
+        tools:layout="@layout/fragment_splash">
 
         <action
             android:id="@+id/navigateToSettingsFragment"
