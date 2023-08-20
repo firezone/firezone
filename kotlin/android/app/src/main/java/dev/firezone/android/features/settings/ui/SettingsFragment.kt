@@ -14,7 +14,7 @@ import dev.firezone.android.BuildConfig
 import dev.firezone.android.features.auth.ui.AuthActivity
 
 @AndroidEntryPoint
-internal class SettingsFragment : Fragment(R.layout.`fragment_settings.xml`) {
+internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
 
     private lateinit var binding: FragmentSettingsBinding
     private val viewModel: SettingsViewModel by viewModels()
