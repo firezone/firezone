@@ -8,6 +8,7 @@ use ip_network::IpNetwork;
 use jni::{
     objects::{JClass, JObject, JString, JValue},
     strings::JNIString,
+    sys::jint,
     JNIEnv, JavaVM,
 };
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -280,6 +281,7 @@ enum ConnectError {
 
 fn connect(
     env: &mut JNIEnv,
+    fd: jint,
     portal_url: JString,
     portal_token: JString,
     callback_handler: JObject<'static>,
@@ -301,8 +303,13 @@ fn connect(
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
     };
-    Session::connect(portal_url.as_str(), portal_token, callback_handler.clone())
-        .map_err(Into::into)
+    Session::connect(
+        Some(fd as i32),
+        portal_url.as_str(),
+        portal_token,
+        callback_handler.clone(),
+    )
+    .map_err(Into::into)
 }
 
 /// # Safety
@@ -312,12 +319,13 @@ fn connect(
 pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
     mut env: JNIEnv<'static>,
     _class: JClass,
+    fd: jint,
     portal_url: JString,
     portal_token: JString,
     callback_handler: JObject<'static>,
 ) -> *const Session<CallbackHandler> {
     if let Some(result) = catch_and_throw(&mut env, |env| {
-        connect(env, portal_url, portal_token, callback_handler)
+        connect(env, fd, portal_url, portal_token, callback_handler)
     }) {
         match result {
             Ok(session) => return Box::into_raw(Box::new(session)),
