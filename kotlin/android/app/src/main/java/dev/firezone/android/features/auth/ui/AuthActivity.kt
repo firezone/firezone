@@ -40,11 +40,9 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
 
     private fun setupWebView(url: String) {
         val intent = CustomTabsIntent.Builder().build()
-        val packageName = CustomTabsHelper.getPackageNameToUse(this@AuthActivity)
-        intent.intent.setPackage(packageName)
+        intent.intent.setPackage(CustomTabsHelper.getPackageNameToUse(this@AuthActivity))
         intent.launchUrl(this@AuthActivity, Uri.parse(url))
     }
-
     private fun showError() {
         AlertDialog.Builder(this)
             .setTitle(R.string.error_dialog_title)

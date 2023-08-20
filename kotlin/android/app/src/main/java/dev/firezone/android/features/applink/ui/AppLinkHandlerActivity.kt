@@ -27,11 +27,13 @@ class AppLinkHandlerActivity : AppCompatActivity(R.layout.activity_app_link_hand
         viewModel.actionLiveData.observe(this) { action ->
             when (action) {
                 is AppLinkViewModel.ViewAction.AuthFlowComplete -> {
-                    // Continue with starting connlib session
+                    // TODO: Continue starting the session showing sessionFragment
                     Log.d("AppLinkHandlerActivity", "AuthFlowComplete")
                 }
                 is AppLinkViewModel.ViewAction.ShowError -> showError()
-                else -> {}
+                else -> {
+                    Log.d("AppLinkHandlerActivity", "Unhandled action: $action")
+                }
             }
         }
     }

@@ -57,7 +57,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="https" android:host="${hostName}" />
+                <data android:scheme="https" android:host="${hostName}" android:path="/handle_client_auth_callback" />
             </intent-filter>
         </activity>
 
