@@ -47,6 +47,8 @@ internal class AppLinkViewModel @Inject constructor(
         private const val PATH_CALLBACK = "handle_client_auth_callback"
         private const val QUERY_CLIENT_CSRF_TOKEN = "client_csrf_token"
         private const val QUERY_CLIENT_AUTH_TOKEN = "client_auth_token"
+        private const val QUERY_ACTOR_NAME = "actor_name"
+        private const val QUERY_IDENTITY_PROVIDER_IDENTIFIER = "identity_provider_identifier"
     }
 
     internal sealed class ViewAction {

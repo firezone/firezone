@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.domain.preference.SaveAccountIdUseCase
+import dev.firezone.android.BuildConfig
 import javax.inject.Inject
 import kotlinx.coroutines.launch
 
@@ -49,6 +50,10 @@ internal class SettingsViewModel @Inject constructor(
                 isButtonEnabled = input.isEmpty().not()
             )
         )
+    }
+
+    companion object {
+        val AUTH_URL = "${BuildConfig.AUTH_SCHEME}://${BuildConfig.AUTH_HOST}:${BuildConfig.AUTH_PORT}/"
     }
 
     internal sealed class ViewAction {
