@@ -1,7 +1,6 @@
 package dev.firezone.android.tunnel
 
 import android.util.Log
-import dev.firezone.connlib.SessionCallback
 import java.lang.ref.WeakReference
 
 class TunnelManager {
@@ -10,7 +9,7 @@ class TunnelManager {
 
     private val listeners: MutableSet<WeakReference<TunnelListener>> = mutableSetOf()
 
-    private val callback: SessionCallback = object: SessionCallback {
+    private val callback: TunnelListener = object: TunnelListener {
         override fun onUpdateResources(resourceListJSON: String) {
             // TODO: Call into client app to update resources list and routing table
             Log.d(TAG, "onUpdateResources: $resourceListJSON")

@@ -4,16 +4,16 @@ import android.util.Log
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.core.domain.preference.SaveIsConnectedUseCase
-import dev.firezone.connlib.Logger
-import dev.firezone.connlib.Session
-import dev.firezone.connlib.VpnService
+import dev.firezone.android.tunnel.TunnelLogger
+import dev.firezone.android.tunnel.TunnelSession
+import dev.firezone.android.tunnel.TunnelManager
 import javax.inject.Inject
 
 internal class SessionManager @Inject constructor(
     private val getConfigUseCase: GetConfigUseCase,
     private val saveIsConnectedUseCase: SaveIsConnectedUseCase,
 ) {
-    private val callback: SessionCallbackImpl = SessionCallbackImpl()
+    private val callback: TunnelManager = TunnelManager()
 
     fun connect() {
         try {
@@ -23,7 +23,7 @@ internal class SessionManager @Inject constructor(
             Log.d("Connlib", "token: ${config.token}")
 
             if (config.accountId != null && config.token != null) {
-                sessionPtr = Session.connect(
+                sessionPtr = TunnelSession.connect(
                     -1, // TODO: get fd from VpnService. See VpnBuilder#establish().detachFd()
                     BuildConfig.CONTROL_PLANE_URL,
                     config.token,
@@ -39,7 +39,7 @@ internal class SessionManager @Inject constructor(
 
     fun disconnect() {
         try {
-            Session.disconnect(sessionPtr!!)
+            TunnelSession.disconnect(sessionPtr!!)
             setConnectionStatus(false)
         } catch (exception: Exception) {
             Log.e("Disconnection error:", exception.message.toString())
@@ -54,7 +54,7 @@ internal class SessionManager @Inject constructor(
         var sessionPtr: Long? = null
         init {
             System.loadLibrary("connlib")
-            Logger.init()
+            TunnelLogger.init()
             Log.d("Connlib","Library loaded from main app!")
         }
     }

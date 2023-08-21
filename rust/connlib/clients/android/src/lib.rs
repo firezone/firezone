@@ -14,10 +14,12 @@ use jni::{
 use std::net::{Ipv4Addr, Ipv6Addr};
 use thiserror::Error;
 
+const DNS_FALLBACK_STRATEGY: &str = "upstream_resolver";
+
 /// This should be called once after the library is loaded by the system.
 #[allow(non_snake_case)]
 #[no_mangle]
-pub extern "system" fn Java_dev_firezone_connlib_Logger_init(_: JNIEnv, _: JClass) {
+pub extern "system" fn Java_dev_firezone_android_tunnel_Logger_init(_: JNIEnv, _: JClass) {
     android_logger::init_once(
         android_logger::Config::default()
             .with_max_level(if cfg!(debug_assertions) {
@@ -115,13 +117,13 @@ impl Callbacks for CallbackHandler {
                     source,
                 }
             })?;
-            // TODO: Don't hardcode this string here!
-            let dns_fallback_strategy = env.new_string("upstream_resolver").map_err(|source| {
-                CallbackError::NewStringFailed {
-                    name: "dns_fallback_strategy",
-                    source,
-                }
-            })?;
+            let dns_fallback_strategy =
+                env.new_string(DNS_FALLBACK_STRATEGY).map_err(|source| {
+                    CallbackError::NewStringFailed {
+                        name: "dns_fallback_strategy",
+                        source,
+                    }
+                })?;
             call_method(
                 &mut env,
                 &self.callback_handler,
@@ -316,7 +318,7 @@ fn connect(
 /// Pointers must be valid
 #[allow(non_snake_case)]
 #[no_mangle]
-pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
+pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_connect(
     mut env: JNIEnv<'static>,
     _class: JClass,
     fd: jint,
@@ -339,7 +341,7 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
 /// Pointers must be valid
 #[allow(non_snake_case)]
 #[no_mangle]
-pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_disconnect(
+pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_disconnect(
     mut env: JNIEnv,
     _: JClass,
     session: *mut Session<CallbackHandler>,
