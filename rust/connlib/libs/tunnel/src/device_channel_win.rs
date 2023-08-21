@@ -22,6 +22,8 @@ impl DeviceChannel {
     }
 }
 
-pub(crate) async fn create_iface() -> Result<(IfaceConfig, DeviceChannel)> {
+pub(crate) async fn create_iface(
+    _device_handle: Option<i32>,
+) -> Result<(IfaceConfig, DeviceChannel)> {
     todo!()
 }
