@@ -73,6 +73,7 @@ mod tun;
 #[path = "tun_linux.rs"]
 mod tun;
 
+// TODO: Android and linux are nearly identical save for passing in a file descriptor
 #[cfg(target_os = "android")]
 #[path = "tun_android.rs"]
 mod tun;
