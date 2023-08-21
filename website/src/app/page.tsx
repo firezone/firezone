@@ -76,8 +76,8 @@ export default function Page() {
               height={55}
             />
             <Image
-              alt="poughkeepsie logo"
-              src="/images/poughkeepsie-logo.png"
+              alt="wolfram logo"
+              src="/images/wolfram-logo.png"
               width={100}
               height={55}
             />
