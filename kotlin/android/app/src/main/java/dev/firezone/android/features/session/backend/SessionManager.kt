@@ -67,9 +67,9 @@ internal class SessionManager @Inject constructor(
         init {
             Log.d("Connlib","Attempting to load library from main app...")
             System.loadLibrary("connlib")
-            Log.d("Connlib","Attempting to TunnelLogger.init()!")
-            TunnelLogger.init()
             Log.d("Connlib","Library loaded from main app!")
+            TunnelLogger.init()
+            Log.d("Connlib","Connlib Logger initialized!")
         }
     }
 }

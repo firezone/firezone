@@ -19,7 +19,7 @@ const DNS_FALLBACK_STRATEGY: &str = "upstream_resolver";
 /// This should be called once after the library is loaded by the system.
 #[allow(non_snake_case)]
 #[no_mangle]
-pub extern "system" fn Java_dev_firezone_android_tunnel_Logger_init(_: JNIEnv, _: JClass) {
+pub extern "system" fn Java_dev_firezone_android_tunnel_TunnelLogger_init(_: JNIEnv, _: JClass) {
     android_logger::init_once(
         android_logger::Config::default()
             .with_max_level(if cfg!(debug_assertions) {
