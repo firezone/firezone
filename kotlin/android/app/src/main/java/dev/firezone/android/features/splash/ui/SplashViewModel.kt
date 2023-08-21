@@ -8,7 +8,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.core.domain.preference.DebugUserUseCase
 import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
@@ -19,15 +18,12 @@ private const val REQUEST_DELAY = 1000L
 @HiltViewModel
 internal class SplashViewModel @Inject constructor(
     private val useCase: GetConfigUseCase,
-    private val debugUserUseCase: DebugUserUseCase,
 ) : ViewModel() {
 
     private val actionMutableLiveData = MutableLiveData<ViewAction>()
     val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
     internal fun checkUserState(context: Context) {
         viewModelScope.launch {
-            debugUserUseCase() // sets dummy team-id and token
-
             delay(REQUEST_DELAY)
             if (!hasVpnPermissions(context)) {
                 actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)

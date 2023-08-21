@@ -1,5 +1,6 @@
 package dev.firezone.android.features.session.backend
 
+import android.net.VpnService
 import android.util.Log
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
@@ -7,6 +8,7 @@ import dev.firezone.android.core.domain.preference.SaveIsConnectedUseCase
 import dev.firezone.android.tunnel.TunnelLogger
 import dev.firezone.android.tunnel.TunnelSession
 import dev.firezone.android.tunnel.TunnelManager
+import dev.firezone.android.tunnel.TunnelService
 import javax.inject.Inject
 
 internal class SessionManager @Inject constructor(
@@ -23,14 +25,18 @@ internal class SessionManager @Inject constructor(
             Log.d("Connlib", "token: ${config.token}")
 
             if (config.accountId != null && config.token != null) {
-                sessionPtr = TunnelSession.connect(
-                    -1, // TODO: get fd from VpnService. See VpnBuilder#establish().detachFd()
-                    BuildConfig.CONTROL_PLANE_URL,
-                    config.token,
-                    callback
-                )
-                Log.d("Connlib", "sessionPtr: $sessionPtr")
-                setConnectionStatus(true)
+                buildVpnService().establish()?.let {
+                    sessionPtr = TunnelSession.connect(
+                        it.fd,
+                        BuildConfig.CONTROL_PLANE_URL,
+                        config.token,
+                        callback
+                    )
+                    Log.d("Connlib", "sessionPtr: $sessionPtr")
+                    setConnectionStatus(true)
+                } ?: let {
+                    Log.d("Connlib", "Failed to build VpnService")
+                }
             }
         } catch (exception: Exception) {
             Log.e("Connection error:", exception.message.toString())
@@ -50,11 +56,18 @@ internal class SessionManager @Inject constructor(
         saveIsConnectedUseCase.sync(value)
     }
 
+    private fun buildVpnService():VpnService.Builder =
+        TunnelService().Builder().apply {
+            setSession("Firezone VPN")
+            setMtu(1280)
+        }
+
     internal companion object {
         var sessionPtr: Long? = null
         init {
             Log.d("Connlib","Attempting to load library from main app...")
             System.loadLibrary("connlib")
+            Log.d("Connlib","Attempting to TunnelLogger.init()!")
             TunnelLogger.init()
             Log.d("Connlib","Library loaded from main app!")
         }

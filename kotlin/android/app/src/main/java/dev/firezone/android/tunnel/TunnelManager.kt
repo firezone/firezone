@@ -24,7 +24,7 @@ class TunnelManager {
             dnsAddress: String,
             dnsFallbackStrategy: String
         ) {
-            Log.d(TAG, "onSetInterfaceConfig: [IPv4:$tunnelAddressIPv4] [IPv6:$tunnelAddressIPv6] [dns:$dnsAddress]")
+            Log.d(TAG, "onSetInterfaceConfig: [IPv4:$tunnelAddressIPv4] [IPv6:$tunnelAddressIPv6] [dns:$dnsAddress] [dnsFallbackStrategy:$dnsFallbackStrategy]")
 
             listeners.onEach {
                 it.get()?.onSetInterfaceConfig(tunnelAddressIPv4, tunnelAddressIPv6, dnsAddress, dnsFallbackStrategy)
