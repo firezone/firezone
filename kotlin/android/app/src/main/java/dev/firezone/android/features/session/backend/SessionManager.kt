@@ -27,7 +27,7 @@ internal class SessionManager @Inject constructor(
             if (config.accountId != null && config.token != null) {
                 buildVpnService().establish()?.let {
                     sessionPtr = TunnelSession.connect(
-                        it.fd,
+                        it.detachFd(),
                         BuildConfig.CONTROL_PLANE_URL,
                         config.token,
                         callback
