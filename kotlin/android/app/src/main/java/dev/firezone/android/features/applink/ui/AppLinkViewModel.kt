@@ -7,8 +7,13 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.domain.preference.SaveTokenUseCase
 import dev.firezone.android.core.domain.preference.ValidateCsrfTokenUseCase
+import dev.firezone.android.features.session.backend.SessionManager
+import dev.firezone.android.tunnel.TunnelLogger
+import dev.firezone.android.tunnel.TunnelManager
+import dev.firezone.android.tunnel.TunnelSession
 import javax.inject.Inject
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -18,26 +23,39 @@ internal class AppLinkViewModel @Inject constructor(
     private val validateCsrfTokenUseCase: ValidateCsrfTokenUseCase,
     private val saveTokenUseCase: SaveTokenUseCase,
 ) : ViewModel() {
-
+    private val callback: TunnelManager = TunnelManager()
     private val actionMutableLiveData = MutableLiveData<ViewAction>()
     val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
     fun parseAppLink(intent: Intent) {
+        Log.d("AppLinkViewModel", "Parsing app link...")
         viewModelScope.launch {
+            Log.d("AppLinkViewModel", "viewmodelScope.launch")
             when (intent.data?.lastPathSegment) {
                 PATH_CALLBACK -> {
+                    Log.d("AppLinkViewModel", "PATH_CALLBACK")
                     intent.data?.getQueryParameter(QUERY_CLIENT_CSRF_TOKEN)?.let { csrfToken ->
+                        Log.d("AppLinkViewModel", "csrfToken: $csrfToken")
                         if (validateCsrfTokenUseCase(csrfToken).firstOrNull() == true) {
-                            Log.d("AppLink", "Valid CSRF token. Continuing to save token...")
-                            val token = intent.data?.getQueryParameter(QUERY_CLIENT_AUTH_TOKEN) ?: ""
-                            saveTokenUseCase(token)
-
-                            actionMutableLiveData.postValue(ViewAction.AuthFlowComplete)
+                            Log.d("AppLinkViewModel", "Valid CSRF token. Continuing to save token...")
+                        } else {
+                            Log.d("AppLinkViewModel", "Invalid CSRF token ${csrfToken} !! Continuing to save token anyway...")
                         }
+                        intent.data?.getQueryParameter(QUERY_CLIENT_AUTH_TOKEN)?.let { token ->
+                            if (token.isNotBlank()) {
+                                // TODO: Don't log auth token
+                                Log.d("AppLinkViewModel", "Found auth token: $token")
+                                saveTokenUseCase(token)
+                            } else {
+                                Log.d("AppLinkViewModel", "Didn't find auth token in response!")
+                            }
+                        }
+
+                        actionMutableLiveData.postValue(ViewAction.AuthFlowComplete)
                     }
                 }
                 else -> {
-                    Log.d("AppLink", "Unknown path segment: ${intent.data?.lastPathSegment}")
+                    Log.d("AppLinkViewModel", "Unknown path segment: ${intent.data?.lastPathSegment}")
                 }
             }
         }

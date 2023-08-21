@@ -53,6 +53,7 @@ internal class SessionManager @Inject constructor(
     internal companion object {
         var sessionPtr: Long? = null
         init {
+            Log.d("Connlib","Attempting to load library from main app...")
             System.loadLibrary("connlib")
             TunnelLogger.init()
             Log.d("Connlib","Library loaded from main app!")
