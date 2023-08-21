@@ -80,9 +80,6 @@ public final class MenuBar: NSObject {
             self?.statusItem.button?.image = self?.disconnectedIcon
           }
           self?.handleMenuVisibilityOrStatusChanged()
-          if status != .connected {
-            self?.setOrderedResources([])
-          }
         }
         .store(in: &cancellables)
 

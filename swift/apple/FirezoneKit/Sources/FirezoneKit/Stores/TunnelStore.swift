@@ -104,6 +104,10 @@ final class TunnelStore: ObservableObject {
 
   private func updateResources() {
     let session = tunnel.connection as! NETunnelProviderSession
+    guard session.status == .connected else {
+      self.resources = DisplayableResources()
+      return
+    }
     let resourcesQuery = resources.versionStringToData()
     do {
       try session.sendProviderMessage(resourcesQuery) { [weak self] reply in
@@ -174,14 +178,13 @@ final class TunnelStore: ObservableObject {
           named: .NEVPNStatusDidChange,
           object: nil
         ) {
-          guard let session = notification.object as? NETunnelProviderSession,
-                let tunnelProvider = session.manager as? NETunnelProviderManager
-          else {
+          guard let session = notification.object as? NETunnelProviderSession else {
             return
           }
-          self.status = tunnelProvider.connection.status
+          let status = session.status
+          self.status = status
           if let startTunnelContinuation = self.startTunnelContinuation {
-            switch self.status {
+            switch status {
               case .connected:
                 startTunnelContinuation.resume(returning: ())
                 self.startTunnelContinuation = nil
@@ -191,6 +194,9 @@ final class TunnelStore: ObservableObject {
               default:
                 break
             }
+          }
+          if status != .connected {
+            self.resources = DisplayableResources()
           }
         }
       }
