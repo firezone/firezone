@@ -26,6 +26,12 @@ final class AuthStore: ObservableObject {
 
   static let shared = AuthStore()
 
+  enum LoginStatus {
+    case uninitialized
+    case signedOut
+    case signedIn(AuthResponse)
+  }
+
   @Dependency(\.keychain) private var keychain
   @Dependency(\.auth) private var auth
   @Dependency(\.settingsClient) private var settingsClient
@@ -33,43 +39,44 @@ final class AuthStore: ObservableObject {
   private let authBaseURL: URL
   private var cancellables = Set<AnyCancellable>()
 
-  @Published private(set) var authResponse: AuthResponse?
+  @Published private(set) var loginStatus: LoginStatus
 
   private init() {
     self.authBaseURL = Self.getAuthBaseURLFromInfoPlist()
+    self.loginStatus = .uninitialized
     Task {
-      self.authResponse = await { () -> AuthResponse? in
+      self.loginStatus = await { () -> LoginStatus in
         guard let teamId = settingsClient.fetchSettings()?.teamId else {
           logger.debug("No team-id found in settings")
-          return nil
+          return .signedOut
         }
         guard let token = try? await keychain.token() else {
           logger.debug("Token not found in keychain")
-          return nil
+          return .signedOut
         }
         guard let actorName = try? await keychain.actorName() else {
           logger.debug("Actor not found in keychain")
-          return nil
+          return .signedOut
         }
         let portalURL = self.authURL(teamId: teamId)
-        guard let authResponse = try? AuthResponse(portalURL: portalURL, token: token, actorName: actorName) else {
-          logger.debug("Token or Actor recovered from keychain is invalid")
-          return nil
-        }
+        let authResponse = AuthResponse(portalURL: portalURL, token: token, actorName: actorName)
         logger.debug("Token recovered from keychain.")
-        return authResponse
+        return .signedIn(authResponse)
       }()
     }
 
-    $authResponse.dropFirst()
-      .sink { [weak self] authResponse in
+    $loginStatus
+      .sink { [weak self] loginStatus in
         Task { [weak self] in
-          if let authResponse {
-            try? await self?.keychain.save(token: authResponse.token, actorName: authResponse.actorName)
-            self?.logger.debug("authResponse saved on keychain.")
-          } else {
-            try? await self?.keychain.deleteAuthResponse()
-            self?.logger.debug("token deleted from keychain.")
+          switch loginStatus {
+            case .signedIn(let authResponse):
+              try? await self?.keychain.save(token: authResponse.token, actorName: authResponse.actorName)
+              self?.logger.debug("authResponse saved on keychain.")
+            case .signedOut:
+              try? await self?.keychain.deleteAuthResponse()
+              self?.logger.debug("token deleted from keychain.")
+            case .uninitialized:
+              break
           }
         }
       }
@@ -81,7 +88,7 @@ final class AuthStore: ObservableObject {
 
     let portalURL = authURL(teamId: teamId)
     let authResponse = try await auth.signIn(portalURL)
-    self.authResponse = authResponse
+    self.loginStatus = .signedIn(authResponse)
   }
 
   func signIn() async throws {
@@ -98,7 +105,7 @@ final class AuthStore: ObservableObject {
   func signOut() {
     logger.trace("\(#function)")
 
-    authResponse = nil
+    loginStatus = .signedOut
   }
 
   static func getAuthBaseURLFromInfoPlist() -> URL {

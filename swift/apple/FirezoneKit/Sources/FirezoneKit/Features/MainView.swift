@@ -18,7 +18,10 @@ final class MainViewModel: ObservableObject {
   private let appStore: AppStore
 
   var authResponse: AuthResponse? {
-    appStore.auth.authResponse
+    switch appStore.auth.loginStatus {
+      case .signedIn(let authResponse): return authResponse
+      default: return nil
+    }
   }
 
   var status: NEVPNStatus {

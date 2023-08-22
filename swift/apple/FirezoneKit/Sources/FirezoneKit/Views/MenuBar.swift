@@ -53,17 +53,19 @@ public final class MenuBar: NSObject {
       Task {
         let tunnel = try await TunnelStore.loadOrCreate()
         self.appStore = AppStore(tunnelStore: TunnelStore(tunnel: tunnel))
+        updateStatusItemIcon()
       }
     }
 
     private func setupObservers() {
-      appStore?.auth.$authResponse
+      appStore?.auth.$loginStatus
         .receive(on: mainQueue)
-        .sink { [weak self] authResponse in
-          if let authResponse {
-            self?.showSignedIn(authResponse.actorName)
-          } else {
-            self?.showSignedOut()
+        .sink { [weak self] loginStatus in
+          switch loginStatus {
+            case .signedIn(let authResponse):
+              self?.showSignedIn(authResponse.actorName)
+            default:
+              self?.showSignedOut()
           }
         }
         .store(in: &cancellables)
@@ -71,17 +73,8 @@ public final class MenuBar: NSObject {
       appStore?.tunnel.$status
         .receive(on: mainQueue)
         .sink { [weak self] status in
-          if status == .connected {
-            self?.connectionMenuItem.title = "Disconnect"
-            self?.statusItem.button?.image = self?.connectedIcon
-          } else {
-            self?.connectionMenuItem.title = "Connect"
-            self?.statusItem.button?.image = self?.disconnectedIcon
-          }
+          self?.updateStatusItemIcon()
           self?.handleMenuVisibilityOrStatusChanged()
-          if status != .connected {
-            self?.setOrderedResources([])
-          }
         }
         .store(in: &cancellables)
 
@@ -95,14 +88,6 @@ public final class MenuBar: NSObject {
     }
 
     private lazy var menu = NSMenu()
-
-    private lazy var connectionMenuItem = createMenuItem(
-      menu,
-      title: "Connect",
-      action: #selector(connectButtonTapped),
-      isHidden: true,
-      target: self
-    )
 
     private lazy var signInMenuItem = createMenuItem(
       menu,
@@ -152,7 +137,6 @@ public final class MenuBar: NSObject {
     }()
 
     private func createMenu() {
-      menu.addItem(connectionMenuItem)
       menu.addItem(signInMenuItem)
       menu.addItem(signOutMenuItem)
       menu.addItem(NSMenuItem.separator())
@@ -208,7 +192,7 @@ public final class MenuBar: NSObject {
         appStore?.tunnel.stop()
       } else {
         Task {
-          if let authResponse = appStore?.auth.authResponse {
+          if case .signedIn(let authResponse) = appStore?.auth.loginStatus {
             do {
               try await appStore?.tunnel.start(authResponse: authResponse)
             } catch {
@@ -247,6 +231,14 @@ public final class MenuBar: NSObject {
 
     private func openSettingsWindow() {
       NSWorkspace.shared.open(URL(string: "firezone://settings")!)
+    }
+
+    private func updateStatusItemIcon() {
+      if self.appStore?.tunnel.status == .connected {
+        self.statusItem.button?.image = self.connectedIcon
+      } else {
+        self.statusItem.button?.image = self.disconnectedIcon
+      }
     }
 
     private func handleMenuVisibilityOrStatusChanged() {

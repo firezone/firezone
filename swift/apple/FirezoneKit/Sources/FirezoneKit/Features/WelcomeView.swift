@@ -59,16 +59,17 @@ final class WelcomeViewModel: ObservableObject {
       destination = .undefinedSettingsAlert(.undefinedSettings)
     }
 
-    appStore.auth.$authResponse
+    appStore.auth.$loginStatus
       .receive(on: mainQueue)
-      .sink(receiveValue: { [weak self] authResponse in
+      .sink(receiveValue: { [weak self] loginStatus in
         guard let self else {
           return
         }
 
-        if authResponse != nil {
+        switch loginStatus {
+        case .signedIn:
           self.state = .authenticated(MainViewModel(appStore: self.appStore))
-        } else {
+        default:
           self.state = .unauthenticated(AuthViewModel())
         }
       })
