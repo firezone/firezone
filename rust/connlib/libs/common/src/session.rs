@@ -24,6 +24,8 @@ use crate::{
 
 pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 
+struct StopRuntime;
+
 // TODO: Not the most tidy trait for a control-plane.
 /// Trait that represents a control-plane.
 #[async_trait]
@@ -50,7 +52,7 @@ pub trait ControlSession<T, CB: Callbacks> {
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session<T, U, V, R, M, CB: Callbacks> {
-    runtime_stopper: tokio::sync::mpsc::Sender<()>,
+    runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
     callbacks: CallbackErrorFacade<CB>,
     _phantom: PhantomData<(T, U, V, R, M)>,
 }
@@ -222,16 +224,18 @@ where
         {
             let callbacks = this.callbacks.clone();
             let default_panic_hook = std::panic::take_hook();
-            let panic_tx = tx.clone();
-            std::panic::set_hook(Box::new(move |info| {
-                let tx = panic_tx.clone();
-                let err = info
-                    .payload()
-                    .downcast_ref::<&str>()
-                    .map(|s| Error::Panic(s.to_string()))
-                    .unwrap_or(Error::PanicNonStringPayload);
-                Self::disconnect_inner(tx, &callbacks, Some(err));
-                default_panic_hook(info);
+            std::panic::set_hook(Box::new({
+                let tx = tx.clone();
+                move |info| {
+                    let tx = tx.clone();
+                    let err = info
+                        .payload()
+                        .downcast_ref::<&str>()
+                        .map(|s| Error::Panic(s.to_string()))
+                        .unwrap_or(Error::PanicNonStringPayload);
+                    Self::disconnect_inner(tx, &callbacks, Some(err));
+                    default_panic_hook(info);
+                }
             }));
         }
 
@@ -256,7 +260,7 @@ where
 
     fn connect_inner(
         runtime: &Runtime,
-        runtime_stopper: tokio::sync::mpsc::Sender<()>,
+        runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
         portal_url: Url,
         token: String,
         callbacks: CallbackErrorFacade<CB>,
@@ -326,7 +330,7 @@ where
     }
 
     fn connect_mock(
-        runtime_stopper: tokio::sync::mpsc::Sender<()>,
+        runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
         callbacks: CallbackErrorFacade<CB>,
     ) {
         std::thread::sleep(Duration::from_secs(1));
@@ -375,7 +379,7 @@ where
     }
 
     fn disconnect_inner(
-        runtime_stopper: tokio::sync::mpsc::Sender<()>,
+        runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
         callbacks: &CallbackErrorFacade<CB>,
         error: Option<Error>,
     ) {
@@ -393,7 +397,7 @@ where
         // if there's no receiver the runtime is already stopped
         // there's an edge case where this is called before the thread is listening for stop threads.
         // but I believe in that case the channel will be in a signaled state achieving the same result
-        if let Err(err) = runtime_stopper.try_send(()) {
+        if let Err(err) = runtime_stopper.try_send(StopRuntime) {
             tracing::error!("Couldn't stop runtime: {err}");
         }
 
