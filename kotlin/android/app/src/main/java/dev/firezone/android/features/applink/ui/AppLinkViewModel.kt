@@ -14,6 +14,7 @@ import dev.firezone.android.features.session.backend.SessionManager
 import dev.firezone.android.tunnel.TunnelLogger
 import dev.firezone.android.tunnel.TunnelManager
 import dev.firezone.android.tunnel.TunnelSession
+import kotlinx.coroutines.flow.collect
 import javax.inject.Inject
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -45,7 +46,7 @@ internal class AppLinkViewModel @Inject constructor(
                             if (token.isNotBlank()) {
                                 // TODO: Don't log auth token
                                 Log.d("AppLinkViewModel", "Found valid auth token in response")
-                                saveTokenUseCase(token)
+                                saveTokenUseCase(token).collect()
                             } else {
                                 Log.d("AppLinkViewModel", "Didn't find auth token in response!")
                             }

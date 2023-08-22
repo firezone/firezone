@@ -37,20 +37,24 @@ impl IfaceDevice {
     }
 
     pub async fn new(fd: Option<i32>) -> Result<Self> {
+        log::debug!("tunnel allocation unimplemented on Android; using provided fd");
         Ok(Self {
             fd: fd.expect("file descriptor must be provided!") as RawFd,
         })
     }
 
     pub fn set_non_blocking(self) -> Result<Self> {
-        // Anrdoid already opens the tun device in non-blocking mode
+        // Anrdoid already opens the tun device in non-blocking mode for us
+        log::debug!("`set_non_blocking` unimplemented on Android");
         Ok(self)
     }
 
     pub async fn mtu(&self) -> Result<usize> {
         // We stick with a hardcoded MTU of 1280 for now. This could be improved by
         // finding the MTU of the underlying physical interface and subtracting 80
-        // from it for the WireGuard overhead.
+        // from it for the WireGuard overhead, but that's a lot of complexity
+        // for little gain.
+        log::debug!("`mtu` unimplemented on Android; using 1280");
         Ok(1280)
     }
 
@@ -71,7 +75,6 @@ impl IfaceDevice {
 }
 
 impl IfaceConfig {
-    #[tracing::instrument(level = "trace", skip(self, callbacks))]
     pub async fn set_iface_config(
         &mut self,
         config: &InterfaceConfig,
@@ -89,7 +92,7 @@ impl IfaceConfig {
     }
 
     pub async fn up(&mut self) -> Result<()> {
-        tracing::error!("`up` unimplemented on Android");
+        log::debug!("`up` unimplemented on Android");
         Ok(())
     }
 }

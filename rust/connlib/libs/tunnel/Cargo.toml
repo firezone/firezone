@@ -27,6 +27,9 @@ pnet_packet = { version = "0.34" }
 # TODO: research replacing for https://github.com/algesten/str0m
 webrtc = { version = "0.8" }
 
+# Needed for Android logging until tracing is fixed
+log = "0.4"
+
 # Linux tunnel dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
 netlink-packet-route = { version = "0.15", default-features = false }
@@ -36,7 +39,6 @@ rtnetlink = { version = "0.12", default-features = false, features = ["tokio_soc
 # Android tunnel dependencies
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.13"
-log = "0.4.20"
 
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]

@@ -26,14 +26,16 @@ internal class SessionManager @Inject constructor(
             Log.d("Connlib", "token: ${config.token}")
 
             if (config.accountId != null && config.token != null) {
+                Log.d("Connlib", "Attempting to establish VPN connection...")
                 buildVpnService().establish()?.let {
+                    Log.d("Connlib", "VPN connection established! Attempting to start connlib session...")
                     sessionPtr = TunnelSession.connect(
                         it.detachFd(),
                         BuildConfig.CONTROL_PLANE_URL,
                         config.token,
                         TunnelCallbacks()
                     )
-                    Log.d("Connlib", "sessionPtr: $sessionPtr")
+                    Log.d("Connlib", "connlib session started! sessionPtr: $sessionPtr")
                     setConnectionStatus(true)
                 } ?: let {
                     Log.d("Connlib", "Failed to build VpnService")
@@ -57,11 +59,19 @@ internal class SessionManager @Inject constructor(
         saveIsConnectedUseCase.sync(value)
     }
 
-    private fun buildVpnService():VpnService.Builder =
+    private fun buildVpnService(): VpnService.Builder =
         TunnelService().Builder().apply {
             // Add a dummy address for now. Needed for the "establish" call to succeed.
-            // onSetInterfaceConfig called later will append to this.
+            // TODO: Remove these in favor of connecting the TunnelSession *without* the fd, and then
+            // returning the fd in the onSetInterfaceConfig callback. This is being worked on by @conectado
             addAddress("100.100.111.1", 32)
+            addAddress("fd00:2021:1111::100:100:111:1", 128)
+
+            // TODO: These are the staging Resources. Remove these in favor of the onUpdateResources callback.
+            addRoute("172.31.93.123", 32)
+            addRoute("172.31.83.10", 32)
+            addRoute("172.31.82.179", 32)
+
             setSession("Firezone VPN")
             setMtu(1280)
         }
