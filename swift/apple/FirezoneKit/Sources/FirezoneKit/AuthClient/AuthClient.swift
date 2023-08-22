@@ -81,12 +81,8 @@ private final class WebAuthenticationSession: NSObject,
           return
         }
 
-        do {
-          let authResponse = try AuthResponse(portalURL: host, token: token, actorName: actorName)
-          continuation.resume(returning: authResponse)
-        } catch {
-          continuation.resume(throwing: AuthClientError.authResponseError(error))
-        }
+        let authResponse = AuthResponse(portalURL: host, token: token, actorName: actorName)
+        continuation.resume(returning: authResponse)
       }
 
       session.presentationContextProvider = self

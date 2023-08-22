@@ -101,7 +101,7 @@ public class Adapter {
     // Shutdown the tunnel
     if case .tunnelReady(let wrappedSession) = self.state {
       logger.debug("Adapter.deinit: Shutting down connlib")
-      _ = wrappedSession.disconnect()
+      wrappedSession.disconnect()
     }
   }
 
@@ -148,15 +148,14 @@ public class Adapter {
         case .tunnelReady(let session):
           self.logger.debug("Adapter.stop: Shutting down connlib")
           self.state = .stoppingTunnel(session: session, onStopped: completionHandler)
-          _ = session.disconnect()
+          session.disconnect()
         case .startingTunnel(let session, let onStarted):
           self.logger.debug("Adapter.stop: Shutting down connlib before tunnel ready")
           self.state = .stoppingTunnel(session: session, onStopped: {
             onStarted?(AdapterError.stoppedByRequestWhileStarting)
             completionHandler()
           })
-          // FIXME: Is it ok to call disconnect() while we haven't got onTunnelReady?
-          _ = session.disconnect()
+          session.disconnect()
         case .stoppingTunnelTemporarily(let session, let onStopped):
           self.state = .stoppingTunnel(session: session, onStopped: {
             onStopped?()
@@ -210,8 +209,7 @@ extension Adapter {
           onStarted?(nil)
           self.packetTunnelProvider?.reasserting = true
           self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
-          // FIXME: Is it ok to call disconnect() while we haven't got onTunnelReady?
-          _ = session.disconnect()
+          session.disconnect()
         }
 
       case .tunnelReady(let session):
@@ -225,7 +223,7 @@ extension Adapter {
           self.logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
           self.packetTunnelProvider?.reasserting = true
           self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
-          _ = session.disconnect()
+          session.disconnect()
         }
 
       case .stoppingTunnelTemporarily:
