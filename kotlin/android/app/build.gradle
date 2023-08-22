@@ -46,6 +46,8 @@ android {
         release {
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
 
+            buildConfigField("String", "TOKEN", "null")
+
             // Release Config
             manifestPlaceholders.hostName = "app.firezone.dev"
             buildConfigField("String", "AUTH_HOST", "\"app.firezone.dev\"")
