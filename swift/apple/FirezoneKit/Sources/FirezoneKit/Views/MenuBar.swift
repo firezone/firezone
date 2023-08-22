@@ -53,6 +53,7 @@ public final class MenuBar: NSObject {
       Task {
         let tunnel = try await TunnelStore.loadOrCreate()
         self.appStore = AppStore(tunnelStore: TunnelStore(tunnel: tunnel))
+        updateStatusItemIcon()
       }
     }
 
@@ -72,11 +73,7 @@ public final class MenuBar: NSObject {
       appStore?.tunnel.$status
         .receive(on: mainQueue)
         .sink { [weak self] status in
-          if status == .connected {
-            self?.statusItem.button?.image = self?.connectedIcon
-          } else {
-            self?.statusItem.button?.image = self?.disconnectedIcon
-          }
+          self?.updateStatusItemIcon()
           self?.handleMenuVisibilityOrStatusChanged()
         }
         .store(in: &cancellables)
@@ -234,6 +231,14 @@ public final class MenuBar: NSObject {
 
     private func openSettingsWindow() {
       NSWorkspace.shared.open(URL(string: "firezone://settings")!)
+    }
+
+    private func updateStatusItemIcon() {
+      if self.appStore?.tunnel.status == .connected {
+        self.statusItem.button?.image = self.connectedIcon
+      } else {
+        self.statusItem.button?.image = self.disconnectedIcon
+      }
     }
 
     private func handleMenuVisibilityOrStatusChanged() {

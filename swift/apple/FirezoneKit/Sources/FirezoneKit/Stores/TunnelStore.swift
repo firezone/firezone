@@ -20,7 +20,7 @@ final class TunnelStore: ObservableObject {
     didSet { setupTunnelObservers() }
   }
 
-  @Published private(set) var status: NEVPNStatus = .invalid {
+  @Published private(set) var status: NEVPNStatus {
     didSet { TunnelStore.logger.info("status changed: \(self.status.description)") }
   }
 
@@ -41,6 +41,7 @@ final class TunnelStore: ObservableObject {
   init(tunnel: NETunnelProviderManager) {
     self.controlPlaneURL = Self.getControlPlaneURLFromInfoPlist()
     self.tunnel = tunnel
+    self.status = tunnel.connection.status
     tunnel.isEnabled = true
     setupTunnelObservers()
   }
