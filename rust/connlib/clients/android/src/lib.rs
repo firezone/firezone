@@ -75,7 +75,7 @@ impl CallbackHandler {
         self.vm
             .attach_current_thread()
             .map_err(CallbackError::AttachCurrentThreadFailed)
-            .and_then(|guard| f(guard))
+            .and_then(f)
     }
 }
 
