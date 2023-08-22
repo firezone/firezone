@@ -9,7 +9,7 @@ use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
     sys::jint,
-    AttachGuard, JNIEnv, JavaVM,
+    JNIEnv, JavaVM,
 };
 use std::net::{Ipv4Addr, Ipv6Addr};
 use thiserror::Error;
@@ -70,10 +70,10 @@ pub enum CallbackError {
 impl CallbackHandler {
     fn env<T>(
         &self,
-        f: impl FnOnce(AttachGuard) -> Result<T, CallbackError>,
+        f: impl FnOnce(JNIEnv) -> Result<T, CallbackError>,
     ) -> Result<T, CallbackError> {
         self.vm
-            .attach_current_thread()
+            .attach_current_thread_as_daemon()
             .map_err(CallbackError::AttachCurrentThreadFailed)
             .and_then(f)
     }
