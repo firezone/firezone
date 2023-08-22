@@ -8,11 +8,11 @@ class TunnelCallbacks {
         Log.d(TunnelCallbacks.TAG, "onUpdateResources: $resourceListJSON")
     }
 
-     fun onSetInterfaceConfig(
+    fun onSetInterfaceConfig(
         tunnelAddressIPv4: String,
         tunnelAddressIPv6: String,
         dnsAddress: String,
-        dnsFallbackStrategy: String
+        dnsFallbackStrategy: String,
     ) {
         Log.d(TunnelCallbacks.TAG, "onSetInterfaceConfig: [IPv4:$tunnelAddressIPv4] [IPv6:$tunnelAddressIPv6] [dns:$dnsAddress] [dnsFallbackStrategy:$dnsFallbackStrategy]")
     }
@@ -31,8 +31,6 @@ class TunnelCallbacks {
 
     fun onAddRoute(cidrAddress: String) {
         Log.d(TunnelCallbacks.TAG, "onAddRoute: $cidrAddress")
-
-
     }
 
     fun onRemoveRoute(cidrAddress: String) {
