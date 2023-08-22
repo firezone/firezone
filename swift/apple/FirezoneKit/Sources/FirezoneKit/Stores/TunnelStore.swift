@@ -67,6 +67,16 @@ final class TunnelStore: ObservableObject {
     // make sure we have latest preferences before starting
     try await tunnel.loadFromPreferences()
 
+    if tunnel.connection.status == .connected || tunnel.connection.status == .connecting {
+      if let (tunnelControlPlaneURLString, tunnelToken) = Self.getTunnelConfigurationParameters(of: tunnel) {
+        if tunnelControlPlaneURLString == self.controlPlaneURL.absoluteString && tunnelToken == authResponse.token {
+          // Already connected / connecting with the required configuration
+          TunnelStore.logger.debug("\(#function): Already connected / connecting. Nothing to do.")
+          return
+        }
+      }
+    }
+
     tunnel.protocolConfiguration = Self.makeProtocolConfiguration(
       controlPlaneURL: self.controlPlaneURL,
       token: authResponse.token
@@ -164,6 +174,19 @@ final class TunnelStore: ObservableObject {
     }
     proto.serverAddress = "Firezone addresses"
     return proto
+  }
+
+  private static func getTunnelConfigurationParameters(of tunnelProvider: NETunnelProviderManager) -> (String, String)? {
+    guard let tunnelProtocol = tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol else {
+      return nil
+    }
+    guard let controlPlaneURLString = tunnelProtocol.providerConfiguration?["controlPlaneURL"] as? String else {
+      return nil
+    }
+    guard let token = tunnelProtocol.providerConfiguration?["token"] as? String else {
+      return nil
+    }
+    return (controlPlaneURLString, token)
   }
 
   private func setupTunnelObservers() {
