@@ -5,6 +5,7 @@ import android.util.Log
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.core.domain.preference.SaveIsConnectedUseCase
+import dev.firezone.android.tunnel.TunnelCallbacks
 import dev.firezone.android.tunnel.TunnelLogger
 import dev.firezone.android.tunnel.TunnelSession
 import dev.firezone.android.tunnel.TunnelManager
@@ -30,7 +31,7 @@ internal class SessionManager @Inject constructor(
                         it.detachFd(),
                         BuildConfig.CONTROL_PLANE_URL,
                         config.token,
-                        callback
+                        TunnelCallbacks()
                     )
                     Log.d("Connlib", "sessionPtr: $sessionPtr")
                     setConnectionStatus(true)
@@ -58,6 +59,9 @@ internal class SessionManager @Inject constructor(
 
     private fun buildVpnService():VpnService.Builder =
         TunnelService().Builder().apply {
+            // Add a dummy address for now. Needed for the "establish" call to succeed.
+            // onSetInterfaceConfig called later will append to this.
+            addAddress("100.100.111.1", 32)
             setSession("Firezone VPN")
             setMtu(1280)
         }

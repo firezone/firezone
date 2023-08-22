@@ -6,10 +6,10 @@
 use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session};
 use ip_network::IpNetwork;
 use jni::{
-    objects::{JClass, JObject, JString, JValue},
+    objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
     sys::jint,
-    JNIEnv, JavaVM,
+    AttachGuard, JNIEnv, JavaVM,
 };
 use std::net::{Ipv4Addr, Ipv6Addr};
 use thiserror::Error;
@@ -23,7 +23,7 @@ pub extern "system" fn Java_dev_firezone_android_tunnel_TunnelLogger_init(_: JNI
     android_logger::init_once(
         android_logger::Config::default()
             .with_max_level(if cfg!(debug_assertions) {
-                log::LevelFilter::Trace
+                log::LevelFilter::Debug
             } else {
                 log::LevelFilter::Warn
             })
@@ -33,7 +33,7 @@ pub extern "system" fn Java_dev_firezone_android_tunnel_TunnelLogger_init(_: JNI
 
 pub struct CallbackHandler {
     vm: JavaVM,
-    callback_handler: JObject<'static>,
+    callback_handler: GlobalRef,
 }
 
 impl Clone for CallbackHandler {
@@ -49,7 +49,9 @@ impl Clone for CallbackHandler {
 
 #[derive(Debug, Error)]
 pub enum CallbackError {
-    #[error("Failed to attach current thread as daemon: {0}")]
+    #[error("Failed to obtain a global reference: {0}")]
+    NewGlobalRefFailed(#[source] jni::errors::Error),
+    #[error("Failed to attach current thread: {0}")]
     AttachCurrentThreadFailed(#[source] jni::errors::Error),
     #[error("Failed to serialize JSON: {0}")]
     SerializeFailed(#[from] serde_json::Error),
@@ -68,18 +70,18 @@ pub enum CallbackError {
 impl CallbackHandler {
     fn env<T>(
         &self,
-        f: impl FnOnce(JNIEnv) -> Result<T, CallbackError>,
+        f: impl FnOnce(AttachGuard) -> Result<T, CallbackError>,
     ) -> Result<T, CallbackError> {
         self.vm
-            .attach_current_thread_as_daemon()
+            .attach_current_thread()
             .map_err(CallbackError::AttachCurrentThreadFailed)
-            .and_then(f)
+            .and_then(|guard| f(guard))
     }
 }
 
 fn call_method(
     env: &mut JNIEnv,
-    this: &JObject,
+    this: &GlobalRef,
     name: &'static str,
     sig: &str,
     args: &[JValue],
@@ -286,7 +288,7 @@ fn connect(
     fd: jint,
     portal_url: JString,
     portal_token: JString,
-    callback_handler: JObject<'static>,
+    callback_handler: GlobalRef,
 ) -> Result<Session<CallbackHandler>, ConnectError> {
     let portal_url = String::from(env.get_string(&portal_url).map_err(|source| {
         ConnectError::StringInvalid {
@@ -309,7 +311,7 @@ fn connect(
         Some(fd),
         portal_url.as_str(),
         portal_token,
-        callback_handler.clone(),
+        callback_handler,
     )
     .map_err(Into::into)
 }
@@ -318,14 +320,19 @@ fn connect(
 /// Pointers must be valid
 #[allow(non_snake_case)]
 #[no_mangle]
-pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_connect(
-    mut env: JNIEnv<'static>,
+pub extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_connect(
+    mut env: JNIEnv,
     _class: JClass,
     fd: jint,
     portal_url: JString,
     portal_token: JString,
-    callback_handler: JObject<'static>,
+    callback_handler: JObject,
 ) -> *const Session<CallbackHandler> {
+    let callback_handler = env
+        .new_global_ref(callback_handler)
+        .map_err(CallbackError::NewGlobalRefFailed)
+        .unwrap();
+
     if let Some(result) = catch_and_throw(&mut env, |env| {
         connect(env, fd, portal_url, portal_token, callback_handler)
     }) {
