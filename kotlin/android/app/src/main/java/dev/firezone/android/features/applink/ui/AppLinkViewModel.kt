@@ -39,12 +39,12 @@ internal class AppLinkViewModel @Inject constructor(
                         if (validateCsrfTokenUseCase(csrfToken).firstOrNull() == true) {
                             Log.d("AppLinkViewModel", "Valid CSRF token. Continuing to save token...")
                         } else {
-                            Log.d("AppLinkViewModel", "Invalid CSRF token ${csrfToken} !! Continuing to save token anyway...")
+                            Log.d("AppLinkViewModel", "Invalid CSRF token! Continuing to save token anyway...")
                         }
                         intent.data?.getQueryParameter(QUERY_CLIENT_AUTH_TOKEN)?.let { token ->
                             if (token.isNotBlank()) {
                                 // TODO: Don't log auth token
-                                Log.d("AppLinkViewModel", "Found auth token: $token")
+                                Log.d("AppLinkViewModel", "Found valid auth token in response")
                                 saveTokenUseCase(token)
                             } else {
                                 Log.d("AppLinkViewModel", "Didn't find auth token in response!")

@@ -1725,6 +1725,7 @@ dependencies = [
  "futures",
  "futures-util",
  "ip_network",
+ "log",
  "os_info",
  "parking_lot",
  "rand",
@@ -2154,6 +2155,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.21.2",
  "futures",
+ "log",
  "rand_core",
  "serde",
  "serde_json",

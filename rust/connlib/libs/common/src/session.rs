@@ -281,7 +281,11 @@ where
         runtime.spawn(async move {
             let private_key = StaticSecret::random_from_rng(OsRng);
             let self_id = uuid::Uuid::new_v4();
+            log::warn!("Generated self id: {}", self_id);
             let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
+            log::warn!("Generated name suffix: {}", name_suffix);
+
+            log::debug!("Connecting to url {} with token {}", portal_url, token);
 
             let connect_url = fatal_error!(
                 get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix),
@@ -299,8 +303,10 @@ where
                 let control_plane_sender = control_plane_sender.clone();
                 async move {
                     tracing::trace!("Received message: {msg:?}");
+                    log::warn!("Received message: {msg:?}");
                     if let Err(e) = control_plane_sender.send(msg).await {
                         tracing::warn!("Received a message after handler already closed: {e}. Probably message received during session clean up.");
+                        log::warn!("Received a message after handler already closed: {e}. Probably message received during session clean up.");
                     }
                 }
             });
@@ -325,6 +331,7 @@ where
                     }
                     if let Some(t) = exponential_backoff.next_backoff() {
                         tracing::warn!("Error connecting to portal, retrying in {} seconds", t.as_secs());
+                        log::debug!("Error connecting to portal, retrying in {} seconds", t.as_secs());
                         let _ = callbacks.on_error(&result.err().unwrap_or(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed)));
                         tokio::time::sleep(t).await;
                     } else {

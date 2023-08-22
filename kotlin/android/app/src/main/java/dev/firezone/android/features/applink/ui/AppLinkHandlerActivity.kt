@@ -1,5 +1,6 @@
 package dev.firezone.android.features.applink.ui
 
+import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
@@ -8,6 +9,7 @@ import androidx.appcompat.app.AlertDialog
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.R
+import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.databinding.ActivityAppLinkHandlerBinding
 import dev.firezone.android.features.session.backend.SessionManager
 import dev.firezone.android.features.splash.ui.SplashFragmentDirections
@@ -36,7 +38,9 @@ class AppLinkHandlerActivity : AppCompatActivity(R.layout.activity_app_link_hand
                     // TODO: Continue starting the session showing sessionFragment
                     Log.d("AppLinkHandlerActivity", "AuthFlowComplete")
 
-
+                    val intent = Intent(this@AppLinkHandlerActivity, MainActivity::class.java)
+                    this@AppLinkHandlerActivity.startActivity(intent)
+                    this@AppLinkHandlerActivity.finish()
                 }
                 AppLinkViewModel.ViewAction.ShowError -> showError()
                 else -> {
