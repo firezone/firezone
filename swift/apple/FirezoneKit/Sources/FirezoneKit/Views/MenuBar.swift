@@ -73,10 +73,8 @@ public final class MenuBar: NSObject {
         .receive(on: mainQueue)
         .sink { [weak self] status in
           if status == .connected {
-            self?.connectionMenuItem.title = "Disconnect"
             self?.statusItem.button?.image = self?.connectedIcon
           } else {
-            self?.connectionMenuItem.title = "Connect"
             self?.statusItem.button?.image = self?.disconnectedIcon
           }
           self?.handleMenuVisibilityOrStatusChanged()
@@ -93,14 +91,6 @@ public final class MenuBar: NSObject {
     }
 
     private lazy var menu = NSMenu()
-
-    private lazy var connectionMenuItem = createMenuItem(
-      menu,
-      title: "Connect",
-      action: #selector(connectButtonTapped),
-      isHidden: true,
-      target: self
-    )
 
     private lazy var signInMenuItem = createMenuItem(
       menu,
@@ -150,7 +140,6 @@ public final class MenuBar: NSObject {
     }()
 
     private func createMenu() {
-      menu.addItem(connectionMenuItem)
       menu.addItem(signInMenuItem)
       menu.addItem(signOutMenuItem)
       menu.addItem(NSMenuItem.separator())
