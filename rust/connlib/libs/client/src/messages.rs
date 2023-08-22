@@ -164,7 +164,7 @@ mod test {
             IngressMessages::Init(InitClient {
                 interface: Interface {
                     ipv4: "100.72.112.111".parse().unwrap(),
-                    ipv6: "fd00:2011:1111::13:efb9".parse().unwrap(),
+                    ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
                     upstream_dns: vec![],
                 },
                 resources: vec![
@@ -177,7 +177,7 @@ mod test {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
                         address: "gitlab.mycorp.com".to_string(),
                         ipv4: "100.126.44.50".parse().unwrap(),
-                        ipv6: "fd00:2011:1111::e:7758".parse().unwrap(),
+                        ipv6: "fd00:2021:1111::e:7758".parse().unwrap(),
                         name: "gitlab.mycorp.com".to_string(),
                     }),
                 ],
@@ -189,7 +189,7 @@ mod test {
             "payload": {
                 "interface": {
                     "ipv4": "100.72.112.111",
-                    "ipv6": "fd00:2011:1111::13:efb9",
+                    "ipv6": "fd00:2021:1111::13:efb9",
                     "upstream_dns": []
                 },
                 "resources": [
@@ -203,7 +203,7 @@ mod test {
                         "address": "gitlab.mycorp.com",
                         "id": "03000143-e25e-45c7-aafb-144990e57dcd",
                         "ipv4": "100.126.44.50",
-                        "ipv6": "fd00:2011:1111::e:7758",
+                        "ipv6": "fd00:2021:1111::e:7758",
                         "name": "gitlab.mycorp.com",
                         "type": "dns"
                     }
