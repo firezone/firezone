@@ -13,3 +13,4 @@ tracing-subscriber = { version = "0.3" }
 tracing = { version = "0.1" }
 anyhow = { version = "1.0" }
 clap = { version = "4.3", features = ["derive"] }
+ctrlc  = "3.4"

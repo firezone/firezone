@@ -170,9 +170,8 @@ services:
         ipv4_address: 172.28.0.105
       resources:
 
-  resource:
-    image: alpine:3.18
-    command: tail -f /dev/null
+  httpbin:
+    image: kennethreitz/httpbin
     networks:
       resources:
         ipv4_address: 172.20.0.100

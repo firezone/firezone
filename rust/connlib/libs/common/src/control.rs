@@ -91,12 +91,15 @@ where
     ///
     // TODO: this is not very elegant but it was the easiest way to do reset the exponential backoff for now
     /// Furthermore, it calls the given callback once it connects to the portal.
-    #[tracing::instrument(level = "trace", skip(self, cb))]
-    pub async fn start(&mut self, topics: Vec<String>, cb: impl FnOnce()) -> Result<()> {
+    #[tracing::instrument(level = "trace", skip(self, after_connection_ends))]
+    pub async fn start(
+        &mut self,
+        topics: Vec<String>,
+        after_connection_ends: impl FnOnce(),
+    ) -> Result<()> {
         tracing::trace!("Trying to connect to portal URL {}...", self.uri);
 
         let (ws_stream, _) = connect_async(make_request(&self.uri)?).await?;
-        cb();
 
         tracing::trace!("Successfully connected to portal");
 
@@ -156,6 +159,9 @@ where
             .factor_first()
             .0;
         phoenix_heartbeat.abort();
+
+        after_connection_ends();
+
         result?;
 
         Ok(())
