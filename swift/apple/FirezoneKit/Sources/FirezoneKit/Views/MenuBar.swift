@@ -29,8 +29,8 @@ public final class MenuBar: NSObject {
     private var isMenuVisible = false {
       didSet { handleMenuVisibilityOrStatusChanged() }
     }
-    private lazy var disconnectedIcon = NSImage(named: "MenuBarIconDisconnected")
-    private lazy var connectedIcon = NSImage(named: "MenuBarIconConnected")
+    private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
+    private lazy var signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
 
     let settingsViewModel: SettingsViewModel
 
@@ -47,7 +47,7 @@ public final class MenuBar: NSObject {
       createMenu()
 
       if let button = statusItem.button {
-        button.image = disconnectedIcon
+        button.image = signedOutIcon
       }
 
       Task {
@@ -235,9 +235,9 @@ public final class MenuBar: NSObject {
 
     private func updateStatusItemIcon() {
       if self.appStore?.tunnel.status == .connected {
-        self.statusItem.button?.image = self.connectedIcon
+        self.statusItem.button?.image = self.signedInConnectedIcon
       } else {
-        self.statusItem.button?.image = self.disconnectedIcon
+        self.statusItem.button?.image = self.signedOutIcon
       }
     }
 
