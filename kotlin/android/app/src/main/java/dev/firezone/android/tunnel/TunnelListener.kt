@@ -1,6 +1,6 @@
-package dev.firezone.connlib
+package dev.firezone.android.tunnel
 
-interface SessionCallback {
+interface TunnelListener {
 
     fun onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String, dnsFallbackStrategy: String)
 

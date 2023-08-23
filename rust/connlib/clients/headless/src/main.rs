@@ -78,7 +78,7 @@ fn main() -> Result<()> {
     // TODO: allow passing as arg vars
     let url = parse_env_var::<Url>(URL_ENV_VAR)?;
     let secret = parse_env_var::<String>(SECRET_ENV_VAR)?;
-    let mut session = Session::connect(url, secret, CallbackHandler).unwrap();
+    let mut session = Session::connect(None, url, secret, CallbackHandler).unwrap();
     tracing::info!("Started new session");
 
     block_on_ctrl_c();

@@ -1,4 +1,4 @@
-package dev.firezone.android.features.onboarding.ui
+package dev.firezone.android.features.settings.ui
 
 import android.content.Intent
 import android.os.Bundle
@@ -7,27 +7,28 @@ import android.view.inputmethod.EditorInfo
 import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.navigation.fragment.findNavController
 import dev.firezone.android.R
-import dev.firezone.android.databinding.FragmentOnboardingBinding
+import dev.firezone.android.databinding.FragmentSettingsBinding
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.features.auth.ui.AuthActivity
 
 @AndroidEntryPoint
-internal class OnboardingFragment : Fragment(R.layout.fragment_onboarding) {
+internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
 
-    private lateinit var binding: FragmentOnboardingBinding
-    private val viewModel: OnboardingViewModel by viewModels()
+    private lateinit var binding: FragmentSettingsBinding
+    private val viewModel: SettingsViewModel by viewModels()
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        binding = FragmentOnboardingBinding.bind(view)
+        binding = FragmentSettingsBinding.bind(view)
 
         setupViews()
         setupStateObservers()
         setupActionObservers()
         setupButtonListener()
 
-        viewModel.getPortalUrl()
+        viewModel.getAccountId()
     }
 
     private fun setupStateObservers() {
@@ -41,13 +42,10 @@ internal class OnboardingFragment : Fragment(R.layout.fragment_onboarding) {
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
             when (action) {
-                OnboardingViewModel.ViewAction.NavigateToSignInFragment -> startActivity(
-                    Intent(
-                        requireContext(),
-                        AuthActivity::class.java
-                    )
+                is SettingsViewModel.ViewAction.NavigateToSignInFragment -> findNavController().navigate(
+                    R.id.signInFragment
                 )
-                is OnboardingViewModel.ViewAction.FillPortalUrl -> {
+                is SettingsViewModel.ViewAction.FillAccountId -> {
                     binding.etInput.apply {
                         setText(action.value)
                         isCursorVisible = false
@@ -59,7 +57,7 @@ internal class OnboardingFragment : Fragment(R.layout.fragment_onboarding) {
 
     private fun setupViews() {
         binding.ilUrlInput.apply {
-            prefixText = "${BuildConfig.AUTH_SCHEME}://${BuildConfig.AUTH_HOST}:${BuildConfig.AUTH_PORT}/"
+            prefixText = SettingsViewModel.AUTH_URL
         }
 
         binding.etInput.apply {
@@ -72,7 +70,7 @@ internal class OnboardingFragment : Fragment(R.layout.fragment_onboarding) {
         }
 
         binding.btLogin.setOnClickListener {
-            viewModel.onSaveOnboardingCompleted()
+            viewModel.onSaveSettingsCompleted()
         }
     }
 

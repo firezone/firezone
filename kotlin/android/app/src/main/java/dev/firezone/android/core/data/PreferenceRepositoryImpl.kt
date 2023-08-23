@@ -14,29 +14,29 @@ internal class PreferenceRepositoryImpl @Inject constructor(
 ) : PreferenceRepository {
 
     override fun getConfigSync(): Config = Config(
-        portalUrl = sharedPreferences.getString(PORTAL_URL_KEY, null),
+        accountId = sharedPreferences.getString(ACCOUNT_ID_KEY, null),
         isConnected = sharedPreferences.getBoolean(IS_CONNECTED_KEY, false),
-        jwt = sharedPreferences.getString(JWT_KEY, null),
+        token = sharedPreferences.getString(TOKEN_KEY, null),
     )
 
     override fun getConfig(): Flow<Config> = flow {
         emit(getConfigSync())
     }.flowOn(coroutineDispatcher)
 
-    override fun savePortalUrl(value: String): Flow<Unit> = flow {
+    override fun saveAccountId(value: String): Flow<Unit> = flow {
         emit(
             sharedPreferences
                 .edit()
-                .putString(PORTAL_URL_KEY, value)
+                .putString(ACCOUNT_ID_KEY, value)
                 .apply()
         )
     }.flowOn(coroutineDispatcher)
 
-    override fun saveJWT(value: String): Flow<Unit> = flow {
+    override fun saveToken(value: String): Flow<Unit> = flow {
         emit(
             sharedPreferences
                 .edit()
-                .putString(JWT_KEY, value)
+                .putString(TOKEN_KEY, value)
                 .apply()
         )
     }.flowOn(coroutineDispatcher)
@@ -60,9 +60,9 @@ internal class PreferenceRepositoryImpl @Inject constructor(
     }.flowOn(coroutineDispatcher)
 
     companion object {
-        private const val PORTAL_URL_KEY = "portalUrl"
+        private const val ACCOUNT_ID_KEY = "accountId"
         private const val IS_CONNECTED_KEY = "isConnected"
-        private const val JWT_KEY = "jwt"
+        private const val TOKEN_KEY = "token"
         private const val CSRF_KEY = "csrf"
     }
 }
