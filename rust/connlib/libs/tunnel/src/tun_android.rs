@@ -36,7 +36,7 @@ impl IfaceDevice {
         }
     }
 
-    pub async unsafe fn new(fd: Option<i32>) -> Result<Self> {
+    pub async fn new(fd: Option<i32>) -> Result<Self> {
         log::debug!("tunnel allocation unimplemented on Android; using provided fd");
         Ok(Self {
             fd: fd.expect("file descriptor must be provided!") as RawFd,
