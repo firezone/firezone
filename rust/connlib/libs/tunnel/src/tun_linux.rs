@@ -78,7 +78,7 @@ impl IfaceDevice {
         }
     }
 
-    pub async fn new() -> Result<IfaceDevice> {
+    pub async fn new(_fd: Option<i32>) -> Result<IfaceDevice> {
         debug_assert!(IFACE_NAME.as_bytes().len() < IFNAMSIZ);
 
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {

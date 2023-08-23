@@ -81,12 +81,6 @@ if config_env() == :prod do
     cookie_signing_salt: compile_config!(:cookie_signing_salt),
     cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
 
-  config :web, Web.Auth,
-    platform_redirect_urls: %{
-      "apple" => "firezone://handle_client_auth_callback",
-      "android" => "#{external_url_scheme}://#{external_url_host}/handle_client_auth_callback"
-    }
-
   ###############################
   ##### API #####################
   ###############################

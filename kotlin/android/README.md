@@ -15,7 +15,7 @@ ruby server.rb
 1. Add the following to a `./local.properties` file:
 
 ```gradle
-sdk.dir=/path/to/your/ANROID_HOME
+sdk.dir=/path/to/your/ANDROID_HOME
 ```
 
 Replace `/path/to/your/ANDROID_HOME` with the path to your locally installed

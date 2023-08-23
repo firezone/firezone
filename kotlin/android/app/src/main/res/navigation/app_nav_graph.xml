@@ -8,11 +8,11 @@
     <fragment
         android:id="@+id/splashFragment"
         android:name="dev.firezone.android.features.splash.ui.SplashFragment"
-        tools:layout="@layout/fragment_onboarding">
+        tools:layout="@layout/fragment_splash">
 
         <action
-            android:id="@+id/navigateToOnboardingFragment"
-            app:destination="@id/onboardingFragment"
+            android:id="@+id/navigateToSettingsFragment"
+            app:destination="@id/settingsFragment"
             app:enterAnim="@anim/fade_in"
             app:exitAnim="@anim/fade_out"
             app:popEnterAnim="@anim/fade_in"
@@ -37,9 +37,9 @@
     </fragment>
 
     <fragment
-        android:id="@+id/onboardingFragment"
-        android:name="dev.firezone.android.features.onboarding.ui.OnboardingFragment"
-        tools:layout="@layout/fragment_onboarding">
+        android:id="@+id/settingsFragment"
+        android:name="dev.firezone.android.features.settings.ui.SettingsFragment"
+        tools:layout="@layout/fragment_settings">
 
         <action
             android:id="@+id/navigateToSignInFragment"
@@ -64,8 +64,8 @@
             app:popExitAnim="@anim/fade_out" />
 
         <action
-            android:id="@+id/navigateToOnboardingFragment"
-            app:destination="@id/onboardingFragment"
+            android:id="@+id/navigateToSettingsFragment"
+            app:destination="@id/settingsFragment"
             app:enterAnim="@anim/fade_in"
             app:exitAnim="@anim/fade_out"
             app:popEnterAnim="@anim/fade_in"

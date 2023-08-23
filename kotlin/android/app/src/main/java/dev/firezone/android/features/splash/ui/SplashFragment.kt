@@ -35,8 +35,8 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
                 SplashViewModel.ViewAction.NavigateToSignInFragment -> findNavController().navigate(
                     R.id.signInFragment
                 )
-                SplashViewModel.ViewAction.NavigateToOnboardingFragment -> findNavController().navigate(
-                    R.id.onboardingFragment
+                SplashViewModel.ViewAction.NavigateToSettingsFragment -> findNavController().navigate(
+                    R.id.settingsFragment
                 )
                 SplashViewModel.ViewAction.NavigateToSessionFragment -> findNavController().navigate(
                     R.id.sessionFragment

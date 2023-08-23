@@ -8,9 +8,9 @@ internal interface PreferenceRepository {
 
     fun getConfig(): Flow<Config>
 
-    fun savePortalUrl(value: String): Flow<Unit>
+    fun saveAccountId(value: String): Flow<Unit>
 
-    fun saveJWT(value: String): Flow<Unit>
+    fun saveToken(value: String): Flow<Unit>
 
     fun saveIsConnectedSync(value: Boolean)
 

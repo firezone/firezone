@@ -73,6 +73,7 @@ mod tun;
 #[path = "tun_linux.rs"]
 mod tun;
 
+// TODO: Android and linux are nearly identical; use a common tunnel module?
 #[cfg(target_os = "android")]
 #[path = "tun_android.rs"]
 mod tun;
@@ -169,6 +170,7 @@ where
     /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
     #[tracing::instrument(level = "trace", skip(private_key, control_signaler, callbacks))]
     pub async fn new(
+        fd: Option<i32>,
         private_key: StaticSecret,
         control_signaler: C,
         callbacks: CB,
@@ -177,7 +179,7 @@ where
         let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
         let peers_by_ip = RwLock::new(IpNetworkTable::new());
         let next_index = Default::default();
-        let (iface_config, device_channel) = create_iface().await?;
+        let (iface_config, device_channel) = create_iface(fd).await?;
         let iface_config = tokio::sync::Mutex::new(iface_config);
         let device_channel = Arc::new(device_channel);
         let peer_connections = Default::default();
@@ -504,6 +506,9 @@ where
                     // found some comments saying that a single read syscall represents a single packet but no docs on that
                     // See https://stackoverflow.com/questions/18461365/how-to-read-packet-by-packet-from-linux-tun-tap
                     match dev.device_channel.mtu().await {
+                        // XXX: Do we need to fetch the mtu every time? In most clients it'll
+                        // be hardcoded to 1280, and if not, it'll only change before packets start
+                        // to flow.
                         Ok(mtu) => match dev.device_channel.read(&mut src[..mtu]).await {
                             Ok(res) => res,
                             Err(err) => {

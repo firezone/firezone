@@ -153,6 +153,7 @@ impl WrappedSession {
     ) -> Result<Self, String> {
         init_logging();
         Session::connect(
+            None,
             portal_url.as_str(),
             token,
             CallbackHandler(callback_handler.into()),

@@ -22,7 +22,7 @@ internal class SessionFragment : Fragment(R.layout.fragment_session) {
 
         setupButtonListeners()
         setupActionObservers()
-        Log.d("SessionViewModel", "Starting session...")
+        Log.d("SessionFragment", "Starting session...")
         viewModel.startSession()
     }
 

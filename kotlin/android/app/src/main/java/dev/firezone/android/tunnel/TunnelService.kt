@@ -1,19 +1,23 @@
-package dev.firezone.connlib
+package dev.firezone.android.tunnel
+
+import android.net.VpnService
 import android.util.Log
 
-class VpnService : android.net.VpnService() {
+class TunnelService: VpnService() {
     override fun onCreate() {
         super.onCreate()
-        Log.d("Connlib", "VpnService.onCreate")
+        Log.d("FirezoneVpnService", "onCreate")
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d("Connlib", "VpnService.onDestroy")
+        Log.d("FirezoneVpnService", "onDestroy")
     }
 
     override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
-        Log.d("Connlib", "VpnService.onStartCommand")
+        Log.d("FirezoneVpnService", "onStartCommand")
         return super.onStartCommand(intent, flags, startId)
     }
+
+
 }

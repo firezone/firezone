@@ -47,7 +47,7 @@
             android:id="@+id/etInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/onboarding_fragment_input_hint"
+            android:hint="@string/settings_fragment_input_hint"
             android:importantForAutofill="no"
             android:inputType="text" />
 
@@ -58,7 +58,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:enabled="false"
-        android:text="@string/onboarding_fragment_button_text"
+        android:text="@string/settings_fragment_button_text"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
