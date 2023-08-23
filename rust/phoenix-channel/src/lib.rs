@@ -71,7 +71,6 @@ where
     /// Additionally, you must already provide any query parameters required for authentication.
     pub async fn connect(uri: Url, user_agent: String) -> Result<Self, Error> {
         tracing::trace!("Trying to connect to the portal...");
-        log::debug!("Connecting to portal at {}", uri);
 
         let (stream, _) = connect_async(make_request(&uri, user_agent)?).await?;
 
