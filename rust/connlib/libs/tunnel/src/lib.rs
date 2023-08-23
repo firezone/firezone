@@ -506,6 +506,9 @@ where
                     // found some comments saying that a single read syscall represents a single packet but no docs on that
                     // See https://stackoverflow.com/questions/18461365/how-to-read-packet-by-packet-from-linux-tun-tap
                     match dev.device_channel.mtu().await {
+                        // XXX: Do we need to fetch the mtu every time? In most clients it'll
+                        // be hardcoded to 1280, and if not, it'll only change before packets start
+                        // to flow.
                         Ok(mtu) => match dev.device_channel.read(&mut src[..mtu]).await {
                             Ok(res) => res,
                             Err(err) => {
