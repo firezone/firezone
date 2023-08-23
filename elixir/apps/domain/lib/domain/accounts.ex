@@ -65,7 +65,7 @@ defmodule Domain.Accounts do
   def generate_unique_slug do
     slug_candidate = Domain.NameGenerator.generate_slug()
 
-    if Account.Query.by_slug(slug_candidate) |> Repo.one() do
+    if Account.Query.by_slug(slug_candidate) |> Repo.exists?() do
       generate_unique_slug()
     else
       slug_candidate

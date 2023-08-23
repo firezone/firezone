@@ -45,7 +45,7 @@ defmodule Domain.Accounts.Account.Changeset do
     )
     |> validate_change(:slug, fn field, slug ->
       if valid_uuid?(slug) do
-        [{field, "can not be a valid UUID"}]
+        [{field, "cannot be a valid UUID"}]
       else
         []
       end

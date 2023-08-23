@@ -153,6 +153,12 @@ defmodule Web.SignUp do
           Create Account
         </.button>
       </:actions>
+      <p class="text-xs text-center">
+        By signing up you agree to our <.link
+          href="https://www.firezone.dev/terms"
+          class="text-blue-600 dark:text-blue-500 hover:underline"
+        >Terms of Use</.link>.
+      </p>
     </.simple_form>
     """
   end
