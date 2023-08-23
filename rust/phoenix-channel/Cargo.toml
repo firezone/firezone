@@ -16,4 +16,3 @@ url = "2.4.0"
 serde_json = "1.0.104"
 thiserror = "1.0.47"
 tokio = { version = "1.28.2", features = ["net", "time"] }
-log = "0.4"
