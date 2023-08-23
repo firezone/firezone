@@ -45,10 +45,10 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.Connect do
         |> authorize_conn(identity)
         |> assign(:account, account)
         |> get(
-          ~p"/#{account.id}/settings/identity_providers/openid_connect/#{provider_id}/redirect"
+          ~p"/#{account}/settings/identity_providers/openid_connect/#{provider_id}/redirect"
         )
 
-      assert redirected_to(conn) == "/#{account.id}/settings/identity_providers"
+      assert redirected_to(conn) == ~p"/#{account}/settings/identity_providers"
       assert flash(conn, :error) == "Provider does not exist."
     end
 
@@ -74,7 +74,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.Connect do
 
       callback_url =
         url(
-          ~p"/#{account.id}/settings/identity_providers/openid_connect/#{provider.id}/handle_callback"
+          ~p"/#{account}/settings/identity_providers/openid_connect/#{provider.id}/handle_callback"
         )
 
       {state, verifier} = conn.cookies["fz_auth_state_#{provider.id}"] |> :erlang.binary_to_term()

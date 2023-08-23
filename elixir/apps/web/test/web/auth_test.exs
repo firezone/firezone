@@ -169,7 +169,7 @@ defmodule Web.AuthTest do
 
   describe "ensure_authenticated/2" do
     setup context do
-      %{conn: %{context.conn | path_params: %{"account_id_or_slug" => context.account.id}}}
+      %{conn: %{context.conn | path_params: %{"account_id_or_slug" => context.account.slug}}}
     end
 
     test "redirects if user is not authenticated", %{account: account, conn: conn} do
@@ -342,7 +342,7 @@ defmodule Web.AuthTest do
     } do
       session_token = "invalid_token"
       session = conn |> put_session(:session_token, session_token) |> get_session()
-      params = %{"account_id_or_slug" => subject.account.id}
+      params = %{"account_id_or_slug" => subject.account.slug}
 
       assert {:halt, updated_socket} =
                on_mount(:ensure_authenticated, params, session, socket)
@@ -358,7 +358,7 @@ defmodule Web.AuthTest do
       admin_subject: subject
     } do
       session = conn |> get_session()
-      params = %{"account_id_or_slug" => subject.account.id}
+      params = %{"account_id_or_slug" => subject.account.slug}
 
       assert {:halt, updated_socket} =
                on_mount(:ensure_authenticated, params, session, socket)

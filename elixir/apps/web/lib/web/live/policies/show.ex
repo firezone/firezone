@@ -144,11 +144,20 @@ defmodule Web.Policies.Show do
         Danger zone
       </:title>
       <:actions>
-        <.delete_button>
+        <.delete_button phx-click="delete" phx-value-id={@policy.id}>
           Delete Policy
         </.delete_button>
       </:actions>
     </.header>
     """
+  end
+
+  def handle_event("delete", %{"id" => id}, socket) do
+    with {:ok, policy} <- Policies.fetch_policy_by_id(id, socket.assigns.subject) do
+      {:ok, _} = Policies.delete_policy(policy, socket.assigns.subject)
+      {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/policies")}
+    else
+      {:error, _} -> {:noreply, socket}
+    end
   end
 end
