@@ -49,8 +49,6 @@ impl Clone for CallbackHandler {
 
 #[derive(Debug, Error)]
 pub enum CallbackError {
-    #[error("Failed to obtain a global reference: {0}")]
-    NewGlobalRefFailed(#[source] jni::errors::Error),
     #[error("Failed to attach current thread: {0}")]
     AttachCurrentThreadFailed(#[source] jni::errors::Error),
     #[error("Failed to serialize JSON: {0}")]
@@ -81,7 +79,7 @@ impl CallbackHandler {
 
 fn call_method(
     env: &mut JNIEnv,
-    this: &GlobalRef,
+    this: &JObject,
     name: &'static str,
     sig: &str,
     args: &[JValue],
@@ -318,9 +316,10 @@ fn connect(
 
 /// # Safety
 /// Pointers must be valid
+/// fd must be a valid file descriptor
 #[allow(non_snake_case)]
 #[no_mangle]
-pub extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_connect(
+pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_connect(
     mut env: JNIEnv,
     _class: JClass,
     fd: jint,
@@ -328,10 +327,7 @@ pub extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_connect(
     portal_token: JString,
     callback_handler: JObject,
 ) -> *const Session<CallbackHandler> {
-    let callback_handler = env
-        .new_global_ref(callback_handler)
-        .map_err(CallbackError::NewGlobalRefFailed)
-        .unwrap();
+    let Ok(callback_handler) = env.new_global_ref(callback_handler) else { return std::ptr::null() };
 
     if let Some(result) = catch_and_throw(&mut env, |env| {
         connect(env, fd, portal_url, portal_token, callback_handler)
