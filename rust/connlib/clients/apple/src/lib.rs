@@ -6,6 +6,7 @@ use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session};
 use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
+    os::fd::RawFd,
     sync::Arc,
 };
 
@@ -86,13 +87,13 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<RawFd, Self::Error> {
         self.0.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
             dns_address.to_string(),
         );
-        Ok(())
+        Ok(-1)
     }
 
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
