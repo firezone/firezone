@@ -269,6 +269,10 @@ defmodule FzWall.CLI.Helpers.Nft do
     "#{standardized_inet(ip)}"
   end
 
+  def get_elem(ip, proto, {:ok, port}) do
+    get_elem(ip, proto, port)
+  end
+
   def get_elem(ip, proto, ports) do
     "#{standardized_inet(ip)} . #{proto} . #{ports}"
   end
