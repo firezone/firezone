@@ -1,8 +1,8 @@
 use super::InterfaceConfig;
 use ip_network::IpNetwork;
 use libc::{
-    close, ioctl, read, sockaddr, sockaddr_in, socket, write, AF_INET, IFNAMSIZ, IPPROTO_IP,
-    SIOCGIFMTU, SOCK_STREAM,
+    close, ioctl, read, sockaddr, sockaddr_in, write, AF_INET, IFNAMSIZ, IPPROTO_IP, SIOCGIFMTU,
+    SOCK_STREAM,
 };
 use libs_common::{CallbackErrorFacade, Callbacks, Error, Result, DNS_SENTINEL};
 use std::{
@@ -11,6 +11,8 @@ use std::{
     os::fd::{AsRawFd, RawFd},
     sync::Arc,
 };
+
+mod wrapped_socket;
 
 #[repr(C)]
 union IfrIfru {
@@ -98,7 +100,8 @@ impl IfaceDevice {
 
     /// Get the current MTU value
     pub async fn mtu(&self) -> Result<usize> {
-        let fd = match unsafe { socket(AF_INET, SOCK_STREAM, IPPROTO_IP) } {
+        let socket = wrapped_socket::WrappedSocket::new(AF_INET, SOCK_STREAM, IPPROTO_IP);
+        let fd = match socket.as_raw_fd() {
             -1 => return Err(get_last_error()),
             fd => fd,
         };
@@ -116,11 +119,10 @@ impl IfaceDevice {
             return Err(get_last_error());
         }
 
-        unsafe { close(fd) };
+        let mtu = unsafe { ifr.ifr_ifru.ifru_mtu };
 
-        log::debug!("MTU for {} is {}", name, unsafe { ifr.ifr_ifru.ifru_mtu });
-
-        Ok(unsafe { ifr.ifr_ifru.ifru_mtu } as _)
+        log::debug!("MTU for {} is {}", name, mtu);
+        Ok(mtu as _)
     }
 
     pub fn write4(&self, src: &[u8]) -> usize {
