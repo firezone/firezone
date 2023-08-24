@@ -16,8 +16,6 @@ use std::{
 };
 use thiserror::Error;
 
-const DNS_FALLBACK_STRATEGY: &str = "upstream_resolver";
-
 /// This should be called once after the library is loaded by the system.
 #[allow(non_snake_case)]
 #[no_mangle]
@@ -99,7 +97,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-        _dns_fallback_strategy: String,
+        dns_fallback_strategy: String,
     ) -> Result<RawFd, Self::Error> {
         self.env(|mut env| {
             let tunnel_address_v4 =
@@ -121,7 +119,7 @@ impl Callbacks for CallbackHandler {
                 }
             })?;
             let dns_fallback_strategy =
-                env.new_string(DNS_FALLBACK_STRATEGY).map_err(|source| {
+                env.new_string(dns_fallback_strategy).map_err(|source| {
                     CallbackError::NewStringFailed {
                         name: "dns_fallback_strategy",
                         source,

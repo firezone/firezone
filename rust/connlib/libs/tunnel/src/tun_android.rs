@@ -13,6 +13,9 @@ use std::{
 };
 
 mod wrapped_socket;
+// Android doesn't support Split DNS. So we intercept all requests and forward
+// the non-Firezone name resolution requests to the upstream DNS resolver.
+const DNS_FALLBACK_STRATEGY: &str = "upstream_resolver";
 
 #[repr(C)]
 union IfrIfru {
@@ -73,7 +76,12 @@ impl IfaceDevice {
         config: &InterfaceConfig,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<Self> {
-        let fd = callbacks.on_set_interface_config(config.ipv4, config.ipv6, DNS_SENTINEL)?;
+        let fd = callbacks.on_set_interface_config(
+            config.ipv4,
+            config.ipv6,
+            DNS_SENTINEL,
+            DNS_FALLBACK_STRATEGY,
+        )?;
         Ok(Self { fd })
     }
 
