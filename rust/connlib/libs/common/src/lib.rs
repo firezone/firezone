@@ -29,8 +29,8 @@ pub fn get_user_agent() -> String {
 
 /// Returns the SMBios Serial of the device, or a random UUIDv4 if it can't be found.
 pub fn get_external_id() -> String {
-    // smbios fails to build on iOS, but it works for the platforms below.
-    #[cfg(not(target_os = "ios"))]
+    // smbios fails to build on mobile, but it works for other platforms.
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     match smbioslib::table_load_from_device() {
         Ok(data) => {
             match data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| sys_info.uuid()) {
@@ -41,9 +41,9 @@ pub fn get_external_id() -> String {
         Err(_err) => uuid::Uuid::new_v4().to_string(),
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     {
-        tracing::debug!("smbios is not supported on iOS, using random UUIDv4");
+        tracing::debug!("smbios is not supported on iOS and Android, using random UUIDv4");
         uuid::Uuid::new_v4().to_string()
     }
 }

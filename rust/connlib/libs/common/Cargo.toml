@@ -34,8 +34,8 @@ parking_lot = "0.12"
 # Needed for Android logging until tracing is working
 log = "0.4"
 
-# smbios fails to build on iOS
-[target.'cfg(not(target_os = "ios"))'.dependencies]
+# smbios fails to build on iOS and Android
+[target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
 smbios-lib = "0.9"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
@@ -46,4 +46,3 @@ android_logger = "0.13"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rtnetlink = { version = "0.12", default-features = false, features = ["tokio_socket"] }
-

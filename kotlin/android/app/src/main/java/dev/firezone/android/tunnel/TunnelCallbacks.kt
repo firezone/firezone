@@ -46,9 +46,6 @@ class TunnelCallbacks {
     }
     private fun buildVpnService(ipv4Address: String, ipv6Address: String): VpnService.Builder =
         TunnelService().Builder().apply {
-            // Add a dummy address for now. Needed for the "establish" call to succeed.
-            // TODO: Remove these in favor of connecting the TunnelSession *without* the fd, and then
-            // returning the fd in the onSetInterfaceConfig callback. This is being worked on by @conectado
             addAddress(ipv4Address, 32)
             addAddress(ipv6Address, 128)
 
@@ -58,6 +55,8 @@ class TunnelCallbacks {
             addRoute("172.31.82.179", 32)
 
             setSession("Firezone VPN")
+
+            // TODO: Can we do better?
             setMtu(1280)
         }
 

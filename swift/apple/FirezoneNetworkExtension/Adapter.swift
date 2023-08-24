@@ -121,7 +121,6 @@ public class Adapter {
 
       self.callbackHandler.delegate = self
 
-
       self.logger.debug("Adapter.start: Starting connlib")
       do {
         self.state = .startingTunnel(
@@ -187,7 +186,6 @@ public class Adapter {
         }
       }
   }
-
 }
 
 // MARK: Device unique identifiers

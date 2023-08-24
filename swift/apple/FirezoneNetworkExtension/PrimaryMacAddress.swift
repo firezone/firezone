@@ -22,7 +22,7 @@ public class PrimaryMacAddress {
         IOObjectRelease(iterator)
       }
     }
-    
+
     guard let matchingDict = IOBSDNameMatching(default_port, 0, name),
           IOServiceGetMatchingServices(default_port,
                                        matchingDict as CFDictionary,
@@ -31,7 +31,7 @@ public class PrimaryMacAddress {
     else {
       return nil
     }
-    
+
     var candidate = IOIteratorNext(iterator)
     while candidate != IO_OBJECT_NULL {
       if let cftype = IORegistryEntryCreateCFProperty(candidate,
@@ -43,14 +43,14 @@ public class PrimaryMacAddress {
           return candidate
         }
       }
-      
+
       IOObjectRelease(candidate)
       candidate = IOIteratorNext(iterator)
     }
-    
+
     return nil
   }
-  
+
   public static func copy_mac_address() -> CFData? {
     // Prefer built-in network interfaces.
     // For example, an external Ethernet adaptor can displace
@@ -60,8 +60,8 @@ public class PrimaryMacAddress {
             ?? io_service(named: "en0", wantBuiltIn: false)
     else { return nil }
     defer { IOObjectRelease(service) }
-    
-    
+
+
     if let cftype = IORegistryEntrySearchCFProperty(
       service,
       kIOServicePlane,
@@ -70,8 +70,8 @@ public class PrimaryMacAddress {
       IOOptionBits(kIORegistryIterateRecursively | kIORegistryIterateParents)) {
       return (cftype as! CFData)
     }
-    
-    
+
+
     return nil
   }
 }
