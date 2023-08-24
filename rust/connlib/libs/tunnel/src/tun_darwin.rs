@@ -95,7 +95,10 @@ impl IfaceDevice {
         }
     }
 
-    pub async fn new(_fd: Option<i32>) -> Result<Self> {
+    pub async fn new(
+        _: &InterfaceConfig,
+        callbacks: &CallbackErrorFacade<impl Callbacks>,
+    ) -> Result<Self> {
         let mut info = ctl_info {
             ctl_id: 0,
             ctl_name: [0; 96],
@@ -150,19 +153,22 @@ impl IfaceDevice {
             }
 
             if addr.sc_id == info.ctl_id {
-                return Ok(Self { fd });
+                callbacks.on_set_interface_config(config.ipv4, config.ipv6, DNS_SENTINEL);
+                let this = Self { fd };
+                this.set_non_blocking();
+                return Ok(this);
             }
         }
 
         Err(get_last_error())
     }
 
-    pub fn set_non_blocking(self) -> Result<Self> {
+    fn set_non_blocking(&self) -> Result<()> {
         match unsafe { fcntl(self.fd, F_GETFL) } {
             -1 => Err(get_last_error()),
             flags => match unsafe { fcntl(self.fd, F_SETFL, flags | O_NONBLOCK) } {
                 -1 => Err(get_last_error()),
-                _ => Ok(self),
+                _ => Ok(()),
             },
         }
     }
@@ -254,15 +260,6 @@ impl IfaceDevice {
 
 // So, these functions take a mutable &self, this is not necessary in theory but it's correct!
 impl IfaceConfig {
-    #[tracing::instrument(level = "trace", skip(self, callbacks))]
-    pub async fn set_iface_config(
-        &mut self,
-        config: &InterfaceConfig,
-        callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<()> {
-        callbacks.on_set_interface_config(config.ipv4, config.ipv6, DNS_SENTINEL)
-    }
-
     pub async fn add_route(
         &mut self,
         route: IpNetwork,

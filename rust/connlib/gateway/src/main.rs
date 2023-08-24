@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
+    os::fd::RawFd,
     str::FromStr,
 };
 
@@ -19,8 +20,8 @@ impl Callbacks for CallbackHandler {
         _tunnel_address_v4: Ipv4Addr,
         _tunnel_address_v6: Ipv6Addr,
         _dns_address: Ipv4Addr,
-    ) -> Result<(), Self::Error> {
-        Ok(())
+    ) -> Result<RawFd, Self::Error> {
+        Ok(-1)
     }
 
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {

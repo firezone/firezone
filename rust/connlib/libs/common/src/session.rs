@@ -9,6 +9,7 @@ use std::{
     fmt::{Debug, Display},
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
+    os::fd::RawFd,
     result::Result as StdResult,
     time::Duration,
 };
@@ -69,7 +70,7 @@ pub trait Callbacks: Clone + Send + Sync {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-    ) -> StdResult<(), Self::Error>;
+    ) -> StdResult<RawFd, Self::Error>;
     /// Called when the tunnel is connected.
     fn on_tunnel_ready(&self) -> StdResult<(), Self::Error>;
     /// Called when when a route is added.
@@ -101,7 +102,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-    ) -> Result<()> {
+    ) -> Result<RawFd> {
         let result = self
             .0
             .on_set_interface_config(tunnel_address_v4, tunnel_address_v6, dns_address)

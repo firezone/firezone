@@ -11,7 +11,10 @@ use jni::{
     sys::jint,
     JNIEnv, JavaVM,
 };
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::{
+    net::{Ipv4Addr, Ipv6Addr},
+    os::fd::RawFd,
+};
 use thiserror::Error;
 
 const DNS_FALLBACK_STRATEGY: &str = "upstream_resolver";
@@ -97,7 +100,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<RawFd, Self::Error> {
         self.env(|mut env| {
             let tunnel_address_v4 =
                 env.new_string(tunnel_address_v4.to_string())
@@ -124,11 +127,12 @@ impl Callbacks for CallbackHandler {
                         source,
                     }
                 })?;
-            call_method(
-                &mut env,
+
+            let name = "onSetInterfaceConfig";
+            env.call_method(
                 &self.callback_handler,
-                "onSetInterfaceConfig",
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+                name,
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
                 &[
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
@@ -136,6 +140,8 @@ impl Callbacks for CallbackHandler {
                     JValue::from(&dns_fallback_strategy),
                 ],
             )
+            .and_then(|val| val.i())
+            .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
     }
 
