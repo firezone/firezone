@@ -5,11 +5,9 @@ defmodule Web.SignUp do
   alias Web.Registration
 
   def mount(_params, _session, socket) do
-    temp_acct_slug = Accounts.generate_unique_slug()
-
     changeset =
       Registration.changeset(%Registration{}, %{
-        account: %{slug: temp_acct_slug},
+        account: %{slug: "placeholder"},
         actor: %{type: :account_admin_user}
       })
 
@@ -215,8 +213,7 @@ defmodule Web.SignUp do
           end
         )
 
-      Domain.Repo.transaction(multi)
-      |> case do
+      case Domain.Repo.transaction(multi) do
         {:ok, result} ->
           socket = assign(socket, account: result.account)
           {:noreply, socket}

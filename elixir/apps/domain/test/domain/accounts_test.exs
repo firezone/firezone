@@ -135,13 +135,14 @@ defmodule Domain.AccountsTest do
     end
 
     test "creates account given a valid name and valid slug" do
-      assert {:ok, account} = create_account(%{name: "foobar", slug: "foobar"})
-      assert account.slug == "foobar"
-    end
+      assert {:ok, account1} = create_account(%{name: "foobar", slug: "foobar"})
+      assert account1.slug == "foobar"
 
-    test "creates account slug with spaces changed to underscores" do
-      assert {:ok, account} = create_account(%{name: "foo bar", slug: "foo bar"})
-      assert account.slug == "foo_bar"
+      assert {:ok, account2} = create_account(%{name: "foo1", slug: "foo1"})
+      assert account2.slug == "foo1"
+
+      assert {:ok, account3} = create_account(%{name: "foo_bar", slug: "foo_bar"})
+      assert account3.slug == "foo_bar"
     end
 
     test "returns error when account name is blank" do
@@ -150,21 +151,18 @@ defmodule Domain.AccountsTest do
     end
 
     test "returns error when account name is too long" do
-      assert {:error, changeset} = create_account(%{name: "a" <> String.duplicate("b", 256)})
-      assert errors_on(changeset) == %{name: ["should be at most 255 character(s)"]}
+      max_name_length = 64
+      assert {:ok, _account} = create_account(%{name: String.duplicate("a", max_name_length)})
+
+      assert {:error, changeset} =
+               create_account(%{name: String.duplicate("b", max_name_length + 1)})
+
+      assert errors_on(changeset) == %{name: ["should be at most 64 character(s)"]}
     end
 
     test "returns error when account name is too short" do
       assert {:error, changeset} = create_account(%{name: "a"})
       assert errors_on(changeset) == %{name: ["should be at least 3 character(s)"]}
-    end
-
-    test "returns error when account name contains invalid characters" do
-      assert {:error, changeset} = create_account(%{name: "foo bar!"})
-
-      assert errors_on(changeset) == %{
-               name: ["can only contain letters, numbers, spaces, underscores, and dashes"]
-             }
     end
 
     test "returns error when slug contains invalid characters" do
@@ -173,6 +171,14 @@ defmodule Domain.AccountsTest do
       assert errors_on(changeset) == %{
                slug: ["can only contain letters, numbers, and underscores"]
              }
+    end
+
+    test "returns error when slug already exists" do
+      assert {:ok, _account} = create_account(%{name: "foo", slug: "foo"})
+
+      assert {:error, changeset} = create_account(%{name: "bar", slug: "foo"})
+
+      assert errors_on(changeset) == %{slug: ["has already been taken"]}
     end
   end
 end

@@ -7,10 +7,9 @@ defmodule Domain.Accounts.Account.Changeset do
     |> cast(attrs, [:name, :slug])
     |> validate_required([:name])
     |> validate_name()
-    |> trim_name_whitespace()
-    |> set_slug_default()
+    |> trim_change(:name)
+    |> put_slug_default()
     |> downcase_slug()
-    |> remove_spaces_from_slug()
     |> validate_slug()
     |> unique_constraint(:slug, name: :accounts_slug_index)
   end
@@ -22,17 +21,10 @@ defmodule Domain.Accounts.Account.Changeset do
 
   defp validate_name(changeset) do
     changeset
-    |> validate_length(:name, min: 3, max: 255)
-    |> validate_format(:name, ~r/^[a-zA-Z0-9\s_-]+$/,
-      message: "can only contain letters, numbers, spaces, underscores, and dashes"
-    )
+    |> validate_length(:name, min: 3, max: 64)
   end
 
-  defp trim_name_whitespace(changeset) do
-    update_change(changeset, :name, &String.trim/1)
-  end
-
-  defp set_slug_default(changeset) do
+  defp put_slug_default(changeset) do
     changeset
     |> put_default_value(:slug, &Domain.Accounts.generate_unique_slug/0)
   end
@@ -54,9 +46,5 @@ defmodule Domain.Accounts.Account.Changeset do
 
   defp downcase_slug(changeset) do
     update_change(changeset, :slug, &String.downcase/1)
-  end
-
-  defp remove_spaces_from_slug(changeset) do
-    update_change(changeset, :slug, &String.replace(&1, ~r/\s+/, "_"))
   end
 end
