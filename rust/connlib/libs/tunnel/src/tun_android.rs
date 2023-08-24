@@ -75,7 +75,7 @@ impl IfaceDevice {
     }
 
     pub fn set_non_blocking(self) -> Result<Self> {
-        // Anrdoid already opens the tun device in non-blocking mode and we can't change it from
+        // Android already opens the tun device in non-blocking mode and we can't change it from
         // here.
         log::debug!("`set_non_blocking` unimplemented on Android");
         Ok(self)
