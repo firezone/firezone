@@ -29,7 +29,7 @@ use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
 };
-use stun_codec::rfc5389::errors::{BadRequest, Unauthorized};
+use stun_codec::rfc5389::errors::{BadRequest, StaleNonce, Unauthorized};
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
@@ -296,10 +296,12 @@ where
     }
 
     fn queue_error_response(&mut self, sender: SocketAddr, mut error_response: Message<Attribute>) {
-        // In case of a 401 response, attach a realm and nonce.
+        // In case of a 401 or 438 response, attach a realm and nonce.
         if error_response
             .get_attribute::<ErrorCode>()
-            .map_or(false, |error| error == &ErrorCode::from(Unauthorized))
+            .map_or(false, |error| {
+                error == &ErrorCode::from(Unauthorized) || error == &ErrorCode::from(StaleNonce)
+            })
         {
             let new_nonce = Uuid::from_u128(self.rng.gen());
 
@@ -760,7 +762,7 @@ where
 
         self.nonces
             .handle_nonce_used(nonce)
-            .map_err(|_| error_response(Unauthorized, request))?;
+            .map_err(|_| error_response(StaleNonce, request))?;
 
         message_integrity
             .verify(&self.auth_secret, username.name(), now)
