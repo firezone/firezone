@@ -11,15 +11,13 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
     result::Result as StdResult,
-    time::Duration,
 };
 use tokio::{runtime::Runtime, sync::mpsc::Receiver};
 use url::Url;
-use uuid::Uuid;
 
 use crate::{
     control::{MessageResult, PhoenixChannel, PhoenixSenderWithTopic},
-    messages::{Key, ResourceDescription, ResourceDescriptionCidr},
+    messages::{Key, ResourceDescription},
     Error, Result,
 };
 
@@ -69,6 +67,7 @@ pub trait Callbacks: Clone + Send + Sync {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
+        dns_fallback_strategy: String,
     ) -> StdResult<RawFd, Self::Error>;
     /// Called when the tunnel is connected.
     fn on_tunnel_ready(&self) -> StdResult<(), Self::Error>;
@@ -101,10 +100,16 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
+        dns_fallback_strategy: String,
     ) -> Result<RawFd> {
         let result = self
             .0
-            .on_set_interface_config(tunnel_address_v4, tunnel_address_v6, dns_address)
+            .on_set_interface_config(
+                tunnel_address_v4,
+                tunnel_address_v6,
+                dns_address,
+                dns_fallback_strategy,
+            )
             .map_err(|err| Error::OnSetInterfaceConfigFailed(err.to_string()));
         if let Err(err) = result.as_ref() {
             tracing::error!("{err}");
@@ -245,18 +250,14 @@ where
             }));
         }
 
-        if cfg!(feature = "mock") {
-            Self::connect_mock(tx.clone(), this.callbacks.clone());
-        } else {
-            Self::connect_inner(
-                &runtime,
-                tx,
-                portal_url.try_into().map_err(|_| Error::UriError)?,
-                token,
-                external_id,
-                this.callbacks.clone(),
-            );
-        }
+        Self::connect_inner(
+            &runtime,
+            tx,
+            portal_url.try_into().map_err(|_| Error::UriError)?,
+            token,
+            external_id,
+            this.callbacks.clone(),
+        );
         std::thread::spawn(move || {
             rx.blocking_recv();
             runtime.shutdown_background();
@@ -335,55 +336,6 @@ where
             });
 
         });
-    }
-
-    fn connect_mock(
-        runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
-        callbacks: CallbackErrorFacade<CB>,
-    ) {
-        std::thread::sleep(Duration::from_secs(1));
-        fatal_error!(
-            callbacks.on_set_interface_config(
-                "100.100.111.2".parse().unwrap(),
-                "fd00:0222:2021:1111::2".parse().unwrap(),
-                DNS_SENTINEL,
-            ),
-            runtime_stopper,
-            &callbacks
-        );
-        fatal_error!(callbacks.on_tunnel_ready(), runtime_stopper, &callbacks);
-        let handle = {
-            let callbacks = callbacks.clone();
-            std::thread::spawn(move || -> Result<()> {
-                std::thread::sleep(Duration::from_secs(3));
-                let resources = vec![
-                    ResourceDescriptionCidr {
-                        id: Uuid::new_v4(),
-                        address: "8.8.4.4".parse::<Ipv4Addr>().unwrap().into(),
-                        name: "Google Public DNS IPv4".to_string(),
-                    },
-                    ResourceDescriptionCidr {
-                        id: Uuid::new_v4(),
-                        address: "2001:4860:4860::8844".parse::<Ipv6Addr>().unwrap().into(),
-                        name: "Google Public DNS IPv6".to_string(),
-                    },
-                ];
-                for resource in &resources {
-                    callbacks.on_add_route(resource.address)?;
-                }
-                callbacks.on_update_resources(
-                    resources
-                        .into_iter()
-                        .map(ResourceDescription::Cidr)
-                        .collect(),
-                )
-            })
-        };
-        fatal_error!(
-            handle.join().expect("mock thread panicked"),
-            runtime_stopper,
-            &callbacks
-        );
     }
 
     fn disconnect_inner(

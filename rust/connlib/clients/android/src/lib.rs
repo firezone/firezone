@@ -8,7 +8,6 @@ use ip_network::IpNetwork;
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
-    sys::jint,
     JNIEnv, JavaVM,
 };
 use std::{
@@ -100,6 +99,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
+        _dns_fallback_strategy: String,
     ) -> Result<RawFd, Self::Error> {
         self.env(|mut env| {
             let tunnel_address_v4 =
@@ -311,6 +311,13 @@ fn connect(
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
     };
+    let external_id = env
+        .get_string(&external_id)
+        .map_err(|source| ConnectError::StringInvalid {
+            name: "external_id",
+            source,
+        })?
+        .into();
     Session::connect(
         portal_url.as_str(),
         portal_token,

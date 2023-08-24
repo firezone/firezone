@@ -168,6 +168,7 @@ pub struct Interface {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
     pub upstream_dns: Vec<IpAddr>,
+    pub dns_fallback_strategy: String,
 }
 
 /// A single relay

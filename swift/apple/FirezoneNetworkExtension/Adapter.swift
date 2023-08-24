@@ -120,10 +120,11 @@ public class Adapter {
 
       self.callbackHandler.delegate = self
 
+
       self.logger.debug("Adapter.start: Starting connlib")
       do {
         self.state = .startingTunnel(
-          session: try WrappedSession.connect(self.controlPlaneURLString, self.token, self.callbackHandler),
+          session: try WrappedSession.connect(self.controlPlaneURLString, self.token, ExternalId.getExternalId(), self.callbackHandler),
           onStarted: completionHandler
         )
       } catch let error {
@@ -185,6 +186,7 @@ public class Adapter {
         }
       }
   }
+
 }
 
 // MARK: Responding to path updates
@@ -236,7 +238,7 @@ extension Adapter {
 
         do {
           self.state = .startingTunnel(
-            session: try WrappedSession.connect(controlPlaneURLString, token, self.callbackHandler),
+            session: try WrappedSession.connect(controlPlaneURLString, token, ExternalId.getExternalId(), self.callbackHandler),
             onStarted: { error in
               if let error = error {
                 self.logger.error("Adapter.didReceivePathUpdate: Error starting connlib: \(error, privacy: .public)")

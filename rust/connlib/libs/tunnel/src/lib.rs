@@ -170,7 +170,6 @@ where
     /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
     #[tracing::instrument(level = "trace", skip(private_key, control_signaler, callbacks))]
     pub async fn new(
-        fd: Option<i32>,
         private_key: StaticSecret,
         control_signaler: C,
         callbacks: CB,
