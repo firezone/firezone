@@ -168,7 +168,7 @@ impl IfaceDevice {
     }
 
     pub fn name(&self) -> Result<String> {
-        let mut tunnel_name = [0u8; 256];
+        let mut tunnel_name = [0u8; IF_NAMESIZE];
         let mut tunnel_name_len = tunnel_name.len() as socklen_t;
         if unsafe {
             getsockopt(
