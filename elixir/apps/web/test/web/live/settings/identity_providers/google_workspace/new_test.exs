@@ -55,7 +55,7 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.NewTest do
   } do
     bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
 
-    provider_adapter_config =
+    adapter_config_attrs =
       Fixtures.Auth.openid_connect_adapter_config(
         discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"
       )
@@ -114,7 +114,7 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.NewTest do
   } do
     bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
 
-    provider_adapter_config =
+    adapter_config_attrs =
       Fixtures.Auth.openid_connect_adapter_config(
         discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"
       )

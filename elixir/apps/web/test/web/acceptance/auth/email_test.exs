@@ -25,9 +25,9 @@ defmodule Web.Acceptance.Auth.EmailTest do
 
     identity =
       Fixtures.Auth.create_identity(
+        actor: [type: :account_admin_user],
         account: account,
-        provider: provider,
-        actor_default_type: :account_admin_user
+        provider: provider
       )
 
     session

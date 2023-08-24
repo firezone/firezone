@@ -7,11 +7,11 @@ defmodule Web.AuthTest do
 
     admin_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     admin_identity = Fixtures.Auth.create_identity(account: account, actor: admin_actor)
-    admin_subject = Fixtures.Auth.create_subject(admin_identity)
+    admin_subject = Fixtures.Auth.create_subject(identity: admin_identity)
 
     user_actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
     user_identity = Fixtures.Auth.create_identity(account: account, actor: user_actor)
-    user_subject = Fixtures.Auth.create_subject(user_identity)
+    user_subject = Fixtures.Auth.create_subject(identity: user_identity)
 
     %{
       account: account,

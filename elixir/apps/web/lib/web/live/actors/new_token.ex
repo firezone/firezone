@@ -40,8 +40,8 @@ defmodule Web.Actors.NewToken do
            Auth.create_identity(
              socket.assigns.actor,
              provider,
-             data.name,
              %{
+               actor: %{name: data.name},
                expires_at: data.expires_at
              },
              socket.assigns.subject

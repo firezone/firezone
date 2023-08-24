@@ -41,13 +41,10 @@ defmodule Web.Actors.NewIdentity do
   end
 
   def handle_event("submit", %{"identity" => attrs}, socket) do
-    {provider_identifier, attrs} = Map.pop(attrs, "provider_identifier")
-
     with {:ok, _identity} <-
            Auth.create_identity(
              socket.assigns.actor,
              socket.assigns.provider,
-             provider_identifier,
              attrs,
              socket.assigns.subject
            ) do

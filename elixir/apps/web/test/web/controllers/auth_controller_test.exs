@@ -144,7 +144,7 @@ defmodule Web.AuthControllerTest do
 
       identity =
         Fixtures.Auth.create_identity(
-          actor_default_type: :account_admin_user,
+          actor: [type: :account_admin_user],
           account: account,
           provider: provider,
           provider_virtual_state: %{"password" => password, "password_confirmation" => password}
@@ -495,7 +495,7 @@ defmodule Web.AuthControllerTest do
 
       identity =
         Fixtures.Auth.create_identity(
-          actor_default_type: :account_admin_user,
+          actor: [type: :account_admin_user],
           account: account,
           provider: provider
         )
@@ -517,7 +517,7 @@ defmodule Web.AuthControllerTest do
 
       identity =
         Fixtures.Auth.create_identity(
-          actor_default_type: :account_user,
+          actor: [type: :account_user],
           account: account,
           provider: provider
         )
@@ -551,7 +551,7 @@ defmodule Web.AuthControllerTest do
 
       identity =
         Fixtures.Auth.create_identity(
-          actor_default_type: :account_user,
+          actor: [type: :account_user],
           account: account,
           provider: provider
         )
@@ -736,12 +736,12 @@ defmodule Web.AuthControllerTest do
     } do
       identity =
         Fixtures.Auth.create_identity(
-          actor_default_type: :account_admin_user,
+          actor: [type: :account_admin_user],
           account: account,
           provider: provider
         )
 
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
       Fixtures.Auth.create_userpass_provider(account: account)
       {:ok, _provider} = Domain.Auth.disable_provider(provider, subject)
 
@@ -771,14 +771,14 @@ defmodule Web.AuthControllerTest do
     } do
       identity =
         Fixtures.Auth.create_identity(
-          actor_default_type: :account_admin_user,
+          actor: [type: :account_admin_user],
           account: account,
           provider: provider
         )
 
-      {token, _claims} = Fixtures.Auth.generate_openid_connect_token(provider, identity)
-      Fixtures.Auth.expect_refresh_token(bypass, %{"id_token" => token})
-      Fixtures.Auth.expect_userinfo(bypass)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       cookie_key = "fz_auth_state_#{provider.id}"
       redirected_conn = fetch_cookies(redirected_conn)
@@ -820,14 +820,14 @@ defmodule Web.AuthControllerTest do
     } do
       identity =
         Fixtures.Auth.create_identity(
-          actor_default_type: :account_user,
+          actor: [type: :account_user],
           account: account,
           provider: provider
         )
 
-      {token, _claims} = Fixtures.Auth.generate_openid_connect_token(provider, identity)
-      Fixtures.Auth.expect_refresh_token(bypass, %{"id_token" => token})
-      Fixtures.Auth.expect_userinfo(bypass)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       cookie_key = "fz_auth_state_#{provider.id}"
       redirected_conn = fetch_cookies(redirected_conn)

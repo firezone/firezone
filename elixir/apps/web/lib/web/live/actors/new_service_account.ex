@@ -36,12 +36,10 @@ defmodule Web.Actors.NewServiceAccount do
       |> map_memberships_attr()
       |> Map.put("type", :service_account)
       |> Map.put("provider", %{"expires_at" => attrs["expires_at"] <> "T00:00:00Z"})
-
-    provider_identifier = "tok-#{Ecto.UUID.generate()}"
+      |> Map.put("provider_identifier", "tok-#{Ecto.UUID.generate()}")
 
     with {:ok, provider} <- Auth.fetch_active_provider_by_adapter(:token, socket.assigns.subject),
-         {:ok, actor} <-
-           Actors.create_actor(provider, provider_identifier, attrs, socket.assigns.subject) do
+         {:ok, actor} <- Actors.create_actor(provider, attrs, socket.assigns.subject) do
       {:noreply, assign(socket, actor: actor)}
     else
       {:error, :not_found} ->

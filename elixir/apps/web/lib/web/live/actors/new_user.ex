@@ -45,14 +45,12 @@ defmodule Web.Actors.NewUser do
 
   def handle_event("submit", %{"actor" => attrs}, socket) do
     attrs = map_memberships_attr(attrs)
-    {provider_identifier, attrs} = Map.pop(attrs, "provider_identifier")
     {provider_attrs, attrs} = Map.split(attrs, ["password", "password_confirmation"])
     attrs = Map.put(attrs, "provider", provider_attrs)
 
     with {:ok, actor} <-
            Actors.create_actor(
              socket.assigns.provider,
-             provider_identifier,
              attrs,
              socket.assigns.subject
            ) do

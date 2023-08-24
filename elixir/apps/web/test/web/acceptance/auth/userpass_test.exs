@@ -105,7 +105,7 @@ defmodule Web.Acceptance.Auth.UserPassTest do
       Fixtures.Auth.create_identity(
         account: account,
         provider: provider,
-        actor_default_type: :account_admin_user,
+        actor: [type: :account_admin_user],
         provider_virtual_state: %{"password" => password, "password_confirmation" => password}
       )
 
@@ -127,7 +127,7 @@ defmodule Web.Acceptance.Auth.UserPassTest do
       Fixtures.Auth.create_identity(
         account: account,
         provider: provider,
-        actor_default_type: :account_user,
+        actor: [type: :account_user],
         provider_virtual_state: %{"password" => password, "password_confirmation" => password}
       )
 

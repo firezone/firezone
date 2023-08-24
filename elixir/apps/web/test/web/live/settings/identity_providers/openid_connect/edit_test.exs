@@ -6,7 +6,7 @@ defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.EditTest do
 
     account = Fixtures.Accounts.create_account()
 
-    {google_provider, bypass} =
+    {provider, bypass} =
       Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
@@ -67,7 +67,7 @@ defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.EditTest do
   } do
     bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
 
-    provider_adapter_config =
+    adapter_config_attrs =
       Fixtures.Auth.openid_connect_adapter_config(
         discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"
       )
@@ -125,7 +125,7 @@ defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.EditTest do
   } do
     bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
 
-    provider_adapter_config =
+    adapter_config_attrs =
       Fixtures.Auth.openid_connect_adapter_config(
         discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"
       )

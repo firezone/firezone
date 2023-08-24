@@ -36,10 +36,7 @@ defmodule Web.Groups.Show do
         Viewing Group <code><%= @group.name %></code>
       </:title>
       <:actions>
-        <.edit_button
-          :if={is_nil(@group.provider_id)}
-          navigate={~p"/#{@account}/groups/#{@group}/edit"}
-        >
+        <.edit_button navigate={~p"/#{@account}/groups/#{@group}/edit"}>
           Edit Group
         </.edit_button>
       </:actions>

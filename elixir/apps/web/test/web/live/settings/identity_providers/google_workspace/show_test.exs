@@ -8,7 +8,7 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
     {provider, bypass} =
-      start_and_create_google_workspace_provider(account: account)
+      Fixtures.Auth.start_and_create_google_workspace_provider(account: account)
 
     identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
 

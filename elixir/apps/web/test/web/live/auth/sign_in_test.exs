@@ -28,12 +28,12 @@ defmodule Web.Auth.SignInTest do
 
     identity =
       Fixtures.Auth.create_identity(
-        actor_default_type: :account_admin_user,
+        actor: [type: :account_admin_user],
         account: account,
         provider: email_provider
       )
 
-    subject = Fixtures.Auth.create_subject(identity)
+    subject = Fixtures.Auth.create_subject(identity: identity)
 
     {:ok, _provider} = Domain.Auth.disable_provider(userpass_provider, subject)
     {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")

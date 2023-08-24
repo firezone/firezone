@@ -10,8 +10,11 @@ defmodule Web.AcceptanceCase do
       use Wallaby.DSL
       use Web, :verified_routes
       import Web.AcceptanceCase
+
       alias Domain.Repo
-      alias Web.AcceptanceCase.{Vault, SimpleSAML, Auth}
+      alias Domain.Fixtures
+      alias Domain.Mocks
+      alias Web.AcceptanceCase.{Vault, Auth}
 
       # The default endpoint for testing
       @endpoint Web.Endpoint

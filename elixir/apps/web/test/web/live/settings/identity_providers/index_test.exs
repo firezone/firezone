@@ -11,7 +11,7 @@ defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
       Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
     identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
-    subject = Fixtures.Auth.create_subject(identity)
+    subject = Fixtures.Auth.create_subject(identity: identity)
 
     %{
       account: account,
@@ -82,7 +82,7 @@ defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
     conn: conn
   } do
     {provider, _bypass} =
-      Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+      Fixtures.Auth.start_and_create_google_workspace_provider(account: account)
 
     conn = authorize_conn(conn, identity)
 

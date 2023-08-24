@@ -10,7 +10,7 @@ defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.Connect do
 
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         bypass: bypass,
@@ -161,9 +161,9 @@ defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.Connect do
           %{}
         )
 
-      {token, _claims} = Fixtures.Auth.generate_openid_connect_token(provider, identity)
-      Fixtures.Auth.expect_refresh_token(bypass, %{"id_token" => token})
-      Fixtures.Auth.expect_userinfo(bypass)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       cookie_key = "fz_auth_state_#{provider.id}"
       redirected_conn = fetch_cookies(redirected_conn)
