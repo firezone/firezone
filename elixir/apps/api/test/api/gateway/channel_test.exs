@@ -5,14 +5,14 @@ defmodule API.Gateway.ChannelTest do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(actor: actor, account: account)
-    subject = Fixtures.Auth.create_subject(identity)
+    subject = Fixtures.Auth.create_subject(identity: identity)
     device = Fixtures.Devices.create_device(subject: subject)
     gateway = Fixtures.Gateways.create_gateway(account: account)
 
     resource =
       Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: gateway.group_id}]
+        connections: [%{gateway_group_id: gateway.group_id}]
       )
 
     {:ok, _, socket} =
@@ -46,11 +46,11 @@ defmodule API.Gateway.ChannelTest do
     test "sends list of resources after join", %{
       gateway: gateway
     } do
-      assert_push "init", %{
+      assert_push("init", %{
         interface: interface,
         ipv4_masquerade_enabled: true,
         ipv6_masquerade_enabled: true
-      }
+      })
 
       assert interface == %{
                ipv4: gateway.ipv4,
@@ -81,7 +81,7 @@ defmodule API.Gateway.ChannelTest do
          }}
       )
 
-      assert_push "allow_access", payload
+      assert_push("allow_access", payload)
 
       assert payload.resource == %{
                address: resource.address,
@@ -125,7 +125,7 @@ defmodule API.Gateway.ChannelTest do
          }}
       )
 
-      assert_push "request_connection", payload
+      assert_push("request_connection", payload)
 
       assert is_binary(payload.ref)
       assert payload.actor == %{id: device.actor_id}
@@ -222,7 +222,7 @@ defmodule API.Gateway.ChannelTest do
          }}
       )
 
-      assert_push "request_connection", %{ref: ref}
+      assert_push("request_connection", %{ref: ref})
 
       push_ref =
         push(socket, "connection_ready", %{
@@ -230,7 +230,7 @@ defmodule API.Gateway.ChannelTest do
           "gateway_rtc_session_description" => rtc_session_description
         })
 
-      assert_reply push_ref, :ok
+      assert_reply(push_ref, :ok)
 
       assert_receive {:connect, ^socket_ref, resource_id, ^gateway_public_key,
                       ^rtc_session_description}
