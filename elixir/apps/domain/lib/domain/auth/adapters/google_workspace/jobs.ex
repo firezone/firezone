@@ -1,5 +1,6 @@
 defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
   use Domain.Jobs.Recurrent, otp_app: :domain
+  alias Domain.{Auth, Actors}
   alias Domain.Auth.Adapters.GoogleWorkspace
   require Logger
 
@@ -34,16 +35,20 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
                {:ok, organization_units} <-
                  GoogleWorkspace.APIClient.list_organization_units(access_token),
                {:ok, groups} <- GoogleWorkspace.APIClient.list_groups(access_token),
-               {:ok, group_ids_by_user_id} <- list_group_ids_by_user_id(access_token, groups) do
-            actors =
+               {:ok, tuples} <-
+                 list_membership_tuples(access_token, groups) do
+            identities_attrs =
               Enum.map(users, fn user ->
                 %{
-                  "name" => user["name"]["fullName"],
-                  "identities" => [%{"provider_identifier" => user["id"]}]
+                  "provider_identifier" => user["id"],
+                  "actor" => %{
+                    "type" => :account_user,
+                    "name" => user["name"]["fullName"]
+                  }
                 }
               end)
 
-            actor_groups =
+            actor_groups_attrs =
               Enum.map(groups, fn group ->
                 %{
                   "name" => "Group:" <> group["name"],
@@ -57,12 +62,21 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
                   }
                 end)
 
-            # _groups_multi = Actors.upsert_provider_groups_multi(provider, actor_groups)
+            tuples =
+              Enum.flat_map(users, fn user ->
+                organization_unit =
+                  Enum.find(organization_units, fn organization_unit ->
+                    organization_unit["orgUnitPath"] == user["orgUnitPath"]
+                  end)
 
-            dbg({actors, actor_groups, group_ids_by_user_id})
+                [{"OU:" <> organization_unit["orgUnitId"], user["id"]}]
+              end) ++ tuples
 
-            # insert actors
-            # insert groups and memberships
+            Ecto.Multi.new()
+            |> Ecto.Multi.append(Auth.sync_provider_identities_multi(provider, identities_attrs))
+            |> Ecto.Multi.append(Actors.sync_provider_groups_multi(provider, actor_groups_attrs))
+            |> Actors.sync_provider_memberships_multi(provider, tuples)
+            |> Domain.Repo.transaction()
 
             Logger.debug("Finished syncing provider", provider_id: provider.id)
           else
@@ -77,22 +91,12 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
     end
   end
 
-  defp list_group_ids_by_user_id(access_token, groups) do
-    Enum.reduce_while(groups, {:ok, %{}}, fn group, {:ok, group_ids_by_user_id} ->
+  defp list_membership_tuples(access_token, groups) do
+    Enum.reduce_while(groups, {:ok, []}, fn group, {:ok, tuples} ->
       case GoogleWorkspace.APIClient.list_group_members(access_token, group["id"]) do
         {:ok, members} ->
-          group_ids_by_user_id =
-            Enum.reduce(members, group_ids_by_user_id, fn member, group_ids_by_user_id ->
-              {_current_value, group_ids_by_user_id} =
-                Map.get_and_update(group_ids_by_user_id, member["id"], fn
-                  nil -> {nil, [group["id"]]}
-                  group_ids -> {group_ids, [group["id"]] ++ group_ids}
-                end)
-
-              group_ids_by_user_id
-            end)
-
-          {:cont, {:ok, group_ids_by_user_id}}
+          tuples = Enum.map(members, &{"G:" <> group["id"], &1["id"]}) ++ tuples
+          {:cont, {:ok, tuples}}
 
         {:error, reason} ->
           {:halt, {:error, reason}}

@@ -19,8 +19,10 @@ defmodule Domain.Fixtures.Gateways do
       end)
 
     {subject, attrs} =
-      Map.pop_lazy(attrs, :subject, fn ->
-        admin_subject_for_account(account)
+      pop_assoc_fixture(attrs, :subject, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account, actor: [type: :account_admin_user]})
+        |> Fixtures.Auth.create_subject()
       end)
 
     {:ok, group} = Gateways.create_group(attrs, subject)
@@ -29,7 +31,13 @@ defmodule Domain.Fixtures.Gateways do
 
   def delete_group(group) do
     group = Repo.preload(group, :account)
-    subject = admin_subject_for_account(group.account)
+
+    subject =
+      Fixtures.Auth.create_subject(
+        account: group.account,
+        actor: [type: :account_admin_user]
+      )
+
     {:ok, group} = Gateways.delete_group(group, subject)
     group
   end
@@ -50,8 +58,10 @@ defmodule Domain.Fixtures.Gateways do
       end)
 
     {subject, _attrs} =
-      Map.pop_lazy(attrs, :subject, fn ->
-        admin_subject_for_account(account)
+      pop_assoc_fixture(attrs, :subject, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account, actor: [type: :account_admin_user]})
+        |> Fixtures.Auth.create_subject()
       end)
 
     Gateways.Token.Changeset.create_changeset(account, subject)
@@ -95,7 +105,13 @@ defmodule Domain.Fixtures.Gateways do
 
   def delete_gateway(gateway) do
     gateway = Repo.preload(gateway, :account)
-    subject = admin_subject_for_account(gateway.account)
+
+    subject =
+      Fixtures.Auth.create_subject(
+        account: gateway.account,
+        actor: [type: :account_admin_user]
+      )
+
     {:ok, gateway} = Gateways.delete_gateway(gateway, subject)
     gateway
   end

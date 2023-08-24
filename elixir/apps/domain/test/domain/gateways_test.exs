@@ -7,7 +7,7 @@ defmodule Domain.GatewaysTest do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-    subject = Fixtures.Auth.create_subject(identity)
+    subject = Fixtures.Auth.create_subject(identity: identity)
 
     %{
       account: account,
@@ -500,7 +500,7 @@ defmodule Domain.GatewaysTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          gateway_groups: [%{gateway_group_id: gateway.group_id}]
+          connections: [%{gateway_group_id: gateway.group_id}]
         )
 
       assert connect_gateway(gateway) == :ok
@@ -529,7 +529,7 @@ defmodule Domain.GatewaysTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          gateway_groups: [%{gateway_group_id: gateway.group_id}]
+          connections: [%{gateway_group_id: gateway.group_id}]
         )
 
       assert gateway_can_connect_to_resource?(gateway, resource)

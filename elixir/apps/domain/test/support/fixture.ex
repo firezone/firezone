@@ -11,10 +11,10 @@ defmodule Domain.Fixture do
 
   def pop_assoc_fixture_id(attrs, key, callback) do
     case Map.fetch(attrs, :"#{key}_id") do
-      {:ok, id} ->
+      {:ok, id} when not is_nil(id) ->
         {id, attrs}
 
-      :error ->
+      _other ->
         {assoc, attrs} = pop_assoc_fixture(attrs, key, callback)
         {assoc.id, attrs}
     end
@@ -37,12 +37,6 @@ defmodule Domain.Fixture do
     schema
     |> Ecto.Changeset.change(Enum.into(changes, %{}))
     |> Repo.update!()
-  end
-
-  def admin_subject_for_account(account) do
-    actor = Domain.Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    identity = Domain.Fixtures.Auth.create_identity(account: account, actor: actor)
-    Domain.Fixtures.Auth.create_subject(identity)
   end
 
   def unique_integer do

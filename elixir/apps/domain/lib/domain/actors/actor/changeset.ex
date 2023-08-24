@@ -15,7 +15,7 @@ defmodule Domain.Actors.Actor.Changeset do
     create_changeset(attrs)
     |> put_change(:account_id, account_id)
     |> cast_assoc(:memberships,
-      with: &Actors.Membership.Changeset.group_changeset(account_id, &1, &2)
+      with: &Actors.Membership.Changeset.changeset(account_id, &1, &2)
     )
   end
 
@@ -24,7 +24,7 @@ defmodule Domain.Actors.Actor.Changeset do
     |> cast(attrs, ~w[type name]a)
     |> validate_required(~w[type name]a)
     |> cast_assoc(:memberships,
-      with: &Actors.Membership.Changeset.group_changeset(actor.account_id, &1, &2)
+      with: &Actors.Membership.Changeset.changeset(actor.account_id, &1, &2)
     )
   end
 

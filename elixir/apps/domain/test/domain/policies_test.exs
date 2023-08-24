@@ -2,22 +2,13 @@ defmodule Domain.PoliciesTest do
   alias Web.Policies
   use Domain.DataCase, async: true
   import Domain.Policies
-
-  alias Domain.{
-    Fixtures.Accounts,
-    Fixtures.Actors,
-    Fixtures.Auth,
-    PoliciesFixtures,
-    Fixtures.Resources
-  }
-
   alias Domain.Policies
 
   setup do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-    subject = Fixtures.Auth.create_subject(identity)
+    subject = Fixtures.Auth.create_subject(identity: identity)
 
     %{
       account: account,
@@ -37,7 +28,7 @@ defmodule Domain.PoliciesTest do
     end
 
     test "returns policy when policy exists", %{account: account, subject: subject} do
-      policy = PoliciesFixtures.create_policy(account: account)
+      policy = Fixtures.Policies.create_policy(account: account)
 
       assert {:ok, fetched_policy} = fetch_policy_by_id(policy.id, subject)
       assert fetched_policy.id == policy.id
@@ -45,14 +36,14 @@ defmodule Domain.PoliciesTest do
 
     test "does not return deleted policy", %{account: account, subject: subject} do
       {:ok, policy} =
-        PoliciesFixtures.create_policy(account: account)
+        Fixtures.Policies.create_policy(account: account)
         |> delete_policy(subject)
 
       assert fetch_policy_by_id(policy.id, subject) == {:error, :not_found}
     end
 
     test "does not return policies in other accounts", %{subject: subject} do
-      policy = PoliciesFixtures.create_policy()
+      policy = Fixtures.Policies.create_policy()
       assert fetch_policy_by_id(policy.id, subject) == {:error, :not_found}
     end
 
@@ -75,7 +66,7 @@ defmodule Domain.PoliciesTest do
 
     # TODO: add a test that soft-deleted assocs are not preloaded
     test "associations are preloaded when opts given", %{account: account, subject: subject} do
-      policy = PoliciesFixtures.create_policy(account: account)
+      policy = Fixtures.Policies.create_policy(account: account)
       {:ok, policy} = fetch_policy_by_id(policy.id, subject, preload: [:actor_group, :resource])
 
       assert Ecto.assoc_loaded?(policy.actor_group)
@@ -89,12 +80,12 @@ defmodule Domain.PoliciesTest do
     end
 
     test "does not list policies from other accounts", %{subject: subject} do
-      PoliciesFixtures.create_policy()
+      Fixtures.Policies.create_policy()
       assert list_policies(subject) == {:ok, []}
     end
 
     test "does not list deleted policies", %{account: account, subject: subject} do
-      PoliciesFixtures.create_policy(account: account)
+      Fixtures.Policies.create_policy(account: account)
       |> delete_policy(subject)
 
       assert list_policies(subject) == {:ok, []}
@@ -103,11 +94,11 @@ defmodule Domain.PoliciesTest do
     test "returns all policies for account admin subject", %{account: account} do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
-      PoliciesFixtures.create_policy(account: account)
-      PoliciesFixtures.create_policy(account: account)
-      PoliciesFixtures.create_policy()
+      Fixtures.Policies.create_policy(account: account)
+      Fixtures.Policies.create_policy(account: account)
+      Fixtures.Policies.create_policy()
 
       assert {:ok, policies} = list_policies(subject)
       assert length(policies) == 2
@@ -116,10 +107,8 @@ defmodule Domain.PoliciesTest do
     test "returns select policies for non-admin subject", %{account: account, subject: subject} do
       unprivileged_actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
 
-      unpriviledged_identity =
-        Fixtures.Auth.create_identity(account: account, actor: unprivileged_actor)
-
-      unprivileged_subject = Fixtures.Auth.create_subject(unpriviledged_identity)
+      unprivileged_subject =
+        Fixtures.Auth.create_subject(account: account, identity: [actor: unprivileged_actor])
 
       actor_group = Fixtures.Actors.create_group(account: account, subject: subject)
 
@@ -129,9 +118,9 @@ defmodule Domain.PoliciesTest do
         subject
       )
 
-      PoliciesFixtures.create_policy(account: account, actor_group: actor_group)
-      PoliciesFixtures.create_policy(account: account)
-      PoliciesFixtures.create_policy()
+      Fixtures.Policies.create_policy(account: account, actor_group: actor_group)
+      Fixtures.Policies.create_policy(account: account)
+      Fixtures.Policies.create_policy()
 
       assert {:ok, policies} = list_policies(unprivileged_subject)
       assert length(policies) == 1
@@ -237,7 +226,7 @@ defmodule Domain.PoliciesTest do
   describe "update_policy/3" do
     setup context do
       policy =
-        PoliciesFixtures.create_policy(
+        Fixtures.Policies.create_policy(
           account: context.account,
           subject: context.subject
         )
@@ -250,7 +239,7 @@ defmodule Domain.PoliciesTest do
     end
 
     test "returns changeset error on invalid params", %{account: account, subject: subject} do
-      policy = PoliciesFixtures.create_policy(account: account, subject: subject)
+      policy = Fixtures.Policies.create_policy(account: account, subject: subject)
 
       assert {:error, changeset} =
                update_policy(
@@ -318,7 +307,7 @@ defmodule Domain.PoliciesTest do
         Fixtures.Actors.create_actor(type: :account_admin_user, account: other_account)
 
       other_identity = Fixtures.Auth.create_identity(account: other_account, actor: other_actor)
-      other_subject = Fixtures.Auth.create_subject(other_identity)
+      other_subject = Fixtures.Auth.create_subject(identity: other_identity)
 
       assert {:error, :unauthorized} =
                update_policy(policy, %{name: "Should not be allowed"}, other_subject)
@@ -328,7 +317,7 @@ defmodule Domain.PoliciesTest do
   describe "delete_policy/2" do
     setup context do
       policy =
-        PoliciesFixtures.create_policy(
+        Fixtures.Policies.create_policy(
           account: context.account,
           subject: context.subject
         )
@@ -366,14 +355,7 @@ defmodule Domain.PoliciesTest do
     test "returns error when subject attempts to delete policy outside of account", %{
       policy: policy
     } do
-      other_account = Fixtures.Accounts.create_account()
-
-      other_actor =
-        Fixtures.Actors.create_actor(type: :account_admin_user, account: other_account)
-
-      other_identity = Fixtures.Auth.create_identity(account: other_account, actor: other_actor)
-      other_subject = Fixtures.Auth.create_subject(other_identity)
-
+      other_subject = Fixtures.Auth.create_subject()
       assert delete_policy(policy, other_subject) == {:error, :not_found}
     end
   end

@@ -117,7 +117,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
     with {:ok, provider_identifier, identity_state} <-
            fetch_identity_state(provider, token_params) do
-      Domain.Auth.upsert_identity(actor, provider, provider_identifier, identity_state)
+      Domain.Auth.upsert_identity(actor, provider, %{
+        provider_identifier: provider_identifier,
+        provider_virtual_state: identity_state
+      })
     end
   end
 

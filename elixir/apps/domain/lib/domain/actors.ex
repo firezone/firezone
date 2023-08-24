@@ -1,6 +1,8 @@
 defmodule Domain.Actors do
+  alias Domain.Actors.Membership
   alias Web.Devices
-  alias Domain.{Repo, Auth, Devices, Validator}
+  alias Domain.{Repo, Validator}
+  alias Domain.{Auth, Devices}
   alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
 
@@ -53,12 +55,12 @@ defmodule Domain.Actors do
     end
   end
 
-  def upsert_provider_groups_multi(%Auth.Provider{} = provider, attrs_list) do
+  def sync_provider_groups_multi(%Auth.Provider{} = provider, attrs_list) do
     now = DateTime.utc_now()
 
     attrs_by_provider_identifier =
       for attrs <- attrs_list, into: %{} do
-        {attrs["provider_identifier"], attrs}
+        {Map.fetch!(attrs, "provider_identifier"), attrs}
       end
 
     Ecto.Multi.new()
@@ -68,7 +70,7 @@ defmodule Domain.Actors do
       |> Group.Query.lock()
     end)
     |> Ecto.Multi.run(
-      :plan,
+      :plan_groups,
       fn _repo, %{groups: groups} ->
         {update, delete} =
           Enum.reduce(groups, {[], []}, fn group, {update, delete} ->
@@ -85,57 +87,119 @@ defmodule Domain.Actors do
       end
     )
     |> Ecto.Multi.update_all(
-      :delete,
-      fn %{plan: {_upsert, delete}} ->
+      :delete_groups,
+      fn %{plan_groups: {_upsert, delete}} ->
         Group.Query.by_account_id(provider.account_id)
         |> Group.Query.by_provider_id(provider.id)
         |> Group.Query.by_provider_identifier({:in, delete})
       end,
-      set: [deleted_at: DateTime.utc_now()]
+      set: [deleted_at: now]
     )
     |> Ecto.Multi.run(
-      :upsert,
-      fn repo, %{plan: {upsert, _delete}} ->
-        upsert
-        |> Enum.reduce_while({:ok, []}, fn provider_identifier, {:ok, acc} ->
+      :upsert_groups,
+      fn repo, %{plan_groups: {upsert, _delete}} ->
+        Enum.reduce_while(upsert, {:ok, []}, fn provider_identifier, {:ok, acc} ->
           attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
-          changeset = Identity.Changeset.create_changeset(provider, attrs)
 
-          if changeset.valid? do
-            {:cont, {:ok, [changeset | acc]}}
-          else
-            {:halt, {:error, changeset}}
-          end
+          Group.Changeset.create_changeset(provider, attrs)
+          |> repo.insert(
+            conflict_target: Group.Changeset.upsert_conflict_target(),
+            on_conflict: Group.Changeset.upsert_on_conflict(),
+            returning: true
+          )
+          |> case do
+            {:ok, group} ->
+              {:cont, {:ok, [group | acc]}}
 
-          case Ecto.Changeset.apply_action(changeset, :insert) do
-            {:ok, data} ->
-              data =
-                data
-                |> Map.from_struct()
-                |> Map.take(Group.__schema__(:fields))
-                |> Map.reject(&is_nil(elem(&1, 1)))
-                |> Map.put(:inserted_at, now)
-                |> Map.put(:updated_at, now)
-
-              {:cont, {:ok, [data | acc]}}
-
-            {:error, _reason} ->
+            {:error, changeset} ->
               {:halt, {:error, changeset}}
           end
         end)
-        |> case do
-          {:ok, maps} ->
-            results =
-              repo.insert_all(Group, maps,
-                conflict_target: Group.Changeset.upsert_conflict_target(),
-                on_conflict: Group.Changeset.upsert_on_conflict()
-              )
+      end
+    )
+  end
 
-            {:ok, results}
+  def sync_provider_memberships_multi(multi, %Auth.Provider{} = provider, tuples) do
+    multi
+    |> Ecto.Multi.all(:memberships, fn _effects_so_far ->
+      Membership.Query.by_account_id(provider.account_id)
+      |> Membership.Query.by_group_provider_id(provider.id)
+      |> Membership.Query.lock()
+    end)
+    |> Ecto.Multi.run(
+      :plan_memberships,
+      fn _repo,
+         %{
+           identities: identities,
+           insert_identities: insert_identities,
+           groups: groups,
+           upsert_groups: upsert_groups,
+           memberships: memberships
+         } ->
+        identity_by_provider_identifier =
+          for identity <- identities ++ insert_identities, into: %{} do
+            {identity.provider_identifier, identity}
+          end
 
-          {:error, changeset} ->
-            {:error, changeset}
-        end
+        group_by_provider_identifier =
+          for group <- groups ++ upsert_groups, into: %{} do
+            {group.provider_identifier, group}
+          end
+
+        tuples =
+          Enum.map(tuples, fn {group_provider_identifier, actor_provider_identifier} ->
+            {Map.fetch!(group_by_provider_identifier, group_provider_identifier).id,
+             Map.fetch!(identity_by_provider_identifier, actor_provider_identifier).actor_id}
+          end)
+
+        {upsert, delete} =
+          Enum.reduce(
+            memberships,
+            {tuples, []},
+            fn membership, {upsert, delete} ->
+              tuple = {membership.group_id, membership.actor_id}
+
+              if tuple in tuples do
+                {upsert -- [tuple], delete}
+              else
+                {upsert -- [tuple], [{membership.group_id, membership.actor_id}] ++ delete}
+              end
+            end
+          )
+
+        {:ok, {upsert, delete}}
+      end
+    )
+    |> Ecto.Multi.delete_all(
+      :delete_memberships,
+      fn %{plan_memberships: {_upsert, delete}} ->
+        Membership.Query.by_group_id_and_actor_id({:in, delete})
+      end
+    )
+    |> Ecto.Multi.run(
+      :upsert_memberships,
+      fn repo, %{plan_memberships: {upsert, _delete}} ->
+        Enum.reduce_while(
+          upsert,
+          {:ok, []},
+          fn {group_id, actor_id}, {:ok, acc} ->
+            attrs = %{group_id: group_id, actor_id: actor_id}
+
+            Membership.Changeset.changeset(provider.account_id, %Membership{}, attrs)
+            |> repo.insert(
+              conflict_target: Membership.Changeset.upsert_conflict_target(),
+              on_conflict: Membership.Changeset.upsert_on_conflict(),
+              returning: true
+            )
+            |> case do
+              {:ok, membership} ->
+                {:cont, {:ok, [membership | acc]}}
+
+              {:error, changeset} ->
+                {:halt, {:error, changeset}}
+            end
+          end
+        )
       end
     )
   end
@@ -161,6 +225,7 @@ defmodule Domain.Actors do
   end
 
   def change_group(%Group{}, _attrs) do
+    # TODO: we can change but only name
     raise ArgumentError, "can't change synced groups"
   end
 
@@ -257,7 +322,6 @@ defmodule Domain.Actors do
 
   def create_actor(
         %Auth.Provider{} = provider,
-        provider_identifier,
         attrs,
         %Auth.Subject{} = subject
       ) do
@@ -266,17 +330,15 @@ defmodule Domain.Actors do
          changeset = Actor.Changeset.create_changeset(provider.account_id, attrs),
          {:ok, data} <- Ecto.Changeset.apply_action(changeset, :validate),
          :ok <- ensure_no_privilege_escalation(subject, data.type) do
-      create_actor(provider, provider_identifier, attrs)
+      create_actor(provider, attrs)
     end
   end
 
-  def create_actor(%Auth.Provider{} = provider, provider_identifier, attrs) do
-    {provider_attrs, attrs} = Map.pop(attrs, "provider", %{})
-
+  def create_actor(%Auth.Provider{} = provider, attrs) do
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:actor, Actor.Changeset.create_changeset(provider.account_id, attrs))
     |> Ecto.Multi.run(:identity, fn _repo, %{actor: actor} ->
-      Auth.create_identity(actor, provider, provider_identifier, provider_attrs)
+      Auth.create_identity(actor, provider, attrs)
     end)
     |> Repo.transaction()
     |> case do
@@ -364,6 +426,16 @@ defmodule Domain.Actors do
       )
     end
   end
+
+  # TODO: when actor is synced we should not allow changing the name
+  def actor_synced?(%Actor{last_synced_at: nil}), do: false
+  def actor_synced?(%Actor{}), do: true
+
+  def actor_deleted?(%Actor{deleted_at: nil}), do: false
+  def actor_deleted?(%Actor{}), do: true
+
+  def actor_disabled?(%Actor{disabled_at: nil}), do: false
+  def actor_disabled?(%Actor{}), do: true
 
   defp ensure_no_privilege_escalation(subject, granted_actor_type) do
     granted_permissions = Auth.fetch_type_permissions!(granted_actor_type)

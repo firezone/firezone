@@ -24,6 +24,7 @@ defmodule Domain.DataCase do
 
       alias Domain.Repo
       alias Domain.Fixtures
+      alias Domain.Mocks
     end
   end
 

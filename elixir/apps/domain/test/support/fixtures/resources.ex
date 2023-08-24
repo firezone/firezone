@@ -24,7 +24,7 @@ defmodule Domain.Fixtures.Resources do
       end)
 
     {connections, attrs} =
-      pop_assoc_fixture(attrs, :connections, fn ->
+      Map.pop_lazy(attrs, :connections, fn ->
         Enum.map(1..2, fn _ ->
           gateway = Fixtures.Gateways.create_gateway(account: account)
           %{gateway_group_id: gateway.group_id}
@@ -32,8 +32,10 @@ defmodule Domain.Fixtures.Resources do
       end)
 
     {subject, attrs} =
-      Map.pop_lazy(attrs, :subject, fn ->
-        admin_subject_for_account(account)
+      pop_assoc_fixture(attrs, :subject, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account, actor: [type: :account_admin_user]})
+        |> Fixtures.Auth.create_subject()
       end)
 
     {:ok, resource} =

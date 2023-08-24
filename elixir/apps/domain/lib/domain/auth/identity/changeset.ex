@@ -3,7 +3,12 @@ defmodule Domain.Auth.Identity.Changeset do
   alias Domain.Actors
   alias Domain.Auth.{Subject, Identity, Provider}
 
-  def create_identity(actor, provider, attrs, %Subject{} = subject) do
+  def create_identity(
+        %Actors.Actor{} = actor,
+        %Provider{} = provider,
+        attrs,
+        %Subject{} = subject
+      ) do
     actor
     |> create_identity(provider, attrs)
     |> put_change(:created_by, :identity)
@@ -16,21 +21,39 @@ defmodule Domain.Auth.Identity.Changeset do
         attrs
       ) do
     %Identity{}
-    |> cast(attrs, ~w[provider_identifier])
-    |> validate_required(~w[provider_identifier])
-    |> cast_assoc(:actor,
-      with: fn _actor, attrs ->
-        Actors.Actor.Changeset.actor_changeset(account_id, attrs)
-      end
-    )
+    |> cast(attrs, ~w[provider_identifier provider_virtual_state]a)
+    |> validate_required(~w[provider_identifier]a)
     |> put_change(:actor_id, actor.id)
     |> put_change(:provider_id, provider.id)
     |> put_change(:account_id, account_id)
+    |> put_change(:created_by, :system)
+    |> changeset()
+  end
+
+  def create_identity_and_actor(
+        %Provider{account_id: account_id} = provider,
+        attrs
+      ) do
+    %Identity{}
+    |> cast(attrs, ~w[provider_identifier provider_virtual_state]a)
+    |> validate_required(~w[provider_identifier]a)
+    |> cast_assoc(:actor,
+      with: fn _actor, attrs ->
+        Actors.Actor.Changeset.create_changeset(account_id, attrs)
+        |> put_change(:last_synced_at, DateTime.utc_now())
+      end
+    )
+    |> put_change(:provider_id, provider.id)
+    |> put_change(:account_id, account_id)
+    |> put_change(:created_by, :provider)
+    |> changeset()
+  end
+
+  def changeset(changeset) do
+    changeset
     |> unique_constraint(:provider_identifier,
       name: :auth_identities_account_id_provider_id_provider_identifier_idx
     )
-    |> validate_required(:provider_identifier)
-    |> put_change(:created_by, :system)
   end
 
   def update_identity_provider_state(identity_or_changeset, %{} = state, virtual_state \\ %{}) do

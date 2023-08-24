@@ -1,5 +1,6 @@
 defmodule Domain.Fixtures.Config do
   use Domain.Fixture
+  alias Domain.Config
 
   def configuration_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{

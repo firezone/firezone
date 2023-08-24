@@ -27,11 +27,16 @@ defmodule Domain.Fixtures.Actors do
       end)
 
     {subject, attrs} =
-      Map.pop_lazy(attrs, :subject, fn ->
-        admin_subject_for_account(account)
+      pop_assoc_fixture(attrs, :subject, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account, actor: [type: :account_admin_user]})
+        |> Fixtures.Auth.create_subject()
       end)
 
-    {:ok, group} = Actors.create_group(attrs, subject)
+    {:ok, group} =
+      attrs
+      |> Map.put(:provider_identifier, provider_identifier)
+      |> Actors.create_group(subject)
 
     if provider do
       update!(group, provider_id: provider.id, provider_identifier: provider_identifier)
@@ -42,7 +47,13 @@ defmodule Domain.Fixtures.Actors do
 
   def delete_group(group) do
     group = Repo.preload(group, :account)
-    subject = admin_subject_for_account(group.account)
+
+    subject =
+      Fixtures.Auth.create_subject(
+        account: group.account,
+        actor: [type: :account_admin_user]
+      )
+
     {:ok, group} = Actors.delete_group(group, subject)
     group
   end
@@ -77,6 +88,38 @@ defmodule Domain.Fixtures.Actors do
 
     # FIXME!!!
     Actors.Actor.Changeset.create_changeset(provider.account_id, attrs)
+    |> Repo.insert!()
+  end
+
+  def create_membership(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    {account, attrs} =
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        Fixtures.Accounts.create_account(assoc_attrs)
+      end)
+
+    {provider, attrs} =
+      Map.pop(attrs, :provider)
+
+    {group_id, attrs} =
+      pop_assoc_fixture_id(attrs, :group, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account, provider: provider})
+        |> create_group()
+      end)
+
+    {actor_id, _attrs} =
+      pop_assoc_fixture_id(attrs, :actor, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account})
+        |> create_actor()
+      end)
+
+    Actors.Membership.Changeset.changeset(account.id, %Actors.Membership{}, %{
+      group_id: group_id,
+      actor_id: actor_id
+    })
     |> Repo.insert!()
   end
 

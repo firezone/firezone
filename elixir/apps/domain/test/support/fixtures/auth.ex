@@ -76,7 +76,7 @@ defmodule Domain.Fixtures.Auth do
       |> Enum.into(%{adapter_config: adapter_config})
       |> create_openid_connect_provider()
 
-    {bypass, provider}
+    {provider, bypass}
   end
 
   def start_and_create_google_workspace_provider(attrs \\ %{}) do
@@ -92,7 +92,7 @@ defmodule Domain.Fixtures.Auth do
       |> Enum.into(%{adapter_config: adapter_config})
       |> create_google_workspace_provider()
 
-    {bypass, provider}
+    {provider, bypass}
   end
 
   def create_openid_connect_provider(attrs \\ %{}) do
@@ -150,7 +150,10 @@ defmodule Domain.Fixtures.Auth do
   end
 
   def create_userpass_provider(attrs \\ %{}) do
-    attrs = provider_attrs(adapter: :userpass)
+    attrs =
+      attrs
+      |> Enum.into(%{adapter: :userpass})
+      |> provider_attrs()
 
     {account, attrs} =
       pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
@@ -162,7 +165,10 @@ defmodule Domain.Fixtures.Auth do
   end
 
   def create_token_provider(attrs \\ %{}) do
-    attrs = provider_attrs(adapter: :token)
+    attrs =
+      attrs
+      |> Enum.into(%{adapter: :token})
+      |> provider_attrs()
 
     {account, attrs} =
       pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
@@ -175,20 +181,25 @@ defmodule Domain.Fixtures.Auth do
 
   def disable_provider(provider) do
     provider = Repo.preload(provider, :account)
-    subject = admin_subject_for_account(provider.account)
+
+    subject =
+      Fixtures.Auth.create_subject(
+        account: provider.account,
+        actor: [type: :account_admin_user]
+      )
+
     {:ok, group} = Auth.disable_provider(provider, subject)
     group
   end
 
   def identity_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
-      provider_virtual_state: %{},
-      provider_identifier: Ecto.UUID.generate()
+      provider_virtual_state: %{}
     })
   end
 
   def create_identity(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
+    attrs = identity_attrs(attrs)
 
     {account, attrs} =
       pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
@@ -213,7 +224,7 @@ defmodule Domain.Fixtures.Auth do
     {provider_state, attrs} =
       Map.pop(attrs, :provider_state)
 
-    {actor, _attrs} =
+    {actor, attrs} =
       pop_assoc_fixture(attrs, :actor, fn assoc_attrs ->
         assoc_attrs
         |> Enum.into(%{
@@ -224,10 +235,7 @@ defmodule Domain.Fixtures.Auth do
         |> Fixtures.Actors.create_actor()
       end)
 
-    attrs =
-      attrs
-      |> Map.put(:provider_identifier, provider_identifier)
-      |> identity_attrs()
+    attrs = Map.put(attrs, :provider_identifier, provider_identifier)
 
     {:ok, identity} = Auth.upsert_identity(actor, provider, attrs)
 
@@ -244,34 +252,87 @@ defmodule Domain.Fixtures.Auth do
     update!(identity, deleted_at: DateTime.utc_now())
   end
 
-  def create_subject do
-    account = Fixtures.Accounts.create_account()
+  def create_subject(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
 
-    {provider, _bypass} =
-      start_and_create_openid_connect_provider(account: account)
+    {account, attrs} =
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        relation = attrs[:provider] || attrs[:actor] || attrs[:identity]
 
-    actor =
-      Fixtures.Actors.create_actor(
-        type: :account_admin_user,
-        account: account,
-        provider: provider
-      )
+        if not is_nil(relation) and is_struct(relation) do
+          Repo.get!(Domain.Accounts.Account, relation.account_id)
+        else
+          Fixtures.Accounts.create_account(assoc_attrs)
+        end
+      end)
 
-    identity = create_identity(actor: actor, account: account, provider: provider)
-    create_subject(identity)
-  end
+    {provider, attrs} =
+      pop_assoc_fixture(attrs, :provider, fn assoc_attrs ->
+        relation = attrs[:actor] || attrs[:identity]
 
-  def create_subject(%Auth.Identity{} = identity) do
-    identity = Repo.preload(identity, [:account, :actor])
+        if not is_nil(relation) and is_struct(relation) do
+          Repo.get!(Domain.Auth.Provider, relation.provider_id)
+        else
+          {provider, _bypass} =
+            assoc_attrs
+            |> Enum.into(%{account: account})
+            |> start_and_create_openid_connect_provider()
 
-    %Auth.Subject{
-      identity: identity,
-      actor: identity.actor,
-      permissions: Auth.Roles.build(identity.actor.type).permissions,
-      account: identity.account,
-      expires_at: DateTime.utc_now() |> DateTime.add(60, :second),
-      context: %Auth.Context{remote_ip: remote_ip(), user_agent: user_agent()}
-    }
+          provider
+        end
+      end)
+
+    {provider_identifier, attrs} =
+      Map.pop_lazy(attrs, :provider_identifier, fn ->
+        random_provider_identifier(provider)
+      end)
+
+    {actor, attrs} =
+      pop_assoc_fixture(attrs, :actor, fn assoc_attrs ->
+        relation = attrs[:identity]
+
+        if not is_nil(relation) and is_struct(relation) do
+          Repo.get!(Domain.Actors.Actor, relation.actor_id)
+        else
+          assoc_attrs
+          |> Enum.into(%{
+            type: :account_admin_user,
+            account: account,
+            provider: provider,
+            provider_identifier: provider_identifier
+          })
+          |> Fixtures.Actors.create_actor()
+        end
+      end)
+
+    {identity, attrs} =
+      pop_assoc_fixture(attrs, :identity, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{
+          actor: actor,
+          account: account,
+          provider: provider,
+          provider_identifier: provider_identifier
+        })
+        |> create_identity()
+      end)
+
+    {expires_at, attrs} =
+      Map.pop_lazy(attrs, :expires_at, fn ->
+        DateTime.utc_now() |> DateTime.add(60, :second)
+      end)
+
+    {user_agent, attrs} =
+      Map.pop_lazy(attrs, :user_agent, fn ->
+        user_agent()
+      end)
+
+    {remote_ip, _attrs} =
+      Map.pop_lazy(attrs, :remote_ip, fn ->
+        remote_ip()
+      end)
+
+    Auth.build_subject(identity, expires_at, user_agent, remote_ip)
   end
 
   def remove_permissions(%Auth.Subject{} = subject) do

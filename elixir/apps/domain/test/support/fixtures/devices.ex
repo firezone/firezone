@@ -37,8 +37,14 @@ defmodule Domain.Fixtures.Devices do
       end)
 
     {subject, attrs} =
-      Map.pop_lazy(attrs, :subject, fn ->
-        Fixtures.Auth.create_subject(identity)
+      pop_assoc_fixture(attrs, :subject, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{
+          account: account,
+          identity: identity,
+          actor: [type: :account_admin_user]
+        })
+        |> Fixtures.Auth.create_subject()
       end)
 
     {:ok, device} = Devices.upsert_device(attrs, subject)
@@ -47,7 +53,13 @@ defmodule Domain.Fixtures.Devices do
 
   def delete_device(device) do
     device = Repo.preload(device, :account)
-    subject = admin_subject_for_account(device.account)
+
+    subject =
+      Fixtures.Auth.create_subject(
+        account: device.account,
+        actor: [type: :account_admin_user]
+      )
+
     {:ok, device} = Devices.delete_device(device, subject)
     device
   end

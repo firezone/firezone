@@ -94,7 +94,7 @@ defmodule Domain.Mocks.OpenIDConnect do
       Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
     end)
 
-    # {bypass, "#{endpoint}/.well-known/openid-configuration"}
+    bypass
   end
 
   def expect_refresh_token(bypass, attrs \\ %{}) do
@@ -105,6 +105,8 @@ defmodule Domain.Mocks.OpenIDConnect do
       send(test_pid, {:request, conn})
       Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
     end)
+
+    bypass
   end
 
   def expect_refresh_token_failure(bypass, attrs \\ %{}) do
@@ -115,6 +117,8 @@ defmodule Domain.Mocks.OpenIDConnect do
       send(test_pid, {:request, conn})
       Plug.Conn.resp(conn, 401, Jason.encode!(attrs))
     end)
+
+    bypass
   end
 
   def expect_userinfo(bypass, attrs \\ %{}) do
@@ -141,6 +145,8 @@ defmodule Domain.Mocks.OpenIDConnect do
       send(test_pid, {:request, conn})
       Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
     end)
+
+    bypass
   end
 
   def generate_openid_connect_token(provider, identity, claims \\ %{}) do

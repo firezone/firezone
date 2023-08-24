@@ -276,13 +276,15 @@ defmodule Domain.Auth do
     end
   end
 
-  def upsert_provider_identities_multi(%Provider{} = provider, attrs_list) do
+  def sync_provider_identities_multi(%Provider{} = provider, attrs_list) do
     now = DateTime.utc_now()
 
     attrs_by_provider_identifier =
       for attrs <- attrs_list, into: %{} do
-        {attrs["provider_identifier"], attrs}
+        {Map.fetch!(attrs, "provider_identifier"), attrs}
       end
+
+    provider_identifiers = Map.keys(attrs_by_provider_identifier)
 
     Ecto.Multi.new()
     |> Ecto.Multi.all(:identities, fn _effects_so_far ->
@@ -291,86 +293,51 @@ defmodule Domain.Auth do
       |> Identity.Query.lock()
     end)
     |> Ecto.Multi.run(
-      :plan,
+      :plan_identities,
       fn _repo, %{identities: identities} ->
-        {update, delete} =
-          Enum.reduce(identities, {[], []}, fn identity, {update, delete} ->
-            if Map.has_key?(attrs_by_provider_identifier, identity.provider_identifier) do
-              {[identity.provider_identifier] ++ update, delete}
+        {insert, delete} =
+          Enum.reduce(identities, {provider_identifiers, []}, fn identity, {insert, delete} ->
+            if identity.provider_identifier in provider_identifiers do
+              {insert -- [identity.provider_identifier], delete}
             else
-              {update, [identity.provider_identifier] ++ delete}
+              {insert -- [identity.provider_identifier], [identity.provider_identifier] ++ delete}
             end
           end)
 
-        insert = Map.keys(attrs_by_provider_identifier) -- (update ++ delete)
-
-        {:ok, {update ++ insert, delete}}
+        {:ok, {insert, delete}}
       end
     )
     |> Ecto.Multi.update_all(
-      :delete,
-      fn %{plan: {_upsert, delete}} ->
+      :delete_identities,
+      fn %{plan_identities: {_insert, delete}} ->
         Identity.Query.by_account_id(provider.account_id)
         |> Identity.Query.by_provider_id(provider.id)
         |> Identity.Query.by_provider_identifier({:in, delete})
       end,
-      set: [deleted_at: DateTime.utc_now()]
+      set: [deleted_at: now]
     )
+    |> Ecto.Multi.run(
+      :insert_identities,
+      fn repo, %{plan_identities: {insert, _delete}} ->
+        Enum.reduce_while(insert, {:ok, []}, fn provider_identifier, {:ok, acc} ->
+          attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
+          changeset = Identity.Changeset.create_identity_and_actor(provider, attrs)
 
-    # |> Ecto.Multi.run(
-    #   :upsert,
-    #   fn repo, %{plan: {upsert, _delete}} ->
-    #     upsert
-    #     |> Enum.reduce_while({:ok, []}, fn provider_identifier, {:ok, acc} ->
-    #       attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
-    #       changeset = Group.Changeset.create_changeset(provider, provider_identifier, attrs)
+          case repo.insert(changeset) do
+            {:ok, identity} ->
+              {:cont, {:ok, [identity | acc]}}
 
-    #       if changeset.valid? do
-    #         {:cont, {:ok, [changeset | acc]}}
-    #       else
-    #         {:halt, {:error, changeset}}
-    #       end
-
-    #       case Ecto.Changeset.apply_action(changeset, :insert) do
-    #         {:ok, data} ->
-    #           data =
-    #             data
-    #             |> Map.from_struct()
-    #             |> Map.take(Group.__schema__(:fields))
-    #             |> Map.reject(&is_nil(elem(&1, 1)))
-    #             |> Map.put(:inserted_at, now)
-    #             |> Map.put(:updated_at, now)
-
-    #           {:cont, {:ok, [data | acc]}}
-
-    #         {:error, _reason} ->
-    #           {:halt, {:error, changeset}}
-    #       end
-    #     end)
-    #     |> case do
-    #       {:ok, maps} ->
-    #         results =
-    #           repo.insert_all(Group, maps,
-    #             conflict_target: Group.Changeset.upsert_conflict_target(),
-    #             on_conflict: Group.Changeset.upsert_on_conflict()
-    #           )
-
-    #         {:ok, results}
-
-    #       {:error, changeset} ->
-    #         {:error, changeset}
-    #     end
-    #   end
-    # )
+            {:error, changeset} ->
+              {:halt, {:error, changeset}}
+          end
+        end)
+      end
+    )
   end
 
-  def upsert_identity(
-        %Actors.Actor{} = actor,
-        %Provider{} = provider,
-        attrs
-      ) do
-    Identity.Changeset.create_identity(actor, provider, provider_identifier)
-    |> Adapters.identity_changeset(provider, provider_attrs)
+  def upsert_identity(%Actors.Actor{} = actor, %Provider{} = provider, attrs) do
+    Identity.Changeset.create_identity(actor, provider, attrs)
+    |> Adapters.identity_changeset(provider)
     |> Repo.insert(
       conflict_target:
         {:unsafe_fragment,
@@ -400,8 +367,8 @@ defmodule Domain.Auth do
         %Subject{} = subject
       ) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
-      Identity.Changeset.create_identity(actor, provider, provider_identifier)
-      |> Adapters.identity_changeset(provider, provider_attrs)
+      Identity.Changeset.create_identity(actor, provider, attrs)
+      |> Adapters.identity_changeset(provider)
       |> Repo.insert()
     else
       {:error, :not_found} -> {:error, :token_provider_not_enabled}
@@ -440,13 +407,8 @@ defmodule Domain.Auth do
         |> Repo.fetch()
       end)
       |> Ecto.Multi.insert(:new_identity, fn %{identity: identity} ->
-        Identity.Changeset.create_identity(
-          identity.actor,
-          identity.provider,
-          provider_identifier,
-          subject
-        )
-        |> Adapters.identity_changeset(identity.provider, provider_attrs)
+        Identity.Changeset.create_identity(identity.actor, identity.provider, attrs, subject)
+        |> Adapters.identity_changeset(identity.provider)
       end)
       |> Ecto.Multi.update(:deleted_identity, fn %{identity: identity} ->
         Identity.Changeset.delete_identity(identity)
@@ -552,11 +514,15 @@ defmodule Domain.Auth do
   end
 
   defp build_subject_expires_at(%Actors.Actor{} = actor, expires_at) do
-    default_session_duration_hours = Map.fetch!(@default_session_duration_hours, actor.type)
-    max_session_duration_hours = Map.fetch!(@max_session_duration_hours, actor.type)
     now = DateTime.utc_now()
+
+    default_session_duration_hours = Map.fetch!(@default_session_duration_hours, actor.type)
     expires_at = expires_at || DateTime.add(now, default_session_duration_hours, :hour)
-    Enum.min([expires_at, DateTime.add(now, max_session_duration_hours, :hour)])
+
+    max_session_duration_hours = Map.fetch!(@max_session_duration_hours, actor.type)
+    max_expires_at = DateTime.add(now, max_session_duration_hours, :hour)
+
+    Enum.min([expires_at, max_expires_at], DateTime)
   end
 
   # Session

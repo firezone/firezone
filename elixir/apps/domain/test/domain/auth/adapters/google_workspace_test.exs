@@ -62,7 +62,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
           adapter_config: %{
             client_id: "client_id",
             client_secret: "client_secret",
-            discovery_document_uri: discovery_document_uri
+            discovery_document_uri: discovery_document_url
           }
         )
 
@@ -90,16 +90,14 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
                "response_type" => "code",
                "client_id" => "client_id",
                "client_secret" => "client_secret",
-               "discovery_document_uri" => discovery_document_uri
+               "discovery_document_uri" => discovery_document_url
              }
     end
   end
 
   describe "ensure_deprovisioned/1" do
     test "does nothing for a provider" do
-      {provider, bypass} =
-        start_and_create_google_workspace_provider(account: account)
-
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
       assert ensure_deprovisioned(provider) == {:ok, provider}
     end
   end
@@ -121,10 +119,10 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       identity: identity,
       bypass: bypass
     } do
-      {token, claims} = Fixtures.Auth.generate_openid_connect_token(provider, identity)
+      {token, claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
 
-      Fixtures.Auth.expect_refresh_token(bypass, %{"id_token" => token})
-      Fixtures.Auth.expect_userinfo(bypass)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -156,9 +154,9 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       identity: identity,
       bypass: bypass
     } do
-      {token, _claims} = Fixtures.Auth.generate_openid_connect_token(provider, identity)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
 
-      Fixtures.Auth.expect_refresh_token(bypass, %{
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
@@ -166,7 +164,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
         "expires_in" => 3600
       })
 
-      Fixtures.Auth.expect_userinfo(bypass)
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -187,11 +185,11 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       forty_seconds_ago = DateTime.utc_now() |> DateTime.add(-40, :second) |> DateTime.to_unix()
 
       {token, _claims} =
-        Fixtures.Auth.generate_openid_connect_token(provider, identity, %{
+        Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity, %{
           "exp" => forty_seconds_ago
         })
 
-      Fixtures.Auth.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -206,7 +204,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
     } do
       token = "foo"
 
-      Fixtures.Auth.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -221,9 +219,11 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       bypass: bypass
     } do
       {token, _claims} =
-        Fixtures.Auth.generate_openid_connect_token(provider, identity, %{"sub" => "foo@bar.com"})
+        Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity, %{
+          "sub" => "foo@bar.com"
+        })
 
-      Fixtures.Auth.expect_refresh_token(bypass, %{
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
@@ -231,7 +231,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
         "expires_in" => 3600
       })
 
-      Fixtures.Auth.expect_userinfo(bypass)
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -246,9 +246,9 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       bypass: bypass
     } do
       identity = Fixtures.Auth.create_identity(account: account)
-      {token, _claims} = Fixtures.Auth.generate_openid_connect_token(provider, identity)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
 
-      Fixtures.Auth.expect_refresh_token(bypass, %{
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
@@ -256,7 +256,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
         "expires_in" => 3600
       })
 
-      Fixtures.Auth.expect_userinfo(bypass)
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"

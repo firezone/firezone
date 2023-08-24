@@ -361,7 +361,7 @@ defmodule Domain.ConfigTest do
 
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -423,7 +423,7 @@ defmodule Domain.ConfigTest do
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
 
       subject =
-        Fixtures.Auth.create_subject(identity)
+        Fixtures.Auth.create_subject(identity: identity)
         |> Fixtures.Auth.remove_permissions()
 
       assert update_config(config, %{}, subject) ==

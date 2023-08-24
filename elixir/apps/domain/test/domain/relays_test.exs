@@ -7,7 +7,7 @@ defmodule Domain.RelaysTest do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-    subject = Fixtures.Auth.create_subject(identity)
+    subject = Fixtures.Auth.create_subject(identity: identity)
 
     %{
       account: account,

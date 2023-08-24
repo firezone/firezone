@@ -14,6 +14,7 @@ defmodule Domain.Actors.Actor do
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
     has_many :groups, through: [:memberships, :group], where: [deleted_at: nil]
 
+    field :last_synced_at, :utc_datetime_usec
     field :disabled_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
     timestamps()

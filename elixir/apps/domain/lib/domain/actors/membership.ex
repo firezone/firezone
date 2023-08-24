@@ -7,5 +7,8 @@ defmodule Domain.Actors.Membership do
     belongs_to :actor, Domain.Actors.Actor, primary_key: true
 
     belongs_to :account, Domain.Accounts.Account
+
+    field :deleted_at, :utc_datetime_usec
+    timestamps(updated_at: false)
   end
 end

@@ -7,7 +7,7 @@ defmodule Domain.ResourcesTest do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-    subject = Fixtures.Auth.create_subject(identity)
+    subject = Fixtures.Auth.create_subject(identity: identity)
 
     %{
       account: account,
@@ -99,7 +99,7 @@ defmodule Domain.ResourcesTest do
     } do
       actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       Fixtures.Resources.create_resource(account: account)
       Fixtures.Resources.create_resource(account: account)
@@ -170,7 +170,7 @@ defmodule Domain.ResourcesTest do
 
       Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
       |> delete_resource(subject)
 
@@ -186,12 +186,12 @@ defmodule Domain.ResourcesTest do
 
       Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
 
       Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
 
       Fixtures.Resources.create_resource(account: account)
@@ -209,7 +209,7 @@ defmodule Domain.ResourcesTest do
 
       Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
 
       subject = Fixtures.Auth.remove_permissions(subject)
@@ -248,7 +248,7 @@ defmodule Domain.ResourcesTest do
 
       Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
 
       Fixtures.Resources.create_resource(account: account)
@@ -265,12 +265,12 @@ defmodule Domain.ResourcesTest do
 
       Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
 
       Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
       |> delete_resource(subject)
 
@@ -287,7 +287,7 @@ defmodule Domain.ResourcesTest do
 
       Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
 
       subject = Fixtures.Auth.remove_permissions(subject)
@@ -389,7 +389,8 @@ defmodule Domain.ResourcesTest do
       assert {:error, changeset} = create_resource(attrs, subject)
       assert "can not overlap with other resource ranges" in errors_on(changeset).address
 
-      subject = Fixtures.Auth.create_subject()
+      # range is unique per account
+      subject = Fixtures.Auth.create_subject(actor: [type: :account_admin_user])
       assert {:ok, _resource} = create_resource(attrs, subject)
     end
 
@@ -694,7 +695,7 @@ defmodule Domain.ResourcesTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          gateway_groups: [%{gateway_group_id: group.id}]
+          connections: [%{gateway_group_id: group.id}]
         )
 
       assert connected?(resource, gateway)

@@ -18,8 +18,10 @@ defmodule Domain.Fixtures.Relays do
       end)
 
     {subject, attrs} =
-      Map.pop_lazy(attrs, :subject, fn ->
-        admin_subject_for_account(account)
+      pop_assoc_fixture(attrs, :subject, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account, actor: [type: :account_admin_user]})
+        |> Fixtures.Auth.create_subject()
       end)
 
     {:ok, group} = Relays.create_group(attrs, subject)
@@ -34,7 +36,13 @@ defmodule Domain.Fixtures.Relays do
 
   def delete_group(group) do
     group = Repo.preload(group, :account)
-    subject = admin_subject_for_account(group.account)
+
+    subject =
+      Fixtures.Auth.create_subject(
+        account: group.account,
+        actor: [type: :account_admin_user]
+      )
+
     {:ok, group} = Relays.delete_group(group, subject)
     group
   end
@@ -55,8 +63,10 @@ defmodule Domain.Fixtures.Relays do
       end)
 
     {subject, _attrs} =
-      Map.pop_lazy(attrs, :subject, fn ->
-        admin_subject_for_account(account)
+      pop_assoc_fixture(attrs, :subject, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account, actor: [type: :account_admin_user]})
+        |> Fixtures.Auth.create_subject()
       end)
 
     Relays.Token.Changeset.create_changeset(account, subject)
@@ -101,7 +111,13 @@ defmodule Domain.Fixtures.Relays do
 
   def delete_relay(relay) do
     relay = Repo.preload(relay, :account)
-    subject = admin_subject_for_account(relay.account)
+
+    subject =
+      Fixtures.Auth.create_subject(
+        account: relay.account,
+        actor: [type: :account_admin_user]
+      )
+
     {:ok, relay} = Relays.delete_relay(relay, subject)
     relay
   end

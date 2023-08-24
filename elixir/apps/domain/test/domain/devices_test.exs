@@ -11,11 +11,11 @@ defmodule Domain.DevicesTest do
     unprivileged_identity =
       Fixtures.Auth.create_identity(account: account, actor: unprivileged_actor)
 
-    unprivileged_subject = Fixtures.Auth.create_subject(unprivileged_identity)
+    unprivileged_subject = Fixtures.Auth.create_subject(identity: unprivileged_identity)
 
     admin_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     admin_identity = Fixtures.Auth.create_identity(account: account, actor: admin_actor)
-    admin_subject = Fixtures.Auth.create_subject(admin_identity)
+    admin_subject = Fixtures.Auth.create_subject(identity: admin_identity)
 
     %{
       account: account,

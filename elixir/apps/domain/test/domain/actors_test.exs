@@ -9,7 +9,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -78,7 +78,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -133,7 +133,7 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "upsert_provider_groups_multi/2" do
+  describe "sync_provider_groups_multi/2" do
     setup do
       account = Fixtures.Accounts.create_account()
 
@@ -143,60 +143,84 @@ defmodule Domain.ActorsTest do
       %{account: account, provider: provider, bypass: bypass}
     end
 
-    test "upserts new groups", %{provider: provider} do
+    test "creates new groups", %{provider: provider} do
       attrs_list = [
         %{"name" => "Group:Infrastructure", "provider_identifier" => "G:GROUP_ID1"},
         %{"name" => "OrgUnit:Engineering", "provider_identifier" => "OU:OU_ID1"}
       ]
 
-      multi = upsert_provider_groups_multi(provider, attrs_list)
+      multi = sync_provider_groups_multi(provider, attrs_list)
 
       assert {:ok,
               %{
-                plan: {upsert, []},
-                delete: {0, nil},
-                upsert: {2, nil}
+                plan_groups: {upsert, []},
+                delete_groups: {0, nil},
+                upsert_groups: [_group1, _group2]
               }} = Repo.transaction(multi)
 
       assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in upsert))
       groups = Repo.all(Actors.Group)
+      group_names = Enum.map(attrs_list, & &1["name"])
       assert length(groups) == 2
-      group_names = Enum.map(groups, & &1.name)
-      assert Enum.all?(attrs_list, &(&1["name"] in group_names))
+
+      for group <- groups do
+        assert group.inserted_at
+        assert group.updated_at
+
+        assert group.created_by == :provider
+        assert group.provider_id == provider.id
+
+        assert group.name in group_names
+      end
     end
 
     test "updates existing groups", %{account: account, provider: provider} do
-      Fixtures.Actors.create_group(
-        account: account,
-        provider: provider,
-        provider_identifier: "G:GROUP_ID1"
-      )
+      group1 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID1"
+        )
 
-      Fixtures.Actors.create_group(
-        account: account,
-        provider: provider,
-        provider_identifier: "OU:OU_ID1"
-      )
+      _group2 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "OU:OU_ID1"
+        )
 
       attrs_list = [
         %{"name" => "Group:Infrastructure", "provider_identifier" => "G:GROUP_ID1"},
         %{"name" => "OrgUnit:Engineering", "provider_identifier" => "OU:OU_ID1"}
       ]
 
-      multi = upsert_provider_groups_multi(provider, attrs_list)
+      multi = sync_provider_groups_multi(provider, attrs_list)
 
       assert {:ok,
               %{
-                plan: {upsert, []},
-                delete: {0, nil},
-                upsert: {2, nil}
+                plan_groups: {upsert, []},
+                delete_groups: {0, nil},
+                upsert_groups: [_group1, _group2]
               }} = Repo.transaction(multi)
 
       assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in upsert))
       assert Repo.aggregate(Actors.Group, :count) == 2
 
-      group_names = Repo.all(Actors.Group) |> Enum.map(& &1.name)
-      assert Enum.all?(attrs_list, &(&1["name"] not in group_names))
+      groups = Repo.all(Actors.Group)
+      group_names = Enum.map(attrs_list, & &1["name"])
+      assert length(groups) == 2
+
+      for group <- groups do
+        assert group.inserted_at
+        assert group.updated_at
+
+        assert group.created_by == group1.created_by
+
+        assert group.provider_id == provider.id
+
+        # Names are not updated
+        assert group.name not in group_names
+      end
     end
 
     test "deletes removed groups", %{account: account, provider: provider} do
@@ -214,18 +238,251 @@ defmodule Domain.ActorsTest do
 
       attrs_list = []
 
-      multi = upsert_provider_groups_multi(provider, attrs_list)
+      multi = sync_provider_groups_multi(provider, attrs_list)
 
       assert {:ok,
               %{
-                plan: {[], delete},
-                delete: {2, nil},
-                upsert: {0, nil}
+                plan_groups: {[], delete},
+                delete_groups: {2, nil},
+                upsert_groups: []
               }} = Repo.transaction(multi)
 
       assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in delete))
       assert Repo.aggregate(Actors.Group, :count) == 2
       assert Repo.aggregate(Actors.Group.Query.all(), :count) == 0
+    end
+
+    test "ignores groups that are not synced from the provider", %{
+      account: account,
+      provider: provider
+    } do
+      {other_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      Fixtures.Actors.create_group(
+        account: account,
+        provider: other_provider,
+        provider_identifier: "G:GROUP_ID1"
+      )
+
+      Fixtures.Actors.create_group(
+        account: account,
+        provider_identifier: "OU:OU_ID1"
+      )
+
+      attrs_list = []
+
+      multi = sync_provider_groups_multi(provider, attrs_list)
+
+      assert Repo.transaction(multi) ==
+               {:ok,
+                %{
+                  groups: [],
+                  plan_groups: {[], []},
+                  delete_groups: {0, nil},
+                  upsert_groups: []
+                }}
+    end
+  end
+
+  describe "sync_provider_memberships_multi/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      group1 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID1"
+        )
+
+      group2 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "OU:OU_ID1"
+        )
+
+      identity1 =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: "USER_ID1"
+        )
+
+      identity2 =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: "USER_ID2"
+        )
+
+      %{
+        account: account,
+        provider: provider,
+        group1: group1,
+        group2: group2,
+        identity1: identity1,
+        identity2: identity2,
+        bypass: bypass
+      }
+    end
+
+    test "creates new memberships", %{
+      provider: provider,
+      group1: group1,
+      group2: group2,
+      identity1: identity1,
+      identity2: identity2
+    } do
+      tuples_list = [
+        {group1.provider_identifier, identity1.provider_identifier},
+        {group2.provider_identifier, identity2.provider_identifier}
+      ]
+
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.put(:insert_identities, [identity1])
+        |> Ecto.Multi.put(:identities, [identity2])
+        |> Ecto.Multi.put(:groups, [group1])
+        |> Ecto.Multi.put(:upsert_groups, [group2])
+        |> sync_provider_memberships_multi(provider, tuples_list)
+
+      assert {:ok,
+              %{
+                plan_memberships: {insert, []},
+                delete_memberships: {0, nil},
+                upsert_memberships: [_membership1, _membership2]
+              }} = Repo.transaction(multi)
+
+      assert {group1.id, identity1.actor_id} in insert
+      assert {group2.id, identity2.actor_id} in insert
+
+      memberships = Repo.all(Actors.Membership)
+      assert length(memberships) == 2
+
+      for membership <- memberships do
+        assert {membership.group_id, membership.actor_id} in insert
+      end
+    end
+
+    test "updates existing memberships", %{
+      account: account,
+      provider: provider,
+      group1: group1,
+      group2: group2,
+      identity1: identity1,
+      identity2: identity2
+    } do
+      Fixtures.Actors.create_membership(
+        account: account,
+        group: group1,
+        actor_id: identity1.actor_id
+      )
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        group: group2,
+        actor_id: identity2.actor_id
+      )
+
+      tuples_list = [
+        {group1.provider_identifier, identity1.provider_identifier},
+        {group2.provider_identifier, identity2.provider_identifier}
+      ]
+
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.put(:insert_identities, [identity1])
+        |> Ecto.Multi.put(:identities, [identity2])
+        |> Ecto.Multi.put(:groups, [group1])
+        |> Ecto.Multi.put(:upsert_groups, [group2])
+        |> sync_provider_memberships_multi(provider, tuples_list)
+
+      assert {:ok,
+              %{
+                plan_memberships: {[], []},
+                delete_memberships: {0, nil},
+                upsert_memberships: []
+              }} = Repo.transaction(multi)
+
+      assert Repo.aggregate(Actors.Membership, :count) == 2
+      assert Repo.aggregate(Actors.Membership.Query.all(), :count) == 2
+    end
+
+    test "deletes removed memberships", %{
+      account: account,
+      provider: provider,
+      group1: group1,
+      group2: group2,
+      identity1: identity1,
+      identity2: identity2
+    } do
+      Fixtures.Actors.create_membership(
+        account: account,
+        group: group1,
+        actor_id: identity1.actor_id
+      )
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        group: group2,
+        actor_id: identity2.actor_id
+      )
+
+      tuples_list = []
+
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.put(:insert_identities, [identity1])
+        |> Ecto.Multi.put(:identities, [identity2])
+        |> Ecto.Multi.put(:groups, [group1])
+        |> Ecto.Multi.put(:upsert_groups, [group2])
+        |> sync_provider_memberships_multi(provider, tuples_list)
+
+      assert {:ok,
+              %{
+                plan_memberships: {[], delete},
+                delete_memberships: {2, nil},
+                upsert_memberships: []
+              }} = Repo.transaction(multi)
+
+      assert {group1.id, identity1.actor_id} in delete
+      assert {group2.id, identity2.actor_id} in delete
+
+      assert Repo.aggregate(Actors.Membership, :count) == 0
+      assert Repo.aggregate(Actors.Membership.Query.all(), :count) == 0
+    end
+
+    test "ignores memberships that are not synced from the provider", %{
+      account: account,
+      provider: provider,
+      group1: group1,
+      group2: group2,
+      identity1: identity1,
+      identity2: identity2
+    } do
+      Fixtures.Actors.create_membership(account: account)
+
+      tuples_list = []
+
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.put(:insert_identities, [identity1])
+        |> Ecto.Multi.put(:identities, [identity2])
+        |> Ecto.Multi.put(:groups, [group1])
+        |> Ecto.Multi.put(:upsert_groups, [group2])
+        |> sync_provider_memberships_multi(provider, tuples_list)
+
+      assert {:ok,
+              %{
+                plan_memberships: {[], []},
+                delete_memberships: {0, nil},
+                upsert_memberships: []
+              }} = Repo.transaction(multi)
     end
   end
 
@@ -234,60 +491,6 @@ defmodule Domain.ActorsTest do
       assert %Ecto.Changeset{data: %Actors.Group{}, changes: changes} = new_group()
       assert Enum.empty?(changes)
     end
-  end
-
-  describe "upsert_provider_group/3" do
-    setup do
-      account = Fixtures.Accounts.create_account()
-
-      {provider, bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      %{
-        bypass: bypass,
-        account: account,
-        provider: provider
-      }
-    end
-
-    # test "creates a new group", %{provider: provider} do
-    #   provider_identifier = Ecto.UUID.generate()
-    #   attrs_by_provider_identifier = %{provider_identifier => %{name: "foo"}}
-
-    #   assert {:ok, group} = upsert_provider_group(provider, attrs)
-
-    #   assert group.provider_identifier == provider_identifier
-    #   assert group.name == attrs.name
-
-    #   assert group.provider_id == provider.id
-    #   assert group.account_id == provider.account_id
-    #   refute group.deleted_at
-
-    #   assert Repo.one(Actors.Group)
-    # end
-
-    # test "updates an existing group", %{account: account, provider: provider} do
-    #   group = Fixtures.Actors.create_provider_group(account: account, provider: provider)
-
-    #   provider_identifier = Ecto.UUID.generate()
-    #   attrs = %{name: "foo"}
-
-    #   assert {:ok, updated_group} = upsert_provider_group_and_actors(provider, group.provider_identifier, attrs)
-
-    #   assert updated_group.provider_identifier == provider_identifier
-    #   assert updated_group.name == group.name
-    #   assert updated_group.name != attrs.name
-
-    #   assert updated_group.provider_id == provider.id
-    #   assert updated_group.account_id == provider.account_id
-    #   refute group.deleted_at
-
-    #   assert Repo.one(Actors.Group)
-    # end
-
-    # test "deletes existing groups that are not synced"
-
-    # updates membmers (removes old and adds new)
   end
 
   describe "group_synced?/1" do
@@ -309,7 +512,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -415,7 +618,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -510,7 +713,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -564,7 +767,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -620,7 +823,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       {google_provider, _bypass} =
         Fixtures.Auth.start_and_create_openid_connect_provider(account: account, name: "google")
@@ -678,7 +881,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert {:ok, returned_actor} = fetch_actor_by_id(actor.id, subject)
       assert returned_actor.id == actor.id
@@ -688,7 +891,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       actor = Fixtures.Actors.create_actor(account: account)
 
@@ -700,7 +903,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       actor = Fixtures.Actors.create_actor()
 
@@ -721,7 +924,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       {:ok, actor} = fetch_actor_by_id(actor.id, subject, preload: :identities)
 
@@ -790,7 +993,7 @@ defmodule Domain.ActorsTest do
       Fixtures.Actors.create_actor(type: :account_user)
 
       identity1 = Fixtures.Auth.create_identity(account: account, actor: actor1)
-      subject = Fixtures.Auth.create_subject(identity1)
+      subject = Fixtures.Auth.create_subject(identity: identity1)
 
       assert {:ok, actors} = list_actors(subject)
       assert length(actors) == 2
@@ -812,7 +1015,7 @@ defmodule Domain.ActorsTest do
 
       actor1 = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity1 = Fixtures.Auth.create_identity(account: account, actor: actor1)
-      subject = Fixtures.Auth.create_subject(identity1)
+      subject = Fixtures.Auth.create_subject(identity: identity1)
 
       actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
       Fixtures.Auth.create_identity(account: account, actor: actor2)
@@ -843,7 +1046,8 @@ defmodule Domain.ActorsTest do
       provider: provider,
       provider_identifier: provider_identifier
     } do
-      assert {:error, changeset} = create_actor(provider, provider_identifier, %{})
+      attrs = %{identity: %{provider_identifier: provider_identifier}}
+      assert {:error, changeset} = create_actor(provider, attrs)
       refute changeset.valid?
 
       assert errors_on(changeset) == %{
@@ -856,9 +1060,9 @@ defmodule Domain.ActorsTest do
       provider: provider,
       provider_identifier: provider_identifier
     } do
-      attrs = Fixtures.Actors.actor_attrs(type: :foo)
+      attrs = Fixtures.Actors.actor_attrs(type: :foo, provider_identifier: provider_identifier)
 
-      assert {:error, changeset} = create_actor(provider, provider_identifier, attrs)
+      assert {:error, changeset} = create_actor(provider, attrs)
       refute changeset.valid?
 
       assert errors_on(changeset) == %{
@@ -870,9 +1074,9 @@ defmodule Domain.ActorsTest do
       provider: provider
     } do
       provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
-      attrs = Fixtures.Actors.actor_attrs()
-      assert {:ok, _actor} = create_actor(provider, provider_identifier, attrs)
-      assert {:error, changeset} = create_actor(provider, provider_identifier, attrs)
+      attrs = Fixtures.Actors.actor_attrs(provider_identifier: provider_identifier)
+      assert {:ok, _actor} = create_actor(provider, attrs)
+      assert {:error, changeset} = create_actor(provider, attrs)
       assert errors_on(changeset) == %{provider_identifier: ["has already been taken"]}
     end
 
@@ -880,9 +1084,9 @@ defmodule Domain.ActorsTest do
       provider: provider
     } do
       for type <- [:account_user, :account_admin_user, :service_account] do
-        attrs = Fixtures.Actors.actor_attrs(type: type)
         provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
-        assert {:ok, actor} = create_actor(provider, provider_identifier, attrs)
+        attrs = Fixtures.Actors.actor_attrs(type: type, provider_identifier: provider_identifier)
+        assert {:ok, actor} = create_actor(provider, attrs)
         assert actor.type == type
       end
     end
@@ -891,9 +1095,9 @@ defmodule Domain.ActorsTest do
       provider: provider,
       provider_identifier: provider_identifier
     } do
-      attrs = Fixtures.Actors.actor_attrs()
+      attrs = Fixtures.Actors.actor_attrs(provider_identifier: provider_identifier)
 
-      assert {:ok, actor} = create_actor(provider, provider_identifier, attrs)
+      assert {:ok, actor} = create_actor(provider, attrs)
 
       assert actor.type == attrs.type
       assert actor.type == attrs.type
@@ -938,11 +1142,12 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       subject =
-        Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Fixtures.Auth.create_subject()
+        Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
         |> Fixtures.Auth.remove_permissions()
 
-      assert create_actor(provider, provider_identifier, %{}, subject) ==
+      attrs = %{identity: %{provider_identifier: provider_identifier}}
+
+      assert create_actor(provider, attrs, subject) ==
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
@@ -953,7 +1158,8 @@ defmodule Domain.ActorsTest do
       provider_identifier: provider_identifier
     } do
       subject = Fixtures.Auth.create_subject()
-      assert create_actor(provider, provider_identifier, %{}, subject) == {:error, :unauthorized}
+      attrs = %{identity: %{provider_identifier: provider_identifier}}
+      assert create_actor(provider, attrs, subject) == {:error, :unauthorized}
     end
 
     test "returns error when subject is trying to create an actor with a privilege escalation", %{
@@ -963,9 +1169,7 @@ defmodule Domain.ActorsTest do
     } do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
-      subject =
-        Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Fixtures.Auth.create_subject()
+      subject = Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
 
       admin_permissions = subject.permissions
       required_permissions = [Actors.Authorizer.manage_actors_permission()]
@@ -979,14 +1183,22 @@ defmodule Domain.ActorsTest do
         MapSet.difference(admin_permissions, MapSet.new(required_permissions))
         |> MapSet.to_list()
 
-      attrs = %{type: :account_admin_user, name: "John Smith"}
+      attrs = %{
+        type: :account_admin_user,
+        name: "John Smith",
+        identity: %{provider_identifier: provider_identifier}
+      }
 
-      assert create_actor(provider, provider_identifier, attrs, subject) ==
+      assert create_actor(provider, attrs, subject) ==
                {:error, {:unauthorized, privilege_escalation: missing_permissions}}
 
-      attrs = %{"type" => "account_admin_user", "name" => "John Smith"}
+      attrs = %{
+        "type" => "account_admin_user",
+        "name" => "John Smith",
+        "identity" => %{"provider_identifier" => provider_identifier}
+      }
 
-      assert create_actor(provider, provider_identifier, attrs, subject) ==
+      assert create_actor(provider, attrs, subject) ==
                {:error, {:unauthorized, privilege_escalation: missing_permissions}}
     end
   end
@@ -996,7 +1208,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -1023,8 +1235,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       subject =
-        Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Fixtures.Auth.create_subject()
+        Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
         |> Fixtures.Auth.remove_permissions()
 
       assert update_actor(actor, %{type: :foo}, subject) ==
@@ -1040,7 +1251,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert {:ok, actor} = disable_actor(actor, subject)
       assert actor.disabled_at
@@ -1056,7 +1267,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert disable_actor(actor, subject) == {:error, :cant_disable_the_last_admin}
     end
@@ -1066,7 +1277,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       Fixtures.Actors.create_actor(type: :account_admin_user)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert disable_actor(actor, subject) == {:error, :cant_disable_the_last_admin}
     end
@@ -1076,7 +1287,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, _other_actor} = disable_actor(other_actor, subject)
 
       assert disable_actor(actor, subject) == {:error, :cant_disable_the_last_admin}
@@ -1122,8 +1333,8 @@ defmodule Domain.ActorsTest do
               provider: provider
             )
 
-          subject_one = Fixtures.Auth.create_subject(identity_one)
-          subject_two = Fixtures.Auth.create_subject(identity_two)
+          subject_one = Fixtures.Auth.create_subject(identity: identity_one)
+          subject_two = Fixtures.Auth.create_subject(identity: identity_two)
 
           for {actor, subject} <- [{actor_two, subject_one}, {actor_one, subject_two}] do
             Task.async(fn ->
@@ -1148,7 +1359,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert {:ok, _actor} = disable_actor(other_actor, subject)
       assert {:ok, other_actor} = disable_actor(other_actor, subject)
@@ -1160,7 +1371,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert disable_actor(other_actor, subject) == {:error, :not_found}
     end
@@ -1170,8 +1381,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       subject =
-        Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Fixtures.Auth.create_subject()
+        Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
         |> Fixtures.Auth.remove_permissions()
 
       assert disable_actor(actor, subject) ==
@@ -1187,7 +1397,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       {:ok, actor} = disable_actor(actor, subject)
 
@@ -1206,7 +1416,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       {:ok, other_actor} = disable_actor(other_actor, subject)
 
@@ -1220,7 +1430,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert enable_actor(other_actor, subject) == {:error, :not_found}
     end
@@ -1230,8 +1440,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       subject =
-        Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Fixtures.Auth.create_subject()
+        Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
         |> Fixtures.Auth.remove_permissions()
 
       assert enable_actor(actor, subject) ==
@@ -1247,7 +1456,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert {:ok, actor} = delete_actor(actor, subject)
       assert actor.deleted_at
@@ -1263,7 +1472,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       actor_to_delete = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       Fixtures.Auth.create_identity(account: account, actor: actor_to_delete)
@@ -1280,7 +1489,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
     end
@@ -1290,7 +1499,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       Fixtures.Actors.create_actor(type: :account_admin_user)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
     end
@@ -1300,7 +1509,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, _other_actor} = disable_actor(other_actor, subject)
 
       assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
@@ -1310,7 +1519,7 @@ defmodule Domain.ActorsTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
@@ -1358,8 +1567,8 @@ defmodule Domain.ActorsTest do
               provider: provider
             )
 
-          subject_one = Fixtures.Auth.create_subject(identity_one)
-          subject_two = Fixtures.Auth.create_subject(identity_two)
+          subject_one = Fixtures.Auth.create_subject(identity: identity_one)
+          subject_two = Fixtures.Auth.create_subject(identity: identity_two)
 
           for {actor, subject} <- [{actor_two, subject_one}, {actor_one, subject_two}] do
             Task.async(fn ->
@@ -1380,7 +1589,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert {:ok, _actor} = delete_actor(other_actor, subject)
       assert delete_actor(other_actor, subject) == {:error, :not_found}
@@ -1391,7 +1600,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert delete_actor(other_actor, subject) == {:error, :not_found}
     end
@@ -1401,8 +1610,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       subject =
-        Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Fixtures.Auth.create_subject()
+        Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
         |> Fixtures.Auth.remove_permissions()
 
       assert delete_actor(actor, subject) ==

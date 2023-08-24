@@ -3,9 +3,7 @@ defmodule Domain.Fixtures.Policies do
 
   def policy_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
-      name: "policy-#{unique_integer()}",
-      actor_group_id: nil,
-      resource_id: nil
+      name: "policy-#{unique_integer()}"
     })
   end
 
@@ -18,8 +16,10 @@ defmodule Domain.Fixtures.Policies do
       end)
 
     {subject, attrs} =
-      Map.pop_lazy(attrs, :subject, fn ->
-        admin_subject_for_account(account)
+      pop_assoc_fixture(attrs, :subject, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account, actor: [type: :account_admin_user]})
+        |> Fixtures.Auth.create_subject()
       end)
 
     {actor_group_id, attrs} =
