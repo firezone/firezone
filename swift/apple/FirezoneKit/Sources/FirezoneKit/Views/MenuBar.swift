@@ -32,6 +32,14 @@ public final class MenuBar: NSObject {
     private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
     private lazy var signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
 
+    private lazy var connectingAnimationImages = [
+      NSImage(named: "MenuBarIconConnecting1"),
+      NSImage(named: "MenuBarIconConnecting2"),
+      NSImage(named: "MenuBarIconConnecting3"),
+    ]
+    private var connectingAnimationImageIndex: Int = 0
+    private var connectingAnimationTimer: Timer?
+
     let settingsViewModel: SettingsViewModel
 
     public init(settingsViewModel: SettingsViewModel) {
@@ -239,6 +247,36 @@ public final class MenuBar: NSObject {
       } else {
         self.statusItem.button?.image = self.signedOutIcon
       }
+
+      if self.appStore?.tunnel.status == .connecting {
+        self.startConnectingAnimation()
+      } else {
+        self.stopConnectingAnimation()
+      }
+    }
+
+    private func startConnectingAnimation() {
+      guard connectingAnimationTimer == nil else { return }
+      let timer = Timer(timeInterval: 0.40, repeats: true) { [weak self] _ in
+        guard let self = self else { return }
+        Task {
+          await self.connectingAnimationShowNextFrame()
+        }
+      }
+      RunLoop.main.add(timer, forMode: .common)
+      self.connectingAnimationTimer = timer
+    }
+
+    private func stopConnectingAnimation() {
+      guard let timer = self.connectingAnimationTimer else { return }
+      timer.invalidate()
+      connectingAnimationTimer = nil
+      connectingAnimationImageIndex = 0
+    }
+
+    private func connectingAnimationShowNextFrame() async {
+      self.statusItem.button?.image = self.connectingAnimationImages[self.connectingAnimationImageIndex]
+      self.connectingAnimationImageIndex = (self.connectingAnimationImageIndex + 1) % self.connectingAnimationImages.count
     }
 
     private func handleMenuVisibilityOrStatusChanged() {
