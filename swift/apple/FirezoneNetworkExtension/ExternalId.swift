@@ -3,7 +3,10 @@
 //  (c) 2023 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
-// Contains convenience methods for getting a device ID for macOS
+// Contains convenience methods for getting a device ID for macOS.
+
+// Believe it or not, this is Apple's recommended way of doing things.
+// See https://developer.apple.com/documentation/appstorereceipts/validating_receipts_on_the_device#//apple_ref/doc/uid/TP40010573-CH1-SW14
 
 import IOKit
 import Foundation
