@@ -118,12 +118,18 @@ public final class MenuBar: NSObject {
       target: self
     )
     private lazy var resourcesSeparatorMenuItem = NSMenuItem.separator()
-    private lazy var aboutMenuItem = createMenuItem(
-      menu,
-      title: "About",
-      action: #selector(aboutButtonTapped),
-      target: self
-    )
+    private lazy var aboutMenuItem: NSMenuItem = {
+      let menuItem = createMenuItem(
+        menu,
+        title: "About",
+        action: #selector(aboutButtonTapped),
+        target: self
+      )
+      if let appName = Bundle.main.infoDictionary?[kCFBundleNameKey as String] as? String {
+        menuItem.title = "About \(appName)"
+      }
+      return menuItem
+    }()
     private lazy var settingsMenuItem = createMenuItem(
       menu,
       title: "Settings",
