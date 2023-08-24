@@ -2,7 +2,7 @@
 // Swift bridge generated code triggers this below
 #![allow(improper_ctypes, non_camel_case_types)]
 
-use firezone_client_connlib::{get_external_id, Callbacks, Error, ResourceDescription, Session};
+use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session};
 use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -158,10 +158,6 @@ impl WrappedSession {
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
         init_logging();
-        let external_id = match external_id.is_empty() {
-            true => get_external_id(),
-            false => external_id,
-        };
         Session::connect(
             portal_url.as_str(),
             token,
