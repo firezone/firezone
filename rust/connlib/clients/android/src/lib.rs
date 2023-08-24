@@ -283,9 +283,9 @@ enum ConnectError {
 
 fn connect(
     env: &mut JNIEnv,
-    fd: jint,
     portal_url: JString,
     portal_token: JString,
+    external_id: JString,
     callback_handler: GlobalRef,
 ) -> Result<Session<CallbackHandler>, ConnectError> {
     let portal_url = String::from(env.get_string(&portal_url).map_err(|source| {
@@ -306,9 +306,9 @@ fn connect(
         callback_handler,
     };
     Session::connect(
-        Some(fd),
         portal_url.as_str(),
         portal_token,
+        external_id,
         callback_handler,
     )
     .map_err(Into::into)
@@ -322,15 +322,15 @@ fn connect(
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_connect(
     mut env: JNIEnv,
     _class: JClass,
-    fd: jint,
     portal_url: JString,
     portal_token: JString,
+    external_id: JString,
     callback_handler: JObject,
 ) -> *const Session<CallbackHandler> {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else { return std::ptr::null() };
 
     if let Some(result) = catch_and_throw(&mut env, |env| {
-        connect(env, fd, portal_url, portal_token, callback_handler)
+        connect(env, portal_url, portal_token, external_id, callback_handler)
     }) {
         match result {
             Ok(session) => return Box::into_raw(Box::new(session)),

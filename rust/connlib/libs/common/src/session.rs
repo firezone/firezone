@@ -32,7 +32,6 @@ struct StopRuntime;
 pub trait ControlSession<T, CB: Callbacks> {
     /// Start control-plane with the given private-key in the background.
     async fn start(
-        fd: Option<i32>,
         private_key: StaticSecret,
         receiver: Receiver<MessageResult<T>>,
         control_signal: PhoenixSenderWithTopic,
@@ -201,19 +200,14 @@ where
     /// 2. Connect to the control plane to the portal
     /// 3. Start the tunnel in the background and forward control plane messages to it.
     ///
-    /// If a fd is passed in, it's used for the tunnel interface. This is useful on Android where
-    /// we can't create interfaces but we can easily get its file descriptor from the OS.
-    /// If no fd is passed in, a new interface will be created (Linux) or we'll walk the fd table
-    /// to find the interface (iOS/macOS).
-    ///
     /// The generic parameter `CB` should implement all the handlers and that's how errors will be surfaced.
     ///
     /// On a fatal error you should call `[Session::disconnect]` and start a new one.
     // TODO: token should be something like SecretString but we need to think about FFI compatibility
     pub fn connect(
-        fd: Option<i32>,
         portal_url: impl TryInto<Url>,
         token: String,
+        external_id: String,
         callbacks: CB,
     ) -> Result<Self> {
         // TODO: We could use tokio::runtime::current() to get the current runtime
@@ -256,9 +250,9 @@ where
             Self::connect_inner(
                 &runtime,
                 tx,
-                fd,
                 portal_url.try_into().map_err(|_| Error::UriError)?,
                 token,
+                external_id,
                 this.callbacks.clone(),
             );
         }
@@ -273,18 +267,17 @@ where
     fn connect_inner(
         runtime: &Runtime,
         runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
-        fd: Option<i32>,
         portal_url: Url,
         token: String,
+        external_id: String,
         callbacks: CallbackErrorFacade<CB>,
     ) {
         runtime.spawn(async move {
             let private_key = StaticSecret::random_from_rng(OsRng);
-            let self_id = uuid::Uuid::new_v4();
             let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
 
             let connect_url = fatal_error!(
-                get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix),
+                get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &external_id, &name_suffix),
                 runtime_stopper,
                 &callbacks
             );
@@ -309,7 +302,7 @@ where
             let topic = T::socket_path().to_string();
             let internal_sender = connection.sender_with_topic(topic.clone());
             fatal_error!(
-                T::start(fd, private_key, control_plane_receiver, internal_sender, callbacks.0.clone()).await,
+                T::start(private_key, control_plane_receiver, internal_sender, callbacks.0.clone()).await,
                 runtime_stopper,
                 &callbacks
             );
