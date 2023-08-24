@@ -44,9 +44,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.Connect do
         conn
         |> authorize_conn(identity)
         |> assign(:account, account)
-        |> get(
-          ~p"/#{account}/settings/identity_providers/openid_connect/#{provider_id}/redirect"
-        )
+        |> get(~p"/#{account}/settings/identity_providers/openid_connect/#{provider_id}/redirect")
 
       assert redirected_to(conn) == ~p"/#{account}/settings/identity_providers"
       assert flash(conn, :error) == "Provider does not exist."
