@@ -80,7 +80,7 @@ impl IfaceDevice {
             config.ipv4,
             config.ipv6,
             DNS_SENTINEL,
-            DNS_FALLBACK_STRATEGY,
+            DNS_FALLBACK_STRATEGY.to_string(),
         )?;
         Ok(Self { fd })
     }
