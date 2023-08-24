@@ -1,22 +1,20 @@
 //
-//  ExternalId.swift
+//  PrimaryMacAddress.swift
 //  (c) 2023 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 // Contains convenience methods for getting a device ID for macOS.
 
-// Believe it or not, this is Apple's recommended way of doing things.
+// Believe it or not, this is Apple's recommended way of doing things for macOS
 // See https://developer.apple.com/documentation/appstorereceipts/validating_receipts_on_the_device#//apple_ref/doc/uid/TP40010573-CH1-SW14
 
 import IOKit
 import Foundation
 import OSLog
 
-public class ExternalId {
-  private let logger = Logger.make(category: "packet-tunnel")
-  
+public class PrimaryMacAddress {
   // Returns an object with a +1 retain count; the caller needs to release.
-  static func io_service(named name: String, wantBuiltIn: Bool) -> io_service_t? {
+  private static func io_service(named name: String, wantBuiltIn: Bool) -> io_service_t? {
     let default_port = kIOMainPortDefault
     var iterator = io_iterator_t()
     defer {
@@ -53,7 +51,7 @@ public class ExternalId {
     return nil
   }
   
-  static func copy_mac_address() -> CFData? {
+  public static func copy_mac_address() -> CFData? {
     // Prefer built-in network interfaces.
     // For example, an external Ethernet adaptor can displace
     // the built-in Wi-Fi as en0.
@@ -76,24 +74,4 @@ public class ExternalId {
     
     return nil
   }
-  
-  public static func getExternalId() -> String {
-#if os(iOS)
-    guard let uuid = UIDevice.current.identifierForVendor?.uuidString else {
-      // TODO: Will handle missing external IDs on the connlib side
-      return ""
-    }
-    return uuid
-#elseif os(macOS)
-    guard let macBytes = copy_mac_address() else {
-      // This shouldn't happen
-      return ""
-    }
-    
-    return (macBytes as Data).base64EncodedString()
-#else
-#error("Unsupported platform")
-#endif
-  }
-  
 }

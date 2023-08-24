@@ -6,6 +6,7 @@
 import Foundation
 import NetworkExtension
 import FirezoneKit
+import UIKit.UIDevice
 import OSLog
 
 public enum AdapterError: Error {
@@ -124,7 +125,7 @@ public class Adapter {
       self.logger.debug("Adapter.start: Starting connlib")
       do {
         self.state = .startingTunnel(
-          session: try WrappedSession.connect(self.controlPlaneURLString, self.token, ExternalId.getExternalId(), self.callbackHandler),
+          session: try WrappedSession.connect(self.controlPlaneURLString, self.token, getExternalId(), self.callbackHandler),
           onStarted: completionHandler
         )
       } catch let error {
@@ -189,6 +190,27 @@ public class Adapter {
 
 }
 
+// MARK: Device unique identifiers
+extension Adapter {
+  func getExternalId() -> String {
+    #if os(iOS)
+      guard let uuid = UIDevice.current.identifierForVendor?.uuidString else {
+        // Send a blank string, letting either connlib or the portal handle this
+        return ""
+      }
+      return uuid
+    #elseif os(macOS)
+      guard let macBytes = PrimaryMacAddress.copy_mac_address() else {
+        // Send a blank string, letting either connlib or the portal handle this
+        return ""
+      }
+      return (macBytes as Data).base64EncodedString()
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
+}
+
 // MARK: Responding to path updates
 
 extension Adapter {
@@ -238,7 +260,7 @@ extension Adapter {
 
         do {
           self.state = .startingTunnel(
-            session: try WrappedSession.connect(controlPlaneURLString, token, ExternalId.getExternalId(), self.callbackHandler),
+            session: try WrappedSession.connect(controlPlaneURLString, token, getExternalId(), self.callbackHandler),
             onStarted: { error in
               if let error = error {
                 self.logger.error("Adapter.didReceivePathUpdate: Error starting connlib: \(error, privacy: .public)")
