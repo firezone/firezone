@@ -1,9 +1,9 @@
 use ip_network::IpNetwork;
 use libc::{
     close, ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg,
-    sockaddr, sockaddr_ctl, sockaddr_in, socket, socklen_t, AF_INET, AF_INET6, AF_SYSTEM,
-    CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE, IPPROTO_IP, O_NONBLOCK, SOCK_STREAM,
-    SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
+    sockaddr, sockaddr_ctl, sockaddr_in, socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO,
+    F_GETFL, F_SETFL, IF_NAMESIZE, IPPROTO_IP, O_NONBLOCK, SOCK_STREAM, SYSPROTO_CONTROL,
+    UTUN_OPT_IFNAME,
 };
 use libs_common::{CallbackErrorFacade, Callbacks, Error, Result, DNS_SENTINEL};
 use std::{
@@ -26,6 +26,8 @@ pub(crate) struct IfaceConfig(pub(crate) Arc<IfaceDevice>);
 pub(crate) struct IfaceDevice {
     fd: RawFd,
 }
+
+mod wrapped_socket;
 
 impl AsRawFd for IfaceDevice {
     fn as_raw_fd(&self) -> RawFd {
@@ -168,7 +170,7 @@ impl IfaceDevice {
     }
 
     pub fn name(&self) -> Result<String> {
-        let mut tunnel_name = [0u8; 256];
+        let mut tunnel_name = [0u8; IF_NAMESIZE];
         let mut tunnel_name_len = tunnel_name.len() as socklen_t;
         if unsafe {
             getsockopt(
@@ -189,7 +191,8 @@ impl IfaceDevice {
 
     /// Get the current MTU value
     pub async fn mtu(&self) -> Result<usize> {
-        let fd = match unsafe { socket(AF_INET, SOCK_STREAM, IPPROTO_IP) } {
+        let socket = wrapped_socket::WrappedSocket::new(AF_INET, SOCK_STREAM, IPPROTO_IP);
+        let fd = match socket.as_raw_fd() {
             -1 => return Err(get_last_error()),
             fd => fd,
         };
@@ -207,8 +210,9 @@ impl IfaceDevice {
             return Err(get_last_error());
         }
 
-        unsafe { close(fd) };
+        let mtu = unsafe { ifr.ifr_ifru.ifru_mtu };
 
+        tracing::debug!("MTU for {} is {}", name, mtu);
         Ok(unsafe { ifr.ifr_ifru.ifru_mtu } as _)
     }
 
