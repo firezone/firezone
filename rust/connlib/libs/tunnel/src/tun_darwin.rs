@@ -159,7 +159,7 @@ impl IfaceDevice {
                     config.ipv4,
                     config.ipv6,
                     DNS_SENTINEL,
-                    config.dns_fallback_strategy.to_string(),
+                    "system_resolver".to_string(),
                 );
                 let this = Self { fd };
                 let _ = this.set_non_blocking();
