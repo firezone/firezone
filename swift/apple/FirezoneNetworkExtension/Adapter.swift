@@ -1,3 +1,4 @@
+import FirezoneKit
 //
 //  Adapter.swift
 //  (c) 2023 Firezone, Inc.
@@ -5,9 +6,8 @@
 //
 import Foundation
 import NetworkExtension
-import FirezoneKit
-import UIKit.UIDevice
 import OSLog
+import UIKit.UIDevice
 
 public enum AdapterError: Error {
   /// Failure to perform an operation in such state.
@@ -35,17 +35,18 @@ private enum AdapterState: CustomStringConvertible {
   case tunnelReady(session: WrappedSession)
   case stoppingTunnel(session: WrappedSession, onStopped: Adapter.StopTunnelCompletionHandler?)
   case stoppedTunnel
-  case stoppingTunnelTemporarily(session: WrappedSession, onStopped: Adapter.StopTunnelCompletionHandler?)
+  case stoppingTunnelTemporarily(
+    session: WrappedSession, onStopped: Adapter.StopTunnelCompletionHandler?)
   case stoppedTunnelTemporarily
 
   var description: String {
     switch self {
-      case .startingTunnel: return "startingTunnel"
-      case .tunnelReady: return "tunnelReady"
-      case .stoppingTunnel: return "stoppingTunnel"
-      case .stoppedTunnel: return "stoppedTunnel"
-      case .stoppingTunnelTemporarily: return "stoppingTunnelTemporarily"
-      case .stoppedTunnelTemporarily: return "stoppedTunnelTemporarily"
+    case .startingTunnel: return "startingTunnel"
+    case .tunnelReady: return "tunnelReady"
+    case .stoppingTunnel: return "stoppingTunnel"
+    case .stoppedTunnel: return "stoppedTunnel"
+    case .stoppingTunnelTemporarily: return "stoppingTunnelTemporarily"
+    case .stoppedTunnelTemporarily: return "stoppedTunnelTemporarily"
     }
   }
 }
@@ -86,7 +87,9 @@ public class Adapter {
   private var controlPlaneURLString: String
   private var token: String
 
-  public init(controlPlaneURLString: String, token: String, packetTunnelProvider: NEPacketTunnelProvider) {
+  public init(
+    controlPlaneURLString: String, token: String, packetTunnelProvider: NEPacketTunnelProvider
+  ) {
     self.controlPlaneURLString = controlPlaneURLString
     self.token = token
     self.packetTunnelProvider = packetTunnelProvider
@@ -124,7 +127,8 @@ public class Adapter {
       self.logger.debug("Adapter.start: Starting connlib")
       do {
         self.state = .startingTunnel(
-          session: try WrappedSession.connect(self.controlPlaneURLString, self.token, getExternalId(), self.callbackHandler),
+          session: try WrappedSession.connect(
+            self.controlPlaneURLString, self.token, self.getExternalId(), self.callbackHandler),
           onStarted: completionHandler
         )
       } catch let error {
@@ -144,27 +148,31 @@ public class Adapter {
       self.logger.debug("Adapter.stop")
 
       switch self.state {
-        case .stoppedTunnel, .stoppingTunnel:
-          break
-        case .tunnelReady(let session):
-          self.logger.debug("Adapter.stop: Shutting down connlib")
-          self.state = .stoppingTunnel(session: session, onStopped: completionHandler)
-          session.disconnect()
-        case .startingTunnel(let session, let onStarted):
-          self.logger.debug("Adapter.stop: Shutting down connlib before tunnel ready")
-          self.state = .stoppingTunnel(session: session, onStopped: {
+      case .stoppedTunnel, .stoppingTunnel:
+        break
+      case .tunnelReady(let session):
+        self.logger.debug("Adapter.stop: Shutting down connlib")
+        self.state = .stoppingTunnel(session: session, onStopped: completionHandler)
+        session.disconnect()
+      case .startingTunnel(let session, let onStarted):
+        self.logger.debug("Adapter.stop: Shutting down connlib before tunnel ready")
+        self.state = .stoppingTunnel(
+          session: session,
+          onStopped: {
             onStarted?(AdapterError.stoppedByRequestWhileStarting)
             completionHandler()
           })
-          session.disconnect()
-        case .stoppingTunnelTemporarily(let session, let onStopped):
-          self.state = .stoppingTunnel(session: session, onStopped: {
+        session.disconnect()
+      case .stoppingTunnelTemporarily(let session, let onStopped):
+        self.state = .stoppingTunnel(
+          session: session,
+          onStopped: {
             onStopped?()
             completionHandler()
           })
-        case .stoppedTunnelTemporarily:
-          self.state = .stoppedTunnel
-          completionHandler()
+      case .stoppedTunnelTemporarily:
+        self.state = .stoppedTunnel
+        completionHandler()
       }
 
       self.networkMonitor?.cancel()
@@ -175,16 +183,17 @@ public class Adapter {
   /// Get the current set of resources in the completionHandler.
   /// If unchanged since referenceVersionString, call completionHandler(nil).
   public func getDisplayableResourcesIfVersionDifferentFrom(
-    referenceVersionString: String, completionHandler: @escaping (DisplayableResources?) -> Void) {
-      workQueue.async { [weak self] in
-        guard let self = self else { return }
+    referenceVersionString: String, completionHandler: @escaping (DisplayableResources?) -> Void
+  ) {
+    workQueue.async { [weak self] in
+      guard let self = self else { return }
 
-        if referenceVersionString == self.displayableResources.versionString {
-          completionHandler(nil)
-        } else {
-          completionHandler(self.displayableResources)
-        }
+      if referenceVersionString == self.displayableResources.versionString {
+        completionHandler(nil)
+      } else {
+        completionHandler(self.displayableResources)
       }
+    }
   }
 }
 
@@ -225,58 +234,62 @@ extension Adapter {
     // Will be invoked in the workQueue by the path monitor
     switch self.state {
 
-      case .startingTunnel(let session, let onStarted):
-        if path.status != .satisfied {
-          self.logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
-          onStarted?(nil)
-          self.packetTunnelProvider?.reasserting = true
-          self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
-          session.disconnect()
-        }
+    case .startingTunnel(let session, let onStarted):
+      if path.status != .satisfied {
+        self.logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
+        onStarted?(nil)
+        self.packetTunnelProvider?.reasserting = true
+        self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
+        session.disconnect()
+      }
 
-      case .tunnelReady(let session):
-        if path.status == .satisfied {
-          self.logger.debug("Suppressing calls to disableSomeRoamingForBrokenMobileSemantics() and bumpSockets()")
-          // #if os(iOS)
-          // wrappedSession.disableSomeRoamingForBrokenMobileSemantics()
-          // #endif
-          // wrappedSession.bumpSockets()
-        } else {
-          self.logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
-          self.packetTunnelProvider?.reasserting = true
-          self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
-          session.disconnect()
-        }
+    case .tunnelReady(let session):
+      if path.status == .satisfied {
+        self.logger.debug(
+          "Suppressing calls to disableSomeRoamingForBrokenMobileSemantics() and bumpSockets()")
+        // #if os(iOS)
+        // wrappedSession.disableSomeRoamingForBrokenMobileSemantics()
+        // #endif
+        // wrappedSession.bumpSockets()
+      } else {
+        self.logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
+        self.packetTunnelProvider?.reasserting = true
+        self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
+        session.disconnect()
+      }
 
-      case .stoppingTunnelTemporarily:
-        break
+    case .stoppingTunnelTemporarily:
+      break
 
-      case .stoppedTunnelTemporarily:
-        guard path.status == .satisfied else { return }
+    case .stoppedTunnelTemporarily:
+      guard path.status == .satisfied else { return }
 
-        self.logger.debug("Adapter.didReceivePathUpdate: Back online. Starting connlib.")
+      self.logger.debug("Adapter.didReceivePathUpdate: Back online. Starting connlib.")
 
-        do {
-          self.state = .startingTunnel(
-            session: try WrappedSession.connect(controlPlaneURLString, token, getExternalId(), self.callbackHandler),
-            onStarted: { error in
-              if let error = error {
-                self.logger.error("Adapter.didReceivePathUpdate: Error starting connlib: \(error, privacy: .public)")
-                self.packetTunnelProvider?.cancelTunnelWithError(error)
-              } else {
-                self.packetTunnelProvider?.reasserting = false
-              }
+      do {
+        self.state = .startingTunnel(
+          session: try WrappedSession.connect(
+            controlPlaneURLString, token, self.getExternalId(), self.callbackHandler),
+          onStarted: { error in
+            if let error = error {
+              self.logger.error(
+                "Adapter.didReceivePathUpdate: Error starting connlib: \(error, privacy: .public)")
+              self.packetTunnelProvider?.cancelTunnelWithError(error)
+            } else {
+              self.packetTunnelProvider?.reasserting = false
             }
-          )
-        } catch let error as AdapterError {
-          self.logger.error("Adapter.didReceivePathUpdate: Error: \(error, privacy: .public)")
-        } catch {
-          self.logger.error("Adapter.didReceivePathUpdate: Unknown error: \(error, privacy: .public) (fatal)")
-        }
+          }
+        )
+      } catch let error as AdapterError {
+        self.logger.error("Adapter.didReceivePathUpdate: Error: \(error, privacy: .public)")
+      } catch {
+        self.logger.error(
+          "Adapter.didReceivePathUpdate: Unknown error: \(error, privacy: .public) (fatal)")
+      }
 
-      case .stoppingTunnel, .stoppedTunnel:
-        // no-op
-        break
+    case .stoppingTunnel, .stoppedTunnel:
+      // no-op
+      break
     }
   }
 }
@@ -284,28 +297,34 @@ extension Adapter {
 // MARK: Implementing CallbackHandlerDelegate
 
 extension Adapter: CallbackHandlerDelegate {
-  public func onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String, dnsFallbackStrategy: String) {
+  public func onSetInterfaceConfig(
+    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String,
+    dnsFallbackStrategy: String
+  ) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
       self.logger.debug("Adapter.onSetInterfaceConfig")
 
       switch self.state {
-        case .startingTunnel:
-          self.networkSettings = NetworkSettings(
-            tunnelAddressIPv4: tunnelAddressIPv4, tunnelAddressIPv6: tunnelAddressIPv6,
-            dnsAddress: dnsAddress, dnsFallbackStrategy: NetworkSettings.DNSFallbackStrategy(dnsFallbackStrategy))
-        case .tunnelReady:
-          if let networkSettings = self.networkSettings {
-            networkSettings.setDNSFallbackStrategy(NetworkSettings.DNSFallbackStrategy(dnsFallbackStrategy))
-            if let packetTunnelProvider = self.packetTunnelProvider {
-              networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
-            }
+      case .startingTunnel:
+        self.networkSettings = NetworkSettings(
+          tunnelAddressIPv4: tunnelAddressIPv4, tunnelAddressIPv6: tunnelAddressIPv6,
+          dnsAddress: dnsAddress,
+          dnsFallbackStrategy: NetworkSettings.DNSFallbackStrategy(dnsFallbackStrategy))
+      case .tunnelReady:
+        if let networkSettings = self.networkSettings {
+          networkSettings.setDNSFallbackStrategy(
+            NetworkSettings.DNSFallbackStrategy(dnsFallbackStrategy))
+          if let packetTunnelProvider = self.packetTunnelProvider {
+            networkSettings.apply(
+              on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
           }
+        }
 
-        case .stoppingTunnel, .stoppedTunnel, .stoppingTunnelTemporarily, .stoppedTunnelTemporarily:
-          // This is not expected to happen
-          break
+      case .stoppingTunnel, .stoppedTunnel, .stoppingTunnelTemporarily, .stoppedTunnelTemporarily:
+        // This is not expected to happen
+        break
       }
     }
   }
@@ -316,7 +335,8 @@ extension Adapter: CallbackHandlerDelegate {
 
       self.logger.debug("Adapter.onTunnelReady")
       guard case .startingTunnel(let session, let onStarted) = self.state else {
-        self.logger.error("Adapter.onTunnelReady: Unexpected state: \(self.state, privacy: .public)")
+        self.logger.error(
+          "Adapter.onTunnelReady: Unexpected state: \(self.state, privacy: .public)")
         return
       }
       guard let networkSettings = self.networkSettings else {
@@ -390,7 +410,8 @@ extension Adapter: CallbackHandlerDelegate {
       guard let jsonData = jsonString.data(using: .utf8) else {
         return
       }
-      guard let networkResources = try? JSONDecoder().decode([NetworkResource].self, from: jsonData) else {
+      guard let networkResources = try? JSONDecoder().decode([NetworkResource].self, from: jsonData)
+      else {
         return
       }
 
@@ -414,41 +435,43 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  public func onDisconnect(error: Optional<String>) {
+  public func onDisconnect(error: String?) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
       self.logger.debug("Adapter.onDisconnect")
       if let errorMessage = error {
-        self.logger.error("Connlib disconnected with unrecoverable error: \(errorMessage, privacy: .public)")
+        self.logger.error(
+          "Connlib disconnected with unrecoverable error: \(errorMessage, privacy: .public)")
         switch self.state {
-          case .stoppingTunnel(session: _, let onStopped):
-            onStopped?()
-            self.state = .stoppedTunnel
-          case .stoppingTunnelTemporarily(session: _, let onStopped):
-            onStopped?()
-            self.state = .stoppedTunnel
-          case .stoppedTunnel:
-            // This should not happen
-            break
-          case .stoppedTunnelTemporarily:
-            self.state = .stoppedTunnel
-          default:
-            self.packetTunnelProvider?.cancelTunnelWithError(AdapterError.connlibFatalError(errorMessage))
-            self.state = .stoppedTunnel
+        case .stoppingTunnel(session: _, let onStopped):
+          onStopped?()
+          self.state = .stoppedTunnel
+        case .stoppingTunnelTemporarily(session: _, let onStopped):
+          onStopped?()
+          self.state = .stoppedTunnel
+        case .stoppedTunnel:
+          // This should not happen
+          break
+        case .stoppedTunnelTemporarily:
+          self.state = .stoppedTunnel
+        default:
+          self.packetTunnelProvider?.cancelTunnelWithError(
+            AdapterError.connlibFatalError(errorMessage))
+          self.state = .stoppedTunnel
         }
       } else {
         self.logger.debug("Connlib disconnected")
         switch self.state {
-          case .stoppingTunnel(session: _, let onStopped):
-            onStopped?()
-            self.state = .stoppedTunnel
-          case .stoppingTunnelTemporarily(session: _, let onStopped):
-            onStopped?()
-            self.state = .stoppedTunnelTemporarily
-          default:
-            // This should not happen
-            self.state = .stoppedTunnel
+        case .stoppingTunnel(session: _, let onStopped):
+          onStopped?()
+          self.state = .stoppedTunnel
+        case .stoppingTunnelTemporarily(session: _, let onStopped):
+          onStopped?()
+          self.state = .stoppedTunnelTemporarily
+        default:
+          // This should not happen
+          self.state = .stoppedTunnel
         }
       }
     }
