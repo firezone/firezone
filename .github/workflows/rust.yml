@@ -39,7 +39,9 @@ jobs:
             packages: connlib-apple
           - runs-on: macos-12
             packages: connlib-apple
-          - windows-2019:
+          - runs-on: windows-2019
+            packages: firezone-client-connlib
+          - runs-on: windows-2022
             packages: firezone-client-connlib
     runs-on: ${{ matrix.runs-on }}
     steps:
@@ -78,7 +80,7 @@ jobs:
       - run: cargo doc --all-features --no-deps --document-private-items -p ${{ matrix.packages }}
         env:
           RUSTDOCFLAGS: "-D warnings"
-      - run: cargo clippy --all-targets --all-features -- -D warnings -p ${{ matrix.packages }}
+      - run: cargo clippy --all-targets --all-features -p ${{ matrix.packages }} -- -D warnings 
       - run: cargo test --all-features -p ${{ matrix.packages }}
 
   rust_smoke-test-relay:
