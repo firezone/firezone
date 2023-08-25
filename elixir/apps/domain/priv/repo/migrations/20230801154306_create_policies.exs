@@ -38,13 +38,7 @@ defmodule Domain.Repo.Migrations.CreatePolicies do
       timestamps(type: :utc_datetime_usec)
     end
 
-    create(index(:policies, [:account_id, :name], unique: true, where: "deleted_at IS NULL"))
-
-    create(
-      index(:policies, [:account_id, :resource_id, :actor_group_id],
-        unique: true,
-        where: "deleted_at IS NULL"
-      )
-    )
+    create(index(:policies, [:account_id, :name], unique: true))
+    create(index(:policies, [:account_id, :resource_id, :actor_group_id], unique: true))
   end
 end
