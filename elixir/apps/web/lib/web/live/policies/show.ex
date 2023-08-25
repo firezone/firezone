@@ -152,12 +152,8 @@ defmodule Web.Policies.Show do
     """
   end
 
-  def handle_event("delete", %{"id" => id}, socket) do
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, socket.assigns.subject) do
-      {:ok, _} = Policies.delete_policy(policy, socket.assigns.subject)
-      {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/policies")}
-    else
-      {:error, _} -> {:noreply, socket}
-    end
+  def handle_event("delete", %{"id" => _policy_id}, socket) do
+    {:ok, _} = Policies.delete_policy(socket.assigns.policy, socket.assigns.subject)
+    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies")}
   end
 end

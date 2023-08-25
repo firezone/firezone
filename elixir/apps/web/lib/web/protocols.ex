@@ -7,5 +7,5 @@ defimpl Phoenix.HTML.Safe, for: Domain.Types.IPPort do
 end
 
 defimpl Phoenix.Param, for: Domain.Accounts.Account do
-    def to_param(account), do: account.slug || account.id
+  def to_param(account), do: account.slug || account.id
 end

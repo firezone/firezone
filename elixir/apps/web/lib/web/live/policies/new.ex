@@ -6,7 +6,7 @@ defmodule Web.Policies.New do
   def mount(_params, _session, socket) do
     with {:ok, resources} <- Resources.list_resources(socket.assigns.subject),
          {:ok, actor_groups} <- Actors.list_groups(socket.assigns.subject) do
-      form = to_form(Policies.Policy.Changeset.create_changeset(%{}, socket.assigns.subject))
+      form = to_form(Policies.new_policy(%{}, socket.assigns.subject))
 
       socket =
         assign(socket,
@@ -80,7 +80,7 @@ defmodule Web.Policies.New do
 
   def handle_event("validate", %{"policy" => policy_params}, socket) do
     form =
-      Policies.Policy.Changeset.create_changeset(policy_params, socket.assigns.subject)
+      Policies.new_policy(policy_params, socket.assigns.subject)
       |> Map.put(:action, :validate)
       |> to_form()
 
