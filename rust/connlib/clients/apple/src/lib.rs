@@ -83,7 +83,6 @@ pub struct CallbackHandler(Arc<ffi::CallbackHandler>);
 
 impl Callbacks for CallbackHandler {
     type Error = std::convert::Infallible;
-    type DeviceRef = RawFd;
 
     fn on_set_interface_config(
         &self,
@@ -91,7 +90,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
         dns_fallback_strategy: String,
-    ) -> Result<Self::DeviceRef, Self::Error> {
+    ) -> Result<RawFd, Self::Error> {
         self.0.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),

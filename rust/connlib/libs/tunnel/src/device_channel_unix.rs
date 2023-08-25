@@ -1,4 +1,4 @@
-use std::{os::fd::RawFd, sync::Arc};
+use std::sync::Arc;
 
 use libs_common::{messages::Interface, CallbackErrorFacade, Callbacks, Error, Result};
 use tokio::io::unix::AsyncFd;
@@ -62,7 +62,7 @@ impl DeviceChannel {
 
 pub(crate) async fn create_iface(
     config: &Interface,
-    callbacks: &CallbackErrorFacade<impl Callbacks<DeviceRef = RawFd>>,
+    callbacks: &CallbackErrorFacade<impl Callbacks>,
 ) -> Result<(IfaceConfig, DeviceChannel)> {
     let dev = Arc::new(IfaceDevice::new(config, callbacks).await?);
     let async_dev = Arc::clone(&dev);

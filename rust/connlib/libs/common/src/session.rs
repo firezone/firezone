@@ -21,6 +21,7 @@ use crate::{
 };
 
 pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
+type RawFd = i32;
 
 struct StopRuntime;
 
@@ -59,7 +60,6 @@ pub struct Session<T, U, V, R, M, CB: Callbacks> {
 pub trait Callbacks: Clone + Send + Sync {
     /// Error returned when a callback fails.
     type Error: Debug + Display + StdError;
-    type DeviceRef;
 
     /// Called when the tunnel address is set.
     fn on_set_interface_config(
@@ -68,7 +68,7 @@ pub trait Callbacks: Clone + Send + Sync {
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
         dns_fallback_strategy: String,
-    ) -> StdResult<Self::DeviceRef, Self::Error>;
+    ) -> StdResult<RawFd, Self::Error>;
     /// Called when the tunnel is connected.
     fn on_tunnel_ready(&self) -> StdResult<(), Self::Error>;
     /// Called when when a route is added.
@@ -94,7 +94,6 @@ pub struct CallbackErrorFacade<CB: Callbacks>(pub CB);
 
 impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
     type Error = Error;
-    type DeviceRef = CB::DeviceRef;
 
     fn on_set_interface_config(
         &self,
@@ -102,7 +101,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
         dns_fallback_strategy: String,
-    ) -> Result<Self::DeviceRef> {
+    ) -> Result<RawFd> {
         let result = self
             .0
             .on_set_interface_config(

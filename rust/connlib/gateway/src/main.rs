@@ -14,7 +14,6 @@ pub struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
     type Error = std::convert::Infallible;
-    type DeviceRef = RawFd;
 
     fn on_set_interface_config(
         &self,
@@ -22,7 +21,7 @@ impl Callbacks for CallbackHandler {
         _tunnel_address_v6: Ipv6Addr,
         _dns_address: Ipv4Addr,
         _dns_fallback_strategy: String,
-    ) -> Result<Self::DeviceRef, Self::Error> {
+    ) -> Result<RawFd, Self::Error> {
         Ok(-1)
     }
 
