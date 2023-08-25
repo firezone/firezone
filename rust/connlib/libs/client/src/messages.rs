@@ -166,7 +166,6 @@ mod test {
                     ipv4: "100.72.112.111".parse().unwrap(),
                     ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
                     upstream_dns: vec![],
-                    dns_fallback_strategy: "upstream_resolver".to_string(),
                 },
                 resources: vec![
                     ResourceDescription::Cidr(ResourceDescriptionCidr {
@@ -191,8 +190,7 @@ mod test {
                 "interface": {
                     "ipv4": "100.72.112.111",
                     "ipv6": "fd00:2021:1111::13:efb9",
-                    "upstream_dns": [],
-                    "dns_fallback_strategy": "upstream_resolver"
+                    "upstream_dns": []
                 },
                 "resources": [
                     {

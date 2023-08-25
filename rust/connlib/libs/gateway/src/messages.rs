@@ -174,7 +174,6 @@ mod test {
                     ipv4: "100.115.164.78".parse().unwrap(),
                     ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
                     upstream_dns: vec![],
-                    dns_fallback_strategy: "system_resolver".to_string(),
                 },
                 ipv4_masquerade_enabled: true,
                 ipv6_masquerade_enabled: true,
