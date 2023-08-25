@@ -157,11 +157,13 @@ defmodule FzWall.CLI.Live do
     port_type = rule.port_type
     layer4 = port_type != nil
 
-    action.(
-      get_filter_set_name(rule.user_id, ip_type, rule.action, layer4),
-      rule.destination,
-      port_type,
-      FzHttp.Types.Int4Range.cast(rule.port_range)
-    )
+    with {:ok, port} <- FzHttp.Types.Int4Range.cast(rule.port_range) do
+      action.(
+        get_filter_set_name(rule.user_id, ip_type, rule.action, layer4),
+        rule.destination,
+        port_type,
+        port
+      )
+    end
   end
 end
