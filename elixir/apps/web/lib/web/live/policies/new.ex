@@ -92,7 +92,6 @@ defmodule Web.Policies.New do
       {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
     else
       {:error, %Ecto.Changeset{} = changeset} ->
-        IO.inspect(changeset)
         form = to_form(changeset)
         {:noreply, assign(socket, form: form)}
     end
