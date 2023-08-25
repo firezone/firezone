@@ -74,7 +74,7 @@ impl IfaceDevice {
 
     pub async fn new(
         config: &InterfaceConfig,
-        callbacks: &CallbackErrorFacade<impl Callbacks>,
+        callbacks: &CallbackErrorFacade<impl Callbacks<DeviceRef = RawFd>>,
     ) -> Result<Self> {
         let fd = callbacks.on_set_interface_config(
             config.ipv4,
