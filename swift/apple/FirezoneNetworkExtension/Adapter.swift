@@ -7,6 +7,10 @@ import Foundation
 import NetworkExtension
 import OSLog
 
+#if os(iOS)
+  import UIKit.UIDevice
+#endif
+
 public enum AdapterError: Error {
   /// Failure to perform an operation in such state.
   case invalidState
@@ -199,7 +203,6 @@ public class Adapter {
 extension Adapter {
   func getExternalId() -> String {
     #if os(iOS)
-      import UIKit.UIDevice
       guard let uuid = UIDevice.current.identifierForVendor?.uuidString else {
         // Send a blank string, letting either connlib or the portal handle this
         return ""
