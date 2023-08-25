@@ -23,8 +23,8 @@ impl DeviceChannel {
 }
 
 pub(crate) async fn create_iface(
-    config: &Interface,
-    callbacks: &CallbackErrorFacade<impl Callbacks>,
+    _: &Interface,
+    _: &CallbackErrorFacade<impl Callbacks>,
 ) -> Result<(IfaceConfig, DeviceChannel)> {
     todo!()
 }
