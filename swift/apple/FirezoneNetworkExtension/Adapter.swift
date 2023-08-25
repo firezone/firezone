@@ -1,13 +1,11 @@
-import FirezoneKit
-//
 //  Adapter.swift
 //  (c) 2023 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
+import FirezoneKit
 import Foundation
 import NetworkExtension
 import OSLog
-import UIKit.UIDevice
 
 public enum AdapterError: Error {
   /// Failure to perform an operation in such state.
@@ -201,6 +199,7 @@ public class Adapter {
 extension Adapter {
   func getExternalId() -> String {
     #if os(iOS)
+      import UIKit.UIDevice
       guard let uuid = UIDevice.current.identifierForVendor?.uuidString else {
         // Send a blank string, letting either connlib or the portal handle this
         return ""
