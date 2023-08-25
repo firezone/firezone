@@ -3,7 +3,9 @@ use std::{
     sync::Arc,
 };
 
-use crate::{ip_packet::MutableIpPacket, peer::Peer, ControlSignal, Tunnel};
+use crate::{
+    device_channel::DeviceChannel, ip_packet::MutableIpPacket, peer::Peer, ControlSignal, Tunnel,
+};
 use boringtun::noise::Tunn;
 use libs_common::{messages::ResourceDescription, Callbacks, Error};
 
@@ -16,7 +18,12 @@ where
         ((addr.is_ipv4() && ip.is_ipv4()) || (addr.is_ipv6() && ip.is_ipv6())).then_some(ip)
     }
 
-    async fn update_and_send_packet(&self, packet: &mut [u8], dst_addr: IpAddr) {
+    async fn update_and_send_packet(
+        &self,
+        device_channel: &DeviceChannel,
+        packet: &mut [u8],
+        dst_addr: IpAddr,
+    ) {
         let Some(mut pkt) = MutableIpPacket::new(packet) else { return };
         pkt.set_dst(dst_addr);
         pkt.update_checksum();
@@ -24,16 +31,22 @@ where
         match dst_addr {
             IpAddr::V4(addr) => {
                 tracing::trace!("Sending packet to {addr}");
-                self.write4_device_infallible(packet).await;
+                self.write4_device_infallible(device_channel, packet).await;
             }
             IpAddr::V6(addr) => {
                 tracing::trace!("Sending packet to {addr}");
-                self.write6_device_infallible(packet).await;
+                self.write6_device_infallible(device_channel, packet).await;
             }
         }
     }
 
-    pub(crate) async fn send_to_resource(&self, peer: &Arc<Peer>, addr: IpAddr, packet: &mut [u8]) {
+    pub(crate) async fn send_to_resource(
+        &self,
+        device_channel: &DeviceChannel,
+        peer: &Arc<Peer>,
+        addr: IpAddr,
+        packet: &mut [u8],
+    ) {
         if peer.is_allowed(addr) {
             let Some(resources) = &peer.resources else {
                 // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
@@ -41,8 +54,8 @@ where
                 // In gateways this should never happen.
                 tracing::trace!("Writing to interface with addr: {addr}");
                 match addr {
-                    IpAddr::V4(_) => self.write4_device_infallible(packet).await,
-                    IpAddr::V6(_) => self.write6_device_infallible(packet).await,
+                    IpAddr::V4(_) => self.write4_device_infallible(device_channel, packet).await,
+                    IpAddr::V6(_) => self.write6_device_infallible(device_channel, packet).await,
                 }
                 return;
             };
@@ -98,7 +111,8 @@ where
                 }
             };
 
-            self.update_and_send_packet(packet, dst_addr).await;
+            self.update_and_send_packet(device_channel, packet, dst_addr)
+                .await;
         } else {
             tracing::warn!("Received packet from peer with an unallowed ip: {addr}");
         }

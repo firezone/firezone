@@ -78,7 +78,10 @@ impl IfaceDevice {
         }
     }
 
-    pub async fn new(_fd: Option<i32>) -> Result<IfaceDevice> {
+    pub async fn new(
+        config: &InterfaceConfig,
+        _: &CallbackErrorFacade<impl Callbacks>,
+    ) -> Result<IfaceDevice> {
         debug_assert!(IFACE_NAME.as_bytes().len() < IFNAMSIZ);
 
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
@@ -112,20 +115,52 @@ impl IfaceDevice {
             .header
             .index;
 
-        Ok(Self {
+        let mut this = Self {
             fd,
             handle,
             connection: join_handle,
             interface_index,
-        })
+        };
+
+        this.set_iface_config(config).await?;
+        this.set_non_blocking()?;
+
+        Ok(this)
     }
 
-    pub fn set_non_blocking(self) -> Result<Self> {
+    async fn set_iface_config(&mut self, config: &InterfaceConfig) -> Result<()> {
+        let ips = self
+            .handle
+            .address()
+            .get()
+            .set_link_index_filter(self.interface_index)
+            .execute();
+
+        ips.try_for_each(|ip| self.handle.address().del(ip).execute())
+            .await?;
+
+        self.handle
+            .address()
+            .add(self.interface_index, config.ipv4.into(), 32)
+            .execute()
+            .await?;
+
+        // TODO: Disable this when ipv6 is disabled
+        self.handle
+            .address()
+            .add(self.interface_index, config.ipv6.into(), 128)
+            .execute()
+            .await?;
+
+        Ok(())
+    }
+
+    fn set_non_blocking(&self) -> Result<()> {
         match unsafe { fcntl(self.fd, F_GETFL) } {
             -1 => Err(get_last_error()),
             flags => match unsafe { fcntl(self.fd, F_SETFL, flags | O_NONBLOCK) } {
                 -1 => Err(get_last_error()),
-                _ => Ok(self),
+                _ => Ok(()),
             },
         }
     }

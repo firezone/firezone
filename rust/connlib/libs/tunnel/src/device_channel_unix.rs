@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use libs_common::{Error, Result};
+use libs_common::{messages::Interface, CallbackErrorFacade, Callbacks, Error, Result};
 use tokio::io::unix::AsyncFd;
 
 use crate::tun::{IfaceConfig, IfaceDevice};
@@ -60,11 +60,15 @@ impl DeviceChannel {
     }
 }
 
-pub(crate) async fn create_iface(fd: Option<i32>) -> Result<(IfaceConfig, DeviceChannel)> {
-    let dev = Arc::new(IfaceDevice::new(fd).await?.set_non_blocking()?);
+pub(crate) async fn create_iface(
+    config: &Interface,
+    callbacks: &CallbackErrorFacade<impl Callbacks>,
+) -> Result<(IfaceConfig, DeviceChannel)> {
+    let dev = Arc::new(IfaceDevice::new(config, callbacks).await?);
     let async_dev = Arc::clone(&dev);
     let device_channel = DeviceChannel(AsyncFd::new(async_dev)?);
-    let iface_config = IfaceConfig(dev);
+    let mut iface_config = IfaceConfig(dev);
+    iface_config.up().await?;
 
     Ok((iface_config, device_channel))
 }

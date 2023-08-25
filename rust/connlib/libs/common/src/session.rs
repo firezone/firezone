@@ -10,19 +10,18 @@ use std::{
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
     result::Result as StdResult,
-    time::Duration,
 };
 use tokio::{runtime::Runtime, sync::mpsc::Receiver};
 use url::Url;
-use uuid::Uuid;
 
 use crate::{
     control::{MessageResult, PhoenixChannel, PhoenixSenderWithTopic},
-    messages::{Key, ResourceDescription, ResourceDescriptionCidr},
+    messages::{Key, ResourceDescription},
     Error, Result,
 };
 
 pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
+type RawFd = i32;
 
 struct StopRuntime;
 
@@ -32,7 +31,6 @@ struct StopRuntime;
 pub trait ControlSession<T, CB: Callbacks> {
     /// Start control-plane with the given private-key in the background.
     async fn start(
-        fd: Option<i32>,
         private_key: StaticSecret,
         receiver: Receiver<MessageResult<T>>,
         control_signal: PhoenixSenderWithTopic,
@@ -69,7 +67,8 @@ pub trait Callbacks: Clone + Send + Sync {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-    ) -> StdResult<(), Self::Error>;
+        dns_fallback_strategy: String,
+    ) -> StdResult<RawFd, Self::Error>;
     /// Called when the tunnel is connected.
     fn on_tunnel_ready(&self) -> StdResult<(), Self::Error>;
     /// Called when when a route is added.
@@ -101,10 +100,16 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-    ) -> Result<()> {
+        dns_fallback_strategy: String,
+    ) -> Result<RawFd> {
         let result = self
             .0
-            .on_set_interface_config(tunnel_address_v4, tunnel_address_v6, dns_address)
+            .on_set_interface_config(
+                tunnel_address_v4,
+                tunnel_address_v6,
+                dns_address,
+                dns_fallback_strategy,
+            )
             .map_err(|err| Error::OnSetInterfaceConfigFailed(err.to_string()));
         if let Err(err) = result.as_ref() {
             tracing::error!("{err}");
@@ -201,19 +206,14 @@ where
     /// 2. Connect to the control plane to the portal
     /// 3. Start the tunnel in the background and forward control plane messages to it.
     ///
-    /// If a fd is passed in, it's used for the tunnel interface. This is useful on Android where
-    /// we can't create interfaces but we can easily get its file descriptor from the OS.
-    /// If no fd is passed in, a new interface will be created (Linux) or we'll walk the fd table
-    /// to find the interface (iOS/macOS).
-    ///
     /// The generic parameter `CB` should implement all the handlers and that's how errors will be surfaced.
     ///
     /// On a fatal error you should call `[Session::disconnect]` and start a new one.
     // TODO: token should be something like SecretString but we need to think about FFI compatibility
     pub fn connect(
-        fd: Option<i32>,
         portal_url: impl TryInto<Url>,
         token: String,
+        external_id: String,
         callbacks: CB,
     ) -> Result<Self> {
         // TODO: We could use tokio::runtime::current() to get the current runtime
@@ -250,18 +250,14 @@ where
             }));
         }
 
-        if cfg!(feature = "mock") {
-            Self::connect_mock(tx.clone(), this.callbacks.clone());
-        } else {
-            Self::connect_inner(
-                &runtime,
-                tx,
-                fd,
-                portal_url.try_into().map_err(|_| Error::UriError)?,
-                token,
-                this.callbacks.clone(),
-            );
-        }
+        Self::connect_inner(
+            &runtime,
+            tx,
+            portal_url.try_into().map_err(|_| Error::UriError)?,
+            token,
+            external_id,
+            this.callbacks.clone(),
+        );
         std::thread::spawn(move || {
             rx.blocking_recv();
             runtime.shutdown_background();
@@ -273,18 +269,17 @@ where
     fn connect_inner(
         runtime: &Runtime,
         runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
-        fd: Option<i32>,
         portal_url: Url,
         token: String,
+        external_id: String,
         callbacks: CallbackErrorFacade<CB>,
     ) {
         runtime.spawn(async move {
             let private_key = StaticSecret::random_from_rng(OsRng);
-            let self_id = uuid::Uuid::new_v4();
             let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
 
             let connect_url = fatal_error!(
-                get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &self_id.to_string(), &name_suffix),
+                get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &external_id, &name_suffix),
                 runtime_stopper,
                 &callbacks
             );
@@ -309,7 +304,7 @@ where
             let topic = T::socket_path().to_string();
             let internal_sender = connection.sender_with_topic(topic.clone());
             fatal_error!(
-                T::start(fd, private_key, control_plane_receiver, internal_sender, callbacks.0.clone()).await,
+                T::start(private_key, control_plane_receiver, internal_sender, callbacks.0.clone()).await,
                 runtime_stopper,
                 &callbacks
             );
@@ -341,55 +336,6 @@ where
             });
 
         });
-    }
-
-    fn connect_mock(
-        runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
-        callbacks: CallbackErrorFacade<CB>,
-    ) {
-        std::thread::sleep(Duration::from_secs(1));
-        fatal_error!(
-            callbacks.on_set_interface_config(
-                "100.100.111.2".parse().unwrap(),
-                "fd00:0222:2021:1111::2".parse().unwrap(),
-                DNS_SENTINEL,
-            ),
-            runtime_stopper,
-            &callbacks
-        );
-        fatal_error!(callbacks.on_tunnel_ready(), runtime_stopper, &callbacks);
-        let handle = {
-            let callbacks = callbacks.clone();
-            std::thread::spawn(move || -> Result<()> {
-                std::thread::sleep(Duration::from_secs(3));
-                let resources = vec![
-                    ResourceDescriptionCidr {
-                        id: Uuid::new_v4(),
-                        address: "8.8.4.4".parse::<Ipv4Addr>().unwrap().into(),
-                        name: "Google Public DNS IPv4".to_string(),
-                    },
-                    ResourceDescriptionCidr {
-                        id: Uuid::new_v4(),
-                        address: "2001:4860:4860::8844".parse::<Ipv6Addr>().unwrap().into(),
-                        name: "Google Public DNS IPv6".to_string(),
-                    },
-                ];
-                for resource in &resources {
-                    callbacks.on_add_route(resource.address)?;
-                }
-                callbacks.on_update_resources(
-                    resources
-                        .into_iter()
-                        .map(ResourceDescription::Cidr)
-                        .collect(),
-                )
-            })
-        };
-        fatal_error!(
-            handle.join().expect("mock thread panicked"),
-            runtime_stopper,
-            &callbacks
-        );
     }
 
     fn disconnect_inner(

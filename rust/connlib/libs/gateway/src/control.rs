@@ -144,15 +144,13 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 impl<CB: Callbacks + 'static> ControlSession<IngressMessages, CB> for ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     async fn start(
-        fd: Option<i32>,
         private_key: StaticSecret,
         receiver: Receiver<MessageResult<IngressMessages>>,
         control_signal: PhoenixSenderWithTopic,
         callbacks: CB,
     ) -> Result<()> {
         let control_signaler = ControlSignaler { control_signal };
-        let tunnel =
-            Arc::new(Tunnel::new(fd, private_key, control_signaler.clone(), callbacks).await?);
+        let tunnel = Arc::new(Tunnel::new(private_key, control_signaler.clone(), callbacks).await?);
 
         let control_plane = ControlPlane {
             tunnel,

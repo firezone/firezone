@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+dmidecode = "0.7"
 firezone-client-connlib = { path = "../../libs/client" }
 ip_network = "0.4"
 url = { version = "2.3.1", default-features = false }

@@ -6,6 +6,7 @@ use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session};
 use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
+    os::fd::RawFd,
     sync::Arc,
 };
 
@@ -18,6 +19,7 @@ mod ffi {
         fn connect(
             portal_url: String,
             token: String,
+            external_id: String,
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
@@ -39,6 +41,7 @@ mod ffi {
             tunnelAddressIPv4: String,
             tunnelAddressIPv6: String,
             dnsAddress: String,
+            dnsFallbackStrategy: String,
         );
 
         #[swift_bridge(swift_name = "onTunnelReady")]
@@ -86,13 +89,15 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-    ) -> Result<(), Self::Error> {
+        dns_fallback_strategy: String,
+    ) -> Result<RawFd, Self::Error> {
         self.0.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
             dns_address.to_string(),
+            dns_fallback_strategy.to_string(),
         );
-        Ok(())
+        Ok(-1)
     }
 
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
@@ -149,13 +154,14 @@ impl WrappedSession {
     fn connect(
         portal_url: String,
         token: String,
+        external_id: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
         init_logging();
         Session::connect(
-            None,
             portal_url.as_str(),
             token,
+            external_id,
             CallbackHandler(callback_handler.into()),
         )
         .map(|session| Self { session })
