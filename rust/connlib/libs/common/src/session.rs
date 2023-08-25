@@ -9,7 +9,6 @@ use std::{
     fmt::{Debug, Display},
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
-    os::fd::RawFd,
     result::Result as StdResult,
 };
 use tokio::{runtime::Runtime, sync::mpsc::Receiver};
@@ -20,6 +19,16 @@ use crate::{
     messages::{Key, ResourceDescription},
     Error, Result,
 };
+
+#[cfg(target_family = "unix")]
+#[path = "device_ref_unix.rs"]
+mod device_ref;
+
+#[cfg(target_family = "windows")]
+#[path = "device_ref_win.rs"]
+mod device_ref;
+
+use device_ref::DeviceRef;
 
 pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 
@@ -68,7 +77,7 @@ pub trait Callbacks: Clone + Send + Sync {
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
         dns_fallback_strategy: String,
-    ) -> StdResult<RawFd, Self::Error>;
+    ) -> StdResult<DeviceRef, Self::Error>;
     /// Called when the tunnel is connected.
     fn on_tunnel_ready(&self) -> StdResult<(), Self::Error>;
     /// Called when when a route is added.
@@ -101,7 +110,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
         dns_fallback_strategy: String,
-    ) -> Result<RawFd> {
+    ) -> Result<DeviceRef> {
         let result = self
             .0
             .on_set_interface_config(

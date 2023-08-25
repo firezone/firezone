@@ -78,16 +78,11 @@ mod tun;
 #[path = "tun_android.rs"]
 mod tun;
 
-#[cfg(any(
-    target_os = "macos",
-    target_os = "ios",
-    target_os = "linux",
-    target_os = "android"
-))]
+#[cfg(target_family = "unix")]
 #[path = "device_channel_unix.rs"]
 mod device_channel;
 
-#[cfg(target_os = "windows")]
+#[cfg(target_family = "windows")]
 #[path = "device_channel_win.rs"]
 mod device_channel;
 
