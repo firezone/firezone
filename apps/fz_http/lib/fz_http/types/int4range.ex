@@ -11,6 +11,8 @@ defmodule FzHttp.Types.Int4Range do
 
   def type, do: :int4range
 
+  def cast(nil), do: {:ok, nil}
+
   def cast(str) when is_binary(str) do
     # We need to handle this case since postgre notifies
     # before inserting the range in the database using this format
