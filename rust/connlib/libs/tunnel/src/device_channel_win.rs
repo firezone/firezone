@@ -1,5 +1,5 @@
 use crate::tun::IfaceConfig;
-use libs_common::Result;
+use libs_common::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
 
 #[derive(Debug)]
 pub(crate) struct DeviceChannel;
@@ -23,7 +23,8 @@ impl DeviceChannel {
 }
 
 pub(crate) async fn create_iface(
-    _device_handle: Option<i32>,
+    _: &Interface,
+    _: &CallbackErrorFacade<impl Callbacks>,
 ) -> Result<(IfaceConfig, DeviceChannel)> {
     todo!()
 }

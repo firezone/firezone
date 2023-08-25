@@ -30,6 +30,20 @@ jobs:
           - macos-12
           - windows-2019
           - windows-2022
+        # TODO: https://github.com/rust-lang/cargo/issues/5220
+        include:
+          - runs-on:  ubuntu-20.04
+            packages: -p headless -p gateway
+          - runs-on: ubuntu-22.04
+            packages: -p headless -p gateway
+          - runs-on: macos-11
+            packages: -p connlib-apple
+          - runs-on: macos-12
+            packages: -p connlib-apple
+          - runs-on: windows-2019
+            packages: -p firezone-client-connlib
+          - runs-on: windows-2022
+            packages: -p firezone-client-connlib
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v3
@@ -64,11 +78,11 @@ jobs:
           mv target/tools/windows/nasm/nasm.exe target/tools/nasm.exe
 
       - run: cargo fmt -- --check
-      - run: cargo doc --all-features --no-deps --document-private-items
+      - run: cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
         env:
           RUSTDOCFLAGS: "-D warnings"
-      - run: cargo clippy --all-targets --all-features -- -D warnings
-      - run: cargo test --all-features
+      - run: cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
+      - run: cargo test --all-features ${{ matrix.packages }}
 
   rust_smoke-test-relay:
     runs-on: ubuntu-latest

@@ -8,13 +8,13 @@ use ip_network::IpNetwork;
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
-    sys::jint,
     JNIEnv, JavaVM,
 };
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::{
+    net::{Ipv4Addr, Ipv6Addr},
+    os::fd::RawFd,
+};
 use thiserror::Error;
-
-const DNS_FALLBACK_STRATEGY: &str = "upstream_resolver";
 
 /// This should be called once after the library is loaded by the system.
 #[allow(non_snake_case)]
@@ -97,7 +97,8 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-    ) -> Result<(), Self::Error> {
+        dns_fallback_strategy: String,
+    ) -> Result<RawFd, Self::Error> {
         self.env(|mut env| {
             let tunnel_address_v4 =
                 env.new_string(tunnel_address_v4.to_string())
@@ -118,17 +119,18 @@ impl Callbacks for CallbackHandler {
                 }
             })?;
             let dns_fallback_strategy =
-                env.new_string(DNS_FALLBACK_STRATEGY).map_err(|source| {
+                env.new_string(dns_fallback_strategy).map_err(|source| {
                     CallbackError::NewStringFailed {
                         name: "dns_fallback_strategy",
                         source,
                     }
                 })?;
-            call_method(
-                &mut env,
+
+            let name = "onSetInterfaceConfig";
+            env.call_method(
                 &self.callback_handler,
-                "onSetInterfaceConfig",
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+                name,
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
                 &[
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
@@ -136,6 +138,8 @@ impl Callbacks for CallbackHandler {
                     JValue::from(&dns_fallback_strategy),
                 ],
             )
+            .and_then(|val| val.i())
+            .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
     }
 
@@ -283,9 +287,9 @@ enum ConnectError {
 
 fn connect(
     env: &mut JNIEnv,
-    fd: jint,
     portal_url: JString,
     portal_token: JString,
+    external_id: JString,
     callback_handler: GlobalRef,
 ) -> Result<Session<CallbackHandler>, ConnectError> {
     let portal_url = String::from(env.get_string(&portal_url).map_err(|source| {
@@ -305,10 +309,17 @@ fn connect(
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
     };
+    let external_id = env
+        .get_string(&external_id)
+        .map_err(|source| ConnectError::StringInvalid {
+            name: "external_id",
+            source,
+        })?
+        .into();
     Session::connect(
-        Some(fd),
         portal_url.as_str(),
         portal_token,
+        external_id,
         callback_handler,
     )
     .map_err(Into::into)
@@ -322,15 +333,15 @@ fn connect(
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_connect(
     mut env: JNIEnv,
     _class: JClass,
-    fd: jint,
     portal_url: JString,
     portal_token: JString,
+    external_id: JString,
     callback_handler: JObject,
 ) -> *const Session<CallbackHandler> {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else { return std::ptr::null() };
 
     if let Some(result) = catch_and_throw(&mut env, |env| {
-        connect(env, fd, portal_url, portal_token, callback_handler)
+        connect(env, portal_url, portal_token, external_id, callback_handler)
     }) {
         match result {
             Ok(session) => return Box::into_raw(Box::new(session)),

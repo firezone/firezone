@@ -13,6 +13,9 @@ use std::{
 };
 
 mod wrapped_socket;
+// Android doesn't support Split DNS. So we intercept all requests and forward
+// the non-Firezone name resolution requests to the upstream DNS resolver.
+const DNS_FALLBACK_STRATEGY: &str = "upstream_resolver";
 
 #[repr(C)]
 union IfrIfru {
@@ -69,18 +72,17 @@ impl IfaceDevice {
         }
     }
 
-    pub async fn new(fd: Option<i32>) -> Result<Self> {
-        log::debug!("tunnel allocation unimplemented on Android; using provided fd");
-        Ok(Self {
-            fd: fd.expect("file descriptor must be provided!") as RawFd,
-        })
-    }
-
-    pub fn set_non_blocking(self) -> Result<Self> {
-        // Android already opens the tun device in non-blocking mode and we can't change it from
-        // here.
-        log::debug!("`set_non_blocking` unimplemented on Android");
-        Ok(self)
+    pub async fn new(
+        config: &InterfaceConfig,
+        callbacks: &CallbackErrorFacade<impl Callbacks>,
+    ) -> Result<Self> {
+        let fd = callbacks.on_set_interface_config(
+            config.ipv4,
+            config.ipv6,
+            DNS_SENTINEL,
+            DNS_FALLBACK_STRATEGY.to_string(),
+        )?;
+        Ok(Self { fd })
     }
 
     pub fn name(&self) -> Result<String> {
@@ -146,14 +148,6 @@ fn get_last_error() -> Error {
 }
 
 impl IfaceConfig {
-    pub async fn set_iface_config(
-        &mut self,
-        config: &InterfaceConfig,
-        callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<()> {
-        callbacks.on_set_interface_config(config.ipv4, config.ipv6, DNS_SENTINEL)
-    }
-
     pub async fn add_route(
         &mut self,
         route: IpNetwork,
