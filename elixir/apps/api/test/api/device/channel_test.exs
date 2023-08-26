@@ -112,7 +112,7 @@ defmodule API.Device.ChannelTest do
   describe "handle_in/3 prepare_connection" do
     test "returns error when resource is not found", %{socket: socket} do
       ref = push(socket, "prepare_connection", %{"resource_id" => Ecto.UUID.generate()})
-      assert_reply(ref, :error, :not_found)
+      assert_reply ref, :error, :not_found
     end
 
     test "returns error when there are no online relays", %{
@@ -120,7 +120,7 @@ defmodule API.Device.ChannelTest do
       socket: socket
     } do
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
-      assert_reply(ref, :error, :offline)
+      assert_reply ref, :error, :offline
     end
 
     test "returns error when all gateways are offline", %{
@@ -128,7 +128,7 @@ defmodule API.Device.ChannelTest do
       socket: socket
     } do
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
-      assert_reply(ref, :error, :offline)
+      assert_reply ref, :error, :offline
     end
 
     test "returns error when all gateways connected to the resource are offline", %{
@@ -140,7 +140,7 @@ defmodule API.Device.ChannelTest do
       :ok = Domain.Gateways.connect_gateway(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
-      assert_reply(ref, :error, :offline)
+      assert_reply ref, :error, :offline
     end
 
     test "returns online gateway and relays connected to the resource", %{
@@ -162,12 +162,12 @@ defmodule API.Device.ChannelTest do
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
 
-      assert_reply(ref, :ok, %{
+      assert_reply ref, :ok, %{
         relays: relays,
         gateway_id: gateway_id,
         gateway_remote_ip: gateway_last_seen_remote_ip,
         resource_id: ^resource_id
-      })
+      }
 
       assert gateway_id == gateway.id
       assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
@@ -214,7 +214,7 @@ defmodule API.Device.ChannelTest do
 
       :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
-      assert_reply(ref, :ok, %{relays: relays})
+      assert_reply ref, :ok, %{relays: relays}
       assert length(relays) == 6
     end
   end
@@ -227,7 +227,7 @@ defmodule API.Device.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply(ref, :error, :not_found)
+      assert_reply ref, :error, :not_found
     end
 
     test "returns error when gateway is not found", %{dns_resource: resource, socket: socket} do
@@ -237,7 +237,7 @@ defmodule API.Device.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply(ref, :error, :not_found)
+      assert_reply ref, :error, :not_found
     end
 
     test "returns error when gateway is not connected to resource", %{
@@ -254,7 +254,7 @@ defmodule API.Device.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply(ref, :error, :offline)
+      assert_reply ref, :error, :offline
     end
 
     test "returns error when gateway is offline", %{
@@ -268,7 +268,7 @@ defmodule API.Device.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply(ref, :error, :offline)
+      assert_reply ref, :error, :offline
     end
 
     test "broadcasts allow_access to the gateways and then returns connect message", %{
@@ -312,7 +312,7 @@ defmodule API.Device.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply(ref, :error, :not_found)
+      assert_reply ref, :error, :not_found
     end
 
     test "returns error when gateway is not found", %{dns_resource: resource, socket: socket} do
@@ -324,7 +324,7 @@ defmodule API.Device.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply(ref, :error, :not_found)
+      assert_reply ref, :error, :not_found
     end
 
     test "returns error when gateway is not connected to resource", %{
@@ -343,7 +343,7 @@ defmodule API.Device.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply(ref, :error, :offline)
+      assert_reply ref, :error, :offline
     end
 
     test "returns error when gateway is offline", %{
@@ -359,7 +359,7 @@ defmodule API.Device.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply(ref, :error, :offline)
+      assert_reply ref, :error, :offline
     end
 
     test "broadcasts request_connection to the gateways and then returns connect message", %{
@@ -398,12 +398,12 @@ defmodule API.Device.ChannelTest do
 
       send(channel_pid, {:connect, socket_ref, resource.id, gateway.public_key, "FULL_RTC_SD"})
 
-      assert_reply(ref, :ok, %{
+      assert_reply ref, :ok, %{
         resource_id: ^resource_id,
         persistent_keepalive: 25,
         gateway_public_key: ^public_key,
         gateway_rtc_session_description: "FULL_RTC_SD"
-      })
+      }
     end
   end
 end
