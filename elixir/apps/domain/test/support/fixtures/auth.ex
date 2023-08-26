@@ -272,7 +272,7 @@ defmodule Domain.Fixtures.Auth do
 
     {provider, attrs} =
       pop_assoc_fixture(attrs, :provider, fn assoc_attrs ->
-        relation = attrs[:actor] || attrs[:identity]
+        relation = attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
           Repo.get!(Domain.Auth.Provider, relation.provider_id)
