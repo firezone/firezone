@@ -7,8 +7,14 @@ defmodule Web.Groups.Index do
     with {:ok, groups} <-
            Actors.list_groups(socket.assigns.subject,
              preload: [:provider, created_by_identity: [:actor]]
-           ) do
-      {:ok, assign(socket, groups: groups)}
+           ),
+         {:ok, group_actors} <- Actors.peek_group_actors(groups, 3, socket.assigns.subject) do
+      {:ok, socket,
+       temporary_assigns: [
+         page_title: "Groups",
+         groups: groups,
+         group_actors: group_actors
+       ]}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -17,7 +23,7 @@ defmodule Web.Groups.Index do
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
-      <.breadcrumb path={~p"/#{@account}/groups"}>Groups</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/groups"}><%= @page_title %></.breadcrumb>
     </.breadcrumbs>
 
     <.header>
@@ -32,8 +38,24 @@ defmodule Web.Groups.Index do
     </.header>
     <!-- Groups Table -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
+      <div :if={Enum.empty?(@groups)} class="text-center align-middle pb-8 pt-4">
+        <h3 class="mt-2 text-lg font-semibold text-gray-900">There are no groups to display.</h3>
+
+        <div class="mt-6">
+          <.add_button navigate={~p"/#{@account}/groups/new"} class="inline-flex items-center">
+            Add a new group
+          </.add_button>
+          <span class="font-semibold px-2 mb-4">or</span>
+          <.add_button
+            navigate={~p"/#{@account}/settings/identity_providers"}
+            class="inline-flex items-center"
+          >
+            Sync groups from an IdP
+          </.add_button>
+        </div>
+      </div>
       <!--<.resource_filter />-->
-      <.table id="groups" rows={@groups} row_id={&"user-#{&1.id}"}>
+      <.table :if={not Enum.empty?(@groups)} id="groups" rows={@groups} row_id={&"user-#{&1.id}"}>
         <:col :let={group} label="NAME" sortable="false">
           <.link
             :if={not Actors.group_synced?(group)}
@@ -45,9 +67,35 @@ defmodule Web.Groups.Index do
           <span :if={Actors.group_synced?(group)}>
             <%= group.name %>
           </span>
-          <span :if={Actors.group_deleted?(group.deleted_at)} class="text-xs text-gray-100">
+          <span :if={Actors.group_deleted?(group)} class="text-xs text-gray-100">
             (deleted)
           </span>
+        </:col>
+        <:col :let={group} label="ACTORS" sortable="false">
+          <% %{count: count, actors: actors} = Map.fetch!(@group_actors, group.id) %>
+
+          <.peek count={count}>
+            <:empty>
+              None
+            </:empty>
+
+            <:separator>
+              <span class="pr-1">,</span>
+            </:separator>
+
+            <:item :for={actor <- actors}>
+              <.link
+                navigate={~p"/#{@account}/actors/#{actor.id}"}
+                class={["font-medium text-blue-600 dark:text-blue-500 hover:underline"]}
+              >
+                <%= actor.name %>
+              </.link>
+            </:item>
+
+            <:tail :let={count}>
+              and <%= count %> more.
+            </:tail>
+          </.peek>
         </:col>
         <:col :let={group} label="SOURCE" sortable="false">
           <.source group={group} />

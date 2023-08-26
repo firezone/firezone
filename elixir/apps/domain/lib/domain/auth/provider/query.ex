@@ -16,12 +16,22 @@ defmodule Domain.Auth.Provider.Query do
     where(queryable, [provider: provider], provider.id == ^id)
   end
 
-  def by_adapter(queryable \\ all(), adapter) do
+  def by_adapter(queryable \\ all(), adapter)
+
+  def by_adapter(queryable, {:not_in, adapters}) do
+    where(queryable, [provider: provider], provider.adapter not in ^adapters)
+  end
+
+  def by_adapter(queryable, adapter) do
     where(queryable, [provider: provider], provider.adapter == ^adapter)
   end
 
   def last_synced_at(queryable \\ all(), {:lt, datetime}) do
-    where(queryable, [provider: provider], provider.last_synced_at < ^datetime or is_nil(provider.last_synced_at))
+    where(
+      queryable,
+      [provider: provider],
+      provider.last_synced_at < ^datetime or is_nil(provider.last_synced_at)
+    )
   end
 
   def by_account_id(queryable \\ all(), account_id) do

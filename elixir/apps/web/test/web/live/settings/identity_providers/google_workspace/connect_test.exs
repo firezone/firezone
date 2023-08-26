@@ -6,7 +6,7 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.Connect do
       account = Fixtures.Accounts.create_account()
 
       {provider, bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_google_workspace_provider(account: account)
 
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)

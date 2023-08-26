@@ -6,6 +6,7 @@ defmodule Web.Groups.EditActors do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
            Actors.fetch_group_by_id(id, socket.assigns.subject, preload: [:memberships]),
+         false <- Actors.group_synced?(group),
          {:ok, actors} <-
            Actors.list_actors(socket.assigns.subject, preload: [identities: :provider]) do
       current_member_ids = Enum.map(group.memberships, & &1.actor_id)
@@ -19,7 +20,7 @@ defmodule Web.Groups.EditActors do
          removed_ids: []
        )}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -89,7 +90,7 @@ defmodule Web.Groups.EditActors do
     <section class="bg-white dark:bg-gray-900">
       <div class="mx-auto pt-1">
         <div class="relative overflow-x-auto">
-          <.table id="actors" rows={@actors}>
+          <.table id="actors" rows={@actors} row_id={&"actor-#{&1.id}"}>
             <:col :let={actor} label="ACTOR">
               <.icon
                 :if={removed?(actor, @removed_ids)}

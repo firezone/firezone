@@ -139,11 +139,6 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     with {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
          {:ok, userinfo} <- OpenIDConnect.fetch_userinfo(config, tokens["access_token"]) do
-      # TODO: sync groups
-      # TODO: refresh the access token so it doesn't expire
-      # TODO: first admin user token that configured provider should used for periodic syncs
-      # TODO: active status for relays, gateways in list functions
-      # TODO: JIT provisioning
       expires_at =
         cond do
           not is_nil(tokens["expires_in"]) ->

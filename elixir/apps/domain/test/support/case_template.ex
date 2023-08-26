@@ -18,4 +18,5 @@ defmodule Domain.CaseTemplate do
       end
     end
   end
+
 end

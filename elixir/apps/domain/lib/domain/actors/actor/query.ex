@@ -32,9 +32,9 @@ defmodule Domain.Actors.Actor.Query do
     lock(queryable, "FOR UPDATE")
   end
 
-  def with_assoc(queryable \\ all(), assoc) do
+  def with_assoc(queryable \\ all(), qual \\ :left, assoc) do
     with_named_binding(queryable, assoc, fn query, binding ->
-      join(query, :left, [actors: actors], a in assoc(actors, ^binding), as: ^binding)
+      join(query, qual, [actors: actors], a in assoc(actors, ^binding), as: ^binding)
     end)
   end
 end

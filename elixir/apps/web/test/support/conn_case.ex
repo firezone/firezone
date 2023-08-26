@@ -35,11 +35,15 @@ defmodule Web.ConnCase do
     {:ok, conn: conn, user_agent: user_agent}
   end
 
+  def assert_lists_equal(list1, list2) do
+    assert Enum.sort(list1) == Enum.sort(list2)
+  end
+
   def flash(conn, key) do
     Phoenix.Flash.get(conn.assigns.flash, key)
   end
 
-  def authorize_conn(conn, identity) do
+  def authorize_conn(conn, %Domain.Auth.Identity{} = identity) do
     expires_in = DateTime.utc_now() |> DateTime.add(300, :second)
     {"user-agent", user_agent} = List.keyfind(conn.req_headers, "user-agent", 0, "FooBar 1.1")
     subject = Domain.Auth.build_subject(identity, expires_in, user_agent, conn.remote_ip)
@@ -89,16 +93,47 @@ defmodule Web.ConnCase do
 
   ### Helpers to test LiveView tables
 
-  def table_row_as_text_columns(row_html) do
-    row_html
-    |> Floki.find("td")
-    |> elements_to_text()
+  def table_to_map(table_html) do
+    columns = table_columns(table_html)
+    rows = table_rows(table_html)
+
+    for row <- rows do
+      Enum.zip(columns, row)
+      |> Enum.into(%{})
+    end
   end
 
-  def table_to_text(table_html) do
+  def vertical_table_to_map(table_html) do
     table_html
-    |> Floki.find("tr")
-    |> Enum.map(&table_row_as_text_columns/1)
+    |> Floki.find("tbody tr")
+    |> Enum.map(fn row ->
+      key = Floki.find(row, "th") |> element_to_text() |> String.downcase()
+      value = Floki.find(row, "td") |> element_to_text()
+      {key, value}
+    end)
+    |> Enum.into(%{})
+  end
+
+  def table_columns(table_html) do
+    Floki.find(table_html, "thead tr th")
+    |> elements_to_text()
+    |> Enum.map(&String.downcase/1)
+  end
+
+  def table_rows(table_html) do
+    Floki.find(table_html, "tbody tr")
+    |> Enum.map(fn row ->
+      row
+      |> Floki.find("td")
+      |> elements_to_text()
+    end)
+  end
+
+  def with_table_row(rows, key, value, callback) do
+    row = Enum.find(rows, fn row -> Map.get(row, key) == value end)
+    assert row, "No row found with #{key} = #{value} in #{inspect(rows)}"
+    callback.(row)
+    rows
   end
 
   defp elements_to_text(elements) do

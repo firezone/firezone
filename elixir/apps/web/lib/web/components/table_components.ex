@@ -115,9 +115,12 @@ defmodule Web.TableComponents do
 
     ~H"""
     <div class="overflow-x-auto">
-      <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+      <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400" id={@id}>
         <.table_header columns={@col} actions={@action} />
-        <tbody id={@id} phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}>
+        <tbody
+          id={"#{@id}-rows"}
+          phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
+        >
           <.table_row
             :for={row <- @rows}
             columns={@col}
@@ -231,13 +234,13 @@ defmodule Web.TableComponents do
   """
 
   attr :class, :string, default: nil
-  attr :rest, :global
+  attr :rest, :global, include: ~w[id]a
 
   slot :inner_block
 
   def vertical_table(assigns) do
     ~H"""
-    <table class={["w-full text-sm text-left text-gray-500 dark:text-gray-400", @class]}>
+    <table class={["w-full text-sm text-left text-gray-500 dark:text-gray-400", @class]} {@rest}>
       <tbody>
         <%= render_slot(@inner_block) %>
       </tbody>

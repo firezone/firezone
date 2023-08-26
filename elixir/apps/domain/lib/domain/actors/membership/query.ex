@@ -1,15 +1,22 @@
 defmodule Domain.Actors.Membership.Query do
   use Domain, :query
+  alias Domain.Actors.{Actor, Group, Membership}
 
   def all do
-    from(memberships in Domain.Actors.Membership, as: :memberships)
+    from(memberships in Membership, as: :memberships)
   end
 
   def by_actor_id(queryable \\ all(), actor_id) do
     where(queryable, [memberships: memberships], memberships.actor_id == ^actor_id)
   end
 
-  def by_group_id(queryable \\ all(), group_id) do
+  def by_group_id(queryable \\ all(), group_id)
+
+  def by_group_id(queryable, {:in, group_ids}) do
+    where(queryable, [memberships: memberships], memberships.group_id in ^group_ids)
+  end
+
+  def by_group_id(queryable, group_id) do
     where(queryable, [memberships: memberships], memberships.group_id == ^group_id)
   end
 
@@ -31,17 +38,57 @@ defmodule Domain.Actors.Membership.Query do
 
   def by_group_provider_id(queryable \\ all(), provider_id) do
     queryable
-    |> with_assoc(:inner, :group)
-    |> where([group: group], group.provider_id == ^provider_id)
+    |> with_joined_groups()
+    |> where([groups: groups], groups.provider_id == ^provider_id)
   end
 
-  def with_assoc(queryable \\ all(), type \\ :left, assoc) do
-    with_named_binding(queryable, assoc, fn query, binding ->
-      join(query, type, [memberships: memberships], a in assoc(memberships, ^binding),
-        as: ^binding
-      )
-    end)
+  def count_actors_by_group_id(queryable \\ all()) do
+    queryable
+    |> group_by([memberships: memberships], memberships.group_id)
+    |> with_joined_actors()
+    |> select([memberships: memberships, actors: actors], %{
+      group_id: memberships.group_id,
+      count: count(actors.id)
+    })
   end
+
+  def with_joined_actors(queryable \\ all()) do
+    join(queryable, :inner, [memberships: memberships], actors in ^Actor.Query.all(),
+      on: actors.id == memberships.actor_id,
+      as: :actors
+    )
+  end
+
+  def with_joined_groups(queryable \\ all()) do
+    join(queryable, :inner, [memberships: memberships], groups in ^Group.Query.all(),
+      on: groups.id == memberships.group_id,
+      as: :groups
+    )
+  end
+
+  # def preload_few_actors_for_each_group(queryable \\ all(), limit) do
+  #   queryable
+  #   |> with_few_joined_actors(limit)
+  #   |> where([actors: actors], not is_nil(actors.id))
+  #   |> select([memberships: memberships, actors: actors], %{
+  #     group_id: memberships.group_id,
+  #     actor: actors
+  #   })
+  #   |> distinct([memberships: memberships], memberships.group_id)
+  # end
+
+  # def with_few_joined_actors(queryable \\ all(), limit) do
+  #   subquery =
+  #     Actor.Query.all()
+  #     |> where([actors: actors], actors.id == parent_as(:memberships).actor_id)
+  #     |> limit(^limit)
+  #     |> select([actors: actors], actors.id)
+
+  #   join(queryable, :inner_lateral, [memberships: memberships], actors in subquery(subquery),
+  #   on: actors.id == memberships.actor_id,
+  #     as: :actors
+  #   )
+  # end
 
   def lock(queryable \\ all()) do
     lock(queryable, "FOR UPDATE")

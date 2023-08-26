@@ -37,7 +37,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.New do
       |> Map.put("id", socket.assigns.id)
       |> Map.put("adapter", :google_workspace)
       # We create provider in a disabled state because we need to write access token for it first
-      |> Map.put("adapter_state", %{status: :pending_access_token})
+      |> Map.put("adapter_state", %{status: "pending_access_token"})
       |> Map.put("disabled_at", DateTime.utc_now())
 
     with {:ok, provider} <-

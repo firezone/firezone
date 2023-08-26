@@ -29,7 +29,7 @@ defmodule Web.Groups.New do
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
-      <.breadcrumb path={~p"/#{@account}/groups"}>Relay Instance Groups</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/groups"}>Actor Groups</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/groups/new"}>Add</.breadcrumb>
     </.breadcrumbs>
     <.header>
@@ -46,7 +46,7 @@ defmodule Web.Groups.New do
               <.input
                 label="Name Prefix"
                 field={@form[:name]}
-                placeholder="Name of this Relay Instance Group"
+                placeholder="Name of this Actor Group"
                 required
               />
             </div>

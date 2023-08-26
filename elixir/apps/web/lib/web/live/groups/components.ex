@@ -6,11 +6,11 @@ defmodule Web.Groups.Components do
   def source(assigns) do
     ~H"""
     <span :if={not is_nil(@group.provider_id)}>
-      Synced from <strong><%= @group.name %></strong>
-      <.datetime datetime={@group.provider.last_synced_at} />
+      Synced from <strong><%= @group.provider.name %></strong>
+      <.relative_datetime datetime={@group.provider.last_synced_at} />
     </span>
     <span :if={is_nil(@group.provider_id)}>
-      Created <.datetime datetime={@group.inserted_at} /> by <.owner schema={@group} />
+      Created <.relative_datetime datetime={@group.inserted_at} /> by <.owner schema={@group} />
     </span>
     """
   end

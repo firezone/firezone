@@ -192,6 +192,10 @@ defmodule Domain.Fixtures.Auth do
     group
   end
 
+  def delete_provider(provider) do
+    update!(provider, deleted_at: DateTime.utc_now())
+  end
+
   def identity_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
       provider_virtual_state: %{}

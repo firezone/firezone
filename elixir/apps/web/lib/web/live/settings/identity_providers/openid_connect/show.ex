@@ -91,101 +91,49 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
     <.flash_group flash={@flash} />
 
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-        <tbody>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Name
-            </th>
-            <td class="px-6 py-4">
-              <%= @provider.name %>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Status
-            </th>
-            <td class="px-6 py-4">
-              <.status provider={@provider} />
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Type
-            </th>
-            <td class="px-6 py-4">
-              OpenID Connect
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Response Type
-            </th>
-            <td class="px-6 py-4">
-              <%= @provider.adapter_config["response_type"] %>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Scope
-            </th>
-            <td class="px-6 py-4">
-              <%= @provider.adapter_config["scope"] %>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Client ID
-            </th>
-            <td class="px-6 py-4">
-              <%= @provider.adapter_config["client_id"] %>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Discovery URL
-            </th>
-            <td class="px-6 py-4">
-              <a href={@provider.adapter_config["discovery_document_uri"]} target="_blank">
-                <%= @provider.adapter_config["discovery_document_uri"] %>
-                <.icon name="hero-arrow-top-right-on-square" class="relative bottom-1 w-3 h-3" />
-              </a>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Created
-            </th>
-            <td class="px-6 py-4">
-              <.datetime datetime={@provider.inserted_at} /> by <.owner schema={@provider} />
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <.vertical_table id="provider">
+        <.vertical_table_row>
+          <:label>Name</:label>
+          <:value><%= @provider.name %></:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Status</:label>
+          <:value>
+            <.status provider={@provider} />
+          </:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Type</:label>
+          <:value>OpenID Connect</:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Response Type</:label>
+          <:value><%= @provider.adapter_config["response_type"] %></:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Scope</:label>
+          <:value><%= @provider.adapter_config["scope"] %></:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Client ID</:label>
+          <:value><%= @provider.adapter_config["client_id"] %></:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Discovery URL</:label>
+          <:value>
+            <a href={@provider.adapter_config["discovery_document_uri"]} target="_blank">
+              <%= @provider.adapter_config["discovery_document_uri"] %>
+              <.icon name="hero-arrow-top-right-on-square" class="relative bottom-1 w-3 h-3" />
+            </a>
+          </:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Created</:label>
+          <:value>
+            <.datetime datetime={@provider.inserted_at} /> by <.owner schema={@provider} />
+          </:value>
+        </.vertical_table_row>
+      </.vertical_table>
     </div>
 
     <.header>

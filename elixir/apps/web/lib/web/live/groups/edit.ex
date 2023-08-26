@@ -4,11 +4,12 @@ defmodule Web.Groups.Edit do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
-           Actors.fetch_group_by_id(id, socket.assigns.subject, preload: [:memberships]) do
+           Actors.fetch_group_by_id(id, socket.assigns.subject, preload: [:memberships]),
+         false <- Actors.group_synced?(group) do
       changeset = Actors.change_group(group)
       {:ok, assign(socket, group: group, form: to_form(changeset))}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 

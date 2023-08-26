@@ -843,9 +843,11 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when trying to delete the last provider", %{
+      account: account,
       subject: subject,
       provider: provider
     } do
+      Fixtures.Auth.create_token_provider(account: account)
       assert delete_provider(provider, subject) == {:error, :cant_delete_the_last_provider}
     end
 

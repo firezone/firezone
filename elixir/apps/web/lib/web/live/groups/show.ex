@@ -8,6 +8,7 @@ defmodule Web.Groups.Show do
     with {:ok, group} <-
            Actors.fetch_group_by_id(id, socket.assigns.subject,
              preload: [
+               provider: [],
                actors: [identities: [:provider]],
                created_by_identity: [:actor]
              ]
@@ -36,14 +37,17 @@ defmodule Web.Groups.Show do
         Viewing Group <code><%= @group.name %></code>
       </:title>
       <:actions>
-        <.edit_button navigate={~p"/#{@account}/groups/#{@group}/edit"}>
+        <.edit_button
+          :if={not Actors.group_synced?(@group)}
+          navigate={~p"/#{@account}/groups/#{@group}/edit"}
+        >
           Edit Group
         </.edit_button>
       </:actions>
     </.header>
     <!-- Group Details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table>
+      <.vertical_table id="group">
         <.vertical_table_row>
           <:label>Name</:label>
           <:value><%= @group.name %></:value>
@@ -62,7 +66,7 @@ defmodule Web.Groups.Show do
         </:title>
         <:actions>
           <.edit_button
-            :if={is_nil(@group.provider_id)}
+            :if={not Actors.group_synced?(@group)}
             navigate={~p"/#{@account}/groups/#{@group}/edit_actors"}
           >
             Edit Actors

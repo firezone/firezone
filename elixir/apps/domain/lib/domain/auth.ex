@@ -230,6 +230,7 @@ defmodule Domain.Auth do
 
   defp other_active_providers_exist?(%Provider{id: id, account_id: account_id}) do
     Provider.Query.by_id({:not, id})
+    |> Provider.Query.by_adapter({:not_in, [:token]})
     |> Provider.Query.not_disabled()
     |> Provider.Query.by_account_id(account_id)
     |> Provider.Query.lock()

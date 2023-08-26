@@ -8,7 +8,11 @@ defmodule Web.Actors.Edit do
            Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: [:memberships]),
          {:ok, groups} <- Actors.list_groups(socket.assigns.subject) do
       changeset = Actors.change_actor(actor)
-      {:ok, assign(socket, actor: actor, groups: groups, form: to_form(changeset))}
+
+      {:ok, assign(socket, actor: actor, groups: groups, form: to_form(changeset)),
+       temporary_assigns: [
+         page_title: "Edit actor #{actor.name}"
+       ]}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end

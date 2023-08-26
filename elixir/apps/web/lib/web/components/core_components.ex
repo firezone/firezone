@@ -488,6 +488,10 @@ defmodule Web.CoreComponents do
       <span class="sep">|</span>
     </:separator>
 
+    <:empty>
+      nothing
+    </:empty>
+
     <:item>
       home
     </:item>
@@ -501,23 +505,83 @@ defmodule Web.CoreComponents do
     </:item>
   </.intersperse_blocks>
   ```
-
-  Renders the following markup:
-
-      home <span class="sep">|</span> profile <span class="sep">|</span> settings
   """
   slot :separator, required: true, doc: "the slot for the separator"
   slot :item, required: true, doc: "the slots to intersperse with separators"
+  slot :empty, required: false, doc: "the slots to render when there are no items"
 
   def intersperse_blocks(assigns) do
     ~H"""
-    <%= for item <- Enum.intersperse(@item, :separator) do %>
-      <%= if item == :separator do %>
-        <%= render_slot(@separator) %>
-      <% else %>
-        <%= render_slot(item) %>
+    <%= if Enum.empty?(@item) do %>
+      <%= render_slot(@empty) %>
+    <% else %>
+      <%= for item <- Enum.intersperse(@item, :separator) do %>
+        <%= if item == :separator do %>
+          <%= render_slot(@separator) %>
+        <% else %>
+          <%= render_slot(item) %>
+        <% end %>
       <% end %>
     <% end %>
+    """
+  end
+
+  @doc """
+  Render children preview.
+
+  Allows to render peeks into a schema preload by rendering a few of the children with a count of remaining ones.
+
+  ## Examples
+
+  ```heex
+  <.peek>
+    <:empty>
+      nobody
+    </:empty>
+
+    <:item>
+      John
+    </:item>
+
+    <:item>
+      Bob
+    </:item>
+
+    <:separator>
+      ,
+    </:separator>
+
+    <:tail :let={count}>
+      <%= count %> more.
+    </:tail>
+  </.peek>
+  ```
+  """
+  attr :count, :integer, required: true, doc: "the total number of items"
+  slot :empty, required: false, doc: "the slots to render when there are no items"
+  slot :item, required: true, doc: "the slots to intersperse with separators"
+  slot :separator, required: true, doc: "the slot for the separator"
+  slot :tail, required: true, doc: "the slots to render to show the remaining count"
+
+  def peek(assigns) do
+    ~H"""
+    <div class="font-light flex">
+      <%= if Enum.empty?(@item) do %>
+        <%= render_slot(@empty) %>
+      <% else %>
+        <%= for item <- Enum.intersperse(@item, :separator) do %>
+          <%= if item == :separator do %>
+            <%= render_slot(@separator) %>
+          <% else %>
+            <%= render_slot(item) %>
+          <% end %>
+        <% end %>
+
+        <span :if={@count > length(@item)} class="pl-1">
+          <%= render_slot(@tail, @count - length(@item)) %>
+        </span>
+      <% end %>
+    </div>
     """
   end
 

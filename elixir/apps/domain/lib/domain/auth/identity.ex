@@ -18,6 +18,8 @@ defmodule Domain.Auth.Identity do
     field :created_by, Ecto.Enum, values: ~w[system provider identity]a
     belongs_to :created_by_identity, Domain.Auth.Identity
 
+    has_many :devices, Domain.Devices.Device, where: [deleted_at: nil]
+
     # TODO: we don't want to have deleted_at for actors and identities, instead we should just disable identities
     # and if all are disabled - actor is disabled too
     field :deleted_at, :utc_datetime_usec
