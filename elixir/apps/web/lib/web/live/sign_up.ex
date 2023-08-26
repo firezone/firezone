@@ -4,6 +4,28 @@ defmodule Web.SignUp do
   alias Domain.{Auth, Accounts, Actors}
   alias Web.Registration
 
+  defmodule Registration do
+    use Domain, :schema
+
+    alias Domain.{Accounts, Actors}
+
+    @primary_key false
+
+    embedded_schema do
+      field(:email, :string)
+      embeds_one(:account, Accounts.Account)
+      embeds_one(:actor, Actors.Actor)
+    end
+
+    def changeset(%Registration{} = registration, attrs) do
+      registration
+      |> Ecto.Changeset.cast(attrs, [:email])
+      |> Ecto.Changeset.validate_format(:email, ~r/.+@.+/)
+      |> Ecto.Changeset.cast_embed(:account, with: &Accounts.Account.Changeset.changeset/2)
+      |> Ecto.Changeset.cast_embed(:actor, with: &Actors.Actor.Changeset.changeset/2)
+    end
+  end
+
   def mount(_params, _session, socket) do
     changeset =
       Registration.changeset(%Registration{}, %{
@@ -164,7 +186,7 @@ defmodule Web.SignUp do
   def handle_event("validate", %{"registration" => attrs}, socket) do
     changeset =
       %Registration{}
-      |> Web.Registration.changeset(attrs)
+      |> Registration.changeset(attrs)
       |> Map.put(:action, :validate)
 
     socket = assign(socket, form: to_form(changeset))
@@ -177,7 +199,7 @@ defmodule Web.SignUp do
 
     changeset =
       %Registration{}
-      |> Web.Registration.changeset(attrs)
+      |> Registration.changeset(attrs)
       |> Map.put(:action, :insert)
 
     if changeset.valid? do
