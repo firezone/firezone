@@ -58,26 +58,15 @@ defmodule Domain.Actors do
   def peek_group_actors(groups, limit, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       ids = groups |> Enum.map(& &1.id) |> Enum.uniq()
+      preview = Map.new(ids, fn id -> {id, %{count: 0, actors: []}} end)
 
-      top_actors_by_group_id =
+      preview =
         Group.Query.by_id({:in, ids})
         |> Group.Query.preload_few_actors_for_each_group(limit)
         |> Repo.all()
-        |> Enum.group_by(& &1.group_id, & &1.actor)
-
-      actor_counts_by_group_id =
-        Membership.Query.by_group_id({:in, ids})
-        |> Membership.Query.count_actors_by_group_id()
-        |> Repo.all()
-        |> Enum.reduce(%{}, fn %{group_id: id, count: count}, acc ->
-          Map.put(acc, id, count)
-        end)
-
-      preview =
-        Enum.reduce(ids, %{}, fn id, acc ->
-          top_actors = Map.get(top_actors_by_group_id, id, [])
-          count = Map.get(actor_counts_by_group_id, id, 0)
-          Map.put(acc, id, %{count: count, actors: top_actors})
+        |> Enum.group_by(&{&1.group_id, &1.count}, & &1.actor)
+        |> Enum.reduce(preview, fn {{group_id, count}, actors}, acc ->
+          Map.put(acc, group_id, %{count: count, actors: actors})
         end)
 
       {:ok, preview}
@@ -367,6 +356,8 @@ defmodule Domain.Actors do
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:actor, Actor.Changeset.create_changeset(provider.account_id, attrs))
     |> Ecto.Multi.run(:identity, fn _repo, %{actor: actor} ->
+      # TODO: we should not reuse the same attrs here, instead we should use attrs["identities"] list for that,
+      # this will make LV forms more consistent and remove some hacks
       Auth.create_identity(actor, provider, attrs)
     end)
     |> Repo.transaction()

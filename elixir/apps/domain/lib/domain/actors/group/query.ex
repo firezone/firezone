@@ -48,8 +48,10 @@ defmodule Domain.Actors.Group.Query do
     queryable
     |> with_joined_memberships(limit)
     |> with_joined_actors()
-    |> select([groups: groups, actors: actors], %{
+    |> with_joined_actor_counts()
+    |> select([groups: groups, actors: actors, actor_counts: actor_counts], %{
       group_id: groups.id,
+      count: actor_counts.count,
       actor: actors
     })
   end
@@ -73,6 +75,16 @@ defmodule Domain.Actors.Group.Query do
 
     join(queryable, :cross_lateral, [groups: groups], memberships in subquery(subquery),
       as: :memberships
+    )
+  end
+
+  def with_joined_actor_counts(queryable) do
+    subquery =
+      Domain.Actors.Membership.Query.count_actors_by_group_id()
+      |> where([memberships: memberships], memberships.group_id == parent_as(:groups).id)
+
+    join(queryable, :cross_lateral, [groups: groups], actor_counts in subquery(subquery),
+      as: :actor_counts
     )
   end
 

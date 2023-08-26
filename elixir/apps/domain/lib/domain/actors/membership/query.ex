@@ -66,30 +66,6 @@ defmodule Domain.Actors.Membership.Query do
     )
   end
 
-  # def preload_few_actors_for_each_group(queryable \\ all(), limit) do
-  #   queryable
-  #   |> with_few_joined_actors(limit)
-  #   |> where([actors: actors], not is_nil(actors.id))
-  #   |> select([memberships: memberships, actors: actors], %{
-  #     group_id: memberships.group_id,
-  #     actor: actors
-  #   })
-  #   |> distinct([memberships: memberships], memberships.group_id)
-  # end
-
-  # def with_few_joined_actors(queryable \\ all(), limit) do
-  #   subquery =
-  #     Actor.Query.all()
-  #     |> where([actors: actors], actors.id == parent_as(:memberships).actor_id)
-  #     |> limit(^limit)
-  #     |> select([actors: actors], actors.id)
-
-  #   join(queryable, :inner_lateral, [memberships: memberships], actors in subquery(subquery),
-  #   on: actors.id == memberships.actor_id,
-  #     as: :actors
-  #   )
-  # end
-
   def lock(queryable \\ all()) do
     lock(queryable, "FOR UPDATE")
   end
