@@ -55,6 +55,7 @@ defmodule Domain.Config.ValidatorTest do
                {:error, [{"invalid", ["must be one of: integer, boolean"]}]}
     end
 
+    # TODO: uncomment once we have at least one config embed
     # test "validates embeds" do
     #   type = {:json_array, {:embed, Domain.Config.Configuration.SAMLIdentityProvider}}
 
