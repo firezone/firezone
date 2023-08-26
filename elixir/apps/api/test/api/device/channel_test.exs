@@ -73,7 +73,7 @@ defmodule API.Device.ChannelTest do
         })
         |> subscribe_and_join(API.Device.Channel, "device")
 
-      assert_push("token_expired", %{}, 250)
+      assert_push "token_expired", %{}, 250
     end
 
     test "sends list of resources after join", %{
@@ -81,7 +81,7 @@ defmodule API.Device.ChannelTest do
       dns_resource: dns_resource,
       cidr_resource: cidr_resource
     } do
-      assert_push("init", %{resources: resources, interface: interface})
+      assert_push "init", %{resources: resources, interface: interface}
 
       assert %{
                id: dns_resource.id,

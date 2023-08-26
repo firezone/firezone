@@ -46,11 +46,11 @@ defmodule API.Gateway.ChannelTest do
     test "sends list of resources after join", %{
       gateway: gateway
     } do
-      assert_push("init", %{
+      assert_push "init", %{
         interface: interface,
         ipv4_masquerade_enabled: true,
         ipv6_masquerade_enabled: true
-      })
+      }
 
       assert interface == %{
                ipv4: gateway.ipv4,
@@ -81,7 +81,7 @@ defmodule API.Gateway.ChannelTest do
          }}
       )
 
-      assert_push("allow_access", payload)
+      assert_push "allow_access", payload
 
       assert payload.resource == %{
                address: resource.address,
@@ -125,7 +125,7 @@ defmodule API.Gateway.ChannelTest do
          }}
       )
 
-      assert_push("request_connection", payload)
+      assert_push "request_connection", payload
 
       assert is_binary(payload.ref)
       assert payload.actor == %{id: device.actor_id}
@@ -222,7 +222,7 @@ defmodule API.Gateway.ChannelTest do
          }}
       )
 
-      assert_push("request_connection", %{ref: ref})
+      assert_push "request_connection", %{ref: ref}
 
       push_ref =
         push(socket, "connection_ready", %{
