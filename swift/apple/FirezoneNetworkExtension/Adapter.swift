@@ -6,6 +6,7 @@ import FirezoneKit
 import Foundation
 import NetworkExtension
 import OSLog
+import CryptoKit
 
 #if os(iOS)
   import UIKit.UIDevice
@@ -200,23 +201,25 @@ public class Adapter {
 }
 
 // MARK: Device unique identifiers
+
 extension Adapter {
   func getExternalId() -> String {
     #if os(iOS)
-      guard let uuid = UIDevice.current.identifierForVendor?.uuidString else {
+      guard let extId = UIDevice.current.identifierForVendor?.uuidString.data(using: .utf8) else {
         // Send a blank string, letting either connlib or the portal handle this
         return ""
       }
-      return uuid
+    
     #elseif os(macOS)
-      guard let macBytes = PrimaryMacAddress.copy_mac_address() else {
+      guard let extId = PrimaryMacAddress.copy_mac_address() as? Data else {
         // Send a blank string, letting either connlib or the portal handle this
         return ""
       }
-      return (macBytes as Data).base64EncodedString()
     #else
       #error("Unsupported platform")
     #endif
+    
+    return SHA256.hash(data: extId).compactMap { String(format: "%02x", $0) }.joined()
   }
 }
 
