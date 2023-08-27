@@ -15,6 +15,7 @@ use std::{
     os::fd::RawFd,
 };
 use thiserror::Error;
+use tracing::log::LevelFilter;
 
 /// This should be called once after the library is loaded by the system.
 #[allow(non_snake_case)]
@@ -23,9 +24,9 @@ pub extern "system" fn Java_dev_firezone_android_tunnel_TunnelLogger_init(_: JNI
     android_logger::init_once(
         android_logger::Config::default()
             .with_max_level(if cfg!(debug_assertions) {
-                log::LevelFilter::Debug
+                LevelFilter::Debug
             } else {
-                log::LevelFilter::Warn
+                LevelFilter::Warn
             })
             .with_tag("connlib"),
     )
@@ -85,7 +86,7 @@ fn call_method(
     args: &[JValue],
 ) -> Result<(), CallbackError> {
     env.call_method(this, name, sig, args)
-        .map(|val| log::trace!("`{name}` returned `{val:?}`"))
+        .map(|val| tracing::trace!("`{name}` returned `{val:?}`"))
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
@@ -252,14 +253,14 @@ impl Callbacks for CallbackHandler {
 fn throw(env: &mut JNIEnv, class: &str, msg: impl Into<JNIString>) {
     if let Err(err) = env.throw_new(class, msg) {
         // We can't panic, since unwinding across the FFI boundary is UB...
-        log::error!("failed to throw Java exception: {err}");
+        tracing::error!("failed to throw Java exception: {err}");
     }
 }
 
 fn catch_and_throw<F: FnOnce(&mut JNIEnv) -> R, R>(env: &mut JNIEnv, f: F) -> Option<R> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(env)))
         .map_err(|info| {
-            log::error!("catching Rust panic");
+            tracing::error!("catching Rust panic");
             throw(
                 env,
                 "java/lang/Exception",

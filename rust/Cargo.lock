@@ -766,9 +766,9 @@ dependencies = [
  "firezone-client-connlib",
  "ip_network",
  "jni 0.21.1",
- "log",
  "serde_json",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -1232,7 +1232,6 @@ dependencies = [
  "itertools 0.11.0",
  "libc",
  "libs-common",
- "log",
  "netlink-packet-core",
  "netlink-packet-route",
  "parking_lot",
@@ -1816,7 +1815,6 @@ dependencies = [
  "futures",
  "futures-util",
  "ip_network",
- "log",
  "os_info",
  "parking_lot",
  "rand",

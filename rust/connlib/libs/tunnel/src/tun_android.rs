@@ -123,7 +123,7 @@ impl IfaceDevice {
 
         let mtu = unsafe { ifr.ifr_ifru.ifru_mtu };
 
-        log::debug!("MTU for {} is {}", name, mtu);
+        tracing::debug!("MTU for {} is {}", name, mtu);
         Ok(mtu as _)
     }
 
@@ -157,7 +157,7 @@ impl IfaceConfig {
     }
 
     pub async fn up(&mut self) -> Result<()> {
-        log::debug!("`up` unimplemented on Android");
+        tracing::debug!("`up` unimplemented on Android");
         Ok(())
     }
 }

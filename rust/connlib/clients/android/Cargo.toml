@@ -13,9 +13,9 @@ mock = ["firezone-client-connlib/mock"]
 
 [dependencies]
 android_logger = "0.13"
+tracing = { version = "0.1", features = ["log", "std", "attributes"] }
 firezone-client-connlib = { path = "../../libs/client" }
 jni = { version = "0.21.1", features = ["invocation"] }
 ip_network = "0.4"
-log = "0.4"
 serde_json = "1"
 thiserror = "1"
