@@ -2,7 +2,7 @@ package dev.firezone.android.features.session.backend
 
 import android.net.VpnService
 import android.util.Log
-import android.provider.Settings
+import com.google.firebase.installations.FirebaseInstallations
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.core.domain.preference.SaveIsConnectedUseCase
@@ -11,6 +11,7 @@ import dev.firezone.android.tunnel.TunnelLogger
 import dev.firezone.android.tunnel.TunnelSession
 import dev.firezone.android.tunnel.TunnelManager
 import dev.firezone.android.tunnel.TunnelService
+import java.security.MessageDigest
 import javax.inject.Inject
 
 internal class SessionManager @Inject constructor(
@@ -31,7 +32,7 @@ internal class SessionManager @Inject constructor(
                 sessionPtr = TunnelSession.connect(
                     BuildConfig.CONTROL_PLANE_URL,
                     config.token,
-                    Settings.Secure.ANDROID_ID,
+                    externalId(),
                     TunnelCallbacks()
                 )
                 Log.d("Connlib", "connlib session started! sessionPtr: $sessionPtr")
@@ -42,6 +43,8 @@ internal class SessionManager @Inject constructor(
         }
     }
 
+
+
     fun disconnect() {
         try {
             TunnelSession.disconnect(sessionPtr!!)
@@ -49,6 +52,21 @@ internal class SessionManager @Inject constructor(
         } catch (exception: Exception) {
             Log.e("Disconnection error:", exception.message.toString())
         }
+    }
+
+    private fun externalId(): String {
+        val installationId = FirebaseInstallations
+            .getInstance()
+            .getId()
+        val externalId = MessageDigest
+            .getInstance("SHA-256")
+            .digest(installationId.toString().toByteArray())
+            .joinToString("") { "%02x".format(it) }
+
+        Log.d("Connlib", "Installation ID: ${installationId}")
+        Log.d("Connlib", "External ID: ${externalId}")
+
+        return externalId
     }
 
     private fun setConnectionStatus(value: Boolean) {
