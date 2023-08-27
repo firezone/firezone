@@ -42,8 +42,6 @@ internal class SessionManager @Inject constructor(
         }
     }
 
-
-
     fun disconnect() {
         try {
             TunnelSession.disconnect(sessionPtr!!)
@@ -66,16 +64,14 @@ internal class SessionManager @Inject constructor(
         saveIsConnectedUseCase.sync(value)
     }
 
-
-
     internal companion object {
         var sessionPtr: Long? = null
         init {
-            Log.d("Connlib","Attempting to load library from main app...")
+            Log.d("Connlib", "Attempting to load library from main app...")
             System.loadLibrary("connlib")
-            Log.d("Connlib","Library loaded from main app!")
+            Log.d("Connlib", "Library loaded from main app!")
             TunnelLogger.init()
-            Log.d("Connlib","Connlib Logger initialized!")
+            Log.d("Connlib", "Connlib Logger initialized!")
         }
     }
 }
