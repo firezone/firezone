@@ -324,7 +324,7 @@ firezone-staging
 ############
 
 # Stream all Elixir error logs:
-> gcloud logging read "jsonPayload.message.erl_level=error"
+> gcloud logging read "jsonPayload.message.severity=ERROR"
 
 # Stream Web app logs (portal UI):
 > gcloud logging read 'jsonPayload."cos.googleapis.com/container_name":web'
