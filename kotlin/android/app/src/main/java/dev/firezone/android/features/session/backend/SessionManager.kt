@@ -1,32 +1,40 @@
 package dev.firezone.android.features.session.backend
 
+import android.net.VpnService
 import android.util.Log
+import android.provider.Settings
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.core.domain.preference.SaveIsConnectedUseCase
-import dev.firezone.connlib.Logger
-import dev.firezone.connlib.Session
+import dev.firezone.android.tunnel.TunnelCallbacks
+import dev.firezone.android.tunnel.TunnelLogger
+import dev.firezone.android.tunnel.TunnelSession
+import dev.firezone.android.tunnel.TunnelManager
+import dev.firezone.android.tunnel.TunnelService
 import javax.inject.Inject
 
 internal class SessionManager @Inject constructor(
     private val getConfigUseCase: GetConfigUseCase,
     private val saveIsConnectedUseCase: SaveIsConnectedUseCase,
 ) {
-    private val callback: SessionCallbackImpl = SessionCallbackImpl()
+    private val callback: TunnelManager = TunnelManager()
 
     fun connect() {
         try {
             val config = getConfigUseCase.sync()
 
-            if (config.portalUrl != null && config.jwt != null) {
-                Log.d("Connlib", "portalUrl: ${config.portalUrl}")
-                Log.d("Connlib", "jwt: ${config.jwt}")
+            Log.d("Connlib", "accountId: ${config.accountId}")
+            Log.d("Connlib", "token: ${config.token}")
 
-                sessionPtr = Session.connect(
+            if (config.accountId != null && config.token != null) {
+                Log.d("Connlib", "Attempting to establish TunnelSession...")
+                sessionPtr = TunnelSession.connect(
                     BuildConfig.CONTROL_PLANE_URL,
-                    config.jwt,
-                    callback
+                    config.token,
+                    Settings.Secure.ANDROID_ID,
+                    TunnelCallbacks()
                 )
+                Log.d("Connlib", "connlib session started! sessionPtr: $sessionPtr")
                 setConnectionStatus(true)
             }
         } catch (exception: Exception) {
@@ -36,7 +44,7 @@ internal class SessionManager @Inject constructor(
 
     fun disconnect() {
         try {
-            Session.disconnect(sessionPtr!!)
+            TunnelSession.disconnect(sessionPtr!!)
             setConnectionStatus(false)
         } catch (exception: Exception) {
             Log.e("Disconnection error:", exception.message.toString())
@@ -47,12 +55,16 @@ internal class SessionManager @Inject constructor(
         saveIsConnectedUseCase.sync(value)
     }
 
+
+
     internal companion object {
         var sessionPtr: Long? = null
         init {
+            Log.d("Connlib","Attempting to load library from main app...")
             System.loadLibrary("connlib")
-            Logger.init()
             Log.d("Connlib","Library loaded from main app!")
+            TunnelLogger.init()
+            Log.d("Connlib","Connlib Logger initialized!")
         }
     }
 }

@@ -3,10 +3,13 @@ use clap::Parser;
 use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
+    os::fd::RawFd,
     str::FromStr,
 };
 
-use firezone_client_connlib::{get_user_agent, Callbacks, Error, ResourceDescription, Session};
+use firezone_client_connlib::{
+    get_external_id, get_user_agent, Callbacks, Error, ResourceDescription, Session,
+};
 use url::Url;
 
 #[derive(Clone)]
@@ -20,8 +23,9 @@ impl Callbacks for CallbackHandler {
         _tunnel_address_v4: Ipv4Addr,
         _tunnel_address_v6: Ipv6Addr,
         _dns_address: Ipv4Addr,
-    ) -> Result<(), Self::Error> {
-        Ok(())
+        _dns_fallback_strategy: String,
+    ) -> Result<RawFd, Self::Error> {
+        Ok(-1)
     }
 
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
@@ -41,13 +45,14 @@ impl Callbacks for CallbackHandler {
         &self,
         resource_list: Vec<ResourceDescription>,
     ) -> Result<(), Self::Error> {
-        tracing::trace!("Resources updated, current list: {resource_list:?}");
+        tracing::trace!(message = "Resources updated", ?resource_list);
         Ok(())
     }
 
     fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
         tracing::trace!("Tunnel disconnected: {error:?}");
-        Ok(())
+        // Note that we can't panic here, since we already hooked the panic to this function.
+        std::process::exit(0);
     }
 
     fn on_error(&self, error: &Error) -> Result<(), Self::Error> {
@@ -58,6 +63,13 @@ impl Callbacks for CallbackHandler {
 
 const URL_ENV_VAR: &str = "FZ_URL";
 const SECRET_ENV_VAR: &str = "FZ_SECRET";
+
+fn block_on_ctrl_c() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    ctrlc::set_handler(move || tx.send(()).expect("Could not send stop signal on channel."))
+        .expect("Error setting Ctrl-C handler");
+    rx.recv().expect("Could not receive ctrl-c signal");
+}
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
@@ -70,9 +82,12 @@ fn main() -> Result<()> {
     // TODO: allow passing as arg vars
     let url = parse_env_var::<Url>(URL_ENV_VAR)?;
     let secret = parse_env_var::<String>(SECRET_ENV_VAR)?;
-    let mut session = Session::connect(url, secret, CallbackHandler).unwrap();
+    let external_id = get_external_id();
+    let mut session = Session::connect(url, secret, external_id, CallbackHandler).unwrap();
     tracing::info!("Started new session");
-    session.wait_for_ctrl_c().unwrap();
+
+    block_on_ctrl_c();
+
     session.disconnect(None);
     Ok(())
 }

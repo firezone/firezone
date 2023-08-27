@@ -20,7 +20,7 @@ final class TunnelStore: ObservableObject {
     didSet { setupTunnelObservers() }
   }
 
-  @Published private(set) var status: NEVPNStatus = .invalid {
+  @Published private(set) var status: NEVPNStatus {
     didSet { TunnelStore.logger.info("status changed: \(self.status.description)") }
   }
 
@@ -41,6 +41,7 @@ final class TunnelStore: ObservableObject {
   init(tunnel: NETunnelProviderManager) {
     self.controlPlaneURL = Self.getControlPlaneURLFromInfoPlist()
     self.tunnel = tunnel
+    self.status = tunnel.connection.status
     tunnel.isEnabled = true
     setupTunnelObservers()
   }
@@ -66,6 +67,16 @@ final class TunnelStore: ObservableObject {
 
     // make sure we have latest preferences before starting
     try await tunnel.loadFromPreferences()
+
+    if tunnel.connection.status == .connected || tunnel.connection.status == .connecting {
+      if let (tunnelControlPlaneURLString, tunnelToken) = Self.getTunnelConfigurationParameters(of: tunnel) {
+        if tunnelControlPlaneURLString == self.controlPlaneURL.absoluteString && tunnelToken == authResponse.token {
+          // Already connected / connecting with the required configuration
+          TunnelStore.logger.debug("\(#function): Already connected / connecting. Nothing to do.")
+          return
+        }
+      }
+    }
 
     tunnel.protocolConfiguration = Self.makeProtocolConfiguration(
       controlPlaneURL: self.controlPlaneURL,
@@ -104,6 +115,10 @@ final class TunnelStore: ObservableObject {
 
   private func updateResources() {
     let session = tunnel.connection as! NETunnelProviderSession
+    guard session.status == .connected else {
+      self.resources = DisplayableResources()
+      return
+    }
     let resourcesQuery = resources.versionStringToData()
     do {
       try session.sendProviderMessage(resourcesQuery) { [weak self] reply in
@@ -162,6 +177,19 @@ final class TunnelStore: ObservableObject {
     return proto
   }
 
+  private static func getTunnelConfigurationParameters(of tunnelProvider: NETunnelProviderManager) -> (String, String)? {
+    guard let tunnelProtocol = tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol else {
+      return nil
+    }
+    guard let controlPlaneURLString = tunnelProtocol.providerConfiguration?["controlPlaneURL"] as? String else {
+      return nil
+    }
+    guard let token = tunnelProtocol.providerConfiguration?["token"] as? String else {
+      return nil
+    }
+    return (controlPlaneURLString, token)
+  }
+
   private func setupTunnelObservers() {
     TunnelStore.logger.trace("\(#function)")
 
@@ -174,14 +202,13 @@ final class TunnelStore: ObservableObject {
           named: .NEVPNStatusDidChange,
           object: nil
         ) {
-          guard let session = notification.object as? NETunnelProviderSession,
-                let tunnelProvider = session.manager as? NETunnelProviderManager
-          else {
+          guard let session = notification.object as? NETunnelProviderSession else {
             return
           }
-          self.status = tunnelProvider.connection.status
+          let status = session.status
+          self.status = status
           if let startTunnelContinuation = self.startTunnelContinuation {
-            switch self.status {
+            switch status {
               case .connected:
                 startTunnelContinuation.resume(returning: ())
                 self.startTunnelContinuation = nil
@@ -191,6 +218,9 @@ final class TunnelStore: ObservableObject {
               default:
                 break
             }
+          }
+          if status != .connected {
+            self.resources = DisplayableResources()
           }
         }
       }

@@ -1,13 +1,21 @@
 package dev.firezone.android.features.applink.ui
 
+import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.BuildConfig
 import dev.firezone.android.R
+import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.databinding.ActivityAppLinkHandlerBinding
+import dev.firezone.android.features.session.backend.SessionManager
+import dev.firezone.android.features.splash.ui.SplashFragmentDirections
+import dev.firezone.android.tunnel.TunnelManager
+import dev.firezone.android.tunnel.TunnelSession
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class AppLinkHandlerActivity : AppCompatActivity(R.layout.activity_app_link_handler) {
@@ -26,12 +34,18 @@ class AppLinkHandlerActivity : AppCompatActivity(R.layout.activity_app_link_hand
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(this) { action ->
             when (action) {
-                is AppLinkViewModel.ViewAction.AuthFlowComplete -> {
-                    // Continue with onboarding
+                AppLinkViewModel.ViewAction.AuthFlowComplete -> {
+                    // TODO: Continue starting the session showing sessionFragment
                     Log.d("AppLinkHandlerActivity", "AuthFlowComplete")
+
+                    val intent = Intent(this@AppLinkHandlerActivity, MainActivity::class.java)
+                    this@AppLinkHandlerActivity.startActivity(intent)
+                    this@AppLinkHandlerActivity.finish()
                 }
-                is AppLinkViewModel.ViewAction.ShowError -> showError()
-                else -> {}
+                AppLinkViewModel.ViewAction.ShowError -> showError()
+                else -> {
+                    Log.d("AppLinkHandlerActivity", "Unhandled action: $action")
+                }
             }
         }
     }

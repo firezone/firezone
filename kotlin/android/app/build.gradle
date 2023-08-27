@@ -30,17 +30,23 @@ android {
         debug {
             debuggable true
 
+            def localProperties = new Properties()
+            localProperties.load(new FileInputStream(rootProject.file("local.properties")))
+            buildConfigField("String", "TOKEN", "\"${localProperties.getProperty("token")}\"")
+
             // Debug Config
             manifestPlaceholders.hostName = "app.firez.one"
-            buildConfigField("String", "AUTH_HOST", "\"localhost\"")
-            buildConfigField("String", "AUTH_SCHEME", "\"http\"")
-            buildConfigField("Integer", "AUTH_PORT", "8080")
-            buildConfigField("String", "CONTROL_PLANE_URL", "\"ws://localhost:8081/\"")
+            buildConfigField("String", "AUTH_HOST", "\"app.firez.one\"")
+            buildConfigField("String", "AUTH_SCHEME", "\"https\"")
+            buildConfigField("Integer", "AUTH_PORT", "443")
+            buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firez.one/\"")
 
             resValue "string", "app_name", "\"Firezone (Dev)\""
         }
         release {
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+
+            buildConfigField("String", "TOKEN", "null")
 
             // Release Config
             manifestPlaceholders.hostName = "app.firezone.dev"

@@ -84,7 +84,7 @@ where
             }
         }
 
-        self.start_peer_handler(peer);
+        self.start_peer_handler(peer)?;
         Ok(())
     }
 
@@ -401,7 +401,11 @@ where
                     tracing::trace!("new data channel opened!");
                     Box::pin(async move {
                         {
-                            let mut iface_config = tunnel.iface_config.lock().await;
+                            let Some(ref mut iface_config) = *tunnel.iface_config.lock().await else {
+                                tracing::error!(message = "Error opening channel", error = "Tried to open a channel before interface was ready");
+                                let _ = tunnel.callbacks().on_error(&Error::NoIface);
+                                return;
+                            };
                             for &ip in &peer.ips {
                                 if let Err(e) = iface_config.add_route(ip, tunnel.callbacks()).await
                                 {
@@ -429,7 +433,7 @@ where
                             let conn = tunnel.peer_connections.lock().remove(&client_id);
                             if let Some(conn) = conn {
                                 if let Err(e) = conn.close().await {
-                                    tracing::error!("Problem while trying to close channel: {e:?}");
+                                    tracing::error!(message = "Error trying to close channel", error = ?e);
                                     let _ = tunnel.callbacks().on_error(&e.into());
                                 }
                             }

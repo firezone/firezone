@@ -1,11 +1,13 @@
 package dev.firezone.android.core
 
 import android.content.SharedPreferences
+import dev.firezone.android.BuildConfig
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
 import okhttp3.Response
+import java.lang.Exception
 
-private const val PORTAL_URL_KEY = "portalUrl"
+private const val ACCOUNT_ID_KEY = "accountId"
 
 internal class BaseUrlInterceptor(
     private val sharedPreferences: SharedPreferences
@@ -13,11 +15,12 @@ internal class BaseUrlInterceptor(
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
-        val baseUrl = sharedPreferences.getString(PORTAL_URL_KEY, "").orEmpty().toHttpUrl()
+        val accountId = sharedPreferences.getString(ACCOUNT_ID_KEY, "") ?: ""
         val newUrl = originalRequest.url.newBuilder()
-            .scheme(baseUrl.scheme)
-            .host(baseUrl.host)
-            .port(baseUrl.port)
+            .scheme(BuildConfig.AUTH_SCHEME)
+            .host(BuildConfig.AUTH_HOST)
+            .port(BuildConfig.AUTH_PORT)
+            .addPathSegment(accountId)
             .build()
         val newRequest = originalRequest.newBuilder()
             .url(newUrl)

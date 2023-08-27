@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.domain.auth.GetCsrfTokenUseCase
 import javax.inject.Inject
 import kotlinx.coroutines.flow.firstOrNull
@@ -24,19 +25,23 @@ internal class AuthViewModel @Inject constructor(
     fun startAuthFlow() = try {
         viewModelScope.launch {
             val config = getConfigUseCase()
-                .firstOrNull() ?: throw Exception("Config cannot be null")
+                .firstOrNull() ?: throw Exception("config cannot be null")
 
-            val token = getCsrfTokenUseCase()
-                .firstOrNull() ?: throw Exception("Token cannot be null")
+            val csrfToken = getCsrfTokenUseCase()
+                .firstOrNull() ?: throw Exception("csrfToken cannot be null")
 
             actionMutableLiveData.postValue(
                 ViewAction.LaunchAuthFlow(
-                    url = "${config.portalUrl}/sign_in?client_csrf_token=$token&client_platform=android"
+                    url = "$AUTH_URL${config.accountId}/sign_in?client_csrf_token=${config.token}&client_platform=android"
                 )
             )
         }
     } catch (e: Exception) {
         actionMutableLiveData.postValue(ViewAction.ShowError)
+    }
+
+    companion object {
+        val AUTH_URL = "${BuildConfig.AUTH_SCHEME}://${BuildConfig.AUTH_HOST}:${BuildConfig.AUTH_PORT}/"
     }
 
     internal sealed class ViewAction {

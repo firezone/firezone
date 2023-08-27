@@ -4,8 +4,8 @@ import dev.firezone.android.core.data.PreferenceRepository
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
 
-internal class SavePortalUrlUseCase @Inject constructor(
+internal class SaveTokenUseCase @Inject constructor(
     private val repository: PreferenceRepository
 ) {
-    operator fun invoke(portalUrl: String): Flow<Unit> = repository.savePortalUrl(portalUrl)
+    operator fun invoke(token: String): Flow<Unit> = repository.saveToken(token)
 }

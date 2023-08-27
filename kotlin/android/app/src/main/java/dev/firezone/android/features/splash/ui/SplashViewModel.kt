@@ -8,7 +8,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.core.domain.preference.DebugUserUseCase
 import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
@@ -19,15 +18,12 @@ private const val REQUEST_DELAY = 1000L
 @HiltViewModel
 internal class SplashViewModel @Inject constructor(
     private val useCase: GetConfigUseCase,
-    private val debugUserUseCase: DebugUserUseCase,
 ) : ViewModel() {
 
     private val actionMutableLiveData = MutableLiveData<ViewAction>()
     val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
     internal fun checkUserState(context: Context) {
         viewModelScope.launch {
-            //debugUserUseCase() // sets dummy team-id and token
-
             delay(REQUEST_DELAY)
             if (!hasVpnPermissions(context)) {
                 actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
@@ -37,9 +33,9 @@ internal class SplashViewModel @Inject constructor(
                         Log.e("Error", it.message.toString())
                     }
                     .collect { user ->
-                        if (user.portalUrl.isNullOrEmpty()) {
-                            actionMutableLiveData.postValue(ViewAction.NavigateToOnboardingFragment)
-                        } else if (user.jwt.isNullOrBlank()) {
+                        if (user.accountId.isNullOrEmpty()) {
+                            actionMutableLiveData.postValue(ViewAction.NavigateToSettingsFragment)
+                        } else if (user.token.isNullOrBlank()) {
                             actionMutableLiveData.postValue(ViewAction.NavigateToSignInFragment)
                         } else {
                             actionMutableLiveData.postValue(ViewAction.NavigateToSessionFragment)
@@ -55,7 +51,7 @@ internal class SplashViewModel @Inject constructor(
 
     internal sealed class ViewAction {
         object NavigateToVpnPermission : ViewAction()
-        object NavigateToOnboardingFragment : ViewAction()
+        object NavigateToSettingsFragment : ViewAction()
         object NavigateToSignInFragment : ViewAction()
         object NavigateToSessionFragment : ViewAction()
     }
