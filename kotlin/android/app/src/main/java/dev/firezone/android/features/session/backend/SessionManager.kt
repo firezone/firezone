@@ -11,7 +11,6 @@ import dev.firezone.android.tunnel.TunnelLogger
 import dev.firezone.android.tunnel.TunnelSession
 import dev.firezone.android.tunnel.TunnelManager
 import dev.firezone.android.tunnel.TunnelService
-import java.security.MessageDigest
 import javax.inject.Inject
 
 internal class SessionManager @Inject constructor(
@@ -32,7 +31,7 @@ internal class SessionManager @Inject constructor(
                 sessionPtr = TunnelSession.connect(
                     BuildConfig.CONTROL_PLANE_URL,
                     config.token,
-                    externalId(),
+                    deviceId(),
                     TunnelCallbacks()
                 )
                 Log.d("Connlib", "connlib session started! sessionPtr: $sessionPtr")
@@ -54,19 +53,13 @@ internal class SessionManager @Inject constructor(
         }
     }
 
-    private fun externalId(): String {
-        val installationId = FirebaseInstallations
+    private fun deviceId(): String {
+        val deviceId = FirebaseInstallations
             .getInstance()
             .getId()
-        val externalId = MessageDigest
-            .getInstance("SHA-256")
-            .digest(installationId.toString().toByteArray())
-            .joinToString("") { "%02x".format(it) }
+        Log.d("Connlib", "Device ID: ${deviceId}")
 
-        Log.d("Connlib", "Installation ID: ${installationId}")
-        Log.d("Connlib", "External ID: ${externalId}")
-
-        return externalId
+        return deviceId
     }
 
     private fun setConnectionStatus(value: Boolean) {

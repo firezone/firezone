@@ -3,7 +3,6 @@
 //! This includes types provided by external crates, i.e. [boringtun] to make sure that
 //! we are using the same version across our own crates.
 
-use ring::digest::{Context, SHA256};
 pub mod error;
 
 mod session;
@@ -28,28 +27,8 @@ pub fn get_user_agent() -> String {
     format!("{os_type}/{os_version} {lib_name}/{lib_version}")
 }
 
-/// normalized to a SHA256-hashed
-/// string.
-pub fn get_external_id() -> String {
-    let device_id = device_id();
-    tracing::debug!("device_id: {}", device_id);
-
-    let mut ctx = Context::new(&SHA256);
-    ctx.update(device_id.as_bytes());
-    let digest = ctx.finish();
-
-    let external_id = digest
-        .as_ref()
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect();
-    tracing::debug!("external_id: {}", external_id);
-
-    external_id
-}
-
-/// Returns the SMBios Serial of the device or a random UUIDv4
-fn device_id() -> String {
+/// Returns the SMBios Serial of the device or a random UUIDv4 if the SMBios is not available.
+pub fn get_device_id() -> String {
     // smbios fails to build on mobile, but it works for other platforms.
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     match smbioslib::table_load_from_device() {
