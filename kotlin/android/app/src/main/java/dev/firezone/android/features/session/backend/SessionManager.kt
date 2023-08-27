@@ -55,6 +55,7 @@ internal class SessionManager @Inject constructor(
         val deviceId = FirebaseInstallations
             .getInstance()
             .getId()
+            .toString()
         Log.d("Connlib", "Device ID: ${deviceId}")
 
         return deviceId
