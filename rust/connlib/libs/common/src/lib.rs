@@ -27,8 +27,8 @@ pub fn get_user_agent() -> String {
     format!("{os_type}/{os_version} {lib_name}/{lib_version}")
 }
 
-/// Returns the SMBios Serial of the device, or a random UUIDv4 if it can't be found.
-pub fn get_external_id() -> String {
+/// Returns the SMBios Serial of the device or a random UUIDv4 if the SMBios is not available.
+pub fn get_device_id() -> String {
     // smbios fails to build on mobile, but it works for other platforms.
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     match smbioslib::table_load_from_device() {

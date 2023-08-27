@@ -19,7 +19,7 @@ mod ffi {
         fn connect(
             portal_url: String,
             token: String,
-            external_id: String,
+            device_id: String,
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
@@ -154,14 +154,14 @@ impl WrappedSession {
     fn connect(
         portal_url: String,
         token: String,
-        external_id: String,
+        device_id: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
         init_logging();
         Session::connect(
             portal_url.as_str(),
             token,
-            external_id,
+            device_id,
             CallbackHandler(callback_handler.into()),
         )
         .map(|session| Self { session })
