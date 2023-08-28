@@ -20,4 +20,8 @@ class TunnelService: VpnService() {
     }
 
 
+    companion object {
+        val ACTION_CONNECT = "dev.firezone.android.tunnel.CONNECT"
+        val ACTION_DISCONNECT = "dev.firezone.android.tunnel.DISCONNECT"
+    }
 }
