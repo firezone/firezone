@@ -23,6 +23,8 @@ const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: u64 = 0x4004_54ca;
 const TUN_FILE: &[u8] = b"/dev/net/tun\0";
 const RT_PROT_STATIC: u8 = 4;
+// This MTU will always work
+const MTU: u32 = 1280;
 
 #[repr(C)]
 union IfrIfru {
@@ -143,12 +145,18 @@ impl IfaceDevice {
             .address()
             .add(self.interface_index, config.ipv4.into(), 32)
             .execute()
-            .await?;
+            .await
+            .or(self
+                .handle
+                .address()
+                .add(self.interface_index, config.ipv6.into(), 128)
+                .execute()
+                .await)?;
 
-        // TODO: Disable this when ipv6 is disabled
         self.handle
-            .address()
-            .add(self.interface_index, config.ipv6.into(), 128)
+            .link()
+            .set(self.interface_index)
+            .mtu(MTU)
             .execute()
             .await?;
 
@@ -273,15 +281,14 @@ impl IfaceConfig {
             .address()
             .add(self.0.interface_index, config.ipv4.into(), 32)
             .execute()
-            .await?;
-
-        // TODO: Disable this when ipv6 is disabled
-        self.0
-            .handle
-            .address()
-            .add(self.0.interface_index, config.ipv6.into(), 128)
-            .execute()
-            .await?;
+            .await
+            .or(self
+                .0
+                .handle
+                .address()
+                .add(self.0.interface_index, config.ipv6.into(), 128)
+                .execute()
+                .await)?;
 
         Ok(())
     }

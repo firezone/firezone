@@ -76,11 +76,11 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }: InitClient,
     ) -> Result<()> {
         if let Err(e) = self.tunnel.set_interface(&interface).await {
-            tracing::error!("Couldn't initialize interface: {e}");
+            tracing::error!(message = "Error initializing interface", error = ?e);
             Err(e)
         } else {
             for resource_description in resources {
-                self.add_resource(resource_description).await?;
+                self.add_resource(resource_description).await;
             }
             tracing::info!("Firezoned Started!");
             Ok(())
@@ -111,8 +111,11 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn add_resource(&self, resource_description: ResourceDescription) -> Result<()> {
-        self.tunnel.add_resource(resource_description).await
+    async fn add_resource(&self, resource_description: ResourceDescription) {
+        if let Err(e) = self.tunnel.add_resource(resource_description).await {
+            tracing::error!(message = "Can't add resource", error = ?e);
+            let _ = self.tunnel.callbacks().on_error(&e);
+        }
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -189,7 +192,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 self.connection_details(connection_details)
             }
             Messages::Connect(connect) => self.connect(connect).await,
-            Messages::ResourceAdded(resource) => self.add_resource(resource).await?,
+            Messages::ResourceAdded(resource) => self.add_resource(resource).await,
             Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
             Messages::ResourceUpdated(resource) => self.update_resource(resource),
         }
@@ -205,7 +208,10 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         tracing::error!(
                             "An offline error came back with a reference to a non-valid resource id"
                         );
-                        let _ = self.tunnel.callbacks().on_error(&Error::ControlProtocolError);
+                        let _ = self
+                            .tunnel
+                            .callbacks()
+                            .on_error(&Error::ControlProtocolError);
                         return;
                     };
                     // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
