@@ -234,7 +234,7 @@ where
             for ip in resource_description.ips() {
                 if let Err(e) = iface_config.add_route(ip, self.callbacks()).await {
                     tracing::warn!(message = "Couldn't add route", route = %ip, error = ?e);
-                    let _ = self.callbacks().on_error(&e.into());
+                    let _ = self.callbacks().on_error(&e);
                 } else {
                     any_valid_route = true;
                 }
