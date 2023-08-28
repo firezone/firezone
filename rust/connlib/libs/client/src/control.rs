@@ -76,7 +76,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }: InitClient,
     ) -> Result<()> {
         if let Err(e) = self.tunnel.set_interface(&interface).await {
-            tracing::error!(message = "Error initializing interface", error = ?e);
+            tracing::error!(error = ?e, "Error initializing interface");
             Err(e)
         } else {
             for resource_description in resources {
