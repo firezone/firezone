@@ -303,3 +303,35 @@ iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)5> {:ok, identity} = Dom
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)6> Web.Mailer.AuthEmail.sign_in_link_email(identity) |> Web.Mailer.deliver()
 {:ok, %{id: "d24dbe9a-d0f5-4049-ac0d-0df793725a80"}}
 ```
+
+## Viewing logs
+
+Logs can be viewed via th [Logs Explorer](https://console.cloud.google.com/logs)
+in GCP, or via the `gcloud` CLI:
+
+```bash
+# First, login
+> gcloud auth login
+
+# Always make sure you're in the correct environment
+> gcloud config get project
+firezone-staging
+
+# Now you can stream logs directly to your terminal.
+
+############
+# Examples #
+############
+
+# Stream all Elixir error logs:
+> gcloud logging read "jsonPayload.message.severity=ERROR"
+
+# Stream Web app logs (portal UI):
+> gcloud logging read 'jsonPayload."cos.googleapis.com/container_name":web'
+
+# Stream API app logs (connlib control plane):
+> gcloud logging read 'jsonPayload."cos.googleapis.com/container_name":api'
+
+# For more info on the filter expression syntax, see:
+# https://cloud.google.com/logging/docs/view/logging-query-language
+```
