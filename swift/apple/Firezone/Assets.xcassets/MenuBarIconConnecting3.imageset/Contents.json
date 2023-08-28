@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "logo-main-connected-light.svg",
+      "filename" : "statusitem-connecting3-light.svg",
       "idiom" : "universal"
     },
     {
@@ -11,15 +11,12 @@
           "value" : "dark"
         }
       ],
-      "filename" : "logo-main-connected-dark.svg",
+      "filename" : "statusitem-connecting3-dark.svg",
       "idiom" : "universal"
     }
   ],
   "info" : {
     "author" : "xcode",
     "version" : 1
-  },
-  "properties" : {
-    "preserves-vector-representation" : true
   }
 }
