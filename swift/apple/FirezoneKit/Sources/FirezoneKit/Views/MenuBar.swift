@@ -32,6 +32,7 @@ public final class MenuBar: NSObject {
     }
     private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
     private lazy var signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
+    private lazy var signedInNotConnectedIcon = NSImage(named: "MenuBarIconSignedInNotConnected")
 
     private lazy var connectingAnimationImages = [
       NSImage(named: "MenuBarIconConnecting1"),
@@ -74,6 +75,7 @@ public final class MenuBar: NSObject {
         .receive(on: mainQueue)
         .sink { [weak self] loginStatus in
           self?.loginStatus = loginStatus
+          self?.updateStatusItemIcon()
           self?.handleLoginOrTunnelStatusChanged()
         }
         .store(in: &cancellables)
@@ -245,13 +247,24 @@ public final class MenuBar: NSObject {
     }
 
     private func updateStatusItemIcon() {
-      if self.appStore?.tunnel.status == .connected {
-        self.statusItem.button?.image = self.signedInConnectedIcon
-      } else {
-        self.statusItem.button?.image = self.signedOutIcon
-      }
-
-      if self.appStore?.tunnel.status == .connecting {
+      self.statusItem.button?.image = {
+        switch self.loginStatus {
+          case .signedOut, .uninitialized:
+            return self.signedOutIcon
+          case .signedIn:
+            switch self.tunnelStatus {
+              case .invalid, .disconnected, .reasserting:
+                return self.signedInNotConnectedIcon
+              case .connected:
+                return self.signedInConnectedIcon
+              case .connecting, .disconnecting:
+                return self.connectingAnimationImages.last!
+              @unknown default:
+                return nil
+            }
+        }
+      }()
+      if self.tunnelStatus == .connecting || self.tunnelStatus == .disconnecting {
         self.startConnectingAnimation()
       } else {
         self.stopConnectingAnimation()
