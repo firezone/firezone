@@ -5,31 +5,37 @@
     <style name="AppTheme" parent="AppTheme.Base" />
 
     <style name="AppTheme.Base" parent="Theme.Material3.Light.NoActionBar">
-        <item name="colorPrimary">@color/black_firezone</item>
+        <item name="colorPrimary">@color/black_900</item>
     </style>
 
     <style name="AppTheme.Base.HeaderText">
         <item name="fontFamily">@font/fira_sans_bold</item>
         <item name="android:textSize">@dimen/text_large</item>
-        <item name="android:textColorPrimary">@color/black_firezone</item>
+        <item name="android:textColorPrimary">@color/black_900</item>
     </style>
 
     <style name="AppTheme.Base.H5">
         <item name="fontFamily">@font/fira_sans_bold</item>
         <item name="android:textSize">@dimen/text_h5</item>
-        <item name="android:textColorPrimary">@color/black_firezone</item>
+        <item name="android:textColorPrimary">@color/black_900</item>
     </style>
 
     <style name="AppTheme.Base.Body1">
         <item name="fontFamily">@font/fira_sans_regular</item>
         <item name="android:textSize">@dimen/text_body1</item>
-        <item name="android:textColorPrimary">@color/black_firezone</item>
+        <item name="android:textColorPrimary">@color/black_900</item>
     </style>
 
     <style name="AppTheme.Base.Body2">
         <item name="fontFamily">@font/fira_sans_regular</item>
         <item name="android:textSize">@dimen/text_body2</item>
-        <item name="android:textColorPrimary">@color/black_firezone</item>
+        <item name="android:textColorPrimary">@color/black_900</item>
+    </style>
+
+    <style name="AppTheme.Base.Caption">
+        <item name="fontFamily">@font/fira_sans_regular</item>
+        <item name="android:textSize">@dimen/text_caption</item>
+        <item name="android:textColorPrimary">@color/black_900</item>
     </style>
 
 </resources>

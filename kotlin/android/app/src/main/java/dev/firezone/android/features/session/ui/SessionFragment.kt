@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.utils.ClipboardUtils
 import dev.firezone.android.databinding.FragmentSessionBinding
 import kotlinx.coroutines.launch
 
@@ -22,7 +23,9 @@ internal class SessionFragment : Fragment(R.layout.fragment_session) {
     private lateinit var binding: FragmentSessionBinding
     private val viewModel: SessionViewModel by viewModels()
 
-    private val resourcesAdapter: ResourcesAdapter = ResourcesAdapter()
+    private val resourcesAdapter: ResourcesAdapter = ResourcesAdapter { resource ->
+        ClipboardUtils.copyToClipboard(requireContext(), resource.name, resource.address)
+    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)

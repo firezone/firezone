@@ -8,7 +8,7 @@ import dev.firezone.android.databinding.ListItemResourceBinding
 import dev.firezone.android.tunnel.model.Resource
 import javax.annotation.Nullable
 
-internal class ResourcesAdapter: RecyclerView.Adapter<ResourcesAdapter.ViewHolder>() {
+internal class ResourcesAdapter(private var clickListener: ((Resource) -> Unit)? = null): RecyclerView.Adapter<ResourcesAdapter.ViewHolder>() {
 
     private val resources: MutableList<Resource> = mutableListOf()
 
@@ -30,12 +30,14 @@ internal class ResourcesAdapter: RecyclerView.Adapter<ResourcesAdapter.ViewHolde
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         holder.bind(resources[position])
+        holder.itemView.setOnClickListener {
+            clickListener?.invoke(resources[holder.adapterPosition])
+        }
     }
 
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(resource: Resource) {
             binding.resourceNameText.text = resource.name
-            binding.typeChip.text = resource.type
             binding.addressText.text = resource.address
         }
     }

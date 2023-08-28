@@ -8,5 +8,10 @@
     <color name="blue">#0288D1</color>
     <color name="blue_dark">#005B9F</color>
     <color name="blue_light">#81D4FA</color>
-    <color name="black_firezone">#1C1E21</color>
+
+    <color name="black_900">#1C1E21</color>
+    <color name="black_800">#3c3f42</color>
+    <color name="black_700">#5b5d61</color>
+    <color name="black_600">#6f7175</color>
+    <color name="black_500">#979a9e</color>
 </resources>
