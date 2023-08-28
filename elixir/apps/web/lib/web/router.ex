@@ -46,6 +46,12 @@ defmodule Web.Router do
     end
   end
 
+  scope "/sign_up", Web do
+    pipe_through :browser
+
+    live "/", SignUp
+  end
+
   scope "/:account_id_or_slug/sign_in", Web do
     pipe_through [:browser, :redirect_if_user_is_authenticated]
 

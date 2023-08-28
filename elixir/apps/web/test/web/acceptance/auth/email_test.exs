@@ -34,7 +34,7 @@ defmodule Web.Acceptance.Auth.EmailTest do
     session
     |> email_login_flow(account, identity.provider_identifier)
     |> assert_el(Query.css("#user-menu-button"))
-    |> assert_path(~p"/#{account}/dashboard")
+    |> assert_path(~p"/#{account.slug}/dashboard")
     |> Auth.assert_authenticated(identity)
   end
 

@@ -247,4 +247,9 @@ defmodule Domain.NameGenerator do
   def generate do
     "#{Enum.random(@adjectives)}-#{Enum.random(@nouns)}"
   end
+
+  def generate_slug do
+    generate()
+    |> String.replace(~r/-/, "_")
+  end
 end

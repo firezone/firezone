@@ -32,6 +32,12 @@ defmodule Domain.Config.Definitions do
   alias Domain.Types
   alias Domain.Config.Logo
 
+  if Mix.env() in [:test, :dev] do
+    @local_development_adapters [Swoosh.Adapters.Local]
+  else
+    @local_development_adapters []
+  end
+
   def doc_sections do
     [
       {"WebServer",
@@ -506,26 +512,27 @@ defmodule Domain.Config.Definitions do
     :outbound_email_adapter,
     {:parameterized, Ecto.Enum,
      Ecto.Enum.init(
-       values: [
-         Swoosh.Adapters.AmazonSES,
-         Swoosh.Adapters.CustomerIO,
-         Swoosh.Adapters.Dyn,
-         Swoosh.Adapters.ExAwsAmazonSES,
-         Swoosh.Adapters.Gmail,
-         Swoosh.Adapters.MailPace,
-         Swoosh.Adapters.Mailgun,
-         Swoosh.Adapters.Mailjet,
-         Swoosh.Adapters.Mandrill,
-         Swoosh.Adapters.Postmark,
-         Swoosh.Adapters.ProtonBridge,
-         Swoosh.Adapters.SMTP,
-         Swoosh.Adapters.SMTP2GO,
-         Swoosh.Adapters.Sendgrid,
-         Swoosh.Adapters.Sendinblue,
-         Swoosh.Adapters.Sendmail,
-         Swoosh.Adapters.SocketLabs,
-         Swoosh.Adapters.SparkPost
-       ]
+       values:
+         [
+           Swoosh.Adapters.AmazonSES,
+           Swoosh.Adapters.CustomerIO,
+           Swoosh.Adapters.Dyn,
+           Swoosh.Adapters.ExAwsAmazonSES,
+           Swoosh.Adapters.Gmail,
+           Swoosh.Adapters.MailPace,
+           Swoosh.Adapters.Mailgun,
+           Swoosh.Adapters.Mailjet,
+           Swoosh.Adapters.Mandrill,
+           Swoosh.Adapters.Postmark,
+           Swoosh.Adapters.ProtonBridge,
+           Swoosh.Adapters.SMTP,
+           Swoosh.Adapters.SMTP2GO,
+           Swoosh.Adapters.Sendgrid,
+           Swoosh.Adapters.Sendinblue,
+           Swoosh.Adapters.Sendmail,
+           Swoosh.Adapters.SocketLabs,
+           Swoosh.Adapters.SparkPost
+         ] ++ @local_development_adapters
      )},
     default: nil
   )
