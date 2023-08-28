@@ -225,14 +225,25 @@ where
     /// and packets will be wrapped with wireguard and sent through it.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn add_resource(&self, resource_description: ResourceDescription) -> Result<()> {
+        let mut any_valid_route = false;
         {
             let Some(ref mut iface_config) = *self.iface_config.lock().await else {
                 tracing::error!("Received resource add before initialization.");
-                return Err(Error::ControlProtocolError)
+                return Err(Error::ControlProtocolError);
             };
             for ip in resource_description.ips() {
-                iface_config.add_route(ip, self.callbacks()).await?;
+                if let Err(e) = iface_config.add_route(ip, self.callbacks()).await {
+                    tracing::warn!(message = "Couldn't add route", route = %ip, error = ?e);
+                    let _ = self.callbacks().on_error(&e);
+                } else {
+                    any_valid_route = true;
+                }
             }
+        }
+        if !any_valid_route {
+            return Err(Error::InvalidResource(
+                "Provided resource had no valid route".to_string(),
+            ));
         }
         let resource_list = {
             let mut resources = self.resources.write();
@@ -376,7 +387,9 @@ where
     }
 
     fn start_peer_handler(self: &Arc<Self>, peer: Arc<Peer>) -> Result<()> {
-        let Some(device_channel) = self.device_channel.read().clone() else { return Err(Error::NoIface); };
+        let Some(device_channel) = self.device_channel.read().clone() else {
+            return Err(Error::NoIface);
+        };
         let tunnel = Arc::clone(self);
         tokio::spawn(async move {
             let mut src_buf = [0u8; MAX_UDP_SIZE];
@@ -544,10 +557,10 @@ where
                 let (encapsulate_result, channel, peer_index, conn_id) = {
                     match dev.peers_by_ip.read().longest_match(dst_addr).map(|p| p.1) {
                         Some(peer) => {
-                            let Some(mut packet) = MutableIpPacket::new(&mut src[..res]) else  {
-                                    tracing::error!("Developer error: we should never see a packet through the tunnel wire that isn't ip");
-                                    continue;
-                                };
+                            let Some(mut packet) = MutableIpPacket::new(&mut src[..res]) else {
+                                tracing::error!("Developer error: we should never see a packet through the tunnel wire that isn't ip");
+                                continue;
+                            };
                             if let Some(resource) =
                                 peer.get_translation(packet.to_immutable().source())
                             {

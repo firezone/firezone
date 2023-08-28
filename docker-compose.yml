@@ -176,6 +176,13 @@ services:
       resources:
         ipv4_address: 172.20.0.100
 
+  iperf3:
+    image: networkstatic/iperf3
+    command: -s
+    networks:
+      resources:
+        ipv4_address: 172.20.0.110
+
   relay:
     environment:
       PUBLIC_IP4_ADDR: 172.28.0.101
