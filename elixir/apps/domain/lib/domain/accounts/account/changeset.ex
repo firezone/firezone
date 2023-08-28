@@ -8,7 +8,7 @@ defmodule Domain.Accounts.Account.Changeset do
     |> validate_required([:name])
     |> validate_name()
     |> trim_change(:name)
-    |> put_slug_default()
+    |> prepare_changes(fn changeset -> put_slug_default(changeset) end)
     |> downcase_slug()
     |> validate_slug()
     |> unique_constraint(:slug, name: :accounts_slug_index)
