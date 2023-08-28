@@ -114,13 +114,10 @@ dependencies {
 
     // Moshi
     implementation "com.squareup.moshi:moshi-kotlin:1.12.0"
+    implementation 'com.squareup.moshi:moshi:1.12.0'
 
     // Gson
     implementation "com.google.code.gson:gson:2.9.0"
-
-    // Deep Link
-    implementation "com.airbnb:deeplinkdispatch:6.1.0"
-    kapt "com.airbnb:deeplinkdispatch-processor:6.1.0"
 
     // Security
     implementation "androidx.security:security-crypto:1.1.0-alpha05"
