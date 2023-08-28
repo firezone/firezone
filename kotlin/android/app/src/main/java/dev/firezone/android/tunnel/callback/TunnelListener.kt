@@ -1,4 +1,6 @@
-package dev.firezone.android.tunnel
+package dev.firezone.android.tunnel.callback
+
+import dev.firezone.android.tunnel.model.Resource
 
 interface TunnelListener {
 
@@ -10,7 +12,7 @@ interface TunnelListener {
 
     fun onRemoveRoute(cidrAddress: String)
 
-    fun onUpdateResources(resourceListJSON: String)
+    fun onUpdateResources(resources: List<Resource>)
 
     fun onDisconnect(error: String?): Boolean
 

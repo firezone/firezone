@@ -7,13 +7,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.domain.preference.SaveTokenUseCase
 import dev.firezone.android.core.domain.preference.ValidateCsrfTokenUseCase
-import dev.firezone.android.features.session.backend.SessionManager
-import dev.firezone.android.tunnel.TunnelLogger
-import dev.firezone.android.tunnel.TunnelManager
-import dev.firezone.android.tunnel.TunnelSession
 import kotlinx.coroutines.flow.collect
 import javax.inject.Inject
 import kotlinx.coroutines.flow.firstOrNull
@@ -24,7 +19,6 @@ internal class AppLinkViewModel @Inject constructor(
     private val validateCsrfTokenUseCase: ValidateCsrfTokenUseCase,
     private val saveTokenUseCase: SaveTokenUseCase,
 ) : ViewModel() {
-    private val callback: TunnelManager = TunnelManager()
     private val actionMutableLiveData = MutableLiveData<ViewAction>()
     val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
