@@ -1,32 +1,55 @@
 package dev.firezone.android.features.session.ui
 
 import android.os.Bundle
-import android.view.View
 import android.util.Log
+import android.view.View
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
+import androidx.recyclerview.widget.DividerItemDecoration
+import androidx.recyclerview.widget.LinearLayoutManager
+import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.databinding.FragmentSessionBinding
-import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 internal class SessionFragment : Fragment(R.layout.fragment_session) {
     private lateinit var binding: FragmentSessionBinding
     private val viewModel: SessionViewModel by viewModels()
 
+    private val resourcesAdapter: ResourcesAdapter = ResourcesAdapter()
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         binding = FragmentSessionBinding.bind(view)
 
-        setupButtonListeners()
-        setupActionObservers()
+        setupViews()
+        setupObservers()
         Log.d("SessionFragment", "Starting session...")
         viewModel.startSession()
     }
 
-    private fun setupActionObservers() {
+    private fun setupViews() {
+        binding.btSignOut.setOnClickListener {
+            viewModel.onDisconnect()
+        }
+
+        val layoutManager = LinearLayoutManager(requireContext())
+        val dividerItemDecoration = DividerItemDecoration(
+            requireContext(),
+            layoutManager.orientation
+        )
+        binding.resourcesList.addItemDecoration(dividerItemDecoration)
+        binding.resourcesList.adapter = resourcesAdapter
+        binding.resourcesList.layoutManager = layoutManager
+    }
+
+    private fun setupObservers() {
         viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
             when (action) {
                 SessionViewModel.ViewAction.NavigateToSignInFragment ->
@@ -36,11 +59,15 @@ internal class SessionFragment : Fragment(R.layout.fragment_session) {
                 SessionViewModel.ViewAction.ShowError -> showError()
             }
         }
-    }
 
-    private fun setupButtonListeners() {
-        binding.btSignOut.setOnClickListener {
-            viewModel.onDisconnect()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { uiState ->
+                    uiState.resources?.let {
+                        resourcesAdapter.updateResources(it)
+                    }
+                }
+            }
         }
     }
 

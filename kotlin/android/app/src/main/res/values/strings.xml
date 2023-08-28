@@ -12,7 +12,7 @@
 	<string name="sign_in_fragment_sign_status_text">Signed Out</string>
 
 	<!-- Sign Out Activity -->
-	<string name="sign_out_activity_status_text">Authenticated</string>
+	<string name="resources">Resources</string>
 	<string name="sign_out_activity_button_text">Sign Out</string>
 
 	<!-- Error Dialog -->

@@ -26,4 +26,10 @@
         <item name="android:textColorPrimary">@color/black_firezone</item>
     </style>
 
+    <style name="AppTheme.Base.Body2">
+        <item name="fontFamily">@font/fira_sans_regular</item>
+        <item name="android:textSize">@dimen/text_body2</item>
+        <item name="android:textColorPrimary">@color/black_firezone</item>
+    </style>
+
 </resources>

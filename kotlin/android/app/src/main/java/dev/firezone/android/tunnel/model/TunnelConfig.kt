@@ -1,4 +1,4 @@
-package dev.firezone.android.tunnel
+package dev.firezone.android.tunnel.model
 
 data class TunnelConfig (
     val tunnelAddressIPv4: String,
