@@ -127,4 +127,58 @@ defmodule Domain.AccountsTest do
       assert ensure_has_access_to(subject, account) == {:error, :unauthorized}
     end
   end
+
+  describe "create_account/1" do
+    test "creates account given a valid name" do
+      assert {:ok, account} = create_account(%{name: "foo"})
+      assert account.name == "foo"
+    end
+
+    test "creates account given a valid name and valid slug" do
+      assert {:ok, account1} = create_account(%{name: "foobar", slug: "foobar"})
+      assert account1.slug == "foobar"
+
+      assert {:ok, account2} = create_account(%{name: "foo1", slug: "foo1"})
+      assert account2.slug == "foo1"
+
+      assert {:ok, account3} = create_account(%{name: "foo_bar", slug: "foo_bar"})
+      assert account3.slug == "foo_bar"
+    end
+
+    test "returns error when account name is blank" do
+      assert {:error, changeset} = create_account(%{name: ""})
+      assert errors_on(changeset) == %{name: ["can't be blank"]}
+    end
+
+    test "returns error when account name is too long" do
+      max_name_length = 64
+      assert {:ok, _account} = create_account(%{name: String.duplicate("a", max_name_length)})
+
+      assert {:error, changeset} =
+               create_account(%{name: String.duplicate("b", max_name_length + 1)})
+
+      assert errors_on(changeset) == %{name: ["should be at most 64 character(s)"]}
+    end
+
+    test "returns error when account name is too short" do
+      assert {:error, changeset} = create_account(%{name: "a"})
+      assert errors_on(changeset) == %{name: ["should be at least 3 character(s)"]}
+    end
+
+    test "returns error when slug contains invalid characters" do
+      assert {:error, changeset} = create_account(%{name: "foo-bar", slug: "foo-bar"})
+
+      assert errors_on(changeset) == %{
+               slug: ["can only contain letters, numbers, and underscores"]
+             }
+    end
+
+    test "returns error when slug already exists" do
+      assert {:ok, _account} = create_account(%{name: "foo", slug: "foo"})
+
+      assert {:error, changeset} = create_account(%{name: "bar", slug: "foo"})
+
+      assert errors_on(changeset) == %{slug: ["has already been taken"]}
+    end
+  end
 end

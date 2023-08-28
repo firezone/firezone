@@ -28,7 +28,7 @@ defmodule Web.AuthTest do
 
   describe "signed_in_path/1" do
     test "redirects to dashboard after sign in as account admin", %{admin_subject: subject} do
-      assert signed_in_path(subject) == ~p"/#{subject.account}/dashboard"
+      assert signed_in_path(subject) == ~p"/#{subject.account.slug}/dashboard"
     end
   end
 
@@ -405,7 +405,8 @@ defmodule Web.AuthTest do
       assert {:halt, updated_socket} =
                on_mount(:redirect_if_user_is_authenticated, params, session, socket)
 
-      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account}/dashboard"}}
+      assert updated_socket.redirected ==
+               {:redirect, %{to: ~p"/#{subject.account.slug}/dashboard"}}
     end
 
     test "doesn't redirect if there is no authenticated user", %{

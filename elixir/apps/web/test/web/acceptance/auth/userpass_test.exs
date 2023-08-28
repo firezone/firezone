@@ -113,7 +113,7 @@ defmodule Web.Acceptance.Auth.UserPassTest do
     session
     |> password_login_flow(account, identity.provider_identifier, password)
     |> assert_el(Query.css("#user-menu-button"))
-    |> assert_path(~p"/#{account}/dashboard")
+    |> assert_path(~p"/#{account.slug}/dashboard")
     |> Auth.assert_authenticated(identity)
   end
 

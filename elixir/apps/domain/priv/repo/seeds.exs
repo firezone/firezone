@@ -26,7 +26,7 @@ account = maybe_repo_update.(account, id: "c89bcc8c-9392-4dae-a40d-888aef6d28e0"
 {:ok, other_account} =
   Accounts.create_account(%{
     name: "Other Corp Account",
-    slug: "not-firezone"
+    slug: "not_firezone"
   })
 
 other_account = maybe_repo_update.(other_account, id: "9b9290bf-e1bc-4dd3-b401-511908262690")
