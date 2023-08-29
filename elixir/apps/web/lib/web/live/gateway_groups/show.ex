@@ -51,7 +51,7 @@ defmodule Web.GatewayGroups.Show do
     </.header>
 
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table>
+      <.vertical_table id="group">
         <.vertical_table_row>
           <:label>Instance Group Name</:label>
           <:value><%= @group.name_prefix %></:value>

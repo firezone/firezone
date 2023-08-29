@@ -28,6 +28,7 @@ defmodule Domain.Gateways.Group.Changeset do
     |> cast(attrs, @fields)
     |> trim_change(:name_prefix)
     |> put_default_value(:name_prefix, &Domain.NameGenerator.generate/0)
+    |> validate_required(@fields)
     |> validate_length(:name_prefix, min: 1, max: 64)
     |> validate_length(:tags, min: 0, max: 128)
     |> validate_no_duplicates(:tags)
@@ -38,7 +39,6 @@ defmodule Domain.Gateways.Group.Changeset do
         []
       end
     end)
-    |> validate_required(@fields)
     |> unique_constraint(:name_prefix, name: :gateway_groups_account_id_name_prefix_index)
   end
 

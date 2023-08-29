@@ -1,4 +1,4 @@
-defmodule Web.Auth.Groups.EditTest do
+defmodule Web.Auth.RelayGroups.EditTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -6,7 +6,7 @@ defmodule Web.Auth.Groups.EditTest do
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
 
-    group = Fixtures.Actors.create_group(account: account)
+    group = Fixtures.Relays.create_group(account: account)
 
     %{
       account: account,
@@ -21,7 +21,7 @@ defmodule Web.Auth.Groups.EditTest do
     group: group,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/groups/#{group}/edit") ==
+    assert live(conn, ~p"/#{account}/relay_groups/#{group}/edit") ==
              {:error,
               {:redirect,
                %{
@@ -30,42 +30,18 @@ defmodule Web.Auth.Groups.EditTest do
                }}}
   end
 
-  test "renders not found error when group is deleted", %{
+  test "renders not found error when relay is deleted", %{
     account: account,
     identity: identity,
     group: group,
     conn: conn
   } do
-    group = Fixtures.Actors.delete_group(group)
+    group = Fixtures.Relays.delete_group(group)
 
     assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/groups/#{group}/edit")
-    end
-  end
-
-  test "renders not found error when group is synced", %{
-    account: account,
-    identity: identity,
-    group: group,
-    conn: conn
-  } do
-    {provider, _bypass} =
-      Fixtures.Auth.start_and_create_google_workspace_provider(account: account)
-
-    group
-    |> Ecto.Changeset.change(
-      created_by: :provider,
-      provider_id: provider.id,
-      provider_identifier: Ecto.UUID.generate()
-    )
-    |> Repo.update!()
-
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/groups/#{group}/edit")
+      |> live(~p"/#{account}/relay_groups/#{group}/edit")
     end
   end
 
@@ -78,11 +54,11 @@ defmodule Web.Auth.Groups.EditTest do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/groups/#{group}/edit")
+      |> live(~p"/#{account}/relay_groups/#{group}/edit")
 
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
-    assert breadcrumbs =~ "Groups"
+    assert breadcrumbs =~ "Relay Instance Groups"
     assert breadcrumbs =~ group.name
     assert breadcrumbs =~ "Edit"
   end
@@ -96,7 +72,7 @@ defmodule Web.Auth.Groups.EditTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/groups/#{group}/edit")
+      |> live(~p"/#{account}/relay_groups/#{group}/edit")
 
     form = form(lv, "form")
 
@@ -111,12 +87,12 @@ defmodule Web.Auth.Groups.EditTest do
     group: group,
     conn: conn
   } do
-    attrs = Fixtures.Actors.group_attrs()
+    attrs = Fixtures.Relays.group_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/groups/#{group}/edit")
+      |> live(~p"/#{account}/relay_groups/#{group}/edit")
 
     lv
     |> form("form", group: attrs)
@@ -138,13 +114,13 @@ defmodule Web.Auth.Groups.EditTest do
     group: group,
     conn: conn
   } do
-    attrs = Fixtures.Actors.group_attrs()
-    Fixtures.Actors.create_group(name: attrs.name, account: account)
+    other_group = Fixtures.Relays.create_group(account: account)
+    attrs = %{name: other_group.name}
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/groups/#{group}/edit")
+      |> live(~p"/#{account}/relay_groups/#{group}/edit")
 
     assert lv
            |> form("form", group: attrs)
@@ -154,25 +130,25 @@ defmodule Web.Auth.Groups.EditTest do
            }
   end
 
-  test "creates a new group on valid attrs", %{
+  test "updates a group on valid attrs", %{
     account: account,
     identity: identity,
     group: group,
     conn: conn
   } do
-    attrs = Fixtures.Actors.group_attrs()
+    attrs = Fixtures.Relays.group_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/groups/#{group}/edit")
+      |> live(~p"/#{account}/relay_groups/#{group}/edit")
 
     assert lv
            |> form("form", group: attrs)
            |> render_submit() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/groups/#{group}"}}}
+             {:error, {:redirect, %{to: ~p"/#{account}/relay_groups/#{group}"}}}
 
-    assert group = Repo.get_by(Domain.Actors.Group, id: group.id)
+    assert group = Repo.get_by(Domain.Relays.Group, id: group.id)
     assert group.name == attrs.name
   end
 end

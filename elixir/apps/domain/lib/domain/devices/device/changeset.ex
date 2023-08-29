@@ -50,8 +50,8 @@ defmodule Domain.Devices.Device.Changeset do
   def update_changeset(%Devices.Device{} = device, attrs) do
     device
     |> cast(attrs, @update_fields)
-    |> changeset()
     |> validate_required(@required_fields)
+    |> changeset()
   end
 
   def delete_changeset(%Devices.Device{} = device) do
@@ -68,6 +68,7 @@ defmodule Domain.Devices.Device.Changeset do
     |> unique_constraint([:actor_id, :name])
     |> unique_constraint([:actor_id, :public_key])
     |> unique_constraint(:external_id)
+    |> unique_constraint(:name, name: :devices_account_id_actor_id_name_index)
   end
 
   defp put_device_version(changeset) do

@@ -58,10 +58,17 @@ defmodule Web.Gateways.Show do
     </.header>
     <!-- Gateway details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table>
+      <.vertical_table id="gateway">
         <.vertical_table_row>
           <:label>Instance Group Name</:label>
-          <:value><%= @gateway.group.name_prefix %></:value>
+          <:value>
+            <.link
+              navigate={~p"/#{@account}/gateway_groups/#{@gateway.group}"}
+              class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
+            >
+              <%= @gateway.group.name_prefix %>
+            </.link>
+          </:value>
         </.vertical_table_row>
         <.vertical_table_row>
           <:label>Instance Name</:label>

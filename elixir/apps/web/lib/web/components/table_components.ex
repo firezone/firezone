@@ -184,7 +184,7 @@ defmodule Web.TableComponents do
       end
 
     ~H"""
-    <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+    <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400" id={@id}>
       <.table_header columns={@col} actions={@action} />
 
       <tbody :for={group <- @groups} data-group-id={@group_id && @group_id.(group)}>

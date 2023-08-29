@@ -230,7 +230,7 @@ defmodule API.Gateway.ChannelTest do
           "gateway_rtc_session_description" => rtc_session_description
         })
 
-      assert_reply(push_ref, :ok)
+      assert_reply push_ref, :ok
 
       assert_receive {:connect, ^socket_ref, resource_id, ^gateway_public_key,
                       ^rtc_session_description}

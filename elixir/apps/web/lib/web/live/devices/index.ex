@@ -23,9 +23,16 @@ defmodule Web.Devices.Index do
     </.header>
     <!-- Devices Table -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
+      <div :if={Enum.empty?(@devices)} class="text-center align-middle pb-8 pt-4">
+        <h3 class="mt-2 text-lg font-semibold text-gray-900">There are no devices to display.</h3>
+
+        <div class="mt-6">
+          Devices are created automatically when user connects to a Resource.
+        </div>
+      </div>
       <!--<.resource_filter />-->
-      <.table id="devices" rows={@devices} row_id={&"device-#{&1.id}"}>
-        <:col :let={device} label="CLIENT" sortable="true">
+      <.table :if={not Enum.empty?(@devices)} id="devices" rows={@devices} row_id={&"device-#{&1.id}"}>
+        <:col :let={device} label="NAME" sortable="true">
           <.link
             navigate={~p"/#{@account}/devices/#{device.id}"}
             class="font-medium text-blue-600 dark:text-blue-500 hover:underline"

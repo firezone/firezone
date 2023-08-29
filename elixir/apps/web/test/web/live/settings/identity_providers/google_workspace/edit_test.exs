@@ -100,7 +100,7 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.EditTest do
       )
 
     result = render_submit(form)
-    assert provider = Domain.Repo.get_by(Domain.Auth.Provider, name: provider_attrs.name)
+    assert provider = Repo.get_by(Domain.Auth.Provider, name: provider_attrs.name)
 
     assert result ==
              {:error,

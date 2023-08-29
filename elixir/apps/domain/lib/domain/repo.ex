@@ -37,7 +37,10 @@ defmodule Domain.Repo do
           [{:with, changeset_fun :: (term() -> Ecto.Changeset.t())}],
           opts :: Keyword.t()
         ) ::
-          {:ok, Ecto.Schema.t()} | {:error, :not_found} | {:error, Ecto.Changeset.t()}
+          {:ok, Ecto.Schema.t()}
+          | {:error, :not_found}
+          | {:error, Ecto.Changeset.t()}
+          | {:error, term()}
   def fetch_and_update(queryable, [with: changeset_fun], opts \\ [])
       when is_function(changeset_fun, 1) do
     transaction(fn ->
@@ -47,7 +50,7 @@ defmodule Domain.Repo do
         schema
         |> changeset_fun.()
         |> case do
-          %Ecto.Changeset{} = changeset -> update(changeset, opts)
+          %Ecto.Changeset{} = changeset -> update(changeset, mode: :savepoint)
           reason -> {:error, reason}
         end
       end

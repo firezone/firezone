@@ -37,8 +37,7 @@ defmodule Domain.Relays.Group.Changeset do
     |> cast_assoc(:tokens,
       with: fn _token, _attrs ->
         Relays.Token.Changeset.create_changeset(group.account, subject)
-      end,
-      required: true
+      end
     )
   end
 
@@ -57,8 +56,8 @@ defmodule Domain.Relays.Group.Changeset do
     |> cast(attrs, @fields)
     |> trim_change(:name)
     |> put_default_value(:name, &Domain.NameGenerator.generate/0)
-    |> validate_length(:name, min: 1, max: 64)
     |> validate_required(@fields)
+    |> validate_length(:name, min: 1, max: 64)
     |> unique_constraint(:name, name: :relay_groups_name_index)
     |> unique_constraint(:name, name: :relay_groups_account_id_name_index)
   end

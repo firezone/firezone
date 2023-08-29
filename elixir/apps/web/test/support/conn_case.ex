@@ -59,6 +59,7 @@ defmodule Web.ConnCase do
     html
     |> Floki.find("#{selector} input")
     |> Enum.flat_map(&Floki.attribute(&1, "name"))
+    |> Enum.uniq()
     |> Enum.sort()
   end
 
@@ -136,11 +137,11 @@ defmodule Web.ConnCase do
     rows
   end
 
-  defp elements_to_text(elements) do
+  def elements_to_text(elements) do
     Enum.map(elements, &element_to_text/1)
   end
 
-  defp element_to_text(element) do
+  def element_to_text(element) do
     element
     |> Floki.text()
     |> String.replace(~r|[\n\s ]+|, " ")

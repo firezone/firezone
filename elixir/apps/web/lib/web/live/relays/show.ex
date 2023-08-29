@@ -63,7 +63,7 @@ defmodule Web.Relays.Show do
     </.header>
     <!-- Relay details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table>
+      <.vertical_table id="relay">
         <.vertical_table_row>
           <:label>Instance Group Name</:label>
           <:value><%= @relay.group.name %></:value>

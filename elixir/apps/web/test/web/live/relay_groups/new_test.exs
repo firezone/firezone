@@ -1,4 +1,4 @@
-defmodule Web.Auth.Groups.NewTest do
+defmodule Web.Auth.RelayGroups.NewTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -17,7 +17,7 @@ defmodule Web.Auth.Groups.NewTest do
     account: account,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/groups/new") ==
+    assert live(conn, ~p"/#{account}/relay_groups/new") ==
              {:error,
               {:redirect,
                %{
@@ -34,11 +34,11 @@ defmodule Web.Auth.Groups.NewTest do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/groups/new")
+      |> live(~p"/#{account}/relay_groups/new")
 
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
-    assert breadcrumbs =~ "Groups"
+    assert breadcrumbs =~ "Relay Instance Groups"
     assert breadcrumbs =~ "Add"
   end
 
@@ -50,7 +50,7 @@ defmodule Web.Auth.Groups.NewTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/groups/new")
+      |> live(~p"/#{account}/relay_groups/new")
 
     form = form(lv, "form")
 
@@ -64,23 +64,18 @@ defmodule Web.Auth.Groups.NewTest do
     identity: identity,
     conn: conn
   } do
-    attrs = Fixtures.Actors.group_attrs()
+    attrs = Fixtures.Relays.group_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/groups/new")
+      |> live(~p"/#{account}/relay_groups/new")
 
     lv
     |> form("form", group: attrs)
     |> validate_change(%{group: %{name: String.duplicate("a", 256)}}, fn form, _html ->
       assert form_validation_errors(form) == %{
                "group[name]" => ["should be at most 64 character(s)"]
-             }
-    end)
-    |> validate_change(%{group: %{name: ""}}, fn form, _html ->
-      assert form_validation_errors(form) == %{
-               "group[name]" => ["can't be blank"]
              }
     end)
   end
@@ -90,13 +85,13 @@ defmodule Web.Auth.Groups.NewTest do
     identity: identity,
     conn: conn
   } do
-    attrs = Fixtures.Actors.group_attrs()
-    Fixtures.Actors.create_group(name: attrs.name, account: account)
+    other_relay = Fixtures.Relays.create_group(account: account)
+    attrs = %{name: other_relay.name}
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/groups/new")
+      |> live(~p"/#{account}/relay_groups/new")
 
     assert lv
            |> form("form", group: attrs)
@@ -106,34 +101,35 @@ defmodule Web.Auth.Groups.NewTest do
            }
   end
 
-  test "creates a new group on valid attrs", %{
+  test "creates a new group on valid attrs and redirects when relay is connected", %{
     account: account,
     identity: identity,
     conn: conn
   } do
-    attrs = Fixtures.Actors.group_attrs()
+    attrs = Fixtures.Relays.group_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/groups/new")
+      |> live(~p"/#{account}/relay_groups/new")
 
-    result =
+    html =
       lv
       |> form("form", group: attrs)
       |> render_submit()
 
-    assert group = Repo.get_by(Domain.Actors.Group, name: attrs.name)
+    assert html =~ "Select deployment method"
+    assert html =~ "PORTAL_TOKEN="
+    assert html =~ "docker run"
+    assert html =~ "Waiting for relay connection..."
 
-    assert result == {:error, {:redirect, %{to: ~p"/#{account}/groups/#{group}/edit_actors"}}}
+    token = Regex.run(~r/PORTAL_TOKEN=([^ ]+)/, html) |> List.last()
+    assert {:ok, _token} = Domain.Relays.authorize_relay(token)
 
-    assert group.name == attrs.name
-    refute group.provider_id
-    refute group.provider_identifier
+    group = Repo.get_by(Domain.Relays.Group, name: attrs.name) |> Repo.preload(:tokens)
+    relay = Fixtures.Relays.create_relay(account: account, group: group)
+    Domain.Relays.connect_relay(relay, "foo")
 
-    assert group.created_by == :identity
-    assert group.created_by_identity_id == identity.id
-
-    assert group.account_id == account.id
+    assert assert_redirect(lv, ~p"/#{account}/relay_groups/#{group}")
   end
 end

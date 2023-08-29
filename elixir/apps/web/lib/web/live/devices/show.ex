@@ -36,7 +36,7 @@ defmodule Web.Devices.Show do
       </:actions>
     </.header>
     <!-- Device Details -->
-    <div class="bg-white dark:bg-gray-800 overflow-hidden">
+    <div id="device" class="bg-white dark:bg-gray-800 overflow-hidden">
       <.vertical_table>
         <.vertical_table_row>
           <:label>Identifier</:label>
@@ -104,7 +104,7 @@ defmodule Web.Devices.Show do
             "User still will be able to create a new one by reconnecting to the Firezone."
           }
         >
-          Delete
+          Delete Device
         </.delete_button>
       </:actions>
     </.header>

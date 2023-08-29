@@ -101,12 +101,22 @@ defmodule Web.Router do
 
       scope "/actors", Actors do
         live "/", Index
-        live "/new_user", NewUser
-        live "/new_service_account", NewServiceAccount
-        live "/:id/edit", Edit
+        live "/new", New
+        live "/:id", Show
+
+        scope "/users", Users do
+          live "/new", New
+          live "/:id/edit", Edit
+        end
+
+        scope "/service_accounts", ServiceAccounts do
+          live "/new", New
+          live "/:id/edit", Edit
+        end
+
+        # TODO: REMOVEME it's just another identity
         live "/:id/new_token", NewToken
         live "/:id/new_identity", NewIdentity
-        live "/:id", Show
       end
 
       scope "/groups", Groups do
@@ -198,11 +208,6 @@ defmodule Web.Router do
         end
 
         live "/dns", DNS
-
-        scope "/api_tokens", APITokens do
-          live "/", Index
-          live "/new", New
-        end
       end
     end
   end

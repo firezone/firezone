@@ -123,6 +123,10 @@ defmodule Domain.Fixtures.Actors do
     |> Repo.insert!()
   end
 
+  def update(actor, updates) do
+    update!(actor, updates)
+  end
+
   def disable(actor) do
     update!(actor, %{disabled_at: DateTime.utc_now()})
   end

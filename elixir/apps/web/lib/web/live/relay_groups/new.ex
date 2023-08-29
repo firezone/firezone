@@ -30,7 +30,9 @@ defmodule Web.RelayGroups.New do
 
   def handle_info(%Phoenix.Socket.Broadcast{topic: "relay_groups:" <> _account_id}, socket) do
     socket =
-      redirect(socket, to: ~p"/#{socket.assigns.account}/relay_groups/#{socket.assigns.group}")
+      push_redirect(socket,
+        to: ~p"/#{socket.assigns.account}/relay_groups/#{socket.assigns.group}"
+      )
 
     {:noreply, socket}
   end

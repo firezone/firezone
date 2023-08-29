@@ -39,9 +39,10 @@ defmodule Web.RelayGroups.Index do
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <!--<.resource_filter />-->
       <.table_with_groups
-        id="grouped-relays"
+        id="groups"
         groups={@groups}
         group_items={& &1.relays}
+        group_id={&"group-#{&1.id}"}
         row_id={&"relay-#{&1.id}"}
       >
         <:group :let={group}>
