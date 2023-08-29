@@ -2,11 +2,42 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="green">#1B5E20</color>
-    <color name="green_dark">#003300</color>
-    <color name="green_light">#A5D6A7</color>
-    <color name="blue">#0288D1</color>
-    <color name="blue_dark">#005B9F</color>
-    <color name="blue_light">#81D4FA</color>
-    <color name="black_firezone">#1C1E21</color>
+
+    <!-- Primary Colors -->
+    <color name="primary_50">#fff9f5</color>
+    <color name="primary_100">#fff1e5</color>
+    <color name="primary_200">#ffddc2</color>
+    <color name="primary_300">#ffbc85</color>
+    <color name="primary_400">#ff9a47</color>
+    <color name="primary_450">#ff7300</color>
+    <color name="primary_500">#ff7605</color>
+    <color name="primary_600">#c25700</color>
+    <color name="primary_700">#7f3900</color>
+    <color name="primary_800">#5c2900</color>
+    <color name="primary_900">#331700</color>
+
+    <!-- Accent Colors -->
+    <color name="accent_50">#f8f5ff</color>
+    <color name="accent_100">#ece5ff</color>
+    <color name="accent_200">#d2c2ff</color>
+    <color name="accent_300">#a585ff</color>
+    <color name="accent_400">#7847ff</color>
+    <color name="accent_450">#5e00d6</color>
+    <color name="accent_500">#4805ff</color>
+    <color name="accent_600">#3400c2</color>
+    <color name="accent_700">#37007f</color>
+    <color name="accent_800">#28005c</color>
+    <color name="accent_900">#160033</color>
+
+    <!-- Neutral Colors -->
+    <color name="neutral_50">#fcfcfc</color>
+    <color name="neutral_100">#f8f7f7</color>
+    <color name="neutral_200">#ebebea</color>
+    <color name="neutral_300">#dfdedd</color>
+    <color name="neutral_400">#c7c4c2</color>
+    <color name="neutral_500">#a7a3a0</color>
+    <color name="neutral_600">#90867f</color>
+    <color name="neutral_700">#766a60</color>
+    <color name="neutral_800">#4c3e33</color>
+    <color name="neutral_900">#1b140e</color>
 </resources>

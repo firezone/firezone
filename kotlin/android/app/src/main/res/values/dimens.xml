@@ -15,5 +15,6 @@
     <dimen name="text_h6">20sp</dimen>
     <dimen name="text_body1">16sp</dimen>
     <dimen name="text_body2">14sp</dimen>
+    <dimen name="text_caption">12sp</dimen>
     <!-- Text Size -->
 </resources>
