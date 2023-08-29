@@ -4,6 +4,7 @@ use boringtun::x25519::{PublicKey, StaticSecret};
 use ip_network::IpNetwork;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_core::OsRng;
+use ring::digest::{Context, SHA256};
 use std::{
     error::Error as StdError,
     fmt::{Debug, Display},
@@ -213,7 +214,7 @@ where
     pub fn connect(
         portal_url: impl TryInto<Url>,
         token: String,
-        external_id: String,
+        device_id: String,
         callbacks: CB,
     ) -> Result<Self> {
         // TODO: We could use tokio::runtime::current() to get the current runtime
@@ -255,7 +256,7 @@ where
             tx,
             portal_url.try_into().map_err(|_| Error::UriError)?,
             token,
-            external_id,
+            device_id,
             this.callbacks.clone(),
         );
         std::thread::spawn(move || {
@@ -271,12 +272,13 @@ where
         runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
         portal_url: Url,
         token: String,
-        external_id: String,
+        device_id: String,
         callbacks: CallbackErrorFacade<CB>,
     ) {
         runtime.spawn(async move {
             let private_key = StaticSecret::random_from_rng(OsRng);
             let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
+            let external_id = sha256(device_id);
 
             let connect_url = fatal_error!(
                 get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &external_id, &name_suffix),
@@ -392,6 +394,18 @@ fn set_ws_scheme(url: &mut Url) -> Result<()> {
     url.set_scheme(scheme)
         .expect("Developer error: the match before this should make sure we can set this");
     Ok(())
+}
+
+fn sha256(input: String) -> String {
+    let mut ctx = Context::new(&SHA256);
+    ctx.update(input.as_bytes());
+    let digest = ctx.finish();
+
+    digest
+        .as_ref()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect()
 }
 
 fn get_websocket_path(
