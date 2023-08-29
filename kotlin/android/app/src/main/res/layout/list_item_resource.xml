@@ -22,7 +22,7 @@
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
 		tools:text="Resource Address"
-		android:textColor="@color/black_600"
+		android:textColor="@color/neutral_600"
 		app:layout_constraintTop_toBottomOf="@id/resourceNameText"
 		app:layout_constraintBottom_toBottomOf="parent"
 		app:layout_constraintStart_toStartOf="parent"
