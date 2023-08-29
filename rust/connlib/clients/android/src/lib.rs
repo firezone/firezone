@@ -289,7 +289,7 @@ fn connect(
     env: &mut JNIEnv,
     portal_url: JString,
     portal_token: JString,
-    external_id: JString,
+    device_id: JString,
     callback_handler: GlobalRef,
 ) -> Result<Session<CallbackHandler>, ConnectError> {
     let portal_url = String::from(env.get_string(&portal_url).map_err(|source| {
@@ -309,17 +309,17 @@ fn connect(
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
     };
-    let external_id = env
-        .get_string(&external_id)
+    let device_id = env
+        .get_string(&device_id)
         .map_err(|source| ConnectError::StringInvalid {
-            name: "external_id",
+            name: "device_id",
             source,
         })?
         .into();
     Session::connect(
         portal_url.as_str(),
         portal_token,
-        external_id,
+        device_id,
         callback_handler,
     )
     .map_err(Into::into)
@@ -335,13 +335,13 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
     _class: JClass,
     portal_url: JString,
     portal_token: JString,
-    external_id: JString,
+    device_id: JString,
     callback_handler: JObject,
 ) -> *const Session<CallbackHandler> {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else { return std::ptr::null() };
 
     if let Some(result) = catch_and_throw(&mut env, |env| {
-        connect(env, portal_url, portal_token, external_id, callback_handler)
+        connect(env, portal_url, portal_token, device_id, callback_handler)
     }) {
         match result {
             Ok(session) => return Box::into_raw(Box::new(session)),

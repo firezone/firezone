@@ -8,7 +8,7 @@ use std::{
 };
 
 use firezone_client_connlib::{
-    get_external_id, get_user_agent, Callbacks, Error, ResourceDescription, Session,
+    get_device_id, get_user_agent, Callbacks, Error, ResourceDescription, Session,
 };
 use url::Url;
 
@@ -82,8 +82,8 @@ fn main() -> Result<()> {
     // TODO: allow passing as arg vars
     let url = parse_env_var::<Url>(URL_ENV_VAR)?;
     let secret = parse_env_var::<String>(SECRET_ENV_VAR)?;
-    let external_id = get_external_id();
-    let mut session = Session::connect(url, secret, external_id, CallbackHandler).unwrap();
+    let device_id = get_device_id();
+    let mut session = Session::connect(url, secret, device_id, CallbackHandler).unwrap();
     tracing::info!("Started new session");
 
     block_on_ctrl_c();

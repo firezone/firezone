@@ -19,7 +19,7 @@ pub type Session<CB> = libs_common::Session<
 >;
 
 pub use libs_common::{
-    get_external_id, get_user_agent, messages::ResourceDescription, Callbacks, Error,
+    get_device_id, get_user_agent, messages::ResourceDescription, Callbacks, Error,
 };
 use messages::Messages;
 use messages::ReplyMessages;

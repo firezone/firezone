@@ -130,7 +130,7 @@ public class Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            self.controlPlaneURLString, self.token, self.getExternalId(), self.callbackHandler),
+            self.controlPlaneURLString, self.token, self.getDeviceId(), self.callbackHandler),
           onStarted: completionHandler
         )
       } catch let error {
@@ -200,23 +200,25 @@ public class Adapter {
 }
 
 // MARK: Device unique identifiers
+
 extension Adapter {
-  func getExternalId() -> String {
+  func getDeviceId() -> String {
     #if os(iOS)
-      guard let uuid = UIDevice.current.identifierForVendor?.uuidString else {
+      guard let extId = UIDevice.current.identifierForVendor?.uuidString else {
         // Send a blank string, letting either connlib or the portal handle this
         return ""
       }
-      return uuid
+
     #elseif os(macOS)
-      guard let macBytes = PrimaryMacAddress.copy_mac_address() else {
+      guard let extId = PrimaryMacAddress.copy_mac_address() as? String else {
         // Send a blank string, letting either connlib or the portal handle this
         return ""
       }
-      return (macBytes as Data).base64EncodedString()
     #else
       #error("Unsupported platform")
     #endif
+
+    return extId
   }
 }
 
@@ -271,7 +273,7 @@ extension Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            controlPlaneURLString, token, self.getExternalId(), self.callbackHandler),
+            controlPlaneURLString, token, self.getDeviceId(), self.callbackHandler),
           onStarted: { error in
             if let error = error {
               self.logger.error(

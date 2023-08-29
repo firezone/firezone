@@ -68,7 +68,7 @@ fun copyJniShared(task: Task, buildType: String) = task.apply {
     jniTargets.forEach { entry ->
         val soFile = File(
             project.projectDir.parentFile.parentFile.parentFile.parentFile,
-            "target/${entry.key}/${buildType}/libconnlib.so"
+            "target/${entry.key}/$buildType/libconnlib.so",
         )
         val targetDir = File(project.projectDir, "/jniLibs/${entry.value}").apply {
             if (!exists()) {
@@ -77,9 +77,11 @@ fun copyJniShared(task: Task, buildType: String) = task.apply {
         }
 
         copy {
-            with(copySpec {
-                from(soFile)
-            })
+            with(
+                copySpec {
+                    from(soFile)
+                },
+            )
             into(targetDir)
         }
     }
@@ -88,7 +90,7 @@ fun copyJniShared(task: Task, buildType: String) = task.apply {
 cargo {
     prebuiltToolchains = true
     verbose = true
-    module  = "../"
+    module = "../"
     libname = "connlib"
     targets = listOf("arm", "arm64", "x86", "x86_64")
     features {
@@ -108,13 +110,13 @@ tasks.register("copyJniSharedObjectsRelease") {
 
 tasks.whenTaskAdded {
     if (name.startsWith("javaPreCompile")) {
-        val newTasks = arrayOf (
+        val newTasks = arrayOf(
             tasks.named("cargoBuild"),
             if (name.endsWith("Debug")) {
                 tasks.named("copyJniSharedObjectsDebug")
             } else {
                 tasks.named("copyJniSharedObjectsRelease")
-            }
+            },
         )
         dependsOn(*newTasks)
     }
