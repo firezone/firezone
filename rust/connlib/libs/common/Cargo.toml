@@ -30,6 +30,7 @@ os_info = { version = "3", default-features = false }
 rand = { version = "0.8", default-features = false, features = ["std"] }
 chrono = { workspace = true }
 parking_lot = "0.12"
+ring = "0.16"
 
 # Needed for Android logging until tracing is working
 log = "0.4"
