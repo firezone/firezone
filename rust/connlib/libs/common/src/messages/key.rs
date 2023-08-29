@@ -1,4 +1,5 @@
 use base64::{display::Base64Display, engine::general_purpose::STANDARD, Engine};
+use boringtun::x25519::PublicKey;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
 use std::{fmt, str::FromStr};
@@ -34,6 +35,12 @@ impl FromStr for Key {
             key_bytes.copy_from_slice(&bytes_decoded);
             Ok(Key(key_bytes))
         }
+    }
+}
+
+impl From<PublicKey> for Key {
+    fn from(value: PublicKey) -> Self {
+        Self(value.to_bytes())
     }
 }
 

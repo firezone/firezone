@@ -2,6 +2,7 @@
 use std::{collections::HashMap, net::IpAddr, ptr::NonNull};
 
 use chrono::{DateTime, Utc};
+use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use libs_common::messages::{Id, ResourceDescription};
 
@@ -60,6 +61,22 @@ where
 {
     pub fn values(&self) -> impl Iterator<Item = &T> {
         self.id_table.values()
+    }
+
+    pub fn network_resources(&self) -> HashMap<IpNetwork, T> {
+        // Safety: Due to internal consistency, since the value is stored the reference should be valid
+        self.network_table
+            .iter()
+            .map(|(wg_ip, res)| (wg_ip, unsafe { res.as_ref() }.clone()))
+            .collect()
+    }
+
+    pub fn dns_resources(&self) -> HashMap<String, T> {
+        // Safety: Due to internal consistency, since the value is stored the reference should be valid
+        self.dns_name
+            .iter()
+            .map(|(name, res)| (name.clone(), unsafe { res.as_ref() }.clone()))
+            .collect()
     }
 
     /// Tells you if it's empty

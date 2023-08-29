@@ -37,7 +37,38 @@ pub(crate) struct Peer {
     pub translated_resource_addresses: RwLock<HashMap<IpAddr, Id>>,
 }
 
+// TODO: For now we only use these fields with debug
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub(crate) struct PeerStats {
+    pub index: u32,
+    pub allowed_ips: Vec<IpNetwork>,
+    pub conn_id: Id,
+    pub dns_resources: HashMap<String, ExpiryingResource>,
+    pub network_resources: HashMap<IpNetwork, ExpiryingResource>,
+    pub translated_resource_addresses: HashMap<IpAddr, Id>,
+}
+
 impl Peer {
+    pub(crate) fn stats(&self) -> PeerStats {
+        let (network_resources, dns_resources) = self.resources.as_ref().map_or_else(
+            || (HashMap::new(), HashMap::new()),
+            |resources| {
+                let resources = resources.read();
+                (resources.network_resources(), resources.dns_resources())
+            },
+        );
+        let allowed_ips = self.allowed_ips.read().iter().map(|(ip, _)| ip).collect();
+        let translated_resource_addresses = self.translated_resource_addresses.read().clone();
+        PeerStats {
+            index: self.index,
+            allowed_ips,
+            conn_id: self.conn_id,
+            dns_resources,
+            network_resources,
+            translated_resource_addresses,
+        }
+    }
     pub(crate) async fn send_infallible<CB: Callbacks>(&self, data: &[u8], callbacks: &CB) {
         if let Err(e) = self.channel.write(&Bytes::copy_from_slice(data)).await {
             tracing::error!("Couldn't send packet to connected peer: {e}");

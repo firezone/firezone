@@ -11,13 +11,13 @@ use boringtun::{
 };
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::{Callbacks, Error, DNS_SENTINEL};
+use libs_common::{messages::Key, Callbacks, Error, DNS_SENTINEL};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
-use peer::Peer;
+use peer::{Peer, PeerStats};
 use resource_table::ResourceTable;
 use tokio::time::MissedTickBehavior;
 use webrtc::{
@@ -153,6 +153,61 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     callbacks: CallbackErrorFacade<CB>,
 }
 
+// TODO: For now we only use these fields with debug
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct TunnelStats {
+    public_key: String,
+    peers_by_ip: HashMap<IpNetwork, PeerStats>,
+    peer_connections: Vec<Id>,
+    awaiting_connection: HashSet<Id>,
+    gateway_awaiting_connection: HashMap<Id, Vec<IpNetwork>>,
+    resource_gateways: HashMap<Id, Id>,
+    dns_resources: HashMap<String, ResourceDescription>,
+    network_resources: HashMap<IpNetwork, ResourceDescription>,
+    gateway_public_keys: HashMap<Id, String>,
+}
+
+impl<C, CB> Tunnel<C, CB>
+where
+    C: ControlSignal + Send + Sync + 'static,
+    CB: Callbacks + 'static,
+{
+    pub fn stats(&self) -> TunnelStats {
+        let peers_by_ip = self
+            .peers_by_ip
+            .read()
+            .iter()
+            .map(|(ip, peer)| (ip, peer.stats()))
+            .collect();
+        let peer_connections = self.peer_connections.lock().keys().cloned().collect();
+        let awaiting_connection = self.awaiting_connection.lock().clone();
+        let gateway_awaiting_connection = self.gateway_awaiting_connection.lock().clone();
+        let resource_gateways = self.resources_gateways.lock().clone();
+        let (network_resources, dns_resources) = {
+            let resources = self.resources.read();
+            (resources.network_resources(), resources.dns_resources())
+        };
+        let gateway_public_keys = self
+            .gateway_public_keys
+            .lock()
+            .iter()
+            .map(|(&id, &k)| (id, Key::from(k).to_string()))
+            .collect();
+        TunnelStats {
+            public_key: Key::from(self.public_key).to_string(),
+            peers_by_ip,
+            peer_connections,
+            awaiting_connection,
+            gateway_awaiting_connection,
+            resource_gateways,
+            dns_resources,
+            network_resources,
+            gateway_public_keys,
+        }
+    }
+}
+
 impl<C, CB> Tunnel<C, CB>
 where
     C: ControlSignal + Send + Sync + 'static,
@@ -275,12 +330,13 @@ where
         Ok(())
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn stop_peer(&self, index: u32, conn_id: Id) {
         self.peers_by_ip.write().retain(|_, p| p.index != index);
         let conn = self.peer_connections.lock().remove(&conn_id);
         if let Some(conn) = conn {
             if let Err(e) = conn.close().await {
-                tracing::error!("Problem while trying to close channel: {e:?}");
+                tracing::warn!(error = ?e, "Can't close peer");
                 let _ = self.callbacks().on_error(&e.into());
             }
         }
@@ -478,6 +534,9 @@ where
                     }
                 }
             }
+            let peer_stats = peer.stats();
+            tracing::debug!(peer = ?peer_stats, "Peer stopped");
+            tunnel.stop_peer(peer.index, peer.conn_id).await;
         });
 
         Ok(())

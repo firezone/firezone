@@ -84,6 +84,20 @@ where
             }
         }
 
+        if let Some(conn) = self.peer_connections.lock().get(&conn_id) {
+            self.set_connection_state_with_peer(conn, index, conn_id)
+        }
+
+        data_channel.on_close({
+            let tunnel = Arc::clone(self);
+            Box::new(move || {
+                tracing::debug!("channel closed");
+                let tunnel = tunnel.clone();
+                Box::pin(async move {
+                    tunnel.stop_peer(index, conn_id).await;
+                })
+            })
+        });
         self.start_peer_handler(peer)?;
         Ok(())
     }
@@ -163,7 +177,7 @@ where
         state: RTCPeerConnectionState,
         client_id: Id,
     ) {
-        tracing::trace!("Peer Connection State has changed: {state}");
+        tracing::trace!(?state, "Peer Connection State has changed");
         if state == RTCPeerConnectionState::Failed {
             self.peer_connections.lock().remove(&client_id);
             tracing::warn!("Peer Connection has gone to failed exiting");
@@ -182,6 +196,40 @@ where
                 let tunnel = Arc::clone(&tunnel);
                 Box::pin(async move {
                     tunnel.handle_connection_state_update_responder(state, client_id)
+                })
+            },
+        ));
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn handle_connection_state_update_with_peer(
+        self: &Arc<Self>,
+        state: RTCPeerConnectionState,
+        index: u32,
+        conn_id: Id,
+    ) {
+        tracing::trace!(?state, "Peer Connection State has changed");
+        if state == RTCPeerConnectionState::Failed {
+            self.stop_peer(index, conn_id).await;
+            tracing::warn!("Peer Connection has gone to failed exiting");
+        }
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    fn set_connection_state_with_peer(
+        self: &Arc<Self>,
+        peer_connection: &Arc<RTCPeerConnection>,
+        index: u32,
+        conn_id: Id,
+    ) {
+        let tunnel = Arc::clone(self);
+        peer_connection.on_peer_connection_state_change(Box::new(
+            move |state: RTCPeerConnectionState| {
+                let tunnel = Arc::clone(&tunnel);
+                Box::pin(async move {
+                    tunnel
+                        .handle_connection_state_update_with_peer(state, index, conn_id)
+                        .await
                 })
             },
         ));
@@ -258,13 +306,20 @@ where
         let p_key = preshared_key.clone();
         data_channel.on_open(Box::new(move || {
             Box::pin(async move {
-            tracing::trace!("new data channel opened!");
+                tracing::trace!("new data channel opened!");
                 let index = tunnel.next_index();
-                let Some(gateway_public_key) = tunnel.gateway_public_keys.lock().remove(&gateway_id) else {
+                let Some(gateway_public_key) =
+                    tunnel.gateway_public_keys.lock().remove(&gateway_id)
+                else {
                     tunnel.awaiting_connection.lock().remove(&resource_id);
                     tunnel.peer_connections.lock().remove(&gateway_id);
-                    tunnel.gateway_awaiting_connection.lock().remove(&gateway_id);
-                    tracing::warn!("Opened ICE channel with gateway without ever receiving public key");
+                    tunnel
+                        .gateway_awaiting_connection
+                        .lock()
+                        .remove(&gateway_id);
+                    tracing::warn!(
+                        "Opened ICE channel with gateway without ever receiving public key"
+                    );
                     let _ = tunnel.callbacks.on_error(&Error::ControlProtocolError);
                     return;
                 };
@@ -275,11 +330,19 @@ where
                     preshared_key: p_key,
                 };
 
-                if let Err(e) = tunnel.handle_channel_open(d, index, peer_config, gateway_id, None).await {
-                    tracing::error!("Couldn't establish wireguard link after channel was opened: {e}");
+                if let Err(e) = tunnel
+                    .handle_channel_open(d, index, peer_config, gateway_id, None)
+                    .await
+                {
+                    tracing::error!(
+                        "Couldn't establish wireguard link after channel was opened: {e}"
+                    );
                     let _ = tunnel.callbacks.on_error(&e);
                     tunnel.peer_connections.lock().remove(&gateway_id);
-                    tunnel.gateway_awaiting_connection.lock().remove(&gateway_id);
+                    tunnel
+                        .gateway_awaiting_connection
+                        .lock()
+                        .remove(&gateway_id);
                 }
                 tunnel.awaiting_connection.lock().remove(&resource_id);
             })
