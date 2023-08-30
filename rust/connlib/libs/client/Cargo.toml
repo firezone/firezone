@@ -7,7 +7,7 @@ edition = "2021"
 mock = ["libs-common/mock"]
 
 [dependencies]
-tokio = { version = "1.27", default-features = false, features = ["sync"] }
+tokio = { version = "1.32", default-features = false, features = ["sync"] }
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
 async-trait = { version = "0.1", default-features = false }
 libs-common = { path = "../common" }
