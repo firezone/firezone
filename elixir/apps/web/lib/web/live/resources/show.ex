@@ -32,8 +32,8 @@ defmodule Web.Resources.Show do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
       <.breadcrumb path={~p"/#{@account}/resources"}>Resources</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/resources/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}>
-        Jira
+      <.breadcrumb path={~p"/#{@account}/resources/#{@resource.id}"}>
+        <%= @resource.name %>
       </.breadcrumb>
     </.breadcrumbs>
     <.header>

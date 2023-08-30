@@ -2,11 +2,27 @@ defmodule Web.Resources.New do
   use Web, :live_view
 
   alias Domain.Gateways
+  alias Domain.Resources
+  alias Web.ResourceForm
 
   def mount(_params, _session, socket) do
     {:ok, gateway_groups} = Gateways.list_groups(socket.assigns.subject)
 
-    {:ok, assign(socket, gateway_groups: gateway_groups)}
+    connections =
+      Enum.map(gateway_groups, fn group ->
+        %{
+          "enabled" => false,
+          "gateway_group_id" => group.id,
+          "gateway_group_name" => group.name_prefix
+        }
+      end)
+
+    form =
+      %{ResourceForm.default_attrs() | "connections" => connections}
+      |> ResourceForm.new_resource_form()
+      |> to_form()
+
+    {:ok, assign(socket, form: form)}
   end
 
   def render(assigns) do
@@ -20,105 +36,136 @@ defmodule Web.Resources.New do
         Add Resource
       </:title>
     </.header>
-    <!-- Add Resource -->
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
         <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Resource details</h2>
-        <form action="#">
-          <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-            <div>
-              <.label for="name">
-                Name
-              </.label>
-              <.input
-                type="text"
-                name="name"
-                id="resource-name"
-                placeholder="Name this Resource"
-                value=""
-                required
-              />
+        <.simple_form
+          for={@form}
+          class="space-y-4 lg:space-y-6"
+          phx-submit="submit"
+          phx-change="validate"
+        >
+          <.input
+            field={@form[:name]}
+            type="text"
+            label="Name"
+            placeholder="Name this Resource"
+            required
+            phx-debounce="300"
+          />
+          <.input
+            field={@form[:address]}
+            autocomplete="off"
+            type="text"
+            label="Address"
+            placeholder="Enter IP address, CIDR, or DNS name"
+            required
+            phx-debounce="300"
+          />
+          <hr />
+
+          <fieldset class="flex flex-col gap-2">
+            <legend class="mb-2">Traffic Restriction</legend>
+            <div class="">
+              <.inputs_for :let={filter} field={@form[:filters]}>
+                <.filter field={filter} />
+              </.inputs_for>
             </div>
-            <div>
-              <.label for="address">
-                Address
-              </.label>
-              <.input
-                autocomplete="off"
-                type="text"
-                name="address"
-                id="resource-address"
-                placeholder="Enter IP address, CIDR, or DNS name"
-                value=""
-                required
-              />
+          </fieldset>
+
+          <hr />
+
+          <fieldset class="flex flex-col gap-2">
+            <legend class="mb-2">Gateway Instance Groups</legend>
+            <div class="">
+              <.inputs_for :let={gateway} field={@form[:connections]}>
+                <.gateway field={gateway} />
+              </.inputs_for>
             </div>
-            <hr />
-            <div class="w-full">
-              <h3>
-                Traffic Restriction
-              </h3>
-              <div class="h-12 flex items-center mb-4">
-                <.checkbox id="filter-all" name="traffic-filter" value="none" checked={true} />
-                <.label for="filter-all" class="ml-4 mt-2">
-                  Permit all
-                </.label>
-              </div>
-              <div class="h-12 flex items-center mb-4">
-                <.checkbox id="filter-icmp" name="traffic-filter" value="icmp" checked={false} />
-                <.label for="filter-icmp" class="ml-4 mt-2">
-                  ICMP
-                </.label>
-              </div>
-              <div class="h-12 flex items-center mb-4">
-                <.checkbox id="filter-tcp" name="traffic-filter" value="tcp" checked={false} />
-                <.label for="filter-tcp" class="ml-4 mr-4 mt-2">
-                  TCP
-                </.label>
-                <.input
-                  placeholder="Enter port range(s)"
-                  id="tcp-port"
-                  name="tcp-port"
-                  value=""
-                  class="ml-8"
-                />
-              </div>
-              <div class="h-12 flex items-center">
-                <.checkbox id="filter-udp" name="traffic-filter" value="udp" checked={false} />
-                <.label for="filter-udp" class="ml-4 mr-4 mt-2">
-                  UDP
-                </.label>
-                <.input placeholder="Enter port range(s)" id="udp-port" name="udp-port" value="" />
-              </div>
-            </div>
-            <hr />
-            <div>
-              <h3>
-                Gateway Instance Group(s)
-              </h3>
-              <div class="rounded-lg relative overflow-x-auto">
-                <.table id="gateway_groups" rows={@gateway_groups}>
-                  <:col :let={gateway_group}>
-                    <.checkbox name="gateway_group" value={gateway_group.id} />
-                  </:col>
-                  <:col :let={gateway_group} label="NAME">
-                    <%= gateway_group.name_prefix %>
-                  </:col>
-                  <:col :let={_gateway_group} label="STATUS">
-                    <.badge type="success">TODO: Online</.badge>
-                  </:col>
-                </.table>
-              </div>
-            </div>
-          </div>
-          <div class="flex items-center space-x-4">
-            <.submit_button>
-              Save
-            </.submit_button>
-          </div>
-        </form>
+          </fieldset>
+
+          <:actions>
+            <.button phx-disable-with="Creating Resource..." class="w-full">
+              Create Resource
+            </.button>
+          </:actions>
+        </.simple_form>
       </div>
     </section>
     """
+  end
+
+  def filter(assigns) do
+    ~H"""
+    <div class="items-center flex flex-row h-16">
+      <div class="flex-none w-32">
+        <.input
+          type="checkbox"
+          field={@field[:enabled]}
+          label={ResourceForm.display_name(@field[:protocol].value)}
+          checked={@field[:enabled].value}
+        />
+        <.input type="hidden" field={@field[:protocol]} />
+      </div>
+      <div class="flex-grow">
+        <.input
+          :if={@field[:protocol].value in ["tcp", "udp"]}
+          field={@field[:ports]}
+          placeholder="Enter port range(s)"
+          phx-debounce="300"
+        />
+        <.input :if={@field[:protocol].value in ["all", "icmp"]} type="hidden" field={@field[:ports]} />
+      </div>
+    </div>
+    """
+  end
+
+  def gateway(assigns) do
+    ~H"""
+    <.input type="hidden" field={@field[:gateway_group_id]} />
+    <div class="flex gap-4 items-end py-4 text-sm border-b">
+      <div class="w-8">
+        <.input type="checkbox" field={@field[:enabled]} />
+      </div>
+      <div class="w-64 no-grow text-gray-500">
+        <.input type="hidden" field={@field[:gateway_group_name]} />
+        <p><%= @field[:gateway_group_name].value %></p>
+      </div>
+      <div>
+        <.badge type="success">TODO: Online</.badge>
+      </div>
+    </div>
+    """
+  end
+
+  def handle_event("validate", %{"resource_form" => attrs}, socket) do
+    changeset =
+      ResourceForm.new_resource_form(attrs)
+      |> Map.put(:action, :validate)
+
+    socket = assign(socket, form: to_form(changeset))
+
+    {:noreply, socket}
+  end
+
+  def handle_event("submit", %{"resource_form" => attrs}, socket) do
+    with {:ok, valid_form} <- ResourceForm.validate(attrs) do
+      case Resources.create_resource(
+             ResourceForm.to_domain_attrs(valid_form),
+             socket.assigns.subject
+           ) do
+        {:ok, resource} ->
+          {:noreply,
+           push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources/#{resource.id}")}
+
+        {:error, changeset} ->
+          form_changeset = ResourceForm.map_errors(attrs, changeset) |> Map.put(:action, :insert)
+          {:noreply, assign(socket, form: to_form(form_changeset))}
+      end
+    else
+      {:error, changeset} ->
+        socket = assign(socket, form: to_form(changeset))
+        {:noreply, socket}
+    end
   end
 end

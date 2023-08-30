@@ -96,6 +96,10 @@ defmodule Domain.Resources do
     end
   end
 
+  def new_resource(attrs, %Auth.Subject{} = subject) do
+    Resource.Changeset.create(subject.account, attrs, subject)
+  end
+
   def create_resource(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       changeset = Resource.Changeset.create(subject.account, attrs, subject)

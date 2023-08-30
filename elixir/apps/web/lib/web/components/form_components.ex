@@ -229,24 +229,6 @@ defmodule Web.FormComponents do
     """
   end
 
-  attr :name, :any
-  attr :value, :any
-  attr :checked, :boolean
-  attr :rest, :global
-
-  def checkbox(assigns) do
-    ~H"""
-    <input
-      type="checkbox"
-      class="rounded text-blue-600 border-zinc-300 focus:ring-0"
-      name={@name}
-      value={@value}
-      checked={@checked}
-      {@rest}
-    />
-    """
-  end
-
   ### Buttons ###
 
   @doc """

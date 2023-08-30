@@ -10,8 +10,8 @@ defmodule Domain.Resources.Resource.Changeset do
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Resource{}
     |> cast(attrs, @fields)
-    |> validate_required(@required_fields)
     |> changeset()
+    |> validate_required(@required_fields)
     |> put_change(:account_id, account.id)
     |> validate_address()
     |> cast_assoc(:connections,
@@ -73,6 +73,28 @@ defmodule Domain.Resources.Resource.Changeset do
     end
   end
 
+  def put_resource_type(changeset) do
+    put_default_value(changeset, :type, fn _cs ->
+      address = get_field(changeset, :address)
+
+      if address_contains_cidr?(address) do
+        :cidr
+      else
+        :dns
+      end
+    end)
+  end
+
+  defp address_contains_cidr?(address) do
+    case Domain.Types.INET.cast(address) do
+      {:ok, _} ->
+        true
+
+      _ ->
+        false
+    end
+  end
+
   def update(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     resource
     |> cast(attrs, @update_fields)
@@ -88,6 +110,7 @@ defmodule Domain.Resources.Resource.Changeset do
     changeset
     |> put_default_value(:name, from: :address)
     |> validate_length(:name, min: 1, max: 255)
+    |> put_resource_type()
     |> unique_constraint(:address, name: :resources_account_id_address_index)
     |> unique_constraint(:name, name: :resources_account_id_name_index)
     |> cast_embed(:filters, with: &cast_filter/2)
@@ -108,5 +131,7 @@ defmodule Domain.Resources.Resource.Changeset do
   defp cast_filter(%Resource.Filter{} = filter, attrs) do
     filter
     |> cast(attrs, [:protocol, :ports])
+    |> validate_required([:protocol])
+    |> validate_inclusion(:protocol, [:tcp, :udp, :icmp, :all])
   end
 end
