@@ -15,6 +15,31 @@ defmodule Domain.Accounts do
     end
   end
 
+  def fetch_account_by_id_or_slug(id_or_slug, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_accounts_permission()),
+         true <- not is_nil(id_or_slug) do
+      if Validator.valid_uuid?(id_or_slug) do
+        Account.Query.by_id(id_or_slug)
+      else
+        Account.Query.by_slug(id_or_slug)
+      end
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch()
+    else
+      false -> {:error, :not_found}
+      other -> other
+    end
+  end
+
+  def fetch_account_by_id_or_slug(id_or_slug) do
+    if Validator.valid_uuid?(id_or_slug) do
+      Account.Query.by_id(id_or_slug)
+    else
+      Account.Query.by_slug(id_or_slug)
+    end
+    |> Repo.fetch()
+  end
+
   def fetch_account_by_id(id) do
     if Validator.valid_uuid?(id) do
       Account.Query.by_id(id)
@@ -34,6 +59,16 @@ defmodule Domain.Accounts do
       :ok
     else
       {:error, :unauthorized}
+    end
+  end
+
+  def generate_unique_slug do
+    slug_candidate = Domain.NameGenerator.generate_slug()
+
+    if Account.Query.by_slug(slug_candidate) |> Repo.exists?() do
+      generate_unique_slug()
+    else
+      slug_candidate
     end
   end
 end

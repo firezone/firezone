@@ -4,8 +4,8 @@ use libc::{
     close, fcntl, ioctl, open, read, sockaddr, sockaddr_in, write, F_GETFL, F_SETFL,
     IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN, IFNAMSIZ, O_NONBLOCK, O_RDWR,
 };
-use libs_common::{Callbacks, Error, Result};
-use netlink_packet_route::rtnl::link::nlas::Nla;
+use libs_common::{CallbackErrorFacade, Callbacks, Error, Result};
+use netlink_packet_route::{rtnl::link::nlas::Nla, RT_SCOPE_UNIVERSE};
 use rtnetlink::{new_connection, Handle};
 use std::{
     ffi::{c_int, c_short, c_uchar},
@@ -19,10 +19,12 @@ use super::InterfaceConfig;
 #[derive(Debug)]
 pub(crate) struct IfaceConfig(pub(crate) Arc<IfaceDevice>);
 
+const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: u64 = 0x4004_54ca;
 const TUN_FILE: &[u8] = b"/dev/net/tun\0";
-const RT_SCOPE_LINK: u8 = 253;
-const RT_PROT_UNSPEC: u8 = 0;
+const RT_PROT_STATIC: u8 = 4;
+// This MTU will always work
+const MTU: u32 = 1280;
 
 #[repr(C)]
 union IfrIfru {
@@ -78,13 +80,17 @@ impl IfaceDevice {
         }
     }
 
-    pub async fn new(name: &str) -> Result<IfaceDevice> {
+    pub async fn new(
+        config: &InterfaceConfig,
+        _: &CallbackErrorFacade<impl Callbacks>,
+    ) -> Result<IfaceDevice> {
+        debug_assert!(IFACE_NAME.as_bytes().len() < IFNAMSIZ);
+
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
             -1 => return Err(get_last_error()),
             fd => fd,
         };
 
-        let iface_name = name.as_bytes();
         let mut ifr = ifreq {
             ifr_name: [0; IFNAMSIZ],
             ifr_ifru: IfrIfru {
@@ -92,24 +98,18 @@ impl IfaceDevice {
             },
         };
 
-        if iface_name.len() >= ifr.ifr_name.len() {
-            return Err(Error::InvalidTunnelName);
-        }
-
-        ifr.ifr_name[..iface_name.len()].copy_from_slice(iface_name);
+        ifr.ifr_name[..IFACE_NAME.as_bytes().len()].copy_from_slice(IFACE_NAME.as_bytes());
 
         if unsafe { ioctl(fd, TUNSETIFF as _, &ifr) } < 0 {
             return Err(get_last_error());
         }
-
-        let name = name.to_string();
 
         let (connection, handle, _) = new_connection()?;
         let join_handle = tokio::spawn(connection);
         let interface_index = handle
             .link()
             .get()
-            .match_name(name.clone())
+            .match_name(IFACE_NAME.to_string())
             .execute()
             .try_next()
             .await?
@@ -117,20 +117,58 @@ impl IfaceDevice {
             .header
             .index;
 
-        Ok(Self {
+        let mut this = Self {
             fd,
             handle,
             connection: join_handle,
             interface_index,
-        })
+        };
+
+        this.set_iface_config(config).await?;
+        this.set_non_blocking()?;
+
+        Ok(this)
     }
 
-    pub fn set_non_blocking(self) -> Result<Self> {
+    async fn set_iface_config(&mut self, config: &InterfaceConfig) -> Result<()> {
+        let ips = self
+            .handle
+            .address()
+            .get()
+            .set_link_index_filter(self.interface_index)
+            .execute();
+
+        ips.try_for_each(|ip| self.handle.address().del(ip).execute())
+            .await?;
+
+        self.handle
+            .address()
+            .add(self.interface_index, config.ipv4.into(), 32)
+            .execute()
+            .await
+            .or(self
+                .handle
+                .address()
+                .add(self.interface_index, config.ipv6.into(), 128)
+                .execute()
+                .await)?;
+
+        self.handle
+            .link()
+            .set(self.interface_index)
+            .mtu(MTU)
+            .execute()
+            .await?;
+
+        Ok(())
+    }
+
+    fn set_non_blocking(&self) -> Result<()> {
         match unsafe { fcntl(self.fd, F_GETFL) } {
             -1 => Err(get_last_error()),
             flags => match unsafe { fcntl(self.fd, F_SETFL, flags | O_NONBLOCK) } {
                 -1 => Err(get_last_error()),
-                _ => Ok(self),
+                _ => Ok(()),
             },
         }
     }
@@ -179,8 +217,8 @@ fn get_last_error() -> Error {
 impl IfaceConfig {
     pub async fn add_route(
         &mut self,
-        route: &IpNetwork,
-        _callbacks: &impl Callbacks,
+        route: IpNetwork,
+        _callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
         let req = self
             .0
@@ -188,19 +226,17 @@ impl IfaceConfig {
             .route()
             .add()
             .output_interface(self.0.interface_index)
-            .protocol(RT_PROT_UNSPEC)
-            .scope(RT_SCOPE_LINK);
+            .protocol(RT_PROT_STATIC)
+            .scope(RT_SCOPE_UNIVERSE);
         match route {
             IpNetwork::V4(ipnet) => {
                 req.v4()
-                    .source_prefix(ipnet.network_address(), ipnet.netmask())
                     .destination_prefix(ipnet.network_address(), ipnet.netmask())
                     .execute()
                     .await?
             }
             IpNetwork::V6(ipnet) => {
                 req.v6()
-                    .source_prefix(ipnet.network_address(), ipnet.netmask())
                     .destination_prefix(ipnet.network_address(), ipnet.netmask())
                     .execute()
                     .await?
@@ -227,7 +263,7 @@ impl IfaceConfig {
     pub async fn set_iface_config(
         &mut self,
         config: &InterfaceConfig,
-        _callbacks: &impl Callbacks,
+        _callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
         let ips = self
             .0
@@ -245,15 +281,14 @@ impl IfaceConfig {
             .address()
             .add(self.0.interface_index, config.ipv4.into(), 32)
             .execute()
-            .await?;
-
-        // TODO: Disable this when ipv6 is disabled
-        self.0
-            .handle
-            .address()
-            .add(self.0.interface_index, config.ipv6.into(), 128)
-            .execute()
-            .await?;
+            .await
+            .or(self
+                .0
+                .handle
+                .address()
+                .add(self.0.interface_index, config.ipv6.into(), 128)
+                .execute()
+                .await)?;
 
         Ok(())
     }

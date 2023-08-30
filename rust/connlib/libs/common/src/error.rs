@@ -27,6 +27,9 @@ pub enum ConnlibError {
     /// Provided string was not formatted as a URL.
     #[error("Badly formatted URI")]
     UriError,
+    /// Provided an unsupported uri string.
+    #[error("Unsupported URI scheme: Must be http://, https://, ws:// or wss://")]
+    UriScheme,
     /// Serde's serialize error.
     #[error(transparent)]
     SerializeError(#[from] serde_json::Error),
@@ -60,6 +63,16 @@ pub enum ConnlibError {
     /// Error when reading system's interface
     #[error("Error while reading system's interface")]
     IfaceRead(std::io::Error),
+    #[error("`on_set_interface_config` failed: {0}")]
+    OnSetInterfaceConfigFailed(String),
+    #[error("`on_tunnel_ready` failed: {0}")]
+    OnTunnelReadyFailed(String),
+    #[error("`on_add_route` failed: {0}")]
+    OnAddRouteFailed(String),
+    #[error("`on_remove_route` failed: {0}")]
+    OnRemoveRouteFailed(String),
+    #[error("`on_update_resources` failed: {0}")]
+    OnUpdateResourcesFailed(String),
     /// Glob for errors without a type.
     #[error("Other error: {0}")]
     Other(&'static str),

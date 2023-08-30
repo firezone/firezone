@@ -6,13 +6,15 @@ import android.content.SharedPreferences
 import android.content.res.Resources
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import dev.firezone.android.features.session.backend.BootShutdownReceiver
-import dev.firezone.android.features.session.backend.SessionManager
+import com.squareup.moshi.Moshi
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.CoroutineDispatcher
+import dev.firezone.android.core.domain.preference.GetConfigUseCase
+import dev.firezone.android.core.domain.preference.SaveIsConnectedUseCase
+import dev.firezone.android.tunnel.TunnelManager
 
 internal const val ENCRYPTED_SHARED_PREFERENCES = "encryptedSharedPreferences"
 
@@ -39,13 +41,10 @@ object AppModule {
         )
 
     @Provides
-    internal fun provideSessionManager(
-        sharedPreferences: SharedPreferences
-    ): SessionManager = SessionManager(sharedPreferences)
-
-    @Provides
-    internal fun provideBroadcastReceiver(
-        @MainImmediateDispatcher coroutineDispatcher: CoroutineDispatcher,
-        sessionManager: SessionManager,
-    ): BootShutdownReceiver = BootShutdownReceiver(coroutineDispatcher, sessionManager)
+    internal fun provideTunnelManager(
+        @ApplicationContext appContext: Context,
+        getConfigUseCase: GetConfigUseCase,
+        saveIsConnectedUseCase: SaveIsConnectedUseCase,
+        moshi: Moshi,
+    ): TunnelManager = TunnelManager(appContext, getConfigUseCase, saveIsConnectedUseCase, moshi)
 }

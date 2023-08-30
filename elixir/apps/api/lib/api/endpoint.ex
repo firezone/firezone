@@ -60,6 +60,14 @@ defmodule API.Endpoint do
     |> halt()
   end
 
+  def real_ip_opts do
+    [
+      headers: ["x-forwarded-for"],
+      proxies: {__MODULE__, :external_trusted_proxies, []},
+      clients: {__MODULE__, :clients, []}
+    ]
+  end
+
   def external_trusted_proxies do
     Domain.Config.fetch_env!(:api, :external_trusted_proxies)
     |> Enum.map(&to_string/1)

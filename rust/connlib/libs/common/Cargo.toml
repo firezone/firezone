@@ -13,26 +13,37 @@ base64 = { version = "0.21", default-features = false, features = ["std"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
-tokio-tungstenite = { version = "0.19", default-features = false, features = ["connect", "handshake"] }
+tokio-tungstenite = { version = "0.19", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 webrtc = { version = "0.8" }
 uuid = { version = "1.4", default-features = false, features = ["std", "v4", "serde"] }
 thiserror = { version = "1.0", default-features = false }
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
-tokio = { version = "1.28", default-features = false, features = ["rt", "rt-multi-thread"]}
+tokio = { version = "1.32", default-features = false, features = ["rt", "rt-multi-thread"]}
 url = { version = "2.3.1", default-features = false }
 rand_core = { version = "0.6.4", default-features = false, features = ["std"] }
 async-trait = { version = "0.1", default-features = false }
-backoff = { version = "0.4", default-features = false }
+backoff = { workspace = true }
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 boringtun = { workspace = true }
 os_info = { version = "3", default-features = false }
 rand = { version = "0.8", default-features = false, features = ["std"] }
 chrono = { workspace = true }
 parking_lot = "0.12"
+ring = "0.16"
+
+# Needed for Android logging until tracing is working
+log = "0.4"
+
+# smbios fails to build on iOS and Android
+[target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
+smbios-lib = "0.9"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 swift-bridge = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.13"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rtnetlink = { version = "0.12", default-features = false, features = ["tokio_socket"] }

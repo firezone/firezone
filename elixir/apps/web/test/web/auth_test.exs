@@ -28,7 +28,7 @@ defmodule Web.AuthTest do
 
   describe "signed_in_path/1" do
     test "redirects to dashboard after sign in as account admin", %{admin_subject: subject} do
-      assert signed_in_path(subject) == ~p"/#{subject.account}/dashboard"
+      assert signed_in_path(subject) == ~p"/#{subject.account.slug}/dashboard"
     end
   end
 
@@ -105,7 +105,7 @@ defmodule Web.AuthTest do
     end
   end
 
-  describe "fetch_subject/2" do
+  describe "fetch_subject_and_account/2" do
     setup context do
       %{conn: assign(context.conn, :user_agent, context.admin_subject.context.user_agent)}
     end
@@ -116,14 +116,15 @@ defmodule Web.AuthTest do
       conn =
         %{
           conn
-          | path_params: %{"account_id" => subject.account.id},
+          | path_params: %{"account_id_or_slug" => subject.account.id},
             remote_ip: {100, 64, 100, 58}
         }
         |> put_session(:session_token, session_token)
-        |> fetch_subject([])
+        |> fetch_subject_and_account([])
 
       assert conn.assigns.subject.identity.id == subject.identity.id
       assert conn.assigns.subject.actor.id == subject.actor.id
+      assert conn.assigns.account.id == subject.account.id
     end
 
     test "does not authenticate to an incorrect account", %{conn: conn, admin_subject: subject} do
@@ -132,19 +133,21 @@ defmodule Web.AuthTest do
       conn =
         %{
           conn
-          | path_params: %{"account_id" => Ecto.UUID.generate()},
+          | path_params: %{"account_id_or_slug" => Ecto.UUID.generate()},
             remote_ip: {100, 64, 100, 58}
         }
         |> put_session(:session_token, session_token)
-        |> fetch_subject([])
+        |> fetch_subject_and_account([])
 
       refute Map.has_key?(conn.assigns, :subject)
+      refute Map.has_key?(conn.assigns, :account)
     end
 
     test "does not authenticate if data is missing", %{conn: conn} do
-      conn = fetch_subject(conn, [])
+      conn = fetch_subject_and_account(conn, [])
       refute get_session(conn, :session_token)
       refute Map.has_key?(conn.assigns, :subject)
+      refute Map.has_key?(conn.assigns, :account)
     end
   end
 
@@ -168,7 +171,7 @@ defmodule Web.AuthTest do
 
   describe "ensure_authenticated/2" do
     setup context do
-      %{conn: %{context.conn | path_params: %{"account_id" => context.account.id}}}
+      %{conn: %{context.conn | path_params: %{"account_id_or_slug" => context.account.id}}}
     end
 
     test "redirects if user is not authenticated", %{account: account, conn: conn} do
@@ -242,7 +245,7 @@ defmodule Web.AuthTest do
     } do
       {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
       session = conn |> put_session(:session_token, session_token) |> get_session()
-      params = %{"account_id" => subject.account.id}
+      params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:cont, updated_socket} = on_mount(:mount_subject, params, session, socket)
       assert updated_socket.assigns.subject.identity.id == subject.identity.id
@@ -255,7 +258,7 @@ defmodule Web.AuthTest do
     } do
       session_token = "invalid_token"
       session = conn |> put_session(:session_token, session_token) |> get_session()
-      params = %{"account_id" => subject.account.id}
+      params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:cont, updated_socket} = on_mount(:mount_subject, params, session, socket)
       assert is_nil(updated_socket.assigns.subject)
@@ -267,23 +270,37 @@ defmodule Web.AuthTest do
       admin_subject: subject
     } do
       session = conn |> get_session()
-      params = %{"account_id" => subject.account.id}
+      params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:cont, updated_socket} = on_mount(:mount_subject, params, session, socket)
       assert is_nil(updated_socket.assigns.subject)
     end
+  end
 
+  describe "on_mount: assign_account" do
     test "assigns nil to subject assign if account_id doesn't match token", %{
       conn: conn,
-      socket: socket,
       admin_subject: subject
     } do
+      socket = %LiveView.Socket{
+        assigns: %{
+          __changed__: %{},
+          subject: subject
+        },
+        private: %{
+          connect_info: %{
+            user_agent: subject.context.user_agent,
+            peer_data: %{address: {100, 64, 100, 58}}
+          }
+        }
+      }
+
       {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
       session = conn |> put_session(:session_token, session_token) |> get_session()
-      params = %{"account_id" => Ecto.UUID.generate()}
+      params = %{"account_id_or_slug" => Ecto.UUID.generate()}
 
-      assert {:cont, updated_socket} = on_mount(:mount_subject, params, session, socket)
-      assert is_nil(updated_socket.assigns.subject)
+      assert {:cont, updated_socket} = on_mount(:mount_account, params, session, socket)
+      assert is_nil(updated_socket.assigns.account)
     end
   end
 
@@ -311,7 +328,7 @@ defmodule Web.AuthTest do
     } do
       {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
       session = conn |> put_session(:session_token, session_token) |> get_session()
-      params = %{"account_id" => subject.account.id}
+      params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:cont, updated_socket} =
                on_mount(:ensure_authenticated, params, session, socket)
@@ -327,7 +344,7 @@ defmodule Web.AuthTest do
     } do
       session_token = "invalid_token"
       session = conn |> put_session(:session_token, session_token) |> get_session()
-      params = %{}
+      params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:halt, updated_socket} =
                on_mount(:ensure_authenticated, params, session, socket)
@@ -343,7 +360,7 @@ defmodule Web.AuthTest do
       admin_subject: subject
     } do
       session = conn |> get_session()
-      params = %{}
+      params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:halt, updated_socket} =
                on_mount(:ensure_authenticated, params, session, socket)
@@ -383,12 +400,13 @@ defmodule Web.AuthTest do
         |> put_session(:session_token, session_token)
         |> get_session()
 
-      params = %{"account_id" => subject.account.id}
+      params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:halt, updated_socket} =
                on_mount(:redirect_if_user_is_authenticated, params, session, socket)
 
-      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account}/dashboard"}}
+      assert updated_socket.redirected ==
+               {:redirect, %{to: ~p"/#{subject.account.slug}/dashboard"}}
     end
 
     test "doesn't redirect if there is no authenticated user", %{
@@ -398,7 +416,7 @@ defmodule Web.AuthTest do
     } do
       session = get_session(conn)
 
-      params = %{"account_id" => subject.account.id}
+      params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:cont, updated_socket} =
                on_mount(:redirect_if_user_is_authenticated, params, session, socket)

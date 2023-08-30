@@ -1,47 +1,91 @@
 //! A resource table is a custom type that allows us to store a resource under an id and possibly multiple ips or even network ranges
 use std::{collections::HashMap, net::IpAddr, ptr::NonNull};
 
+use chrono::{DateTime, Utc};
+use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use libs_common::messages::{Id, ResourceDescription};
+
+pub(crate) trait Resource {
+    fn description(&self) -> &ResourceDescription;
+}
+
+impl Resource for ResourceDescription {
+    fn description(&self) -> &ResourceDescription {
+        self
+    }
+}
+
+impl Resource for (ResourceDescription, DateTime<Utc>) {
+    fn description(&self) -> &ResourceDescription {
+        &self.0
+    }
+}
 
 // Oh boy... here we go
 /// The resource table type
 ///
 /// This is specifically crafted for our use case, so the API is particularly made for us and not generic
-pub(crate) struct ResourceTable {
-    id_table: HashMap<Id, ResourceDescription>,
-    network_table: IpNetworkTable<NonNull<ResourceDescription>>,
-    dns_name: HashMap<String, NonNull<ResourceDescription>>,
+pub(crate) struct ResourceTable<T> {
+    id_table: HashMap<Id, T>,
+    network_table: IpNetworkTable<NonNull<T>>,
+    dns_name: HashMap<String, NonNull<T>>,
 }
 
 // SAFETY: We actually hold a hashmap internally that the pointers points to
-unsafe impl Send for ResourceTable {}
+unsafe impl<T> Send for ResourceTable<T> {}
 // SAFETY: we don't allow interior mutability of the pointers we hold, in fact we don't allow ANY mutability!
 // (this is part of the reason why the API is so limiting, it is easier to reason about.
-unsafe impl Sync for ResourceTable {}
+unsafe impl<T> Sync for ResourceTable<T> {}
 
-impl Default for ResourceTable {
-    fn default() -> ResourceTable {
+impl<T> Default for ResourceTable<T> {
+    fn default() -> ResourceTable<T> {
         ResourceTable::new()
     }
 }
 
-impl ResourceTable {
+impl<T> ResourceTable<T> {
     /// Creates a new `ResourceTable`
-    pub fn new() -> ResourceTable {
+    pub fn new() -> ResourceTable<T> {
         ResourceTable {
             network_table: IpNetworkTable::new(),
             id_table: HashMap::new(),
             dns_name: HashMap::new(),
         }
     }
+}
 
-    pub fn values(&self) -> impl Iterator<Item = &ResourceDescription> {
+impl<T> ResourceTable<T>
+where
+    T: Resource + Clone,
+{
+    pub fn values(&self) -> impl Iterator<Item = &T> {
         self.id_table.values()
     }
 
+    pub fn network_resources(&self) -> HashMap<IpNetwork, T> {
+        // Safety: Due to internal consistency, since the value is stored the reference should be valid
+        self.network_table
+            .iter()
+            .map(|(wg_ip, res)| (wg_ip, unsafe { res.as_ref() }.clone()))
+            .collect()
+    }
+
+    pub fn dns_resources(&self) -> HashMap<String, T> {
+        // Safety: Due to internal consistency, since the value is stored the reference should be valid
+        self.dns_name
+            .iter()
+            .map(|(name, res)| (name.clone(), unsafe { res.as_ref() }.clone()))
+            .collect()
+    }
+
+    /// Tells you if it's empty
+    pub fn is_empty(&self) -> bool {
+        self.id_table.is_empty()
+    }
+
     /// Gets the resource by ip
-    pub fn get_by_ip(&self, ip: impl Into<IpAddr>) -> Option<&ResourceDescription> {
+    pub fn get_by_ip(&self, ip: impl Into<IpAddr>) -> Option<&T> {
         // SAFETY: if we found the pointer, due to our internal consistency rules it is in the id_table
         self.network_table
             .longest_match(ip)
@@ -49,12 +93,12 @@ impl ResourceTable {
     }
 
     /// Gets the resource by id
-    pub fn get_by_id(&self, id: &Id) -> Option<&ResourceDescription> {
+    pub fn get_by_id(&self, id: &Id) -> Option<&T> {
         self.id_table.get(id)
     }
 
     /// Gets the resource by name
-    pub fn get_by_name(&self, name: impl AsRef<str>) -> Option<&ResourceDescription> {
+    pub fn get_by_name(&self, name: impl AsRef<str>) -> Option<&T> {
         // SAFETY: if we found the pointer, due to our internal consistency rules it is in the id_table
         self.dns_name
             .get(name.as_ref())
@@ -62,10 +106,10 @@ impl ResourceTable {
     }
 
     // SAFETY: resource_description must still be in storage since we are going to reference it.
-    unsafe fn remove_resource(&mut self, resource_description: NonNull<ResourceDescription>) {
+    unsafe fn remove_resource(&mut self, resource_description: NonNull<T>) {
         let id = {
             let res = resource_description.as_ref();
-            match res {
+            match res.description() {
                 ResourceDescription::Dns(r) => {
                     self.dns_name.remove(&r.address);
                     self.network_table.remove(r.ipv4);
@@ -81,8 +125,8 @@ impl ResourceTable {
         self.id_table.remove(&id);
     }
 
-    fn cleanup_resource(&mut self, resource_description: &ResourceDescription) {
-        match resource_description {
+    pub(crate) fn cleanup_resource(&mut self, resource_description: &T) {
+        match resource_description.description() {
             ResourceDescription::Dns(r) => {
                 if let Some(res) = self.id_table.get(&r.id) {
                     // SAFETY: We are consistent that if the item exists on any of the containers it still exists in the storage
@@ -143,13 +187,13 @@ impl ResourceTable {
     /// This means that a match in IP or dns name will discard all old values.
     ///
     /// This is done so that we don't have dangling values.
-    pub fn insert(&mut self, resource_description: ResourceDescription) {
+    pub fn insert(&mut self, resource_description: T) {
         self.cleanup_resource(&resource_description);
-        let id = resource_description.id();
+        let id = resource_description.description().id();
         self.id_table.insert(id, resource_description);
         // we just inserted it we can unwrap
         let res = self.id_table.get(&id).unwrap();
-        match res {
+        match res.description() {
             ResourceDescription::Dns(r) => {
                 self.network_table.insert(r.ipv4, res.into());
                 self.network_table.insert(r.ipv6, res.into());
@@ -162,6 +206,10 @@ impl ResourceTable {
     }
 
     pub fn resource_list(&self) -> Vec<ResourceDescription> {
-        self.id_table.values().cloned().collect()
+        self.id_table
+            .values()
+            .map(|r| r.description())
+            .cloned()
+            .collect()
     }
 }

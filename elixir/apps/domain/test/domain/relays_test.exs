@@ -474,8 +474,17 @@ defmodule Domain.RelaysTest do
       RelaysFixtures.create_relay(account: account)
       RelaysFixtures.create_relay()
 
+      group = RelaysFixtures.create_global_group()
+      relay = RelaysFixtures.create_relay(group: group)
+
       assert {:ok, relays} = list_relays(subject)
-      assert length(relays) == 2
+      assert length(relays) == 3
+      refute Enum.any?(relays, & &1.online?)
+
+      :ok = connect_relay(relay, Ecto.UUID.generate())
+      assert {:ok, relays} = list_relays(subject)
+      assert length(relays) == 3
+      assert Enum.any?(relays, & &1.online?)
     end
 
     test "returns error when subject has no permission to manage relays", %{
@@ -627,6 +636,40 @@ defmodule Domain.RelaysTest do
       token: token
     } do
       relay = RelaysFixtures.create_relay(token: token)
+
+      attrs =
+        RelaysFixtures.relay_attrs(
+          ipv4: relay.ipv4,
+          last_seen_remote_ip: relay.ipv4,
+          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+        )
+
+      assert {:ok, updated_relay} = upsert_relay(token, attrs)
+
+      assert Repo.aggregate(Relays.Relay, :count, :id) == 1
+
+      assert updated_relay.last_seen_remote_ip.address == attrs.last_seen_remote_ip.address
+      assert updated_relay.last_seen_user_agent == attrs.last_seen_user_agent
+      assert updated_relay.last_seen_user_agent != relay.last_seen_user_agent
+      assert updated_relay.last_seen_version == "0.7.411"
+      assert updated_relay.last_seen_at
+      assert updated_relay.last_seen_at != relay.last_seen_at
+
+      assert updated_relay.token_id == token.id
+      assert updated_relay.group_id == token.group_id
+
+      assert updated_relay.ipv4 == relay.ipv4
+      assert updated_relay.ipv6.address == attrs.ipv6
+      assert updated_relay.ipv6 != relay.ipv6
+      assert updated_relay.port == 3478
+
+      assert Repo.aggregate(Domain.Network.Address, :count) == 0
+    end
+
+    test "updates global relay when it already exists" do
+      group = RelaysFixtures.create_global_group()
+      token = hd(group.tokens)
+      relay = RelaysFixtures.create_relay(group: group, token: token)
 
       attrs =
         RelaysFixtures.relay_attrs(

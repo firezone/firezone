@@ -55,20 +55,21 @@ final class WelcomeViewModel: ObservableObject {
 
     defer { bindDestination() }
 
-    if settingsClient.fetchSettings()?.portalURL == nil {
+    if settingsClient.fetchSettings()?.teamId == nil {
       destination = .undefinedSettingsAlert(.undefinedSettings)
     }
 
-    appStore.auth.$token
+    appStore.auth.$loginStatus
       .receive(on: mainQueue)
-      .sink(receiveValue: { [weak self] token in
+      .sink(receiveValue: { [weak self] loginStatus in
         guard let self else {
           return
         }
 
-        if token != nil {
+        switch loginStatus {
+        case .signedIn:
           self.state = .authenticated(MainViewModel(appStore: self.appStore))
-        } else {
+        default:
           self.state = .unauthenticated(AuthViewModel())
         }
       })

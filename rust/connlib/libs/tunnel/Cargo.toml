@@ -5,11 +5,10 @@ edition = "2021"
 
 [dependencies]
 async-trait = { version = "0.1", default-features = false }
-tokio = { version = "1.27", default-features = false, features = ["rt", "rt-multi-thread", "sync"] }
+tokio = { version = "1.32", default-features = false, features = ["rt", "rt-multi-thread", "sync"] }
 thiserror = { version = "1.0", default-features = false }
 rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
-serde_json = { version = "1.0", default-features = false, features = ["std"] }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
@@ -23,21 +22,23 @@ ip_network_table = { version = "0.2", default-features = false }
 domain = "0.8"
 boringtun = { workspace = true }
 chrono = { workspace = true }
-pnet_packet = { version = "0.33" }
+pnet_packet = { version = "0.34" }
 
 # TODO: research replacing for https://github.com/algesten/str0m
 webrtc = { version = "0.8" }
 
+# Needed for Android logging until tracing is fixed
+log = "0.4"
+
 # Linux tunnel dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
 netlink-packet-route = { version = "0.15", default-features = false }
-netlink-packet-core = { version = "0.5", default-features = false }
+netlink-packet-core = { version = "0.7", default-features = false }
 rtnetlink = { version = "0.12", default-features = false, features = ["tokio_socket"] }
 
 # Android tunnel dependencies
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.13"
-log = "0.4.14"
 
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]

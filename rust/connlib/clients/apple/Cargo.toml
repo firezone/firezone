@@ -7,16 +7,21 @@ edition = "2021"
 mock = ["firezone-client-connlib/mock"]
 
 [build-dependencies]
-anyhow = "1.0.72"
+anyhow = "1.0.75"
 diva = "0.1.0"
 swift-bridge-build = "0.1.52"
 walkdir = "2.3.3"
 
 [dependencies]
+ip_network = "0.4"
 libc = "0.2"
 swift-bridge = { workspace = true }
 firezone-client-connlib = { path = "../../libs/client" }
 serde_json = "1"
+tracing = "0.1"
+# TODO: https://github.com/Absolucy/tracing-oslog/pull/9
+tracing-oslog = { git = "https://github.com/sbag13/tracing-oslog", rev = "0f82b8051c65de86191e1350afc7a26d5c670c29" }
+tracing-subscriber = "0.3"
 
 [lib]
 name = "connlib"

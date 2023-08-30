@@ -19,99 +19,126 @@ defmodule Web.AuthController do
   @doc """
   This is a callback for the UserPass provider which checks login and password to authenticate the user.
   """
-  def verify_credentials(conn, %{
-        "account_id" => account_id,
-        "provider_id" => provider_id,
-        "userpass" => %{
-          "provider_identifier" => provider_identifier,
-          "secret" => secret
-        }
-      }) do
+  def verify_credentials(
+        conn,
+        %{
+          "account_id_or_slug" => account_id_or_slug,
+          "provider_id" => provider_id,
+          "userpass" => %{
+            "provider_identifier" => provider_identifier,
+            "secret" => secret
+          }
+        } = params
+      ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-         {:ok, subject} <- Web.Auth.sign_in(conn, provider, provider_identifier, secret) do
-      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
-
-      conn
-      |> Web.Auth.renew_session()
-      |> Web.Auth.put_subject_in_session(subject)
-      |> delete_session(:user_return_to)
-      |> redirect(to: redirect_to)
+         {:ok, subject} <-
+           Domain.Auth.sign_in(
+             provider,
+             provider_identifier,
+             secret,
+             conn.assigns.user_agent,
+             conn.remote_ip
+           ) do
+      client_platform = params["client_platform"]
+      client_csrf_token = params["client_csrf_token"]
+      Web.Auth.signed_in_redirect(conn, subject, client_platform, client_csrf_token)
     else
       {:error, :not_found} ->
         conn
         |> put_flash(:userpass_provider_identifier, String.slice(provider_identifier, 0, 160))
         |> put_flash(:error, "You can not use this method to sign in.")
-        |> redirect(to: "/#{account_id}/sign_in")
-
-      {:error, :invalid_actor_type} ->
-        conn
-        |> put_flash(:info, "Please use client application to access Firezone.")
-        |> redirect(to: ~p"/#{account_id}")
+        |> redirect(to: "/#{account_id_or_slug}/sign_in")
 
       {:error, _reason} ->
         conn
         |> put_flash(:userpass_provider_identifier, String.slice(provider_identifier, 0, 160))
         |> put_flash(:error, "Invalid username or password.")
-        |> redirect(to: "/#{account_id}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}/sign_in")
     end
   end
 
   @doc """
   This is a callback for the Email provider which sends login link.
   """
-  def request_magic_link(conn, %{
-        "account_id" => account_id,
-        "provider_id" => provider_id,
-        "email" => %{
-          "provider_identifier" => provider_identifier
-        }
-      }) do
+  def request_magic_link(
+        conn,
+        %{
+          "account_id_or_slug" => account_id_or_slug,
+          "provider_id" => provider_id,
+          "email" => %{
+            "provider_identifier" => provider_identifier
+          }
+        } = params
+      ) do
     _ =
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
            {:ok, identity} <-
              Domain.Auth.fetch_identity_by_provider_and_identifier(provider, provider_identifier),
            {:ok, identity} <- Domain.Auth.Adapters.Email.request_sign_in_token(identity) do
-        Web.Mailer.AuthEmail.sign_in_link_email(identity)
+        sign_in_link_params = Map.take(params, ["client_platform", "client_csrf_token"])
+
+        Web.Mailer.AuthEmail.sign_in_link_email(identity, sign_in_link_params)
         |> Web.Mailer.deliver()
       end
 
-    redirect(conn, to: "/#{account_id}/sign_in/providers/email/#{provider_id}")
+    redirect_params =
+      Map.take(params, ["client_platform"])
+      |> Map.merge(%{"provider_identifier" => provider_identifier})
+
+    conn
+    |> maybe_put_resent_flash(params)
+    |> put_session(:client_platform, params["client_platform"])
+    |> put_session(:client_csrf_token, params["client_csrf_token"])
+    |> redirect(
+      to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}?#{redirect_params}"
+    )
   end
+
+  defp maybe_put_resent_flash(conn, %{"resend" => "true"}),
+    do: put_flash(conn, :info, "Email was resent.")
+
+  defp maybe_put_resent_flash(conn, _params),
+    do: conn
 
   @doc """
   This is a callback for the Email provider which handles both form submission and redirect login link
   to authenticate a user.
   """
-  def verify_sign_in_token(conn, %{
-        "account_id" => account_id,
-        "provider_id" => provider_id,
-        "identity_id" => identity_id,
-        "secret" => secret
-      }) do
+  def verify_sign_in_token(
+        conn,
+        %{
+          "account_id_or_slug" => account_id_or_slug,
+          "provider_id" => provider_id,
+          "identity_id" => identity_id,
+          "secret" => secret
+        } = params
+      ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-         {:ok, subject} <- Web.Auth.sign_in(conn, provider, identity_id, secret) do
-      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
+         {:ok, subject} <-
+           Domain.Auth.sign_in(
+             provider,
+             identity_id,
+             secret,
+             conn.assigns.user_agent,
+             conn.remote_ip
+           ) do
+      client_platform = get_session(conn, :client_platform) || params["client_platform"]
+      client_csrf_token = get_session(conn, :client_csrf_token) || params["client_csrf_token"]
 
       conn
-      |> Web.Auth.renew_session()
-      |> Web.Auth.put_subject_in_session(subject)
-      |> delete_session(:user_return_to)
-      |> redirect(to: redirect_to)
+      |> delete_session(:client_platform)
+      |> delete_session(:client_csrf_token)
+      |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
     else
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "You can not use this method to sign in.")
-        |> redirect(to: "/#{account_id}/sign_in")
-
-      {:error, :invalid_actor_type} ->
-        conn
-        |> put_flash(:info, "Please use client application to access Firezone.")
-        |> redirect(to: ~p"/#{account_id}")
+        |> redirect(to: "/#{account_id_or_slug}/sign_in")
 
       {:error, _reason} ->
         conn
         |> put_flash(:error, "The sign in link is invalid or expired.")
-        |> redirect(to: "/#{account_id}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}/sign_in")
     end
   end
 
@@ -119,8 +146,17 @@ defmodule Web.AuthController do
   This controller redirects user to IdP during sign in for authentication while persisting
   verification state to prevent various attacks on OpenID Connect.
   """
-  def redirect_to_idp(conn, %{"account_id" => account_id, "provider_id" => provider_id}) do
+  def redirect_to_idp(
+        conn,
+        %{
+          "account_id_or_slug" => account_id_or_slug,
+          "provider_id" => provider_id
+        } = params
+      ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
+      conn = put_session(conn, :client_platform, params["client_platform"])
+      conn = put_session(conn, :client_csrf_token, params["client_csrf_token"])
+
       redirect_url =
         url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
 
@@ -129,7 +165,7 @@ defmodule Web.AuthController do
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "You can not use this method to sign in.")
-        |> redirect(to: "/#{account_id}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}/sign_in")
     end
   end
 
@@ -149,48 +185,44 @@ defmodule Web.AuthController do
   This controller handles IdP redirect back to the Firezone when user signs in.
   """
   def handle_idp_callback(conn, %{
-        "account_id" => account_id,
+        "account_id_or_slug" => account_id_or_slug,
         "provider_id" => provider_id,
         "state" => state,
         "code" => code
       }) do
     with {:ok, code_verifier, conn} <- verify_state_and_fetch_verifier(conn, provider_id, state) do
       payload = {
-        url(~p"/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"),
+        url(~p"/#{account_id_or_slug}/sign_in/providers/#{provider_id}/handle_callback"),
         code_verifier,
         code
       }
 
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-           {:ok, subject} <- Web.Auth.sign_in(conn, provider, payload) do
-        redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
+           {:ok, subject} <-
+             Domain.Auth.sign_in(provider, payload, conn.assigns.user_agent, conn.remote_ip) do
+        client_platform = get_session(conn, :client_platform)
+        client_csrf_token = get_session(conn, :client_csrf_token)
 
         conn
-        |> Web.Auth.renew_session()
-        |> Web.Auth.put_subject_in_session(subject)
-        |> delete_session(:user_return_to)
-        |> redirect(to: redirect_to)
+        |> delete_session(:client_platform)
+        |> delete_session(:client_csrf_token)
+        |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
       else
         {:error, :not_found} ->
           conn
           |> put_flash(:error, "You can not use this method to sign in.")
-          |> redirect(to: "/#{account_id}/sign_in")
-
-        {:error, :invalid_actor_type} ->
-          conn
-          |> put_flash(:info, "Please use client application to access Firezone.")
-          |> redirect(to: ~p"/#{account_id}")
+          |> redirect(to: "/#{account_id_or_slug}/sign_in")
 
         {:error, _reason} ->
           conn
           |> put_flash(:error, "You can not authenticate to this account.")
-          |> redirect(to: "/#{account_id}/sign_in")
+          |> redirect(to: "/#{account_id_or_slug}/sign_in")
       end
     else
       {:error, :invalid_state, conn} ->
         conn
         |> put_flash(:error, "Your session has expired, please try again.")
-        |> redirect(to: "/#{account_id}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}/sign_in")
     end
   end
 
@@ -211,9 +243,9 @@ defmodule Web.AuthController do
     @state_cookie_key_prefix <> provider_id
   end
 
-  def sign_out(conn, %{"account_id" => account_id}) do
+  def sign_out(conn, %{"account_id_or_slug" => account_id_or_slug}) do
     conn
     |> Auth.sign_out()
-    |> redirect(to: ~p"/#{account_id}/sign_in")
+    |> redirect(to: ~p"/#{account_id_or_slug}/sign_in")
   end
 end

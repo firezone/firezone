@@ -7,6 +7,8 @@ plugins {
     id "kotlin-parcelize"
     id "androidx.navigation.safeargs"
     id "com.google.android.libraries.mapsplatform.secrets-gradle-plugin"
+    id 'com.google.gms.google-services'
+    id "com.google.firebase.crashlytics"
 }
 
 android {
@@ -28,18 +30,30 @@ android {
         debug {
             debuggable true
 
+            def localProperties = new Properties()
+            localProperties.load(new FileInputStream(rootProject.file("local.properties")))
+            buildConfigField("String", "TOKEN", "\"${localProperties.getProperty("token")}\"")
+
             // Debug Config
             manifestPlaceholders.hostName = "app.firez.one"
-            buildConfigField("String", "AUTH_DEST", "\"app.firez.one\"")
+            buildConfigField("String", "AUTH_HOST", "\"app.firez.one\"")
+            buildConfigField("String", "AUTH_SCHEME", "\"https\"")
+            buildConfigField("Integer", "AUTH_PORT", "443")
+            buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firez.one/\"")
 
             resValue "string", "app_name", "\"Firezone (Dev)\""
         }
         release {
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
 
+            buildConfigField("String", "TOKEN", "null")
+
             // Release Config
             manifestPlaceholders.hostName = "app.firezone.dev"
-            buildConfigField("String", "AUTH_DEST", "\"app.firezone.dev\"")
+            buildConfigField("String", "AUTH_HOST", "\"app.firezone.dev\"")
+            buildConfigField("String", "AUTH_SCHEME", "\"https\"")
+            buildConfigField("Integer", "AUTH_PORT", "443")
+            buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firezone.dev/\"")
 
             resValue "string", "app_name", "\"Firezone\""
 
@@ -100,13 +114,10 @@ dependencies {
 
     // Moshi
     implementation "com.squareup.moshi:moshi-kotlin:1.12.0"
+    implementation 'com.squareup.moshi:moshi:1.12.0'
 
     // Gson
     implementation "com.google.code.gson:gson:2.9.0"
-
-    // Deep Link
-    implementation "com.airbnb:deeplinkdispatch:6.1.0"
-    kapt "com.airbnb:deeplinkdispatch-processor:6.1.0"
 
     // Security
     implementation "androidx.security:security-crypto:1.1.0-alpha05"
@@ -116,4 +127,13 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:1.1.5"
 
     implementation 'androidx.browser:browser:1.5.0'
+
+    // Import the BoM for the Firebase platform
+    implementation(platform("com.google.firebase:firebase-bom:32.2.2"))
+
+    // Add the dependencies for the Crashlytics and Analytics libraries
+    // When using the BoM, you don't specify versions in Firebase library dependencies
+    implementation("com.google.firebase:firebase-crashlytics-ktx")
+    implementation("com.google.firebase:firebase-analytics-ktx")
+    implementation("com.google.firebase:firebase-installations-ktx")
 }

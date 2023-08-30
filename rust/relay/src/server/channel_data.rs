@@ -1,6 +1,8 @@
 use bytes::{BufMut, BytesMut};
 use std::io;
 
+const HEADER_LEN: usize = 4;
+
 #[derive(Debug, PartialEq)]
 pub struct ChannelData<'a> {
     channel: u16,
@@ -9,14 +11,16 @@ pub struct ChannelData<'a> {
 
 impl<'a> ChannelData<'a> {
     pub fn parse(data: &'a [u8]) -> Result<Self, io::Error> {
-        if data.len() < 4 {
+        if data.len() < HEADER_LEN {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "channel data messages are at least 4 bytes long",
             ));
         }
 
-        let channel_number = u16::from_be_bytes([data[0], data[1]]);
+        let (header, payload) = data.split_at(HEADER_LEN);
+
+        let channel_number = u16::from_be_bytes([header[0], header[1]]);
         if !(0x4000..=0x7FFF).contains(&channel_number) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -24,39 +28,33 @@ impl<'a> ChannelData<'a> {
             ));
         }
 
-        let length = u16::from_be_bytes([data[2], data[3]]);
+        let length = u16::from_be_bytes([header[2], header[3]]) as usize;
 
-        let actual_payload_length = data.len() - 4;
-
-        if actual_payload_length != length as usize {
+        if payload.len() < length {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!(
-                    "channel data message specified {length} bytes but got {actual_payload_length}"
+                    "channel data message specified {length} bytes but the payload is only {} bytes", payload.len()
                 ),
             ));
         }
 
         Ok(ChannelData {
             channel: channel_number,
-            data: &data[4..],
+            data: &payload[..length],
         })
     }
 
     pub fn new(channel: u16, data: &'a [u8]) -> Self {
         debug_assert!(channel > 0x400);
         debug_assert!(channel < 0x7FFF);
+        debug_assert!(data.len() <= u16::MAX as usize);
         ChannelData { channel, data }
     }
 
+    // Panics if self.data.len() > u16::MAX
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut message = BytesMut::with_capacity(2 + 2 + self.data.len());
-
-        message.put_slice(&self.channel.to_be_bytes());
-        message.put_u16(self.data.len() as u16);
-        message.put_slice(self.data);
-
-        message.freeze().into()
+        to_bytes(self.channel, self.data.len() as u16, self.data)
     }
 
     pub fn channel(&self) -> u16 {
@@ -66,6 +64,16 @@ impl<'a> ChannelData<'a> {
     pub fn data(&self) -> &[u8] {
         self.data
     }
+}
+
+fn to_bytes(channel: u16, len: u16, payload: &[u8]) -> Vec<u8> {
+    let mut message = BytesMut::with_capacity(HEADER_LEN + (len as usize));
+
+    message.put_u16(channel);
+    message.put_u16(len);
+    message.put_slice(payload);
+
+    message.freeze().into()
 }
 
 #[cfg(all(test, feature = "proptest"))]
@@ -84,5 +92,17 @@ mod tests {
         let parsed = ChannelData::parse(&encoded).unwrap();
 
         assert_eq!(channel_data, parsed)
+    }
+
+    #[test_strategy::proptest]
+    fn channel_data_decoding(
+        #[strategy(crate::proptest::channel_number())] channel: ChannelNumber,
+        #[strategy(crate::proptest::channel_payload())] payload: (Vec<u8>, usize),
+    ) {
+        let encoded = to_bytes(channel.value(), payload.1 as u16, &payload.0);
+        let parsed = ChannelData::parse(&encoded).unwrap();
+
+        assert_eq!(channel.value(), parsed.channel);
+        assert_eq!(&payload.0[..payload.1], parsed.data)
     }
 }

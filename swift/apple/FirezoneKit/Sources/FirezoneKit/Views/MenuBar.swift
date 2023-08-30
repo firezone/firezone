@@ -11,6 +11,7 @@
   import Dependencies
   import OSLog
   import SwiftUI
+  import NetworkExtension
 
   @MainActor
 public final class MenuBar: NSObject {
@@ -29,10 +30,22 @@ public final class MenuBar: NSObject {
     private var isMenuVisible = false {
       didSet { handleMenuVisibilityOrStatusChanged() }
     }
-    private lazy var disconnectedIcon = NSImage(named: "MenuBarIconDisconnected")
-    private lazy var connectedIcon = NSImage(named: "MenuBarIconConnected")
+    private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
+    private lazy var signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
+    private lazy var signedInNotConnectedIcon = NSImage(named: "MenuBarIconSignedInNotConnected")
+
+    private lazy var connectingAnimationImages = [
+      NSImage(named: "MenuBarIconConnecting1"),
+      NSImage(named: "MenuBarIconConnecting2"),
+      NSImage(named: "MenuBarIconConnecting3"),
+    ]
+    private var connectingAnimationImageIndex: Int = 0
+    private var connectingAnimationTimer: Timer?
 
     let settingsViewModel: SettingsViewModel
+    private var loginStatus: AuthStore.LoginStatus = .signedOut
+    private var tunnelStatus: NEVPNStatus = .invalid
+
 
     public init(settingsViewModel: SettingsViewModel) {
       self.settingsViewModel = settingsViewModel
@@ -47,41 +60,33 @@ public final class MenuBar: NSObject {
       createMenu()
 
       if let button = statusItem.button {
-        button.image = disconnectedIcon
+        button.image = signedOutIcon
       }
 
       Task {
         let tunnel = try await TunnelStore.loadOrCreate()
         self.appStore = AppStore(tunnelStore: TunnelStore(tunnel: tunnel))
+        updateStatusItemIcon()
       }
     }
 
     private func setupObservers() {
-      appStore?.auth.$token
+      appStore?.auth.$loginStatus
         .receive(on: mainQueue)
-        .sink { [weak self] token in
-          if let token {
-            self?.showLoggedIn(token.user)
-          } else {
-            self?.showLoggedOut()
-          }
+        .sink { [weak self] loginStatus in
+          self?.loginStatus = loginStatus
+          self?.updateStatusItemIcon()
+          self?.handleLoginOrTunnelStatusChanged()
         }
         .store(in: &cancellables)
 
       appStore?.tunnel.$status
         .receive(on: mainQueue)
         .sink { [weak self] status in
-          if status == .connected {
-            self?.connectionMenuItem.title = "Disconnect"
-            self?.statusItem.button?.image = self?.connectedIcon
-          } else {
-            self?.connectionMenuItem.title = "Connect"
-            self?.statusItem.button?.image = self?.disconnectedIcon
-          }
+          self?.tunnelStatus = status
+          self?.updateStatusItemIcon()
+          self?.handleLoginOrTunnelStatusChanged()
           self?.handleMenuVisibilityOrStatusChanged()
-          if status != .connected {
-            self?.setOrderedResources([])
-          }
         }
         .store(in: &cancellables)
 
@@ -96,24 +101,16 @@ public final class MenuBar: NSObject {
 
     private lazy var menu = NSMenu()
 
-    private lazy var connectionMenuItem = createMenuItem(
+    private lazy var signInMenuItem = createMenuItem(
       menu,
-      title: "Connect",
-      action: #selector(connectButtonTapped),
-      isHidden: true,
+      title: "Sign in",
+      action: #selector(signInButtonTapped),
       target: self
     )
-
-    private lazy var loginMenuItem = createMenuItem(
+    private lazy var signOutMenuItem = createMenuItem(
       menu,
-      title: "Login",
-      action: #selector(loginButtonTapped),
-      target: self
-    )
-    private lazy var logoutMenuItem = createMenuItem(
-      menu,
-      title: "Logout",
-      action: #selector(logoutButtonTapped),
+      title: "Sign out",
+      action: #selector(signOutButtonTapped),
       isHidden: true,
       target: self
     )
@@ -121,16 +118,36 @@ public final class MenuBar: NSObject {
       menu,
       title: "No Resources",
       action: nil,
-      isHidden: false,
+      isHidden: true,
+      target: self
+    )
+    private lazy var resourcesUnavailableMenuItem = createMenuItem(
+      menu,
+      title: "Resources unavailable",
+      action: nil,
+      isHidden: true,
+      target: self
+    )
+    private lazy var resourcesUnavailableReasonMenuItem = createMenuItem(
+      menu,
+      title: "",
+      action: #selector(reconnectButtonTapped),
+      isHidden: true,
       target: self
     )
     private lazy var resourcesSeparatorMenuItem = NSMenuItem.separator()
-    private lazy var aboutMenuItem = createMenuItem(
-      menu,
-      title: "About",
-      action: #selector(aboutButtonTapped),
-      target: self
-    )
+    private lazy var aboutMenuItem: NSMenuItem = {
+      let menuItem = createMenuItem(
+        menu,
+        title: "About",
+        action: #selector(aboutButtonTapped),
+        target: self
+      )
+      if let appName = Bundle.main.infoDictionary?[kCFBundleNameKey as String] as? String {
+        menuItem.title = "About \(appName)"
+      }
+      return menuItem
+    }()
     private lazy var settingsMenuItem = createMenuItem(
       menu,
       title: "Settings",
@@ -152,12 +169,13 @@ public final class MenuBar: NSObject {
     }()
 
     private func createMenu() {
-      menu.addItem(connectionMenuItem)
-      menu.addItem(loginMenuItem)
-      menu.addItem(logoutMenuItem)
+      menu.addItem(signInMenuItem)
+      menu.addItem(signOutMenuItem)
       menu.addItem(NSMenuItem.separator())
 
       menu.addItem(resourcesTitleMenuItem)
+      menu.addItem(resourcesUnavailableMenuItem)
+      menu.addItem(resourcesUnavailableReasonMenuItem)
       menu.addItem(resourcesSeparatorMenuItem)
 
       menu.addItem(aboutMenuItem)
@@ -186,44 +204,24 @@ public final class MenuBar: NSObject {
       return item
     }
 
-    private func showLoggedIn(_ user: String?) {
-      if let user {
-        loginMenuItem.title = "Logged in as \(user)"
-      } else {
-        loginMenuItem.title = "Logged in"
-      }
-      loginMenuItem.target = nil
-      logoutMenuItem.isHidden = false
-    }
-
-    private func showLoggedOut() {
-      loginMenuItem.title = "Login"
-      loginMenuItem.target = self
-
-      logoutMenuItem.isHidden = true
-    }
-
-    @objc private func connectButtonTapped() {
-      if appStore?.tunnel.status == .connected {
-        appStore?.tunnel.stop()
-      } else {
-        Task {
-          if let token = appStore?.auth.token {
-            do {
-              try await appStore?.tunnel.start(token: token)
-            } catch {
-              logger.error("error connecting to tunnel: \(String(describing: error))")
-            }
+    @objc private func reconnectButtonTapped() {
+      Task {
+        if case .signedIn(let authResponse) = appStore?.auth.loginStatus {
+          do {
+            try await appStore?.tunnel.start(authResponse: authResponse)
+          } catch {
+            logger.error("error connecting to tunnel: \(String(describing: error)) -- signing out")
+            appStore?.auth.signOut()
           }
         }
       }
     }
 
-    @objc private func loginButtonTapped() {
+    @objc private func signInButtonTapped() {
       Task {
         do {
           try await appStore?.auth.signIn()
-        } catch FirezoneError.missingPortalURL {
+        } catch FirezoneError.missingTeamId {
           openSettingsWindow()
         } catch {
           logger.error("Error signing in: \(String(describing: error))")
@@ -231,7 +229,7 @@ public final class MenuBar: NSObject {
       }
     }
 
-    @objc private func logoutButtonTapped() {
+    @objc private func signOutButtonTapped() {
       appStore?.auth.signOut()
     }
 
@@ -248,6 +246,129 @@ public final class MenuBar: NSObject {
       NSWorkspace.shared.open(URL(string: "firezone://settings")!)
     }
 
+    private func updateStatusItemIcon() {
+      self.statusItem.button?.image = {
+        switch self.loginStatus {
+          case .signedOut, .uninitialized:
+            return self.signedOutIcon
+          case .signedIn:
+            switch self.tunnelStatus {
+              case .invalid, .disconnected, .reasserting:
+                return self.signedInNotConnectedIcon
+              case .connected:
+                return self.signedInConnectedIcon
+              case .connecting, .disconnecting:
+                return self.connectingAnimationImages.last!
+              @unknown default:
+                return nil
+            }
+        }
+      }()
+      if self.tunnelStatus == .connecting || self.tunnelStatus == .disconnecting {
+        self.startConnectingAnimation()
+      } else {
+        self.stopConnectingAnimation()
+      }
+    }
+
+    private func startConnectingAnimation() {
+      guard connectingAnimationTimer == nil else { return }
+      let timer = Timer(timeInterval: 0.40, repeats: true) { [weak self] _ in
+        guard let self = self else { return }
+        Task {
+          await self.connectingAnimationShowNextFrame()
+        }
+      }
+      RunLoop.main.add(timer, forMode: .common)
+      self.connectingAnimationTimer = timer
+    }
+
+    private func stopConnectingAnimation() {
+      guard let timer = self.connectingAnimationTimer else { return }
+      timer.invalidate()
+      connectingAnimationTimer = nil
+      connectingAnimationImageIndex = 0
+    }
+
+    private func connectingAnimationShowNextFrame() async {
+      self.statusItem.button?.image = self.connectingAnimationImages[self.connectingAnimationImageIndex]
+      self.connectingAnimationImageIndex = (self.connectingAnimationImageIndex + 1) % self.connectingAnimationImages.count
+    }
+
+    private func handleLoginOrTunnelStatusChanged() {
+      // Update "Sign In" / "Sign Out" menu items
+      switch self.loginStatus {
+        case .uninitialized:
+          signInMenuItem.title = "Initializing"
+          signInMenuItem.target = nil
+          signOutMenuItem.isHidden = true
+        case .signedOut:
+          signInMenuItem.title = "Sign In"
+          signInMenuItem.target = self
+          signOutMenuItem.isHidden = true
+        case .signedIn(let authResponse):
+          signInMenuItem.title = {
+            guard let actorName = authResponse.actorName else {
+              return "Signed in"
+            }
+            return "Signed in as \(actorName)"
+          }()
+          signInMenuItem.target = nil
+          signOutMenuItem.isHidden = false
+      }
+      // Update resources "header" menu items
+      switch (self.loginStatus, self.tunnelStatus) {
+        case (.uninitialized, _):
+          resourcesTitleMenuItem.isHidden = true
+          resourcesUnavailableMenuItem.isHidden = true
+          resourcesUnavailableReasonMenuItem.isHidden = true
+          resourcesSeparatorMenuItem.isHidden = true
+        case (.signedOut, _):
+          resourcesTitleMenuItem.isHidden = true
+          resourcesUnavailableMenuItem.isHidden = true
+          resourcesUnavailableReasonMenuItem.isHidden = true
+          resourcesSeparatorMenuItem.isHidden = true
+        case (.signedIn, .connecting):
+          resourcesTitleMenuItem.isHidden = true
+          resourcesUnavailableMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.target = nil
+          resourcesUnavailableReasonMenuItem.title = "Connecting…"
+          resourcesSeparatorMenuItem.isHidden = false
+        case (.signedIn, .connected):
+          resourcesTitleMenuItem.isHidden = false
+          resourcesUnavailableMenuItem.isHidden = true
+          resourcesUnavailableReasonMenuItem.isHidden = true
+          resourcesTitleMenuItem.title = "Resources"
+          resourcesSeparatorMenuItem.isHidden = false
+        case (.signedIn, .reasserting):
+          resourcesTitleMenuItem.isHidden = true
+          resourcesUnavailableMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.target = nil
+          resourcesUnavailableReasonMenuItem.title = "No network connectivity"
+          resourcesSeparatorMenuItem.isHidden = false
+        case (.signedIn, .disconnecting):
+          resourcesTitleMenuItem.isHidden = true
+          resourcesUnavailableMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.target = nil
+          resourcesUnavailableReasonMenuItem.title = "Disconnecting…"
+          resourcesSeparatorMenuItem.isHidden = false
+        case (.signedIn, _):
+          // Ideally, this shouldn't happen, but it's better
+          // we handle this case, so that in case connlib errors out,
+          // the user is able to try to reconnect.
+          resourcesTitleMenuItem.isHidden = true
+          resourcesUnavailableMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.target = self
+          resourcesUnavailableReasonMenuItem.isEnabled = true
+          resourcesUnavailableReasonMenuItem.title = "Reconnect"
+          resourcesSeparatorMenuItem.isHidden = false
+      }
+    }
+
     private func handleMenuVisibilityOrStatusChanged() {
       guard let appStore = appStore else { return }
       let status = appStore.tunnel.status
@@ -256,11 +377,14 @@ public final class MenuBar: NSObject {
       } else {
         appStore.tunnel.endUpdatingResources()
       }
-      resourcesTitleMenuItem.isHidden = (status != .connected)
-      resourcesSeparatorMenuItem.isHidden = (status != .connected)
     }
 
     private func setOrderedResources(_ newOrderedResources: [DisplayableResources.Resource]) {
+      if (resourcesTitleMenuItem.isHidden && resourcesSeparatorMenuItem.isHidden) {
+        guard newOrderedResources.isEmpty else {
+          return
+        }
+      }
       let diff = newOrderedResources.difference(
         from: self.orderedResources,
         by: { $0.name == $1.name && $0.location == $1.location }

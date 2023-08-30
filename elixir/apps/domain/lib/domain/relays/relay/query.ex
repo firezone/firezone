@@ -19,6 +19,10 @@ defmodule Domain.Relays.Relay.Query do
   end
 
   def by_account_id(queryable \\ all(), account_id) do
+    where(queryable, [relays: relays], relays.account_id == ^account_id)
+  end
+
+  def public_or_by_account_id(queryable \\ all(), account_id) do
     where(
       queryable,
       [relays: relays],

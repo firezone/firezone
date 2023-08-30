@@ -1,22 +1,22 @@
 use ip_network::IpNetwork;
 use libc::{
-    close, connect, ctl_info, fcntl, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg, sockaddr,
-    sockaddr_ctl, sockaddr_in, socket, socklen_t, AF_INET, AF_INET6, AF_SYSTEM, AF_SYS_CONTROL,
-    CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE, IPPROTO_IP, O_NONBLOCK, PF_SYSTEM, SOCK_DGRAM,
-    SOCK_STREAM, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
+    close, ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg,
+    sockaddr, sockaddr_ctl, sockaddr_in, socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO,
+    F_GETFL, F_SETFL, IF_NAMESIZE, IPPROTO_IP, O_NONBLOCK, SOCK_STREAM, SYSPROTO_CONTROL,
+    UTUN_OPT_IFNAME,
 };
-use libs_common::{Callbacks, Error, Result, DNS_SENTINEL};
+use libs_common::{CallbackErrorFacade, Callbacks, Error, Result, DNS_SENTINEL};
 use std::{
     ffi::{c_int, c_short, c_uchar},
     io,
-    mem::{size_of, size_of_val},
+    mem::size_of,
     os::fd::{AsRawFd, RawFd},
     sync::Arc,
 };
 
 use super::InterfaceConfig;
 
-const CTRL_NAME: &[u8] = b"com.apple.net.utun_control";
+const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 const SIOCGIFMTU: u64 = 0x0000_0000_c020_6933;
 
 #[derive(Debug)]
@@ -26,6 +26,8 @@ pub(crate) struct IfaceConfig(pub(crate) Arc<IfaceDevice>);
 pub(crate) struct IfaceDevice {
     fd: RawFd,
 }
+
+mod wrapped_socket;
 
 impl AsRawFd for IfaceDevice {
     fn as_raw_fd(&self) -> RawFd {
@@ -65,26 +67,6 @@ union IfrIfru {
     ifru_functional_type: u32,
 }
 
-// On Darwin tunnel can only be named utunXXX
-pub fn parse_utun_name(name: &str) -> Result<u32> {
-    if !name.starts_with("utun") {
-        return Err(Error::InvalidTunnelName);
-    }
-
-    match name.get(4..) {
-        None | Some("") => {
-            // The name is simply "utun"
-            Ok(0)
-        }
-        Some(idx) => {
-            // Everything past utun should represent an integer index
-            idx.parse::<u32>()
-                .map_err(|_| Error::InvalidTunnelName)
-                .map(|x| x + 1)
-        }
-    }
-}
-
 impl IfaceDevice {
     fn write(&self, src: &[u8], af: u8) -> usize {
         let mut hdr = [0, 0, 0, af];
@@ -115,68 +97,91 @@ impl IfaceDevice {
         }
     }
 
-    pub async fn new(name: &str) -> Result<Self> {
-        let idx = parse_utun_name(name)?;
-
-        let fd = match unsafe { socket(PF_SYSTEM, SOCK_DGRAM, SYSPROTO_CONTROL) } {
-            -1 => return Err(get_last_error()),
-            fd => fd,
-        };
-
+    pub async fn new(
+        config: &InterfaceConfig,
+        callbacks: &CallbackErrorFacade<impl Callbacks>,
+    ) -> Result<Self> {
         let mut info = ctl_info {
             ctl_id: 0,
             ctl_name: [0; 96],
         };
-        info.ctl_name[..CTRL_NAME.len()]
+        info.ctl_name[..CTL_NAME.len()]
             // SAFETY: We only care about maintaining the same byte value not the same value,
             // meaning that the slice &[u8] here is just a blob of bytes for us, we need this conversion
             // just because `c_char` is i8 (for some reason).
             // One thing I don't like about this is that `ctl_name` is actually a nul-terminated string,
             // which we are only getting because `CTRL_NAME` is less than 96 bytes long and we are 0-value
             // initializing the array we should be using a CStr to be explicit... but this is slightly easier.
-            .copy_from_slice(unsafe { &*(CTRL_NAME as *const [u8] as *const [i8]) });
+            .copy_from_slice(unsafe { &*(CTL_NAME as *const [u8] as *const [i8]) });
 
-        if unsafe { ioctl(fd, CTLIOCGINFO, &mut info as *mut ctl_info) } < 0 {
-            unsafe { close(fd) };
-            return Err(get_last_error());
+        // On Apple platforms, we must use a NetworkExtension for reading and writing
+        // packets if we want to be allowed in the iOS and macOS App Stores. This has the
+        // unfortunate side effect that we're not allowed to create or destroy the tunnel
+        // interface ourselves. The file descriptor should already be opened by the NetworkExtension for us
+        // by this point. So instead, we iterate through all file descriptors looking for the one corresponding
+        // to the utun interface we have access to read and write from.
+        //
+        // Credit to Jason Donenfeld (@zx2c4) for this technique. See NOTICE.txt for attribution.
+        // https://github.com/WireGuard/wireguard-apple/blob/master/Sources/WireGuardKit/WireGuardAdapter.swift
+        for fd in 0..1024 {
+            // initialize empty sockaddr_ctl to be populated by getpeername
+            let mut addr = sockaddr_ctl {
+                sc_len: size_of::<sockaddr_ctl>() as u8,
+                sc_family: 0,
+                ss_sysaddr: 0,
+                sc_id: info.ctl_id,
+                sc_unit: 0,
+                sc_reserved: Default::default(),
+            };
+
+            let mut len = size_of::<sockaddr_ctl>() as u32;
+            let ret = unsafe {
+                getpeername(
+                    fd,
+                    &mut addr as *mut sockaddr_ctl as _,
+                    &mut len as *mut socklen_t,
+                )
+            };
+            if ret != 0 || addr.sc_family != AF_SYSTEM as u8 {
+                continue;
+            }
+
+            if info.ctl_id == 0 {
+                let ret = unsafe { ioctl(fd, CTLIOCGINFO, &mut info as *mut ctl_info) };
+
+                if ret != 0 {
+                    continue;
+                }
+            }
+
+            if addr.sc_id == info.ctl_id {
+                let _ = callbacks.on_set_interface_config(
+                    config.ipv4,
+                    config.ipv6,
+                    DNS_SENTINEL,
+                    "system_resolver".to_string(),
+                );
+                let this = Self { fd };
+                let _ = this.set_non_blocking();
+                return Ok(this);
+            }
         }
 
-        let addr = sockaddr_ctl {
-            sc_len: size_of::<sockaddr_ctl>() as u8,
-            sc_family: AF_SYSTEM as u8,
-            ss_sysaddr: AF_SYS_CONTROL as u16,
-            sc_id: info.ctl_id,
-            sc_unit: idx,
-            sc_reserved: Default::default(),
-        };
-
-        if unsafe {
-            connect(
-                fd,
-                &addr as *const sockaddr_ctl as _,
-                size_of_val(&addr) as _,
-            )
-        } < 0
-        {
-            unsafe { close(fd) };
-            return Err(get_last_error());
-        }
-
-        Ok(Self { fd })
+        Err(get_last_error())
     }
 
-    pub fn set_non_blocking(self) -> Result<Self> {
+    fn set_non_blocking(&self) -> Result<()> {
         match unsafe { fcntl(self.fd, F_GETFL) } {
             -1 => Err(get_last_error()),
             flags => match unsafe { fcntl(self.fd, F_SETFL, flags | O_NONBLOCK) } {
                 -1 => Err(get_last_error()),
-                _ => Ok(self),
+                _ => Ok(()),
             },
         }
     }
 
     pub fn name(&self) -> Result<String> {
-        let mut tunnel_name = [0u8; 256];
+        let mut tunnel_name = [0u8; IF_NAMESIZE];
         let mut tunnel_name_len = tunnel_name.len() as socklen_t;
         if unsafe {
             getsockopt(
@@ -197,7 +202,8 @@ impl IfaceDevice {
 
     /// Get the current MTU value
     pub async fn mtu(&self) -> Result<usize> {
-        let fd = match unsafe { socket(AF_INET, SOCK_STREAM, IPPROTO_IP) } {
+        let socket = wrapped_socket::WrappedSocket::new(AF_INET, SOCK_STREAM, IPPROTO_IP);
+        let fd = match socket.as_raw_fd() {
             -1 => return Err(get_last_error()),
             fd => fd,
         };
@@ -215,8 +221,9 @@ impl IfaceDevice {
             return Err(get_last_error());
         }
 
-        unsafe { close(fd) };
+        let mtu = unsafe { ifr.ifr_ifru.ifru_mtu };
 
+        tracing::debug!("MTU for {} is {}", name, mtu);
         Ok(unsafe { ifr.ifr_ifru.ifru_mtu } as _)
     }
 
@@ -262,23 +269,16 @@ impl IfaceDevice {
 
 // So, these functions take a mutable &self, this is not necessary in theory but it's correct!
 impl IfaceConfig {
-    #[tracing::instrument(level = "trace", skip(self, callbacks))]
-    pub async fn set_iface_config(
+    pub async fn add_route(
         &mut self,
-        config: &InterfaceConfig,
-        callbacks: &impl Callbacks,
+        route: IpNetwork,
+        callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
-        callbacks.on_set_interface_config(config.ipv4, config.ipv6, DNS_SENTINEL);
-        Ok(())
-    }
-
-    pub async fn add_route(&mut self, route: &IpNetwork, callbacks: &impl Callbacks) -> Result<()> {
-        callbacks.on_add_route(serde_json::to_string(route)?);
-        Ok(())
+        callbacks.on_add_route(route)
     }
 
     pub async fn up(&mut self) -> Result<()> {
-        tracing::error!("`up` unimplemented on macOS");
+        tracing::info!("`up` unimplemented on macOS");
         Ok(())
     }
 }

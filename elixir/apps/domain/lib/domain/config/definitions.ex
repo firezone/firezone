@@ -32,6 +32,12 @@ defmodule Domain.Config.Definitions do
   alias Domain.Types
   alias Domain.Config.Logo
 
+  if Mix.env() in [:test, :dev] do
+    @local_development_adapters [Swoosh.Adapters.Local]
+  else
+    @local_development_adapters []
+  end
+
   def doc_sections do
     [
       {"WebServer",
@@ -139,10 +145,7 @@ defmodule Domain.Config.Definitions do
   @doc """
   Enable or disable requiring secure cookies. Required for HTTPS.
   """
-  defconfig(:phoenix_secure_cookies, :boolean,
-    default: true,
-    legacy_keys: [{:env, "SECURE_COOKIES", "0.9"}]
-  )
+  defconfig(:phoenix_secure_cookies, :boolean, default: true)
 
   defconfig(:phoenix_listen_address, Types.IP, default: "0.0.0.0")
 
@@ -194,8 +197,7 @@ defmodule Domain.Config.Definitions do
   from a list of possible source IPs.
   """
   defconfig(:phoenix_external_trusted_proxies, {:json_array, {:one_of, [Types.IP, Types.CIDR]}},
-    default: [],
-    legacy_keys: [{:env, "EXTERNAL_TRUSTED_PROXIES", "0.9"}]
+    default: []
   )
 
   @doc """
@@ -206,8 +208,7 @@ defmodule Domain.Config.Definitions do
   from a list of possible source IPs.
   """
   defconfig(:phoenix_private_clients, {:json_array, {:one_of, [Types.IP, Types.CIDR]}},
-    default: [],
-    legacy_keys: [{:env, "PRIVATE_CLIENTS", "0.9"}]
+    default: []
   )
 
   ##############################################
@@ -243,8 +244,7 @@ defmodule Domain.Config.Definitions do
   Size of the connection pool to the PostgreSQL database.
   """
   defconfig(:database_pool_size, :integer,
-    default: fn -> :erlang.system_info(:logical_processors_available) * 2 end,
-    legacy_keys: [{:env, "DATABASE_POOL", "0.9"}]
+    default: fn -> :erlang.system_info(:logical_processors_available) * 2 end
   )
 
   @doc """
@@ -253,10 +253,7 @@ defmodule Domain.Config.Definitions do
   If this field is set to `true`, the `database_ssl_opts` config must be set too
   with at least `cacertfile` option present.
   """
-  defconfig(:database_ssl_enabled, :boolean,
-    default: false,
-    legacy_keys: [{:env, "DATABASE_SSL", "0.9"}]
-  )
+  defconfig(:database_ssl_enabled, :boolean, default: false)
 
   @doc """
   SSL options for connecting to the PostgreSQL database.
@@ -515,26 +512,27 @@ defmodule Domain.Config.Definitions do
     :outbound_email_adapter,
     {:parameterized, Ecto.Enum,
      Ecto.Enum.init(
-       values: [
-         Swoosh.Adapters.AmazonSES,
-         Swoosh.Adapters.CustomerIO,
-         Swoosh.Adapters.Dyn,
-         Swoosh.Adapters.ExAwsAmazonSES,
-         Swoosh.Adapters.Gmail,
-         Swoosh.Adapters.MailPace,
-         Swoosh.Adapters.Mailgun,
-         Swoosh.Adapters.Mailjet,
-         Swoosh.Adapters.Mandrill,
-         Swoosh.Adapters.Postmark,
-         Swoosh.Adapters.ProtonBridge,
-         Swoosh.Adapters.SMTP,
-         Swoosh.Adapters.SMTP2GO,
-         Swoosh.Adapters.Sendgrid,
-         Swoosh.Adapters.Sendinblue,
-         Swoosh.Adapters.Sendmail,
-         Swoosh.Adapters.SocketLabs,
-         Swoosh.Adapters.SparkPost
-       ]
+       values:
+         [
+           Swoosh.Adapters.AmazonSES,
+           Swoosh.Adapters.CustomerIO,
+           Swoosh.Adapters.Dyn,
+           Swoosh.Adapters.ExAwsAmazonSES,
+           Swoosh.Adapters.Gmail,
+           Swoosh.Adapters.MailPace,
+           Swoosh.Adapters.Mailgun,
+           Swoosh.Adapters.Mailjet,
+           Swoosh.Adapters.Mandrill,
+           Swoosh.Adapters.Postmark,
+           Swoosh.Adapters.ProtonBridge,
+           Swoosh.Adapters.SMTP,
+           Swoosh.Adapters.SMTP2GO,
+           Swoosh.Adapters.Sendgrid,
+           Swoosh.Adapters.Sendinblue,
+           Swoosh.Adapters.Sendmail,
+           Swoosh.Adapters.SocketLabs,
+           Swoosh.Adapters.SparkPost
+         ] ++ @local_development_adapters
      )},
     default: nil
   )
@@ -546,7 +544,6 @@ defmodule Domain.Config.Definitions do
     # TODO: validate opts are present if adapter is not NOOP one
     default: %{},
     sensitive: true,
-    legacy_keys: [{:env, "OUTBOUND_EMAIL_CONFIGS", "0.9"}],
     dump: &Dumper.keyword/1
   )
 

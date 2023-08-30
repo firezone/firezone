@@ -358,9 +358,9 @@ defmodule Domain.Auth do
     end
   end
 
-  def sign_in(session_token, user_agent, remote_ip) when is_binary(session_token) do
+  def sign_in(token, user_agent, remote_ip) when is_binary(token) do
     with {:ok, identity, expires_at} <-
-           verify_session_token(session_token, user_agent, remote_ip) do
+           verify_token(token, user_agent, remote_ip) do
       {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
@@ -404,25 +404,37 @@ defmodule Domain.Auth do
 
   # Session
 
+  @doc """
+  This token is used to authenticate the user in the Portal UI and should be saved in user session.
+  """
   def create_session_token_from_subject(%Subject{} = subject) do
-    config = fetch_config!()
-    key_base = Keyword.fetch!(config, :key_base)
-    salt = Keyword.fetch!(config, :salt)
-    # TODO: we don't want client token to be invalid if you reconnect client from a different ip,
-    # for the clients that move between cellular towers
     # TODO: we want to show all sessions in a UI so persist them to DB
     payload = session_token_payload(subject)
-    max_age = DateTime.diff(subject.expires_at, DateTime.utc_now(), :second)
-
-    {:ok, Plug.Crypto.sign(key_base, salt, payload, max_age: max_age)}
+    sign_token(payload, subject.expires_at)
   end
 
+  @doc """
+  This token is used to authenticate the client and should be used in the Client WebSocket API.
+  """
+  def create_client_token_from_subject(%Subject{} = subject) do
+    # TODO: we want to show all sessions in a UI so persist them to DB
+    payload = client_token_payload(subject)
+    sign_token(payload, subject.expires_at)
+  end
+
+  @doc """
+  This token is used to authenticate the service account and should be used for REST API requests.
+  """
   def create_access_token_for_identity(%Identity{} = identity) do
+    payload = access_token_payload(identity)
+    {:ok, expires_at, 0} = DateTime.from_iso8601(identity.provider_state["expires_at"])
+    sign_token(payload, expires_at)
+  end
+
+  defp sign_token(payload, expires_at) do
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt)
-    payload = {:identity, identity.id, identity.provider_virtual_state.secret, :ignore}
-    {:ok, expires_at, 0} = DateTime.from_iso8601(identity.provider_state["expires_at"])
     max_age = DateTime.diff(expires_at, DateTime.utc_now(), :second)
     {:ok, Plug.Crypto.sign(key_base, salt, payload, max_age: max_age)}
   end
@@ -452,19 +464,19 @@ defmodule Domain.Auth do
     :crypto.hash(:sha256, :erlang.term_to_binary({remote_ip, user_agent}))
   end
 
-  defp verify_session_token(token, user_agent, remote_ip) do
+  defp verify_token(token, user_agent, remote_ip) do
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt)
 
     case Plug.Crypto.verify(key_base, salt, token) do
-      {:ok, payload} -> verify_session_token_payload(token, payload, user_agent, remote_ip)
+      {:ok, payload} -> verify_token_payload(token, payload, user_agent, remote_ip)
       {:error, :invalid} -> {:error, :invalid_token}
       {:error, :expired} -> {:error, :expired_token}
     end
   end
 
-  defp verify_session_token_payload(
+  defp verify_token_payload(
          _token,
          {:identity, identity_id, secret, :ignore},
          _user_agent,
@@ -482,7 +494,19 @@ defmodule Domain.Auth do
     end
   end
 
-  defp verify_session_token_payload(
+  defp verify_token_payload(
+         token,
+         {:identity, identity_id, :ignore},
+         _user_agent,
+         _remote_ip
+       ) do
+    with {:ok, identity} <- fetch_identity_by_id(identity_id),
+         {:ok, expires_at} <- fetch_session_token_expires_at(token) do
+      {:ok, identity, expires_at}
+    end
+  end
+
+  defp verify_token_payload(
          token,
          {:identity, identity_id, context_payload},
          user_agent,
@@ -500,6 +524,14 @@ defmodule Domain.Auth do
 
   defp session_token_payload(%Subject{identity: %Identity{} = identity, context: context}) do
     {:identity, identity.id, session_context_payload(context.remote_ip, context.user_agent)}
+  end
+
+  defp client_token_payload(%Subject{identity: %Identity{} = identity}) do
+    {:identity, identity.id, :ignore}
+  end
+
+  defp access_token_payload(%Identity{} = identity) do
+    {:identity, identity.id, identity.provider_virtual_state.secret, :ignore}
   end
 
   defp fetch_config! do

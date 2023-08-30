@@ -1,24 +1,29 @@
 <resources>
-    <string name="app_short_name">firezone</string>
+	<string name="app_short_name">firezone</string>
 
-    <!-- Onboarding Fragment -->
-    <string name="onboarding_fragment_header_title">Login URL</string>
-    <string name="onboarding_fragment_input_hint">Enter Login URL</string>
-    <string name="onboarding_fragment_button_text">Save</string>
+	<!-- Settings Fragment -->
+	<string name="settings_fragment_header_title">Login URL</string>
+	<string name="settings_fragment_input_hint">account-id</string>
+	<string name="settings_fragment_button_text">Save</string>
 
-    <!-- Sign In Fragment -->
-    <string name="sign_in_fragment_button_text">Sign In</string>
-    <string name="sign_in_settings_button_text">Settings</string>
-    <string name="sign_in_fragment_sign_status_text">Signed Out</string>
+	<!-- Sign In Fragment -->
+	<string name="sign_in_fragment_button_text">Sign In</string>
+	<string name="sign_in_settings_button_text">Settings</string>
+	<string name="sign_in_fragment_sign_status_text">Signed Out</string>
 
-    <!-- Sign Out Activity -->
-    <string name="sign_out_activity_status_text">Authenticated</string>
-    <string name="sign_out_activity_button_text">Sign Out</string>
+	<!-- Sign Out Activity -->
+	<string name="resources">Resources</string>
+	<string name="sign_out_activity_button_text">Sign Out</string>
 
-    <!-- Error Dialog -->
-    <string name="error_dialog_title">Error</string>
-    <string name="error_dialog_message">Ops, something went wrong. Please try again later.</string>
-    <string name="error_dialog_button_text">Ok</string>
-    <!-- Error Dialog -->
+	<!-- Error Dialog -->
+	<string name="error_dialog_title">Error</string>
+	<string name="error_dialog_message">Ops, something went wrong. Please try again later.</string>
+	<string name="error_dialog_button_text">Ok</string>
+	<string name="enable_vpn_permission">Enable VPN Permission</string>
+	<string name="vpn_permission_description">This app requires VPN permission to function effectively and provide you with a secure and private browsing experience. The VPN service encrypts your internet connection, ensuring that your data remains protected from potential threats and unauthorized access.\n\nRest assured, we highly prioritize your online privacy, and the VPN permission is solely used for providing the VPN service within the app. We do not monitor or log your online activities.\n\nTo proceed and enjoy the benefits of a secure connection, please grant the VPN permission by tapping the button below.</string>
+	<string name="request_permission">Request Permission</string>
+	<string name="enter_team_id">Enter team id</string>
+	<string name="sign_in_debug_user">Sign In (Debug User)</string>
+	<!-- Error Dialog -->
 
 </resources>

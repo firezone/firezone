@@ -26,6 +26,9 @@ jobs:
           - sdk: iphoneos
             platform: iOS
             destination: generic/platform=iOS
+          - sdk: iphonesimulator
+            platform: iOS
+            destination: generic/platform=iOS
     runs-on: macos-latest
     permissions:
       contents: read
@@ -58,4 +61,5 @@ jobs:
         working-directory: ./swift/apple
         run: |
           cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
+          cp Firezone/xcconfig/Server.xcconfig.ci Firezone/xcconfig/Server.xcconfig
           xcodebuild archive -configuration Release -scheme Firezone -sdk ${{ matrix.target.sdk }} -destination '${{ matrix.target.destination }}' CODE_SIGNING_ALLOWED=NO

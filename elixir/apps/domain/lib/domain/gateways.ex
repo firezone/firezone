@@ -1,7 +1,7 @@
 defmodule Domain.Gateways do
   use Supervisor
   alias Domain.{Repo, Auth, Validator}
-  alias Domain.Resources
+  alias Domain.{Accounts, Resources}
   alias Domain.Gateways.{Authorizer, Gateway, Group, Token, Presence}
 
   def start_link(opts) do
@@ -16,23 +16,82 @@ defmodule Domain.Gateways do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  def fetch_group_by_id(id, %Auth.Subject{} = subject) do
+  def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
          true <- Validator.valid_uuid?(id) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
       Group.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
+      |> case do
+        {:ok, group} ->
+          group =
+            group
+            |> Repo.preload(preload)
+            |> maybe_preload_online_status()
+
+          {:ok, group}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     else
       false -> {:error, :not_found}
       other -> other
     end
   end
 
-  def list_groups(%Auth.Subject{} = subject) do
+  def list_groups(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Group.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list()
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+      {:ok, groups} =
+        Group.Query.all()
+        |> Authorizer.for_subject(subject)
+        |> Repo.list()
+
+      groups =
+        groups
+        |> Repo.preload(preload)
+        |> maybe_preload_online_statuses()
+
+      {:ok, groups}
+    end
+  end
+
+  # TODO: this is ugly!
+  defp maybe_preload_online_status(group) do
+    if Ecto.assoc_loaded?(group.gateways) do
+      connected_gateways = Presence.list("gateway_groups:#{group.id}")
+
+      gateways =
+        Enum.map(group.gateways, fn gateway ->
+          %{gateway | online?: Map.has_key?(connected_gateways, gateway.id)}
+        end)
+
+      %{group | gateways: gateways}
+    else
+      group
+    end
+  end
+
+  defp maybe_preload_online_statuses([]), do: []
+
+  defp maybe_preload_online_statuses([group | _] = groups) do
+    connected_gateways = Presence.list("gateways:#{group.account_id}")
+
+    if Ecto.assoc_loaded?(group.gateways) do
+      Enum.map(groups, fn group ->
+        gateways =
+          Enum.map(group.gateways, fn gateway ->
+            %{gateway | online?: Map.has_key?(connected_gateways, gateway.id)}
+          end)
+
+        %{group | gateways: gateways}
+      end)
+    else
+      groups
     end
   end
 
@@ -102,16 +161,31 @@ defmodule Domain.Gateways do
   end
 
   def fetch_gateway_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_gateways_permission(),
+         Authorizer.connect_gateways_permission()
+       ]}
 
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Validator.valid_uuid?(id) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
       Gateway.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
-        {:ok, gateway} -> {:ok, Repo.preload(gateway, preload)}
-        {:error, reason} -> {:error, reason}
+        {:ok, gateway} ->
+          gateway =
+            gateway
+            |> Repo.preload(preload)
+            |> preload_online_status()
+
+          {:ok, gateway}
+
+        {:error, reason} ->
+          {:error, reason}
       end
     else
       false -> {:error, :not_found}
@@ -124,6 +198,7 @@ defmodule Domain.Gateways do
 
     Gateway.Query.by_id(id)
     |> Repo.one!()
+    |> preload_online_status()
     |> Repo.preload(preload)
   end
 
@@ -136,8 +211,29 @@ defmodule Domain.Gateways do
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 
-      {:ok, Repo.preload(gateways, preload)}
+      gateways =
+        gateways
+        |> Repo.preload(preload)
+        |> preload_online_statuses(subject.account.id)
+
+      {:ok, gateways}
     end
+  end
+
+  # TODO: make it function of a preload, so that we don't pull this data when we don't need to
+  defp preload_online_status(%Gateway{} = gateway) do
+    case Presence.get_by_key("gateways:#{gateway.account_id}", gateway.id) do
+      [] -> %{gateway | online?: false}
+      %{metas: [_ | _]} -> %{gateway | online?: true}
+    end
+  end
+
+  defp preload_online_statuses(gateways, account_id) do
+    connected_gateways = Presence.list("gateways:#{account_id}")
+
+    Enum.map(gateways, fn gateway ->
+      %{gateway | online?: Map.has_key?(connected_gateways, gateway.id)}
+    end)
   end
 
   def list_connected_gateways_for_resource(%Resources.Resource{} = resource) do
@@ -156,6 +252,21 @@ defmodule Domain.Gateways do
       |> Repo.all()
 
     {:ok, gateways}
+  end
+
+  def gateway_can_connect_to_resource?(%Gateway{} = gateway, %Resources.Resource{} = resource) do
+    connected_gateway_ids = Presence.list("gateways:#{resource.account_id}") |> Map.keys()
+
+    cond do
+      gateway.id not in connected_gateway_ids ->
+        false
+
+      not Resources.connected?(resource, gateway) ->
+        false
+
+      true ->
+        true
+    end
   end
 
   def change_gateway(%Gateway{} = gateway, attrs \\ %{}) do
@@ -199,6 +310,13 @@ defmodule Domain.Gateways do
       Gateway.Query.by_id(gateway.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Gateway.Changeset.update_changeset(&1, attrs))
+      |> case do
+        {:ok, gateway} ->
+          {:ok, preload_online_status(gateway)}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -207,6 +325,26 @@ defmodule Domain.Gateways do
       Gateway.Query.by_id(gateway.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Gateway.Changeset.delete_changeset/1)
+      |> case do
+        {:ok, gateway} ->
+          {:ok, preload_online_status(gateway)}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  def load_balance_gateways(gateways) do
+    Enum.random(gateways)
+  end
+
+  def load_balance_gateways(gateways, preferred_gateway_ids) do
+    gateways
+    |> Enum.filter(&(&1.id in preferred_gateway_ids))
+    |> case do
+      [] -> load_balance_gateways(gateways)
+      preferred_gateways -> load_balance_gateways(preferred_gateways)
     end
   end
 
@@ -239,11 +377,18 @@ defmodule Domain.Gateways do
         online_at: System.system_time(:second)
       })
 
+    {:ok, _} =
+      Presence.track(self(), "gateway_groups:#{gateway.group_id}", gateway.id, %{})
+
     :ok
   end
 
-  def fetch_gateway_config!(%Gateway{} = _gateway) do
-    Application.fetch_env!(:domain, __MODULE__)
+  def subscribe_for_gateways_presence_in_account(%Accounts.Account{} = account) do
+    Phoenix.PubSub.subscribe(Domain.PubSub, "gateways:#{account.id}")
+  end
+
+  def subscribe_for_gateways_presence_in_group(%Group{} = group) do
+    Phoenix.PubSub.subscribe(Domain.PubSub, "gateway_groups:#{group.id}")
   end
 
   defp fetch_config! do

@@ -15,6 +15,19 @@ locals {
     {
       name  = "RELEASE_HOST_DISCOVERY_METHOD"
       value = "gce_metadata"
+    },
+    {
+      name = "PHOENIX_EXTERNAL_TRUSTED_PROXIES"
+      value = jsonencode([
+        "35.191.0.0/16",
+        "130.211.0.0/22",
+        google_compute_global_address.ipv4.address,
+        google_compute_global_address.ipv6.address
+      ])
+    },
+    {
+      name  = "LOG_LEVEL"
+      value = var.observability_log_level
     }
   ], var.application_environment_variables)
 
@@ -182,7 +195,6 @@ resource "google_compute_instance_template" "application" {
     google_project_service.stackdriver,
     google_project_service.logging,
     google_project_service.monitoring,
-    google_project_service.clouddebugger,
     google_project_service.cloudprofiler,
     google_project_service.cloudtrace,
     google_project_service.servicenetworking,
@@ -338,7 +350,7 @@ resource "google_compute_backend_service" "default" {
   port_name = each.value.name
   protocol  = "HTTP"
 
-  timeout_sec                     = 10
+  timeout_sec                     = 86400
   connection_draining_timeout_sec = 120
 
   enable_cdn       = false

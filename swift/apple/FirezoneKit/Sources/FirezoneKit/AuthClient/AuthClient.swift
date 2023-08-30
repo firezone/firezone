@@ -7,16 +7,15 @@
 import AuthenticationServices
 import Dependencies
 import Foundation
-import JWTDecode
 
 enum AuthClientError: Error {
   case invalidCallbackURL(URL?)
-  case jwtDecoderFailure(Error)
+  case authResponseError(Error)
   case sessionFailure(Error)
 }
 
 struct AuthClient: Sendable {
-  var signIn: @Sendable (URL) async throws -> Token
+  var signIn: @Sendable (URL) async throws -> AuthResponse
 }
 
 extension AuthClient: DependencyKey {
@@ -41,12 +40,13 @@ private final class WebAuthenticationSession: NSObject,
   ASWebAuthenticationPresentationContextProviding
 {
   @MainActor
-  func signIn(_ host: URL) async throws -> Token {
+  func signIn(_ host: URL) async throws -> AuthResponse {
     try await withCheckedThrowingContinuation { continuation in
-      let callbackURLScheme = "firezone-fd0020211111"
+      let callbackURLScheme = "firezone"
       let session = ASWebAuthenticationSession(
-        url: host.appendingPathComponent("auth")
-          .appendingQueryItem(URLQueryItem(name: "dest", value: "\(callbackURLScheme)://auth")),
+        url: host.appendingPathComponent("sign_in")
+
+          .appendingQueryItem(URLQueryItem(name: "client_platform", value: "apple")),
         callbackURLScheme: callbackURLScheme
       ) { callbackURL, error in
         if let error {
@@ -60,25 +60,35 @@ private final class WebAuthenticationSession: NSObject,
         }
 
         guard
-          let jwt = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
-          .queryItems?
-          .first(where: { $0.name == "client_auth_token" })?
-          .value
+          let token = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "client_auth_token" })?
+            .value
         else {
           continuation.resume(throwing: AuthClientError.invalidCallbackURL(callbackURL))
           return
         }
 
-        do {
-          let token = try Token(portalURL: host, tokenString: jwt)
-          continuation.resume(returning: token)
-        } catch {
-          continuation.resume(throwing: AuthClientError.jwtDecoderFailure(error))
+        guard
+          let actorName = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "actor_name" })?
+            .value?
+            .removingPercentEncoding?
+            .replacingOccurrences(of: "+", with: " ")
+        else {
+          continuation.resume(throwing: AuthClientError.invalidCallbackURL(callbackURL))
+          return
         }
+
+        let authResponse = AuthResponse(portalURL: host, token: token, actorName: actorName)
+        continuation.resume(returning: authResponse)
       }
 
       session.presentationContextProvider = self
-      session.prefersEphemeralWebBrowserSession = true
+
+      // We want to load any SSO cookies that the user may have set in their default browser
+      session.prefersEphemeralWebBrowserSession = false
 
       session.start()
     }

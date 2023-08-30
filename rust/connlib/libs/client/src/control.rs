@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::messages::{Connect, EgressMessages, InitClient, Messages, Relays};
+use crate::messages::{Connect, ConnectionDetails, EgressMessages, InitClient, Messages};
+use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use boringtun::x25519::StaticSecret;
 use libs_common::{
     control::{ErrorInfo, ErrorReply, MessageResult, PhoenixSenderWithTopic},
@@ -9,18 +10,23 @@ use libs_common::{
 };
 
 use async_trait::async_trait;
-use firezone_tunnel::{ControlSignal, Tunnel};
+use firezone_tunnel::{ControlSignal, Request, Tunnel};
 use tokio::sync::mpsc::Receiver;
 
 #[async_trait]
 impl ControlSignal for ControlSignaler {
-    async fn signal_connection_to(&self, resource: &ResourceDescription) -> Result<()> {
+    async fn signal_connection_to(
+        &self,
+        resource: &ResourceDescription,
+        connected_gateway_ids: Vec<Id>,
+    ) -> Result<()> {
         self.control_signal
             // It's easier if self is not mut
             .clone()
             .send_with_ref(
-                EgressMessages::ListRelays {
+                EgressMessages::PrepareConnection {
                     resource_id: resource.id(),
+                    connected_gateway_ids,
                 },
                 // The resource id functions as the connection id since we can only have one connection
                 // outgoing for each resource.
@@ -70,11 +76,11 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }: InitClient,
     ) -> Result<()> {
         if let Err(e) = self.tunnel.set_interface(&interface).await {
-            tracing::error!("Couldn't initialize interface: {e}");
+            tracing::error!(error = ?e, "Error initializing interface");
             Err(e)
         } else {
             for resource_description in resources {
-                self.add_resource(resource_description).await?;
+                self.add_resource(resource_description).await;
             }
             tracing::info!("Firezoned Started!");
             Ok(())
@@ -100,13 +106,16 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             )
             .await
         {
-            self.tunnel.callbacks().on_error(&e);
+            let _ = self.tunnel.callbacks().on_error(&e);
         }
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn add_resource(&self, resource_description: ResourceDescription) -> Result<()> {
-        self.tunnel.add_resource(resource_description).await
+    async fn add_resource(&self, resource_description: ResourceDescription) {
+        if let Err(e) = self.tunnel.add_resource(resource_description).await {
+            tracing::error!(message = "Can't add resource", error = ?e);
+            let _ = self.tunnel.callbacks().on_error(&e);
+        }
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -120,18 +129,23 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn relays(
+    fn connection_details(
         &self,
-        Relays {
+        ConnectionDetails {
+            gateway_id,
             resource_id,
             relays,
-        }: Relays,
+            ..
+        }: ConnectionDetails,
     ) {
         let tunnel = Arc::clone(&self.tunnel);
         let mut control_signaler = self.control_signaler.clone();
         tokio::spawn(async move {
-            match tunnel.request_connection(resource_id, relays).await {
-                Ok(connection_request) => {
+            let err = match tunnel
+                .request_connection(resource_id, gateway_id, relays)
+                .await
+            {
+                Ok(Request::NewConnection(connection_request)) => {
                     if let Err(err) = control_signaler
                         .control_signal
                         // TODO: create a reference number and keep track for the response
@@ -141,15 +155,32 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         )
                         .await
                     {
-                        tunnel.cleanup_connection(resource_id);
-                        tunnel.callbacks().on_error(&err);
+                        err
+                    } else {
+                        return;
                     }
                 }
-                Err(err) => {
-                    tunnel.cleanup_connection(resource_id);
-                    tunnel.callbacks().on_error(&err);
+                Ok(Request::ReuseConnection(connection_request)) => {
+                    if let Err(err) = control_signaler
+                        .control_signal
+                        // TODO: create a reference number and keep track for the response
+                        .send_with_ref(
+                            EgressMessages::ReuseConnection(connection_request),
+                            resource_id,
+                        )
+                        .await
+                    {
+                        err
+                    } else {
+                        return;
+                    }
                 }
-            }
+                Err(err) => err,
+            };
+
+            tunnel.cleanup_connection(resource_id);
+            tracing::error!("Error request connection details: {err}");
+            let _ = tunnel.callbacks().on_error(&err);
         });
     }
 
@@ -157,9 +188,11 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     pub(super) async fn handle_message(&mut self, msg: Messages) -> Result<()> {
         match msg {
             Messages::Init(init) => self.init(init).await?,
-            Messages::Relays(connection_details) => self.relays(connection_details),
+            Messages::ConnectionDetails(connection_details) => {
+                self.connection_details(connection_details)
+            }
             Messages::Connect(connect) => self.connect(connect).await,
-            Messages::ResourceAdded(resource) => self.add_resource(resource).await?,
+            Messages::ResourceAdded(resource) => self.add_resource(resource).await,
             Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
             Messages::ResourceUpdated(resource) => self.update_resource(resource),
         }
@@ -175,7 +208,10 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         tracing::error!(
                             "An offline error came back with a reference to a non-valid resource id"
                         );
-                        self.tunnel.callbacks().on_error(&Error::ControlProtocolError);
+                        let _ = self
+                            .tunnel
+                            .callbacks()
+                            .on_error(&Error::ControlProtocolError);
                         return;
                     };
                     // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
@@ -183,9 +219,10 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 }
                 None => {
                     tracing::error!(
-                    "An offline portal error came without a reference that originated the error"
-                );
-                    self.tunnel
+                        "An offline portal error came without a reference that originated the error"
+                    );
+                    let _ = self
+                        .tunnel
                         .callbacks()
                         .on_error(&Error::ControlProtocolError);
                 }
@@ -193,9 +230,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn stats_event(&mut self) {
-        // TODO
+        tracing::debug!(target: "tunnel_state", "{:#?}", self.tunnel.stats());
     }
 }
 
@@ -223,5 +259,9 @@ impl<CB: Callbacks + 'static> ControlSession<Messages, CB> for ControlPlane<CB> 
 
     fn socket_path() -> &'static str {
         "device"
+    }
+
+    fn retry_strategy() -> ExponentialBackoff {
+        ExponentialBackoffBuilder::default().build()
     }
 }

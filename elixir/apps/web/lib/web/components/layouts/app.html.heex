@@ -101,16 +101,25 @@
     Dashboard
   </.sidebar_item>
 
-  <.sidebar_item_group id="organization">
-    <:name>Organization</:name>
+  <.sidebar_item navigate={~p"/#{@account}/actors"} icon="hero-user-circle-solid">
+    Actors
+  </.sidebar_item>
+  <.sidebar_item navigate={~p"/#{@account}/groups"} icon="hero-user-group-solid">
+    Groups
+  </.sidebar_item>
+  <.sidebar_item navigate={~p"/#{@account}/devices"} icon="hero-device-phone-mobile-solid">
+    Devices
+  </.sidebar_item>
 
-    <:item navigate={~p"/#{@account}/actors"}>Users</:item>
-    <:item navigate={~p"/#{@account}/groups"}>Groups</:item>
-    <:item navigate={~p"/#{@account}/devices"}>Devices</:item>
-  </.sidebar_item_group>
-
-  <.sidebar_item navigate={~p"/#{@account}/gateways"} icon="hero-arrow-left-on-rectangle-solid">
+  <.sidebar_item
+    navigate={~p"/#{@account}/gateway_groups"}
+    icon="hero-arrow-left-on-rectangle-solid"
+  >
     Gateways
+  </.sidebar_item>
+
+  <.sidebar_item navigate={~p"/#{@account}/relay_groups"} icon="hero-arrows-right-left">
+    Relays
   </.sidebar_item>
 
   <.sidebar_item navigate={~p"/#{@account}/resources"} icon="hero-server-stack-solid">
@@ -121,7 +130,7 @@
     Policies
   </.sidebar_item>
 
-  <.sidebar_item_group id="settings">
+  <.sidebar_item_group id="settings" icon="hero-cog-solid">
     <:name>Settings</:name>
 
     <:item navigate={~p"/#{@account}/settings/account"}>Account</:item>

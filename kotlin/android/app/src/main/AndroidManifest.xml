@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- XXX: Set usesCleartextTraffic to false for added security when APIMock is removed or served over https -->
+
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+    </queries>
 
     <application
         android:name=".core.FirezoneApp"
@@ -19,8 +25,7 @@
         android:screenOrientation="portrait"
         android:supportsRtl="true"
         android:theme="@style/AppTheme.Base"
-        android:usesCleartextTraffic="true"
-        tools:targetApi="29">
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".core.presentation.MainActivity"
@@ -34,60 +39,50 @@
         </activity>
 
         <activity
-            android:name=".features.webview.presentation.WebViewActivity"
+            android:name=".features.webview.ui.WebViewActivity"
             android:exported="false" />
 
         <activity
-            android:name="dev.firezone.android.features.auth.presentation.AuthActivity"
+            android:name="dev.firezone.android.features.auth.ui.AuthActivity"
             android:exported="false" />
 
         <activity
-            android:name="dev.firezone.android.features.applink.presentation.AppLinkHandlerActivity"
+            android:name="dev.firezone.android.features.applink.ui.AppLinkHandlerActivity"
             android:exported="true"
             android:launchMode="singleTop">
-
-            <!-- Using deeplink until applinks is setup -->
-            <!--<intent-filter android:label="AppLink">
-                    <action android:name="android.intent.action.VIEW" />
-
-                    <category android:name="android.intent.category.DEFAULT" />
-                    <category android:name="android.intent.category.BROWSABLE" />
-
-                    <data android:scheme="https" android:host="firezone.dev" android:pathPrefix="/auth" />
-                </intent-filter>-->
 
             <intent-filter
                 android:label="@string/app_name"
                 android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
-
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-                <data android:host="${hostName}" />
+                <data android:scheme="https" android:host="${hostName}" android:path="/handle_client_auth_callback" />
             </intent-filter>
         </activity>
 
+        <activity
+            android:name="dev.firezone.android.features.permission.vpn.ui.VpnPermissionActivity"
+            android:exported="false" />
+
         <service
-            android:name="dev.firezone.connlib.$VpnService"
+            android:name="dev.firezone.android.tunnel.TunnelService"
             android:exported="true"
             android:permission="android.permission.BIND_VPN_SERVICE">
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
         </service>
-        <!-- Causes cli builds to fail with lint error "Error: This class should provide a default constructor (a public constructor with no arguments"
-            <receiver
-                android:name=".features.session.backend.BootShutdownReceiver"
-                android:exported="true">
-                <intent-filter>
-                    <action android:name="android.intent.action.ACTION_SHUTDOWN" />
-                    <action android:name="android.intent.action.BOOT_COMPLETED" />
-                </intent-filter>
-            </receiver>
-    -->
+
+        <receiver
+            android:name="dev.firezone.android.features.session.backend.BootShutdownReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.ACTION_SHUTDOWN" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

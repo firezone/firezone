@@ -9,7 +9,9 @@ import Foundation
 import NetworkExtension
 import OSLog
 
-// TODO: Can this file be removed since we're managing the tunnel in connlib?
+enum TunnelStoreError: Error {
+    case tunnelCouldNotBeStarted
+}
 
 final class TunnelStore: ObservableObject {
   private static let logger = Logger.make(for: TunnelStore.self)
@@ -18,7 +20,7 @@ final class TunnelStore: ObservableObject {
     didSet { setupTunnelObservers() }
   }
 
-  @Published private(set) var status: NEVPNStatus = .invalid {
+  @Published private(set) var status: NEVPNStatus {
     didSet { TunnelStore.logger.info("status changed: \(self.status.description)") }
   }
 
@@ -32,10 +34,14 @@ final class TunnelStore: ObservableObject {
     didSet(oldValue) { oldValue?.invalidate() }
   }
 
+  private let controlPlaneURL: URL
   private var tunnelObservingTasks: [Task<Void, Never>] = []
+  private var startTunnelContinuation: CheckedContinuation<(), Error>?
 
   init(tunnel: NETunnelProviderManager) {
+    self.controlPlaneURL = Self.getControlPlaneURLFromInfoPlist()
     self.tunnel = tunnel
+    self.status = tunnel.connection.status
     tunnel.isEnabled = true
     setupTunnelObservers()
   }
@@ -56,18 +62,34 @@ final class TunnelStore: ObservableObject {
     return tunnel
   }
 
-  func start(token: Token) async throws {
+  func start(authResponse: AuthResponse) async throws {
     TunnelStore.logger.trace("\(#function)")
 
     // make sure we have latest preferences before starting
     try await tunnel.loadFromPreferences()
 
-    tunnel.protocolConfiguration = Self.makeProtocolConfiguration(token: token)
+    if tunnel.connection.status == .connected || tunnel.connection.status == .connecting {
+      if let (tunnelControlPlaneURLString, tunnelToken) = Self.getTunnelConfigurationParameters(of: tunnel) {
+        if tunnelControlPlaneURLString == self.controlPlaneURL.absoluteString && tunnelToken == authResponse.token {
+          // Already connected / connecting with the required configuration
+          TunnelStore.logger.debug("\(#function): Already connected / connecting. Nothing to do.")
+          return
+        }
+      }
+    }
+
+    tunnel.protocolConfiguration = Self.makeProtocolConfiguration(
+      controlPlaneURL: self.controlPlaneURL,
+      token: authResponse.token
+    )
     tunnel.isEnabled = true
     try await tunnel.saveToPreferences()
 
     let session = tunnel.connection as! NETunnelProviderSession
     try session.startTunnel()
+    try await withCheckedThrowingContinuation { continuation in
+      self.startTunnelContinuation = continuation
+    }
   }
 
   func stop() {
@@ -93,6 +115,10 @@ final class TunnelStore: ObservableObject {
 
   private func updateResources() {
     let session = tunnel.connection as! NETunnelProviderSession
+    guard session.status == .connected else {
+      self.resources = DisplayableResources()
+      return
+    }
     let resourcesQuery = resources.versionStringToData()
     do {
       try session.sendProviderMessage(resourcesQuery) { [weak self] reply in
@@ -120,20 +146,48 @@ final class TunnelStore: ObservableObject {
     return manager
   }
 
-  private static func makeProtocolConfiguration(token: Token? = nil) -> NETunnelProviderProtocol {
+  static func getControlPlaneURLFromInfoPlist() -> URL {
+    let infoPlistDictionary = Bundle.main.infoDictionary
+    guard let urlScheme = (infoPlistDictionary?["ControlPlaneURLScheme"] as? String), !urlScheme.isEmpty else {
+      fatalError("AuthURLScheme missing in Info.plist. Please define AUTH_URL_SCHEME, AUTH_URL_HOST, CONTROL_PLANE_URL_SCHEME, and CONTROL_PLANE_URL_HOST in Server.xcconfig.")
+    }
+    guard let urlHost = (infoPlistDictionary?["ControlPlaneURLHost"] as? String), !urlHost.isEmpty else {
+      fatalError("AuthURLHost missing in Info.plist. Please define AUTH_URL_SCHEME, AUTH_URL_HOST, CONTROL_PLANE_URL_SCHEME, and CONTROL_PLANE_URL_HOST in Server.xcconfig.")
+    }
+    let urlString = "\(urlScheme)://\(urlHost)/"
+    guard let url = URL(string: urlString) else {
+      fatalError("Cannot form valid URL from string: \(urlString)")
+    }
+    return url
+  }
+
+  private static func makeProtocolConfiguration(controlPlaneURL: URL? = nil, token: String? = nil) -> NETunnelProviderProtocol {
     let proto = NETunnelProviderProtocol()
 
     proto.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
       "\($0).network-extension"
     }
-    if let token = token {
+    if let controlPlaneURL = controlPlaneURL, let token = token {
       proto.providerConfiguration = [
-        "portalURL": token.portalURL.absoluteString,
-        "token": token.string
+        "controlPlaneURL": controlPlaneURL.absoluteString,
+        "token": token
       ]
     }
     proto.serverAddress = "Firezone addresses"
     return proto
+  }
+
+  private static func getTunnelConfigurationParameters(of tunnelProvider: NETunnelProviderManager) -> (String, String)? {
+    guard let tunnelProtocol = tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol else {
+      return nil
+    }
+    guard let controlPlaneURLString = tunnelProtocol.providerConfiguration?["controlPlaneURL"] as? String else {
+      return nil
+    }
+    guard let token = tunnelProtocol.providerConfiguration?["token"] as? String else {
+      return nil
+    }
+    return (controlPlaneURLString, token)
   }
 
   private func setupTunnelObservers() {
@@ -148,12 +202,26 @@ final class TunnelStore: ObservableObject {
           named: .NEVPNStatusDidChange,
           object: nil
         ) {
-          guard let session = notification.object as? NETunnelProviderSession,
-                let tunnelProvider = session.manager as? NETunnelProviderManager
-          else {
+          guard let session = notification.object as? NETunnelProviderSession else {
             return
           }
-          self.status = tunnelProvider.connection.status
+          let status = session.status
+          self.status = status
+          if let startTunnelContinuation = self.startTunnelContinuation {
+            switch status {
+              case .connected:
+                startTunnelContinuation.resume(returning: ())
+                self.startTunnelContinuation = nil
+              case .disconnected:
+                startTunnelContinuation.resume(throwing: TunnelStoreError.tunnelCouldNotBeStarted)
+                self.startTunnelContinuation = nil
+              default:
+                break
+            }
+          }
+          if status != .connected {
+            self.resources = DisplayableResources()
+          }
         }
       }
     )

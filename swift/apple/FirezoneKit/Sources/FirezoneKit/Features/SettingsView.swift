@@ -16,8 +16,12 @@ public final class SettingsViewModel: ObservableObject {
   public var onSettingsSaved: () -> Void = unimplemented()
 
   public init() {
-    settings = Settings(portalURL: nil)
+    settings = Settings()
 
+    load()
+  }
+
+  func load() {
     if let storedSettings = settingsClient.fetchSettings() {
       settings = storedSettings
     }
@@ -33,8 +37,15 @@ public struct SettingsView: View {
   @ObservedObject var model: SettingsViewModel
   @Environment(\.dismiss) var dismiss
 
+  let teamIdAllowedCharacterSet: CharacterSet
+
   public init(model: SettingsViewModel) {
     self.model = model
+    self.teamIdAllowedCharacterSet = {
+      var pathAllowed = CharacterSet.urlPathAllowed
+      pathAllowed.remove("/")
+      return pathAllowed
+    }()
   }
 
   public var body: some View {
@@ -49,15 +60,38 @@ public struct SettingsView: View {
 
   #if os(iOS)
     private var ios: some View {
-      NavigationView {
-        form
+      NavigationView() {
+        VStack() {
+          form
+          HStack(spacing: 30) {
+            Button("Cancel", action: {
+              self.cancelButtonTapped()
+            })
+            Button("Save", action: {
+              self.saveButtonTapped()
+            })
+            .disabled(!isTeamIdValid(model.settings.teamId))
+          }
+          Spacer()
+        }
       }
     }
   #endif
 
   #if os(macOS)
     private var mac: some View {
-      form
+      VStack(spacing: 50) {
+        form
+        HStack(spacing: 30) {
+          Button("Cancel", action: {
+            self.cancelButtonTapped()
+          })
+          Button("Save", action: {
+            self.saveButtonTapped()
+          })
+          .disabled(!isTeamIdValid(model.settings.teamId))
+        }
+      }
     }
   #endif
 
@@ -65,11 +99,12 @@ public struct SettingsView: View {
     Form {
       Section {
         FormTextField(
-          title: "Portal URL",
-          placeholder: "http://localhost:4567",
+          title: "Team ID:",
+          baseURLString: AuthStore.getAuthBaseURLFromInfoPlist().absoluteString,
+          placeholder: "team-id",
           text: Binding(
-            get: { model.settings.portalURL?.absoluteString ?? "" },
-            set: { model.settings.portalURL = URL(string: $0) }
+            get: { model.settings.teamId },
+            set: { model.settings.teamId = $0 }
           )
         )
       }
@@ -77,48 +112,56 @@ public struct SettingsView: View {
     .navigationTitle("Settings")
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
-        #if os(macOS)
-        Button("Done") {
-          self.doneButtonTapped()
-        }
-        #endif
       }
     }
   }
 
-  func doneButtonTapped() {
+  private func isTeamIdValid(_ teamId: String) -> Bool {
+    !teamId.isEmpty && teamId.unicodeScalars.allSatisfy { teamIdAllowedCharacterSet.contains($0) }
+  }
+
+  func saveButtonTapped() {
     model.save()
+    dismiss()
+  }
+
+  func cancelButtonTapped() {
+    model.load()
     dismiss()
   }
 }
 
 struct FormTextField: View {
   let title: String
+  let baseURLString: String
   let placeholder: String
   let text: Binding<String>
 
   var body: some View {
     #if os(iOS)
-      HStack {
+      HStack(spacing: 15) {
         Text(title)
         Spacer()
-        TextField(placeholder, text: text)
+        TextField(baseURLString, text: text, prompt: Text(placeholder))
           .autocorrectionDisabled()
-          .multilineTextAlignment(.trailing)
+          .multilineTextAlignment(.leading)
           .foregroundColor(.secondary)
           .frame(maxWidth: .infinity)
           .textInputAutocapitalization(.never)
-          .textContentType(.URL)
-          .keyboardType(.URL)
       }
     #else
-    HStack(spacing: 30) {
+      HStack(spacing: 30) {
         Spacer()
-        TextField(title, text: text, prompt: Text(placeholder))
-          .autocorrectionDisabled()
-          .multilineTextAlignment(.trailing)
-          .foregroundColor(.secondary)
-          .frame(maxWidth: 360)
+        VStack(alignment: .leading) {
+          Label(title, image: "")
+            .labelStyle(.titleOnly)
+            .multilineTextAlignment(.leading)
+          TextField(baseURLString, text: text, prompt: Text(placeholder))
+            .autocorrectionDisabled()
+            .multilineTextAlignment(.leading)
+            .foregroundColor(.secondary)
+            .frame(maxWidth: 360)
+        }
         Spacer()
       }
     #endif

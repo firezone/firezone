@@ -71,6 +71,14 @@ pub struct RemoveResource {
     pub id: Id,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct AllowAccess {
+    pub device_id: Id,
+    pub resource: ResourceDescription,
+    #[serde(with = "ts_seconds")]
+    pub expires_at: DateTime<Utc>,
+}
+
 // These messages are the messages that can be received
 // either by a client or a gateway by the client.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -80,9 +88,7 @@ pub struct RemoveResource {
 pub enum IngressMessages {
     Init(InitGateway),
     RequestConnection(RequestConnection),
-    AddResource(ResourceDescription),
-    RemoveResource(RemoveResource),
-    UpdateResource(ResourceDescription),
+    AllowAccess(AllowAccess),
 }
 
 // These messages can be sent from a gateway
@@ -119,7 +125,7 @@ mod test {
                 "device": {
                     "id": "3a25ff38-f8d7-47de-9b30-c7c40c206083",
                     "peer": {
-                        "ipv6": "fd00:2011:1111::3a:ab1b",
+                        "ipv6": "fd00:2021:1111::3a:ab1b",
                         "public_key": "OR2dYCLwMEtwqtjOxSm4SU7BbHJDfM8ZCqK7HKXXxDw=",
                         "ipv4": "100.114.114.30",
                         "persistent_keepalive": 25,
@@ -166,7 +172,7 @@ mod test {
             IngressMessages::Init(InitGateway {
                 interface: Interface {
                     ipv4: "100.115.164.78".parse().unwrap(),
-                    ipv6: "fd00:2011:1111::2c:f6ab".parse().unwrap(),
+                    ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
                     upstream_dns: vec![],
                 },
                 ipv4_masquerade_enabled: true,
@@ -180,7 +186,7 @@ mod test {
             "payload": {
                 "interface": {
                     "ipv4": "100.115.164.78",
-                    "ipv6": "fd00:2011:1111::2c:f6ab"
+                    "ipv6": "fd00:2021:1111::2c:f6ab"
                 },
                 "ipv4_masquerade_enabled": true,
                 "ipv6_masquerade_enabled": true

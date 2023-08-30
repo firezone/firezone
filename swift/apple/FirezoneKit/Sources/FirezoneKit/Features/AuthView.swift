@@ -7,7 +7,6 @@
 import AuthenticationServices
 import Combine
 import Dependencies
-import JWTDecode
 import SwiftUI
 import XCTestDynamicOverlay
 
@@ -20,14 +19,14 @@ final class AuthViewModel: ObservableObject {
 
   private var cancellables = Set<AnyCancellable>()
 
-  func logInButtonTapped() async {
-    guard let portalURL = settingsClient.fetchSettings()?.portalURL else {
+  func signInButtonTapped() async {
+    guard let teamId = settingsClient.fetchSettings()?.teamId, !teamId.isEmpty else {
       settingsUndefined()
       return
     }
 
     do {
-      try await authStore.signIn(portalURL: portalURL)
+      try await authStore.signIn(teamId: teamId)
     } catch {
       dump(error)
     }
@@ -41,9 +40,9 @@ struct AuthView: View {
     VStack {
       Text("Welcome to Firezone").font(.largeTitle)
 
-      Button("Log in") {
+      Button("Sign in") {
         Task {
-          await model.logInButtonTapped()
+          await model.signInButtonTapped()
         }
       }
       .buttonStyle(.borderedProminent)

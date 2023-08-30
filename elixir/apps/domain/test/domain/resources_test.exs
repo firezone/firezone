@@ -356,9 +356,9 @@ defmodule Domain.ResourcesTest do
       assert {:error, changeset} = create_resource(attrs, subject)
       assert "can not be in the CIDR 100.64.0.0/10" in errors_on(changeset).address
 
-      attrs = %{"address" => "fd00:2011:1111::/102", "type" => "cidr"}
+      attrs = %{"address" => "fd00:2021:1111::/102", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "can not be in the CIDR fd00:2011:1111::/106" in errors_on(changeset).address
+      assert "can not be in the CIDR fd00:2021:1111::/106" in errors_on(changeset).address
 
       attrs = %{"address" => "::/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
@@ -682,6 +682,40 @@ defmodule Domain.ResourcesTest do
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Resources.Authorizer.manage_resources_permission()]]}}
+    end
+  end
+
+  describe "connected?/2" do
+    test "returns true when resource has a connection to a gateway", %{
+      account: account,
+      subject: subject
+    } do
+      group = GatewaysFixtures.create_group(account: account, subject: subject)
+      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+
+      resource =
+        ResourcesFixtures.create_resource(
+          account: account,
+          gateway_groups: [%{gateway_group_id: group.id}]
+        )
+
+      assert connected?(resource, gateway)
+    end
+
+    test "raises resource and gateway don't belong to the same account" do
+      gateway = GatewaysFixtures.create_gateway()
+      resource = ResourcesFixtures.create_resource()
+
+      assert_raise FunctionClauseError, fn ->
+        connected?(resource, gateway)
+      end
+    end
+
+    test "returns false when resource has no connection to a gateway", %{account: account} do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+      resource = ResourcesFixtures.create_resource(account: account)
+
+      refute connected?(resource, gateway)
     end
   end
 end

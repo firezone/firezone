@@ -2,11 +2,12 @@ defmodule Web.Auth do
   use Web, :verified_routes
   alias Domain.Auth
 
-  def signed_in_path(%Auth.Subject{actor: %{type: :account_admin_user}} = subject),
-    do: ~p"/#{subject.account}/dashboard"
+  def signed_in_path(%Auth.Subject{actor: %{type: :account_admin_user}} = subject) do
+    ~p"/#{subject.account.slug || subject.account}/dashboard"
+  end
 
   def put_subject_in_session(conn, %Auth.Subject{} = subject) do
-    {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
+    {:ok, session_token} = Auth.create_session_token_from_subject(subject)
 
     conn
     |> Plug.Conn.put_session(:signed_in_at, DateTime.utc_now())
@@ -15,39 +16,72 @@ defmodule Web.Auth do
   end
 
   @doc """
-  This is a wrapper around `Domain.Auth.sign_in/5` that fails authentication and redirects
-  to app install instructions for the users that should not have access to the control plane UI.
+  Redirects the signed in user depending on the actor type.
+
+  The account admin users are sent to dashboard or a return path if it's stored in session.
+
+  The account users are only expected to authenticate using client apps.
+  If the platform is known, we direct them to the application through a deep link or an app link;
+  if not, we guide them to the install instructions accompanied by an error message.
   """
-  def sign_in(conn, provider, provider_identifier, secret) do
-    case Domain.Auth.sign_in(
-           provider,
-           provider_identifier,
-           secret,
-           conn.assigns.user_agent,
-           conn.remote_ip
-         ) do
-      {:ok, %Auth.Subject{actor: %{type: :account_admin_user}} = subject} ->
-        {:ok, subject}
+  def signed_in_redirect(
+        conn,
+        %Auth.Subject{} = subject,
+        client_platform,
+        client_csrf_token
+      )
+      when not is_nil(client_platform) do
+    platform_redirect_urls =
+      Domain.Config.fetch_env!(:web, __MODULE__)
+      |> Keyword.fetch!(:platform_redirect_urls)
 
-      {:ok, %Auth.Subject{}} ->
-        {:error, :invalid_actor_type}
+    if redirect_to = Map.get(platform_redirect_urls, client_platform) do
+      {:ok, client_token} = Auth.create_client_token_from_subject(subject)
 
-      {:error, reason} ->
-        {:error, reason}
+      query =
+        %{
+          client_auth_token: client_token,
+          client_csrf_token: client_csrf_token,
+          actor_name: subject.actor.name,
+          identity_provider_identifier: subject.identity.provider_identifier
+        }
+        |> Enum.reject(&is_nil(elem(&1, 1)))
+        |> URI.encode_query()
+
+      conn
+      |> Phoenix.Controller.redirect(external: "#{redirect_to}?#{query}")
+    else
+      conn
+      |> Phoenix.Controller.put_flash(
+        :info,
+        "Please use a client application to access Firezone."
+      )
+      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}/")
     end
   end
 
-  def sign_in(conn, provider, payload) do
-    case Domain.Auth.sign_in(provider, payload, conn.assigns.user_agent, conn.remote_ip) do
-      {:ok, %Auth.Subject{actor: %{type: :account_admin_user}} = subject} ->
-        {:ok, subject}
+  def signed_in_redirect(
+        conn,
+        %Auth.Subject{actor: %{type: :account_admin_user}} = subject,
+        _client_platform,
+        _client_csrf_token
+      ) do
+    redirect_to = Plug.Conn.get_session(conn, :user_return_to) || signed_in_path(subject)
 
-      {:ok, %Auth.Subject{}} ->
-        {:error, :invalid_actor_type}
+    conn
+    |> Web.Auth.renew_session()
+    |> Web.Auth.put_subject_in_session(subject)
+    |> Plug.Conn.delete_session(:user_return_to)
+    |> Phoenix.Controller.redirect(to: redirect_to)
+  end
 
-      {:error, reason} ->
-        {:error, reason}
-    end
+  def signed_in_redirect(conn, %Auth.Subject{} = _subject, _client_platform, _client_csrf_token) do
+    conn
+    |> Phoenix.Controller.put_flash(
+      :info,
+      "Please use a client application to access Firezone."
+    )
+    |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}/")
   end
 
   @doc """
@@ -97,12 +131,18 @@ defmodule Web.Auth do
   @doc """
   Fetches the session token from the session and assigns the subject to the connection.
   """
-  def fetch_subject(%Plug.Conn{} = conn, _opts) do
+  def fetch_subject_and_account(%Plug.Conn{} = conn, _opts) do
     with token when not is_nil(token) <- Plug.Conn.get_session(conn, :session_token),
          {:ok, subject} <-
            Domain.Auth.sign_in(token, conn.assigns.user_agent, conn.remote_ip),
-         true <- conn.path_params["account_id"] == subject.account.id do
-      Plug.Conn.assign(conn, :subject, subject)
+         {:ok, account} <-
+           Domain.Accounts.fetch_account_by_id_or_slug(
+             conn.path_params["account_id_or_slug"],
+             subject
+           ) do
+      conn
+      |> Plug.Conn.assign(:account, account)
+      |> Plug.Conn.assign(:subject, subject)
     else
       _ -> conn
     end
@@ -133,7 +173,7 @@ defmodule Web.Auth do
       conn
       |> Phoenix.Controller.put_flash(:error, "You must log in to access this page.")
       |> maybe_store_return_to()
-      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id"]}/sign_in")
+      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}/sign_in")
       |> Plug.Conn.halt()
     end
   end
@@ -220,7 +260,7 @@ defmodule Web.Auth do
       socket =
         socket
         |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
-        |> Phoenix.LiveView.redirect(to: ~p"/#{socket.assigns.account}/sign_in")
+        |> Phoenix.LiveView.redirect(to: ~p"/#{params["account_id_or_slug"]}/sign_in")
 
       {:halt, socket}
     end
@@ -246,14 +286,13 @@ defmodule Web.Auth do
     end
   end
 
-  defp mount_subject(socket, params, session) do
+  defp mount_subject(socket, _params, session) do
     Phoenix.Component.assign_new(socket, :subject, fn ->
       user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
-      remote_ip = Phoenix.LiveView.get_connect_info(socket, :peer_data).address
+      real_ip = real_ip(socket)
 
       with token when not is_nil(token) <- session["session_token"],
-           {:ok, subject} <- Domain.Auth.sign_in(token, user_agent, remote_ip),
-           true <- params["account_id"] == subject.account.id do
+           {:ok, subject} <- Domain.Auth.sign_in(token, user_agent, real_ip) do
         subject
       else
         _ -> nil
@@ -263,15 +302,28 @@ defmodule Web.Auth do
 
   defp mount_account(
          %{assigns: %{subject: subject}} = socket,
-         %{"account_id" => account_id},
+         %{"account_id_or_slug" => account_id_or_slug},
          _session
        ) do
     Phoenix.Component.assign_new(socket, :account, fn ->
-      with {:ok, account} <- Domain.Accounts.fetch_account_by_id(account_id, subject) do
+      with {:ok, account} <-
+             Domain.Accounts.fetch_account_by_id_or_slug(account_id_or_slug, subject) do
         account
       else
         _ -> nil
       end
     end)
+  end
+
+  defp real_ip(socket) do
+    peer_data = Phoenix.LiveView.get_connect_info(socket, :peer_data)
+    x_headers = Phoenix.LiveView.get_connect_info(socket, :x_headers)
+
+    real_ip =
+      if is_list(x_headers) and length(x_headers) > 0 do
+        RemoteIp.from(x_headers, Web.Endpoint.real_ip_opts())
+      end
+
+    real_ip || peer_data.address
   end
 end

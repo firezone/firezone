@@ -13,7 +13,7 @@ use relay::{
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::task::Poll;
 use std::time::SystemTime;
@@ -26,30 +26,22 @@ use url::Url;
 #[derive(Parser, Debug)]
 struct Args {
     /// The public (i.e. internet-reachable) IPv4 address of the relay server.
-    ///
-    /// Must route to the local IPv4 interface we listen on.
     #[arg(long, env)]
     public_ip4_addr: Option<Ipv4Addr>,
-    /// The address of the local IPv4 interface we should listen on.
-    ///
-    /// Must not be a wildcard-address.
-    #[arg(long, env)]
-    listen_ip4_addr: Option<Ipv4Addr>,
     /// The public (i.e. internet-reachable) IPv6 address of the relay server.
-    ///
-    /// Must route to the local IP6 interface we listen on.
     #[arg(long, env)]
     public_ip6_addr: Option<Ipv6Addr>,
-    /// The address of the local IP6 interface we should listen on.
-    ///
-    /// Must not be a wildcard-address.
-    #[arg(long, env)]
-    listen_ip6_addr: Option<Ipv6Addr>,
     /// The address of the local interface where we should serve the prometheus metrics.
-    ///
     /// The metrics will be available at `http://<metrics_addr>/metrics`.
     #[arg(long, env)]
     metrics_addr: Option<SocketAddr>,
+    // See https://www.rfc-editor.org/rfc/rfc8656.html#name-allocations
+    /// The lowest port used for TURN allocations.
+    #[arg(long, env, default_value = "49152")]
+    lowest_port: u16,
+    /// The highest port used for TURN allocations.
+    #[arg(long, env, default_value = "65535")]
+    highest_port: u16,
     /// The websocket URL of the portal server to connect to.
     #[arg(long, env, default_value = "wss://api.firezone.dev")]
     portal_ws_url: Url,
@@ -58,9 +50,6 @@ struct Args {
     /// If omitted, we won't connect to the portal on startup.
     #[arg(long, env)]
     portal_token: Option<String>,
-    /// Whether to allow connecting to the portal over an insecure connection.
-    #[arg(long)]
-    allow_insecure_ws: bool,
     /// A seed to use for all randomness operations.
     ///
     /// Only available in debug builds.
@@ -87,7 +76,7 @@ async fn main() -> Result<()> {
         tracing_subscriber::fmt().with_env_filter(env_filter).init()
     }
 
-    let listen_addr = match (args.listen_ip4_addr, args.listen_ip6_addr) {
+    let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
         (Some(ip4), None) => IpStack::Ip4(ip4),
         (None, Some(ip6)) => IpStack::Ip6(ip6),
@@ -95,23 +84,18 @@ async fn main() -> Result<()> {
             bail!("Must listen on at least one of IPv4 or IPv6")
         }
     };
-    let public_addr = match (args.public_ip4_addr, args.public_ip6_addr, listen_addr) {
-        (Some(ip4), Some(ip6), IpStack::Dual { .. }) => IpStack::Dual { ip4, ip6 },
-        (Some(ip4), None, IpStack::Ip4(_)) => IpStack::Ip4(ip4),
-        (None, Some(ip6), IpStack::Ip6(_)) => IpStack::Ip6(ip6),
-        _ => {
-            bail!("Must specify a public address for each listen address")
-        }
-    };
 
     let mut metric_registry = Registry::with_prefix("relay");
-    let server = Server::new(public_addr, make_rng(args.rng_seed), &mut metric_registry);
+    let server = Server::new(
+        public_addr,
+        make_rng(args.rng_seed),
+        &mut metric_registry,
+        args.lowest_port,
+        args.highest_port,
+    );
 
     let channel = if let Some(token) = args.portal_token {
         let mut url = args.portal_ws_url.clone();
-        if url.scheme() == "ws" && !args.allow_insecure_ws {
-            bail!("Refusing to connect to portal over insecure connection, pass --allow-insecure-ws to override")
-        }
         if !url.path().is_empty() {
             tracing::warn!("Overwriting path component of portal URL with '/relay/websocket'");
         }
@@ -119,13 +103,13 @@ async fn main() -> Result<()> {
         url.set_path("relay/websocket");
         url.query_pairs_mut().append_pair("token", &token);
 
-        if let Some(listen_ip4_addr) = args.listen_ip4_addr {
+        if let Some(public_ip4_addr) = args.public_ip4_addr {
             url.query_pairs_mut()
-                .append_pair("ipv4", &listen_ip4_addr.to_string());
+                .append_pair("ipv4", &public_ip4_addr.to_string());
         }
-        if let Some(listen_ip6_addr) = args.listen_ip6_addr {
+        if let Some(public_ip6_addr) = args.public_ip6_addr {
             url.query_pairs_mut()
-                .append_pair("ipv6", &listen_ip6_addr.to_string());
+                .append_pair("ipv6", &public_ip6_addr.to_string());
         }
 
         let mut channel = PhoenixChannel::<InboundPortalMessage, ()>::connect(
@@ -137,19 +121,18 @@ async fn main() -> Result<()> {
 
         tracing::info!("Connected to portal, waiting for init message",);
 
+        channel.join(
+            "relay",
+            JoinMessage {
+                stamp_secret: server.auth_secret().to_string(),
+            },
+        );
+
         loop {
-            channel.join(
-                "relay",
-                JoinMessage {
-                    stamp_secret: server.auth_secret().to_string(),
-                },
-            );
-
-            let event = future::poll_fn(|cx| channel.poll(cx))
+            match future::poll_fn(|cx| channel.poll(cx))
                 .await
-                .context("portal connection failed")?;
-
-            match event {
+                .context("portal connection failed")?
+            {
                 Event::JoinedRoom { topic } if topic == "relay" => {
                     tracing::info!("Joined relay room on portal")
                 }
@@ -166,10 +149,12 @@ async fn main() -> Result<()> {
             }
         }
     } else {
+        tracing::warn!("No portal token supplied, starting standalone mode");
+
         None
     };
 
-    let mut eventloop = Eventloop::new(server, channel, listen_addr, &mut metric_registry)?;
+    let mut eventloop = Eventloop::new(server, channel, public_addr, &mut metric_registry)?;
 
     if let Some(metrics_addr) = args.metrics_addr {
         tokio::spawn(relay::metrics::serve(metrics_addr, metric_registry));
@@ -219,7 +204,6 @@ struct Eventloop<R> {
     inbound_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
     outbound_ip4_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
     outbound_ip6_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
-    listen_address: IpStack,
     server: Server<R>,
     channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
     allocations: HashMap<(AllocationId, AddressFamily), Allocation>,
@@ -235,7 +219,7 @@ where
     fn new(
         server: Server<R>,
         channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
-        listen_address: IpStack,
+        public_address: IpStack,
         _: &mut Registry,
     ) -> Result<Self> {
         let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);
@@ -245,16 +229,16 @@ where
         let (outbound_ip6_data_sender, outbound_ip6_data_receiver) =
             mpsc::channel::<(Vec<u8>, SocketAddr)>(10);
 
-        if let Some(ip4) = listen_address.as_v4() {
+        if public_address.as_v4().is_some() {
             tokio::spawn(main_udp_socket_task(
-                (*ip4).into(),
+                AddressFamily::V4,
                 inbound_data_sender.clone(),
                 outbound_ip4_data_receiver,
             ));
         }
-        if let Some(ip6) = listen_address.as_v6() {
+        if public_address.as_v6().is_some() {
             tokio::spawn(main_udp_socket_task(
-                (*ip6).into(),
+                AddressFamily::V6,
                 inbound_data_sender,
                 outbound_ip6_data_receiver,
             ));
@@ -264,7 +248,6 @@ where
             inbound_data_receiver,
             outbound_ip4_data_sender,
             outbound_ip6_data_sender,
-            listen_address,
             server,
             channel,
             allocations: Default::default(),
@@ -298,14 +281,9 @@ where
                         }
                     }
                     Command::CreateAllocation { id, family, port } => {
-                        let listen_addr = match family {
-                            AddressFamily::V4 => (*self.listen_address.as_v4().expect("to have listen address for IP4 if we are creating an IP4 allocation")).into(),
-                            AddressFamily::V6 => (*self.listen_address.as_v6().expect("to have listen address for IP6 if we are creating an IP6 allocation")).into(),
-                        };
-
                         self.allocations.insert(
                             (id, family),
-                            Allocation::new(self.relay_data_sender.clone(), id, listen_addr, port),
+                            Allocation::new(self.relay_data_sender.clone(), id, family, port),
                         );
                     }
                     Command::FreeAllocation { id, family } => {
@@ -411,11 +389,11 @@ where
 }
 
 async fn main_udp_socket_task(
-    listen_address: IpAddr,
+    family: AddressFamily,
     mut inbound_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
     mut outbound_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
 ) -> Result<Infallible> {
-    let mut socket = UdpSocket::bind((listen_address, 3478))?;
+    let mut socket = UdpSocket::bind(family, 3478)?;
 
     loop {
         tokio::select! {

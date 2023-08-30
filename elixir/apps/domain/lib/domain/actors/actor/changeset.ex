@@ -2,10 +2,16 @@ defmodule Domain.Actors.Actor.Changeset do
   use Domain, :changeset
   alias Domain.Actors
 
-  def create_changeset(account_id, attrs) do
-    %Actors.Actor{}
+  def changeset(actor, attrs) do
+    actor
     |> cast(attrs, ~w[type name]a)
     |> validate_required(~w[type name]a)
+    |> validate_length(:name, min: 1, max: 255)
+  end
+
+  def create_changeset(account_id, attrs) do
+    %Actors.Actor{}
+    |> changeset(attrs)
     |> put_change(:account_id, account_id)
   end
 

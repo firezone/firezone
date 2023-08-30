@@ -11,13 +11,13 @@ use boringtun::{
 };
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::{Callbacks, DNS_SENTINEL};
+use libs_common::{messages::Key, Callbacks, Error, DNS_SENTINEL};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
-use peer::Peer;
+use peer::{Peer, PeerStats};
 use resource_table::ResourceTable;
 use tokio::time::MissedTickBehavior;
 use webrtc::{
@@ -38,12 +38,13 @@ use std::{
 
 use libs_common::{
     messages::{Id, Interface as InterfaceConfig, ResourceDescription},
-    Result,
+    CallbackErrorFacade, Result,
 };
 
 use device_channel::{create_iface, DeviceChannel};
 use tun::IfaceConfig;
 
+pub use control_protocol::Request;
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 use index::{check_packet_index, IndexLfsr};
@@ -72,20 +73,16 @@ mod tun;
 #[path = "tun_linux.rs"]
 mod tun;
 
+// TODO: Android and linux are nearly identical; use a common tunnel module?
 #[cfg(target_os = "android")]
 #[path = "tun_android.rs"]
 mod tun;
 
-#[cfg(any(
-    target_os = "macos",
-    target_os = "ios",
-    target_os = "linux",
-    target_os = "android"
-))]
+#[cfg(target_family = "unix")]
 #[path = "device_channel_unix.rs"]
 mod device_channel;
 
-#[cfg(target_os = "windows")]
+#[cfg(target_family = "windows")]
 #[path = "device_channel_win.rs"]
 mod device_channel;
 
@@ -125,28 +122,90 @@ pub trait ControlSignal {
     /// Signals to the control plane an intent to initiate a connection to the given resource.
     ///
     /// Used when a packet is found to a resource we have no connection stablished but is within the list of resources available for the client.
-    async fn signal_connection_to(&self, resource: &ResourceDescription) -> Result<()>;
+    async fn signal_connection_to(
+        &self,
+        resource: &ResourceDescription,
+        connected_gateway_ids: Vec<Id>,
+    ) -> Result<()>;
 }
 
+// TODO: We should use newtypes for each kind of Id
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets
 /// to communicate between peers.
 pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     next_index: Mutex<IndexLfsr>,
     // We use a tokio's mutex here since it makes things easier and we only need it
     // during init, so the performance hit is neglibile
-    iface_config: tokio::sync::Mutex<IfaceConfig>,
-    device_channel: Arc<DeviceChannel>,
+    iface_config: tokio::sync::Mutex<Option<IfaceConfig>>,
+    device_channel: RwLock<Option<Arc<DeviceChannel>>>,
     rate_limiter: Arc<RateLimiter>,
     private_key: StaticSecret,
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<Id, Arc<RTCPeerConnection>>>,
     awaiting_connection: Mutex<HashSet<Id>>,
+    gateway_awaiting_connection: Mutex<HashMap<Id, Vec<IpNetwork>>>,
+    resources_gateways: Mutex<HashMap<Id, Id>>,
     webrtc_api: API,
-    resources: RwLock<ResourceTable>,
+    resources: RwLock<ResourceTable<ResourceDescription>>,
     control_signaler: C,
     gateway_public_keys: Mutex<HashMap<Id, PublicKey>>,
-    callbacks: CB,
+    callbacks: CallbackErrorFacade<CB>,
+}
+
+// TODO: For now we only use these fields with debug
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct TunnelStats {
+    public_key: String,
+    peers_by_ip: HashMap<IpNetwork, PeerStats>,
+    peer_connections: Vec<Id>,
+    awaiting_connection: HashSet<Id>,
+    gateway_awaiting_connection: HashMap<Id, Vec<IpNetwork>>,
+    resource_gateways: HashMap<Id, Id>,
+    dns_resources: HashMap<String, ResourceDescription>,
+    network_resources: HashMap<IpNetwork, ResourceDescription>,
+    gateway_public_keys: HashMap<Id, String>,
+}
+
+impl<C, CB> Tunnel<C, CB>
+where
+    C: ControlSignal + Send + Sync + 'static,
+    CB: Callbacks + 'static,
+{
+    pub fn stats(&self) -> TunnelStats {
+        let peers_by_ip = self
+            .peers_by_ip
+            .read()
+            .iter()
+            .map(|(ip, peer)| (ip, peer.stats()))
+            .collect();
+        let peer_connections = self.peer_connections.lock().keys().cloned().collect();
+        let awaiting_connection = self.awaiting_connection.lock().clone();
+        let gateway_awaiting_connection = self.gateway_awaiting_connection.lock().clone();
+        let resource_gateways = self.resources_gateways.lock().clone();
+        let (network_resources, dns_resources) = {
+            let resources = self.resources.read();
+            (resources.network_resources(), resources.dns_resources())
+        };
+        let gateway_public_keys = self
+            .gateway_public_keys
+            .lock()
+            .iter()
+            .map(|(&id, &k)| (id, Key::from(k).to_string()))
+            .collect();
+        TunnelStats {
+            public_key: Key::from(self.public_key).to_string(),
+            peers_by_ip,
+            peer_connections,
+            awaiting_connection,
+            gateway_awaiting_connection,
+            resource_gateways,
+            dns_resources,
+            network_resources,
+            gateway_public_keys,
+        }
+    }
 }
 
 impl<C, CB> Tunnel<C, CB>
@@ -169,13 +228,14 @@ where
         let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
         let peers_by_ip = RwLock::new(IpNetworkTable::new());
         let next_index = Default::default();
-        let (iface_config, device_channel) = create_iface().await?;
-        let iface_config = tokio::sync::Mutex::new(iface_config);
-        let device_channel = Arc::new(device_channel);
         let peer_connections = Default::default();
         let resources = Default::default();
         let awaiting_connection = Default::default();
         let gateway_public_keys = Default::default();
+        let resources_gateways = Default::default();
+        let gateway_awaiting_connection = Default::default();
+        let iface_config = Default::default();
+        let device_channel = Default::default();
 
         // ICE
         let mut media_engine = MediaEngine::default();
@@ -203,12 +263,14 @@ where
             peers_by_ip,
             next_index,
             webrtc_api,
+            resources,
             iface_config,
             device_channel,
-            resources,
             awaiting_connection,
+            gateway_awaiting_connection,
             control_signaler,
-            callbacks,
+            resources_gateways,
+            callbacks: CallbackErrorFacade(callbacks),
         })
     }
 
@@ -218,47 +280,66 @@ where
     /// and packets will be wrapped with wireguard and sent through it.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn add_resource(&self, resource_description: ResourceDescription) -> Result<()> {
+        let mut any_valid_route = false;
         {
-            let mut iface_config = self.iface_config.lock().await;
+            let Some(ref mut iface_config) = *self.iface_config.lock().await else {
+                tracing::error!("Received resource add before initialization.");
+                return Err(Error::ControlProtocolError);
+            };
             for ip in resource_description.ips() {
-                iface_config.add_route(&ip, self.callbacks()).await?;
+                if let Err(e) = iface_config.add_route(ip, self.callbacks()).await {
+                    tracing::warn!(message = "Couldn't add route", route = %ip, error = ?e);
+                    let _ = self.callbacks().on_error(&e);
+                } else {
+                    any_valid_route = true;
+                }
             }
+        }
+        if !any_valid_route {
+            return Err(Error::InvalidResource(
+                "Provided resource had no valid route".to_string(),
+            ));
         }
         let resource_list = {
             let mut resources = self.resources.write();
             resources.insert(resource_description);
             resources.resource_list()
         };
-        self.callbacks.on_update_resources(resource_list);
+        self.callbacks.on_update_resources(resource_list)?;
         Ok(())
     }
 
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_interface(self: &Arc<Self>, config: &InterfaceConfig) -> Result<()> {
-        {
-            let mut iface_config = self.iface_config.lock().await;
-            iface_config
-                .set_iface_config(config, self.callbacks())
-                .await
-                .expect("Couldn't initiate interface");
-            iface_config
-                .up()
-                .await
-                .expect("Couldn't initiate interface");
-            iface_config
-                .add_route(&DNS_SENTINEL.into(), self.callbacks())
-                .await?;
-        }
+        let (mut iface_config, device_channel) = create_iface(config, self.callbacks()).await?;
+        iface_config
+            .add_route(DNS_SENTINEL.into(), self.callbacks())
+            .await?;
 
+        let device_channel = Arc::new(device_channel);
+        *self.device_channel.write() = Some(device_channel.clone());
+        *self.iface_config.lock().await = Some(iface_config);
         self.start_timers();
-        self.start_iface_handler();
+        self.start_iface_handler(device_channel);
 
-        self.callbacks.on_tunnel_ready();
+        self.callbacks.on_tunnel_ready()?;
 
         tracing::trace!("Started background loops");
 
         Ok(())
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn stop_peer(&self, index: u32, conn_id: Id) {
+        self.peers_by_ip.write().retain(|_, p| p.index != index);
+        let conn = self.peer_connections.lock().remove(&conn_id);
+        if let Some(conn) = conn {
+            if let Err(e) = conn.close().await {
+                tracing::warn!(error = ?e, "Can't close peer");
+                let _ = self.callbacks().on_error(&e.into());
+            }
+        }
     }
 
     async fn peer_refresh(&self, peer: &Peer, dst_buf: &mut [u8; MAX_UDP_SIZE]) {
@@ -266,13 +347,16 @@ where
 
         match update_timers_result {
             TunnResult::Done => {}
-            TunnResult::Err(WireGuardError::ConnectionExpired) => {
-                tracing::error!("Connection expired");
+            TunnResult::Err(WireGuardError::ConnectionExpired)
+            | TunnResult::Err(WireGuardError::NoCurrentSession) => {
+                self.stop_peer(peer.index, peer.conn_id).await;
+                let _ = peer.shutdown().await;
             }
             TunnResult::Err(e) => tracing::error!(message = "Timer error", error = ?e),
             TunnResult::WriteToNetwork(packet) => {
                 peer.send_infallible(packet, &self.callbacks).await
             }
+
             _ => panic!("Unexpected result from update_timers"),
         };
     }
@@ -293,7 +377,8 @@ where
         let mut peers_by_ip = self.peers_by_ip.write();
 
         for (_, peer) in peers_by_ip.iter() {
-            if !peer.is_valid() {
+            peer.expire_resources();
+            if peer.is_emptied() {
                 tracing::trace!("Peer connection with index {} expired", peer.index);
                 let conn = self.peer_connections.lock().remove(&peer.conn_id);
                 let p = peer.clone();
@@ -309,7 +394,7 @@ where
             }
         }
 
-        peers_by_ip.retain(|_, p| p.is_valid());
+        peers_by_ip.retain(|_, p| !p.is_emptied());
     }
 
     fn start_peers_refresh_timer(self: &Arc<Self>) {
@@ -357,7 +442,10 @@ where
         }
     }
 
-    fn start_peer_handler(self: &Arc<Self>, peer: Arc<Peer>) {
+    fn start_peer_handler(self: &Arc<Self>, peer: Arc<Peer>) -> Result<()> {
+        let Some(device_channel) = self.device_channel.read().clone() else {
+            return Err(Error::NoIface);
+        };
         let tunnel = Arc::clone(self);
         tokio::spawn(async move {
             let mut src_buf = [0u8; MAX_UDP_SIZE];
@@ -371,7 +459,8 @@ where
                     break;
                 }
 
-                tracing::trace!("read {size} bytes from peer");
+                tracing::trace!(action = "read", bytes = size, from = "peer");
+
                 // The rate limiter initially checks mac1 and mac2, and optionally asks to send a cookie
                 let parsed_packet = match tunnel.rate_limiter.verify_packet(
                     // TODO: Some(addr.ip()) webrtc doesn't expose easily the underlying data channel remote ip
@@ -388,8 +477,8 @@ where
                         continue;
                     }
                     Err(TunnResult::Err(e)) => {
-                        tracing::error!("Wireguard error: {e:?}");
-                        tunnel.callbacks().on_error(&e.into());
+                        tracing::error!(message = "Wireguard error", error = ?e);
+                        let _ = tunnel.callbacks().on_error(&e.into());
                         continue;
                     }
                     Err(_) => {
@@ -413,13 +502,10 @@ where
                 // We found a peer, use it to decapsulate the message+
                 let mut flush = false;
                 match decapsulate_result {
-                    TunnResult::Done => {
-                        let conn_id = peer.conn_id;
-                        tracing::trace!("Wireguard connection done with peer: {conn_id}");
-                    }
-                    TunnResult::Err(err) => {
-                        tracing::error!("Error decapsulating packet: {err:?}");
-                        tunnel.callbacks().on_error(&err.into());
+                    TunnResult::Done => {}
+                    TunnResult::Err(e) => {
+                        tracing::error!(message = "Error decapsulating packet", error = ?e);
+                        let _ = tunnel.callbacks().on_error(&e.into());
                         continue;
                     }
                     TunnResult::WriteToNetwork(packet) => {
@@ -427,10 +513,14 @@ where
                         peer.send_infallible(packet, &tunnel.callbacks).await;
                     }
                     TunnResult::WriteToTunnelV4(packet, addr) => {
-                        tunnel.send_to_resource(&peer, addr.into(), packet).await;
+                        tunnel
+                            .send_to_resource(&device_channel, &peer, addr.into(), packet)
+                            .await;
                     }
                     TunnResult::WriteToTunnelV6(packet, addr) => {
-                        tunnel.send_to_resource(&peer, addr.into(), packet).await;
+                        tunnel
+                            .send_to_resource(&device_channel, &peer, addr.into(), packet)
+                            .await;
                     }
                 };
 
@@ -444,23 +534,27 @@ where
                     }
                 }
             }
+            let peer_stats = peer.stats();
+            tracing::debug!(peer = ?peer_stats, "Peer stopped");
+            tunnel.stop_peer(peer.index, peer.conn_id).await;
         });
+
+        Ok(())
     }
 
-    async fn write4_device_infallible(&self, packet: &[u8]) {
-        if let Err(e) = self.device_channel.write4(packet).await {
-            self.callbacks.on_error(&e.into());
+    async fn write4_device_infallible(&self, device_channel: &DeviceChannel, packet: &[u8]) {
+        if let Err(e) = device_channel.write4(packet).await {
+            let _ = self.callbacks.on_error(&e.into());
         }
     }
 
-    async fn write6_device_infallible(&self, packet: &[u8]) {
-        if let Err(e) = self.device_channel.write6(packet).await {
-            self.callbacks.on_error(&e.into());
+    async fn write6_device_infallible(&self, device_channel: &DeviceChannel, packet: &[u8]) {
+        if let Err(e) = device_channel.write6(packet).await {
+            let _ = self.callbacks.on_error(&e.into());
         }
     }
 
     fn get_resource(&self, buff: &[u8]) -> Option<ResourceDescription> {
-        // TODO: Check if DNS packet, in that case parse and get dns
         let addr = Tunn::dst_address(buff)?;
         let resources = self.resources.read();
         match addr {
@@ -469,7 +563,7 @@ where
         }
     }
 
-    fn start_iface_handler(self: &Arc<Self>) {
+    fn start_iface_handler(self: &Arc<Self>, device_channel: Arc<DeviceChannel>) {
         let dev = self.clone();
         tokio::spawn(async move {
             loop {
@@ -480,29 +574,36 @@ where
                     // there's no docs on tun device on when a whole packet is read, is it \n or another thing?
                     // found some comments saying that a single read syscall represents a single packet but no docs on that
                     // See https://stackoverflow.com/questions/18461365/how-to-read-packet-by-packet-from-linux-tun-tap
-                    match dev.device_channel.mtu().await {
-                        Ok(mtu) => match dev.device_channel.read(&mut src[..mtu]).await {
+                    match device_channel.mtu().await {
+                        // XXX: Do we need to fetch the mtu every time? In most clients it'll
+                        // be hardcoded to 1280, and if not, it'll only change before packets start
+                        // to flow.
+                        Ok(mtu) => match device_channel.read(&mut src[..mtu]).await {
                             Ok(res) => res,
                             Err(err) => {
-                                tracing::error!("Couldn't read packet from interface: {err}");
-                                dev.callbacks.on_error(&err.into());
+                                tracing::error!(message = "Couldn't read packet from interface", error = ?err);
+                                let _ = dev.callbacks.on_error(&err.into());
                                 continue;
                             }
                         },
                         Err(err) => {
-                            tracing::error!("Couldn't obtain iface mtu: {err}");
-                            dev.callbacks.on_error(&err);
+                            tracing::error!(message = "Couldn't obtain iface mtu", error = ?err);
+                            let _ = dev.callbacks.on_error(&err);
                             continue;
                         }
                     }
                 };
 
-                tracing::trace!("Reading from iface {res} bytes");
+                tracing::trace!(action = "reading", bytes = res, from = "iface");
 
                 if let Some(r) = dev.check_for_dns(&src[..res]) {
                     match r {
-                        dns::SendPacket::Ipv4(r) => dev.write4_device_infallible(&r[..]).await,
-                        dns::SendPacket::Ipv6(r) => dev.write6_device_infallible(&r[..]).await,
+                        dns::SendPacket::Ipv4(r) => {
+                            dev.write4_device_infallible(&device_channel, &r[..]).await
+                        }
+                        dns::SendPacket::Ipv6(r) => {
+                            dev.write6_device_infallible(&device_channel, &r[..]).await
+                        }
                     }
                     continue;
                 }
@@ -513,18 +614,15 @@ where
                 };
 
                 let (encapsulate_result, channel, peer_index, conn_id) = {
-                    let peers_by_ip = dev.peers_by_ip.read();
-                    match peers_by_ip.longest_match(dst_addr).map(|p| p.1) {
+                    match dev.peers_by_ip.read().longest_match(dst_addr).map(|p| p.1) {
                         Some(peer) => {
-                            // TODO: check that the translation maps to the ip
-                            // (we actually have multiple ips so we need a map here)
-                            if peer.translated_resource_address.read().is_some() {
-                                let Some(mut packet) = MutableIpPacket::new(&mut src[..res]) else  {
-                                    tracing::error!("Developer error: we should never see a packet through the tunnel wire that isn't ip");
-                                    continue;
-                                };
-
-                                let resource = peer.resource.as_ref().expect("Developer error: only peers with resource should have a resource_address");
+                            let Some(mut packet) = MutableIpPacket::new(&mut src[..res]) else {
+                                tracing::error!("Developer error: we should never see a packet through the tunnel wire that isn't ip");
+                                continue;
+                            };
+                            if let Some(resource) =
+                                peer.get_translation(packet.to_immutable().source())
+                            {
                                 let ResourceDescription::Dns(resource) = resource else {
                                     tracing::error!("Developer error: only dns resources should have a resource_address");
                                     continue;
@@ -539,7 +637,7 @@ where
                                     }
                                 }
 
-                                packet.set_checksum();
+                                packet.update_checksum();
                             }
                             (
                                 peer.tunnel.lock().encapsulate(&src[..res], &mut dst[..]),
@@ -557,21 +655,36 @@ where
                                 let mut awaiting_connection = dev.awaiting_connection.lock();
                                 let id = resource.id();
                                 if !awaiting_connection.contains(&id) {
-                                    tracing::trace!("Found new intent to send packets to resource with resource-ip: {dst_addr}, initializing connection...");
+                                    tracing::trace!(
+                                        message = "Found new intent to send packets to resource",
+                                        resource_ip = %dst_addr
+                                    );
 
                                     awaiting_connection.insert(id);
                                     let dev = Arc::clone(&dev);
 
+                                    let mut connected_gateway_ids: Vec<_> = dev
+                                        .gateway_awaiting_connection
+                                        .lock()
+                                        .clone()
+                                        .into_keys()
+                                        .collect();
+                                    connected_gateway_ids.extend(
+                                        dev.resources_gateways.lock().values().collect::<Vec<_>>(),
+                                    );
+                                    tracing::trace!(
+                                        message = "Currently connected gateways", gateways = ?connected_gateway_ids
+                                    );
                                     tokio::spawn(async move {
                                         if let Err(e) = dev
                                             .control_signaler
-                                            .signal_connection_to(&resource)
+                                            .signal_connection_to(&resource, connected_gateway_ids)
                                             .await
                                         {
                                             // Not a deadlock because this is a different task
                                             dev.awaiting_connection.lock().remove(&id);
-                                            tracing::error!("couldn't start protocol for new connection to resource: {e}");
-                                            dev.callbacks.on_error(&e);
+                                            tracing::error!(message = "couldn't start protocol for new connection to resource", error = ?e);
+                                            let _ = dev.callbacks.on_error(&e);
                                         }
                                     });
                                 }
@@ -582,18 +695,18 @@ where
                 };
 
                 match encapsulate_result {
-                    TunnResult::Done => {
-                        tracing::trace!(
-                            "tunnel for resource corresponding to {dst_addr} was finalized"
-                        );
-                        dev.peers_by_ip.write().retain(|_, p| p.index != peer_index);
+                    TunnResult::Done => {}
+                    TunnResult::Err(WireGuardError::ConnectionExpired)
+                    | TunnResult::Err(WireGuardError::NoCurrentSession) => {
+                        dev.stop_peer(peer_index, conn_id).await
                     }
+
                     TunnResult::Err(e) => {
-                        tracing::error!(message = "Encapsulate error for resource corresponding to {dst_addr}", error = ?e);
-                        dev.callbacks.on_error(&e.into());
+                        tracing::error!(message = "Encapsulate error for resource", resource_address = %dst_addr, error = ?e);
+                        let _ = dev.callbacks.on_error(&e.into());
                     }
                     TunnResult::WriteToNetwork(packet) => {
-                        tracing::trace!("writing iface packet to peer: {dst_addr}");
+                        tracing::trace!(action = "writing", from = "iface", to = %dst_addr);
                         if let Err(e) = channel.write(&Bytes::copy_from_slice(packet)).await {
                             tracing::error!("Couldn't write packet to channel: {e}");
                             if matches!(
@@ -603,19 +716,10 @@ where
                                         webrtc::sctp::Error::ErrStreamClosed
                                     )
                             ) {
-                                dev.peers_by_ip.write().retain(|_, p| p.index != peer_index);
-                                let _ = channel.close().await;
-                                let conn = dev.peer_connections.lock().remove(&conn_id);
-                                if let Some(conn) = conn {
-                                    if let Err(e) = conn.close().await {
-                                        tracing::error!(
-                                            "Problem while trying to close channel: {e:?}"
-                                        );
-                                        dev.callbacks().on_error(&e.into());
-                                    }
-                                }
+                                dev.stop_peer(peer_index, conn_id).await;
                             }
-                            dev.callbacks.on_error(&e.into());
+                            let _ = dev.callbacks.on_error(&e.into());
+                            return;
                         }
                     }
                     _ => panic!("Unexpected result from encapsulate"),
@@ -628,7 +732,7 @@ where
         self.next_index.lock().next()
     }
 
-    pub fn callbacks(&self) -> &CB {
+    pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
 }

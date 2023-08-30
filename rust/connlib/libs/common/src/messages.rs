@@ -35,12 +35,26 @@ pub struct Peer {
 /// make use of this message type.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RequestConnection {
+    /// Gateway id for the connection
+    pub gateway_id: Id,
     /// Resource id the request is for.
     pub resource_id: Id,
     /// The preshared key the client generated for the connection that it is trying to establish.
     pub device_preshared_key: Key,
     /// Client's local RTC Session Description that the client will use for this connection.
     pub device_rtc_session_description: RTCSessionDescription,
+}
+
+/// Represent a request to reuse an existing gateway connection from a client to a given resource.
+///
+/// While this is a client-only message it's hosted in common since the tunnel
+/// make use of this message type.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct ReuseConnection {
+    /// Resource id the request is for.
+    pub resource_id: Id,
+    /// Id of the gateway we want to re-use
+    pub gateway_id: Id,
 }
 
 // Custom implementation of partial eq to ignore client_rtc_sdp
@@ -84,12 +98,20 @@ pub struct ResourceDescriptionDns {
 }
 
 impl ResourceDescription {
+    pub fn dns_name(&self) -> Option<&str> {
+        match self {
+            ResourceDescription::Dns(r) => Some(&r.name),
+            ResourceDescription::Cidr(_) => None,
+        }
+    }
+
     pub fn ips(&self) -> Vec<IpNetwork> {
         match self {
             ResourceDescription::Dns(r) => vec![r.ipv4.into(), r.ipv6.into()],
             ResourceDescription::Cidr(r) => vec![r.address],
         }
     }
+
     pub fn ipv4(&self) -> Option<Ipv4Addr> {
         match self {
             ResourceDescription::Dns(r) => Some(r.ipv4),

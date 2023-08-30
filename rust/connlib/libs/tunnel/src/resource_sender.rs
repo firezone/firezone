@@ -3,10 +3,11 @@ use std::{
     sync::Arc,
 };
 
+use crate::{
+    device_channel::DeviceChannel, ip_packet::MutableIpPacket, peer::Peer, ControlSignal, Tunnel,
+};
 use boringtun::noise::Tunn;
 use libs_common::{messages::ResourceDescription, Callbacks, Error};
-
-use crate::{ip_packet::MutableIpPacket, peer::Peer, ControlSignal, Tunnel};
 
 impl<C, CB> Tunnel<C, CB>
 where
@@ -17,31 +18,44 @@ where
         ((addr.is_ipv4() && ip.is_ipv4()) || (addr.is_ipv6() && ip.is_ipv6())).then_some(ip)
     }
 
-    async fn update_and_send_packet(&self, packet: &mut [u8], dst_addr: IpAddr) {
+    async fn update_and_send_packet(
+        &self,
+        device_channel: &DeviceChannel,
+        packet: &mut [u8],
+        dst_addr: IpAddr,
+    ) {
         let Some(mut pkt) = MutableIpPacket::new(packet) else { return };
         pkt.set_dst(dst_addr);
-        pkt.set_checksum();
+        pkt.update_checksum();
 
         match dst_addr {
-            IpAddr::V4(_) => {
-                self.write4_device_infallible(packet).await;
+            IpAddr::V4(addr) => {
+                tracing::trace!("Sending packet to {addr}");
+                self.write4_device_infallible(device_channel, packet).await;
             }
-            IpAddr::V6(_) => {
-                self.write6_device_infallible(packet).await;
+            IpAddr::V6(addr) => {
+                tracing::trace!("Sending packet to {addr}");
+                self.write6_device_infallible(device_channel, packet).await;
             }
         }
     }
 
-    pub(crate) async fn send_to_resource(&self, peer: &Arc<Peer>, addr: IpAddr, packet: &mut [u8]) {
+    pub(crate) async fn send_to_resource(
+        &self,
+        device_channel: &DeviceChannel,
+        peer: &Arc<Peer>,
+        addr: IpAddr,
+        packet: &mut [u8],
+    ) {
         if peer.is_allowed(addr) {
-            let Some(resource) = &peer.resource else {
+            let Some(resources) = &peer.resources else {
                 // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
                 // and we just trust gateways.
                 // In gateways this should never happen.
-                tracing::trace!("Writing to interface");
+                tracing::trace!("Writing to interface with addr: {addr}");
                 match addr {
-                    IpAddr::V4(_) => self.write4_device_infallible(packet).await,
-                    IpAddr::V6(_) => self.write6_device_infallible(packet).await,
+                    IpAddr::V4(_) => self.write4_device_infallible(device_channel, packet).await,
+                    IpAddr::V6(_) => self.write6_device_infallible(device_channel, packet).await,
                 }
                 return;
             };
@@ -51,38 +65,38 @@ where
                 return;
             };
 
+            let Some(resource) = resources.read().get_by_ip(dst).map(|r| r.0.clone()) else {
+                tracing::warn!(
+                    "client tried to hijack the tunnel for resource itsn't allowed."
+                );
+                return;
+            };
+
             let (dst_addr, _dst_port) = match resource {
                 // Note: for now no translation is needed for the ip since we do a peer/connection per resource
                 ResourceDescription::Dns(r) => {
-                    if r.ipv4 == dst || r.ipv6 == dst {
-                        let mut address = r.address.split(':');
-                        let Some(dst_addr) = address.next() else {
+                    let mut address = r.address.split(':');
+                    let Some(dst_addr) = address.next() else {
                             tracing::error!("invalid DNS name for resource: {}", r.address);
-                            self.callbacks().on_error(&Error::InvalidResource(r.address.clone()));
+                            let _ = self.callbacks().on_error(&Error::InvalidResource(r.address.clone()));
                             return;
                         };
-                        let Ok(mut dst_addr) = format!("{dst_addr}:0").to_socket_addrs() else {
+                    let Ok(mut dst_addr) = format!("{dst_addr}:0").to_socket_addrs() else {
                             tracing::warn!("Couldn't resolve name addr: {addr}");
                             return;
                         };
-                        let Some(dst_addr) = dst_addr.find_map(|d| Self::get_matching_version_ip(addr, d.ip())) else {
+                    let Some(dst_addr) = dst_addr.find_map(|d| Self::get_matching_version_ip(addr, d.ip())) else {
                             tracing::warn!("Couldn't resolve name addr: {addr}");
                             return;
                         };
-                        peer.update_translated_resource_address(dst_addr);
-                        (
-                            dst_addr,
-                            address
-                                .next()
-                                .map(str::parse::<u16>)
-                                .and_then(std::result::Result::ok),
-                        )
-                    } else {
-                        tracing::warn!(
-                            "client tried to hijack the tunnel for resource itsn't allowed."
-                        );
-                        return;
-                    }
+                    peer.update_translated_resource_address(r.id, dst_addr);
+                    (
+                        dst_addr,
+                        address
+                            .next()
+                            .map(str::parse::<u16>)
+                            .and_then(std::result::Result::ok),
+                    )
                 }
                 ResourceDescription::Cidr(r) => {
                     if r.address.contains(dst) {
@@ -97,7 +111,8 @@ where
                 }
             };
 
-            self.update_and_send_packet(packet, dst_addr).await;
+            self.update_and_send_packet(device_channel, packet, dst_addr)
+                .await;
         } else {
             tracing::warn!("Received packet from peer with an unallowed ip: {addr}");
         }

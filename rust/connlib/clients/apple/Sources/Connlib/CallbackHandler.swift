@@ -3,7 +3,7 @@
 //
 
 import NetworkExtension
-import os.log
+import OSLog
 
 // When the FFI changes from the Rust side, change the CallbackHandler
 // functions along with that, but not the delegate protocol.
@@ -16,7 +16,7 @@ extension RustString: @unchecked Sendable {}
 extension RustString: Error {}
 
 public protocol CallbackHandlerDelegate: AnyObject {
-  func onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String)
+  func onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String, dnsFallbackStrategy: String)
   func onTunnelReady()
   func onAddRoute(_: String)
   func onRemoveRoute(_: String)
@@ -27,14 +27,15 @@ public protocol CallbackHandlerDelegate: AnyObject {
 
 public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
-  private let logger = Logger(subsystem: "dev.firezone.firezone", category: "callbackhandler")
+  private let logger = Logger.make(for: CallbackHandler.self)
 
-  func onSetInterfaceConfig(tunnelAddressIPv4: RustString, tunnelAddressIPv6: RustString, dnsAddress: RustString) {
+  func onSetInterfaceConfig(tunnelAddressIPv4: RustString, tunnelAddressIPv6: RustString, dnsAddress: RustString, dnsFallbackStrategy: RustString) {
     logger.debug("CallbackHandler.onSetInterfaceConfig: IPv4: \(tunnelAddressIPv4.toString(), privacy: .public), IPv6: \(tunnelAddressIPv6.toString(), privacy: .public), DNS: \(dnsAddress.toString(), privacy: .public)")
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),
       tunnelAddressIPv6: tunnelAddressIPv6.toString(),
-      dnsAddress: dnsAddress.toString()
+      dnsAddress: dnsAddress.toString(),
+      dnsFallbackStrategy: dnsFallbackStrategy.toString()
     )
   }
 
@@ -61,11 +62,11 @@ public class CallbackHandler {
   func onDisconnect(error: RustString) {
     logger.debug("CallbackHandler.onDisconnect: \(error.toString(), privacy: .public)")
     let error = error.toString()
-    var optional_error = Optional.some(error)
+    var optionalError = Optional.some(error)
     if error.isEmpty {
-      optional_error = Optional.none
+      optionalError = Optional.none
     }
-    delegate?.onDisconnect(error: optional_error)
+    delegate?.onDisconnect(error: optionalError)
   }
 
   func onError(error: RustString) {

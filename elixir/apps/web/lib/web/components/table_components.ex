@@ -7,6 +7,79 @@ defmodule Web.TableComponents do
   import Web.Gettext
   import Web.CoreComponents
 
+  attr :columns, :any, required: true, doc: "col slot taken from parent component"
+  attr :actions, :any, required: true, doc: "action slot taken from parent component"
+
+  def table_header(assigns) do
+    ~H"""
+    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+      <tr>
+        <th :for={col <- @columns} class="px-4 py-3">
+          <%= col[:label] %>
+          <.icon
+            :if={col[:sortable] == "true"}
+            name="hero-chevron-up-down-solid"
+            class="w-4 h-4 ml-1"
+          />
+        </th>
+        <th :if={not Enum.empty?(@actions)} class="px-4 py-3">
+          <span class="sr-only"><%= gettext("Actions") %></span>
+        </th>
+      </tr>
+    </thead>
+    """
+  end
+
+  attr :id, :any, default: nil, doc: "the function for generating the row id"
+  attr :row, :map, required: true, doc: "the row data"
+  attr :click, :any, default: nil, doc: "the function for handling phx-click on each row"
+
+  attr :columns, :any, required: true, doc: "col slot taken from parent component"
+  attr :actions, :list, required: true, doc: "action slot taken from parent component"
+
+  attr :mapper, :any,
+    default: &Function.identity/1,
+    doc: "the function for mapping each row before calling the :col and :action slots"
+
+  def table_row(assigns) do
+    ~H"""
+    <tr id={@id} class="border-b dark:border-gray-700">
+      <td
+        :for={{col, _i} <- Enum.with_index(@columns)}
+        phx-click={@click && @click.(@row)}
+        class={[
+          "px-4 py-3",
+          @click && "hover:cursor-pointer"
+        ]}
+      >
+        <%= render_slot(col, @mapper.(@row)) %>
+      </td>
+      <td :if={@actions != []} class="px-4 py-3 flex items-center justify-end">
+        <button id={"#{@id}-dropdown-button"} data-dropdown-toggle={"#{@id}-dropdown"} class={~w[
+                  inline-flex items-center p-0.5 text-sm font-medium text-center
+                  text-gray-500 hover:text-gray-800 rounded-lg focus:outline-none
+                  dark:text-gray-400 dark:hover:text-gray-100
+                ]} type="button">
+          <.icon name="hero-ellipsis-horizontal" class="w-5 h-5" />
+        </button>
+        <div id={"#{@id}-dropdown" } class={~w[
+                  hidden z-10 w-44 bg-white rounded divide-y divide-gray-100
+                  shadow border border-gray-300 dark:bg-gray-700 dark:divide-gray-600"
+                ]}>
+          <ul
+            class="py-1 text-sm text-gray-700 dark:text-gray-200"
+            aria-labelledby={"#{@id}-dropdown-button"}
+          >
+            <li :for={action <- @actions}>
+              <%= render_slot(action, @mapper.(@row)) %>
+            </li>
+          </ul>
+        </div>
+      </td>
+    </tr>
+    """
+  end
+
   @doc ~S"""
   Renders a table with generic styling.
 
@@ -42,61 +115,17 @@ defmodule Web.TableComponents do
     ~H"""
     <div class="overflow-x-auto">
       <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-        <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-          <tr>
-            <th :for={col <- @col} class="px-4 py-3">
-              <%= col[:label] %>
-              <.icon
-                :if={col[:sortable] == "true"}
-                name="hero-chevron-up-down-solid"
-                class="w-4 h-4 ml-1"
-              />
-            </th>
-            <th class="px-4 py-3">
-              <span class="sr-only"><%= gettext("Actions") %></span>
-            </th>
-          </tr>
-        </thead>
+        <.table_header columns={@col} actions={@action} />
         <tbody id={@id} phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}>
-          <tr :for={row <- @rows} id={@row_id && @row_id.(row)} class="border-b dark:border-gray-700">
-            <td
-              :for={{col, _i} <- Enum.with_index(@col)}
-              phx-click={@row_click && @row_click.(row)}
-              class={[
-                "px-4 py-3",
-                @row_click && "hover:cursor-pointer"
-              ]}
-            >
-              <%= render_slot(col, @row_item.(row)) %>
-            </td>
-            <td :if={@action != []} class="px-4 py-3 flex items-center justify-end">
-              <button
-                id={"#{@row_id.(row)}-dropdown-button"}
-                data-dropdown-toggle={"#{@row_id.(row)}-dropdown"}
-                class={~w[
-                  inline-flex items-center p-0.5 text-sm font-medium text-center
-                  text-gray-500 hover:text-gray-800 rounded-lg focus:outline-none
-                  dark:text-gray-400 dark:hover:text-gray-100
-                ]}
-                type="button"
-              >
-                <.icon name="hero-ellipsis-horizontal" class="w-5 h-5" />
-              </button>
-              <div id={"#{@row_id.(row)}-dropdown" } class={~w[
-                  hidden z-10 w-44 bg-white rounded divide-y divide-gray-100
-                  shadow border border-gray-300 dark:bg-gray-700 dark:divide-gray-600"
-                ]}>
-                <ul
-                  class="py-1 text-sm text-gray-700 dark:text-gray-200"
-                  aria-labelledby={"#{@row_id.(row)}-dropdown-button"}
-                >
-                  <li :for={action <- @action}>
-                    <%= render_slot(action, @row_item.(row)) %>
-                  </li>
-                </ul>
-              </div>
-            </td>
-          </tr>
+          <.table_row
+            :for={row <- @rows}
+            columns={@col}
+            actions={@action}
+            row={row}
+            id={@row_id && @row_id.(row)}
+            click={@row_click}
+            mapper={@row_item}
+          />
         </tbody>
       </table>
     </div>
@@ -120,8 +149,15 @@ defmodule Web.TableComponents do
   """
 
   attr :id, :string, required: true
-  attr :rows, :list, required: true
+  attr :groups, :list, required: true
+  attr :group_id, :any, default: nil, doc: "the function for generating the group id"
+
   attr :row_id, :any, default: nil, doc: "the function for generating the row id"
+  attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
+
+  attr :group_items, :any,
+    required: true,
+    doc: "a mapper which is used to get list of rows for a group"
 
   attr :row_item, :any,
     default: &Function.identity/1,
@@ -132,67 +168,36 @@ defmodule Web.TableComponents do
     attr :sortable, :string
   end
 
+  slot :group, required: true
+
   slot :action, doc: "the slot for showing user actions in the last table column"
 
   def table_with_groups(assigns) do
+    assigns =
+      with %{rows: %Phoenix.LiveView.LiveStream{}} <- assigns do
+        assign(assigns, row_id: assigns.row_id || fn {id, _item} -> id end)
+      end
+
     ~H"""
     <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-      <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-        <tr>
-          <th :for={col <- @col} class="px-4 py-3">
-            <%= col[:label] %>
-            <.icon
-              :if={col[:sortable] == "true"}
-              name="hero-chevron-up-down-solid"
-              class="w-4 h-4 ml-1"
-            />
-          </th>
-          <th class="px-4 py-3">
-            <span class="sr-only"><%= gettext("Actions") %></span>
-          </th>
+      <.table_header columns={@col} actions={@action} />
+
+      <tbody :for={group <- @groups} data-group-id={@group_id && @group_id.(group)}>
+        <tr class="bg-gray-100">
+          <td class="px-4 py-2" colspan={length(@col) + 1}>
+            <%= render_slot(@group, group) %>
+          </td>
         </tr>
-      </thead>
-      <tbody>
-        <%= for {group, items} <- @rows do %>
-          <tr class="bg-neutral-300">
-            <td class="px-4 py-2">
-              <%= group.name_prefix %>
-            </td>
-            <td colspan={length(@col)}></td>
-          </tr>
-          <tr :for={item <- items} class="border-b dark:border-gray-700">
-            <td :for={col <- @col} class="px-4 py-3">
-              <%= render_slot(col, item) %>
-            </td>
-            <td :if={@action != []} class="px-4 py-3 flex items-center justify-end">
-              <button
-                id={"#{@row_id.(item)}-dropdown-button"}
-                data-dropdown-toggle={"#{@row_id.(item)}-dropdown"}
-                class={~w[
-                  inline-flex items-center p-0.5 text-sm font-medium text-center
-                  text-gray-500 hover:text-gray-800 rounded-lg focus:outline-none
-                  dark:text-gray-400 dark:hover:text-gray-100
-                ]}
-                type="button"
-              >
-                <.icon name="hero-ellipsis-horizontal" class="w-5 h-5" />
-              </button>
-              <div id={"#{@row_id.(item)}-dropdown" } class={~w[
-                  hidden z-10 w-44 bg-white rounded divide-y divide-gray-100
-                  shadow border border-gray-300 dark:bg-gray-700 dark:divide-gray-600"
-                ]}>
-                <ul
-                  class="py-1 text-sm text-gray-700 dark:text-gray-200"
-                  aria-labelledby={"#{@row_id.(item)}-dropdown-button"}
-                >
-                  <li :for={action <- @action}>
-                    <%= render_slot(action, @row_item.(item)) %>
-                  </li>
-                </ul>
-              </div>
-            </td>
-          </tr>
-        <% end %>
+
+        <.table_row
+          :for={row <- @group_items.(group)}
+          columns={@col}
+          actions={@action}
+          row={row}
+          id={@row_id && @row_id.(row)}
+          click={@row_click}
+          mapper={@row_item}
+        />
       </tbody>
     </table>
     """
@@ -223,9 +228,14 @@ defmodule Web.TableComponents do
       </.vertical_table>
   """
 
+  attr :class, :string, default: nil
+  attr :rest, :global
+
+  slot :inner_block
+
   def vertical_table(assigns) do
     ~H"""
-    <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+    <table class={["w-full text-sm text-left text-gray-500 dark:text-gray-400", @class]}>
       <tbody>
         <%= render_slot(@inner_block) %>
       </tbody>
@@ -250,19 +260,26 @@ defmodule Web.TableComponents do
       </.vertical_table_row>
   """
 
+  attr :label_class, :string, default: nil
+  attr :value_class, :string, default: nil
+
   slot :label, doc: "the slot for rendering the label of a row"
   slot :value, doc: "the slot for rendering the value of a row"
 
   def vertical_table_row(assigns) do
     ~H"""
     <tr class="border-b border-gray-200 dark:border-gray-700">
-      <th scope="row" class={~w[
-          text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap
-          bg-gray-50 dark:text-white dark:bg-gray-800
-        ]}>
+      <th
+        scope="row"
+        class={[
+          "text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap",
+          "bg-gray-50 dark:text-white dark:bg-gray-800",
+          @label_class
+        ]}
+      >
         <%= render_slot(@label) %>
       </th>
-      <td class="px-6 py-4">
+      <td class={["px-6 py-4", @value_class]}>
         <%= render_slot(@value) %>
       </td>
     </tr>

@@ -1,4 +1,4 @@
-alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources}
+alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources, Policies}
 
 # Seeds can be run both with MIX_ENV=prod and MIX_ENV=test, for test env we don't have
 # an adapter configured and creation of email provider will fail, so we will override it here.
@@ -15,10 +15,20 @@ maybe_repo_update = fn resource, values ->
   end
 end
 
-{:ok, account} = Accounts.create_account(%{name: "Firezone Account"})
+{:ok, account} =
+  Accounts.create_account(%{
+    name: "Firezone Account",
+    slug: "firezone"
+  })
+
 account = maybe_repo_update.(account, id: "c89bcc8c-9392-4dae-a40d-888aef6d28e0")
 
-{:ok, other_account} = Accounts.create_account(%{name: "Other Corp Account"})
+{:ok, other_account} =
+  Accounts.create_account(%{
+    name: "Other Corp Account",
+    slug: "not_firezone"
+  })
+
 other_account = maybe_repo_update.(other_account, id: "9b9290bf-e1bc-4dd3-b401-511908262690")
 
 IO.puts("Created accounts: ")
@@ -31,8 +41,15 @@ IO.puts("")
 
 {:ok, email_provider} =
   Auth.create_provider(account, %{
-    name: "email",
+    name: "Email",
     adapter: :email,
+    adapter_config: %{}
+  })
+
+{:ok, token_provider} =
+  Auth.create_provider(account, %{
+    name: "Token",
+    adapter: :token,
     adapter_config: %{}
   })
 
@@ -56,6 +73,20 @@ IO.puts("")
     adapter_config: %{}
   })
 
+{:ok, other_email_provider} =
+  Auth.create_provider(other_account, %{
+    name: "email",
+    adapter: :email,
+    adapter_config: %{}
+  })
+
+{:ok, other_userpass_provider} =
+  Auth.create_provider(other_account, %{
+    name: "UserPass",
+    adapter: :userpass,
+    adapter_config: %{}
+  })
+
 unprivileged_actor_email = "firezone-unprivileged-1@localhost"
 admin_actor_email = "firezone@localhost"
 
@@ -69,6 +100,15 @@ admin_actor_email = "firezone@localhost"
   Actors.create_actor(email_provider, admin_actor_email, %{
     type: :account_admin_user,
     name: "Firezone Admin"
+  })
+
+{:ok, service_account_actor} =
+  Actors.create_actor(token_provider, "backup-manager", %{
+    "type" => :service_account,
+    "name" => "Backup Manager",
+    "provider" => %{
+      expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
+    }
   })
 
 {:ok, unprivileged_actor_userpass_identity} =
@@ -88,32 +128,38 @@ unprivileged_actor_userpass_identity =
     id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5"
   )
 
-if client_secret = System.get_env("SEEDS_GOOGLE_OIDC_CLIENT_SECRET") do
-  {:ok, google_provider} =
-    Auth.create_provider(account, %{
-      name: "Google Workspace",
-      adapter: :google_workspace,
-      adapter_config: %{
-        "client_id" =>
-          "1064313638613-0bttveunfv27l72s3h6th13kk16pj9l1.apps.googleusercontent.com",
-        "client_secret" => client_secret
-      }
-    })
+# Other Account Users
+other_unprivileged_actor_email = "other-unprivileged-1@localhost"
+other_admin_actor_email = "other@localhost"
 
-  google_provider =
-    Ecto.Changeset.change(google_provider, id: "8614a622-6c24-48aa-b1a4-2c6c04b6cbab")
-    |> Repo.update!()
+{:ok, other_unprivileged_actor} =
+  Actors.create_actor(other_email_provider, other_unprivileged_actor_email, %{
+    type: :account_user,
+    name: "Other Unprivileged"
+  })
 
-  google_workspace_uid = System.get_env("SEEDS_GOOGLE_WORKSPACE_USER_ID")
+{:ok, other_admin_actor} =
+  Actors.create_actor(other_email_provider, other_admin_actor_email, %{
+    type: :account_admin_user,
+    name: "Other Admin"
+  })
 
-  {:ok, _admin_actor_google_workspace_identity} =
-    Auth.create_identity(admin_actor, google_provider, google_workspace_uid, %{})
+{:ok, _other_unprivileged_actor_userpass_identity} =
+  Auth.create_identity(
+    other_unprivileged_actor,
+    other_userpass_provider,
+    other_unprivileged_actor_email,
+    %{
+      "password" => "Firezone1234",
+      "password_confirmation" => "Firezone1234"
+    }
+  )
 
-  IO.puts("")
-  IO.puts("Google Workspace provider: #{google_provider.id}")
-  IO.puts("               User ID: #{google_workspace_uid}")
-  IO.puts("")
-end
+{:ok, _other_admin_actor_userpass_identity} =
+  Auth.create_identity(other_admin_actor, other_userpass_provider, other_admin_actor_email, %{
+    "password" => "Firezone1234",
+    "password_confirmation" => "Firezone1234"
+  })
 
 unprivileged_actor_token = hd(unprivileged_actor.identities).provider_virtual_state.sign_in_token
 admin_actor_token = hd(admin_actor.identities).provider_virtual_state.sign_in_token
@@ -143,6 +189,73 @@ for {type, login, password, email_token} <- [
     ] do
   IO.puts("  #{login}, #{type}, password: #{password}, email token: #{email_token} (exp in 15m)")
 end
+
+service_account_identity = hd(service_account_actor.identities)
+service_account_token = service_account_identity.provider_virtual_state.secret
+
+IO.puts(
+  "  #{service_account_identity.provider_identifier}, #{service_account_actor.type}, token: #{service_account_token}"
+)
+
+IO.puts("")
+
+_user_iphone =
+  Domain.Devices.upsert_device(
+    %{
+      name: "FZ User iPhone",
+      external_id: Ecto.UUID.generate(),
+      public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412"
+    },
+    unprivileged_subject
+  )
+
+_admin_iphone =
+  Domain.Devices.upsert_device(
+    %{
+      name: "FZ Admin iPhone",
+      external_id: Ecto.UUID.generate(),
+      public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412"
+    },
+    admin_subject
+  )
+
+IO.puts("Devices created")
+IO.puts("")
+
+IO.puts("Created Actor Groups: ")
+
+{:ok, eng_group} = Actors.create_group(%{name: "Engineering"}, admin_subject)
+{:ok, finance_group} = Actors.create_group(%{name: "Finance"}, admin_subject)
+{:ok, all_group} = Actors.create_group(%{name: "All Employees"}, admin_subject)
+
+for group <- [eng_group, finance_group, all_group] do
+  IO.puts("  Name: #{group.name}  ID: #{group.id}")
+end
+
+Actors.update_group(
+  eng_group,
+  %{memberships: [%{actor_id: admin_subject.actor.id}]},
+  admin_subject
+)
+
+Actors.update_group(
+  finance_group,
+  %{memberships: [%{actor_id: unprivileged_subject.actor.id}]},
+  admin_subject
+)
+
+Actors.update_group(
+  all_group,
+  %{
+    memberships: [
+      %{actor_id: admin_subject.actor.id},
+      %{actor_id: unprivileged_subject.actor.id}
+    ]
+  },
+  admin_subject
+)
 
 IO.puts("")
 
@@ -184,7 +297,7 @@ IO.puts("")
 gateway_group =
   account
   |> Gateways.Group.Changeset.create_changeset(
-    %{name_prefix: "mycro-aws-gws", tokens: [%{}]},
+    %{name_prefix: "mycro-aws-gws", tags: ["aws", "in-da-cloud"], tokens: [%{}]},
     admin_subject
   )
   |> Repo.insert!()
@@ -237,7 +350,7 @@ IO.puts("    Public Key: #{gateway2.public_key}")
 IO.puts("    IPv4: #{gateway2.ipv4} IPv6: #{gateway2.ipv6}")
 IO.puts("")
 
-{:ok, dns_resource} =
+{:ok, dns_google_resource} =
   Resources.create_resource(
     %{
       type: :dns,
@@ -247,7 +360,7 @@ IO.puts("")
     admin_subject
   )
 
-{:ok, dns_resource} =
+{:ok, dns_gitlab_resource} =
   Resources.create_resource(
     %{
       type: :dns,
@@ -274,13 +387,42 @@ IO.puts("")
   )
 
 IO.puts("Created resources:")
-IO.puts("  #{dns_resource.address} - DNS - #{dns_resource.ipv4} - gateways: #{gateway_name}")
+
+IO.puts(
+  "  #{dns_google_resource.address} - DNS - #{dns_google_resource.ipv4} - gateways: #{gateway_name}"
+)
+
+IO.puts(
+  "  #{dns_gitlab_resource.address} - DNS - #{dns_gitlab_resource.ipv4} - gateways: #{gateway_name}"
+)
+
 IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
 IO.puts("")
 
-{:ok, unprivileged_subject_session_token} =
-  Auth.create_session_token_from_subject(unprivileged_subject)
+Policies.create_policy(
+  %{
+    name: "Eng Access To Gitlab",
+    actor_group_id: eng_group.id,
+    resource_id: dns_gitlab_resource.id
+  },
+  admin_subject
+)
+
+Policies.create_policy(
+  %{
+    name: "All Access To Network",
+    actor_group_id: all_group.id,
+    resource_id: cidr_resource.id
+  },
+  admin_subject
+)
+
+IO.puts("Policies Created")
+IO.puts("")
+
+{:ok, unprivileged_subject_client_token} =
+  Auth.create_client_token_from_subject(unprivileged_subject)
 
 IO.puts("Created device tokens:")
-IO.puts("  #{unprivileged_actor_email} token: #{unprivileged_subject_session_token}")
+IO.puts("  #{unprivileged_actor_email} token: #{unprivileged_subject_client_token}")
 IO.puts("")

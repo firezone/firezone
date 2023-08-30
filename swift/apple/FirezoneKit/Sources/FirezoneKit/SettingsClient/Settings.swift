@@ -7,5 +7,5 @@
 import Foundation
 
 struct Settings: Codable, Hashable {
-  var portalURL: URL?
+  var teamId: String = ""
 }

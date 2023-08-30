@@ -1,7 +1,11 @@
+use std::net::IpAddr;
+
 use firezone_tunnel::RTCSessionDescription;
 use serde::{Deserialize, Serialize};
 
-use libs_common::messages::{Id, Interface, Key, Relay, RequestConnection, ResourceDescription};
+use libs_common::messages::{
+    Id, Interface, Key, Relay, RequestConnection, ResourceDescription, ReuseConnection,
+};
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct InitClient {
@@ -13,6 +17,14 @@ pub struct InitClient {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct RemoveResource {
     pub id: Id,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct ConnectionDetails {
+    pub relays: Vec<Relay>,
+    pub resource_id: Id,
+    pub gateway_id: Id,
+    pub gateway_remote_ip: IpAddr,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -31,15 +43,6 @@ impl PartialEq for Connect {
 }
 
 impl Eq for Connect {}
-
-/// List of relays
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct Relays {
-    /// Resource id corresponding to the relay
-    pub resource_id: Id,
-    /// The actual list of relays
-    pub relays: Vec<Relay>,
-}
 
 // These messages are the messages that can be received
 // by a client.
@@ -61,7 +64,7 @@ pub enum IngressMessages {
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum ReplyMessages {
-    Relays(Relays),
+    ConnectionDetails(ConnectionDetails),
     Connect(Connect),
 }
 
@@ -70,7 +73,7 @@ pub enum ReplyMessages {
 #[allow(clippy::large_enum_variant)]
 pub enum Messages {
     Init(InitClient),
-    Relays(Relays),
+    ConnectionDetails(ConnectionDetails),
     Connect(Connect),
 
     // Resources: arrive in an orderly fashion
@@ -93,7 +96,7 @@ impl From<IngressMessages> for Messages {
 impl From<ReplyMessages> for Messages {
     fn from(value: ReplyMessages) -> Self {
         match value {
-            ReplyMessages::Relays(m) => Self::Relays(m),
+            ReplyMessages::ConnectionDetails(m) => Self::ConnectionDetails(m),
             ReplyMessages::Connect(m) => Self::Connect(m),
         }
     }
@@ -102,11 +105,16 @@ impl From<ReplyMessages> for Messages {
 // These messages can be sent from a client to a control pane
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-// TODO: We will need to re-visit webrtc-rs
-#[allow(clippy::large_enum_variant)]
+// large_enum_variant: TODO: We will need to re-visit webrtc-rs
+// enum_variant_names: These are the names in the portal!
+#[allow(clippy::large_enum_variant, clippy::enum_variant_names)]
 pub enum EgressMessages {
-    ListRelays { resource_id: Id },
+    PrepareConnection {
+        resource_id: Id,
+        connected_gateway_ids: Vec<Id>,
+    },
     RequestConnection(RequestConnection),
+    ReuseConnection(ReuseConnection),
 }
 
 #[cfg(test)]
@@ -121,7 +129,7 @@ mod test {
 
     use chrono::NaiveDateTime;
 
-    use crate::messages::{EgressMessages, Relays, ReplyMessages};
+    use crate::messages::{ConnectionDetails, EgressMessages, ReplyMessages};
 
     use super::{IngressMessages, InitClient};
 
@@ -156,7 +164,7 @@ mod test {
             IngressMessages::Init(InitClient {
                 interface: Interface {
                     ipv4: "100.72.112.111".parse().unwrap(),
-                    ipv6: "fd00:2011:1111::13:efb9".parse().unwrap(),
+                    ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
                     upstream_dns: vec![],
                 },
                 resources: vec![
@@ -169,7 +177,7 @@ mod test {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
                         address: "gitlab.mycorp.com".to_string(),
                         ipv4: "100.126.44.50".parse().unwrap(),
-                        ipv6: "fd00:2011:1111::e:7758".parse().unwrap(),
+                        ipv6: "fd00:2021:1111::e:7758".parse().unwrap(),
                         name: "gitlab.mycorp.com".to_string(),
                     }),
                 ],
@@ -181,7 +189,7 @@ mod test {
             "payload": {
                 "interface": {
                     "ipv4": "100.72.112.111",
-                    "ipv6": "fd00:2011:1111::13:efb9",
+                    "ipv6": "fd00:2021:1111::13:efb9",
                     "upstream_dns": []
                 },
                 "resources": [
@@ -195,7 +203,7 @@ mod test {
                         "address": "gitlab.mycorp.com",
                         "id": "03000143-e25e-45c7-aafb-144990e57dcd",
                         "ipv4": "100.126.44.50",
-                        "ipv6": "fd00:2011:1111::e:7758",
+                        "ipv6": "fd00:2021:1111::e:7758",
                         "name": "gitlab.mycorp.com",
                         "type": "dns"
                     }
@@ -213,16 +221,18 @@ mod test {
     fn list_relays_message() {
         let m = PhoenixMessage::<EgressMessages, ()>::new(
             "device",
-            EgressMessages::ListRelays {
+            EgressMessages::PrepareConnection {
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+                connected_gateway_ids: vec![],
             },
             None,
         );
         let message = r#"
             {
-                "event": "list_relays",
+                "event": "prepare_connection",
                 "payload": {
-                    "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3"
+                    "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3",
+                    "connected_gateway_ids": []
                 },
                 "ref":null,
                 "topic": "device"
@@ -233,10 +243,12 @@ mod test {
     }
 
     #[test]
-    fn list_relays_reply() {
+    fn connection_details_reply() {
         let m = PhoenixMessage::<IngressMessages, ReplyMessages>::new_reply(
             "device",
-            ReplyMessages::Relays(Relays {
+            ReplyMessages::ConnectionDetails(ConnectionDetails {
+                gateway_id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
+                gateway_remote_ip: "172.28.0.1".parse().unwrap(),
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
                 relays: vec![
                     Relay::Stun(Stun {
@@ -271,6 +283,9 @@ mod test {
                 "event": "phx_reply",
                 "payload": {
                     "response": {
+                        "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3",
+                        "gateway_id": "73037362-715d-4a83-a749-f18eadd970e6",
+                        "gateway_remote_ip": "172.28.0.1",
                         "relays": [
                             {
                                 "type":"stun",
@@ -293,8 +308,7 @@ mod test {
                                 "type": "turn",
                                 "uri": "turn:::1:3478",
                                 "username": "1686629954:dpHxHfNfOhxPLfMG"
-                            }],
-                        "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3"
+                            }]
                     },
                     "status":"ok"
                 }

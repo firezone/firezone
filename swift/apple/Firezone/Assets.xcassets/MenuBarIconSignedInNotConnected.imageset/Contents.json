@@ -1,0 +1,22 @@
+{
+  "images" : [
+    {
+      "filename" : "statusitem-signedin-disconnected-light.svg",
+      "idiom" : "universal"
+    },
+    {
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "dark"
+        }
+      ],
+      "filename" : "statusitem-signedin-disconnected-dark.svg",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

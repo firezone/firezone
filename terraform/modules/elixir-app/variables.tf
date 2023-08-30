@@ -253,7 +253,7 @@ variable "application_ports" {
   nullable = false
   default  = []
 
-  description = "List of ports to expose for the application. One of ports MUST be named 'http' for auth healing policy to work."
+  description = "List of ports to expose for the application. One of ports MUST be named 'http' for auto healing policy to work."
 }
 
 variable "application_environment_variables" {
