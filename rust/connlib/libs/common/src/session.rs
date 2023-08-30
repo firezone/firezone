@@ -73,14 +73,14 @@ pub trait Callbacks: Clone + Send + Sync {
     /// Called when the tunnel is connected.
     fn on_tunnel_ready(&self) -> StdResult<(), Self::Error>;
     /// Called when when a route is added.
-    fn on_add_route(&self, route: IpNetwork) -> StdResult<(), Self::Error>;
+    fn on_add_route(&self, route: IpNetwork) -> StdResult<RawFd, Self::Error>;
     /// Called when when a route is removed.
-    fn on_remove_route(&self, route: IpNetwork) -> StdResult<(), Self::Error>;
+    fn on_remove_route(&self, route: IpNetwork) -> StdResult<RawFd, Self::Error>;
     /// Called when the resource list changes.
     fn on_update_resources(
         &self,
         resource_list: Vec<ResourceDescription>,
-    ) -> StdResult<(), Self::Error>;
+    ) -> StdResult<RawFd, Self::Error>;
     /// Called when the tunnel is disconnected.
     ///
     /// If the tunnel disconnected due to a fatal error, `error` is the error
@@ -129,7 +129,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         result
     }
 
-    fn on_add_route(&self, route: IpNetwork) -> Result<()> {
+    fn on_add_route(&self, route: IpNetwork) -> Result<RawFd> {
         let result = self
             .0
             .on_add_route(route)
@@ -140,7 +140,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         result
     }
 
-    fn on_remove_route(&self, route: IpNetwork) -> Result<()> {
+    fn on_remove_route(&self, route: IpNetwork) -> Result<RawFd> {
         let result = self
             .0
             .on_remove_route(route)
@@ -151,7 +151,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         result
     }
 
-    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) -> Result<()> {
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) -> Result<RawFd> {
         let result = self
             .0
             .on_update_resources(resource_list)

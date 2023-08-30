@@ -60,6 +60,7 @@ impl AsRawFd for IfaceDevice {
 
 impl Drop for IfaceDevice {
     fn drop(&mut self) {
+        tracing::debug!("Dropping IfaceDevice... closing fd {}...", self.fd);
         unsafe { close(self.fd) };
     }
 }
@@ -83,6 +84,24 @@ impl IfaceDevice {
             DNS_FALLBACK_STRATEGY.to_string(),
         )?;
         Ok(Self { fd })
+    }
+
+    // XXX: Android doesn't seem to support updating an existing VPNService
+    // without calling VPNBuilder::establish() and potentially getting a new fd.
+    // So we expose this method to update the fd without having to go through the
+    // whole disconnect and connect flow.
+    pub fn replace_fd(&mut self, fd: RawFd) {
+        match fd {
+            -1 => {
+                tracing::debug!("Invalid fd {} passed to replace_fd", fd);
+                return;
+            }
+            _ => {
+                tracing::debug!("Replacing fd {} with {}", self.fd, fd);
+                unsafe { close(self.fd) };
+                self.fd = fd;
+            }
+        }
     }
 
     pub fn name(&self) -> Result<String> {
@@ -152,8 +171,10 @@ impl IfaceConfig {
         &mut self,
         route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<()> {
-        callbacks.on_add_route(route)
+    ) -> Result<RawFd> {
+        let result = callbacks.on_add_route(route)?;
+        self.0.replace_fd(result);
+        Ok(result)
     }
 
     pub async fn up(&mut self) -> Result<()> {

@@ -30,20 +30,20 @@ impl Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_add_route(&self, _route: IpNetwork) -> Result<(), Self::Error> {
-        Ok(())
+    fn on_add_route(&self, _route: IpNetwork) -> Result<RawFd, Self::Error> {
+        Ok(-1)
     }
 
-    fn on_remove_route(&self, _route: IpNetwork) -> Result<(), Self::Error> {
-        Ok(())
+    fn on_remove_route(&self, _route: IpNetwork) -> Result<RawFd, Self::Error> {
+        Ok(-1)
     }
 
     fn on_update_resources(
         &self,
         resource_list: Vec<ResourceDescription>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<RawFd, Self::Error> {
         tracing::trace!("Resources updated, current list: {resource_list:?}");
-        Ok(())
+        Ok(-1)
     }
 
     fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {

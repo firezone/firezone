@@ -5,11 +5,11 @@ interface ConnlibCallback {
 
     fun onTunnelReady(): Boolean
 
-    fun onAddRoute(cidrAddress: String)
+    fun onAddRoute(cidrAddress: String): Int
 
-    fun onRemoveRoute(cidrAddress: String)
+    fun onRemoveRoute(cidrAddress: String): Int
 
-    fun onUpdateResources(resourceListJSON: String)
+    fun onUpdateResources(resourceListJSON: String): Int
 
     fun onDisconnect(error: String?): Boolean
 

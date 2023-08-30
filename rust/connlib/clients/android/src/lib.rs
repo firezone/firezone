@@ -155,7 +155,7 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_add_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
+    fn on_add_route(&self, route: IpNetwork) -> Result<RawFd, Self::Error> {
         self.env(|mut env| {
             let route = env.new_string(route.to_string()).map_err(|source| {
                 CallbackError::NewStringFailed {
@@ -163,17 +163,19 @@ impl Callbacks for CallbackHandler {
                     source,
                 }
             })?;
-            call_method(
-                &mut env,
+            let name = "onAddRoute";
+            env.call_method(
                 &self.callback_handler,
-                "onAddRoute",
-                "(Ljava/lang/String;)V",
+                name,
+                "(Ljava/lang/String;)I",
                 &[JValue::from(&route)],
             )
+            .and_then(|val| val.i())
+            .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
     }
 
-    fn on_remove_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
+    fn on_remove_route(&self, route: IpNetwork) -> Result<RawFd, Self::Error> {
         self.env(|mut env| {
             let route = env.new_string(route.to_string()).map_err(|source| {
                 CallbackError::NewStringFailed {
@@ -181,20 +183,22 @@ impl Callbacks for CallbackHandler {
                     source,
                 }
             })?;
-            call_method(
-                &mut env,
+            let name = "onRemoveRoute";
+            env.call_method(
                 &self.callback_handler,
-                "onRemoveRoute",
-                "(Ljava/lang/String;)V",
+                name,
+                "(Ljava/lang/String;)I",
                 &[JValue::from(&route)],
             )
+            .and_then(|val| val.i())
+            .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
     }
 
     fn on_update_resources(
         &self,
         resource_list: Vec<ResourceDescription>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<RawFd, Self::Error> {
         self.env(|mut env| {
             let resource_list = env
                 .new_string(serde_json::to_string(&resource_list)?)
@@ -202,13 +206,15 @@ impl Callbacks for CallbackHandler {
                     name: "resource_list",
                     source,
                 })?;
-            call_method(
-                &mut env,
+            let name = "onUpdateResources";
+            env.call_method(
                 &self.callback_handler,
-                "onUpdateResources",
-                "(Ljava/lang/String;)V",
+                name,
+                "(Ljava/lang/String;)I",
                 &[JValue::from(&resource_list)],
             )
+            .and_then(|val| val.i())
+            .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
     }
 

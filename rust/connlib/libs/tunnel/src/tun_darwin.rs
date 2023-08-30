@@ -267,13 +267,17 @@ impl IfaceDevice {
     }
 }
 
+fn get_last_error() -> Error {
+    Error::Io(io::Error::last_os_error())
+}
+
 // So, these functions take a mutable &self, this is not necessary in theory but it's correct!
 impl IfaceConfig {
     pub async fn add_route(
         &mut self,
         route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<()> {
+    ) -> Result<RawFd> {
         callbacks.on_add_route(route)
     }
 
@@ -281,8 +285,4 @@ impl IfaceConfig {
         tracing::info!("`up` unimplemented on macOS");
         Ok(())
     }
-}
-
-fn get_last_error() -> Error {
-    Error::Io(io::Error::last_os_error())
 }

@@ -33,7 +33,7 @@ internal class TunnelManager @Inject constructor(
     private val listeners: MutableSet<WeakReference<TunnelListener>> = mutableSetOf()
 
     private val callback: ConnlibCallback = object: ConnlibCallback {
-        override fun onUpdateResources(resourceListJSON: String) {
+        override fun onUpdateResources(resourceListJSON: String): Int {
             // TODO: Call into client app to update resources list and routing table
             Log.d(TAG, "onUpdateResources: $resourceListJSON")
             moshi.adapter<List<Resource>>().fromJson(resourceListJSON)?.let { resources ->
@@ -41,6 +41,9 @@ internal class TunnelManager @Inject constructor(
                     it.get()?.onUpdateResources(resources)
                 }
             }
+
+            // TODO: Return the detached fd here
+            return -1
         }
 
         override fun onSetInterfaceConfig(
@@ -82,20 +85,26 @@ internal class TunnelManager @Inject constructor(
             return true
         }
 
-        override fun onAddRoute(cidrAddress: String) {
+        override fun onAddRoute(cidrAddress: String): Int {
             Log.d(TAG, "onAddRoute: $cidrAddress")
 
             listeners.onEach {
                 it.get()?.onAddRoute(cidrAddress)
             }
+
+            // TODO: Return the detached fd here
+            return -1
         }
 
-        override fun onRemoveRoute(cidrAddress: String) {
+        override fun onRemoveRoute(cidrAddress: String): Int {
             Log.d(TAG, "onRemoveRoute: $cidrAddress")
 
             listeners.onEach {
                 it.get()?.onRemoveRoute(cidrAddress)
             }
+
+            // TODO: Return the detached fd here
+            return -1
         }
 
         override fun onDisconnect(error: String?): Boolean {

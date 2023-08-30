@@ -105,25 +105,25 @@ impl Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_add_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
+    fn on_add_route(&self, route: IpNetwork) -> Result<RawFd, Self::Error> {
         self.0.on_add_route(route.to_string());
-        Ok(())
+        Ok(-1)
     }
 
-    fn on_remove_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
+    fn on_remove_route(&self, route: IpNetwork) -> Result<RawFd, Self::Error> {
         self.0.on_remove_route(route.to_string());
-        Ok(())
+        Ok(-1)
     }
 
     fn on_update_resources(
         &self,
         resource_list: Vec<ResourceDescription>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<RawFd, Self::Error> {
         self.0.on_update_resources(
             serde_json::to_string(&resource_list)
                 .expect("developer error: failed to serialize resource list"),
         );
-        Ok(())
+        Ok(-1)
     }
 
     fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
