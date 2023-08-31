@@ -2,8 +2,8 @@ defmodule Domain.Accounts.Account.Changeset do
   use Domain, :changeset
   alias Domain.Accounts.Account
 
-  def changeset(account, attrs) do
-    account
+  def create(attrs) do
+    %Account{}
     |> cast(attrs, [:name, :slug])
     |> validate_required([:name])
     |> validate_name()

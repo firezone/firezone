@@ -69,7 +69,7 @@ defmodule Domain.Fixtures.Relays do
         |> Fixtures.Auth.create_subject()
       end)
 
-    Relays.Token.Changeset.create_changeset(account, subject)
+    Relays.Token.Changeset.create(account, subject)
     |> Ecto.Changeset.put_change(:group_id, group.id)
     |> Repo.insert!()
   end

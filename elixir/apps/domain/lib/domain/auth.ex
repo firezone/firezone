@@ -137,7 +137,7 @@ defmodule Domain.Auth do
   end
 
   def new_provider(%Accounts.Account{} = account, attrs \\ %{}) do
-    Provider.Changeset.create_changeset(account, attrs)
+    Provider.Changeset.create(account, attrs)
     |> Adapters.provider_changeset()
   end
 
@@ -145,7 +145,7 @@ defmodule Domain.Auth do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()),
          :ok <- Accounts.ensure_has_access_to(subject, account),
          changeset =
-           Provider.Changeset.create_changeset(account, attrs, subject)
+           Provider.Changeset.create(account, attrs, subject)
            |> Adapters.provider_changeset(),
          {:ok, provider} <- Repo.insert(changeset) do
       Adapters.ensure_provisioned(provider)
@@ -154,7 +154,7 @@ defmodule Domain.Auth do
 
   def create_provider(%Accounts.Account{} = account, attrs) do
     changeset =
-      Provider.Changeset.create_changeset(account, attrs)
+      Provider.Changeset.create(account, attrs)
       |> Adapters.provider_changeset()
 
     with {:ok, provider} <- Repo.insert(changeset) do
@@ -163,7 +163,7 @@ defmodule Domain.Auth do
   end
 
   def change_provider(%Provider{} = provider, attrs \\ %{}) do
-    Provider.Changeset.update_changeset(provider, attrs)
+    Provider.Changeset.update(provider, attrs)
     |> Adapters.provider_changeset()
   end
 
@@ -173,7 +173,7 @@ defmodule Domain.Auth do
       |> Authorizer.for_subject(Provider, subject)
       |> Repo.fetch_and_update(
         with: fn provider ->
-          Provider.Changeset.update_changeset(provider, attrs)
+          Provider.Changeset.update(provider, attrs)
           |> Adapters.provider_changeset()
         end
       )
@@ -278,62 +278,7 @@ defmodule Domain.Auth do
   end
 
   def sync_provider_identities_multi(%Provider{} = provider, attrs_list) do
-    now = DateTime.utc_now()
-
-    attrs_by_provider_identifier =
-      for attrs <- attrs_list, into: %{} do
-        {Map.fetch!(attrs, "provider_identifier"), attrs}
-      end
-
-    provider_identifiers = Map.keys(attrs_by_provider_identifier)
-
-    Ecto.Multi.new()
-    |> Ecto.Multi.all(:identities, fn _effects_so_far ->
-      Identity.Query.by_account_id(provider.account_id)
-      |> Identity.Query.by_provider_id(provider.id)
-      |> Identity.Query.lock()
-    end)
-    |> Ecto.Multi.run(
-      :plan_identities,
-      fn _repo, %{identities: identities} ->
-        {insert, delete} =
-          Enum.reduce(identities, {provider_identifiers, []}, fn identity, {insert, delete} ->
-            if identity.provider_identifier in provider_identifiers do
-              {insert -- [identity.provider_identifier], delete}
-            else
-              {insert -- [identity.provider_identifier], [identity.provider_identifier] ++ delete}
-            end
-          end)
-
-        {:ok, {insert, delete}}
-      end
-    )
-    |> Ecto.Multi.update_all(
-      :delete_identities,
-      fn %{plan_identities: {_insert, delete}} ->
-        Identity.Query.by_account_id(provider.account_id)
-        |> Identity.Query.by_provider_id(provider.id)
-        |> Identity.Query.by_provider_identifier({:in, delete})
-      end,
-      set: [deleted_at: now]
-    )
-    |> Ecto.Multi.run(
-      :insert_identities,
-      fn repo, %{plan_identities: {insert, _delete}} ->
-        Enum.reduce_while(insert, {:ok, []}, fn provider_identifier, {:ok, acc} ->
-          attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
-          changeset = Identity.Changeset.create_identity_and_actor(provider, attrs)
-
-          case repo.insert(changeset) do
-            {:ok, identity} ->
-              {:cont, {:ok, [identity | acc]}}
-
-            {:error, changeset} ->
-              {:halt, {:error, changeset}}
-          end
-        end)
-      end
-    )
+    Identity.Sync.sync_provider_identities_multi(provider, attrs_list)
   end
 
   def upsert_identity(%Actors.Actor{} = actor, %Provider{} = provider, attrs) do
@@ -355,9 +300,8 @@ defmodule Domain.Auth do
     )
   end
 
-  def new_identity(%Provider{} = provider, attrs \\ %{}) do
-    %Identity{}
-    |> Ecto.Changeset.change(attrs)
+  def new_identity(%Actors.Actor{} = actor, %Provider{} = provider, attrs \\ %{}) do
+    Identity.Changeset.create_identity(actor, provider, attrs)
     |> Adapters.identity_changeset(provider)
   end
 
@@ -425,6 +369,10 @@ defmodule Domain.Auth do
     end
   end
 
+  def delete_identity(%Identity{created_by: :provider}, %Subject{}) do
+    {:error, :cant_delete_synced_identity}
+  end
+
   def delete_identity(%Identity{} = identity, %Subject{} = subject) do
     required_permissions =
       {:one_of,
@@ -447,6 +395,12 @@ defmodule Domain.Auth do
 
     :ok
   end
+
+  def identity_disabled?(%{disabled_at: nil}), do: false
+  def identity_disabled?(_identity), do: true
+
+  def identity_deleted?(%{deleted_at: nil}), do: false
+  def identity_deleted?(_identity), do: true
 
   # Sign Up / In / Off
 

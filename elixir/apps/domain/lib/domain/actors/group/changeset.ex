@@ -9,11 +9,9 @@ defmodule Domain.Actors.Group.Changeset do
        "WHERE deleted_at IS NULL AND provider_id IS NOT NULL AND provider_identifier IS NOT NULL"}
   end
 
-  # We do not update the `name` field on upsert because we allow to manually override it in the UI
-  # for usability reasons when the provider uses group names that can make people confused
-  def upsert_on_conflict, do: {:replace, ~w[updated_at]a}
+  def upsert_on_conflict, do: {:replace, ~w[name updated_at]a}
 
-  def create_changeset(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
+  def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Actors.Group{}
     |> cast(attrs, ~w[name]a)
     |> validate_required(~w[name]a)
@@ -26,7 +24,7 @@ defmodule Domain.Actors.Group.Changeset do
     |> put_change(:created_by_identity_id, subject.identity.id)
   end
 
-  def create_changeset(%Auth.Provider{} = provider, attrs) do
+  def create(%Auth.Provider{} = provider, attrs) do
     %Actors.Group{}
     |> cast(attrs, ~w[name provider_identifier]a)
     |> validate_required(~w[name provider_identifier]a)
@@ -36,7 +34,7 @@ defmodule Domain.Actors.Group.Changeset do
     |> put_change(:created_by, :provider)
   end
 
-  def update_changeset(%Actors.Group{} = group, attrs) do
+  def update(%Actors.Group{} = group, attrs) do
     group
     |> cast(attrs, ~w[name]a)
     |> validate_required(~w[name]a)
@@ -53,7 +51,7 @@ defmodule Domain.Actors.Group.Changeset do
     |> unique_constraint(:name, name: :actor_groups_account_id_name_index)
   end
 
-  def delete_changeset(%Actors.Group{} = group) do
+  def delete(%Actors.Group{} = group) do
     group
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())

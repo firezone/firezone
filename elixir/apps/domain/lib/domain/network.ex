@@ -22,7 +22,7 @@ defmodule Domain.Network do
     address =
       Address.Query.next_available_address(account_id, cidr, offset)
       |> Domain.Repo.one!()
-      |> Address.Changeset.create_changeset(account_id)
+      |> Address.Changeset.create(account_id)
       |> Repo.insert!()
 
     address.address

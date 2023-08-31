@@ -20,7 +20,7 @@ defmodule Domain.Gateways.Gateway.Changeset do
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert_changeset(%Gateways.Token{} = token, attrs) do
+  def upsert(%Gateways.Token{} = token, attrs) do
     %Gateways.Gateway{}
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name_suffix, fn -> Domain.Crypto.rand_string(5) end)
@@ -40,21 +40,21 @@ defmodule Domain.Gateways.Gateway.Changeset do
     |> assoc_constraint(:token)
   end
 
-  def finalize_upsert_changeset(%Gateways.Gateway{} = gateway, ipv4, ipv6) do
+  def finalize_upsert(%Gateways.Gateway{} = gateway, ipv4, ipv6) do
     gateway
     |> change()
     |> put_change(:ipv4, ipv4)
     |> put_change(:ipv6, ipv6)
   end
 
-  def update_changeset(%Gateways.Gateway{} = gateway, attrs) do
+  def update(%Gateways.Gateway{} = gateway, attrs) do
     gateway
     |> cast(attrs, @update_fields)
     |> changeset()
     |> validate_required(@required_fields)
   end
 
-  def delete_changeset(%Gateways.Gateway{} = gateway) do
+  def delete(%Gateways.Gateway{} = gateway) do
     gateway
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())

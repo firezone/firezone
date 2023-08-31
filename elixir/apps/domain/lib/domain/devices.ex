@@ -139,12 +139,12 @@ defmodule Domain.Devices do
   end
 
   def change_device(%Device{} = device, attrs \\ %{}) do
-    Device.Changeset.update_changeset(device, attrs)
+    Device.Changeset.update(device, attrs)
   end
 
   def upsert_device(attrs \\ %{}, %Auth.Subject{identity: %Auth.Identity{} = identity} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_devices_permission()) do
-      changeset = Device.Changeset.upsert_changeset(identity, subject.context, attrs)
+      changeset = Device.Changeset.upsert(identity, subject.context, attrs)
 
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:device, changeset,
@@ -156,7 +156,7 @@ defmodule Domain.Devices do
       |> resolve_address_multi(:ipv6)
       |> Ecto.Multi.update(:device_with_address, fn
         %{device: %Device{} = device, ipv4: ipv4, ipv6: ipv6} ->
-          Device.Changeset.finalize_upsert_changeset(device, ipv4, ipv6)
+          Device.Changeset.finalize_upsert(device, ipv4, ipv6)
       end)
       |> Repo.transaction()
       |> case do
@@ -180,7 +180,7 @@ defmodule Domain.Devices do
     with :ok <- authorize_actor_device_management(device.actor_id, subject) do
       Device.Query.by_id(device.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Device.Changeset.update_changeset(&1, attrs))
+      |> Repo.fetch_and_update(with: &Device.Changeset.update(&1, attrs))
       |> case do
         {:ok, device} ->
           {:ok, preload_online_status(device)}
@@ -195,7 +195,7 @@ defmodule Domain.Devices do
     with :ok <- authorize_actor_device_management(device.actor_id, subject) do
       Device.Query.by_id(device.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Device.Changeset.delete_changeset/1)
+      |> Repo.fetch_and_update(with: &Device.Changeset.delete/1)
     end
   end
 

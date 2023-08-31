@@ -50,7 +50,7 @@ defmodule Domain.Auth.Adapters.UserPassTest do
       assert errors_on(changeset) == %{
                provider_virtual_state: %{
                  password: ["should be at least 12 byte(s)"],
-                 password_confirmation: ["does not match confirmation"]
+                 password_confirmation: ["does not match confirmation", "can't be blank"]
                }
              }
 

@@ -87,7 +87,7 @@ defmodule Domain.Fixtures.Actors do
       end)
 
     # FIXME!!!
-    Actors.Actor.Changeset.create_changeset(provider.account_id, attrs)
+    Actors.Actor.Changeset.create(provider.account_id, attrs)
     |> Repo.insert!()
   end
 

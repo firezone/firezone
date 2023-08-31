@@ -56,6 +56,11 @@ defmodule Domain.Auth.Adapters.UserPass do
         changeset
 
       %{valid?: true} = nested_changeset ->
+        nested_changeset =
+          nested_changeset
+          |> Domain.Validator.redact_field(:password)
+          |> Domain.Validator.redact_field(:password_confirmation)
+
         password_hash = Ecto.Changeset.fetch_change!(nested_changeset, :password_hash)
 
         changeset

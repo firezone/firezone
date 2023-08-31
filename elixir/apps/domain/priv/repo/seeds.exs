@@ -266,7 +266,7 @@ IO.puts("")
 
 relay_group =
   account
-  |> Relays.Group.Changeset.create_changeset(
+  |> Relays.Group.Changeset.create(
     %{name: "mycorp-aws-relays", tokens: [%{}]},
     admin_subject
   )
@@ -301,7 +301,7 @@ IO.puts("")
 
 gateway_group =
   account
-  |> Gateways.Group.Changeset.create_changeset(
+  |> Gateways.Group.Changeset.create(
     %{name_prefix: "mycro-aws-gws", tags: ["aws", "in-da-cloud"], tokens: [%{}]},
     admin_subject
   )

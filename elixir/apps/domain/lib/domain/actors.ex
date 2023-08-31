@@ -74,152 +74,11 @@ defmodule Domain.Actors do
   end
 
   def sync_provider_groups_multi(%Auth.Provider{} = provider, attrs_list) do
-    now = DateTime.utc_now()
-
-    attrs_by_provider_identifier =
-      for attrs <- attrs_list, into: %{} do
-        {Map.fetch!(attrs, "provider_identifier"), attrs}
-      end
-
-    Ecto.Multi.new()
-    |> Ecto.Multi.all(:groups, fn _effects_so_far ->
-      Group.Query.by_account_id(provider.account_id)
-      |> Group.Query.by_provider_id(provider.id)
-      |> Group.Query.lock()
-    end)
-    |> Ecto.Multi.run(
-      :plan_groups,
-      fn _repo, %{groups: groups} ->
-        {update, delete} =
-          Enum.reduce(groups, {[], []}, fn group, {update, delete} ->
-            if Map.has_key?(attrs_by_provider_identifier, group.provider_identifier) do
-              {[group.provider_identifier] ++ update, delete}
-            else
-              {update, [group.provider_identifier] ++ delete}
-            end
-          end)
-
-        insert = Map.keys(attrs_by_provider_identifier) -- (update ++ delete)
-
-        {:ok, {update ++ insert, delete}}
-      end
-    )
-    |> Ecto.Multi.update_all(
-      :delete_groups,
-      fn %{plan_groups: {_upsert, delete}} ->
-        Group.Query.by_account_id(provider.account_id)
-        |> Group.Query.by_provider_id(provider.id)
-        |> Group.Query.by_provider_identifier({:in, delete})
-      end,
-      set: [deleted_at: now]
-    )
-    |> Ecto.Multi.run(
-      :upsert_groups,
-      fn repo, %{plan_groups: {upsert, _delete}} ->
-        Enum.reduce_while(upsert, {:ok, []}, fn provider_identifier, {:ok, acc} ->
-          attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
-
-          Group.Changeset.create_changeset(provider, attrs)
-          |> repo.insert(
-            conflict_target: Group.Changeset.upsert_conflict_target(),
-            on_conflict: Group.Changeset.upsert_on_conflict(),
-            returning: true
-          )
-          |> case do
-            {:ok, group} ->
-              {:cont, {:ok, [group | acc]}}
-
-            {:error, changeset} ->
-              {:halt, {:error, changeset}}
-          end
-        end)
-      end
-    )
+    Group.Sync.sync_provider_groups_multi(provider, attrs_list)
   end
 
   def sync_provider_memberships_multi(multi, %Auth.Provider{} = provider, tuples) do
-    multi
-    |> Ecto.Multi.all(:memberships, fn _effects_so_far ->
-      Membership.Query.by_account_id(provider.account_id)
-      |> Membership.Query.by_group_provider_id(provider.id)
-      |> Membership.Query.lock()
-    end)
-    |> Ecto.Multi.run(
-      :plan_memberships,
-      fn _repo,
-         %{
-           identities: identities,
-           insert_identities: insert_identities,
-           groups: groups,
-           upsert_groups: upsert_groups,
-           memberships: memberships
-         } ->
-        identity_by_provider_identifier =
-          for identity <- identities ++ insert_identities, into: %{} do
-            {identity.provider_identifier, identity}
-          end
-
-        group_by_provider_identifier =
-          for group <- groups ++ upsert_groups, into: %{} do
-            {group.provider_identifier, group}
-          end
-
-        tuples =
-          Enum.map(tuples, fn {group_provider_identifier, actor_provider_identifier} ->
-            {Map.fetch!(group_by_provider_identifier, group_provider_identifier).id,
-             Map.fetch!(identity_by_provider_identifier, actor_provider_identifier).actor_id}
-          end)
-
-        {upsert, delete} =
-          Enum.reduce(
-            memberships,
-            {tuples, []},
-            fn membership, {upsert, delete} ->
-              tuple = {membership.group_id, membership.actor_id}
-
-              if tuple in tuples do
-                {upsert -- [tuple], delete}
-              else
-                {upsert -- [tuple], [{membership.group_id, membership.actor_id}] ++ delete}
-              end
-            end
-          )
-
-        {:ok, {upsert, delete}}
-      end
-    )
-    |> Ecto.Multi.delete_all(
-      :delete_memberships,
-      fn %{plan_memberships: {_upsert, delete}} ->
-        Membership.Query.by_group_id_and_actor_id({:in, delete})
-      end
-    )
-    |> Ecto.Multi.run(
-      :upsert_memberships,
-      fn repo, %{plan_memberships: {upsert, _delete}} ->
-        Enum.reduce_while(
-          upsert,
-          {:ok, []},
-          fn {group_id, actor_id}, {:ok, acc} ->
-            attrs = %{group_id: group_id, actor_id: actor_id}
-
-            Membership.Changeset.changeset(provider.account_id, %Membership{}, attrs)
-            |> repo.insert(
-              conflict_target: Membership.Changeset.upsert_conflict_target(),
-              on_conflict: Membership.Changeset.upsert_on_conflict(),
-              returning: true
-            )
-            |> case do
-              {:ok, membership} ->
-                {:cont, {:ok, [membership | acc]}}
-
-              {:error, changeset} ->
-                {:halt, {:error, changeset}}
-            end
-          end
-        )
-      end
-    )
+    Membership.Sync.sync_provider_memberships_multi(multi, provider, tuples)
   end
 
   def new_group(attrs \\ %{}) do
@@ -229,7 +88,7 @@ defmodule Domain.Actors do
   def create_group(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       subject.account
-      |> Group.Changeset.create_changeset(attrs, subject)
+      |> Group.Changeset.create(attrs, subject)
       |> Repo.insert()
     end
   end
@@ -239,11 +98,10 @@ defmodule Domain.Actors do
   def change_group(%Group{provider_id: nil} = group, attrs) do
     group
     |> Repo.preload(:memberships)
-    |> Group.Changeset.update_changeset(attrs)
+    |> Group.Changeset.update(attrs)
   end
 
   def change_group(%Group{}, _attrs) do
-    # TODO: we can change but only name
     raise ArgumentError, "can't change synced groups"
   end
 
@@ -251,7 +109,7 @@ defmodule Domain.Actors do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       group
       |> Repo.preload(:memberships)
-      |> Group.Changeset.update_changeset(attrs)
+      |> Group.Changeset.update(attrs)
       |> Repo.update()
     end
   end
@@ -265,7 +123,7 @@ defmodule Domain.Actors do
       Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
       |> Group.Query.by_account_id(subject.account.id)
-      |> Repo.fetch_and_update(with: &Group.Changeset.delete_changeset/1)
+      |> Repo.fetch_and_update(with: &Group.Changeset.delete/1)
     end
   end
 
@@ -335,7 +193,7 @@ defmodule Domain.Actors do
   end
 
   def new_actor(attrs \\ %{memberships: []}) do
-    Actor.Changeset.create_changeset(attrs)
+    Actor.Changeset.create(attrs)
   end
 
   def create_actor(
@@ -345,7 +203,7 @@ defmodule Domain.Actors do
       ) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
          :ok <- Auth.ensure_has_access_to(subject, provider),
-         changeset = Actor.Changeset.create_changeset(provider.account_id, attrs),
+         changeset = Actor.Changeset.create(provider.account_id, attrs),
          {:ok, data} <- Ecto.Changeset.apply_action(changeset, :validate),
          :ok <- ensure_no_privilege_escalation(subject, data.type) do
       create_actor(provider, attrs)
@@ -354,7 +212,7 @@ defmodule Domain.Actors do
 
   def create_actor(%Auth.Provider{} = provider, attrs) do
     Ecto.Multi.new()
-    |> Ecto.Multi.insert(:actor, Actor.Changeset.create_changeset(provider.account_id, attrs))
+    |> Ecto.Multi.insert(:actor, Actor.Changeset.create(provider.account_id, attrs))
     |> Ecto.Multi.run(:identity, fn _repo, %{actor: actor} ->
       # TODO: we should not reuse the same attrs here, instead we should use attrs["identities"] list for that,
       # this will make LV forms more consistent and remove some hacks
@@ -371,12 +229,12 @@ defmodule Domain.Actors do
   end
 
   def change_actor(%Actor{} = actor, attrs \\ %{}) do
-    Actor.Changeset.update_changeset(actor, attrs)
+    Actor.Changeset.update(actor, attrs)
   end
 
   def update_actor(%Actor{} = actor, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
-         changeset = Actor.Changeset.update_changeset(actor, attrs),
+         changeset = Actor.Changeset.update(actor, attrs),
          {:ok, data} <- Ecto.Changeset.apply_action(changeset, :validate),
          :ok <- ensure_no_privilege_escalation(subject, data.type) do
       Actor.Query.by_id(actor.id)
@@ -384,13 +242,13 @@ defmodule Domain.Actors do
       |> Repo.fetch_and_update(
         with: fn actor ->
           actor = Repo.preload(actor, :memberships)
-          changeset = Actor.Changeset.update_changeset(actor, attrs)
+          changeset = Actor.Changeset.update(actor, attrs)
 
           cond do
-            changeset.data.type != :admin ->
+            changeset.data.type != :account_admin_user ->
               changeset
 
-            changeset.changes.type == :admin ->
+            Map.get(changeset.changes, :type) == :account_admin_user ->
               changeset
 
             other_enabled_admins_exist?(actor) ->
@@ -410,7 +268,7 @@ defmodule Domain.Actors do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(
         with: fn actor ->
-          if other_enabled_admins_exist?(actor) do
+          if actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
             Actor.Changeset.disable_actor(actor)
           else
             :cant_disable_the_last_admin

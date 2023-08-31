@@ -64,7 +64,7 @@ defmodule Domain.Fixtures.Gateways do
         |> Fixtures.Auth.create_subject()
       end)
 
-    Gateways.Token.Changeset.create_changeset(account, subject)
+    Gateways.Token.Changeset.create(account, subject)
     |> Ecto.Changeset.put_change(:group_id, group.id)
     |> Repo.insert!()
   end

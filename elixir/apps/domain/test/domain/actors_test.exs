@@ -309,15 +309,11 @@ defmodule Domain.ActorsTest do
       assert length(groups) == 2
 
       for group <- groups do
+        assert group.name in group_names
         assert group.inserted_at
         assert group.updated_at
-
-        assert group.created_by == group1.created_by
-
         assert group.provider_id == provider.id
-
-        # Names are not updated
-        assert group.name not in group_names
+        assert group.created_by == group1.created_by
       end
     end
 
@@ -1315,6 +1311,20 @@ defmodule Domain.ActorsTest do
       }
     end
 
+    test "allows changing name of an actor", %{account: account, subject: subject} do
+      actor = Fixtures.Actors.create_actor(name: "ABC", account: account)
+      assert {:ok, %{name: "DEF"}} = update_actor(actor, %{name: "DEF"}, subject)
+      assert {:ok, %{name: "ABC"}} = update_actor(actor, %{name: "ABC"}, subject)
+    end
+
+    test "does not allow changing name of a synced actor", %{account: account, subject: subject} do
+      actor =
+        Fixtures.Actors.create_actor(name: "ABC", account: account)
+        |> Fixtures.Actors.update(last_synced_at: DateTime.utc_now())
+
+      assert {:ok, %{name: "ABC"}} = update_actor(actor, %{name: "DEF"}, subject)
+    end
+
     test "allows admin to change other actors type", %{account: account, subject: subject} do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       assert {:ok, %{type: :account_user}} = update_actor(actor, %{type: :account_user}, subject)
@@ -1324,6 +1334,21 @@ defmodule Domain.ActorsTest do
 
       actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
       assert {:ok, %{type: :account_user}} = update_actor(actor, %{type: :account_user}, subject)
+
+      assert {:ok, %{type: :account_admin_user}} =
+               update_actor(actor, %{type: :account_admin_user}, subject)
+    end
+
+    test "allows admin to change synced actors type", %{account: account, subject: subject} do
+      actor =
+        Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+        |> Fixtures.Actors.update(last_synced_at: DateTime.utc_now())
+
+      assert {:ok, %{type: :account_user}} = update_actor(actor, %{type: :account_user}, subject)
+
+      actor =
+        Fixtures.Actors.create_actor(type: :account_user, account: account)
+        |> Fixtures.Actors.update(last_synced_at: DateTime.utc_now())
 
       assert {:ok, %{type: :account_admin_user}} =
                update_actor(actor, %{type: :account_admin_user}, subject)
@@ -1500,10 +1525,10 @@ defmodule Domain.ActorsTest do
       {:ok, actor} = disable_actor(actor, subject)
 
       assert {:ok, actor} = enable_actor(actor, subject)
-      assert actor.disabled_at
+      refute actor.disabled_at
 
       assert actor = Repo.get(Actors.Actor, actor.id)
-      assert actor.disabled_at
+      refute actor.disabled_at
 
       assert other_actor = Repo.get(Actors.Actor, other_actor.id)
       assert is_nil(other_actor.disabled_at)

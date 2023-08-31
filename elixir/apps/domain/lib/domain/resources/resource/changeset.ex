@@ -7,7 +7,7 @@ defmodule Domain.Resources.Resource.Changeset do
   @update_fields ~w[name]a
   @required_fields ~w[address type]a
 
-  def create_changeset(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
+  def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Resource{}
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)
@@ -22,7 +22,7 @@ defmodule Domain.Resources.Resource.Changeset do
     |> put_change(:created_by_identity_id, subject.identity.id)
   end
 
-  def finalize_create_changeset(%Resource{} = resource, ipv4, ipv6) do
+  def finalize_create(%Resource{} = resource, ipv4, ipv6) do
     resource
     |> change()
     |> put_change(:ipv4, ipv4)
@@ -73,7 +73,7 @@ defmodule Domain.Resources.Resource.Changeset do
     end
   end
 
-  def update_changeset(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
+  def update(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     resource
     |> cast(attrs, @update_fields)
     |> validate_required(@required_fields)
@@ -99,7 +99,7 @@ defmodule Domain.Resources.Resource.Changeset do
     )
   end
 
-  def delete_changeset(%Resource{} = resource) do
+  def delete(%Resource{} = resource) do
     resource
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())

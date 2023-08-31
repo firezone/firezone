@@ -39,7 +39,7 @@ defmodule Domain.Auth.Identity.Changeset do
     |> validate_required(~w[provider_identifier]a)
     |> cast_assoc(:actor,
       with: fn _actor, attrs ->
-        Actors.Actor.Changeset.create_changeset(account_id, attrs)
+        Actors.Actor.Changeset.create(account_id, attrs)
         |> put_change(:last_synced_at, DateTime.utc_now())
       end
     )

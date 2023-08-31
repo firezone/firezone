@@ -7,7 +7,7 @@ defmodule Domain.Policies.Policy.Changeset do
   @update_fields ~w[name]a
   @required_fields @fields
 
-  def create_changeset(attrs, %Auth.Subject{} = subject) do
+  def create(attrs, %Auth.Subject{} = subject) do
     %Policy{}
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)
@@ -17,14 +17,14 @@ defmodule Domain.Policies.Policy.Changeset do
     |> put_change(:created_by_identity_id, subject.identity.id)
   end
 
-  def update_changeset(%Policy{} = policy, attrs) do
+  def update(%Policy{} = policy, attrs) do
     policy
     |> cast(attrs, @update_fields)
     |> validate_required(@required_fields)
     |> changeset()
   end
 
-  def delete_changeset(%Policy{} = policy) do
+  def delete(%Policy{} = policy) do
     policy
     |> change()
     |> put_change(:deleted_at, DateTime.utc_now())

@@ -5,7 +5,7 @@ defmodule Domain.Gateways.Group.Changeset do
 
   @fields ~w[name_prefix tags]a
 
-  def create_changeset(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
+  def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Gateways.Group{account: account}
     |> changeset(attrs)
     |> put_change(:account_id, account.id)
@@ -13,13 +13,13 @@ defmodule Domain.Gateways.Group.Changeset do
     |> put_change(:created_by_identity_id, subject.identity.id)
     |> cast_assoc(:tokens,
       with: fn _token, _attrs ->
-        Gateways.Token.Changeset.create_changeset(account, subject)
+        Gateways.Token.Changeset.create(account, subject)
       end,
       required: true
     )
   end
 
-  def update_changeset(%Gateways.Group{} = group, attrs) do
+  def update(%Gateways.Group{} = group, attrs) do
     changeset(group, attrs)
   end
 
@@ -42,7 +42,7 @@ defmodule Domain.Gateways.Group.Changeset do
     |> unique_constraint(:name_prefix, name: :gateway_groups_account_id_name_prefix_index)
   end
 
-  def delete_changeset(%Gateways.Group{} = group) do
+  def delete(%Gateways.Group{} = group) do
     group
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())

@@ -19,7 +19,7 @@ defmodule Domain.Devices.Device.Changeset do
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert_changeset(%Auth.Identity{} = identity, %Auth.Context{} = context, attrs) do
+  def upsert(%Auth.Identity{} = identity, %Auth.Context{} = context, attrs) do
     %Devices.Device{}
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name, &generate_name/0)
@@ -38,7 +38,7 @@ defmodule Domain.Devices.Device.Changeset do
     |> put_device_version()
   end
 
-  def finalize_upsert_changeset(%Devices.Device{} = device, ipv4, ipv6) do
+  def finalize_upsert(%Devices.Device{} = device, ipv4, ipv6) do
     device
     |> change()
     |> put_change(:ipv4, ipv4)
@@ -47,14 +47,14 @@ defmodule Domain.Devices.Device.Changeset do
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
   end
 
-  def update_changeset(%Devices.Device{} = device, attrs) do
+  def update(%Devices.Device{} = device, attrs) do
     device
     |> cast(attrs, @update_fields)
     |> validate_required(@required_fields)
     |> changeset()
   end
 
-  def delete_changeset(%Devices.Device{} = device) do
+  def delete(%Devices.Device{} = device) do
     device
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())

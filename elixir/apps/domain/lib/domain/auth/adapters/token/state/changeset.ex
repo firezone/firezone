@@ -1,12 +1,7 @@
 defmodule Domain.Auth.Adapters.Token.State.Changeset do
   use Domain, :changeset
-  alias Domain.Auth.Adapters.Token.State
 
   @fields ~w[expires_at]a
-
-  def create_changeset(attrs) do
-    changeset(%State{}, attrs)
-  end
 
   def changeset(struct, attrs) do
     struct
