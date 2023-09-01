@@ -127,6 +127,12 @@ pub trait ControlSignal {
     ) -> Result<()>;
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct AwaitingConnectionDetails {
+    pub total_attemps: usize,
+    pub response_recieved: bool,
+}
+
 // TODO: We should use newtypes for each kind of Id
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets
 /// to communicate between peers.
@@ -141,7 +147,7 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<Id, Arc<RTCPeerConnection>>>,
-    awaiting_connection: Mutex<HashMap<Id, (usize, bool)>>,
+    awaiting_connection: Mutex<HashMap<Id, AwaitingConnectionDetails>>,
     gateway_awaiting_connection: Mutex<HashMap<Id, Vec<IpNetwork>>>,
     resources_gateways: Mutex<HashMap<Id, Id>>,
     webrtc_api: API,
@@ -163,7 +169,7 @@ pub struct TunnelStats {
     network_resources: HashMap<IpNetwork, ResourceDescription>,
     gateway_public_keys: HashMap<Id, String>,
 
-    awaiting_connection: HashMap<Id, (usize, bool)>,
+    awaiting_connection: HashMap<Id, AwaitingConnectionDetails>,
     gateway_awaiting_connection: HashMap<Id, Vec<IpNetwork>>,
 }
 
@@ -659,7 +665,7 @@ where
                                         resource_ip = %dst_addr
                                     );
 
-                                    awaiting_connection.insert(id, (0, false));
+                                    awaiting_connection.insert(id, Default::default());
                                     let dev = Arc::clone(&dev);
 
                                     let mut connected_gateway_ids: Vec<_> = dev
@@ -687,11 +693,11 @@ where
                                                 else {
                                                     break;
                                                 };
-                                                if awaiting_connection.1 {
+                                                if awaiting_connection.response_recieved {
                                                     break;
                                                 }
-                                                awaiting_connection.0 += 1;
-                                                dbg!(awaiting_connection.0)
+                                                awaiting_connection.total_attemps += 1;
+                                                awaiting_connection.total_attemps
                                             };
                                             if let Err(e) = dev
                                                 .control_signaler

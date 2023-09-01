@@ -275,8 +275,8 @@ where
             let Some(awaiting_connection) = awaiting_connections.get_mut(&resource_id) else {
                 return Err(Error::UnexpectedConnectionDetails);
             };
-            awaiting_connection.1 = true;
-            if dbg!(awaiting_connection.0) != dbg!(reference)
+            awaiting_connection.response_recieved = true;
+            if awaiting_connection.total_attemps != reference
                 || resource_description
                     .ips()
                     .iter()
