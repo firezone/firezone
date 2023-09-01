@@ -16,23 +16,49 @@ final class MainViewModel: ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
 
   private let appStore: AppStore
+  @Dependency(\.mainQueue) private var mainQueue
 
-  var authResponse: AuthResponse? {
-    switch appStore.auth.loginStatus {
-      case .signedIn(let authResponse): return authResponse
-      default: return nil
-    }
+  struct ResourceListItem: Identifiable {
+    var id: String { location }
+    let name: String
+    let location: String
   }
 
-  var status: NEVPNStatus {
-    appStore.tunnel.status
-  }
+  @Published var loginStatus: AuthStore.LoginStatus = .uninitialized
+  @Published var tunnelStatus: NEVPNStatus = .invalid
+  @Published var orderedResources: [ResourceListItem] = []
 
   init(appStore: AppStore) {
     self.appStore = appStore
+    setupObservers()
+  }
 
-    appStore.objectWillChange
-      .sink { [weak self] in self?.objectWillChange.send() }
+  private func setupObservers() {
+    appStore.auth.$loginStatus
+      .receive(on: mainQueue)
+      .sink { [weak self] loginStatus in
+        self?.loginStatus = loginStatus
+      }
+      .store(in: &cancellables)
+
+    appStore.tunnel.$status
+      .receive(on: mainQueue)
+      .sink { [weak self] status in
+        self?.tunnelStatus = status
+        if status == .connected {
+          self?.appStore.tunnel.beginUpdatingResources()
+        } else {
+          self?.appStore.tunnel.endUpdatingResources()
+        }
+      }
+      .store(in: &cancellables)
+
+    appStore.tunnel.$resources
+      .receive(on: mainQueue)
+      .sink { [weak self] resources in
+        guard let self = self else { return }
+        self.orderedResources = resources.orderedResources.map { ResourceListItem(name: $0.name, location: $0.location) }
+      }
       .store(in: &cancellables)
   }
 
@@ -42,7 +68,7 @@ final class MainViewModel: ObservableObject {
 
   func startTunnel() async {
     do {
-      if let authResponse = authResponse {
+      if case .signedIn(let authResponse) = self.loginStatus {
         try await appStore.tunnel.start(authResponse: authResponse)
       }
     } catch {
@@ -60,25 +86,66 @@ struct MainView: View {
   @ObservedObject var model: MainViewModel
 
   var body: some View {
-    VStack(spacing: 56) {
-      VStack {
-        Text("Authenticated").font(.title)
-        Text(model.authResponse?.actorName ?? "").foregroundColor(.secondary)
+    List {
+      Section(header: Text("Authentication")) {
+        Group {
+          switch self.model.loginStatus {
+            case .signedIn(let authResponse):
+              HStack {
+                Text(authResponse.actorName == nil ? "Signed in" : "Signed in as")
+                Spacer()
+                Text(authResponse.actorName ?? "")
+                  .foregroundColor(.secondary)
+              }
+              HStack {
+                Spacer()
+                Button("Sign Out") {
+                  self.model.signOutButtonTapped()
+                }
+                Spacer()
+              }
+            case .signedOut:
+              Text("Signed Out")
+            case .uninitialized:
+              Text("Initializing…")
+          }
+        }
       }
-
-      Button("Sign out") {
-        model.signOutButtonTapped()
+      if case .signedIn = self.model.loginStatus {
+        Section(header: Text("Connection")) {
+          Text(self.model.tunnelStatus.description)
+          if self.model.tunnelStatus == .disconnected || self.model.tunnelStatus == .invalid {
+            HStack {
+              Spacer()
+              Button("Reconnect") {
+                Task {
+                  await self.model.startTunnel()
+                }
+              }
+              Spacer()
+            }
+          }
+        }
+      }
+      if case .signedIn = self.model.loginStatus, self.model.tunnelStatus == .connected {
+        Section(header: Text("Resources")) {
+          if self.model.orderedResources.isEmpty {
+            Text("No resources")
+          } else {
+            ForEach(self.model.orderedResources) { resource in
+              HStack {
+                Text(resource.name)
+                Spacer()
+                Text(resource.location)
+                  .foregroundColor(.secondary)
+              }
+            }
+          }
+        }
       }
     }
-    .toolbar {
-      ToolbarItem(placement: .principal) {
-        ConnectionSwitch(
-          status: model.status,
-          connect: { await model.startTunnel() },
-          disconnect: { model.stopTunnel() }
-        )
-      }
-    }
+    .listStyle(GroupedListStyle())
+    .navigationTitle("firezone")
   }
 }
 
