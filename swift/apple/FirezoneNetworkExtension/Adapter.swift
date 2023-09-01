@@ -105,9 +105,9 @@ public class Adapter {
     networkMonitor?.cancel()
 
     // Shutdown the tunnel
-    if case .tunnelReady(let wrappedSession) = self.state {
+    if case .tunnelReady(let session) = self.state {
       logger.debug("Adapter.deinit: Shutting down connlib")
-      wrappedSession.disconnect()
+      session.disconnect()
     }
   }
 
@@ -248,14 +248,7 @@ extension Adapter {
       }
 
     case .tunnelReady(let session):
-      if path.status == .satisfied {
-        self.logger.debug(
-          "Suppressing calls to disableSomeRoamingForBrokenMobileSemantics() and bumpSockets()")
-        // #if os(iOS)
-        // wrappedSession.disableSomeRoamingForBrokenMobileSemantics()
-        // #endif
-        // wrappedSession.bumpSockets()
-      } else {
+      if path.status != .satisfied {
         self.logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
         self.packetTunnelProvider?.reasserting = true
         self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
