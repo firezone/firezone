@@ -128,6 +128,7 @@ struct WelcomeView: View {
           ProgressView()
         }
       }
+      .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .primaryAction) {
           Button {
