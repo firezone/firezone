@@ -95,7 +95,7 @@ defmodule Web.Settings.IdentityProviders.System.Show do
         <.vertical_table_row>
           <:label>Created</:label>
           <:value>
-            <.datetime datetime={@provider.inserted_at} /> by <.owner schema={@provider} />
+            <.created_by schema={@provider} />
           </:value>
         </.vertical_table_row>
       </.vertical_table>

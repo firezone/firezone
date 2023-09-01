@@ -1,4 +1,4 @@
-defmodule Web.Auth.Devices.IndexTest do
+defmodule Web.Live.Devices.IndexTest do
   use Web.ConnCase, async: true
 
   setup do

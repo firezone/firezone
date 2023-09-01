@@ -57,7 +57,7 @@ defmodule Web.ConnCase do
 
   def find_inputs(html, selector) do
     html
-    |> Floki.find("#{selector} input")
+    |> Floki.find("#{selector} input,select,textarea")
     |> Enum.flat_map(&Floki.attribute(&1, "name"))
     |> Enum.uniq()
     |> Enum.sort()
@@ -90,6 +90,18 @@ defmodule Web.ConnCase do
     callback.(form_element, form_html)
     render_change(form_element, form_element.form_data)
     form_element
+  end
+
+  ### Helpers to test formatted time units
+
+  def around_now?(string) do
+    if string =~ "now" do
+      true
+    else
+      [_all, seconds] = Regex.run(~r/([0-9]+) second[s]? ago/, string)
+      seconds = String.to_integer(seconds)
+      assert seconds in 0..5
+    end
   end
 
   ### Helpers to test LiveView tables

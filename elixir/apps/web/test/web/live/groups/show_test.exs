@@ -1,4 +1,4 @@
-defmodule Web.Auth.Groups.ShowTest do
+defmodule Web.Live.Groups.ShowTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -81,7 +81,7 @@ defmodule Web.Auth.Groups.ShowTest do
       |> vertical_table_to_map()
 
     assert table["name"] == group.name
-    assert table["source"] =~ "Created"
+    assert around_now?(table["source"])
     assert table["source"] =~ "by #{actor.name}"
   end
 

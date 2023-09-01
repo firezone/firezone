@@ -1,4 +1,4 @@
-defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.ShowTest do
+defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -75,27 +75,28 @@ defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.ShowTest do
     conn: conn,
     bypass: bypass
   } do
-    inserted_at = Cldr.DateTime.to_string!(provider.inserted_at, Web.CLDR, format: :short)
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/openid_connect/#{provider}")
 
-    assert lv
-           |> element("#provider")
-           |> render()
-           |> vertical_table_to_map() == %{
-             "name" => provider.name,
-             "status" => "Active",
-             "type" => "OpenID Connect",
-             "response type" => "code",
-             "scope" => provider.adapter_config["scope"],
-             "client id" => provider.adapter_config["client_id"],
-             "discovery url" =>
-               "http://localhost:#{bypass.port}/.well-known/openid-configuration",
-             "created" => "#{inserted_at} by System"
-           }
+    table =
+      lv
+      |> element("#provider")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["name"] == provider.name
+    assert table["status"] == "Active"
+    assert table["type"] == "OpenID Connect"
+    assert table["response type"] == "code"
+    assert table["scope"] == provider.adapter_config["scope"]
+    assert table["client id"] == provider.adapter_config["client_id"]
+
+    assert table["discovery url"] ==
+             "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+
+    assert around_now?(table["created"])
 
     provider
     |> Ecto.Changeset.change(
@@ -113,7 +114,7 @@ defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.ShowTest do
            |> element("#provider")
            |> render()
            |> vertical_table_to_map()
-           |> Map.fetch!("created") == "#{inserted_at} by #{actor.name}"
+           |> Map.fetch!("created") =~ "by #{actor.name}"
   end
 
   test "allows changing provider status", %{

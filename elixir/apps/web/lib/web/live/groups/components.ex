@@ -10,7 +10,7 @@ defmodule Web.Groups.Components do
       <.relative_datetime datetime={@group.provider.last_synced_at} />
     </span>
     <span :if={is_nil(@group.provider_id)}>
-      Created <.relative_datetime datetime={@group.inserted_at} /> by <.owner schema={@group} />
+      <.created_by schema={@group} />
     </span>
     """
   end

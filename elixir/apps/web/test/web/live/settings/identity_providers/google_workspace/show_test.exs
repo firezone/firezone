@@ -1,4 +1,4 @@
-defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
+defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -73,22 +73,21 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
     identity: identity,
     conn: conn
   } do
-    inserted_at = Cldr.DateTime.to_string!(provider.inserted_at, Web.CLDR, format: :short)
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/google_workspace/#{provider}")
 
-    assert lv
-           |> element("#provider")
-           |> render()
-           |> vertical_table_to_map() == %{
-             "name" => provider.name,
-             "status" => "Active",
-             "client id" => provider.adapter_config["client_id"],
-             "created" => "#{inserted_at} by System"
-           }
+    table =
+      lv
+      |> element("#provider")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["name"] == provider.name
+    assert table["status"] == "Active"
+    assert table["client id"] == provider.adapter_config["client_id"]
+    assert around_now?(table["created"])
   end
 
   test "renders name of actor that created provider", %{

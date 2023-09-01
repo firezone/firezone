@@ -1,4 +1,4 @@
-defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.Connect do
+defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
   use Web.ConnCase, async: true
 
   describe "redirect_to_idp/2" do

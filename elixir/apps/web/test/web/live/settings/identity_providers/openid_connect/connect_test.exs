@@ -1,4 +1,4 @@
-defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.Connect do
+defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.Connect do
   use Web.ConnCase, async: true
 
   describe "redirect_to_idp/2" do

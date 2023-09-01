@@ -1,4 +1,4 @@
-defmodule Web.Auth.GatewayGroups.IndexTest do
+defmodule Web.Live.GatewayGroups.IndexTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -85,8 +85,7 @@ defmodule Web.Auth.GatewayGroups.IndexTest do
 
     group_rows
     |> with_table_row("instance", gateway.name_suffix, fn row ->
-      assert row["remote ip"] =~ to_string(gateway.ipv4)
-      assert row["remote ip"] =~ to_string(gateway.ipv6)
+      assert row["remote ip"] =~ to_string(gateway.last_seen_remote_ip)
       assert row["status"] =~ "Offline"
     end)
   end

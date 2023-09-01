@@ -1,4 +1,4 @@
-defmodule Web.Auth.GatewayGroups.NewTest do
+defmodule Web.Live.GatewayGroups.NewTest do
   use Web.ConnCase, async: true
 
   setup do

@@ -1,4 +1,4 @@
-defmodule Web.Auth.Settings.IdentityProviders.NewTest do
+defmodule Web.Live.Settings.IdentityProviders.NewTest do
   use Web.ConnCase, async: true
 
   setup do

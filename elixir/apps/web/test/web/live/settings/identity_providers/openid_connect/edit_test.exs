@@ -1,4 +1,4 @@
-defmodule Web.Auth.Settings.IdentityProviders.OpenIDConnect.EditTest do
+defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.EditTest do
   use Web.ConnCase, async: true
 
   setup do

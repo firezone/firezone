@@ -675,29 +675,38 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders creator actor name.
+  Renders creation timestamp and entity.
   """
-  attr :schema, :map, required: true
+  attr :schema, :any, required: true
 
-  def owner(assigns) do
-    case assigns.schema.created_by do
-      :system ->
-        ~H"""
-        <span>
-          System
-        </span>
-        """
+  def created_by(%{schema: %{created_by: :system}} = assigns) do
+    ~H"""
+    <.relative_datetime datetime={@schema.inserted_at} />
+    """
+  end
 
-      :identity ->
-        ~H"""
-        <.link
-          class="text-blue-600 hover:underline"
-          navigate={~p"/#{@schema.account_id}/actors/#{@schema.created_by_identity.actor.id}"}
-        >
-          <%= assigns.schema.created_by_identity.actor.name %>
-        </.link>
-        """
-    end
+  def created_by(%{schema: %{created_by: :identity}} = assigns) do
+    ~H"""
+    <.relative_datetime datetime={@schema.inserted_at} /> by
+    <.link
+      class="text-blue-600 hover:underline"
+      navigate={~p"/#{@schema.account_id}/actors/#{@schema.created_by_identity.actor.id}"}
+    >
+      <%= assigns.schema.created_by_identity.actor.name %>
+    </.link>
+    """
+  end
+
+  def created_by(%{schema: %{created_by: :provider}} = assigns) do
+    ~H"""
+    synced <.relative_datetime datetime={@schema.inserted_at} /> from
+    <.link
+      class="text-blue-600 hover:underline"
+      navigate={Web.Settings.IdentityProviders.Components.view_provider(@schema.provider)}
+    >
+      <%= @schema.provider.name %>
+    </.link>
+    """
   end
 
   attr :identity, :string, required: true
@@ -705,20 +714,26 @@ defmodule Web.CoreComponents do
   def identity_identifier(assigns) do
     ~H"""
     <span class="flex inline-flex" data-identity-id={@identity.id}>
-      <span data-provider-id={@identity.provider.id} title={@identity.provider.adapter} class={~w[
+      <.link
+        navigate={Web.Settings.IdentityProviders.Components.view_provider(@identity.provider)}
+        data-provider-id={@identity.provider.id}
+        title={@identity.provider.adapter}
+        class={~w[
           text-xs font-medium
           rounded-l
           py-0.5 pl-2.5 pr-1.5
           text-blue-800 dark:text-blue-300
-          bg-blue-100 dark:bg-blue-900]}>
+          bg-blue-100 dark:bg-blue-900]}
+      >
         <%= @identity.provider.name %>
-      </span>
-      <span class={~w[
-          text-xs font-medium
-          rounded-r
-          mr-2 py-0.5 pl-1.5 pr-2.5
-          text-blue-800 dark:text-blue-300
-          bg-blue-50 dark:bg-blue-600]}>
+      </.link>
+      <span class={[
+        "text-xs font-medium",
+        "rounded-r",
+        "mr-2 py-0.5 pl-1.5 pr-2.5",
+        "text-blue-800 dark:text-blue-300",
+        "bg-blue-50 dark:bg-blue-600"
+      ]}>
         <%= @identity.provider_identifier %>
       </span>
       <span :if={not is_nil(@identity.deleted_at)} class="text-sm">

@@ -1,4 +1,4 @@
-defmodule Web.Auth.Devices.ShowTest do
+defmodule Web.Live.Devices.ShowTest do
   use Web.ConnCase, async: true
 
   setup do

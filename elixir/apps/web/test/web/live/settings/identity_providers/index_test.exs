@@ -1,4 +1,4 @@
-defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
+defmodule Web.Live.Settings.IdentityProviders.IndexTest do
   use Web.ConnCase, async: true
 
   setup do

@@ -1,4 +1,4 @@
-defmodule Web.Auth.GatewayGroups.ShowTest do
+defmodule Web.Live.GatewayGroups.ShowTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -149,8 +149,8 @@ defmodule Web.Auth.GatewayGroups.ShowTest do
     |> render()
     |> table_to_map()
     |> with_table_row("instance", gateway.name_suffix, fn row ->
-      assert row["remote ip"] =~ to_string(gateway.ipv4)
-      assert row["remote ip"] =~ to_string(gateway.ipv6)
+      assert gateway.last_seen_remote_ip
+      assert row["remote ip"] =~ to_string(gateway.last_seen_remote_ip)
       assert row["status"] =~ "Online"
       assert row["token created at"]
     end)

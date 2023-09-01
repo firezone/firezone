@@ -1,4 +1,4 @@
-defmodule Web.Auth.Gateways.ShowTest do
+defmodule Web.Live.Gateways.ShowTest do
   use Web.ConnCase, async: true
 
   setup do

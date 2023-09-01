@@ -85,7 +85,7 @@ defmodule Web.Resources.Show do
             Created
           </:label>
           <:value>
-            <.datetime datetime={@resource.inserted_at} /> by <.owner schema={@resource} />
+            <.created_by schema={@resource} />
           </:value>
         </.vertical_table_row>
       </.vertical_table>

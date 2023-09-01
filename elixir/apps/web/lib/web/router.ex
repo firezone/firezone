@@ -106,17 +106,17 @@ defmodule Web.Router do
 
         scope "/users", Users do
           live "/new", New
-          live "/:id/edit", Edit
+          live "/:id/new_identity", NewIdentity
         end
 
         scope "/service_accounts", ServiceAccounts do
           live "/new", New
-          live "/:id/edit", Edit
+          live "/:id/new_identity", NewIdentity
         end
 
+        live "/:id/edit", Edit
         # TODO: REMOVEME it's just another identity
         live "/:id/new_token", NewToken
-        live "/:id/new_identity", NewIdentity
       end
 
       scope "/groups", Groups do

@@ -1,4 +1,4 @@
-defmodule Web.Auth.Groups.EditActorsTest do
+defmodule Web.Live.Groups.EditActorsTest do
   use Web.ConnCase, async: true
 
   setup do

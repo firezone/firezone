@@ -1,4 +1,4 @@
-defmodule Web.Auth.Groups.IndexTest do
+defmodule Web.Live.Groups.IndexTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -116,12 +116,16 @@ defmodule Web.Auth.Groups.IndexTest do
     |> render()
     |> table_to_map()
     |> with_table_row("name", empty_group.name, fn row ->
+      empty_group = Repo.preload(empty_group, created_by_identity: :actor)
+
       assert row["actors"] == "None"
-      assert row["source"] =~ "Created"
+      assert row["source"] =~ "by #{empty_group.created_by_identity.actor.name}"
     end)
     |> with_table_row("name", group_with_few_preloads.name, fn row ->
+      group_with_few_preloads = Repo.preload(group_with_few_preloads, created_by_identity: :actor)
+
       assert row["actors"] == actor.name
-      assert row["source"] =~ "Created"
+      assert row["source"] =~ "by #{group_with_few_preloads.created_by_identity.actor.name}"
     end)
     |> with_table_row("name", group_with_lots_of_preloads.name, fn row ->
       [peeked_names, tail] = String.split(row["actors"], " and ", trim: true)
@@ -132,7 +136,7 @@ defmodule Web.Auth.Groups.IndexTest do
 
       assert tail == "7 more."
 
-      assert row["source"] =~ "Created"
+      assert around_now?(row["source"])
     end)
   end
 end

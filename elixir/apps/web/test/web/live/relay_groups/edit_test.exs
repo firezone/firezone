@@ -1,4 +1,4 @@
-defmodule Web.Auth.RelayGroups.EditTest do
+defmodule Web.Live.RelayGroups.EditTest do
   use Web.ConnCase, async: true
 
   setup do

@@ -80,10 +80,7 @@ defmodule Web.GatewayGroups.Index do
         </:col>
         <:col :let={gateway} label="REMOTE IP">
           <code class="block text-xs">
-            <%= gateway.ipv4 %>
-          </code>
-          <code class="block text-xs">
-            <%= gateway.ipv6 %>
+            <%= gateway.last_seen_remote_ip %>
           </code>
         </:col>
 

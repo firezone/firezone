@@ -25,6 +25,10 @@ defmodule Web.FormComponents do
   attr :label, :string, default: nil
   attr :value, :any
 
+  attr :value_id, :any,
+    default: nil,
+    doc: "the function for generating the value from the list of schemas for select inputs"
+
   attr :type, :string,
     default: "text",
     values: ~w(checkbox color date datetime-local email file hidden month number password
@@ -50,7 +54,21 @@ defmodule Web.FormComponents do
     |> assign(field: nil, id: assigns.id || field.id)
     |> assign(:errors, Enum.map(field.errors, &translate_error(&1)))
     |> assign_new(:name, fn -> if assigns.multiple, do: field.name <> "[]", else: field.name end)
-    |> assign_new(:value, fn -> field.value end)
+    |> assign_new(:value, fn ->
+      if assigns.value_id do
+        Enum.map(field.value, fn
+          %Ecto.Changeset{} = value ->
+            value
+            |> Ecto.Changeset.apply_changes()
+            |> assigns.value_id.()
+
+          value ->
+            assigns.value_id.(value)
+        end)
+      else
+        field.value
+      end
+    end)
     |> input()
   end
 

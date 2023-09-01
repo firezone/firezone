@@ -1,4 +1,4 @@
-defmodule Web.Auth.Relays.ShowTest do
+defmodule Web.Live.Relays.ShowTest do
   use Web.ConnCase, async: true
 
   setup do

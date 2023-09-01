@@ -1,4 +1,4 @@
-defmodule Web.Auth.Settings.IdentityProviders.System.ShowTest do
+defmodule Web.Live.Settings.IdentityProviders.System.ShowTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -70,21 +70,20 @@ defmodule Web.Auth.Settings.IdentityProviders.System.ShowTest do
     identity: identity,
     conn: conn
   } do
-    inserted_at = Cldr.DateTime.to_string!(provider.inserted_at, Web.CLDR, format: :short)
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/system/#{provider}")
 
-    assert lv
-           |> element("#provider")
-           |> render()
-           |> vertical_table_to_map() == %{
-             "name" => provider.name,
-             "status" => "Active",
-             "created" => "#{inserted_at} by System"
-           }
+    table =
+      lv
+      |> element("#provider")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["name"] == provider.name
+    assert table["status"] == "Active"
+    assert around_now?(table["created"])
 
     provider
     |> Ecto.Changeset.change(
@@ -98,14 +97,15 @@ defmodule Web.Auth.Settings.IdentityProviders.System.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/system/#{provider}")
 
-    assert lv
-           |> element("#provider")
-           |> render()
-           |> vertical_table_to_map() == %{
-             "name" => provider.name,
-             "status" => "Active",
-             "created" => "#{inserted_at} by #{actor.name}"
-           }
+    table =
+      lv
+      |> element("#provider")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["name"] == provider.name
+    assert table["status"] == "Active"
+    assert table["created"] =~ "by #{actor.name}"
   end
 
   test "allows changing provider status", %{

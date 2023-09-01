@@ -1,4 +1,4 @@
-defmodule Web.Auth.RelayGroups.NewTest do
+defmodule Web.Live.RelayGroups.NewTest do
   use Web.ConnCase, async: true
 
   setup do

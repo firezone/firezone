@@ -1,4 +1,4 @@
-defmodule Web.Auth.RelayGroups.IndexTest do
+defmodule Web.Live.RelayGroups.IndexTest do
   use Web.ConnCase, async: true
 
   setup do

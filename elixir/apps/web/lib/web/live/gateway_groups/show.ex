@@ -67,7 +67,7 @@ defmodule Web.GatewayGroups.Show do
         <.vertical_table_row>
           <:label>Created</:label>
           <:value>
-            <.datetime datetime={@group.inserted_at} /> by <.owner schema={@group} />
+            <.created_by schema={@group} />
           </:value>
         </.vertical_table_row>
       </.vertical_table>
@@ -91,14 +91,11 @@ defmodule Web.GatewayGroups.Show do
           </:col>
           <:col :let={gateway} label="REMOTE IP">
             <code class="block text-xs">
-              <%= gateway.ipv4 %>
-            </code>
-            <code class="block text-xs">
-              <%= gateway.ipv6 %>
+              <%= gateway.last_seen_remote_ip %>
             </code>
           </:col>
           <:col :let={gateway} label="TOKEN CREATED AT">
-            <.datetime datetime={gateway.token.inserted_at} /> by <.owner schema={gateway.token} />
+            <.created_by schema={gateway.token} />
           </:col>
           <:col :let={gateway} label="STATUS">
             <.connection_status schema={gateway} />

@@ -1,4 +1,4 @@
-defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.NewTest do
+defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.NewTest do
   use Web.ConnCase, async: true
 
   setup do
