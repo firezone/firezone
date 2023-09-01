@@ -152,12 +152,6 @@ where
         let send_messages = futures::StreamExt::map(receiver, Ok)
             .forward(write)
             .map_err(Error::from);
-        // let send_messages = async {
-        //     while let Some(item) = receiver.next().await {
-        //         write.send(item).await?;
-        //     }
-        //     Ok(())
-        // };
 
         let phoenix_heartbeat = tokio::spawn(async move {
             let mut timer = tokio::time::interval(HEARTBEAT);
