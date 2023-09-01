@@ -325,6 +325,7 @@ where
                     // `connection.start` calls the callback only after connecting
                     tracing::debug!("Attempting connection to portal...");
                     let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
+                    tracing::warn!("Disconnected from the portal");
                     if let Err(e) = &result {
                         tracing::warn!(error = ?e, "Portal connection error");
                     }
