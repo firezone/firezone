@@ -52,6 +52,16 @@ defmodule Domain.Actors.Membership.Query do
     })
   end
 
+  def count_groups_by_actor_id(queryable \\ all()) do
+    queryable
+    |> group_by([memberships: memberships], memberships.actor_id)
+    |> with_joined_groups()
+    |> select([memberships: memberships, groups: groups], %{
+      actor_id: memberships.actor_id,
+      count: count(groups.id)
+    })
+  end
+
   def with_joined_actors(queryable \\ all()) do
     join(queryable, :inner, [memberships: memberships], actors in ^Actor.Query.all(),
       on: actors.id == memberships.actor_id,

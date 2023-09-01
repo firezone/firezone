@@ -231,6 +231,101 @@ defmodule Domain.ActorsTest do
     end
   end
 
+  describe "peek_actor_groups/3" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "returns count of actors per group and first 3 actors", %{
+      account: account,
+      subject: subject
+    } do
+      actor1 = Fixtures.Actors.create_actor(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor1)
+      Fixtures.Actors.create_membership(account: account, actor: actor1)
+      Fixtures.Actors.create_membership(account: account, actor: actor1)
+      Fixtures.Actors.create_membership(account: account, actor: actor1)
+
+      actor2 = Fixtures.Actors.create_actor(account: account)
+
+      assert {:ok, peek} = peek_actor_groups([actor1, actor2], 3, subject)
+
+      assert length(Map.keys(peek)) == 2
+
+      assert peek[actor1.id].count == 4
+      assert length(peek[actor1.id].groups) == 3
+      assert [%Actors.Group{} | _] = peek[actor1.id].groups
+
+      assert peek[actor2.id].count == 0
+      assert length(peek[actor2.id].groups) == 0
+    end
+
+    test "returns count of actors per group and first LIMIT actors", %{
+      account: account,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor)
+      Fixtures.Actors.create_membership(account: account, actor: actor)
+
+      other_actor = Fixtures.Actors.create_actor(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: other_actor)
+
+      assert {:ok, peek} = peek_actor_groups([actor], 1, subject)
+      assert length(peek[actor.id].groups) == 1
+    end
+
+    test "ignores deleted groups", %{
+      account: account,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      group = Fixtures.Actors.create_group(account: account) |> Fixtures.Actors.delete()
+      Fixtures.Actors.create_membership(account: account, group: group, actor: actor)
+      Fixtures.Actors.create_membership(account: account, group: group)
+
+      assert {:ok, peek} = peek_actor_groups([actor], 3, subject)
+      assert peek[actor.id].count == 0
+      assert length(peek[actor.id].groups) == 0
+    end
+
+    test "ignores other groups", %{
+      account: account,
+      subject: subject
+    } do
+      Fixtures.Actors.create_membership(account: account)
+      Fixtures.Actors.create_membership(account: account)
+
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      assert {:ok, peek} = peek_actor_groups([actor], 1, subject)
+      assert peek[actor.id].count == 0
+      assert length(peek[actor.id].groups) == 0
+    end
+
+    test "returns empty map on empty actors", %{subject: subject} do
+      assert peek_actor_groups([], 1, subject) == {:ok, %{}}
+    end
+
+    test "returns empty map on empty groups", %{account: account, subject: subject} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      assert {:ok, peek} = peek_actor_groups([actor], 3, subject)
+      assert length(Map.keys(peek)) == 1
+      assert peek[actor.id].count == 0
+      assert length(peek[actor.id].groups) == 0
+    end
+  end
+
   describe "sync_provider_groups_multi/2" do
     setup do
       account = Fixtures.Accounts.create_account()

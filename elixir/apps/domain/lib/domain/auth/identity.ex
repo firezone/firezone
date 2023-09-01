@@ -20,8 +20,6 @@ defmodule Domain.Auth.Identity do
 
     has_many :devices, Domain.Devices.Device, where: [deleted_at: nil]
 
-    # TODO: we don't want to have deleted_at for actors and identities, instead we should just disable identities
-    # and if all are disabled - actor is disabled too
     field :deleted_at, :utc_datetime_usec
     timestamps(updated_at: false)
   end

@@ -73,6 +73,24 @@ defmodule Domain.Actors do
     end
   end
 
+  def peek_actor_groups(actors, limit, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      ids = actors |> Enum.map(& &1.id) |> Enum.uniq()
+      preview = Map.new(ids, fn id -> {id, %{count: 0, groups: []}} end)
+
+      preview =
+        Actor.Query.by_id({:in, ids})
+        |> Actor.Query.preload_few_groups_for_each_actor(limit)
+        |> Repo.all()
+        |> Enum.group_by(&{&1.actor_id, &1.count}, & &1.group)
+        |> Enum.reduce(preview, fn {{actor_id, count}, groups}, acc ->
+          Map.put(acc, actor_id, %{count: count, groups: groups})
+        end)
+
+      {:ok, preview}
+    end
+  end
+
   def sync_provider_groups_multi(%Auth.Provider{} = provider, attrs_list) do
     Group.Sync.sync_provider_groups_multi(provider, attrs_list)
   end

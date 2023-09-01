@@ -55,13 +55,13 @@ IO.puts("")
 
 {:ok, oidc_provider} =
   Auth.create_provider(account, %{
-    name: "Vault",
+    name: "OIDC",
     adapter: :openid_connect,
     adapter_config: %{
       "client_id" => "CLIENT_ID",
       "client_secret" => "CLIENT_SECRET",
       "response_type" => "code",
-      "scope" => "openid email profile",
+      "scope" => "openid email name groups",
       "discovery_document_uri" => "https://common.auth0.com/.well-known/openid-configuration"
     }
   })

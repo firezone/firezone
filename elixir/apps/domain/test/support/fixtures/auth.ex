@@ -101,7 +101,7 @@ defmodule Domain.Fixtures.Auth do
         adapter: :openid_connect,
         provisioner: :just_in_time
       }
-      |> Map.merge(attrs)
+      |> Map.merge(Enum.into(attrs, %{}))
       |> provider_attrs()
 
     {account, attrs} =
@@ -128,7 +128,7 @@ defmodule Domain.Fixtures.Auth do
         adapter: :google_workspace,
         provisioner: :custom
       }
-      |> Map.merge(attrs)
+      |> Map.merge(Enum.into(attrs, %{}))
       |> provider_attrs()
 
     {account, attrs} =
