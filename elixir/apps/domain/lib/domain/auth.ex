@@ -128,10 +128,22 @@ defmodule Domain.Auth do
     |> Repo.list()
   end
 
-  # TODO: and_provisioner == :custom
-  def list_active_providers_by_adapter_and_last_synced_at(adapter, datetime_filter) do
+  def list_providers_pending_token_refresh_by_adapter(adapter) do
+    datetime_filter = DateTime.utc_now() |> DateTime.add(1, :hour)
+
     Provider.Query.by_adapter(adapter)
-    |> Provider.Query.last_synced_at(datetime_filter)
+    |> Provider.Query.by_provisioner(:custom)
+    |> Provider.Query.token_expires_at({:lt, datetime_filter})
+    |> Provider.Query.not_disabled()
+    |> Repo.list()
+  end
+
+  def list_providers_pending_sync_by_adapter(adapter) do
+    datetime_filter = DateTime.utc_now() |> DateTime.add(-10, :minute)
+
+    Provider.Query.by_adapter(adapter)
+    |> Provider.Query.by_provisioner(:custom)
+    |> Provider.Query.last_synced_at({:lt, datetime_filter})
     |> Provider.Query.not_disabled()
     |> Repo.list()
   end

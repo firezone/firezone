@@ -87,16 +87,27 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
   @impl true
   def verify_and_update_identity(%Provider{} = provider, {redirect_uri, code_verifier, code}) do
-    provider
-    |> sync_identity(%{
+    token_params = %{
       grant_type: "authorization_code",
       redirect_uri: redirect_uri,
       code: code,
       code_verifier: code_verifier
-    })
-    |> case do
-      {:ok, identity, expires_at} -> {:ok, identity, expires_at}
-      {:error, :not_found} -> {:error, :not_found}
+    }
+
+    with {:ok, provider_identifier, identity_state} <-
+           fetch_state(provider, token_params) do
+      Identity.Query.by_provider_id(provider.id)
+      |> Identity.Query.by_provider_identifier(provider_identifier)
+      |> Repo.fetch_and_update(
+        with: fn identity ->
+          Identity.Changeset.update_identity_provider_state(identity, identity_state)
+        end
+      )
+      |> case do
+        {:ok, identity} -> {:ok, identity, identity_state.expires_at}
+        {:error, reason} -> {:error, reason}
+      end
+    else
       {:error, :expired_token} -> {:error, :expired}
       {:error, :invalid_token} -> {:error, :invalid}
       {:error, :internal_error} -> {:error, :internal_error}
@@ -116,7 +127,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     }
 
     with {:ok, provider_identifier, identity_state} <-
-           fetch_identity_state(provider, token_params) do
+           fetch_state(provider, token_params) do
       Domain.Auth.upsert_identity(actor, provider, %{
         provider_identifier: provider_identifier,
         provider_virtual_state: identity_state
@@ -124,16 +135,28 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     end
   end
 
-  def refresh_token(%Identity{} = identity) do
-    identity = Repo.preload(identity, :provider)
-
-    sync_identity(identity.provider, %{
+  def refresh_access_token(%Provider{} = provider) do
+    token_params = %{
       grant_type: "refresh_token",
-      refresh_token: identity.provider_state["refresh_token"]
-    })
+      refresh_token: provider.adapter_state["refresh_token"]
+    }
+
+    with {:ok, _provider_identifier, adapter_state} <-
+           fetch_state(provider, token_params) do
+      Provider.Query.by_id(provider.id)
+      |> Repo.fetch_and_update(
+        with: fn provider ->
+          Provider.Changeset.update(provider, %{adapter_state: adapter_state})
+        end
+      )
+    else
+      {:error, :expired_token} -> {:error, :expired}
+      {:error, :invalid_token} -> {:error, :invalid}
+      {:error, :internal_error} -> {:error, :internal_error}
+    end
   end
 
-  defp fetch_identity_state(%Provider{} = provider, token_params) do
+  defp fetch_state(%Provider{} = provider, token_params) do
     config = config_for_provider(provider)
 
     with {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
@@ -175,23 +198,6 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         )
 
         {:error, :internal_error}
-    end
-  end
-
-  defp sync_identity(%Provider{} = provider, token_params) do
-    with {:ok, provider_identifier, identity_state} <-
-           fetch_identity_state(provider, token_params) do
-      Identity.Query.by_provider_id(provider.id)
-      |> Identity.Query.by_provider_identifier(provider_identifier)
-      |> Repo.fetch_and_update(
-        with: fn identity ->
-          Identity.Changeset.update_identity_provider_state(identity, identity_state)
-        end
-      )
-      |> case do
-        {:ok, identity} -> {:ok, identity, identity_state.expires_at}
-        {:error, reason} -> {:error, reason}
-      end
     end
   end
 

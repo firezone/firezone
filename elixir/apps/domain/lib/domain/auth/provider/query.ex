@@ -34,6 +34,18 @@ defmodule Domain.Auth.Provider.Query do
     )
   end
 
+  def token_expires_at(queryable \\ all(), {:lt, datetime}) do
+    where(
+      queryable,
+      [provider: provider],
+      fragment("(?->>'expires_at')::timestamp < ?", provider.adapter_state, ^datetime)
+    )
+  end
+
+  def by_provisioner(queryable \\ all(), provisioner) do
+    where(queryable, [provider: provider], provider.provisioner == ^provisioner)
+  end
+
   def by_account_id(queryable \\ all(), account_id) do
     where(queryable, [provider: provider], provider.account_id == ^account_id)
   end

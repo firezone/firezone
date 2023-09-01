@@ -362,12 +362,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
       Mocks.OpenIDConnect.expect_userinfo(bypass)
 
-      assert {:ok, identity, expires_at} = refresh_token(identity)
+      assert {:ok, provider} = refresh_access_token(provider)
 
-      assert identity.provider_state == %{
+      assert %{
                access_token: "MY_ACCESS_TOKEN",
-               claims: claims,
-               expires_at: expires_at,
+               claims: ^claims,
+               expires_at: _expires_at,
                refresh_token: "MY_REFRESH_TOKEN",
                userinfo: %{
                  "email" => "ada@example.com",
@@ -380,9 +380,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
                    "https://lh3.googleusercontent.com/-XdUIqdMkCWA/AAAAAAAAAAI/AAAAAAAAAAA/4252rscbv5M/photo.jpg",
                  "sub" => "353690423699814251281"
                }
-             }
-
-      assert DateTime.diff(expires_at, DateTime.utc_now()) in 5..15
+             } = provider.adapter_state
     end
   end
 end

@@ -5,25 +5,20 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
   require Logger
 
   every minutes(5), :refresh_access_tokens do
-    # Enum.each(fn provider ->
-    #   Logger.debug("Refreshing tokens for #{inspect(provider)}")
-    #   GoogleWorkspace.refresh_access_token(provider)
-    # end)
-
-    :ok
+    with {:ok, providers} <-
+           Domain.Auth.list_providers_pending_token_refresh_by_adapter(:google_workspace) do
+      Enum.each(providers, fn provider ->
+        Logger.debug("Refreshing tokens for #{inspect(provider)}")
+        GoogleWorkspace.refresh_access_token(provider)
+      end)
+    end
   end
 
   every minutes(3), :sync_directory do
-    datetime_filter = DateTime.utc_now() |> DateTime.add(-10, :minute)
+    with {:ok, providers} <- Domain.Auth.list_providers_pending_sync_by_adapter(:google_workspace) do
+      Logger.debug("Syncing #{length(providers)} providers")
 
-    with {:ok, providers_to_sync} <-
-           Domain.Auth.list_active_providers_by_adapter_and_last_synced_at(
-             :google_workspace,
-             {:lt, datetime_filter}
-           ) do
-      Logger.debug("Syncing #{length(providers_to_sync)} providers")
-
-      providers_to_sync
+      providers
       |> Enum.chunk_every(5)
       |> Enum.each(fn providers ->
         Enum.map(providers, fn provider ->

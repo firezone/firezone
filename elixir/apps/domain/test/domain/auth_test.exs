@@ -257,6 +257,118 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "list_providers_pending_token_refresh_by_adapter/1" do
+    test "returns empty list if there are no providers for an adapter" do
+      assert list_providers_pending_token_refresh_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "returns empty list if there are no providers with token that will expire soon" do
+      Fixtures.Auth.start_and_create_google_workspace_provider()
+      assert list_providers_pending_token_refresh_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "ignores disabled providers" do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      Domain.Fixture.update!(provider, %{
+        disabled_at: DateTime.utc_now(),
+        adapter_state: %{
+          "expires_at" => DateTime.utc_now()
+        }
+      })
+
+      assert list_providers_pending_token_refresh_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "ignores non-custom provisioners" do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      Domain.Fixture.update!(provider, %{
+        provisioner: :manual,
+        adapter_state: %{
+          "expires_at" => DateTime.utc_now()
+        }
+      })
+
+      assert list_providers_pending_token_refresh_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "returns providers with tokens that will expire in ~1 hour" do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      Domain.Fixture.update!(provider, %{
+        adapter_state: %{
+          "access_token" => "OIDC_ACCESS_TOKEN",
+          "refresh_token" => "OIDC_REFRESH_TOKEN",
+          "expires_at" => DateTime.utc_now() |> DateTime.add(58, :minute),
+          "claims" => "openid email profile offline_access"
+        }
+      })
+
+      assert {:ok, [fetched_provider]} =
+               list_providers_pending_token_refresh_by_adapter(:google_workspace)
+
+      assert fetched_provider.id == provider.id
+    end
+  end
+
+  describe "list_providers_pending_sync_by_adapter/1" do
+    test "returns empty list if there are no providers for an adapter" do
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "returns empty list if there are no providers that synced more than 10m ago" do
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
+      Domain.Fixture.update!(provider, %{last_synced_at: DateTime.utc_now()})
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "ignores disabled providers" do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      Domain.Fixture.update!(provider, %{
+        disabled_at: DateTime.utc_now(),
+        adapter_state: %{
+          "expires_at" => DateTime.utc_now()
+        }
+      })
+
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "ignores non-custom provisioners" do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      Domain.Fixture.update!(provider, %{
+        provisioner: :manual,
+        adapter_state: %{
+          "expires_at" => DateTime.utc_now()
+        }
+      })
+
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "returns providers with tokens that synced more than 10m ago" do
+      {provider1, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
+      {provider2, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      eleven_minutes_ago = DateTime.utc_now() |> DateTime.add(-11, :minute)
+      Domain.Fixture.update!(provider2, %{last_synced_at: eleven_minutes_ago})
+
+      assert {:ok, providers} =
+               list_providers_pending_sync_by_adapter(:google_workspace)
+
+      assert Enum.map(providers, & &1.id) |> Enum.sort() ==
+               Enum.sort([provider1.id, provider2.id])
+    end
+  end
+
   describe "new_provider/2" do
     setup do
       account = Fixtures.Accounts.create_account()
