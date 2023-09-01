@@ -29,12 +29,7 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
-use std::{
-    collections::{HashMap, HashSet},
-    net::IpAddr,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
 
 use libs_common::{
     messages::{Id, Interface as InterfaceConfig, ResourceDescription},
@@ -93,6 +88,8 @@ const REFRESH_PEERS_TIMERS_INTERVAL: Duration = Duration::from_secs(1);
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
+const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
+
 /// Represent's the tunnel actual peer's config
 /// Obtained from libs_common's Peer
 #[derive(Clone)]
@@ -125,7 +122,8 @@ pub trait ControlSignal {
     async fn signal_connection_to(
         &self,
         resource: &ResourceDescription,
-        connected_gateway_ids: Vec<Id>,
+        connected_gateway_ids: &Vec<Id>,
+        reference: usize,
     ) -> Result<()>;
 }
 
@@ -143,7 +141,7 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<Id, Arc<RTCPeerConnection>>>,
-    awaiting_connection: Mutex<HashSet<Id>>,
+    awaiting_connection: Mutex<HashMap<Id, (usize, bool)>>,
     gateway_awaiting_connection: Mutex<HashMap<Id, Vec<IpNetwork>>>,
     resources_gateways: Mutex<HashMap<Id, Id>>,
     webrtc_api: API,
@@ -160,12 +158,13 @@ pub struct TunnelStats {
     public_key: String,
     peers_by_ip: HashMap<IpNetwork, PeerStats>,
     peer_connections: Vec<Id>,
-    awaiting_connection: HashSet<Id>,
-    gateway_awaiting_connection: HashMap<Id, Vec<IpNetwork>>,
     resource_gateways: HashMap<Id, Id>,
     dns_resources: HashMap<String, ResourceDescription>,
     network_resources: HashMap<IpNetwork, ResourceDescription>,
     gateway_public_keys: HashMap<Id, String>,
+
+    awaiting_connection: HashMap<Id, (usize, bool)>,
+    gateway_awaiting_connection: HashMap<Id, Vec<IpNetwork>>,
 }
 
 impl<C, CB> Tunnel<C, CB>
@@ -654,13 +653,13 @@ where
                                 // and we are finding another packet to the same address (otherwise we would just use peer_connections here)
                                 let mut awaiting_connection = dev.awaiting_connection.lock();
                                 let id = resource.id();
-                                if !awaiting_connection.contains(&id) {
+                                if !awaiting_connection.get(&id).is_some() {
                                     tracing::trace!(
                                         message = "Found new intent to send packets to resource",
                                         resource_ip = %dst_addr
                                     );
 
-                                    awaiting_connection.insert(id);
+                                    awaiting_connection.insert(id, (0, false));
                                     let dev = Arc::clone(&dev);
 
                                     let mut connected_gateway_ids: Vec<_> = dev
@@ -676,15 +675,38 @@ where
                                         message = "Currently connected gateways", gateways = ?connected_gateway_ids
                                     );
                                     tokio::spawn(async move {
-                                        if let Err(e) = dev
-                                            .control_signaler
-                                            .signal_connection_to(&resource, connected_gateway_ids)
-                                            .await
-                                        {
-                                            // Not a deadlock because this is a different task
-                                            dev.awaiting_connection.lock().remove(&id);
-                                            tracing::error!(message = "couldn't start protocol for new connection to resource", error = ?e);
-                                            let _ = dev.callbacks.on_error(&e);
+                                        let mut interval =
+                                            tokio::time::interval(MAX_SIGNAL_CONNECTION_DELAY);
+                                        loop {
+                                            interval.tick().await;
+                                            let reference = {
+                                                let mut awaiting_connections =
+                                                    dev.awaiting_connection.lock();
+                                                let Some(awaiting_connection) =
+                                                    awaiting_connections.get_mut(&resource.id())
+                                                else {
+                                                    break;
+                                                };
+                                                if awaiting_connection.1 {
+                                                    break;
+                                                }
+                                                awaiting_connection.0 += 1;
+                                                dbg!(awaiting_connection.0)
+                                            };
+                                            if let Err(e) = dev
+                                                .control_signaler
+                                                .signal_connection_to(
+                                                    &resource,
+                                                    &connected_gateway_ids,
+                                                    reference,
+                                                )
+                                                .await
+                                            {
+                                                // Not a deadlock because this is a different task
+                                                dev.awaiting_connection.lock().remove(&id);
+                                                tracing::error!(message = "couldn't start protocol for new connection to resource", error = ?e);
+                                                let _ = dev.callbacks.on_error(&e);
+                                            }
                                         }
                                     });
                                 }

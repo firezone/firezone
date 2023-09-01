@@ -31,6 +31,7 @@ rand = { version = "0.8", default-features = false, features = ["std"] }
 chrono = { workspace = true }
 parking_lot = "0.12"
 ring = "0.16"
+tokio-stream = { version = "0.1", features = ["time"] }
 
 # Needed for Android logging until tracing is working
 log = "0.4"

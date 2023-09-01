@@ -21,6 +21,9 @@ pub enum ConnlibError {
     /// Request error for websocket connection.
     #[error("Error forming request: {0}")]
     RequestError(#[from] tokio_tungstenite::tungstenite::http::Error),
+    /// Websocket heartbeat timedout
+    #[error("Websocket heartbeat timedout")]
+    WebsocketTimeout(#[from] tokio_stream::Elapsed),
     /// Error during websocket connection.
     #[error("Portal connection error: {0}")]
     PortalConnectionError(#[from] tokio_tungstenite::tungstenite::error::Error),
@@ -99,6 +102,12 @@ pub enum ConnlibError {
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
     PanicNonStringPayload,
+    /// Recieved connection details that might be stale
+    #[error("Unexpected connection details")]
+    UnexpectedConnectionDetails,
+    /// Invalid phoenix channel reference
+    #[error("Invalid phoenix channel reply reference")]
+    InvalidReference,
 }
 
 #[cfg(target_os = "linux")]

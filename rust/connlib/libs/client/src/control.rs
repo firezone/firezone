@@ -4,21 +4,22 @@ use crate::messages::{Connect, ConnectionDetails, EgressMessages, InitClient, Me
 use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use boringtun::x25519::StaticSecret;
 use libs_common::{
-    control::{ErrorInfo, ErrorReply, MessageResult, PhoenixSenderWithTopic},
+    control::{ErrorInfo, ErrorReply, MessageResult, PhoenixSenderWithTopic, Reference},
     messages::{Id, ResourceDescription},
     Callbacks, ControlSession, Error, Result,
 };
 
 use async_trait::async_trait;
 use firezone_tunnel::{ControlSignal, Request, Tunnel};
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::{mpsc::Receiver, Mutex};
 
 #[async_trait]
 impl ControlSignal for ControlSignaler {
     async fn signal_connection_to(
         &self,
         resource: &ResourceDescription,
-        connected_gateway_ids: Vec<Id>,
+        connected_gateway_ids: &Vec<Id>,
+        reference: usize,
     ) -> Result<()> {
         self.control_signal
             // It's easier if self is not mut
@@ -26,11 +27,9 @@ impl ControlSignal for ControlSignaler {
             .send_with_ref(
                 EgressMessages::PrepareConnection {
                     resource_id: resource.id(),
-                    connected_gateway_ids,
+                    connected_gateway_ids: connected_gateway_ids.clone(),
                 },
-                // The resource id functions as the connection id since we can only have one connection
-                // outgoing for each resource.
-                resource.id(),
+                reference,
             )
             .await?;
         Ok(())
@@ -41,6 +40,7 @@ impl ControlSignal for ControlSignaler {
 pub struct ControlPlane<CB: Callbacks> {
     tunnel: Arc<Tunnel<ControlSignaler, CB>>,
     control_signaler: ControlSignaler,
+    tunnel_init: Mutex<bool>,
 }
 
 #[derive(Clone)]
@@ -50,14 +50,17 @@ struct ControlSignaler {
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn start(mut self, mut receiver: Receiver<MessageResult<Messages>>) -> Result<()> {
+    async fn start(
+        mut self,
+        mut receiver: Receiver<(MessageResult<Messages>, Option<Reference>)>,
+    ) -> Result<()> {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
         loop {
             tokio::select! {
-                Some(msg) = receiver.recv() => {
+                Some((msg, reference)) = receiver.recv() => {
                     match msg {
-                        Ok(msg) => self.handle_message(msg).await?,
-                        Err(msg_reply) => self.handle_error(msg_reply).await,
+                        Ok(msg) => self.handle_message(msg, reference).await?,
+                        Err(err) => self.handle_error(err, reference).await,
                     }
                 },
                 _ = interval.tick() => self.stats_event().await,
@@ -75,16 +78,25 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             resources,
         }: InitClient,
     ) -> Result<()> {
-        if let Err(e) = self.tunnel.set_interface(&interface).await {
-            tracing::error!(error = ?e, "Error initializing interface");
-            Err(e)
-        } else {
-            for resource_description in resources {
-                self.add_resource(resource_description).await;
+        {
+            let mut init = self.tunnel_init.lock().await;
+            if !*init {
+                if let Err(e) = self.tunnel.set_interface(&interface).await {
+                    tracing::error!(error = ?e, "Error initializing interface");
+                    return Err(e);
+                } else {
+                    *init = true;
+                    tracing::info!("Firezoned Started!");
+                }
+            } else {
+                tracing::info!("Firezoned reinitializated");
             }
-            tracing::info!("Firezoned Started!");
-            Ok(())
         }
+
+        for resource_description in resources {
+            self.add_resource(resource_description).await;
+        }
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -137,12 +149,13 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             relays,
             ..
         }: ConnectionDetails,
+        reference: Option<Reference>,
     ) {
         let tunnel = Arc::clone(&self.tunnel);
         let mut control_signaler = self.control_signaler.clone();
         tokio::spawn(async move {
             let err = match tunnel
-                .request_connection(resource_id, gateway_id, relays)
+                .request_connection(resource_id, gateway_id, relays, reference)
                 .await
             {
                 Ok(Request::NewConnection(connection_request)) => {
@@ -185,11 +198,15 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn handle_message(&mut self, msg: Messages) -> Result<()> {
+    pub(super) async fn handle_message(
+        &mut self,
+        msg: Messages,
+        reference: Option<Reference>,
+    ) -> Result<()> {
         match msg {
             Messages::Init(init) => self.init(init).await?,
             Messages::ConnectionDetails(connection_details) => {
-                self.connection_details(connection_details)
+                self.connection_details(connection_details, reference)
             }
             Messages::Connect(connect) => self.connect(connect).await,
             Messages::ResourceAdded(resource) => self.add_resource(resource).await,
@@ -200,9 +217,13 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn handle_error(&mut self, reply_error: ErrorReply) {
+    pub(super) async fn handle_error(
+        &mut self,
+        reply_error: ErrorReply,
+        reference: Option<Reference>,
+    ) {
         if matches!(reply_error.error, ErrorInfo::Offline) {
-            match reply_error.reference {
+            match reference {
                 Some(reference) => {
                     let Ok(id) = reference.parse() else {
                         tracing::error!(
@@ -240,7 +261,7 @@ impl<CB: Callbacks + 'static> ControlSession<Messages, CB> for ControlPlane<CB> 
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     async fn start(
         private_key: StaticSecret,
-        receiver: Receiver<MessageResult<Messages>>,
+        receiver: Receiver<(MessageResult<Messages>, Option<Reference>)>,
         control_signal: PhoenixSenderWithTopic,
         callbacks: CB,
     ) -> Result<()> {
@@ -250,6 +271,7 @@ impl<CB: Callbacks + 'static> ControlSession<Messages, CB> for ControlPlane<CB> 
         let control_plane = ControlPlane {
             tunnel,
             control_signaler,
+            tunnel_init: Mutex::new(false),
         };
 
         tokio::spawn(async move { control_plane.start(receiver).await });
