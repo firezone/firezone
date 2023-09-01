@@ -18,7 +18,7 @@ impl ControlSignal for ControlSignaler {
     async fn signal_connection_to(
         &self,
         resource: &ResourceDescription,
-        connected_gateway_ids: &Vec<Id>,
+        connected_gateway_ids: &[Id],
         reference: usize,
     ) -> Result<()> {
         self.control_signal
@@ -27,7 +27,7 @@ impl ControlSignal for ControlSignaler {
             .send_with_ref(
                 EgressMessages::PrepareConnection {
                     resource_id: resource.id(),
-                    connected_gateway_ids: connected_gateway_ids.clone(),
+                    connected_gateway_ids: connected_gateway_ids.to_vec(),
                 },
                 reference,
             )

@@ -33,7 +33,7 @@ impl ControlSignal for ControlSignaler {
     async fn signal_connection_to(
         &self,
         resource: &ResourceDescription,
-        _connected_gateway_ids: &Vec<Id>,
+        _connected_gateway_ids: &[Id],
         _: usize,
     ) -> Result<()> {
         tracing::warn!("A message to network resource: {resource:?} was discarded, gateways aren't meant to be used as clients.");

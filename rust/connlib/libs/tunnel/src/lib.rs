@@ -122,7 +122,7 @@ pub trait ControlSignal {
     async fn signal_connection_to(
         &self,
         resource: &ResourceDescription,
-        connected_gateway_ids: &Vec<Id>,
+        connected_gateway_ids: &[Id],
         reference: usize,
     ) -> Result<()>;
 }
@@ -659,7 +659,7 @@ where
                                 // and we are finding another packet to the same address (otherwise we would just use peer_connections here)
                                 let mut awaiting_connection = dev.awaiting_connection.lock();
                                 let id = resource.id();
-                                if !awaiting_connection.get(&id).is_some() {
+                                if awaiting_connection.get(&id).is_none() {
                                     tracing::trace!(
                                         message = "Found new intent to send packets to resource",
                                         resource_ip = %dst_addr

@@ -102,7 +102,7 @@ pub enum ConnlibError {
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
     PanicNonStringPayload,
-    /// Recieved connection details that might be stale
+    /// Received connection details that might be stale
     #[error("Unexpected connection details")]
     UnexpectedConnectionDetails,
     /// Invalid phoenix channel reference

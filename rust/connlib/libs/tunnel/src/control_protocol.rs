@@ -258,7 +258,7 @@ where
         relays: Vec<Relay>,
         reference: Option<Reference>,
     ) -> Result<Request> {
-        tracing::trace!("Recieved gateways and relays for resource, requesting connection");
+        tracing::trace!("Received gateways and relays for resource, requesting connection");
         let resource_description = self
             .resources
             .read()
