@@ -67,6 +67,7 @@ fn main() -> Result<()> {
     let url = parse_env_var::<Url>(URL_ENV_VAR)?;
     let secret = parse_env_var::<String>(SECRET_ENV_VAR)?;
     let device_id = get_device_id();
+
     let mut session = Session::connect(url, secret, device_id, CallbackHandler).unwrap();
 
     let (tx, rx) = std::sync::mpsc::channel();

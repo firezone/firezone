@@ -115,6 +115,7 @@ services:
 
   client:
     environment:
+      FZ_DEBUG_MODE: true
       FZ_URL: "ws://api:8081/"
       FZ_SECRET: "SFMyNTY.g2gDaAN3CGlkZW50aXR5bQAAACQ3ZGE3ZDFjZC0xMTFjLTQ0YTctYjVhYy00MDI3YjlkMjMwZTVtAAAAIBn8Xu1jtFlxZxp4ZvAz0f0QEN2PZThA-7awHMPxn_tHbgYAbLRvQokBYgHhM38.pM-prhb7uvvCVKf51-tAUMEtMzLPZk1n3nLsY44dGFA"
       RUST_LOG: headless=trace,firezone_client_connlib=trace,firezone_tunnel=trace,libs_common=trace,warn

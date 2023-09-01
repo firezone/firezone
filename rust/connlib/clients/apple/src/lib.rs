@@ -2,7 +2,9 @@
 // Swift bridge generated code triggers this below
 #![allow(improper_ctypes, non_camel_case_types)]
 
-use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session};
+use firezone_client_connlib::{
+    file_logger::FileLogger, Callbacks, Error, ResourceDescription, Session,
+};
 use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -20,6 +22,8 @@ mod ffi {
             portal_url: String,
             token: String,
             device_id: String,
+            log_dir: String,
+            debug_mode: bool,
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
@@ -132,7 +136,8 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging() {
+fn init_logging(log_dir: String, _debug_mode: bool) {
+    // TODO: Use debug_mode to configure log level
     use tracing_subscriber::layer::SubscriberExt as _;
     let collector = tracing_subscriber::registry().with(tracing_oslog::OsLogger::new(
         "dev.firezone.firezone",
@@ -142,6 +147,12 @@ fn init_logging() {
     if tracing::subscriber::set_global_default(collector).is_ok() {
         tracing::debug!("subscribed to logging");
     }
+
+    let file_logger = FileLogger::init(log_dir);
+
+    tracing_subscriber::fmt()
+        .with_writer(file_logger.writer)
+        .init();
 }
 
 impl WrappedSession {
@@ -149,9 +160,12 @@ impl WrappedSession {
         portal_url: String,
         token: String,
         device_id: String,
+        log_dir: String,
+        debug_mode: bool,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
-        init_logging();
+        init_logging(log_dir, debug_mode);
+
         Session::connect(
             portal_url.as_str(),
             token,

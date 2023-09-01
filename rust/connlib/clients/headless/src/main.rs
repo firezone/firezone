@@ -8,7 +8,8 @@ use std::{
 };
 
 use firezone_client_connlib::{
-    get_device_id, get_user_agent, Callbacks, Error, ResourceDescription, Session,
+    file_logger::FileLogger, get_device_id, get_user_agent, Callbacks, Error, ResourceDescription,
+    Session,
 };
 use url::Url;
 
@@ -63,6 +64,8 @@ impl Callbacks for CallbackHandler {
 
 const URL_ENV_VAR: &str = "FZ_URL";
 const SECRET_ENV_VAR: &str = "FZ_SECRET";
+const LOG_DIR_ENV_VAR: &str = "FZ_LOG_DIR";
+const DEBUG_MODE_ENV_VAR: &str = "FZ_DEBUG_MODE";
 
 fn block_on_ctrl_c() {
     let (tx, rx) = std::sync::mpsc::channel();
@@ -71,8 +74,15 @@ fn block_on_ctrl_c() {
     rx.recv().expect("Could not receive ctrl-c signal");
 }
 
-fn main() -> Result<()> {
+fn init_logging(log_dir: String, _debug_mode: bool) {
+    // TODO: Use debug_mode to configure log level
     tracing_subscriber::fmt::init();
+
+    tracing::info!("Logging to {}", log_dir);
+    let _file_logger = FileLogger::init(log_dir);
+}
+
+fn main() -> Result<()> {
     let cli = Cli::parse();
     if cli.print_agent {
         println!("{}", get_user_agent());
@@ -83,6 +93,11 @@ fn main() -> Result<()> {
     let url = parse_env_var::<Url>(URL_ENV_VAR)?;
     let secret = parse_env_var::<String>(SECRET_ENV_VAR)?;
     let device_id = get_device_id();
+    let log_dir = parse_env_var::<String>(LOG_DIR_ENV_VAR).unwrap_or_else(|_| "/tmp".to_string());
+    let debug_mode = parse_env_var::<bool>(DEBUG_MODE_ENV_VAR).unwrap_or(false);
+
+    init_logging(log_dir, debug_mode);
+
     let mut session = Session::connect(url, secret, device_id, CallbackHandler).unwrap();
     tracing::info!("Started new session");
 
