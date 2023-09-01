@@ -1,9 +1,8 @@
 use ip_network::IpNetwork;
 use libc::{
-    close, ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg,
-    sockaddr, sockaddr_ctl, sockaddr_in, socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO,
-    F_GETFL, F_SETFL, IF_NAMESIZE, IPPROTO_IP, O_NONBLOCK, SOCK_STREAM, SYSPROTO_CONTROL,
-    UTUN_OPT_IFNAME,
+    ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg, sockaddr,
+    sockaddr_ctl, sockaddr_in, socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO, F_GETFL,
+    F_SETFL, IF_NAMESIZE, IPPROTO_IP, O_NONBLOCK, SOCK_STREAM, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
 };
 use libs_common::{CallbackErrorFacade, Callbacks, Error, Result, DNS_SENTINEL};
 use std::{
@@ -35,11 +34,6 @@ impl AsRawFd for IfaceDevice {
     }
 }
 
-impl Drop for IfaceDevice {
-    fn drop(&mut self) {
-        unsafe { close(self.fd) };
-    }
-}
 // For some reason this is not available in libc for darwin :c
 #[allow(non_camel_case_types)]
 #[repr(C)]
@@ -124,6 +118,8 @@ impl IfaceDevice {
         // Credit to Jason Donenfeld (@zx2c4) for this technique. See NOTICE.txt for attribution.
         // https://github.com/WireGuard/wireguard-apple/blob/master/Sources/WireGuardKit/WireGuardAdapter.swift
         for fd in 0..1024 {
+            tracing::debug!("Checking fd {}", fd);
+
             // initialize empty sockaddr_ctl to be populated by getpeername
             let mut addr = sockaddr_ctl {
                 sc_len: size_of::<sockaddr_ctl>() as u8,
@@ -161,12 +157,14 @@ impl IfaceDevice {
                     DNS_SENTINEL,
                     "system_resolver".to_string(),
                 );
+                tracing::debug!("Found tun device file descriptor {}", fd);
                 let this = Self { fd };
                 let _ = this.set_non_blocking();
                 return Ok(this);
             }
         }
 
+        tracing::debug!("Error: No tun device file descriptor found!");
         Err(get_last_error())
     }
 
@@ -278,7 +276,7 @@ impl IfaceConfig {
     }
 
     pub async fn up(&mut self) -> Result<()> {
-        tracing::info!("`up` unimplemented on macOS");
+        tracing::debug!("`up` unimplemented on darwin");
         Ok(())
     }
 }

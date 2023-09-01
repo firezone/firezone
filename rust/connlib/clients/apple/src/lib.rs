@@ -23,12 +23,6 @@ mod ffi {
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
-        #[swift_bridge(swift_name = "bumpSockets")]
-        fn bump_sockets(&self);
-
-        #[swift_bridge(swift_name = "disableSomeRoamingForBrokenMobileSemantics")]
-        fn disable_some_roaming_for_broken_mobile_semantics(&self);
-
         fn disconnect(&mut self);
     }
 
@@ -166,15 +160,6 @@ impl WrappedSession {
         )
         .map(|session| Self { session })
         .map_err(|err| err.to_string())
-    }
-
-    fn bump_sockets(&self) {
-        self.session.bump_sockets()
-    }
-
-    fn disable_some_roaming_for_broken_mobile_semantics(&self) {
-        self.session
-            .disable_some_roaming_for_broken_mobile_semantics()
     }
 
     fn disconnect(&mut self) {
