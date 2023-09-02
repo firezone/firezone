@@ -1,6 +1,5 @@
 defmodule Web.SignUp do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
-
   alias Domain.{Auth, Accounts, Actors}
   alias Web.Registration
 
@@ -231,10 +230,18 @@ defmodule Web.SignUp do
         )
         |> Ecto.Multi.run(
           :actor,
-          fn _repo, %{provider: provider} ->
-            Actors.create_actor(provider, registration.email, %{
+          fn _repo, %{account: account} ->
+            Actors.create_actor(account, %{
               type: :account_admin_user,
               name: registration.actor.name
+            })
+          end
+        )
+        |> Ecto.Multi.run(
+          :identity,
+          fn _repo, %{provider: provider} ->
+            Auth.create_identity(provider, registration.email, %{
+              provider_identifier: registration.email
             })
           end
         )
