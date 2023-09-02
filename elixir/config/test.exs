@@ -28,6 +28,7 @@ config :domain, Domain.ConnectivityChecks, enabled: false
 
 config :web, Web.Endpoint,
   http: [port: 13_100],
+  url: [port: 13_100],
   server: true
 
 ###############################
@@ -36,6 +37,7 @@ config :web, Web.Endpoint,
 
 config :api, API.Endpoint,
   http: [port: 13_101],
+  url: [port: 13_101],
   server: true
 
 ###############################

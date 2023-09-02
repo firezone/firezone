@@ -169,7 +169,7 @@ defmodule Domain.ActorsTest do
       assert [%Actors.Actor{} | _] = peek[group1.id].items
 
       assert peek[group2.id].count == 0
-      assert length(peek[group2.id].items) == 0
+      assert Enum.empty?(peek[group2.id].items)
     end
 
     test "returns count of actors per group and first LIMIT actors", %{
@@ -267,7 +267,7 @@ defmodule Domain.ActorsTest do
       assert [%Actors.Group{} | _] = peek[actor1.id].items
 
       assert peek[actor2.id].count == 0
-      assert length(peek[actor2.id].items) == 0
+      assert Enum.empty?(peek[actor2.id].items)
     end
 
     test "returns count of actors per group and first LIMIT actors", %{
