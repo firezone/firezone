@@ -72,9 +72,7 @@ defmodule Web.Groups.Index do
           </span>
         </:col>
         <:col :let={group} label="ACTORS" sortable="false">
-          <% %{count: count, actors: actors} = Map.fetch!(@group_actors, group.id) %>
-
-          <.peek count={count}>
+          <.peek peek={Map.fetch!(@group_actors, group.id)}>
             <:empty>
               None
             </:empty>
@@ -83,9 +81,9 @@ defmodule Web.Groups.Index do
               <span class="pr-1">,</span>
             </:separator>
 
-            <:item :for={actor <- actors}>
+            <:item :let={actor}>
               <.link
-                navigate={~p"/#{@account}/actors/#{actor.id}"}
+                navigate={~p"/#{@account}/actors/#{actor}"}
                 class={["font-medium text-blue-600 dark:text-blue-500 hover:underline"]}
               >
                 <%= actor.name %>

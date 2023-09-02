@@ -50,9 +50,9 @@ defmodule Domain.Actors.Group.Query do
     |> with_joined_actors()
     |> with_joined_actor_counts()
     |> select([groups: groups, actors: actors, actor_counts: actor_counts], %{
-      group_id: groups.id,
+      id: groups.id,
       count: actor_counts.count,
-      actor: actors
+      item: actors
     })
   end
 

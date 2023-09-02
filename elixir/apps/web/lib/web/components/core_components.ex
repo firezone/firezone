@@ -292,6 +292,7 @@ defmodule Web.CoreComponents do
   attr :title, :string, default: nil
   attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
+  attr :style, :string, default: "pill"
 
   slot :inner_block, doc: "the optional inner block that renders the flash message"
 
@@ -301,9 +302,10 @@ defmodule Web.CoreComponents do
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
       class={[
-        "p-4 mb-4 text-sm rounded-lg flash-#{@kind}",
+        "p-4 text-sm flash-#{@kind}",
         @kind == :info && "text-yellow-800 bg-yellow-50 dark:bg-gray-800 dark:text-yellow-300",
-        @kind == :error && "text-red-800 bg-red-50 dark:bg-gray-800 dark:text-red-400"
+        @kind == :error && "text-red-800 bg-red-50 dark:bg-gray-800 dark:text-red-400",
+        @style != "wide" && "mb-4 rounded-lg"
       ]}
       role="alert"
       {@rest}
@@ -539,12 +541,8 @@ defmodule Web.CoreComponents do
       nobody
     </:empty>
 
-    <:item>
-      John
-    </:item>
-
-    <:item>
-      Bob
+    <:item :let={item}>
+      <%= item %>
     </:item>
 
     <:separator>
@@ -557,28 +555,32 @@ defmodule Web.CoreComponents do
   </.peek>
   ```
   """
-  attr :count, :integer, required: true, doc: "the total number of items"
+  attr :peek, :any,
+    required: true,
+    doc: "a tuple with the total number of items and items for a preview"
+
   slot :empty, required: false, doc: "the slots to render when there are no items"
   slot :item, required: true, doc: "the slots to intersperse with separators"
-  slot :separator, required: true, doc: "the slot for the separator"
+  slot :separator, required: false, doc: "the slot for the separator"
   slot :tail, required: true, doc: "the slots to render to show the remaining count"
 
   def peek(assigns) do
     ~H"""
-    <div class="font-light flex">
-      <%= if Enum.empty?(@item) do %>
+    <div class="font-light flex inline-flex">
+      <%= if Enum.empty?(@peek.items) do %>
         <%= render_slot(@empty) %>
       <% else %>
-        <%= for item <- Enum.intersperse(@item, :separator) do %>
+        <% items = if @separator, do: Enum.intersperse(@peek.items, :separator), else: @peek.items %>
+        <%= for item <- items do %>
           <%= if item == :separator do %>
             <%= render_slot(@separator) %>
           <% else %>
-            <%= render_slot(item) %>
+            <%= render_slot(@item, item) %>
           <% end %>
         <% end %>
 
-        <span :if={@count > length(@item)} class="pl-1">
-          <%= render_slot(@tail, @count - length(@item)) %>
+        <span :if={@peek.count > length(@peek.items)} class="pl-1">
+          <%= render_slot(@tail, @peek.count - length(@peek.items)) %>
         </span>
       <% end %>
     </div>
@@ -611,7 +613,10 @@ defmodule Web.CoreComponents do
     assigns = assign(assigns, colors: colors)
 
     ~H"""
-    <span class={"text-xs font-medium mr-2 px-2.5 py-0.5 rounded #{@colors[@type]}"} {@rest}>
+    <span
+      class={"text-xs font-medium mr-2 px-2.5 py-0.5 rounded whitespace-nowrap #{@colors[@type]}"}
+      {@rest}
+    >
       <%= render_slot(@inner_block) %>
     </span>
     """

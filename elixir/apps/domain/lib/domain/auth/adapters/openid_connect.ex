@@ -96,7 +96,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
     with {:ok, provider_identifier, identity_state} <-
            fetch_state(provider, token_params) do
-      Identity.Query.by_provider_id(provider.id)
+      Identity.Query.not_disabled()
+      |> Identity.Query.by_provider_id(provider.id)
       |> Identity.Query.by_provider_identifier(provider_identifier)
       |> Repo.fetch_and_update(
         with: fn identity ->

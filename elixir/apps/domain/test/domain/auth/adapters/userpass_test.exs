@@ -25,12 +25,10 @@ defmodule Domain.Auth.Adapters.UserPassTest do
         )
 
       assert %Ecto.Changeset{} = changeset = identity_changeset(provider, changeset)
-      assert %{provider_state: state, provider_virtual_state: virtual_state} = changeset.changes
+      assert %{provider_state: state, provider_virtual_state: %{}} = changeset.changes
 
       assert %{"password_hash" => password_hash} = state
       assert Domain.Crypto.equal?("Firezone1234", password_hash)
-
-      assert virtual_state == %{}
     end
 
     test "returns error on invalid attrs", %{provider: provider} do

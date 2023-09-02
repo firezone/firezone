@@ -1,11 +1,25 @@
 defmodule Domain.Actors.Actor.Changeset do
   use Domain, :changeset
+  alias Domain.Auth
   alias Domain.Actors
   alias Domain.Actors.Actor
 
   def keys, do: ~w[type name]a
   def keys(%Actor{last_synced_at: nil}), do: ~w[type name]a
   def keys(%Actor{}), do: ~w[type]a
+
+  def create(account_id, attrs, %Auth.Subject{} = subject) do
+    create(account_id, attrs)
+    |> validate_granted_permissions(subject)
+  end
+
+  def create(account_id, attrs) do
+    create(attrs)
+    |> put_change(:account_id, account_id)
+    |> cast_assoc(:memberships,
+      with: &Actors.Membership.Changeset.changeset(account_id, &1, &2)
+    )
+  end
 
   def create(attrs) do
     keys = keys()
@@ -16,12 +30,9 @@ defmodule Domain.Actors.Actor.Changeset do
     |> changeset()
   end
 
-  def create(account_id, attrs) do
-    create(attrs)
-    |> put_change(:account_id, account_id)
-    |> cast_assoc(:memberships,
-      with: &Actors.Membership.Changeset.changeset(account_id, &1, &2)
-    )
+  def update(%Actor{} = actor, attrs, %Auth.Subject{} = subject) do
+    update(actor, attrs)
+    |> validate_granted_permissions(subject)
   end
 
   def update(%Actor{} = actor, attrs) do
@@ -59,5 +70,15 @@ defmodule Domain.Actors.Actor.Changeset do
     actor
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())
+  end
+
+  defp validate_granted_permissions(changeset, subject) do
+    validate_change(changeset, :type, fn :type, granted_actor_type ->
+      if Auth.can_grant_role?(subject, granted_actor_type) do
+        []
+      else
+        [{:type, "does not have permissions to grant this actor type"}]
+      end
+    end)
   end
 end

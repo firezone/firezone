@@ -165,11 +165,11 @@ defmodule Domain.ActorsTest do
       assert length(Map.keys(peek)) == 2
 
       assert peek[group1.id].count == 4
-      assert length(peek[group1.id].actors) == 3
-      assert [%Actors.Actor{} | _] = peek[group1.id].actors
+      assert length(peek[group1.id].items) == 3
+      assert [%Actors.Actor{} | _] = peek[group1.id].items
 
       assert peek[group2.id].count == 0
-      assert length(peek[group2.id].actors) == 0
+      assert length(peek[group2.id].items) == 0
     end
 
     test "returns count of actors per group and first LIMIT actors", %{
@@ -184,7 +184,7 @@ defmodule Domain.ActorsTest do
       Fixtures.Actors.create_membership(account: account, group: other_group)
 
       assert {:ok, peek} = peek_group_actors([group], 1, subject)
-      assert length(peek[group.id].actors) == 1
+      assert length(peek[group.id].items) == 1
     end
 
     test "ignores deleted actors", %{
@@ -201,7 +201,7 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, peek} = peek_group_actors([group], 3, subject)
       assert peek[group.id].count == 4
-      assert length(peek[group.id].actors) == 3
+      assert length(peek[group.id].items) == 3
     end
 
     test "ignores other groups", %{
@@ -215,7 +215,7 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, peek} = peek_group_actors([group], 1, subject)
       assert peek[group.id].count == 0
-      assert length(peek[group.id].actors) == 0
+      assert length(peek[group.id].items) == 0
     end
 
     test "returns empty map on empty groups", %{subject: subject} do
@@ -227,7 +227,7 @@ defmodule Domain.ActorsTest do
       assert {:ok, peek} = peek_group_actors([group], 3, subject)
       assert length(Map.keys(peek)) == 1
       assert peek[group.id].count == 0
-      assert length(peek[group.id].actors) == 0
+      assert length(peek[group.id].items) == 0
     end
   end
 
@@ -263,11 +263,11 @@ defmodule Domain.ActorsTest do
       assert length(Map.keys(peek)) == 2
 
       assert peek[actor1.id].count == 4
-      assert length(peek[actor1.id].groups) == 3
-      assert [%Actors.Group{} | _] = peek[actor1.id].groups
+      assert length(peek[actor1.id].items) == 3
+      assert [%Actors.Group{} | _] = peek[actor1.id].items
 
       assert peek[actor2.id].count == 0
-      assert length(peek[actor2.id].groups) == 0
+      assert length(peek[actor2.id].items) == 0
     end
 
     test "returns count of actors per group and first LIMIT actors", %{
@@ -282,7 +282,7 @@ defmodule Domain.ActorsTest do
       Fixtures.Actors.create_membership(account: account, actor: other_actor)
 
       assert {:ok, peek} = peek_actor_groups([actor], 1, subject)
-      assert length(peek[actor.id].groups) == 1
+      assert length(peek[actor.id].items) == 1
     end
 
     test "ignores deleted groups", %{
@@ -296,7 +296,7 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, peek} = peek_actor_groups([actor], 3, subject)
       assert peek[actor.id].count == 0
-      assert length(peek[actor.id].groups) == 0
+      assert length(peek[actor.id].items) == 0
     end
 
     test "ignores other groups", %{
@@ -310,7 +310,7 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, peek} = peek_actor_groups([actor], 1, subject)
       assert peek[actor.id].count == 0
-      assert length(peek[actor.id].groups) == 0
+      assert length(peek[actor.id].items) == 0
     end
 
     test "returns empty map on empty actors", %{subject: subject} do
@@ -322,7 +322,7 @@ defmodule Domain.ActorsTest do
       assert {:ok, peek} = peek_actor_groups([actor], 3, subject)
       assert length(Map.keys(peek)) == 1
       assert peek[actor.id].count == 0
-      assert length(peek[actor.id].groups) == 0
+      assert length(peek[actor.id].items) == 0
     end
   end
 
@@ -1218,25 +1218,17 @@ defmodule Domain.ActorsTest do
 
   describe "create_actor/4" do
     setup do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-
       account = Fixtures.Accounts.create_account()
-      provider = Fixtures.Auth.create_email_provider(account: account)
-      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
 
       %{
-        account: account,
-        provider: provider,
-        provider_identifier: provider_identifier
+        account: account
       }
     end
 
     test "returns changeset error when required attrs are missing", %{
-      provider: provider,
-      provider_identifier: provider_identifier
+      account: account
     } do
-      attrs = %{identity: %{provider_identifier: provider_identifier}}
-      assert {:error, changeset} = create_actor(provider, attrs)
+      assert {:error, changeset} = create_actor(account, %{})
       refute changeset.valid?
 
       assert errors_on(changeset) == %{
@@ -1246,12 +1238,11 @@ defmodule Domain.ActorsTest do
     end
 
     test "returns error on invalid attrs", %{
-      provider: provider,
-      provider_identifier: provider_identifier
+      account: account
     } do
-      attrs = Fixtures.Actors.actor_attrs(type: :foo, provider_identifier: provider_identifier)
+      attrs = Fixtures.Actors.actor_attrs(type: :foo)
 
-      assert {:error, changeset} = create_actor(provider, attrs)
+      assert {:error, changeset} = create_actor(account, attrs)
       refute changeset.valid?
 
       assert errors_on(changeset) == %{
@@ -1259,74 +1250,41 @@ defmodule Domain.ActorsTest do
              }
     end
 
-    test "upserts the identity based on unique provider_identifier", %{
-      provider: provider
-    } do
-      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
-      attrs = Fixtures.Actors.actor_attrs(provider_identifier: provider_identifier)
-      assert {:ok, _actor} = create_actor(provider, attrs)
-      assert {:error, changeset} = create_actor(provider, attrs)
-      assert errors_on(changeset) == %{provider_identifier: ["has already been taken"]}
-    end
-
     test "creates an actor in given type", %{
-      provider: provider
+      account: account
     } do
       for type <- [:account_user, :account_admin_user, :service_account] do
-        provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
-        attrs = Fixtures.Actors.actor_attrs(type: type, provider_identifier: provider_identifier)
-        assert {:ok, actor} = create_actor(provider, attrs)
+        attrs = Fixtures.Actors.actor_attrs(type: type)
+        assert {:ok, actor} = create_actor(account, attrs)
         assert actor.type == type
       end
     end
 
-    test "creates an actor and identity", %{
-      provider: provider,
-      provider_identifier: provider_identifier
+    test "creates an actor", %{
+      account: account
     } do
-      attrs = Fixtures.Actors.actor_attrs(provider_identifier: provider_identifier)
+      attrs = Fixtures.Actors.actor_attrs()
 
-      assert {:ok, actor} = create_actor(provider, attrs)
+      assert {:ok, actor} = create_actor(account, attrs)
 
       assert actor.type == attrs.type
       assert actor.type == attrs.type
       assert is_nil(actor.disabled_at)
       assert is_nil(actor.deleted_at)
-
-      assert identity = Repo.one(Domain.Auth.Identity)
-      assert identity.provider_id == provider.id
-      assert identity.provider_identifier == provider_identifier
-      assert identity.actor_id == actor.id
-      assert identity.account_id == provider.account_id
-
-      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} =
-               identity.provider_state
-
-      assert identity.provider_virtual_state == nil
-
-      assert is_nil(identity.deleted_at)
     end
   end
 
   describe "create_actor/5" do
     setup do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-
       account = Fixtures.Accounts.create_account()
-      provider = Fixtures.Auth.create_email_provider(account: account)
-      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
 
       %{
-        account: account,
-        provider: provider,
-        provider_identifier: provider_identifier
+        account: account
       }
     end
 
     test "returns error when subject can not create actors", %{
-      account: account,
-      provider: provider,
-      provider_identifier: provider_identifier
+      account: account
     } do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
@@ -1334,33 +1292,29 @@ defmodule Domain.ActorsTest do
         Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
         |> Fixtures.Auth.remove_permissions()
 
-      attrs = %{identity: %{provider_identifier: provider_identifier}}
+      attrs = %{}
 
-      assert create_actor(provider, attrs, subject) ==
+      assert create_actor(account, attrs, subject) ==
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
     end
 
     test "returns error when subject tries to create an account in another account", %{
-      provider: provider,
-      provider_identifier: provider_identifier
+      account: account
     } do
       subject = Fixtures.Auth.create_subject()
-      attrs = %{identity: %{provider_identifier: provider_identifier}}
-      assert create_actor(provider, attrs, subject) == {:error, :unauthorized}
+      attrs = %{}
+      assert create_actor(account, attrs, subject) == {:error, :unauthorized}
     end
 
     test "returns error when subject is trying to create an actor with a privilege escalation", %{
-      account: account,
-      provider: provider,
-      provider_identifier: provider_identifier
+      account: account
     } do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       subject = Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
 
-      admin_permissions = subject.permissions
       required_permissions = [Actors.Authorizer.manage_actors_permission()]
 
       subject =
@@ -1368,27 +1322,14 @@ defmodule Domain.ActorsTest do
         |> Fixtures.Auth.remove_permissions()
         |> Fixtures.Auth.set_permissions(required_permissions)
 
-      missing_permissions =
-        MapSet.difference(admin_permissions, MapSet.new(required_permissions))
-        |> MapSet.to_list()
-
       attrs = %{
         type: :account_admin_user,
-        name: "John Smith",
-        identity: %{provider_identifier: provider_identifier}
+        name: "John Smith"
       }
 
-      assert create_actor(provider, attrs, subject) ==
-               {:error, {:unauthorized, privilege_escalation: missing_permissions}}
+      assert {:error, changeset} = create_actor(account, attrs, subject)
 
-      attrs = %{
-        "type" => "account_admin_user",
-        "name" => "John Smith",
-        "identity" => %{"provider_identifier" => provider_identifier}
-      }
-
-      assert create_actor(provider, attrs, subject) ==
-               {:error, {:unauthorized, privilege_escalation: missing_permissions}}
+      assert "does not have permissions to grant this actor type" in errors_on(changeset).type
     end
   end
 

@@ -2,7 +2,7 @@ defmodule Domain.Actors do
   alias Domain.Actors.Membership
   alias Web.Devices
   alias Domain.{Repo, Validator}
-  alias Domain.{Auth, Devices}
+  alias Domain.{Accounts, Auth, Devices}
   alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
 
@@ -58,36 +58,20 @@ defmodule Domain.Actors do
   def peek_group_actors(groups, limit, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       ids = groups |> Enum.map(& &1.id) |> Enum.uniq()
-      preview = Map.new(ids, fn id -> {id, %{count: 0, actors: []}} end)
 
-      preview =
-        Group.Query.by_id({:in, ids})
-        |> Group.Query.preload_few_actors_for_each_group(limit)
-        |> Repo.all()
-        |> Enum.group_by(&{&1.group_id, &1.count}, & &1.actor)
-        |> Enum.reduce(preview, fn {{group_id, count}, actors}, acc ->
-          Map.put(acc, group_id, %{count: count, actors: actors})
-        end)
-
-      {:ok, preview}
+      Group.Query.by_id({:in, ids})
+      |> Group.Query.preload_few_actors_for_each_group(limit)
+      |> Repo.peek(groups)
     end
   end
 
   def peek_actor_groups(actors, limit, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       ids = actors |> Enum.map(& &1.id) |> Enum.uniq()
-      preview = Map.new(ids, fn id -> {id, %{count: 0, groups: []}} end)
 
-      preview =
-        Actor.Query.by_id({:in, ids})
-        |> Actor.Query.preload_few_groups_for_each_actor(limit)
-        |> Repo.all()
-        |> Enum.group_by(&{&1.actor_id, &1.count}, & &1.group)
-        |> Enum.reduce(preview, fn {{actor_id, count}, groups}, acc ->
-          Map.put(acc, actor_id, %{count: count, groups: groups})
-        end)
-
-      {:ok, preview}
+      Actor.Query.by_id({:in, ids})
+      |> Actor.Query.preload_few_groups_for_each_actor(limit)
+      |> Repo.peek(actors)
     end
   end
 
@@ -214,36 +198,17 @@ defmodule Domain.Actors do
     Actor.Changeset.create(attrs)
   end
 
-  def create_actor(
-        %Auth.Provider{} = provider,
-        attrs,
-        %Auth.Subject{} = subject
-      ) do
+  def create_actor(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
-         :ok <- Auth.ensure_has_access_to(subject, provider),
-         changeset = Actor.Changeset.create(provider.account_id, attrs),
-         {:ok, data} <- Ecto.Changeset.apply_action(changeset, :validate),
-         :ok <- ensure_no_privilege_escalation(subject, data.type) do
-      create_actor(provider, attrs)
+         :ok <- Accounts.ensure_has_access_to(subject, account) do
+      Actor.Changeset.create(account.id, attrs, subject)
+      |> Repo.insert()
     end
   end
 
-  def create_actor(%Auth.Provider{} = provider, attrs) do
-    Ecto.Multi.new()
-    |> Ecto.Multi.insert(:actor, Actor.Changeset.create(provider.account_id, attrs))
-    |> Ecto.Multi.run(:identity, fn _repo, %{actor: actor} ->
-      # TODO: we should not reuse the same attrs here, instead we should use attrs["identities"] list for that,
-      # this will make LV forms more consistent and remove some hacks
-      Auth.create_identity(actor, provider, attrs)
-    end)
-    |> Repo.transaction()
-    |> case do
-      {:ok, %{actor: actor, identity: identity}} ->
-        {:ok, %{actor | identities: [identity]}}
-
-      {:error, _step, changeset, _effects_so_far} ->
-        {:error, changeset}
-    end
+  def create_actor(%Accounts.Account{} = account, attrs) do
+    Actor.Changeset.create(account.id, attrs)
+    |> Repo.insert()
   end
 
   def change_actor(%Actor{} = actor, attrs \\ %{}) do
@@ -251,16 +216,13 @@ defmodule Domain.Actors do
   end
 
   def update_actor(%Actor{} = actor, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
-         changeset = Actor.Changeset.update(actor, attrs),
-         {:ok, data} <- Ecto.Changeset.apply_action(changeset, :validate),
-         :ok <- ensure_no_privilege_escalation(subject, data.type) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Actor.Query.by_id(actor.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(
         with: fn actor ->
           actor = Repo.preload(actor, :memberships)
-          changeset = Actor.Changeset.update(actor, attrs)
+          changeset = Actor.Changeset.update(actor, attrs, subject)
 
           cond do
             changeset.data.type != :account_admin_user ->
@@ -332,20 +294,6 @@ defmodule Domain.Actors do
 
   def actor_disabled?(%Actor{disabled_at: nil}), do: false
   def actor_disabled?(%Actor{}), do: true
-
-  defp ensure_no_privilege_escalation(subject, granted_actor_type) do
-    granted_permissions = Auth.fetch_type_permissions!(granted_actor_type)
-
-    if MapSet.subset?(granted_permissions, subject.permissions) do
-      :ok
-    else
-      missing_permissions =
-        MapSet.difference(granted_permissions, subject.permissions)
-        |> MapSet.to_list()
-
-      {:error, {:unauthorized, privilege_escalation: missing_permissions}}
-    end
-  end
 
   defp other_enabled_admins_exist?(%Actor{
          type: :account_admin_user,

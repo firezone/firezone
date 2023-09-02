@@ -59,8 +59,8 @@ defmodule Domain.Fixtures.Actors do
   end
 
   def actor_attrs(attrs \\ %{}) do
-    first_name = Enum.random(~w[Wade Dave Seth Riley Gilbert Jorge Dan Brian Roberto Ramon])
-    last_name = Enum.random(~w[Robyn Traci Desiree Jon Bob Karl Joe Alberta Lynda Cara Brandi])
+    first_name = Enum.random(~w[Wade Dave Seth Riley Gilbert Jorge Dan Brian Roberto Ramon Juan])
+    last_name = Enum.random(~w[Robyn Traci Desiree Jon Bob Karl Joe Alberta Lynda Cara Brandi B])
 
     Enum.into(attrs, %{
       name: "#{first_name} #{last_name}",

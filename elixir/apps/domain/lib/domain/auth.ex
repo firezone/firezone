@@ -263,6 +263,12 @@ defmodule Domain.Auth do
     end
   end
 
+  def fetch_active_identity_by_id(id) do
+    Identity.Query.by_id(id)
+    |> Identity.Query.not_disabled()
+    |> Repo.fetch()
+  end
+
   def fetch_identity_by_id(id) do
     Identity.Query.by_id(id)
     |> Repo.fetch()
@@ -324,29 +330,17 @@ defmodule Domain.Auth do
         %Subject{} = subject
       ) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
-      Identity.Changeset.create_identity(actor, provider, attrs)
-      |> Adapters.identity_changeset(provider)
-      |> Repo.insert()
-    else
-      {:error, :not_found} -> {:error, :token_provider_not_enabled}
+      create_identity(actor, provider, attrs)
     end
   end
 
-  def create_identity(
-        %Actors.Actor{} = actor,
-        %Provider{} = provider,
-        attrs
-      ) do
+  def create_identity(%Actors.Actor{} = actor, %Provider{} = provider, attrs) do
     Identity.Changeset.create_identity(actor, provider, attrs)
     |> Adapters.identity_changeset(provider)
     |> Repo.insert()
   end
 
-  def replace_identity(
-        %Identity{} = identity,
-        attrs,
-        %Subject{} = subject
-      ) do
+  def replace_identity(%Identity{} = identity, attrs, %Subject{} = subject) do
     required_permissions =
       {:one_of,
        [
@@ -418,7 +412,8 @@ defmodule Domain.Auth do
 
   def sign_in(%Provider{} = provider, id_or_provider_identifier, secret, user_agent, remote_ip) do
     identity_queryable =
-      Identity.Query.by_provider_id(provider.id)
+      Identity.Query.not_disabled()
+      |> Identity.Query.by_provider_id(provider.id)
       |> Identity.Query.by_id_or_provider_identifier(id_or_provider_identifier)
 
     with {:ok, identity} <- Repo.fetch(identity_queryable),
@@ -442,8 +437,7 @@ defmodule Domain.Auth do
   end
 
   def sign_in(token, user_agent, remote_ip) when is_binary(token) do
-    with {:ok, identity, expires_at} <-
-           verify_token(token, user_agent, remote_ip) do
+    with {:ok, identity, expires_at} <- verify_token(token, user_agent, remote_ip) do
       {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
@@ -572,7 +566,7 @@ defmodule Domain.Auth do
          _user_agent,
          _remote_ip
        ) do
-    with {:ok, identity} <- fetch_identity_by_id(identity_id),
+    with {:ok, identity} <- fetch_active_identity_by_id(identity_id),
          {:ok, provider} <- fetch_active_provider_by_id(identity.provider_id),
          {:ok, identity, expires_at} <-
            Adapters.verify_secret(provider, identity, secret) do
@@ -590,7 +584,7 @@ defmodule Domain.Auth do
          _user_agent,
          _remote_ip
        ) do
-    with {:ok, identity} <- fetch_identity_by_id(identity_id),
+    with {:ok, identity} <- fetch_active_identity_by_id(identity_id),
          {:ok, expires_at} <- fetch_session_token_expires_at(token) do
       {:ok, identity, expires_at}
     end
@@ -602,7 +596,7 @@ defmodule Domain.Auth do
          user_agent,
          remote_ip
        ) do
-    with {:ok, identity} <- fetch_identity_by_id(identity_id),
+    with {:ok, identity} <- fetch_active_identity_by_id(identity_id),
          true <- context_payload == session_context_payload(remote_ip, user_agent),
          {:ok, expires_at} <- fetch_session_token_expires_at(token) do
       {:ok, identity, expires_at}
@@ -677,5 +671,10 @@ defmodule Domain.Auth do
       [] -> :ok
       missing_permissions -> {:error, {:unauthorized, missing_permissions: missing_permissions}}
     end
+  end
+
+  def can_grant_role?(%Subject{} = subject, granted_role) do
+    granted_permissions = fetch_type_permissions!(granted_role)
+    MapSet.subset?(granted_permissions, subject.permissions)
   end
 end

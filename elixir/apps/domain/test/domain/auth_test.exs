@@ -1318,6 +1318,30 @@ defmodule Domain.AuthTest do
       assert is_nil(identity.deleted_at)
     end
 
+    test "updates existing identity" do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
+      actor = Fixtures.Actors.create_actor(account: account, provider: provider)
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: provider_identifier,
+          actor: actor,
+          provider_state: %{"foo" => "bar"}
+        )
+
+      attrs = %{provider_identifier: provider_identifier}
+      assert {:ok, updated_identity} = upsert_identity(actor, provider, attrs)
+
+      assert Repo.aggregate(Auth.Identity, :count) == 1
+
+      assert updated_identity.provider_state != identity.provider_state
+    end
+
     test "returns error when identifier is invalid" do
       account = Fixtures.Accounts.create_account()
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
@@ -1337,6 +1361,177 @@ defmodule Domain.AuthTest do
       attrs = %{provider_identifier: nil}
       assert {:error, changeset} = upsert_identity(actor, provider, attrs)
       assert errors_on(changeset) == %{provider_identifier: ["can't be blank"]}
+    end
+  end
+
+  describe "new_identity/3" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+
+      %{
+        account: account,
+        provider: provider,
+        actor: actor
+      }
+    end
+
+    test "returns changeset with given changes", %{
+      account: account,
+      provider: provider,
+      actor: actor
+    } do
+      account_id = account.id
+      actor_id = actor.id
+      provider_id = provider.id
+
+      assert changeset = new_identity(actor, provider, %{})
+      assert %Ecto.Changeset{data: %Domain.Auth.Identity{}} = changeset
+
+      assert %{
+               account_id: ^account_id,
+               actor_id: ^actor_id,
+               provider_id: ^provider_id,
+               provider_state: %{},
+               provider_virtual_state: %{}
+             } = changeset.changes
+
+      identity_attrs = Fixtures.Auth.identity_attrs()
+
+      assert changeset = new_identity(actor, provider, identity_attrs)
+      assert %Ecto.Changeset{data: %Domain.Auth.Identity{}} = changeset
+
+      assert %{
+               account_id: ^account_id,
+               actor_id: ^actor_id,
+               provider_id: ^provider_id,
+               provider_state: %{},
+               provider_virtual_state: %{},
+               created_by: :system
+             } = changeset.changes
+    end
+  end
+
+  describe "create_identity/4" do
+    test "creates an identity" do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      subject = Fixtures.Auth.create_subject(actor: actor)
+
+      attrs = %{provider_identifier: provider_identifier}
+      assert {:ok, _identity} = create_identity(actor, provider, attrs, subject)
+    end
+
+    test "returns error on missing permissions" do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      subject =
+        Fixtures.Auth.create_subject(actor: actor)
+        |> Fixtures.Auth.remove_permissions()
+
+      assert create_identity(actor, provider, %{}, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Authorizer.manage_identities_permission()]]}}
+    end
+  end
+
+  describe "create_identity/3" do
+    test "creates an identity" do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      password = "Firezone1234"
+
+      attrs = %{
+        provider_identifier: provider_identifier,
+        provider_virtual_state: %{"password" => password, "password_confirmation" => password}
+      }
+
+      assert {:ok, identity} = create_identity(actor, provider, attrs)
+
+      assert identity.provider_id == provider.id
+      assert identity.provider_identifier == provider_identifier
+      assert identity.actor_id == actor.id
+
+      assert identity.provider_virtual_state == %{}
+
+      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} =
+               identity.provider_state
+
+      assert %{sign_in_token: _} = identity.provider_virtual_state
+      assert identity.account_id == provider.account_id
+      assert is_nil(identity.deleted_at)
+    end
+
+    test "returns error when identifier is invalid" do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      attrs = %{provider_identifier: Ecto.UUID.generate()}
+      assert {:error, changeset} = create_identity(actor, provider, attrs)
+      assert errors_on(changeset) == %{provider_identifier: ["is an invalid email address"]}
+
+      attrs = %{provider_identifier: nil}
+      assert {:error, changeset} = create_identity(actor, provider, attrs)
+      assert errors_on(changeset) == %{provider_identifier: ["can't be blank"]}
+    end
+
+    test "updates existing identity" do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
+      actor = Fixtures.Actors.create_actor(account: account, provider: provider)
+
+      Fixtures.Auth.create_identity(
+        account: account,
+        provider: provider,
+        provider_identifier: provider_identifier,
+        actor: actor,
+        provider_state: %{"foo" => "bar"}
+      )
+
+      attrs = %{provider_identifier: provider_identifier}
+      assert {:error, changeset} = create_identity(actor, provider, attrs)
+      assert errors_on(changeset) == %{provider_identifier: ["has already been taken"]}
     end
   end
 

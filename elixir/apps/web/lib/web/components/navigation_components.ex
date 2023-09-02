@@ -221,7 +221,13 @@ defmodule Web.NavigationComponents do
   @doc """
   Renders breadcrumbs section, for elements `<.breadcrumb />` component should be used.
   """
-  attr :home_path, :string, required: true, doc: "The path for to the home page for a user."
+  attr :account, :any,
+    required: false,
+    default: nil,
+    doc: "Account assign which will be used to fetch the home path."
+
+  # TODO: remove this attribute
+  attr :home_path, :string, required: false, doc: "The path for to the home page for a user."
   slot :inner_block, required: true, doc: "Breadcrumb entries"
 
   def breadcrumbs(assigns) do
@@ -230,7 +236,7 @@ defmodule Web.NavigationComponents do
       <ol class="inline-flex items-center space-x-1 md:space-x-2">
         <li class="inline-flex items-center">
           <.link
-            navigate={@home_path}
+            navigate={if @account, do: ~p"/#{@account}/dashboard", else: @home_path}
             class="inline-flex items-center text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
           >
             <.icon name="hero-home-solid" class="w-4 h-4 mr-2" /> Home
