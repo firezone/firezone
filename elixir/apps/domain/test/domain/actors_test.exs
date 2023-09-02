@@ -215,7 +215,7 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, peek} = peek_group_actors([group], 1, subject)
       assert peek[group.id].count == 0
-      assert length(peek[group.id].items) == 0
+      assert Enum.empty?(peek[group.id].items)
     end
 
     test "returns empty map on empty groups", %{subject: subject} do
@@ -227,7 +227,7 @@ defmodule Domain.ActorsTest do
       assert {:ok, peek} = peek_group_actors([group], 3, subject)
       assert length(Map.keys(peek)) == 1
       assert peek[group.id].count == 0
-      assert length(peek[group.id].items) == 0
+      assert Enum.empty?(peek[group.id].items)
     end
   end
 
@@ -296,7 +296,7 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, peek} = peek_actor_groups([actor], 3, subject)
       assert peek[actor.id].count == 0
-      assert length(peek[actor.id].items) == 0
+      assert Enum.empty?(peek[actor.id].items)
     end
 
     test "ignores other groups", %{
@@ -310,7 +310,7 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, peek} = peek_actor_groups([actor], 1, subject)
       assert peek[actor.id].count == 0
-      assert length(peek[actor.id].items) == 0
+      assert Enum.empty?(peek[actor.id].items)
     end
 
     test "returns empty map on empty actors", %{subject: subject} do
@@ -322,7 +322,7 @@ defmodule Domain.ActorsTest do
       assert {:ok, peek} = peek_actor_groups([actor], 3, subject)
       assert length(Map.keys(peek)) == 1
       assert peek[actor.id].count == 0
-      assert length(peek[actor.id].items) == 0
+      assert Enum.empty?(peek[actor.id].items)
     end
   end
 
