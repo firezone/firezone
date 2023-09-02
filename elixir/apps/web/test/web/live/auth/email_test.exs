@@ -1,12 +1,11 @@
 defmodule Web.Auth.EmailTest do
   use Web.ConnCase, async: true
-  alias Domain.{AccountsFixtures, AuthFixtures}
 
   test "renders email page", %{conn: conn} do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-    account = AccountsFixtures.create_account()
-    provider = AuthFixtures.create_email_provider(account: account)
+    account = Fixtures.Accounts.create_account()
+    provider = Fixtures.Auth.create_email_provider(account: account)
 
     {:ok, lv, html} =
       live(conn, ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=foo")

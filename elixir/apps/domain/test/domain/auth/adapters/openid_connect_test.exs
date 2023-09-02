@@ -3,15 +3,13 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
   import Domain.Auth.Adapters.OpenIDConnect
   alias Domain.Auth
   alias Domain.Auth.Adapters.OpenIDConnect.{PKCE, State}
-  alias Domain.{AccountsFixtures, AuthFixtures}
 
   describe "identity_changeset/2" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       {provider, bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
       changeset = %Auth.Identity{} |> Ecto.Changeset.change()
 
@@ -37,12 +35,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
   describe "provider_changeset/1" do
     test "returns changeset errors in invalid adapter config" do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, %{})
       assert %Ecto.Changeset{} = changeset = provider_changeset(changeset)
       assert errors_on(changeset) == %{adapter_config: ["can't be blank"]}
 
-      attrs = AuthFixtures.provider_attrs(adapter: :openid_connect, adapter_config: %{})
+      attrs = Fixtures.Auth.provider_attrs(adapter: :openid_connect, adapter_config: %{})
       changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, attrs)
       assert %Ecto.Changeset{} = changeset = provider_changeset(changeset)
 
@@ -56,16 +54,17 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     end
 
     test "returns changeset on valid adapter config" do
-      account = AccountsFixtures.create_account()
-      {_bypass, discovery_document_uri} = AuthFixtures.discovery_document_server()
+      account = Fixtures.Accounts.create_account()
+      bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
+      discovery_document_url = "http://localhost:#{bypass.port}/.well-known/openid-configuration"
 
       attrs =
-        AuthFixtures.provider_attrs(
+        Fixtures.Auth.provider_attrs(
           adapter: :openid_connect,
           adapter_config: %{
             client_id: "client_id",
             client_secret: "client_secret",
-            discovery_document_uri: discovery_document_uri
+            discovery_document_uri: discovery_document_url
           }
         )
 
@@ -82,18 +81,17 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
                "response_type" => "code",
                "client_id" => "client_id",
                "client_secret" => "client_secret",
-               "discovery_document_uri" => discovery_document_uri
+               "discovery_document_uri" => discovery_document_url
              }
     end
   end
 
   describe "ensure_provisioned/1" do
     test "does nothing for a provider" do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       {provider, _bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
       assert ensure_provisioned(provider) == {:ok, provider}
     end
@@ -101,11 +99,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
   describe "ensure_deprovisioned/1" do
     test "does nothing for a provider" do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       {provider, _bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
       assert ensure_deprovisioned(provider) == {:ok, provider}
     end
@@ -113,11 +110,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
   describe "authorization_uri/1" do
     test "returns authorization uri for a provider" do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       {provider, bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
       assert {:ok, authorization_uri, {state, verifier}} =
                authorization_uri(provider, "https://example.com/")
@@ -162,13 +158,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
   describe "verify_and_update_identity/2" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       {provider, bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
       %{account: account, provider: provider, identity: identity, bypass: bypass}
     end
@@ -178,10 +173,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       identity: identity,
       bypass: bypass
     } do
-      {token, claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
+      {token, claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
 
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      AuthFixtures.expect_userinfo(bypass)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -213,9 +208,9 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       identity: identity,
       bypass: bypass
     } do
-      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
 
-      AuthFixtures.expect_refresh_token(bypass, %{
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
@@ -223,7 +218,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
         "expires_in" => 3600
       })
 
-      AuthFixtures.expect_userinfo(bypass)
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -244,11 +239,11 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       forty_seconds_ago = DateTime.utc_now() |> DateTime.add(-40, :second) |> DateTime.to_unix()
 
       {token, _claims} =
-        AuthFixtures.generate_openid_connect_token(provider, identity, %{
+        Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity, %{
           "exp" => forty_seconds_ago
         })
 
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -263,7 +258,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     } do
       token = "foo"
 
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -278,9 +273,11 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       bypass: bypass
     } do
       {token, _claims} =
-        AuthFixtures.generate_openid_connect_token(provider, identity, %{"sub" => "foo@bar.com"})
+        Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity, %{
+          "sub" => "foo@bar.com"
+        })
 
-      AuthFixtures.expect_refresh_token(bypass, %{
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
@@ -288,7 +285,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
         "expires_in" => 3600
       })
 
-      AuthFixtures.expect_userinfo(bypass)
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -302,10 +299,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       provider: provider,
       bypass: bypass
     } do
-      identity = AuthFixtures.create_identity(account: account)
-      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
+      identity = Fixtures.Auth.create_identity(account: account)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
 
-      AuthFixtures.expect_refresh_token(bypass, %{
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
@@ -313,7 +310,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
         "expires_in" => 3600
       })
 
-      AuthFixtures.expect_userinfo(bypass)
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -338,13 +335,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
   describe "refresh_token/1" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       {provider, bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
       %{account: account, provider: provider, identity: identity, bypass: bypass}
     end
@@ -354,9 +350,9 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       identity: identity,
       bypass: bypass
     } do
-      {token, claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
+      {token, claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
 
-      AuthFixtures.expect_refresh_token(bypass, %{
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
@@ -364,14 +360,14 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
         "expires_in" => nil
       })
 
-      AuthFixtures.expect_userinfo(bypass)
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
-      assert {:ok, identity, expires_at} = refresh_token(identity)
+      assert {:ok, provider} = refresh_access_token(provider)
 
-      assert identity.provider_state == %{
+      assert %{
                access_token: "MY_ACCESS_TOKEN",
-               claims: claims,
-               expires_at: expires_at,
+               claims: ^claims,
+               expires_at: _expires_at,
                refresh_token: "MY_REFRESH_TOKEN",
                userinfo: %{
                  "email" => "ada@example.com",
@@ -384,9 +380,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
                    "https://lh3.googleusercontent.com/-XdUIqdMkCWA/AAAAAAAAAAI/AAAAAAAAAAA/4252rscbv5M/photo.jpg",
                  "sub" => "353690423699814251281"
                }
-             }
-
-      assert DateTime.diff(expires_at, DateTime.utc_now()) in 5..15
+             } = provider.adapter_state
     end
   end
 end

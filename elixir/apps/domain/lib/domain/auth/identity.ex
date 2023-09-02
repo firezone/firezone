@@ -18,6 +18,9 @@ defmodule Domain.Auth.Identity do
     field :created_by, Ecto.Enum, values: ~w[system provider identity]a
     belongs_to :created_by_identity, Domain.Auth.Identity
 
+    has_many :devices, Domain.Devices.Device, where: [deleted_at: nil]
+
     field :deleted_at, :utc_datetime_usec
+    timestamps(updated_at: false)
   end
 end

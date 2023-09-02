@@ -8,7 +8,8 @@ defmodule Domain.Policies.Authorizer do
   @impl Domain.Auth.Authorizer
   def list_permissions_for_role(:account_admin_user) do
     [
-      manage_policies_permission()
+      manage_policies_permission(),
+      view_available_policies_permission()
     ]
   end
 

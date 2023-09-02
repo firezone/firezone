@@ -2,12 +2,11 @@ defmodule Domain.Auth.Adapters.UserPassTest do
   use Domain.DataCase, async: true
   import Domain.Auth.Adapters.UserPass
   alias Domain.Auth
-  alias Domain.{AccountsFixtures, AuthFixtures}
 
   describe "identity_changeset/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
 
       %{
         account: account,
@@ -26,12 +25,10 @@ defmodule Domain.Auth.Adapters.UserPassTest do
         )
 
       assert %Ecto.Changeset{} = changeset = identity_changeset(provider, changeset)
-      assert %{provider_state: state, provider_virtual_state: virtual_state} = changeset.changes
+      assert %{provider_state: state, provider_virtual_state: %{}} = changeset.changes
 
       assert %{"password_hash" => password_hash} = state
       assert Domain.Crypto.equal?("Firezone1234", password_hash)
-
-      assert virtual_state == %{}
     end
 
     test "returns error on invalid attrs", %{provider: provider} do
@@ -51,7 +48,7 @@ defmodule Domain.Auth.Adapters.UserPassTest do
       assert errors_on(changeset) == %{
                provider_virtual_state: %{
                  password: ["should be at least 12 byte(s)"],
-                 password_confirmation: ["does not match confirmation"]
+                 password_confirmation: ["does not match confirmation", "can't be blank"]
                }
              }
 
@@ -100,25 +97,25 @@ defmodule Domain.Auth.Adapters.UserPassTest do
 
   describe "ensure_provisioned/1" do
     test "does nothing for a provider" do
-      provider = AuthFixtures.create_userpass_provider()
+      provider = Fixtures.Auth.create_userpass_provider()
       assert ensure_provisioned(provider) == {:ok, provider}
     end
   end
 
   describe "ensure_deprovisioned/1" do
     test "does nothing for a provider" do
-      provider = AuthFixtures.create_userpass_provider()
+      provider = Fixtures.Auth.create_userpass_provider()
       assert ensure_deprovisioned(provider) == {:ok, provider}
     end
   end
 
   describe "verify_secret/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
           provider_virtual_state: %{

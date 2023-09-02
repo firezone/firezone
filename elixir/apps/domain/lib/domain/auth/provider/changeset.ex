@@ -7,14 +7,14 @@ defmodule Domain.Auth.Provider.Changeset do
   @update_fields ~w[name adapter_config adapter_state provisioner disabled_at deleted_at]a
   @required_fields ~w[name adapter adapter_config provisioner]a
 
-  def create_changeset(account, attrs, %Subject{} = subject) do
+  def create(account, attrs, %Subject{} = subject) do
     account
-    |> create_changeset(attrs)
+    |> create(attrs)
     |> put_change(:created_by, :identity)
     |> put_change(:created_by_identity_id, subject.identity.id)
   end
 
-  def create_changeset(%Accounts.Account{} = account, attrs) do
+  def create(%Accounts.Account{} = account, attrs) do
     %Provider{}
     |> cast(attrs, @create_fields)
     |> put_change(:account_id, account.id)
@@ -22,7 +22,7 @@ defmodule Domain.Auth.Provider.Changeset do
     |> put_change(:created_by, :system)
   end
 
-  def update_changeset(%Provider{} = provider, attrs) do
+  def update(%Provider{} = provider, attrs) do
     provider
     |> cast(attrs, @update_fields)
     |> changeset()

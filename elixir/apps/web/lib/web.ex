@@ -136,9 +136,10 @@ defmodule Web do
   def components do
     quote do
       import Web.CoreComponents
+      import Web.NavigationComponents
       import Web.FormComponents
       import Web.TableComponents
-      import Web.NavigationComponents
+      import Web.PageComponents
       import Web.Gettext
     end
   end

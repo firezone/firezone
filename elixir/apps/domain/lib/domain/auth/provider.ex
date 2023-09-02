@@ -11,7 +11,8 @@ defmodule Domain.Auth.Provider do
 
     belongs_to :account, Domain.Accounts.Account
 
-    has_many :groups, Domain.Actors.Group, where: [deleted_at: nil]
+    has_many :actor_groups, Domain.Actors.Group, where: [deleted_at: nil]
+    has_many :identities, Domain.Auth.Identity, where: [deleted_at: nil]
 
     field :created_by, Ecto.Enum, values: ~w[system identity]a
     belongs_to :created_by_identity, Domain.Auth.Identity

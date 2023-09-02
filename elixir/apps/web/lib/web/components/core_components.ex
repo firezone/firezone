@@ -292,6 +292,7 @@ defmodule Web.CoreComponents do
   attr :title, :string, default: nil
   attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
+  attr :style, :string, default: "pill"
 
   slot :inner_block, doc: "the optional inner block that renders the flash message"
 
@@ -301,9 +302,10 @@ defmodule Web.CoreComponents do
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
       class={[
-        "p-4 mb-4 text-sm rounded-lg flash-#{@kind}",
+        "p-4 text-sm flash-#{@kind}",
         @kind == :info && "text-yellow-800 bg-yellow-50 dark:bg-gray-800 dark:text-yellow-300",
-        @kind == :error && "text-red-800 bg-red-50 dark:bg-gray-800 dark:text-red-400"
+        @kind == :error && "text-red-800 bg-red-50 dark:bg-gray-800 dark:text-red-400",
+        @style != "wide" && "mb-4 rounded-lg"
       ]}
       role="alert"
       {@rest}
@@ -488,6 +490,10 @@ defmodule Web.CoreComponents do
       <span class="sep">|</span>
     </:separator>
 
+    <:empty>
+      nothing
+    </:empty>
+
     <:item>
       home
     </:item>
@@ -501,23 +507,83 @@ defmodule Web.CoreComponents do
     </:item>
   </.intersperse_blocks>
   ```
-
-  Renders the following markup:
-
-      home <span class="sep">|</span> profile <span class="sep">|</span> settings
   """
   slot :separator, required: true, doc: "the slot for the separator"
   slot :item, required: true, doc: "the slots to intersperse with separators"
+  slot :empty, required: false, doc: "the slots to render when there are no items"
 
   def intersperse_blocks(assigns) do
     ~H"""
-    <%= for item <- Enum.intersperse(@item, :separator) do %>
-      <%= if item == :separator do %>
-        <%= render_slot(@separator) %>
-      <% else %>
-        <%= render_slot(item) %>
+    <%= if Enum.empty?(@item) do %>
+      <%= render_slot(@empty) %>
+    <% else %>
+      <%= for item <- Enum.intersperse(@item, :separator) do %>
+        <%= if item == :separator do %>
+          <%= render_slot(@separator) %>
+        <% else %>
+          <%= render_slot(item) %>
+        <% end %>
       <% end %>
     <% end %>
+    """
+  end
+
+  @doc """
+  Render children preview.
+
+  Allows to render peeks into a schema preload by rendering a few of the children with a count of remaining ones.
+
+  ## Examples
+
+  ```heex
+  <.peek>
+    <:empty>
+      nobody
+    </:empty>
+
+    <:item :let={item}>
+      <%= item %>
+    </:item>
+
+    <:separator>
+      ,
+    </:separator>
+
+    <:tail :let={count}>
+      <%= count %> more.
+    </:tail>
+  </.peek>
+  ```
+  """
+  attr :peek, :any,
+    required: true,
+    doc: "a tuple with the total number of items and items for a preview"
+
+  slot :empty, required: false, doc: "the slots to render when there are no items"
+  slot :item, required: true, doc: "the slots to intersperse with separators"
+  slot :separator, required: false, doc: "the slot for the separator"
+  slot :tail, required: true, doc: "the slots to render to show the remaining count"
+
+  def peek(assigns) do
+    ~H"""
+    <div class="font-light flex inline-flex">
+      <%= if Enum.empty?(@peek.items) do %>
+        <%= render_slot(@empty) %>
+      <% else %>
+        <% items = if @separator, do: Enum.intersperse(@peek.items, :separator), else: @peek.items %>
+        <%= for item <- items do %>
+          <%= if item == :separator do %>
+            <%= render_slot(@separator) %>
+          <% else %>
+            <%= render_slot(@item, item) %>
+          <% end %>
+        <% end %>
+
+        <span :if={@peek.count > length(@peek.items)} class="pl-1">
+          <%= render_slot(@tail, @peek.count - length(@peek.items)) %>
+        </span>
+      <% end %>
+    </div>
     """
   end
 
@@ -547,7 +613,10 @@ defmodule Web.CoreComponents do
     assigns = assign(assigns, colors: colors)
 
     ~H"""
-    <span class={"text-xs font-medium mr-2 px-2.5 py-0.5 rounded #{@colors[@type]}"} {@rest}>
+    <span
+      class={"text-xs font-medium mr-2 px-2.5 py-0.5 rounded whitespace-nowrap #{@colors[@type]}"}
+      {@rest}
+    >
       <%= render_slot(@inner_block) %>
     </span>
     """
@@ -571,15 +640,18 @@ defmodule Web.CoreComponents do
   Returns a string the represents a relative time for a given Datetime
   from the current time or a given base time
   """
-  attr :datetime, DateTime, required: true
+  attr :datetime, DateTime, default: nil
   attr :relative_to, DateTime, required: false
 
   def relative_datetime(assigns) do
     assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
 
     ~H"""
-    <span title={@datetime}>
+    <span :if={not is_nil(@datetime)} title={@datetime}>
       <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to) %>
+    </span>
+    <span :if={is_nil(@datetime)}>
+      never
     </span>
     """
   end
@@ -608,29 +680,78 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders username
+  Renders creation timestamp and entity.
   """
-  attr :schema, :map, required: true
+  attr :schema, :any, required: true
 
-  def owner(assigns) do
-    case assigns.schema.created_by do
-      :system ->
-        ~H"""
-        <span>
-          System
-        </span>
-        """
+  def created_by(%{schema: %{created_by: :system}} = assigns) do
+    ~H"""
+    <.relative_datetime datetime={@schema.inserted_at} />
+    """
+  end
 
-      :identity ->
-        ~H"""
-        <.link
-          class="text-blue-600 hover:underline"
-          navigate={~p"/#{@schema.account_id}/actors/#{@schema.created_by_identity.actor.id}"}
-        >
-          <%= assigns.schema.created_by_identity.actor.name %>
-        </.link>
-        """
-    end
+  def created_by(%{schema: %{created_by: :identity}} = assigns) do
+    ~H"""
+    <.relative_datetime datetime={@schema.inserted_at} /> by
+    <.link
+      class="text-blue-600 hover:underline"
+      navigate={~p"/#{@schema.account_id}/actors/#{@schema.created_by_identity.actor.id}"}
+    >
+      <%= assigns.schema.created_by_identity.actor.name %>
+    </.link>
+    """
+  end
+
+  def created_by(%{schema: %{created_by: :provider}} = assigns) do
+    ~H"""
+    synced <.relative_datetime datetime={@schema.inserted_at} /> from
+    <.link
+      class="text-blue-600 hover:underline"
+      navigate={Web.Settings.IdentityProviders.Components.view_provider(@schema.provider)}
+    >
+      <%= @schema.provider.name %>
+    </.link>
+    """
+  end
+
+  attr :identity, :string, required: true
+
+  def identity_identifier(assigns) do
+    ~H"""
+    <span class="flex inline-flex" data-identity-id={@identity.id}>
+      <.link
+        navigate={Web.Settings.IdentityProviders.Components.view_provider(@identity.provider)}
+        data-provider-id={@identity.provider.id}
+        title={@identity.provider.adapter}
+        class={~w[
+          text-xs font-medium
+          rounded-l
+          py-0.5 pl-2.5 pr-1.5
+          text-blue-800 dark:text-blue-300
+          bg-blue-100 dark:bg-blue-900]}
+      >
+        <%= @identity.provider.name %>
+      </.link>
+      <span class={[
+        "text-xs font-medium",
+        "rounded-r",
+        "mr-2 py-0.5 pl-1.5 pr-2.5",
+        "text-blue-800 dark:text-blue-300",
+        "bg-blue-50 dark:bg-blue-600"
+      ]}>
+        <%= @identity.provider_identifier %>
+      </span>
+      <span :if={not is_nil(@identity.deleted_at)} class="text-sm">
+        (deleted)
+      </span>
+      <span :if={not is_nil(@identity.provider.disabled_at)} class="text-sm">
+        (provider disabled)
+      </span>
+      <span :if={not is_nil(@identity.deleted_at)} class="text-sm">
+        (provider deleted)
+      </span>
+    </span>
+    """
   end
 
   @doc """

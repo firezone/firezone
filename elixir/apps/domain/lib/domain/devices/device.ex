@@ -16,6 +16,8 @@ defmodule Domain.Devices.Device do
     field :last_seen_version, :string
     field :last_seen_at, :utc_datetime_usec
 
+    field :online?, :boolean, virtual: true
+
     belongs_to :account, Domain.Accounts.Account
     belongs_to :actor, Domain.Actors.Actor
     belongs_to :identity, Domain.Auth.Identity

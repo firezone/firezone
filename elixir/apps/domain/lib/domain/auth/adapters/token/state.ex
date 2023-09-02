@@ -3,6 +3,7 @@ defmodule Domain.Auth.Adapters.Token.State do
 
   @primary_key false
   embedded_schema do
+    field :secret, :string, virtual: true, redact: true
     field :secret_hash, :string, redact: true
     field :expires_at, :utc_datetime_usec
   end

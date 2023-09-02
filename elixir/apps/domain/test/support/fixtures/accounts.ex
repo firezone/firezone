@@ -1,9 +1,10 @@
-defmodule Domain.AccountsFixtures do
+defmodule Domain.Fixtures.Accounts do
+  use Domain.Fixture
   alias Domain.Accounts
 
   def account_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
-      name: "acc-#{counter()}"
+      name: "acc-#{unique_integer()}"
     })
   end
 
@@ -11,9 +12,5 @@ defmodule Domain.AccountsFixtures do
     attrs = account_attrs(attrs)
     {:ok, account} = Accounts.create_account(attrs)
     account
-  end
-
-  defp counter do
-    System.unique_integer([:positive])
   end
 end

@@ -2,13 +2,13 @@ defmodule Web.Relays.Show do
   use Web, :live_view
   alias Domain.Relays
 
-  def mount(%{"id" => id} = _params, _session, socket) do
+  def mount(%{"id" => id}, _session, socket) do
     with {:ok, relay} <-
            Relays.fetch_relay_by_id(id, socket.assigns.subject, preload: :group) do
       :ok = Relays.subscribe_for_relays_presence_in_group(relay.group)
       {:ok, assign(socket, relay: relay)}
     else
-      {:error, :not_found} -> raise Web.LiveErrors.NotFoundError
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -63,7 +63,7 @@ defmodule Web.Relays.Show do
     </.header>
     <!-- Relay details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table>
+      <.vertical_table id="relay">
         <.vertical_table_row>
           <:label>Instance Group Name</:label>
           <:value><%= @relay.group.name %></:value>

@@ -328,6 +328,16 @@ defmodule Domain.Validator do
     end)
   end
 
+  def validate_date(changeset, field, greater_than: greater_than) do
+    validate_change(changeset, field, fn _current_field, value ->
+      if Date.compare(value, greater_than) == :gt do
+        []
+      else
+        [{field, "must be greater than #{inspect(greater_than)}"}]
+      end
+    end)
+  end
+
   @doc """
   Applies a validation function for every elements of the list.
 

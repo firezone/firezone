@@ -4,7 +4,7 @@ defmodule Domain.Gateways.Token.Changeset do
   alias Domain.Accounts
   alias Domain.Gateways
 
-  def create_changeset(%Accounts.Account{} = account, %Auth.Subject{} = subject) do
+  def create(%Accounts.Account{} = account, %Auth.Subject{} = subject) do
     %Gateways.Token{}
     |> change()
     |> put_change(:account_id, account.id)
@@ -16,15 +16,15 @@ defmodule Domain.Gateways.Token.Changeset do
     |> put_change(:created_by_identity_id, subject.identity.id)
   end
 
-  def use_changeset(%Gateways.Token{} = token) do
+  def use(%Gateways.Token{} = token) do
     # TODO: While we don't have token rotation implemented, the tokens are all multi-use
-    # delete_changeset(token)
+    # delete(token)
 
     token
     |> change()
   end
 
-  def delete_changeset(%Gateways.Token{} = token) do
+  def delete(%Gateways.Token{} = token) do
     token
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())

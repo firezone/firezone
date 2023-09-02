@@ -85,6 +85,7 @@ defmodule API.Device.Channel do
     connected_gateway_ids = Map.get(attrs, "connected_gateway_ids", [])
 
     with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject),
+         # TODO:
          # :ok = Resource.authorize(resource, socket.assigns.subject),
          {:ok, [_ | _] = gateways} <-
            Gateways.list_connected_gateways_for_resource(resource),

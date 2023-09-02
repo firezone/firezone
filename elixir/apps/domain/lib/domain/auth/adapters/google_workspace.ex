@@ -72,4 +72,8 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
   def verify_and_upsert_identity(%Actors.Actor{} = actor, %Provider{} = provider, payload) do
     OpenIDConnect.verify_and_upsert_identity(actor, provider, payload)
   end
+
+  def refresh_access_token(%Provider{} = provider) do
+    OpenIDConnect.refresh_access_token(provider)
+  end
 end

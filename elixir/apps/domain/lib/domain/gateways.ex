@@ -102,7 +102,7 @@ defmodule Domain.Gateways do
   def create_group(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       subject.account
-      |> Group.Changeset.create_changeset(attrs, subject)
+      |> Group.Changeset.create(attrs, subject)
       |> Repo.insert()
     end
   end
@@ -110,14 +110,14 @@ defmodule Domain.Gateways do
   def change_group(%Group{} = group, attrs \\ %{}) do
     group
     |> Repo.preload(:account)
-    |> Group.Changeset.update_changeset(attrs)
+    |> Group.Changeset.update(attrs)
   end
 
   def update_group(%Group{} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       group
       |> Repo.preload(:account)
-      |> Group.Changeset.update_changeset(attrs)
+      |> Group.Changeset.update(attrs)
       |> Repo.update()
     end
   end
@@ -132,12 +132,12 @@ defmodule Domain.Gateways do
             Token.Query.by_group_id(group.id)
             |> Repo.all()
             |> Enum.each(fn token ->
-              Token.Changeset.delete_changeset(token)
+              Token.Changeset.delete(token)
               |> Repo.update!()
             end)
 
           group
-          |> Group.Changeset.delete_changeset()
+          |> Group.Changeset.delete()
         end
       )
     end
@@ -149,7 +149,7 @@ defmodule Domain.Gateways do
       |> Repo.fetch_and_update(
         with: fn token ->
           if Domain.Crypto.equal?(secret, token.hash) do
-            Token.Changeset.use_changeset(token)
+            Token.Changeset.use(token)
           else
             :not_found
           end
@@ -270,11 +270,11 @@ defmodule Domain.Gateways do
   end
 
   def change_gateway(%Gateway{} = gateway, attrs \\ %{}) do
-    Gateway.Changeset.update_changeset(gateway, attrs)
+    Gateway.Changeset.update(gateway, attrs)
   end
 
   def upsert_gateway(%Token{} = token, attrs) do
-    changeset = Gateway.Changeset.upsert_changeset(token, attrs)
+    changeset = Gateway.Changeset.upsert(token, attrs)
 
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:gateway, changeset,
@@ -286,7 +286,7 @@ defmodule Domain.Gateways do
     |> resolve_address_multi(:ipv6)
     |> Ecto.Multi.update(:gateway_with_address, fn
       %{gateway: %Gateway{} = gateway, ipv4: ipv4, ipv6: ipv6} ->
-        Gateway.Changeset.finalize_upsert_changeset(gateway, ipv4, ipv6)
+        Gateway.Changeset.finalize_upsert(gateway, ipv4, ipv6)
     end)
     |> Repo.transaction()
     |> case do
@@ -309,7 +309,7 @@ defmodule Domain.Gateways do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       Gateway.Query.by_id(gateway.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Gateway.Changeset.update_changeset(&1, attrs))
+      |> Repo.fetch_and_update(with: &Gateway.Changeset.update(&1, attrs))
       |> case do
         {:ok, gateway} ->
           {:ok, preload_online_status(gateway)}
@@ -324,7 +324,7 @@ defmodule Domain.Gateways do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       Gateway.Query.by_id(gateway.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Gateway.Changeset.delete_changeset/1)
+      |> Repo.fetch_and_update(with: &Gateway.Changeset.delete/1)
       |> case do
         {:ok, gateway} ->
           {:ok, preload_online_status(gateway)}

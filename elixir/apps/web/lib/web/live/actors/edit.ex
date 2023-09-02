@@ -1,106 +1,100 @@
 defmodule Web.Actors.Edit do
   use Web, :live_view
-
+  import Web.Actors.Components
   alias Domain.Actors
 
-  def mount(%{"id" => id} = _params, _session, socket) do
-    {:ok, actor} = Actors.fetch_actor_by_id(id, socket.assigns.subject)
+  def mount(%{"id" => id}, _session, socket) do
+    with {:ok, actor} <-
+           Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: [:memberships]),
+         {:ok, groups} <- Actors.list_groups(socket.assigns.subject) do
+      changeset = Actors.change_actor(actor)
 
-    {:ok, assign(socket, actor: actor)}
+      {:ok, socket,
+       temporary_assigns: [
+         actor: actor,
+         groups: groups,
+         form: to_form(changeset),
+         page_title: "Edit actor #{actor.name}"
+       ]}
+    else
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  def handle_event("change", %{"actor" => attrs}, socket) do
+    attrs = map_memberships_attr(attrs)
+
+    changeset =
+      Actors.change_actor(socket.assigns.actor, attrs)
+      |> Map.put(:action, :insert)
+
+    {:noreply, assign(socket, form: to_form(changeset))}
+  end
+
+  def handle_event("submit", %{"actor" => attrs}, socket) do
+    attrs = map_memberships_attr(attrs)
+
+    with {:ok, actor} <- Actors.update_actor(socket.assigns.actor, attrs, socket.assigns.subject) do
+      socket = redirect(socket, to: ~p"/#{socket.assigns.account}/actors/#{actor}")
+      {:noreply, socket}
+    else
+      {:error, :unauthorized} ->
+        {:noreply,
+         put_flash(socket, :error, "You don't have permissions to perform this action.")}
+
+      {:error, :cant_remove_admin_type} ->
+        {:noreply, put_flash(socket, :error, "You can not demote the last admin.")}
+
+      {:error, {:unauthorized, _context}} ->
+        {:noreply,
+         put_flash(socket, :error, "You don't have permissions to perform this action.")}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, form: to_form(changeset))}
+    end
+  end
+
+  defp map_memberships_attr(attrs) do
+    Map.update(attrs, "memberships", [], fn group_ids ->
+      Enum.map(group_ids, fn group_id ->
+        %{group_id: group_id}
+      end)
+    end)
   end
 
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
       <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/#{@actor.id}"}>
+      <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
         <%= @actor.name %>
       </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/#{@actor.id}/edit"}>
+      <.breadcrumb path={~p"/#{@account}/actors/#{@actor}/edit"}>
         Edit
       </.breadcrumb>
     </.breadcrumbs>
     <.header>
       <:title>
-        Editing User: <code><%= @actor.name %></code>
+        Editing <%= actor_type(@actor.type) %>: <code><%= @actor.name %></code>
       </:title>
     </.header>
     <!-- Update User -->
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
         <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Edit User Details</h2>
-        <form action="#">
+        <.flash kind={:error} flash={@flash} />
+        <.form for={@form} phx-change={:change} phx-submit={:submit}>
           <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-            <div>
-              <.label for="first-name">
-                Name
-              </.label>
-              <.input type="text" name="name" id="name" value={@actor.name} required="" />
-            </div>
-            <div>
-              <.label for="email">
-                Email
-              </.label>
-              <.input
-                aria-describedby="email-explanation"
-                type="email"
-                name="email"
-                id="email"
-                value="TODO: Email here"
-              />
-              <p id="email-explanation" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                We'll send a confirmation email to both the current email address and the updated one to confirm the change.
-              </p>
-            </div>
-            <div>
-              <.label for="confirm-email">
-                Confirm email
-              </.label>
-              <.input type="email" name="confirm-email" id="confirm-email" value="TODO" />
-            </div>
-            <div>
-              <.label for="user-role">
-                Role
-              </.label>
-              <.input
-                type="select"
-                id="user-role"
-                name="user-role"
-                options={[
-                  "End User": :account_user,
-                  Admin: :account_admin_user,
-                  "Service Account": :service_account
-                ]}
-                value={@actor.type}
-              />
-              <p id="role-explanation" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                Select Admin to make this user an administrator of your organization.
-              </p>
-            </div>
-            <div>
-              <.label for="user-groups">
-                Groups
-              </.label>
-              <.input
-                type="select"
-                multiple={true}
-                name="user-groups"
-                id="user-groups"
-                options={["TODO: Devops", "TODO: Engineering", "TODO: Accounting"]}
-                value=""
-              />
-
-              <p id="groups-explanation" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                Select one or more groups to allow this user access to resources.
-              </p>
-            </div>
+            <.actor_form
+              form={@form}
+              type={@actor.type}
+              actor={@actor}
+              groups={@groups}
+              subject={@subject}
+            />
           </div>
-          <div class="flex items-center space-x-4">
-            <.button type="submit">
-              Save
-            </.button>
-          </div>
-        </form>
+          <.submit_button>Save</.submit_button>
+        </.form>
       </div>
     </section>
     """

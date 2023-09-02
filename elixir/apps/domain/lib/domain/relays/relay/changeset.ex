@@ -21,7 +21,7 @@ defmodule Domain.Relays.Relay.Changeset do
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert_changeset(%Relays.Token{} = token, attrs) do
+  def upsert(%Relays.Token{} = token, attrs) do
     %Relays.Relay{}
     |> cast(attrs, @upsert_fields)
     |> validate_required(~w[last_seen_user_agent last_seen_remote_ip]a)
@@ -39,7 +39,7 @@ defmodule Domain.Relays.Relay.Changeset do
     |> assoc_constraint(:token)
   end
 
-  def delete_changeset(%Relays.Relay{} = relay) do
+  def delete(%Relays.Relay{} = relay) do
     relay
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())

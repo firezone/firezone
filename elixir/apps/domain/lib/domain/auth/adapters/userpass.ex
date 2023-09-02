@@ -56,11 +56,19 @@ defmodule Domain.Auth.Adapters.UserPass do
         changeset
 
       %{valid?: true} = nested_changeset ->
+        nested_changeset =
+          nested_changeset
+          |> Domain.Validator.redact_field(:password)
+          |> Domain.Validator.redact_field(:password_confirmation)
+
         password_hash = Ecto.Changeset.fetch_change!(nested_changeset, :password_hash)
 
+        {changeset, _original_type} =
+          changeset
+          |> Ecto.Changeset.put_change(:provider_state, %{"password_hash" => password_hash})
+          |> Domain.Changeset.inject_embedded_changeset(:provider_virtual_state, nested_changeset)
+
         changeset
-        |> Ecto.Changeset.put_change(:provider_state, %{"password_hash" => password_hash})
-        |> Ecto.Changeset.put_change(:provider_virtual_state, %{})
     end
   end
 

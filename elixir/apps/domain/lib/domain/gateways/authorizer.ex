@@ -9,7 +9,8 @@ defmodule Domain.Gateways.Authorizer do
 
   def list_permissions_for_role(:account_admin_user) do
     [
-      manage_gateways_permission()
+      manage_gateways_permission(),
+      connect_gateways_permission()
     ]
   end
 

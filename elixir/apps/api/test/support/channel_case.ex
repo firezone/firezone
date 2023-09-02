@@ -14,6 +14,7 @@ defmodule API.ChannelCase do
       import Phoenix.ChannelTest
       import API.ChannelCase
       alias Domain.Repo
+      alias Domain.Fixtures
 
       # The default endpoint for testing
       @endpoint API.Endpoint

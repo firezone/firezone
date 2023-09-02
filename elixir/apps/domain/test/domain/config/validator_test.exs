@@ -55,6 +55,7 @@ defmodule Domain.Config.ValidatorTest do
                {:error, [{"invalid", ["must be one of: integer, boolean"]}]}
     end
 
+    # TODO: uncomment once we have at least one config embed
     # test "validates embeds" do
     #   type = {:json_array, {:embed, Domain.Config.Configuration.SAMLIdentityProvider}}
 
@@ -62,7 +63,7 @@ defmodule Domain.Config.ValidatorTest do
     #     changeset: {Domain.Config.Configuration.SAMLIdentityProvider, :create_changeset, []}
     #   ]
 
-    #   attrs = Domain.ConfigFixtures.saml_identity_providers_attrs()
+    #   attrs = Domain.Fixtures.Config.saml_identity_providers_attrs()
 
     #   assert validate(:key, [attrs], type, opts) ==
     #            {:ok,

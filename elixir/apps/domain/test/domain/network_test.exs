@@ -1,11 +1,10 @@
 defmodule Domain.NetworkTest do
   use Domain.DataCase, async: true
-  alias Domain.AccountsFixtures
   import Domain.Network
 
   describe "fetch_next_available_address!/2" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       %{account: account}
     end
 

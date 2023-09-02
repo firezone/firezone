@@ -4,9 +4,6 @@ defmodule Domain.Auth.Identity.Query do
   def all do
     from(identities in Domain.Auth.Identity, as: :identities)
     |> where([identities: identities], is_nil(identities.deleted_at))
-    |> join(:inner, [identities: identities], actors in assoc(identities, :actor), as: :actors)
-    |> where([actors: actors], is_nil(actors.deleted_at))
-    |> where([actors: actors], is_nil(actors.disabled_at))
   end
 
   def by_id(queryable \\ all(), id)
@@ -38,7 +35,17 @@ defmodule Domain.Auth.Identity.Query do
     where(queryable, [identities: identities], identities.adapter == ^adapter)
   end
 
-  def by_provider_identifier(queryable \\ all(), provider_identifier) do
+  def by_provider_identifier(queryable \\ all(), provider_identifier)
+
+  def by_provider_identifier(queryable, {:in, provider_identifiers}) do
+    where(
+      queryable,
+      [identities: identities],
+      identities.provider_identifier in ^provider_identifiers
+    )
+  end
+
+  def by_provider_identifier(queryable, provider_identifier) do
     where(
       queryable,
       [identities: identities],
@@ -57,6 +64,13 @@ defmodule Domain.Auth.Identity.Query do
     else
       by_provider_identifier(queryable, id_or_provider_identifier)
     end
+  end
+
+  def not_disabled(queryable \\ all()) do
+    queryable
+    |> join(:inner, [identities: identities], actors in assoc(identities, :actor), as: :actors)
+    |> where([actors: actors], is_nil(actors.deleted_at))
+    |> where([actors: actors], is_nil(actors.disabled_at))
   end
 
   def lock(queryable \\ all()) do

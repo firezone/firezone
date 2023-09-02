@@ -244,8 +244,30 @@ defmodule Web.AuthController do
   end
 
   def sign_out(conn, %{"account_id_or_slug" => account_id_or_slug}) do
+    # TODO: post logout redirect url
     conn
     |> Auth.sign_out()
     |> redirect(to: ~p"/#{account_id_or_slug}/sign_in")
   end
+
+  # def sign_out(conn) do
+  #   with provider_id when not is_nil(provider_id) <- Plug.Conn.get_session(conn, "login_method"),
+  #        token when not is_nil(token) <- Plug.Conn.get_session(conn, "id_token"),
+  #        {:ok, config} <- Auth.fetch_oidc_provider_config(provider_id),
+  #        {:ok, end_session_uri} <-
+  #          OpenIDConnect.end_session_uri(config, %{
+  #            id_token_hint: token,
+  #            post_logout_redirect_uri: url(~p"/")
+  #          }) do
+  #     conn
+  #     |> __MODULE__.Plug.sign_out()
+  #     |> Plug.Conn.configure_session(drop: true)
+  #     |> Phoenix.Controller.redirect(external: end_session_uri)
+  #   else
+  #     _ ->
+  #       conn
+  #       |> __MODULE__.Plug.sign_out()
+  #       |> Plug.Conn.configure_session(drop: true)
+  #       |> Phoenix.Controller.redirect(to: ~p"/")
+  #   end
 end

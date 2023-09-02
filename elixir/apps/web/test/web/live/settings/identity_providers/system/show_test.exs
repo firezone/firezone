@@ -1,14 +1,13 @@
-defmodule Web.Auth.Settings.IdentityProviders.System.ShowTest do
+defmodule Web.Live.Settings.IdentityProviders.System.ShowTest do
   use Web.ConnCase, async: true
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   setup do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-    account = AccountsFixtures.create_account()
-    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-    provider = AuthFixtures.create_email_provider(account: account)
-    identity = AuthFixtures.create_identity(account: account, actor: actor, provider: provider)
+    account = Fixtures.Accounts.create_account()
+    provider = Fixtures.Auth.create_email_provider(account: account)
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
 
     %{
       account: account,
@@ -32,6 +31,38 @@ defmodule Web.Auth.Settings.IdentityProviders.System.ShowTest do
                }}}
   end
 
+  test "renders not found error when provider is deleted", %{
+    account: account,
+    provider: provider,
+    identity: identity,
+    conn: conn
+  } do
+    provider = Fixtures.Auth.delete_provider(provider)
+
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers/system/#{provider}")
+    end
+  end
+
+  test "renders breadcrumbs item", %{
+    account: account,
+    provider: provider,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers/system/#{provider}")
+
+    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    breadcrumbs = String.trim(Floki.text(item))
+    assert breadcrumbs =~ "Identity Providers Settings"
+    assert breadcrumbs =~ provider.name
+  end
+
   test "renders provider details", %{
     account: account,
     actor: actor,
@@ -39,35 +70,20 @@ defmodule Web.Auth.Settings.IdentityProviders.System.ShowTest do
     identity: identity,
     conn: conn
   } do
-    inserted_at = Cldr.DateTime.to_string!(provider.inserted_at, Web.CLDR, format: :short)
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/system/#{provider}")
 
-    active =
+    table =
       lv
-      |> element("table")
+      |> element("#provider")
       |> render()
+      |> vertical_table_to_map()
 
-    assert table_to_text(active) == [
-             [provider.name],
-             ["Active"],
-             ["#{inserted_at} by System"]
-           ]
-
-    disabled =
-      lv
-      |> element("button", "Disable Identity Provider")
-      |> render_click()
-      |> Floki.find("table")
-
-    assert table_to_text(disabled) == [
-             [provider.name],
-             ["Disabled"],
-             ["#{inserted_at} by System"]
-           ]
+    assert table["name"] == provider.name
+    assert table["status"] == "Active"
+    assert around_now?(table["created"])
 
     provider
     |> Ecto.Changeset.change(
@@ -76,21 +92,64 @@ defmodule Web.Auth.Settings.IdentityProviders.System.ShowTest do
     )
     |> Repo.update!()
 
-    enabled =
-      lv
-      |> element("button", "Enable Identity Provider")
-      |> render_click()
-      |> Floki.find("table")
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers/system/#{provider}")
 
-    assert table_to_text(enabled) == [
-             [provider.name],
-             ["Active"],
-             ["#{inserted_at} by #{actor.name}"]
-           ]
+    table =
+      lv
+      |> element("#provider")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["name"] == provider.name
+    assert table["status"] == "Active"
+    assert table["created"] =~ "by #{actor.name}"
+  end
+
+  test "allows changing provider status", %{
+    account: account,
+    provider: provider,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers/system/#{provider}")
+
+    assert lv
+           |> element("button", "Disable Identity Provider")
+           |> render_click()
+           |> Floki.find("#provider")
+           |> vertical_table_to_map()
+           |> Map.fetch!("status") == "Disabled"
+
+    assert lv
+           |> element("button", "Enable Identity Provider")
+           |> render_click()
+           |> Floki.find("#provider")
+           |> vertical_table_to_map()
+           |> Map.fetch!("status") == "Active"
+  end
+
+  test "allows deleting identity providers", %{
+    account: account,
+    provider: provider,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers/system/#{provider}")
 
     assert lv
            |> element("button", "Delete Identity Provider")
            |> render_click() ==
              {:error, {:redirect, %{to: ~p"/#{account}/settings/identity_providers"}}}
+
+    assert Repo.get(Domain.Auth.Provider, provider.id).deleted_at
   end
 end

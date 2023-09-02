@@ -81,44 +81,24 @@ defmodule Web.Settings.IdentityProviders.System.Show do
     <.flash_group flash={@flash} />
 
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-        <tbody>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Name
-            </th>
-            <td class="px-6 py-4">
-              <%= @provider.name %>
-            </td>
-          </tr>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Status
-            </th>
-            <td class="px-6 py-4">
-              <.status provider={@provider} />
-            </td>
-          </tr>
-
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th
-              scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50 dark:text-white dark:bg-gray-800"
-            >
-              Created
-            </th>
-            <td class="px-6 py-4">
-              <.datetime datetime={@provider.inserted_at} /> by <.owner schema={@provider} />
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <.vertical_table id="provider">
+        <.vertical_table_row>
+          <:label>Name</:label>
+          <:value><%= @provider.name %></:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Status</:label>
+          <:value>
+            <.status provider={@provider} />
+          </:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Created</:label>
+          <:value>
+            <.created_by schema={@provider} />
+          </:value>
+        </.vertical_table_row>
+      </.vertical_table>
     </div>
 
     <.header>

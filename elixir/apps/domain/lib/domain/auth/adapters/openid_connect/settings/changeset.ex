@@ -1,15 +1,10 @@
 defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
   use Domain, :changeset
-  alias Domain.Auth.Adapters.OpenIDConnect.Settings
 
   @fields ~w[scope
              response_type
              client_id client_secret
              discovery_document_uri]a
-
-  def create_changeset(attrs) do
-    changeset(%Settings{}, attrs)
-  end
 
   def changeset(struct, attrs) do
     struct

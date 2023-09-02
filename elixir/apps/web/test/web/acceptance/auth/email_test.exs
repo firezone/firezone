@@ -1,12 +1,11 @@
 defmodule Web.Acceptance.Auth.EmailTest do
   use Web.AcceptanceCase, async: true
-  alias Domain.{AccountsFixtures, AuthFixtures}
 
   feature "renders success on invalid email to prevent enumeration attacks", %{session: session} do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-    account = AccountsFixtures.create_account()
-    AuthFixtures.create_email_provider(account: account)
+    account = Fixtures.Accounts.create_account()
+    Fixtures.Auth.create_email_provider(account: account)
 
     session
     |> visit(~p"/#{account}/sign_in")
@@ -21,14 +20,14 @@ defmodule Web.Acceptance.Auth.EmailTest do
   feature "allows to log in using email link", %{session: session} do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-    account = AccountsFixtures.create_account()
-    provider = AuthFixtures.create_email_provider(account: account)
+    account = Fixtures.Accounts.create_account()
+    provider = Fixtures.Auth.create_email_provider(account: account)
 
     identity =
-      AuthFixtures.create_identity(
+      Fixtures.Auth.create_identity(
+        actor: [type: :account_admin_user],
         account: account,
-        provider: provider,
-        actor_default_type: :account_admin_user
+        provider: provider
       )
 
     session

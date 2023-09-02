@@ -36,9 +36,8 @@ defmodule Domain.Auth.Adapters do
     fetch_adapter!(adapter).capabilities()
   end
 
-  def identity_changeset(%Ecto.Changeset{} = changeset, %Provider{} = provider, provider_attrs) do
+  def identity_changeset(%Ecto.Changeset{} = changeset, %Provider{} = provider) do
     adapter = fetch_provider_adapter!(provider)
-    changeset = Ecto.Changeset.put_change(changeset, :provider_virtual_state, provider_attrs)
     %Ecto.Changeset{} = adapter.identity_changeset(provider, changeset)
   end
 

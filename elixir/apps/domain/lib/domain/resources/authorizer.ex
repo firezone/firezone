@@ -8,7 +8,8 @@ defmodule Domain.Resources.Authorizer do
   @impl Domain.Auth.Authorizer
   def list_permissions_for_role(:account_admin_user) do
     [
-      manage_resources_permission()
+      manage_resources_permission(),
+      view_available_resources_permission()
     ]
   end
 

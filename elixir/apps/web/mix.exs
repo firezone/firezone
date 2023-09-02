@@ -104,6 +104,7 @@ defmodule Web.MixProject do
       "ecto.seed": ["ecto.create", "ecto.migrate", "run ../domain/priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
+      "phx.server": ["ecto.create --quiet", "ecto.migrate", "phx.server"],
       test: ["ecto.create --quiet", "ecto.migrate", "test"]
     ]
   end

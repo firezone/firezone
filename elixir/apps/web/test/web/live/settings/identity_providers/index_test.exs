@@ -1,19 +1,17 @@
-defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
+defmodule Web.Live.Settings.IdentityProviders.IndexTest do
   use Web.ConnCase, async: true
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   setup do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-    account = AccountsFixtures.create_account()
-    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
     {provider, bypass} =
-      AuthFixtures.start_openid_providers(["google"])
-      |> AuthFixtures.create_openid_connect_provider(account: account)
+      Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
-    identity = AuthFixtures.create_identity(account: account, actor: actor, provider: provider)
-    subject = AuthFixtures.create_subject(identity)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+    subject = Fixtures.Auth.create_subject(identity: identity)
 
     %{
       account: account,
@@ -35,47 +33,75 @@ defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
                }}}
   end
 
-  test "renders table with all providers", %{
+  test "renders breadcrumbs item", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers")
+
+    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    breadcrumbs = String.trim(Floki.text(item))
+    assert breadcrumbs =~ "Identity Providers"
+  end
+
+  test "renders add provider button", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers")
+
+    assert button = Floki.find(html, "a[href='/#{account.id}/settings/identity_providers/new']")
+    assert Floki.text(button) =~ "Add Identity Provider"
+  end
+
+  test "renders table with multiple providers", %{
     account: account,
     openid_connect_provider: openid_connect_provider,
     identity: identity,
     subject: subject,
     conn: conn
   } do
-    email_provider = AuthFixtures.create_email_provider(account: account)
+    email_provider = Fixtures.Auth.create_email_provider(account: account)
     {:ok, _email_provider} = Domain.Auth.disable_provider(email_provider, subject)
-    userpass_provider = AuthFixtures.create_userpass_provider(account: account)
+    userpass_provider = Fixtures.Auth.create_userpass_provider(account: account)
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers")
 
-    rows = lv |> element("tbody#providers") |> render() |> Floki.find("tr")
-    rows_as_text = Enum.map(rows, &table_row_as_text_columns/1)
+    rows =
+      lv
+      |> element("#providers")
+      |> render()
+      |> table_to_map()
 
-    assert length(rows_as_text) == 4
+    assert length(rows) == 4
 
-    assert [
-             openid_connect_provider.name,
-             "OpenID Connect",
-             "Active",
-             "Created 1 identity and 0 groups"
-           ] in rows_as_text
-
-    assert [
-             email_provider.name,
-             "Magic Link",
-             "Disabled",
-             "Created 0 identities and 0 groups"
-           ] in rows_as_text
-
-    assert [
-             userpass_provider.name,
-             "Username & Password",
-             "Active",
-             "Created 0 identities and 0 groups"
-           ] in rows_as_text
+    rows
+    |> with_table_row("name", openid_connect_provider.name, fn row ->
+      assert row["type"] == "OpenID Connect"
+      assert row["status"] =~ "Active"
+      assert row["sync status"] =~ "Created 1 identity and 0 groups"
+    end)
+    |> with_table_row("name", email_provider.name, fn row ->
+      assert row["type"] == "Magic Link"
+      assert row["status"] =~ "Disabled"
+      assert row["sync status"] =~ "Created 0 identities and 0 groups"
+    end)
+    |> with_table_row("name", userpass_provider.name, fn row ->
+      assert row["type"] == "Username & Password"
+      assert row["status"] =~ "Active"
+      assert row["sync status"] =~ "Created 0 identities and 0 groups"
+    end)
   end
 
   test "renders google_workspace provider", %{
@@ -84,62 +110,54 @@ defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
     conn: conn
   } do
     {provider, _bypass} =
-      AuthFixtures.start_openid_providers(["google"])
-      |> AuthFixtures.create_google_workspace_provider(account: account)
+      Fixtures.Auth.start_and_create_google_workspace_provider(account: account)
 
     conn = authorize_conn(conn, identity)
 
     {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/identity_providers")
-    element = element(lv, "#providers-#{provider.id}")
-    assert has_element?(element)
 
-    row = render(element)
+    lv
+    |> element("#providers")
+    |> render()
+    |> table_to_map()
+    |> with_table_row("name", provider.name, fn row ->
+      assert row["type"] == "Google Workspace"
+      assert row["status"] == "Active"
+      assert row["sync status"] == "Never synced"
+    end)
 
-    assert table_row_as_text_columns(row) == [
-             provider.name,
-             "Google Workspace",
-             "Active",
-             "Never synced"
-           ]
-
-    AuthFixtures.create_identity(account: account, provider: provider)
-    AuthFixtures.create_identity(account: account, provider: provider)
-    ActorsFixtures.create_group(account: account, provider: provider)
+    Fixtures.Auth.create_identity(account: account, provider: provider)
+    Fixtures.Auth.create_identity(account: account, provider: provider)
+    Fixtures.Actors.create_group(account: account, provider: provider)
     one_hour_ago = DateTime.utc_now() |> DateTime.add(-1, :hour)
     provider |> Ecto.Changeset.change(last_synced_at: one_hour_ago) |> Repo.update!()
 
     {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/identity_providers")
-    element = element(lv, "#providers-#{provider.id}")
-    assert has_element?(element)
 
-    row = render(element)
-
-    assert table_row_as_text_columns(row) == [
-             provider.name,
-             "Google Workspace",
-             "Active",
-             "Synced 2 identities and 1 group 1 hour ago"
-           ]
+    lv
+    |> element("#providers")
+    |> render()
+    |> table_to_map()
+    |> with_table_row("name", provider.name, fn row ->
+      assert row["sync status"] == "Synced 2 identities and 1 group 1 hour ago"
+    end)
 
     provider
     |> Ecto.Changeset.change(
       disabled_at: DateTime.utc_now(),
-      adapter_state: %{status: :pending_access_token}
+      adapter_state: %{status: "pending_access_token"}
     )
     |> Repo.update!()
 
     {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/identity_providers")
-    element = element(lv, "#providers-#{provider.id}")
-    assert has_element?(element)
 
-    row = render(element)
-
-    assert table_row_as_text_columns(row) == [
-             provider.name,
-             "Google Workspace",
-             "Pending access token, reconnect identity provider",
-             "Synced 2 identities and 1 group 1 hour ago"
-           ]
+    lv
+    |> element("#providers")
+    |> render()
+    |> table_to_map()
+    |> with_table_row("name", provider.name, fn row ->
+      assert row["status"] == "Pending access token, reconnect identity provider"
+    end)
   end
 
   test "shows provisioning status for openid_connect provider", %{
@@ -151,35 +169,31 @@ defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
     conn = authorize_conn(conn, identity)
 
     {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/identity_providers")
-    element = element(lv, "#providers-#{provider.id}")
-    assert has_element?(element)
 
-    row = render(element)
+    lv
+    |> element("#providers")
+    |> render()
+    |> table_to_map()
+    |> with_table_row("name", provider.name, fn row ->
+      assert row["type"] == "OpenID Connect"
+      assert row["status"] == "Active"
+      assert row["sync status"] == "Created 1 identity and 0 groups"
+    end)
 
-    assert table_row_as_text_columns(row) == [
-             provider.name,
-             "OpenID Connect",
-             "Active",
-             "Created 1 identity and 0 groups"
-           ]
-
-    AuthFixtures.create_identity(account: account, provider: provider)
-    AuthFixtures.create_identity(account: account, provider: provider)
-    ActorsFixtures.create_group(account: account, provider: provider)
+    Fixtures.Auth.create_identity(account: account, provider: provider)
+    Fixtures.Auth.create_identity(account: account, provider: provider)
+    Fixtures.Actors.create_group(account: account, provider: provider)
     provider |> Ecto.Changeset.change(last_synced_at: DateTime.utc_now()) |> Repo.update!()
 
     {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/identity_providers")
-    element = element(lv, "#providers-#{provider.id}")
-    assert has_element?(element)
 
-    row = render(element)
-
-    assert table_row_as_text_columns(row) == [
-             provider.name,
-             "OpenID Connect",
-             "Active",
-             "Created 3 identities and 1 group"
-           ]
+    lv
+    |> element("#providers")
+    |> render()
+    |> table_to_map()
+    |> with_table_row("name", provider.name, fn row ->
+      assert row["sync status"] == "Created 3 identities and 1 group"
+    end)
   end
 
   test "shows provisioning status for other providers", %{
@@ -187,21 +201,20 @@ defmodule Web.Auth.Settings.IdentityProviders.IndexTest do
     identity: identity,
     conn: conn
   } do
-    provider = AuthFixtures.create_token_provider(account: account)
+    provider = Fixtures.Auth.create_token_provider(account: account)
 
     conn = authorize_conn(conn, identity)
 
     {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/identity_providers")
-    element = element(lv, "#providers-#{provider.id}")
-    assert has_element?(element)
 
-    row = render(element)
-
-    assert table_row_as_text_columns(row) == [
-             provider.name,
-             "API Access Token",
-             "Active",
-             "Created 0 identities and 0 groups"
-           ]
+    lv
+    |> element("#providers")
+    |> render()
+    |> table_to_map()
+    |> with_table_row("name", provider.name, fn row ->
+      assert row["type"] == "API Access Token"
+      assert row["status"] == "Active"
+      assert row["sync status"] == "Created 0 identities and 0 groups"
+    end)
   end
 end

@@ -38,7 +38,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.New do
       |> Map.put("id", socket.assigns.id)
       |> Map.put("adapter", :openid_connect)
       # We create provider in a disabled state because we need to write access token for it first
-      |> Map.put("adapter_state", %{status: :pending_access_token})
+      |> Map.put("adapter_state", %{status: "pending_access_token"})
       |> Map.put("disabled_at", DateTime.utc_now())
 
     with {:ok, provider} <-

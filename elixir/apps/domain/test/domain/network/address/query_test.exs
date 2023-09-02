@@ -1,10 +1,9 @@
 defmodule Domain.Network.Address.QueryTest do
   use Domain.DataCase, async: true
   import Domain.Network.Address.Query
-  alias Domain.{AccountsFixtures, NetworkFixtures}
 
   setup do
-    account = AccountsFixtures.create_account()
+    account = Fixtures.Accounts.create_account()
     %{account: account}
   end
 
@@ -23,7 +22,7 @@ defmodule Domain.Network.Address.QueryTest do
       offset = 3
 
       queryable = next_available_address(account.id, cidr, offset)
-      NetworkFixtures.create_address(account: account, address: "10.3.3.3")
+      Fixtures.Network.create_address(account: account, address: "10.3.3.3")
 
       assert Repo.one(queryable) == %Postgrex.INET{address: {10, 3, 3, 4}}
     end
@@ -33,7 +32,7 @@ defmodule Domain.Network.Address.QueryTest do
       offset = 3
 
       queryable = next_available_address(account.id, cidr, offset)
-      NetworkFixtures.create_address(address: "10.3.3.3")
+      Fixtures.Network.create_address(address: "10.3.3.3")
 
       assert Repo.one(queryable) == %Postgrex.INET{address: {10, 3, 3, 3}}
     end
@@ -46,11 +45,11 @@ defmodule Domain.Network.Address.QueryTest do
 
       queryable = next_available_address(account.id, cidr, offset)
 
-      NetworkFixtures.create_address(account: account, address: "10.3.4.3")
-      NetworkFixtures.create_address(account: account, address: "10.3.4.4")
+      Fixtures.Network.create_address(account: account, address: "10.3.4.3")
+      Fixtures.Network.create_address(account: account, address: "10.3.4.4")
       assert Repo.one(queryable) == %Postgrex.INET{address: {10, 3, 4, 5}}
 
-      NetworkFixtures.create_address(account: account, address: "10.3.4.5")
+      Fixtures.Network.create_address(account: account, address: "10.3.4.5")
       assert Repo.one(queryable) == %Postgrex.INET{address: {10, 3, 4, 6}}
     end
 
@@ -62,13 +61,13 @@ defmodule Domain.Network.Address.QueryTest do
 
       queryable = next_available_address(account.id, cidr, offset)
 
-      NetworkFixtures.create_address(account: account, address: "10.3.5.5")
-      NetworkFixtures.create_address(account: account, address: "10.3.5.6")
+      Fixtures.Network.create_address(account: account, address: "10.3.5.5")
+      Fixtures.Network.create_address(account: account, address: "10.3.5.6")
       # Notice: end of range is 10.3.5.7
       # but it's a broadcast address that we don't allow to assign
       assert Repo.one(queryable) == %Postgrex.INET{address: {10, 3, 5, 4}}
 
-      NetworkFixtures.create_address(account: account, address: "10.3.5.4")
+      Fixtures.Network.create_address(account: account, address: "10.3.5.4")
       assert Repo.one(queryable) == %Postgrex.INET{address: {10, 3, 5, 3}}
     end
 
@@ -76,8 +75,8 @@ defmodule Domain.Network.Address.QueryTest do
       cidr = string_to_cidr("10.3.6.0/30")
       offset = 1
 
-      NetworkFixtures.create_address(account: account, address: "10.3.6.1")
-      NetworkFixtures.create_address(account: account, address: "10.3.6.2")
+      Fixtures.Network.create_address(account: account, address: "10.3.6.1")
+      Fixtures.Network.create_address(account: account, address: "10.3.6.2")
       queryable = next_available_address(account.id, cidr, offset)
       assert is_nil(Repo.one(queryable))
 
@@ -157,7 +156,7 @@ defmodule Domain.Network.Address.QueryTest do
       cidr = string_to_cidr("fd00::3:2:0/126")
       offset = 3
 
-      NetworkFixtures.create_address(account: account, address: "fd00::3:2:2")
+      Fixtures.Network.create_address(account: account, address: "fd00::3:2:2")
 
       queryable = next_available_address(account.id, cidr, offset)
       assert is_nil(Repo.one(queryable))

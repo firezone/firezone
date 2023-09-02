@@ -2,14 +2,13 @@ defmodule Domain.AccountsTest do
   use Domain.DataCase, async: true
   import Domain.Accounts
   alias Domain.Accounts
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   describe "fetch_account_by_id/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -33,7 +32,7 @@ defmodule Domain.AccountsTest do
     end
 
     test "returns error when subject has no permission to view accounts", %{subject: subject} do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert fetch_account_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -45,11 +44,11 @@ defmodule Domain.AccountsTest do
   describe "fetch_account_by_id_or_slug/2" do
     setup do
       account =
-        AccountsFixtures.create_account(slug: "follow_the_#{System.unique_integer([:positive])}")
+        Fixtures.Accounts.create_account(slug: "follow_the_#{System.unique_integer([:positive])}")
 
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -70,7 +69,7 @@ defmodule Domain.AccountsTest do
     end
 
     test "returns error when subject has no permission to view accounts", %{subject: subject} do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert fetch_account_by_id_or_slug(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -87,7 +86,7 @@ defmodule Domain.AccountsTest do
 
     test "returns account when account exists" do
       account =
-        AccountsFixtures.create_account(slug: "follow_the_#{System.unique_integer([:positive])}")
+        Fixtures.Accounts.create_account(slug: "follow_the_#{System.unique_integer([:positive])}")
 
       assert {:ok, fetched_account} = fetch_account_by_id_or_slug(account.id)
       assert fetched_account.id == account.id
@@ -107,7 +106,7 @@ defmodule Domain.AccountsTest do
     end
 
     test "returns account" do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       assert {:ok, returned_account} = fetch_account_by_id(account.id)
       assert returned_account.id == account.id
     end
@@ -115,14 +114,14 @@ defmodule Domain.AccountsTest do
 
   describe "ensure_has_access_to/2" do
     test "returns :ok if subject has access to the account" do
-      subject = AuthFixtures.create_subject()
+      subject = Fixtures.Auth.create_subject()
 
       assert ensure_has_access_to(subject, subject.account) == :ok
     end
 
     test "returns :error if subject has no access to the account" do
-      account = AccountsFixtures.create_account()
-      subject = AuthFixtures.create_subject()
+      account = Fixtures.Accounts.create_account()
+      subject = Fixtures.Auth.create_subject()
 
       assert ensure_has_access_to(subject, account) == {:error, :unauthorized}
     end

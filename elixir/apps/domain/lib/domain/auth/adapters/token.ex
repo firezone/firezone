@@ -60,15 +60,17 @@ defmodule Domain.Auth.Adapters.Token do
 
       %{valid?: true} = nested_changeset ->
         expires_at = Ecto.Changeset.fetch_change!(nested_changeset, :expires_at)
+        nested_changeset = Ecto.Changeset.put_change(nested_changeset, :secret, secret)
+
+        {changeset, _original_type} =
+          changeset
+          |> Ecto.Changeset.put_change(:provider_state, %{
+            "expires_at" => DateTime.to_iso8601(expires_at),
+            "secret_hash" => secret_hash
+          })
+          |> Domain.Changeset.inject_embedded_changeset(:provider_virtual_state, nested_changeset)
 
         changeset
-        |> Ecto.Changeset.put_change(:provider_state, %{
-          "expires_at" => DateTime.to_iso8601(expires_at),
-          "secret_hash" => secret_hash
-        })
-        |> Ecto.Changeset.put_change(:provider_virtual_state, %{
-          secret: secret
-        })
     end
   end
 

@@ -37,7 +37,10 @@ defmodule Domain.Repo do
           [{:with, changeset_fun :: (term() -> Ecto.Changeset.t())}],
           opts :: Keyword.t()
         ) ::
-          {:ok, Ecto.Schema.t()} | {:error, :not_found} | {:error, Ecto.Changeset.t()}
+          {:ok, Ecto.Schema.t()}
+          | {:error, :not_found}
+          | {:error, Ecto.Changeset.t()}
+          | {:error, term()}
   def fetch_and_update(queryable, [with: changeset_fun], opts \\ [])
       when is_function(changeset_fun, 1) do
     transaction(fn ->
@@ -47,7 +50,7 @@ defmodule Domain.Repo do
         schema
         |> changeset_fun.()
         |> case do
-          %Ecto.Changeset{} = changeset -> update(changeset, opts)
+          %Ecto.Changeset{} = changeset -> update(changeset, mode: :savepoint)
           reason -> {:error, reason}
         end
       end
@@ -64,5 +67,26 @@ defmodule Domain.Repo do
   """
   def list(queryable, opts \\ []) do
     {:ok, __MODULE__.all(queryable, opts)}
+  end
+
+  @doc """
+  Peek is used to fetch a preview of the a association for each of schemas.
+
+  It takes list of schemas and queryable which is used to preload a few assocs along with
+  total count of assocs available as `%{id: schema.id, count: schema_counts.count, item: assocs}` map.
+  """
+  def peek(queryable, schemas) do
+    ids = schemas |> Enum.map(& &1.id) |> Enum.uniq()
+    preview = Map.new(ids, fn id -> {id, %{count: 0, items: []}} end)
+
+    preview =
+      queryable
+      |> all()
+      |> Enum.group_by(&{&1.id, &1.count}, & &1.item)
+      |> Enum.reduce(preview, fn {{id, count}, items}, acc ->
+        Map.put(acc, id, %{count: count, items: items})
+      end)
+
+    {:ok, preview}
   end
 end

@@ -50,7 +50,7 @@ defmodule Domain.Accounts do
   end
 
   def create_account(attrs) do
-    Account.Changeset.create_changeset(attrs)
+    Account.Changeset.create(attrs)
     |> Repo.insert()
   end
 

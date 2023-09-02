@@ -3,6 +3,88 @@ defmodule Web.NavigationComponents do
   use Web, :verified_routes
   import Web.CoreComponents
 
+  attr :subject, :any, required: true
+
+  def topbar(assigns) do
+    ~H"""
+    <nav class="bg-gray-50 dark:bg-gray-600 border-b border-gray-200 px-4 py-2.5 dark:border-gray-700 fixed left-0 right-0 top-0 z-50">
+      <div class="flex flex-wrap justify-between items-center">
+        <div class="flex justify-start items-center">
+          <button
+            data-drawer-target="drawer-navigation"
+            data-drawer-toggle="drawer-navigation"
+            aria-controls="drawer-navigation"
+            class={[
+              "p-2 mr-2 text-gray-600 rounded-lg cursor-pointer md:hidden",
+              "hover:text-gray-900 hover:bg-gray-100",
+              "focus:bg-gray-100 dark:focus:bg-gray-700 focus:ring-2 focus:ring-gray-100",
+              "dark:focus:ring-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
+            ]}
+          >
+            <.icon name="hero-bars-3-center-left" class="w-6 h-6" />
+            <span class="sr-only">Toggle sidebar</span>
+          </button>
+          <a
+            href="https://www.firezone.dev/?utm_source=product"
+            class="flex items-center justify-between mr-4"
+          >
+            <img src={~p"/images/logo.svg"} class="mr-3 h-8" alt="Firezone Logo" />
+            <span class="self-center text-2xl font-semibold whitespace-nowrap dark:text-white">
+              firezone
+            </span>
+          </a>
+        </div>
+        <div class="flex items-center lg:order-2">
+          <.dropdown id="user-menu">
+            <:button>
+              <span class="sr-only">Open user menu</span>
+              <.gravatar size={25} email={@subject.identity.provider_identifier} class="rounded-full" />
+            </:button>
+            <:dropdown>
+              <.subject_dropdown subject={@subject} />
+            </:dropdown>
+          </.dropdown>
+        </div>
+      </div>
+    </nav>
+    """
+  end
+
+  attr :subject, :any, required: true
+
+  def subject_dropdown(assigns) do
+    ~H"""
+    <div class="py-3 px-4">
+      <span class="block text-sm font-semibold text-gray-900 dark:text-white">
+        <%= @subject.actor.name %>
+      </span>
+      <span class="block text-sm text-gray-900 truncate dark:text-white">
+        <%= @subject.identity.provider_identifier %>
+      </span>
+    </div>
+    <ul class="py-1 text-gray-700 dark:text-gray-300" aria-labelledby="user-menu-dropdown">
+      <li>
+        <a
+          href="#"
+          class="block py-2 px-4 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 dark:text-gray-400 dark:hover:text-white"
+        >
+          Account settings
+        </a>
+      </li>
+    </ul>
+    <ul class="py-1 text-gray-700 dark:text-gray-300" aria-labelledby="user-menu-dropdown">
+      <li>
+        <a
+          href={~p"/#{@subject.account}/sign_out"}
+          class="block py-2 px-4 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+        >
+          Sign out
+        </a>
+      </li>
+    </ul>
+    """
+  end
+
   slot :bottom, required: false
 
   slot :inner_block,
@@ -26,6 +108,38 @@ defmodule Web.NavigationComponents do
       </div>
       <%= render_slot(@bottom) %>
     </aside>
+    """
+  end
+
+  attr :id, :string, required: true, doc: "ID of the nav group container"
+  slot :button, required: true
+  slot :dropdown, required: true
+
+  def dropdown(assigns) do
+    ~H"""
+    <button
+      type="button"
+      class={[
+        "flex mx-3 text-sm bg-gray-800 rounded-full md:mr-0",
+        "focus:ring-4 focus:ring-gray-300 dark:focus:ring-gray-600"
+      ]}
+      id={"#{@id}-button"}
+      aria-expanded="false"
+      data-dropdown-toggle={"#{@id}-dropdown"}
+    >
+      <%= render_slot(@button) %>
+    </button>
+    <div
+      class={[
+        "hidden",
+        "z-50 my-4 w-56 text-base list-none bg-white rounded",
+        "divide-y divide-gray-100 shadow",
+        "dark:bg-gray-700 dark:divide-gray-600 rounded-xl"
+      ]}
+      id={"#{@id}-dropdown"}
+    >
+      <%= render_slot(@dropdown) %>
+    </div>
     """
   end
 
@@ -107,7 +221,13 @@ defmodule Web.NavigationComponents do
   @doc """
   Renders breadcrumbs section, for elements `<.breadcrumb />` component should be used.
   """
-  attr :home_path, :string, required: true, doc: "The path for to the home page for a user."
+  attr :account, :any,
+    required: false,
+    default: nil,
+    doc: "Account assign which will be used to fetch the home path."
+
+  # TODO: remove this attribute
+  attr :home_path, :string, required: false, doc: "The path for to the home page for a user."
   slot :inner_block, required: true, doc: "Breadcrumb entries"
 
   def breadcrumbs(assigns) do
@@ -116,7 +236,7 @@ defmodule Web.NavigationComponents do
       <ol class="inline-flex items-center space-x-1 md:space-x-2">
         <li class="inline-flex items-center">
           <.link
-            navigate={@home_path}
+            navigate={if @account, do: ~p"/#{@account}/dashboard", else: @home_path}
             class="inline-flex items-center text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
           >
             <.icon name="hero-home-solid" class="w-4 h-4 mr-2" /> Home
