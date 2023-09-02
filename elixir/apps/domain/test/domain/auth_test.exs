@@ -1483,7 +1483,7 @@ defmodule Domain.AuthTest do
       assert identity.provider_identifier == provider_identifier
       assert identity.actor_id == actor.id
 
-      assert identity.provider_virtual_state == %{}
+      assert %Ecto.Changeset{} = identity.provider_virtual_state
 
       assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} =
                identity.provider_state

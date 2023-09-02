@@ -27,7 +27,7 @@ defmodule Domain.Auth.Adapters.TokenTest do
       assert %{provider_state: state, provider_virtual_state: virtual_state} = changeset.changes
 
       assert %{"secret_hash" => secret_hash} = state
-      assert %{secret: secret} = virtual_state
+      assert %{changes: %{secret: secret}} = virtual_state
       assert Domain.Crypto.equal?(secret, secret_hash)
     end
 
@@ -123,13 +123,13 @@ defmodule Domain.Auth.Adapters.TokenTest do
         )
         |> Repo.update!()
 
-      assert verify_secret(identity, identity.provider_virtual_state.secret) ==
+      assert verify_secret(identity, identity.provider_virtual_state.changes.secret) ==
                {:error, :expired_secret}
     end
 
     test "returns :ok on valid secret", %{identity: identity} do
       assert {:ok, verified_identity, expires_at} =
-               verify_secret(identity, identity.provider_virtual_state.secret)
+               verify_secret(identity, identity.provider_virtual_state.changes.secret)
 
       assert verified_identity.provider_state["secret_hash"] ==
                identity.provider_state["secret_hash"]
