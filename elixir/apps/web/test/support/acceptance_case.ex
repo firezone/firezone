@@ -22,7 +22,7 @@ defmodule Web.AcceptanceCase do
       @moduletag timeout: 120_000
 
       setup tags do
-        Application.put_env(:wallaby, :base_url, @endpoint.url())
+        Application.put_env(:wallaby, :base_url, "http://localhost:13100")
         tags
       end
     end
