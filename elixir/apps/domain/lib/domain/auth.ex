@@ -615,7 +615,7 @@ defmodule Domain.Auth do
   end
 
   defp access_token_payload(%Identity{} = identity) do
-    {:identity, identity.id, identity.provider_virtual_state.secret, :ignore}
+    {:identity, identity.id, identity.provider_virtual_state.changes.secret, :ignore}
   end
 
   defp fetch_config! do

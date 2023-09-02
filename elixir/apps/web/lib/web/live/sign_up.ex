@@ -21,8 +21,12 @@ defmodule Web.SignUp do
       registration
       |> Ecto.Changeset.cast(attrs, [:email])
       |> Ecto.Changeset.validate_format(:email, ~r/.+@.+/)
-      |> Ecto.Changeset.cast_embed(:account, with: &Accounts.Account.Changeset.changeset/2)
-      |> Ecto.Changeset.cast_embed(:actor, with: &Actors.Actor.Changeset.changeset/2)
+      |> Ecto.Changeset.cast_embed(:account,
+        with: fn _account, attrs -> Accounts.Account.Changeset.create(attrs) end
+      )
+      |> Ecto.Changeset.cast_embed(:actor,
+        with: fn _account, attrs -> Actors.Actor.Changeset.create(attrs) end
+      )
     end
   end
 

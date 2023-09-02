@@ -1485,10 +1485,8 @@ defmodule Domain.AuthTest do
 
       assert %Ecto.Changeset{} = identity.provider_virtual_state
 
-      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} =
-               identity.provider_state
-
-      assert %{sign_in_token: _} = identity.provider_virtual_state
+      assert %{"password_hash" => _} = identity.provider_state
+      assert %{password_hash: _} = identity.provider_virtual_state.changes
       assert identity.account_id == provider.account_id
       assert is_nil(identity.deleted_at)
     end

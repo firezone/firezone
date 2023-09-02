@@ -5,23 +5,18 @@ defmodule Domain.Accounts.Account.Changeset do
   def create(attrs) do
     %Account{}
     |> cast(attrs, [:name, :slug])
+    |> changeset()
+  end
+
+  defp changeset(changeset) do
+    changeset
     |> validate_required([:name])
-    |> validate_name()
     |> trim_change(:name)
+    |> validate_length(:name, min: 3, max: 64)
     |> prepare_changes(fn changeset -> put_slug_default(changeset) end)
     |> downcase_slug()
     |> validate_slug()
     |> unique_constraint(:slug, name: :accounts_slug_index)
-  end
-
-  def create_changeset(attrs) do
-    %Account{}
-    |> changeset(attrs)
-  end
-
-  defp validate_name(changeset) do
-    changeset
-    |> validate_length(:name, min: 3, max: 64)
   end
 
   defp put_slug_default(changeset) do
