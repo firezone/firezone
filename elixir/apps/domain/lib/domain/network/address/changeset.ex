@@ -2,7 +2,7 @@ defmodule Domain.Network.Address.Changeset do
   use Domain, :changeset
   alias Domain.Network.Address
 
-  def create_changeset(address, account_id) do
+  def create(address, account_id) do
     %Address{}
     |> change()
     |> put_change(:address, address)

@@ -10,6 +10,8 @@ defmodule Domain.Auth do
     account_user: 24 * 7
   }
 
+  @max_session_duration_hours @default_session_duration_hours
+
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -46,6 +48,28 @@ defmodule Domain.Auth do
     else
       false -> {:error, :not_found}
       other -> other
+    end
+  end
+
+  @doc """
+  This functions allows to fetch singleton providers like `email` or `token`.
+  """
+  def fetch_active_provider_by_adapter(adapter, %Subject{} = subject, opts \\ [])
+      when adapter in [:email, :token, :userpass] do
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+      Provider.Query.by_adapter(adapter)
+      |> Provider.Query.not_disabled()
+      |> Authorizer.for_subject(Provider, subject)
+      |> Repo.fetch()
+      |> case do
+        {:ok, provider} ->
+          {:ok, Repo.preload(provider, preload)}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -104,8 +128,28 @@ defmodule Domain.Auth do
     |> Repo.list()
   end
 
+  def list_providers_pending_token_refresh_by_adapter(adapter) do
+    datetime_filter = DateTime.utc_now() |> DateTime.add(1, :hour)
+
+    Provider.Query.by_adapter(adapter)
+    |> Provider.Query.by_provisioner(:custom)
+    |> Provider.Query.token_expires_at({:lt, datetime_filter})
+    |> Provider.Query.not_disabled()
+    |> Repo.list()
+  end
+
+  def list_providers_pending_sync_by_adapter(adapter) do
+    datetime_filter = DateTime.utc_now() |> DateTime.add(-10, :minute)
+
+    Provider.Query.by_adapter(adapter)
+    |> Provider.Query.by_provisioner(:custom)
+    |> Provider.Query.last_synced_at({:lt, datetime_filter})
+    |> Provider.Query.not_disabled()
+    |> Repo.list()
+  end
+
   def new_provider(%Accounts.Account{} = account, attrs \\ %{}) do
-    Provider.Changeset.create_changeset(account, attrs)
+    Provider.Changeset.create(account, attrs)
     |> Adapters.provider_changeset()
   end
 
@@ -113,7 +157,7 @@ defmodule Domain.Auth do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()),
          :ok <- Accounts.ensure_has_access_to(subject, account),
          changeset =
-           Provider.Changeset.create_changeset(account, attrs, subject)
+           Provider.Changeset.create(account, attrs, subject)
            |> Adapters.provider_changeset(),
          {:ok, provider} <- Repo.insert(changeset) do
       Adapters.ensure_provisioned(provider)
@@ -122,7 +166,7 @@ defmodule Domain.Auth do
 
   def create_provider(%Accounts.Account{} = account, attrs) do
     changeset =
-      Provider.Changeset.create_changeset(account, attrs)
+      Provider.Changeset.create(account, attrs)
       |> Adapters.provider_changeset()
 
     with {:ok, provider} <- Repo.insert(changeset) do
@@ -131,7 +175,7 @@ defmodule Domain.Auth do
   end
 
   def change_provider(%Provider{} = provider, attrs \\ %{}) do
-    Provider.Changeset.update_changeset(provider, attrs)
+    Provider.Changeset.update(provider, attrs)
     |> Adapters.provider_changeset()
   end
 
@@ -141,7 +185,7 @@ defmodule Domain.Auth do
       |> Authorizer.for_subject(Provider, subject)
       |> Repo.fetch_and_update(
         with: fn provider ->
-          Provider.Changeset.update_changeset(provider, attrs)
+          Provider.Changeset.update(provider, attrs)
           |> Adapters.provider_changeset()
         end
       )
@@ -198,6 +242,7 @@ defmodule Domain.Auth do
 
   defp other_active_providers_exist?(%Provider{id: id, account_id: account_id}) do
     Provider.Query.by_id({:not, id})
+    |> Provider.Query.by_adapter({:not_in, [:token]})
     |> Provider.Query.not_disabled()
     |> Provider.Query.by_account_id(account_id)
     |> Provider.Query.lock()
@@ -209,6 +254,20 @@ defmodule Domain.Auth do
   end
 
   # Identities
+
+  def fetch_identity_by_id(id, %Subject{} = subject) do
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
+      Identity.Query.by_id(id)
+      |> Authorizer.for_subject(Identity, subject)
+      |> Repo.fetch()
+    end
+  end
+
+  def fetch_active_identity_by_id(id) do
+    Identity.Query.by_id(id)
+    |> Identity.Query.not_disabled()
+    |> Repo.fetch()
+  end
 
   def fetch_identity_by_id(id) do
     Identity.Query.by_id(id)
@@ -236,14 +295,13 @@ defmodule Domain.Auth do
     end
   end
 
-  def upsert_identity(
-        %Actors.Actor{} = actor,
-        %Provider{} = provider,
-        provider_identifier,
-        provider_attrs \\ %{}
-      ) do
-    Identity.Changeset.create_identity(actor, provider, provider_identifier)
-    |> Adapters.identity_changeset(provider, provider_attrs)
+  def sync_provider_identities_multi(%Provider{} = provider, attrs_list) do
+    Identity.Sync.sync_provider_identities_multi(provider, attrs_list)
+  end
+
+  def upsert_identity(%Actors.Actor{} = actor, %Provider{} = provider, attrs) do
+    Identity.Changeset.create_identity(actor, provider, attrs)
+    |> Adapters.identity_changeset(provider)
     |> Repo.insert(
       conflict_target:
         {:unsafe_fragment,
@@ -260,23 +318,29 @@ defmodule Domain.Auth do
     )
   end
 
+  def new_identity(%Actors.Actor{} = actor, %Provider{} = provider, attrs \\ %{}) do
+    Identity.Changeset.create_identity(actor, provider, attrs)
+    |> Adapters.identity_changeset(provider)
+  end
+
   def create_identity(
         %Actors.Actor{} = actor,
         %Provider{} = provider,
-        provider_identifier,
-        provider_attrs \\ %{}
+        attrs,
+        %Subject{} = subject
       ) do
-    Identity.Changeset.create_identity(actor, provider, provider_identifier)
-    |> Adapters.identity_changeset(provider, provider_attrs)
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
+      create_identity(actor, provider, attrs)
+    end
+  end
+
+  def create_identity(%Actors.Actor{} = actor, %Provider{} = provider, attrs) do
+    Identity.Changeset.create_identity(actor, provider, attrs)
+    |> Adapters.identity_changeset(provider)
     |> Repo.insert()
   end
 
-  def replace_identity(
-        %Identity{} = identity,
-        provider_identifier,
-        provider_attrs \\ %{},
-        %Subject{} = subject
-      ) do
+  def replace_identity(%Identity{} = identity, attrs, %Subject{} = subject) do
     required_permissions =
       {:one_of,
        [
@@ -294,13 +358,8 @@ defmodule Domain.Auth do
         |> Repo.fetch()
       end)
       |> Ecto.Multi.insert(:new_identity, fn %{identity: identity} ->
-        Identity.Changeset.create_identity(
-          identity.actor,
-          identity.provider,
-          provider_identifier,
-          subject
-        )
-        |> Adapters.identity_changeset(identity.provider, provider_attrs)
+        Identity.Changeset.create_identity(identity.actor, identity.provider, attrs, subject)
+        |> Adapters.identity_changeset(identity.provider)
       end)
       |> Ecto.Multi.update(:deleted_identity, fn %{identity: identity} ->
         Identity.Changeset.delete_identity(identity)
@@ -314,6 +373,10 @@ defmodule Domain.Auth do
           {:error, error_or_changeset}
       end
     end
+  end
+
+  def delete_identity(%Identity{created_by: :provider}, %Subject{}) do
+    {:error, :cant_delete_synced_identity}
   end
 
   def delete_identity(%Identity{} = identity, %Subject{} = subject) do
@@ -331,11 +394,26 @@ defmodule Domain.Auth do
     end
   end
 
+  def delete_actor_identities(%Actors.Actor{} = actor) do
+    {_count, nil} =
+      Identity.Query.by_actor_id(actor.id)
+      |> Repo.update_all(set: [deleted_at: DateTime.utc_now(), provider_state: %{}])
+
+    :ok
+  end
+
+  def identity_disabled?(%{disabled_at: nil}), do: false
+  def identity_disabled?(_identity), do: true
+
+  def identity_deleted?(%{deleted_at: nil}), do: false
+  def identity_deleted?(_identity), do: true
+
   # Sign Up / In / Off
 
   def sign_in(%Provider{} = provider, id_or_provider_identifier, secret, user_agent, remote_ip) do
     identity_queryable =
-      Identity.Query.by_provider_id(provider.id)
+      Identity.Query.not_disabled()
+      |> Identity.Query.by_provider_id(provider.id)
       |> Identity.Query.by_id_or_provider_identifier(id_or_provider_identifier)
 
     with {:ok, identity} <- Repo.fetch(identity_queryable),
@@ -359,8 +437,7 @@ defmodule Domain.Auth do
   end
 
   def sign_in(token, user_agent, remote_ip) when is_binary(token) do
-    with {:ok, identity, expires_at} <-
-           verify_token(token, user_agent, remote_ip) do
+    with {:ok, identity, expires_at} <- verify_token(token, user_agent, remote_ip) do
       {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
@@ -398,8 +475,15 @@ defmodule Domain.Auth do
   end
 
   defp build_subject_expires_at(%Actors.Actor{} = actor, expires_at) do
+    now = DateTime.utc_now()
+
     default_session_duration_hours = Map.fetch!(@default_session_duration_hours, actor.type)
-    expires_at || DateTime.utc_now() |> DateTime.add(default_session_duration_hours, :hour)
+    expires_at = expires_at || DateTime.add(now, default_session_duration_hours, :hour)
+
+    max_session_duration_hours = Map.fetch!(@max_session_duration_hours, actor.type)
+    max_expires_at = DateTime.add(now, max_session_duration_hours, :hour)
+
+    Enum.min([expires_at, max_expires_at], DateTime)
   end
 
   # Session
@@ -482,7 +566,7 @@ defmodule Domain.Auth do
          _user_agent,
          _remote_ip
        ) do
-    with {:ok, identity} <- fetch_identity_by_id(identity_id),
+    with {:ok, identity} <- fetch_active_identity_by_id(identity_id),
          {:ok, provider} <- fetch_active_provider_by_id(identity.provider_id),
          {:ok, identity, expires_at} <-
            Adapters.verify_secret(provider, identity, secret) do
@@ -500,7 +584,7 @@ defmodule Domain.Auth do
          _user_agent,
          _remote_ip
        ) do
-    with {:ok, identity} <- fetch_identity_by_id(identity_id),
+    with {:ok, identity} <- fetch_active_identity_by_id(identity_id),
          {:ok, expires_at} <- fetch_session_token_expires_at(token) do
       {:ok, identity, expires_at}
     end
@@ -512,7 +596,7 @@ defmodule Domain.Auth do
          user_agent,
          remote_ip
        ) do
-    with {:ok, identity} <- fetch_identity_by_id(identity_id),
+    with {:ok, identity} <- fetch_active_identity_by_id(identity_id),
          true <- context_payload == session_context_payload(remote_ip, user_agent),
          {:ok, expires_at} <- fetch_session_token_expires_at(token) do
       {:ok, identity, expires_at}
@@ -531,7 +615,7 @@ defmodule Domain.Auth do
   end
 
   defp access_token_payload(%Identity{} = identity) do
-    {:identity, identity.id, identity.provider_virtual_state.secret, :ignore}
+    {:identity, identity.id, identity.provider_virtual_state.changes.secret, :ignore}
   end
 
   defp fetch_config! do
@@ -587,5 +671,10 @@ defmodule Domain.Auth do
       [] -> :ok
       missing_permissions -> {:error, {:unauthorized, missing_permissions: missing_permissions}}
     end
+  end
+
+  def can_grant_role?(%Subject{} = subject, granted_role) do
+    granted_permissions = fetch_type_permissions!(granted_role)
+    MapSet.subset?(granted_permissions, subject.permissions)
   end
 end

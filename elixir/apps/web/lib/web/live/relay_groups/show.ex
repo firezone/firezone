@@ -2,7 +2,7 @@ defmodule Web.RelayGroups.Show do
   use Web, :live_view
   alias Domain.Relays
 
-  def mount(%{"id" => id} = _params, _session, socket) do
+  def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
            Relays.fetch_group_by_id(id, socket.assigns.subject,
              preload: [
@@ -13,7 +13,7 @@ defmodule Web.RelayGroups.Show do
       :ok = Relays.subscribe_for_relays_presence_in_group(group)
       {:ok, assign(socket, group: group)}
     else
-      {:error, :not_found} -> raise Web.LiveErrors.NotFoundError
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -50,7 +50,7 @@ defmodule Web.RelayGroups.Show do
     </.header>
 
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table>
+      <.vertical_table id="group">
         <.vertical_table_row>
           <:label>Instance Group Name</:label>
           <:value><%= @group.name %></:value>
@@ -58,7 +58,7 @@ defmodule Web.RelayGroups.Show do
         <.vertical_table_row>
           <:label>Created</:label>
           <:value>
-            <.datetime datetime={@group.inserted_at} /> by <.owner schema={@group} />
+            <.created_by schema={@group} />
           </:value>
         </.vertical_table_row>
       </.vertical_table>
@@ -86,7 +86,7 @@ defmodule Web.RelayGroups.Show do
             </.link>
           </:col>
           <:col :let={relay} label="TOKEN CREATED AT">
-            <.datetime datetime={relay.token.inserted_at} /> by <.owner schema={relay.token} />
+            <.created_by schema={relay.token} />
           </:col>
           <:col :let={relay} label="STATUS">
             <.connection_status schema={relay} />

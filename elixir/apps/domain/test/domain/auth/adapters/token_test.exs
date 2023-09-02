@@ -2,12 +2,11 @@ defmodule Domain.Auth.Adapters.TokenTest do
   use Domain.DataCase, async: true
   import Domain.Auth.Adapters.Token
   alias Domain.Auth
-  alias Domain.{AccountsFixtures, AuthFixtures}
 
   describe "identity_changeset/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_token_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_token_provider(account: account)
 
       %{
         account: account,
@@ -28,7 +27,7 @@ defmodule Domain.Auth.Adapters.TokenTest do
       assert %{provider_state: state, provider_virtual_state: virtual_state} = changeset.changes
 
       assert %{"secret_hash" => secret_hash} = state
-      assert %{secret: secret} = virtual_state
+      assert %{changes: %{secret: secret}} = virtual_state
       assert Domain.Crypto.equal?(secret, secret_hash)
     end
 
@@ -76,25 +75,25 @@ defmodule Domain.Auth.Adapters.TokenTest do
 
   describe "ensure_provisioned/1" do
     test "does nothing for a provider" do
-      provider = AuthFixtures.create_token_provider()
+      provider = Fixtures.Auth.create_token_provider()
       assert ensure_provisioned(provider) == {:ok, provider}
     end
   end
 
   describe "ensure_deprovisioned/1" do
     test "does nothing for a provider" do
-      provider = AuthFixtures.create_token_provider()
+      provider = Fixtures.Auth.create_token_provider()
       assert ensure_deprovisioned(provider) == {:ok, provider}
     end
   end
 
   describe "verify_secret/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_token_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_token_provider(account: account)
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
           provider_virtual_state: %{
@@ -124,13 +123,13 @@ defmodule Domain.Auth.Adapters.TokenTest do
         )
         |> Repo.update!()
 
-      assert verify_secret(identity, identity.provider_virtual_state.secret) ==
+      assert verify_secret(identity, identity.provider_virtual_state.changes.secret) ==
                {:error, :expired_secret}
     end
 
     test "returns :ok on valid secret", %{identity: identity} do
       assert {:ok, verified_identity, expires_at} =
-               verify_secret(identity, identity.provider_virtual_state.secret)
+               verify_secret(identity, identity.provider_virtual_state.changes.secret)
 
       assert verified_identity.provider_state["secret_hash"] ==
                identity.provider_state["secret_hash"]

@@ -53,15 +53,15 @@ IO.puts("")
     adapter_config: %{}
   })
 
-{:ok, _oidc_provider} =
+{:ok, oidc_provider} =
   Auth.create_provider(account, %{
-    name: "Vault",
+    name: "OIDC",
     adapter: :openid_connect,
     adapter_config: %{
       "client_id" => "CLIENT_ID",
       "client_secret" => "CLIENT_SECRET",
       "response_type" => "code",
-      "scope" => "openid email profile",
+      "scope" => "openid email name groups",
       "discovery_document_uri" => "https://common.auth0.com/.well-known/openid-configuration"
     }
   })
@@ -73,7 +73,7 @@ IO.puts("")
     adapter_config: %{}
   })
 
-{:ok, other_email_provider} =
+{:ok, _other_email_provider} =
   Auth.create_provider(other_account, %{
     name: "email",
     adapter: :email,
@@ -91,36 +91,35 @@ unprivileged_actor_email = "firezone-unprivileged-1@localhost"
 admin_actor_email = "firezone@localhost"
 
 {:ok, unprivileged_actor} =
-  Actors.create_actor(email_provider, unprivileged_actor_email, %{
+  Actors.create_actor(account, %{
     type: :account_user,
     name: "Firezone Unprivileged"
   })
 
 {:ok, admin_actor} =
-  Actors.create_actor(email_provider, admin_actor_email, %{
+  Actors.create_actor(account, %{
     type: :account_admin_user,
     name: "Firezone Admin"
   })
 
 {:ok, service_account_actor} =
-  Actors.create_actor(token_provider, "backup-manager", %{
+  Actors.create_actor(account, %{
     "type" => :service_account,
-    "name" => "Backup Manager",
-    "provider" => %{
-      expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
-    }
+    "name" => "Backup Manager"
+  })
+
+{:ok, unprivileged_actor_email_identity} =
+  Auth.create_identity(unprivileged_actor, email_provider, %{
+    provider_identifier: unprivileged_actor_email
   })
 
 {:ok, unprivileged_actor_userpass_identity} =
-  Auth.create_identity(unprivileged_actor, userpass_provider, unprivileged_actor_email, %{
-    "password" => "Firezone1234",
-    "password_confirmation" => "Firezone1234"
-  })
-
-{:ok, _admin_actor_userpass_identity} =
-  Auth.create_identity(admin_actor, userpass_provider, admin_actor_email, %{
-    "password" => "Firezone1234",
-    "password_confirmation" => "Firezone1234"
+  Auth.create_identity(unprivileged_actor, userpass_provider, %{
+    provider_identifier: unprivileged_actor_email,
+    provider_virtual_state: %{
+      "password" => "Firezone1234",
+      "password_confirmation" => "Firezone1234"
+    }
   })
 
 unprivileged_actor_userpass_identity =
@@ -128,41 +127,64 @@ unprivileged_actor_userpass_identity =
     id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5"
   )
 
+{:ok, admin_actor_email_identity} =
+  Auth.create_identity(admin_actor, email_provider, %{
+    provider_identifier: admin_actor_email
+  })
+
+{:ok, _admin_actor_userpass_identity} =
+  Auth.create_identity(admin_actor, userpass_provider, %{
+    provider_identifier: admin_actor_email,
+    provider_virtual_state: %{
+      "password" => "Firezone1234",
+      "password_confirmation" => "Firezone1234"
+    }
+  })
+
+{:ok, service_account_actor_token_identity} =
+  Auth.create_identity(service_account_actor, token_provider, %{
+    provider_identifier: "tok-#{Ecto.UUID.generate()}",
+    provider_virtual_state: %{
+      "expires_at" => DateTime.utc_now() |> DateTime.add(365, :day)
+    }
+  })
+
 # Other Account Users
 other_unprivileged_actor_email = "other-unprivileged-1@localhost"
 other_admin_actor_email = "other@localhost"
 
 {:ok, other_unprivileged_actor} =
-  Actors.create_actor(other_email_provider, other_unprivileged_actor_email, %{
+  Actors.create_actor(other_account, %{
     type: :account_user,
     name: "Other Unprivileged"
   })
 
 {:ok, other_admin_actor} =
-  Actors.create_actor(other_email_provider, other_admin_actor_email, %{
+  Actors.create_actor(other_account, %{
     type: :account_admin_user,
     name: "Other Admin"
   })
 
 {:ok, _other_unprivileged_actor_userpass_identity} =
-  Auth.create_identity(
-    other_unprivileged_actor,
-    other_userpass_provider,
-    other_unprivileged_actor_email,
-    %{
+  Auth.create_identity(other_unprivileged_actor, other_userpass_provider, %{
+    provider_identifier: other_unprivileged_actor_email,
+    provider_virtual_state: %{
       "password" => "Firezone1234",
       "password_confirmation" => "Firezone1234"
     }
-  )
-
-{:ok, _other_admin_actor_userpass_identity} =
-  Auth.create_identity(other_admin_actor, other_userpass_provider, other_admin_actor_email, %{
-    "password" => "Firezone1234",
-    "password_confirmation" => "Firezone1234"
   })
 
-unprivileged_actor_token = hd(unprivileged_actor.identities).provider_virtual_state.sign_in_token
-admin_actor_token = hd(admin_actor.identities).provider_virtual_state.sign_in_token
+{:ok, _other_admin_actor_userpass_identity} =
+  Auth.create_identity(other_admin_actor, other_userpass_provider, %{
+    provider_identifier: other_admin_actor_email,
+    provider_virtual_state: %{
+      "password" => "Firezone1234",
+      "password_confirmation" => "Firezone1234"
+    }
+  })
+
+unprivileged_actor_token = unprivileged_actor_email_identity.provider_virtual_state.sign_in_token
+admin_actor_token = admin_actor_email_identity.provider_virtual_state.sign_in_token
 
 unprivileged_subject =
   Auth.build_subject(
@@ -174,7 +196,7 @@ unprivileged_subject =
 
 admin_subject =
   Auth.build_subject(
-    hd(admin_actor.identities),
+    admin_actor_email_identity,
     nil,
     "iOS/12.5 (iPhone) connlib/0.7.412",
     {100, 64, 100, 58}
@@ -190,11 +212,11 @@ for {type, login, password, email_token} <- [
   IO.puts("  #{login}, #{type}, password: #{password}, email token: #{email_token} (exp in 15m)")
 end
 
-service_account_identity = hd(service_account_actor.identities)
-service_account_token = service_account_identity.provider_virtual_state.secret
+service_account_token = service_account_actor_token_identity.provider_virtual_state.changes.secret
 
 IO.puts(
-  "  #{service_account_identity.provider_identifier}, #{service_account_actor.type}, token: #{service_account_token}"
+  "  #{service_account_actor_token_identity.provider_identifier}," <>
+    "#{service_account_actor.type}, token: #{service_account_token}"
 )
 
 IO.puts("")
@@ -228,7 +250,12 @@ IO.puts("Created Actor Groups: ")
 
 {:ok, eng_group} = Actors.create_group(%{name: "Engineering"}, admin_subject)
 {:ok, finance_group} = Actors.create_group(%{name: "Finance"}, admin_subject)
-{:ok, all_group} = Actors.create_group(%{name: "All Employees"}, admin_subject)
+
+{:ok, all_group} =
+  Actors.create_group(
+    %{name: "All Employees", provider_id: oidc_provider.id, provider_identifier: "foo"},
+    admin_subject
+  )
 
 for group <- [eng_group, finance_group, all_group] do
   IO.puts("  Name: #{group.name}  ID: #{group.id}")
@@ -261,7 +288,7 @@ IO.puts("")
 
 relay_group =
   account
-  |> Relays.Group.Changeset.create_changeset(
+  |> Relays.Group.Changeset.create(
     %{name: "mycorp-aws-relays", tokens: [%{}]},
     admin_subject
   )
@@ -296,7 +323,7 @@ IO.puts("")
 
 gateway_group =
   account
-  |> Gateways.Group.Changeset.create_changeset(
+  |> Gateways.Group.Changeset.create(
     %{name_prefix: "mycro-aws-gws", tags: ["aws", "in-da-cloud"], tokens: [%{}]},
     admin_subject
   )

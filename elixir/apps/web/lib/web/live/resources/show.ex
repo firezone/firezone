@@ -3,7 +3,7 @@ defmodule Web.Resources.Show do
 
   alias Domain.Resources
 
-  def mount(%{"id" => id} = _params, _session, socket) do
+  def mount(%{"id" => id}, _session, socket) do
     {:ok, resource} =
       Resources.fetch_resource_by_id(id, socket.assigns.subject,
         preload: [:gateway_groups, created_by_identity: [:actor]]
@@ -85,7 +85,7 @@ defmodule Web.Resources.Show do
             Created
           </:label>
           <:value>
-            <.datetime datetime={@resource.inserted_at} /> by <.owner schema={@resource} />
+            <.created_by schema={@resource} />
           </:value>
         </.vertical_table_row>
       </.vertical_table>

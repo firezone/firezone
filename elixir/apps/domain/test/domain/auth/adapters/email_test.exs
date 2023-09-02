@@ -2,14 +2,13 @@ defmodule Domain.Auth.Adapters.EmailTest do
   use Domain.DataCase, async: true
   import Domain.Auth.Adapters.Email
   alias Domain.Auth
-  alias Domain.{AccountsFixtures, AuthFixtures}
 
   describe "identity_changeset/2" do
     setup do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
       changeset = %Auth.Identity{} |> Ecto.Changeset.change()
 
       %{
@@ -44,13 +43,13 @@ defmodule Domain.Auth.Adapters.EmailTest do
     test "returns changeset as is" do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       changeset = %Ecto.Changeset{data: %Domain.Auth.Provider{account_id: account.id}}
       assert provider_changeset(changeset) == changeset
     end
 
     test "returns error when email adapter is not configured" do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       changeset = %Ecto.Changeset{data: %Domain.Auth.Provider{account_id: account.id}}
       changeset = provider_changeset(changeset)
       assert changeset.errors == [adapter: {"email adapter is not configured", []}]
@@ -60,7 +59,7 @@ defmodule Domain.Auth.Adapters.EmailTest do
   describe "ensure_provisioned/1" do
     test "does nothing for a provider" do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider()
+      provider = Fixtures.Auth.create_email_provider()
       assert ensure_provisioned(provider) == {:ok, provider}
     end
   end
@@ -68,14 +67,14 @@ defmodule Domain.Auth.Adapters.EmailTest do
   describe "ensure_deprovisioned/1" do
     test "does nothing for a provider" do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider()
+      provider = Fixtures.Auth.create_email_provider()
       assert ensure_deprovisioned(provider) == {:ok, provider}
     end
   end
 
   describe "request_sign_in_token/1" do
     test "returns identity with updated sign-in token" do
-      identity = AuthFixtures.create_identity()
+      identity = Fixtures.Auth.create_identity()
 
       assert {:ok, identity} = request_sign_in_token(identity)
 
@@ -97,9 +96,9 @@ defmodule Domain.Auth.Adapters.EmailTest do
     setup do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-      account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       token = identity.provider_virtual_state.sign_in_token
 
       %{account: account, provider: provider, identity: identity, token: token}
@@ -122,7 +121,7 @@ defmodule Domain.Auth.Adapters.EmailTest do
       forty_seconds_ago = DateTime.utc_now() |> DateTime.add(-1 * 15 * 60 - 1, :second)
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
           provider_state: %{

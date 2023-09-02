@@ -2,8 +2,6 @@ defmodule Domain.ConfigTest do
   use Domain.DataCase, async: true
   import Domain.Config
   alias Domain.Config
-  alias Domain.{AccountsFixtures, AuthFixtures, ActorsFixtures}
-  alias Domain.ConfigFixtures
 
   defmodule Test do
     use Domain.Config.Definition
@@ -85,8 +83,8 @@ defmodule Domain.ConfigTest do
 
   describe "fetch_resolved_configs!/1" do
     setup do
-      account = AccountsFixtures.create_account()
-      ConfigFixtures.upsert_configuration(account: account)
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Config.upsert_configuration(account: account)
 
       %{account: account}
     end
@@ -132,8 +130,8 @@ defmodule Domain.ConfigTest do
 
   describe "fetch_resolved_configs_with_sources!/1" do
     setup do
-      account = AccountsFixtures.create_account()
-      ConfigFixtures.upsert_configuration(account: account)
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Config.upsert_configuration(account: account)
 
       %{account: account}
     end
@@ -336,14 +334,14 @@ defmodule Domain.ConfigTest do
 
   describe "get_account_config_by_account_id/1" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       %{account: account}
     end
 
     test "returns configuration for an account if it exists", %{
       account: account
     } do
-      configuration = ConfigFixtures.upsert_configuration(account: account)
+      configuration = Fixtures.Config.upsert_configuration(account: account)
       assert get_account_config_by_account_id(account.id) == configuration
     end
 
@@ -359,11 +357,11 @@ defmodule Domain.ConfigTest do
 
   describe "fetch_account_config/1" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -377,7 +375,7 @@ defmodule Domain.ConfigTest do
       account: account,
       subject: subject
     } do
-      configuration = ConfigFixtures.upsert_configuration(account: account)
+      configuration = Fixtures.Config.upsert_configuration(account: account)
       assert fetch_account_config(subject) == {:ok, configuration}
     end
 
@@ -396,7 +394,7 @@ defmodule Domain.ConfigTest do
     test "returns error when subject does not have permission to read configuration", %{
       subject: subject
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert fetch_account_config(subject) ==
                {:error,
@@ -406,8 +404,8 @@ defmodule Domain.ConfigTest do
 
   describe "change_account_config/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      configuration = ConfigFixtures.upsert_configuration(account: account)
+      account = Fixtures.Accounts.create_account()
+      configuration = Fixtures.Config.upsert_configuration(account: account)
 
       %{account: account, configuration: configuration}
     end
@@ -419,14 +417,14 @@ defmodule Domain.ConfigTest do
 
   describe "update_config/3" do
     test "returns error when subject can not manage account configuration" do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       config = get_account_config_by_account_id(account.id)
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
 
       subject =
-        AuthFixtures.create_subject(identity)
-        |> AuthFixtures.remove_permissions()
+        Fixtures.Auth.create_subject(identity: identity)
+        |> Fixtures.Auth.remove_permissions()
 
       assert update_config(config, %{}, subject) ==
                {:error,
@@ -436,7 +434,7 @@ defmodule Domain.ConfigTest do
 
   describe "update_config/2" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       %{account: account}
     end
 
@@ -495,7 +493,7 @@ defmodule Domain.ConfigTest do
     end
 
     test "changes database config value when it existed", %{account: account} do
-      ConfigFixtures.upsert_configuration(account: account)
+      Fixtures.Config.upsert_configuration(account: account)
 
       config = get_account_config_by_account_id(account.id)
       attrs = %{devices_upstream_dns: ["foobar.com", "google.com"]}

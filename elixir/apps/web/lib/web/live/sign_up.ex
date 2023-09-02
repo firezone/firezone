@@ -1,6 +1,5 @@
 defmodule Web.SignUp do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
-
   alias Domain.{Auth, Accounts, Actors}
   alias Web.Registration
 
@@ -21,8 +20,12 @@ defmodule Web.SignUp do
       registration
       |> Ecto.Changeset.cast(attrs, [:email])
       |> Ecto.Changeset.validate_format(:email, ~r/.+@.+/)
-      |> Ecto.Changeset.cast_embed(:account, with: &Accounts.Account.Changeset.changeset/2)
-      |> Ecto.Changeset.cast_embed(:actor, with: &Actors.Actor.Changeset.changeset/2)
+      |> Ecto.Changeset.cast_embed(:account,
+        with: fn _account, attrs -> Accounts.Account.Changeset.create(attrs) end
+      )
+      |> Ecto.Changeset.cast_embed(:actor,
+        with: fn _account, attrs -> Actors.Actor.Changeset.create(attrs) end
+      )
     end
   end
 
@@ -227,10 +230,18 @@ defmodule Web.SignUp do
         )
         |> Ecto.Multi.run(
           :actor,
-          fn _repo, %{provider: provider} ->
-            Actors.create_actor(provider, registration.email, %{
+          fn _repo, %{account: account} ->
+            Actors.create_actor(account, %{
               type: :account_admin_user,
               name: registration.actor.name
+            })
+          end
+        )
+        |> Ecto.Multi.run(
+          :identity,
+          fn _repo, %{provider: provider} ->
+            Auth.create_identity(provider, registration.email, %{
+              provider_identifier: registration.email
             })
           end
         )

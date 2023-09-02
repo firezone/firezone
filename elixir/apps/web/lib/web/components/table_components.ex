@@ -14,7 +14,7 @@ defmodule Web.TableComponents do
     ~H"""
     <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
       <tr>
-        <th :for={col <- @columns} class="px-4 py-3">
+        <th :for={col <- @columns} class={["px-4 py-3", Map.get(col, :class, "")]}>
           <%= col[:label] %>
           <.icon
             :if={col[:sortable] == "true"}
@@ -54,18 +54,33 @@ defmodule Web.TableComponents do
       >
         <%= render_slot(col, @mapper.(@row)) %>
       </td>
-      <td :if={@actions != []} class="px-4 py-3 flex items-center justify-end">
-        <button id={"#{@id}-dropdown-button"} data-dropdown-toggle={"#{@id}-dropdown"} class={~w[
-                  inline-flex items-center p-0.5 text-sm font-medium text-center
-                  text-gray-500 hover:text-gray-800 rounded-lg focus:outline-none
-                  dark:text-gray-400 dark:hover:text-gray-100
-                ]} type="button">
+      <% # this is a hack which allows to hide empty action dropdowns,
+      # because LiveView doesn't allow to do <:slot :let={x} :if={x} />
+      show_actions? =
+        Enum.any?(@actions, fn action ->
+          render = render_slot(action, @mapper.(@row))
+          not_empty_render?(render)
+        end) %>
+      <td :if={@actions != [] and show_actions?} class="px-4 py-3 flex items-center justify-end">
+        <button
+          id={"#{@id}-dropdown-button"}
+          data-dropdown-toggle={"#{@id}-dropdown"}
+          class={[
+            "inline-flex items-center p-0.5 text-sm font-medium text-center",
+            "text-gray-500 hover:text-gray-800 rounded-lg focus:outline-none",
+            "dark:text-gray-400 dark:hover:text-gray-100"
+          ]}
+          type="button"
+        >
           <.icon name="hero-ellipsis-horizontal" class="w-5 h-5" />
         </button>
-        <div id={"#{@id}-dropdown" } class={~w[
-                  hidden z-10 w-44 bg-white rounded divide-y divide-gray-100
-                  shadow border border-gray-300 dark:bg-gray-700 dark:divide-gray-600"
-                ]}>
+        <div
+          id={"#{@id}-dropdown"}
+          class={[
+            "hidden z-10 w-44 bg-white rounded divide-y divide-gray-100",
+            "shadow border border-gray-300 dark:bg-gray-700 dark:divide-gray-600"
+          ]}
+        >
           <ul
             class="py-1 text-sm text-gray-700 dark:text-gray-200"
             aria-labelledby={"#{@id}-dropdown-button"}
@@ -78,6 +93,15 @@ defmodule Web.TableComponents do
       </td>
     </tr>
     """
+  end
+
+  defp not_empty_render?(rendered) do
+    rendered.dynamic.(nil)
+    |> Enum.any?(fn
+      "" -> false
+      nil -> false
+      _other -> true
+    end)
   end
 
   @doc ~S"""
@@ -102,6 +126,7 @@ defmodule Web.TableComponents do
   slot :col, required: true do
     attr :label, :string
     attr :sortable, :string
+    attr :class, :string
   end
 
   slot :action, doc: "the slot for showing user actions in the last table column"
@@ -114,9 +139,12 @@ defmodule Web.TableComponents do
 
     ~H"""
     <div class="overflow-x-auto">
-      <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+      <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400" id={@id}>
         <.table_header columns={@col} actions={@action} />
-        <tbody id={@id} phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}>
+        <tbody
+          id={"#{@id}-rows"}
+          phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
+        >
           <.table_row
             :for={row <- @rows}
             columns={@col}
@@ -166,6 +194,7 @@ defmodule Web.TableComponents do
   slot :col, required: true do
     attr :label, :string
     attr :sortable, :string
+    attr :class, :string
   end
 
   slot :group, required: true
@@ -179,7 +208,7 @@ defmodule Web.TableComponents do
       end
 
     ~H"""
-    <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+    <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400" id={@id}>
       <.table_header columns={@col} actions={@action} />
 
       <tbody :for={group <- @groups} data-group-id={@group_id && @group_id.(group)}>
@@ -229,13 +258,13 @@ defmodule Web.TableComponents do
   """
 
   attr :class, :string, default: nil
-  attr :rest, :global
+  attr :rest, :global, include: ~w[id]a
 
   slot :inner_block
 
   def vertical_table(assigns) do
     ~H"""
-    <table class={["w-full text-sm text-left text-gray-500 dark:text-gray-400", @class]}>
+    <table class={["w-full text-sm text-left text-gray-500 dark:text-gray-400", @class]} {@rest}>
       <tbody>
         <%= render_slot(@inner_block) %>
       </tbody>

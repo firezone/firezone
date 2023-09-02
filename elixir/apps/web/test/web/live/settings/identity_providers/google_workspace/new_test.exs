@@ -1,13 +1,12 @@
-defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.NewTest do
+defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.NewTest do
   use Web.ConnCase, async: true
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   setup do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-    account = AccountsFixtures.create_account()
-    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-    identity = AuthFixtures.create_identity(account: account, actor: actor)
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
 
     %{
       account: account,
@@ -54,7 +53,12 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.NewTest do
     identity: identity,
     conn: conn
   } do
-    {_bypass, [adapter_config_attrs]} = AuthFixtures.start_openid_providers(["google"])
+    bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
+
+    adapter_config_attrs =
+      Fixtures.Auth.openid_connect_adapter_config(
+        discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+      )
 
     adapter_config_attrs =
       Map.drop(adapter_config_attrs, [
@@ -64,7 +68,7 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.NewTest do
       ])
 
     provider_attrs =
-      AuthFixtures.provider_attrs(
+      Fixtures.Auth.provider_attrs(
         adapter: :google_workspace,
         adapter_config: adapter_config_attrs
       )
@@ -83,7 +87,7 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.NewTest do
       )
 
     result = render_submit(form)
-    assert provider = Domain.Repo.get_by(Domain.Auth.Provider, name: provider_attrs.name)
+    assert provider = Repo.get_by(Domain.Auth.Provider, name: provider_attrs.name)
 
     assert result ==
              {:error,
@@ -108,7 +112,12 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.NewTest do
     identity: identity,
     conn: conn
   } do
-    {_bypass, [adapter_config_attrs]} = AuthFixtures.start_openid_providers(["google"])
+    bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
+
+    adapter_config_attrs =
+      Fixtures.Auth.openid_connect_adapter_config(
+        discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+      )
 
     adapter_config_attrs =
       Map.drop(adapter_config_attrs, [
@@ -118,7 +127,7 @@ defmodule Web.Auth.Settings.IdentityProviders.GoogleWorkspace.NewTest do
       ])
 
     provider_attrs =
-      AuthFixtures.provider_attrs(
+      Fixtures.Auth.provider_attrs(
         adapter: :google_workspace,
         adapter_config: adapter_config_attrs
       )

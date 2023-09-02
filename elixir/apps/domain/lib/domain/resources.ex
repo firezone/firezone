@@ -98,7 +98,7 @@ defmodule Domain.Resources do
 
   def create_resource(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      changeset = Resource.Changeset.create_changeset(subject.account, attrs, subject)
+      changeset = Resource.Changeset.create(subject.account, attrs, subject)
 
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:resource, changeset, returning: true)
@@ -106,7 +106,7 @@ defmodule Domain.Resources do
       |> resolve_address_multi(:ipv6)
       |> Ecto.Multi.update(:resource_with_address, fn
         %{resource: %Resource{} = resource, ipv4: ipv4, ipv6: ipv6} ->
-          Resource.Changeset.finalize_create_changeset(resource, ipv4, ipv6)
+          Resource.Changeset.finalize_create(resource, ipv4, ipv6)
       end)
       |> Repo.transaction()
       |> case do
@@ -145,7 +145,7 @@ defmodule Domain.Resources do
   def update_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       resource
-      |> Resource.Changeset.update_changeset(attrs, subject)
+      |> Resource.Changeset.update(attrs, subject)
       |> Repo.update()
       |> case do
         {:ok, resource} ->
@@ -167,7 +167,7 @@ defmodule Domain.Resources do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       Resource.Query.by_id(resource.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Resource.Changeset.delete_changeset/1)
+      |> Repo.fetch_and_update(with: &Resource.Changeset.delete/1)
       |> case do
         {:ok, resource} ->
           # Phoenix.PubSub.broadcast(

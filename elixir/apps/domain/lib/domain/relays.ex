@@ -107,20 +107,20 @@ defmodule Domain.Relays do
   def create_group(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       subject.account
-      |> Group.Changeset.create_changeset(attrs, subject)
+      |> Group.Changeset.create(attrs, subject)
       |> Repo.insert()
     end
   end
 
   def create_global_group(attrs) do
-    Group.Changeset.create_changeset(attrs)
+    Group.Changeset.create(attrs)
     |> Repo.insert()
   end
 
   def change_group(%Group{} = group, attrs \\ %{}) do
     group
     |> Repo.preload(:account)
-    |> Group.Changeset.update_changeset(attrs)
+    |> Group.Changeset.update(attrs)
   end
 
   def update_group(group, attrs \\ %{}, subject)
@@ -133,7 +133,7 @@ defmodule Domain.Relays do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       group
       |> Repo.preload(:account)
-      |> Group.Changeset.update_changeset(attrs, subject)
+      |> Group.Changeset.update(attrs, subject)
       |> Repo.update()
     end
   end
@@ -153,12 +153,12 @@ defmodule Domain.Relays do
             Token.Query.by_group_id(group.id)
             |> Repo.all()
             |> Enum.each(fn token ->
-              Token.Changeset.delete_changeset(token)
+              Token.Changeset.delete(token)
               |> Repo.update!()
             end)
 
           group
-          |> Group.Changeset.delete_changeset()
+          |> Group.Changeset.delete()
         end
       )
     end
@@ -170,7 +170,7 @@ defmodule Domain.Relays do
       |> Repo.fetch_and_update(
         with: fn token ->
           if Domain.Crypto.equal?(secret, token.hash) do
-            Token.Changeset.use_changeset(token)
+            Token.Changeset.use(token)
           else
             :not_found
           end
@@ -290,7 +290,7 @@ defmodule Domain.Relays do
   end
 
   def upsert_relay(%Token{} = token, attrs) do
-    changeset = Relay.Changeset.upsert_changeset(token, attrs)
+    changeset = Relay.Changeset.upsert(token, attrs)
 
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:relay, changeset,
@@ -309,7 +309,7 @@ defmodule Domain.Relays do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       Relay.Query.by_id(relay.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Relay.Changeset.delete_changeset/1)
+      |> Repo.fetch_and_update(with: &Relay.Changeset.delete/1)
     end
   end
 

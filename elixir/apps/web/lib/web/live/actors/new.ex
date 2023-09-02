@@ -1,118 +1,105 @@
 defmodule Web.Actors.New do
   use Web, :live_view
 
+  def mount(_params, _session, socket) do
+    socket =
+      socket
+      |> assign(:form, %{})
+
+    {:ok, socket}
+  end
+
+  def handle_event("submit", %{"next" => next}, socket) do
+    {:noreply, push_navigate(socket, to: next)}
+  end
+
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
-      <.breadcrumb path={~p"/#{@account}/actors"}>Users</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/new"}>Add User</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors/new"}>Add</.breadcrumb>
     </.breadcrumbs>
     <.header>
       <:title>
-        Add a new user
+        Add a new Actor
       </:title>
     </.header>
-
     <section class="bg-white dark:bg-gray-900">
-      <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
-        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">User details</h2>
-        <form action="#">
-          <div class="grid gap-4 sm:grid-cols-1 sm:gap-6">
-            <div>
-              <.label for="first-name">
-                First name
-              </.label>
-              <input
-                type="text"
-                name="first-name"
-                id="first-name"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                required=""
+      <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Choose type</h2>
+        <.form id="identity-provider-type-form" for={@form} phx-submit="submit">
+          <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+            <fieldset>
+              <legend class="sr-only">Choose Actor Type</legend>
+
+              <.option
+                account={@account}
+                type={:user}
+                name="User"
+                description="Admin or regular user accounts can be used to log in to Firezone and access private resources."
               />
-            </div>
-            <div>
-              <.label for="last-name">
-                Last name
-              </.label>
-              <input
-                type="text"
-                name="last-name"
-                id="last-name"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                required=""
+              <.option
+                account={@account}
+                type={:service_account}
+                name="Service Account"
+                description="Service accounts can be used for headless clients or to access Firezone APIs."
               />
-            </div>
-            <div>
-              <.label for="email">
-                Email
-              </.label>
-              <input
-                aria-described-by="email-explanation"
-                type="email"
-                name="email"
-                id="email"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                required=""
-              />
-              <p id="email-explanation" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                We'll send a confirmation email to this address.
-              </p>
-            </div>
-            <div>
-              <.label for="confirm-email">
-                Confirm email
-              </.label>
-              <input
-                type="email"
-                name="confirm-email"
-                id="confirm-email"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                required=""
-              />
-            </div>
-            <div>
-              <.label for="user-role">
-                Role
-              </.label>
-              <select
-                aria-described-by="role-explanation"
-                id="user-role"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-              >
-                <option value="end-user">End user</option>
-                <option value="admin">Admin</option>
-              </select>
-              <p id="role-explanation" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                Select Admin to make this user an administrator of your organization.
-              </p>
-            </div>
-            <div>
-              <.label for="user-groups">
-                Groups
-              </.label>
-              <select
-                multiple
-                aria-described-by="groups-explanation"
-                id="user-groups"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-              >
-                <option value="engineering">Engineering</option>
-                <option value="devops">DevOps</option>
-              </select>
-              <p id="groups-explanation" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                Select one or more groups to allow this user access to resources.
-              </p>
-            </div>
+            </fieldset>
           </div>
-          <button
-            type="submit"
-            class="inline-flex items-center px-5 py-2.5 mt-4 sm:mt-6 text-sm font-medium text-center text-white bg-primary-700 rounded-lg focus:ring-4 focus:ring-primary-200 dark:focus:ring-primary-900 hover:bg-primary-800"
-          >
-            Add user
-          </button>
-        </form>
+          <div class="flex justify-end items-center space-x-4">
+            <button
+              type="submit"
+              class={[
+                "text-white bg-primary-700 hover:bg-primary-800",
+                "focus:ring-4 focus:outline-none focus:ring-primary-300",
+                "font-medium rounded-lg text-sm px-5 py-2.5 text-center",
+                "dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800"
+              ]}
+            >
+              Next: Create Actor
+            </button>
+          </div>
+        </.form>
       </div>
     </section>
     """
+  end
+
+  def option(assigns) do
+    ~H"""
+    <div>
+      <div class="flex items-center mb-4">
+        <input
+          id={"idp-option-#{@type}"}
+          type="radio"
+          name="next"
+          value={next_step_path(@type, @account)}
+          class={~w[
+            w-4 h-4 border-gray-300
+            focus:ring-2 focus:ring-blue-300
+            dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600
+          ]}
+          required
+        />
+        <label
+          for={"idp-option-#{@type}"}
+          class="block ml-2 text-lg font-medium text-gray-900 dark:text-gray-300"
+        >
+          <%= @name %>
+        </label>
+      </div>
+      <p class="ml-6 mb-6 text-sm text-gray-500 dark:text-gray-400">
+        <%= @description %>
+      </p>
+    </div>
+    """
+  end
+
+  def next_step_path(:service_account, account) do
+    ~p"/#{account}/actors/service_accounts/new"
+  end
+
+  def next_step_path(_other, account) do
+    ~p"/#{account}/actors/users/new"
   end
 end

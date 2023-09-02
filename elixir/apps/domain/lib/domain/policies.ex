@@ -53,7 +53,7 @@ defmodule Domain.Policies do
       {:one_of, [Authorizer.manage_policies_permission()]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      Policy.Changeset.create_changeset(attrs, subject)
+      Policy.Changeset.create(attrs, subject)
       |> Repo.insert()
     end
   end
@@ -64,7 +64,7 @@ defmodule Domain.Policies do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          :ok <- ensure_has_access_to(subject, policy) do
-      Policy.Changeset.update_changeset(policy, attrs)
+      Policy.Changeset.update(policy, attrs)
       |> Repo.update()
     end
   end
@@ -76,7 +76,7 @@ defmodule Domain.Policies do
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       Policy.Query.by_id(policy.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Policy.Changeset.delete_changeset/1)
+      |> Repo.fetch_and_update(with: &Policy.Changeset.delete/1)
     end
   end
 

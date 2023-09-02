@@ -3,7 +3,6 @@ defmodule API.Device.SocketTest do
   import API.Device.Socket, only: [id: 1]
   alias API.Device.Socket
   alias Domain.Auth
-  alias Domain.{AuthFixtures, DevicesFixtures}
 
   @connect_info %{
     user_agent: "iOS/12.7 (iPhone) connlib/0.1.1",
@@ -22,7 +21,7 @@ defmodule API.Device.SocketTest do
     end
 
     test "creates a new device" do
-      subject = AuthFixtures.create_subject()
+      subject = Fixtures.Auth.create_subject()
       {:ok, token} = Auth.create_session_token_from_subject(subject)
 
       attrs = connect_attrs(token: token)
@@ -38,8 +37,8 @@ defmodule API.Device.SocketTest do
     end
 
     test "updates existing device" do
-      subject = AuthFixtures.create_subject()
-      existing_device = DevicesFixtures.create_device(subject: subject)
+      subject = Fixtures.Auth.create_subject()
+      existing_device = Fixtures.Devices.create_device(subject: subject)
       {:ok, token} = Auth.create_session_token_from_subject(subject)
 
       attrs = connect_attrs(token: token, external_id: existing_device.external_id)
@@ -52,7 +51,7 @@ defmodule API.Device.SocketTest do
 
   describe "id/1" do
     test "creates a channel for a device" do
-      device = DevicesFixtures.create_device()
+      device = Fixtures.Devices.create_device()
       socket = socket(API.Device.Socket, "", %{device: device})
 
       assert id(socket) == "device:#{device.id}"
@@ -68,7 +67,7 @@ defmodule API.Device.SocketTest do
   end
 
   defp connect_attrs(attrs) do
-    DevicesFixtures.device_attrs()
+    Fixtures.Devices.device_attrs()
     |> Map.take(~w[external_id public_key]a)
     |> Map.merge(Enum.into(attrs, %{}))
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)

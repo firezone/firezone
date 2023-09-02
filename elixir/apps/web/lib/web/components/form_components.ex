@@ -25,6 +25,10 @@ defmodule Web.FormComponents do
   attr :label, :string, default: nil
   attr :value, :any
 
+  attr :value_id, :any,
+    default: nil,
+    doc: "the function for generating the value from the list of schemas for select inputs"
+
   attr :type, :string,
     default: "text",
     values: ~w(checkbox color date datetime-local email file hidden month number password
@@ -50,7 +54,21 @@ defmodule Web.FormComponents do
     |> assign(field: nil, id: assigns.id || field.id)
     |> assign(:errors, Enum.map(field.errors, &translate_error(&1)))
     |> assign_new(:name, fn -> if assigns.multiple, do: field.name <> "[]", else: field.name end)
-    |> assign_new(:value, fn -> field.value end)
+    |> assign_new(:value, fn ->
+      if assigns.value_id do
+        Enum.map(field.value, fn
+          %Ecto.Changeset{} = value ->
+            value
+            |> Ecto.Changeset.apply_changes()
+            |> assigns.value_id.()
+
+          value ->
+            assigns.value_id.(value)
+        end)
+      else
+        field.value
+      end
+    end)
     |> input()
   end
 
@@ -369,15 +387,20 @@ defmodule Web.FormComponents do
     </.add_button>
   """
   attr :navigate, :any, required: true, doc: "Path to navigate to"
+  attr :class, :string, default: ""
   slot :inner_block, required: true
 
   def add_button(assigns) do
     ~H"""
-    <.link navigate={@navigate} class={~w[
-        flex items-center justify-center text-white bg-primary-500 hover:bg-primary-600
-        focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-sm px-4 py-2
-        dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800
-      ]}>
+    <.link
+      navigate={@navigate}
+      class={[
+        "flex items-center justify-center text-white bg-primary-500 hover:bg-primary-600",
+        "focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-sm px-4 py-2",
+        "dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800",
+        @class
+      ]}
+    >
       <.icon name="hero-plus" class="h-3.5 w-3.5 mr-2" />
       <%= render_slot(@inner_block) %>
     </.link>

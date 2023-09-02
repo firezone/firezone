@@ -1,10 +1,8 @@
 defmodule Domain.AuthTest do
   use Domain.DataCase
   import Domain.Auth
-  alias Domain.ActorsFixtures
   alias Domain.Auth
   alias Domain.Auth.Authorizer
-  alias Domain.{AccountsFixtures, AuthFixtures}
 
   describe "list_provider_adapters/0" do
     test "returns list of enabled adapters for an account" do
@@ -27,19 +25,19 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when provider is deleted" do
-      account = AccountsFixtures.create_account()
-      AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Auth.create_userpass_provider(account: account)
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider(account: account)
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       identity =
-        AuthFixtures.create_identity(
-          actor_default_type: :account_admin_user,
+        Fixtures.Auth.create_identity(
+          actor: [type: :account_admin_user],
           account: account,
           provider: provider
         )
 
-      subject = AuthFixtures.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, _provider} = delete_provider(provider, subject)
 
       assert fetch_provider_by_id(provider.id) == {:error, :not_found}
@@ -47,7 +45,7 @@ defmodule Domain.AuthTest do
 
     test "returns provider" do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider()
+      provider = Fixtures.Auth.create_email_provider()
       assert {:ok, fetched_provider} = fetch_provider_by_id(provider.id)
       assert fetched_provider.id == provider.id
     end
@@ -55,10 +53,10 @@ defmodule Domain.AuthTest do
 
   describe "fetch_provider_by_id/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -78,14 +76,14 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when provider is deleted", %{account: account, subject: subject} do
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       {:ok, _provider} = delete_provider(provider, subject)
 
       assert fetch_provider_by_id(provider.id, subject) == {:error, :not_found}
     end
 
     test "returns provider", %{account: account, subject: subject} do
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       assert {:ok, fetched_provider} = fetch_provider_by_id(provider.id, subject)
       assert fetched_provider.id == provider.id
     end
@@ -93,10 +91,10 @@ defmodule Domain.AuthTest do
 
   describe "fetch_active_provider_by_id/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -116,20 +114,20 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when provider is disabled", %{account: account, subject: subject} do
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       {:ok, _provider} = disable_provider(provider, subject)
       assert fetch_active_provider_by_id(provider.id, subject) == {:error, :not_found}
     end
 
     test "returns error when provider is deleted", %{account: account, subject: subject} do
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       {:ok, _provider} = delete_provider(provider, subject)
 
       assert fetch_active_provider_by_id(provider.id, subject) == {:error, :not_found}
     end
 
     test "returns provider", %{account: account, subject: subject} do
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       assert {:ok, fetched_provider} = fetch_active_provider_by_id(provider.id, subject)
       assert fetched_provider.id == provider.id
     end
@@ -141,38 +139,45 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when provider is disabled" do
-      account = AccountsFixtures.create_account()
-      AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Auth.create_userpass_provider(account: account)
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider(account: account)
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       identity =
-        AuthFixtures.create_identity(
-          actor_default_type: :account_admin_user,
+        Fixtures.Auth.create_identity(
+          actor: [
+            type: :account_admin_user
+          ],
           account: account,
           provider: provider
         )
 
-      subject = AuthFixtures.create_subject(identity)
+      subject =
+        Fixtures.Auth.create_subject(
+          identity: identity,
+          actor: [type: :account_admin_user]
+        )
+
       {:ok, _provider} = disable_provider(provider, subject)
 
       assert fetch_active_provider_by_id(provider.id) == {:error, :not_found}
     end
 
     test "returns error when provider is deleted" do
-      account = AccountsFixtures.create_account()
-      AuthFixtures.create_userpass_provider(account: account)
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Auth.create_userpass_provider(account: account)
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider(account: account)
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       identity =
-        AuthFixtures.create_identity(
-          actor_default_type: :account_admin_user,
+        Fixtures.Auth.create_identity(
+          actor: [type: :account_admin_user],
           account: account,
           provider: provider
         )
 
-      subject = AuthFixtures.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, _provider} = delete_provider(provider, subject)
 
       assert fetch_active_provider_by_id(provider.id) == {:error, :not_found}
@@ -180,7 +185,7 @@ defmodule Domain.AuthTest do
 
     test "returns provider" do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider()
+      provider = Fixtures.Auth.create_email_provider()
       assert {:ok, fetched_provider} = fetch_active_provider_by_id(provider.id)
       assert fetched_provider.id == provider.id
     end
@@ -188,21 +193,21 @@ defmodule Domain.AuthTest do
 
   describe "list_providers_for_account/2" do
     test "returns all not soft-deleted providers for a given account" do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      AuthFixtures.create_userpass_provider(account: account)
-      email_provider = AuthFixtures.create_email_provider(account: account)
-      token_provider = AuthFixtures.create_token_provider(account: account)
+      Fixtures.Auth.create_userpass_provider(account: account)
+      email_provider = Fixtures.Auth.create_email_provider(account: account)
+      token_provider = Fixtures.Auth.create_token_provider(account: account)
 
       identity =
-        AuthFixtures.create_identity(
-          actor_default_type: :account_admin_user,
+        Fixtures.Auth.create_identity(
+          actor: [type: :account_admin_user],
           account: account,
           provider: email_provider
         )
 
-      subject = AuthFixtures.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       {:ok, _provider} = disable_provider(token_provider, subject)
       {:ok, _provider} = delete_provider(email_provider, subject)
@@ -212,13 +217,13 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when subject can not manage providers" do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       identity =
-        AuthFixtures.create_identity(actor_default_type: :account_admin_user, account: account)
+        Fixtures.Auth.create_identity(actor: [type: :account_admin_user], account: account)
 
-      subject = AuthFixtures.create_subject(identity)
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert list_providers_for_account(account, subject) ==
                {:error,
@@ -228,21 +233,21 @@ defmodule Domain.AuthTest do
 
   describe "list_active_providers_for_account/1" do
     test "returns active providers for a given account" do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      userpass_provider = AuthFixtures.create_userpass_provider(account: account)
-      email_provider = AuthFixtures.create_email_provider(account: account)
-      token_provider = AuthFixtures.create_token_provider(account: account)
+      userpass_provider = Fixtures.Auth.create_userpass_provider(account: account)
+      email_provider = Fixtures.Auth.create_email_provider(account: account)
+      token_provider = Fixtures.Auth.create_token_provider(account: account)
 
       identity =
-        AuthFixtures.create_identity(
-          actor_default_type: :account_admin_user,
+        Fixtures.Auth.create_identity(
+          actor: [type: :account_admin_user],
           account: account,
           provider: email_provider
         )
 
-      subject = AuthFixtures.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       {:ok, _provider} = disable_provider(token_provider, subject)
       {:ok, _provider} = delete_provider(email_provider, subject)
@@ -252,12 +257,129 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "list_providers_pending_token_refresh_by_adapter/1" do
+    test "returns empty list if there are no providers for an adapter" do
+      assert list_providers_pending_token_refresh_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "returns empty list if there are no providers with token that will expire soon" do
+      Fixtures.Auth.start_and_create_google_workspace_provider()
+      assert list_providers_pending_token_refresh_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "ignores disabled providers" do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      Domain.Fixture.update!(provider, %{
+        disabled_at: DateTime.utc_now(),
+        adapter_state: %{
+          "expires_at" => DateTime.utc_now()
+        }
+      })
+
+      assert list_providers_pending_token_refresh_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "ignores non-custom provisioners" do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      Domain.Fixture.update!(provider, %{
+        provisioner: :manual,
+        adapter_state: %{
+          "expires_at" => DateTime.utc_now()
+        }
+      })
+
+      assert list_providers_pending_token_refresh_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "returns providers with tokens that will expire in ~1 hour" do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      Domain.Fixture.update!(provider, %{
+        adapter_state: %{
+          "access_token" => "OIDC_ACCESS_TOKEN",
+          "refresh_token" => "OIDC_REFRESH_TOKEN",
+          "expires_at" => DateTime.utc_now() |> DateTime.add(58, :minute),
+          "claims" => "openid email profile offline_access"
+        }
+      })
+
+      assert {:ok, [fetched_provider]} =
+               list_providers_pending_token_refresh_by_adapter(:google_workspace)
+
+      assert fetched_provider.id == provider.id
+    end
+  end
+
+  describe "list_providers_pending_sync_by_adapter/1" do
+    test "returns empty list if there are no providers for an adapter" do
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "returns empty list if there are no providers that synced more than 10m ago" do
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
+      Domain.Fixture.update!(provider, %{last_synced_at: DateTime.utc_now()})
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "ignores disabled providers" do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      Domain.Fixture.update!(provider, %{
+        disabled_at: DateTime.utc_now(),
+        adapter_state: %{
+          "expires_at" => DateTime.utc_now()
+        }
+      })
+
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "ignores non-custom provisioners" do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      Domain.Fixture.update!(provider, %{
+        provisioner: :manual,
+        adapter_state: %{
+          "expires_at" => DateTime.utc_now()
+        }
+      })
+
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+    end
+
+    test "returns providers with tokens that synced more than 10m ago" do
+      {provider1, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
+      {provider2, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      eleven_minutes_ago = DateTime.utc_now() |> DateTime.add(-11, :minute)
+      Domain.Fixture.update!(provider2, %{last_synced_at: eleven_minutes_ago})
+
+      assert {:ok, providers} =
+               list_providers_pending_sync_by_adapter(:google_workspace)
+
+      assert Enum.map(providers, & &1.id) |> Enum.sort() ==
+               Enum.sort([provider1.id, provider2.id])
+    end
+  end
+
   describe "new_provider/2" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
-      {bypass, [provider_adapter_config]} =
-        AuthFixtures.start_openid_providers(["google"])
+      bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
+
+      provider_adapter_config =
+        Fixtures.Auth.openid_connect_adapter_config(
+          discovery_document_uri:
+            "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+        )
 
       %{
         account: account,
@@ -275,7 +397,7 @@ defmodule Domain.AuthTest do
       assert changeset.changes == %{account_id: account.id, created_by: :system}
 
       provider_attrs =
-        AuthFixtures.provider_attrs(
+        Fixtures.Auth.provider_attrs(
           adapter: :openid_connect,
           adapter_config: provider_adapter_config
         )
@@ -293,7 +415,7 @@ defmodule Domain.AuthTest do
 
   describe "create_provider/2" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       %{
         account: account
@@ -318,7 +440,7 @@ defmodule Domain.AuthTest do
       account: account
     } do
       attrs =
-        AuthFixtures.provider_attrs(
+        Fixtures.Auth.provider_attrs(
           name: String.duplicate("A", 256),
           adapter: :foo,
           adapter_config: :bar
@@ -338,8 +460,8 @@ defmodule Domain.AuthTest do
       account: account
     } do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      AuthFixtures.create_email_provider(account: account)
-      attrs = AuthFixtures.provider_attrs(adapter: :email)
+      Fixtures.Auth.create_email_provider(account: account)
+      attrs = Fixtures.Auth.provider_attrs(adapter: :email)
       assert {:error, changeset} = create_provider(account, attrs)
       refute changeset.valid?
       assert errors_on(changeset) == %{base: ["this provider is already enabled"]}
@@ -348,8 +470,8 @@ defmodule Domain.AuthTest do
     test "returns error if userpass provider is already enabled", %{
       account: account
     } do
-      AuthFixtures.create_userpass_provider(account: account)
-      attrs = AuthFixtures.provider_attrs(adapter: :userpass)
+      Fixtures.Auth.create_userpass_provider(account: account)
+      attrs = Fixtures.Auth.provider_attrs(adapter: :userpass)
       assert {:error, changeset} = create_provider(account, attrs)
       refute changeset.valid?
       assert errors_on(changeset) == %{base: ["this provider is already enabled"]}
@@ -358,8 +480,8 @@ defmodule Domain.AuthTest do
     test "returns error if token provider is already enabled", %{
       account: account
     } do
-      AuthFixtures.create_token_provider(account: account)
-      attrs = AuthFixtures.provider_attrs(adapter: :token)
+      Fixtures.Auth.create_token_provider(account: account)
+      attrs = Fixtures.Auth.provider_attrs(adapter: :token)
       assert {:error, changeset} = create_provider(account, attrs)
       refute changeset.valid?
       assert errors_on(changeset) == %{base: ["this provider is already enabled"]}
@@ -369,11 +491,10 @@ defmodule Domain.AuthTest do
       account: account
     } do
       {provider, _bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
       attrs =
-        AuthFixtures.provider_attrs(
+        Fixtures.Auth.provider_attrs(
           adapter: :openid_connect,
           adapter_config: provider.adapter_config,
           provisioner: :just_in_time
@@ -387,7 +508,7 @@ defmodule Domain.AuthTest do
     test "creates a provider", %{
       account: account
     } do
-      attrs = AuthFixtures.provider_attrs()
+      attrs = Fixtures.Auth.provider_attrs()
 
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
@@ -409,7 +530,7 @@ defmodule Domain.AuthTest do
       account: account
     } do
       Domain.Config.put_system_env_override(:outbound_email_adapter, nil)
-      attrs = AuthFixtures.provider_attrs()
+      attrs = Fixtures.Auth.provider_attrs()
 
       assert {:error, changeset} = create_provider(account, attrs)
       assert errors_on(changeset) == %{adapter: ["email adapter is not configured"]}
@@ -418,7 +539,7 @@ defmodule Domain.AuthTest do
 
   describe "create_provider/3" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       %{
         account: account
@@ -429,8 +550,8 @@ defmodule Domain.AuthTest do
       account: account
     } do
       subject =
-        AuthFixtures.create_subject()
-        |> AuthFixtures.remove_permissions()
+        Fixtures.Auth.create_subject()
+        |> Fixtures.Auth.remove_permissions()
 
       assert create_provider(account, %{}, subject) ==
                {:error,
@@ -440,21 +561,21 @@ defmodule Domain.AuthTest do
     test "returns error when subject tries to create a provider in another account", %{
       account: other_account
     } do
-      account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert create_provider(other_account, %{}, subject) == {:error, :unauthorized}
     end
 
     test "persists identity that created the provider", %{account: account} do
-      attrs = AuthFixtures.provider_attrs()
+      attrs = Fixtures.Auth.provider_attrs()
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
-      actor = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert {:ok, provider} = create_provider(account, attrs, subject)
 
@@ -465,11 +586,10 @@ defmodule Domain.AuthTest do
 
   describe "change_provider/2" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       {provider, bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_google_workspace_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
       %{
         account: account,
@@ -479,7 +599,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns changeset with given changes", %{provider: provider} do
-      provider_attrs = AuthFixtures.provider_attrs()
+      provider_attrs = Fixtures.Auth.provider_attrs()
 
       assert changeset = change_provider(provider, provider_attrs)
       assert %Ecto.Changeset{data: %Domain.Auth.Provider{}} = changeset
@@ -490,14 +610,13 @@ defmodule Domain.AuthTest do
 
   describe "update_provider/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       {provider, bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_google_workspace_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
       %{
         account: account,
@@ -528,7 +647,7 @@ defmodule Domain.AuthTest do
       subject: subject
     } do
       attrs =
-        AuthFixtures.provider_attrs(
+        Fixtures.Auth.provider_attrs(
           name: String.duplicate("A", 256),
           adapter: :foo,
           adapter_config: :bar,
@@ -550,8 +669,9 @@ defmodule Domain.AuthTest do
       subject: subject
     } do
       attrs =
-        AuthFixtures.provider_attrs(
-          provisioner: :custom,
+        Fixtures.Auth.provider_attrs(
+          provisioner: :just_in_time,
+          adapter: :foobar,
           adapter_config: %{
             client_id: "foo"
           }
@@ -572,7 +692,7 @@ defmodule Domain.AuthTest do
       provider: provider,
       subject: subject
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert update_provider(provider, %{}, subject) ==
                {:error,
@@ -582,10 +702,10 @@ defmodule Domain.AuthTest do
     test "returns error when subject tries to update an account in another account", %{
       provider: provider
     } do
-      account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert update_provider(provider, %{}, subject) == {:error, :not_found}
     end
@@ -593,19 +713,19 @@ defmodule Domain.AuthTest do
 
   describe "disable_provider/2" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider(account: account)
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
-        ActorsFixtures.create_actor(
+        Fixtures.Actors.create_actor(
           type: :account_admin_user,
           account: account,
           provider: provider
         )
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -620,7 +740,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      other_provider = AuthFixtures.create_userpass_provider(account: account)
+      other_provider = Fixtures.Auth.create_userpass_provider(account: account)
 
       assert {:ok, provider} = disable_provider(provider, subject)
       assert provider.disabled_at
@@ -643,7 +763,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      AuthFixtures.create_email_provider()
+      Fixtures.Auth.create_email_provider()
 
       assert disable_provider(provider, subject) == {:error, :cant_disable_the_last_provider}
     end
@@ -653,7 +773,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      other_provider = AuthFixtures.create_userpass_provider(account: account)
+      other_provider = Fixtures.Auth.create_userpass_provider(account: account)
       {:ok, _other_provider} = disable_provider(other_provider, subject)
 
       assert disable_provider(provider, subject) == {:error, :cant_disable_the_last_provider}
@@ -666,26 +786,26 @@ defmodule Domain.AuthTest do
         Task.async(fn ->
           allow_child_sandbox_access(test_pid)
 
-          account = AccountsFixtures.create_account()
+          account = Fixtures.Accounts.create_account()
 
-          provider_one = AuthFixtures.create_email_provider(account: account)
-          provider_two = AuthFixtures.create_userpass_provider(account: account)
+          provider_one = Fixtures.Auth.create_email_provider(account: account)
+          provider_two = Fixtures.Auth.create_userpass_provider(account: account)
 
           actor =
-            ActorsFixtures.create_actor(
+            Fixtures.Actors.create_actor(
               type: :account_admin_user,
               account: account,
               provider: provider_one
             )
 
           identity =
-            AuthFixtures.create_identity(
+            Fixtures.Auth.create_identity(
               account: account,
               actor: actor,
               provider: provider_one
             )
 
-          subject = AuthFixtures.create_subject(identity)
+          subject = Fixtures.Auth.create_subject(identity: identity)
 
           for provider <- [provider_two, provider_one] do
             Task.async(fn ->
@@ -709,7 +829,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       account: account
     } do
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       assert {:ok, _provider} = disable_provider(provider, subject)
       assert {:ok, provider} = disable_provider(provider, subject)
       assert {:ok, _provider} = disable_provider(provider, subject)
@@ -718,7 +838,7 @@ defmodule Domain.AuthTest do
     test "does not allow to disable providers in other accounts", %{
       subject: subject
     } do
-      provider = AuthFixtures.create_userpass_provider()
+      provider = Fixtures.Auth.create_userpass_provider()
       assert disable_provider(provider, subject) == {:error, :not_found}
     end
 
@@ -726,7 +846,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert disable_provider(provider, subject) ==
                {:error,
@@ -736,13 +856,13 @@ defmodule Domain.AuthTest do
 
   describe "enable_provider/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider(account: account)
+      provider = Fixtures.Auth.create_email_provider(account: account)
       {:ok, provider} = disable_provider(provider, subject)
 
       %{
@@ -777,7 +897,7 @@ defmodule Domain.AuthTest do
       subject: subject
     } do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider()
+      provider = Fixtures.Auth.create_email_provider()
       assert enable_provider(provider, subject) == {:error, :not_found}
     end
 
@@ -785,7 +905,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert enable_provider(provider, subject) ==
                {:error,
@@ -795,19 +915,19 @@ defmodule Domain.AuthTest do
 
   describe "delete_provider/2" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider(account: account)
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
-        ActorsFixtures.create_actor(
+        Fixtures.Actors.create_actor(
           type: :account_admin_user,
           account: account,
           provider: provider
         )
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -822,7 +942,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      other_provider = AuthFixtures.create_userpass_provider(account: account)
+      other_provider = Fixtures.Auth.create_userpass_provider(account: account)
 
       assert {:ok, provider} = delete_provider(provider, subject)
       assert provider.deleted_at
@@ -835,9 +955,11 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when trying to delete the last provider", %{
+      account: account,
       subject: subject,
       provider: provider
     } do
+      Fixtures.Auth.create_token_provider(account: account)
       assert delete_provider(provider, subject) == {:error, :cant_delete_the_last_provider}
     end
 
@@ -845,7 +967,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      AuthFixtures.create_email_provider()
+      Fixtures.Auth.create_email_provider()
 
       assert delete_provider(provider, subject) == {:error, :cant_delete_the_last_provider}
     end
@@ -855,7 +977,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      other_provider = AuthFixtures.create_userpass_provider(account: account)
+      other_provider = Fixtures.Auth.create_userpass_provider(account: account)
       {:ok, _other_provider} = delete_provider(other_provider, subject)
 
       assert delete_provider(provider, subject) == {:error, :cant_delete_the_last_provider}
@@ -868,26 +990,26 @@ defmodule Domain.AuthTest do
         Task.async(fn ->
           allow_child_sandbox_access(test_pid)
 
-          account = AccountsFixtures.create_account()
+          account = Fixtures.Accounts.create_account()
 
-          provider_one = AuthFixtures.create_email_provider(account: account)
-          provider_two = AuthFixtures.create_userpass_provider(account: account)
+          provider_one = Fixtures.Auth.create_email_provider(account: account)
+          provider_two = Fixtures.Auth.create_userpass_provider(account: account)
 
           actor =
-            ActorsFixtures.create_actor(
+            Fixtures.Actors.create_actor(
               type: :account_admin_user,
               account: account,
               provider: provider_one
             )
 
           identity =
-            AuthFixtures.create_identity(
+            Fixtures.Auth.create_identity(
               account: account,
               actor: actor,
               provider: provider_one
             )
 
-          subject = AuthFixtures.create_subject(identity)
+          subject = Fixtures.Auth.create_subject(identity: identity)
 
           for provider <- [provider_two, provider_one] do
             Task.async(fn ->
@@ -907,7 +1029,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       account: account
     } do
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       assert {:ok, deleted_provider} = delete_provider(provider, subject)
       assert delete_provider(provider, subject) == {:error, :not_found}
       assert delete_provider(deleted_provider, subject) == {:error, :not_found}
@@ -916,7 +1038,7 @@ defmodule Domain.AuthTest do
     test "does not allow to delete providers in other accounts", %{
       subject: subject
     } do
-      provider = AuthFixtures.create_userpass_provider()
+      provider = Fixtures.Auth.create_userpass_provider()
       assert delete_provider(provider, subject) == {:error, :not_found}
     end
 
@@ -924,7 +1046,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert delete_provider(provider, subject) ==
                {:error,
@@ -934,7 +1056,7 @@ defmodule Domain.AuthTest do
 
   describe "fetch_provider_capabilities!/1" do
     test "returns provider capabilities" do
-      provider = AuthFixtures.create_userpass_provider()
+      provider = Fixtures.Auth.create_userpass_provider()
 
       assert fetch_provider_capabilities!(provider) == [
                provisioners: [:manual],
@@ -950,7 +1072,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns identity" do
-      identity = AuthFixtures.create_identity()
+      identity = Fixtures.Auth.create_identity()
       assert {:ok, fetched_identity} = fetch_identity_by_id(identity.id)
       assert fetched_identity.id == identity.id
     end
@@ -958,22 +1080,20 @@ defmodule Domain.AuthTest do
 
   describe "fetch_identities_count_grouped_by_provider_id/1" do
     test "returns count of actor identities by provider id" do
-      account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       {google_provider, _bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account, name: "google")
 
       {vault_provider, _bypass} =
-        AuthFixtures.start_openid_providers(["vault"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account, name: "vault")
 
-      AuthFixtures.create_identity(account: account, provider: google_provider)
-      AuthFixtures.create_identity(account: account, provider: vault_provider)
-      AuthFixtures.create_identity(account: account, provider: vault_provider)
+      Fixtures.Auth.create_identity(account: account, provider: google_provider)
+      Fixtures.Auth.create_identity(account: account, provider: vault_provider)
+      Fixtures.Auth.create_identity(account: account, provider: vault_provider)
 
       assert fetch_identities_count_grouped_by_provider_id(subject) ==
                {:ok,
@@ -985,21 +1105,206 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "sync_provider_identities_multi/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      %{account: account, provider: provider, bypass: bypass}
+    end
+
+    test "upserts new identities and actors", %{provider: provider} do
+      attrs_list = [
+        %{
+          "actor" => %{
+            "name" => "Brian Manifold",
+            "type" => "account_user"
+          },
+          "provider_identifier" => "USER_ID1"
+        },
+        %{
+          "actor" => %{
+            "name" => "Jennie Smith",
+            "type" => "account_user"
+          },
+          "provider_identifier" => "USER_ID2"
+        }
+      ]
+
+      provider_identifiers = Enum.map(attrs_list, & &1["provider_identifier"])
+      actor_names = Enum.map(attrs_list, & &1["actor"]["name"])
+
+      multi = sync_provider_identities_multi(provider, attrs_list)
+
+      assert {:ok,
+              %{
+                plan_identities: {insert, []},
+                insert_identities: [_actor1, _actor2],
+                delete_identities: {0, nil}
+              }} = Repo.transaction(multi)
+
+      assert Enum.all?(provider_identifiers, &(&1 in insert))
+
+      identities = Auth.Identity |> Repo.all() |> Repo.preload(:actor)
+      assert length(identities) == 2
+
+      for identity <- identities do
+        assert identity.inserted_at
+        assert identity.created_by == :provider
+        assert identity.provider_id == provider.id
+        assert identity.provider_identifier in provider_identifiers
+        assert identity.actor.name in actor_names
+        assert identity.actor.last_synced_at
+      end
+    end
+
+    test "ignores updates to existing identities", %{account: account, provider: provider} do
+      Fixtures.Auth.create_identity(
+        account: account,
+        provider: provider,
+        provider_identifier: "USER_ID1"
+      )
+
+      Fixtures.Auth.create_identity(
+        account: account,
+        provider: provider,
+        provider_identifier: "USER_ID2"
+      )
+
+      attrs_list = [
+        %{
+          "actor" => %{
+            "name" => "Brian Manifold",
+            "type" => "account_user"
+          },
+          "provider_identifier" => "USER_ID1"
+        },
+        %{
+          "actor" => %{
+            "name" => "Jennie Smith",
+            "type" => "account_user"
+          },
+          "provider_identifier" => "USER_ID2"
+        }
+      ]
+
+      multi = sync_provider_identities_multi(provider, attrs_list)
+
+      assert {:ok,
+              %{
+                plan_identities: {[], []},
+                delete_identities: {0, nil},
+                insert_identities: []
+              }} = Repo.transaction(multi)
+    end
+
+    test "deletes removed identities", %{account: account, provider: provider} do
+      provider_identifiers = ["USER_ID1", "USER_ID2"]
+
+      Fixtures.Auth.create_identity(
+        account: account,
+        provider: provider,
+        provider_identifier: Enum.at(provider_identifiers, 0)
+      )
+
+      Fixtures.Auth.create_identity(
+        account: account,
+        provider: provider,
+        provider_identifier: Enum.at(provider_identifiers, 1)
+      )
+
+      attrs_list = []
+
+      multi = sync_provider_identities_multi(provider, attrs_list)
+
+      assert {:ok,
+              %{
+                plan_identities: {[], delete},
+                delete_identities: {2, nil},
+                insert_identities: []
+              }} = Repo.transaction(multi)
+
+      assert Enum.all?(provider_identifiers, &(&1 in delete))
+      assert Repo.aggregate(Auth.Identity, :count) == 2
+      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 0
+    end
+
+    test "ignores identities that are not synced from the provider", %{
+      account: account,
+      provider: provider
+    } do
+      {other_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      Fixtures.Auth.create_identity(
+        account: account,
+        provider: other_provider,
+        provider_identifier: "USER_ID1"
+      )
+
+      Fixtures.Auth.create_identity(
+        account: account,
+        provider_identifier: "USER_ID2"
+      )
+
+      attrs_list = []
+
+      multi = sync_provider_identities_multi(provider, attrs_list)
+
+      assert Repo.transaction(multi) ==
+               {:ok,
+                %{
+                  identities: [],
+                  plan_identities: {[], []},
+                  delete_identities: {0, nil},
+                  insert_identities: []
+                }}
+    end
+
+    test "returns error on invalid attrs", %{
+      provider: provider
+    } do
+      attrs_list = [
+        %{
+          "actor" => %{},
+          "provider_identifier" => "USER_ID2"
+        }
+      ]
+
+      multi = sync_provider_identities_multi(provider, attrs_list)
+
+      assert {:error, :insert_identities, changeset, _effects_so_far} = Repo.transaction(multi)
+
+      assert errors_on(changeset) == %{
+               actor: %{
+                 name: ["can't be blank"],
+                 type: ["can't be blank"]
+               }
+             }
+
+      assert Repo.aggregate(Auth.Identity, :count) == 0
+      assert Repo.aggregate(Domain.Actors.Actor, :count) == 0
+    end
+  end
+
   describe "upsert_identity/3" do
     test "creates an identity" do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider(account: account)
-      provider_identifier = AuthFixtures.random_provider_identifier(provider)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
 
       actor =
-        ActorsFixtures.create_actor(
+        Fixtures.Actors.create_actor(
           type: :account_admin_user,
           account: account,
           provider: provider
         )
 
-      assert {:ok, identity} = upsert_identity(actor, provider, provider_identifier)
+      attrs = %{provider_identifier: provider_identifier}
+      assert {:ok, identity} = upsert_identity(actor, provider, attrs)
 
       assert identity.provider_id == provider.id
       assert identity.provider_identifier == provider_identifier
@@ -1013,43 +1318,236 @@ defmodule Domain.AuthTest do
       assert is_nil(identity.deleted_at)
     end
 
-    test "returns error when identifier is invalid" do
-      account = AccountsFixtures.create_account()
+    test "updates existing identity" do
+      account = Fixtures.Accounts.create_account()
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider(account: account)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
+      actor = Fixtures.Actors.create_actor(account: account, provider: provider)
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: provider_identifier,
+          actor: actor,
+          provider_state: %{"foo" => "bar"}
+        )
+
+      attrs = %{provider_identifier: provider_identifier}
+      assert {:ok, updated_identity} = upsert_identity(actor, provider, attrs)
+
+      assert Repo.aggregate(Auth.Identity, :count) == 1
+
+      assert updated_identity.provider_state != identity.provider_state
+    end
+
+    test "returns error when identifier is invalid" do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
-        ActorsFixtures.create_actor(
+        Fixtures.Actors.create_actor(
           type: :account_admin_user,
           account: account,
           provider: provider
         )
 
-      provider_identifier = Ecto.UUID.generate()
-      assert {:error, changeset} = upsert_identity(actor, provider, provider_identifier)
+      attrs = %{provider_identifier: Ecto.UUID.generate()}
+      assert {:error, changeset} = upsert_identity(actor, provider, attrs)
       assert errors_on(changeset) == %{provider_identifier: ["is an invalid email address"]}
 
-      provider_identifier = nil
-      assert {:error, changeset} = upsert_identity(actor, provider, provider_identifier)
+      attrs = %{provider_identifier: nil}
+      assert {:error, changeset} = upsert_identity(actor, provider, attrs)
       assert errors_on(changeset) == %{provider_identifier: ["can't be blank"]}
+    end
+  end
+
+  describe "new_identity/3" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+
+      %{
+        account: account,
+        provider: provider,
+        actor: actor
+      }
+    end
+
+    test "returns changeset with given changes", %{
+      account: account,
+      provider: provider,
+      actor: actor
+    } do
+      account_id = account.id
+      actor_id = actor.id
+      provider_id = provider.id
+
+      assert changeset = new_identity(actor, provider, %{})
+      assert %Ecto.Changeset{data: %Domain.Auth.Identity{}} = changeset
+
+      assert %{
+               account_id: ^account_id,
+               actor_id: ^actor_id,
+               provider_id: ^provider_id,
+               provider_state: %{},
+               provider_virtual_state: %{}
+             } = changeset.changes
+
+      identity_attrs = Fixtures.Auth.identity_attrs()
+
+      assert changeset = new_identity(actor, provider, identity_attrs)
+      assert %Ecto.Changeset{data: %Domain.Auth.Identity{}} = changeset
+
+      assert %{
+               account_id: ^account_id,
+               actor_id: ^actor_id,
+               provider_id: ^provider_id,
+               provider_state: %{},
+               provider_virtual_state: %{},
+               created_by: :system
+             } = changeset.changes
+    end
+  end
+
+  describe "create_identity/4" do
+    test "creates an identity" do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      subject = Fixtures.Auth.create_subject(actor: actor)
+
+      attrs = %{provider_identifier: provider_identifier}
+      assert {:ok, _identity} = create_identity(actor, provider, attrs, subject)
+    end
+
+    test "returns error on missing permissions" do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      subject =
+        Fixtures.Auth.create_subject(actor: actor)
+        |> Fixtures.Auth.remove_permissions()
+
+      assert create_identity(actor, provider, %{}, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Authorizer.manage_identities_permission()]]}}
+    end
+  end
+
+  describe "create_identity/3" do
+    test "creates an identity" do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      password = "Firezone1234"
+
+      attrs = %{
+        provider_identifier: provider_identifier,
+        provider_virtual_state: %{"password" => password, "password_confirmation" => password}
+      }
+
+      assert {:ok, identity} = create_identity(actor, provider, attrs)
+
+      assert identity.provider_id == provider.id
+      assert identity.provider_identifier == provider_identifier
+      assert identity.actor_id == actor.id
+
+      assert %Ecto.Changeset{} = identity.provider_virtual_state
+
+      assert %{"password_hash" => _} = identity.provider_state
+      assert %{password_hash: _} = identity.provider_virtual_state.changes
+      assert identity.account_id == provider.account_id
+      assert is_nil(identity.deleted_at)
+    end
+
+    test "returns error when identifier is invalid" do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      attrs = %{provider_identifier: Ecto.UUID.generate()}
+      assert {:error, changeset} = create_identity(actor, provider, attrs)
+      assert errors_on(changeset) == %{provider_identifier: ["is an invalid email address"]}
+
+      attrs = %{provider_identifier: nil}
+      assert {:error, changeset} = create_identity(actor, provider, attrs)
+      assert errors_on(changeset) == %{provider_identifier: ["can't be blank"]}
+    end
+
+    test "updates existing identity" do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
+      actor = Fixtures.Actors.create_actor(account: account, provider: provider)
+
+      Fixtures.Auth.create_identity(
+        account: account,
+        provider: provider,
+        provider_identifier: provider_identifier,
+        actor: actor,
+        provider_state: %{"foo" => "bar"}
+      )
+
+      attrs = %{provider_identifier: provider_identifier}
+      assert {:error, changeset} = create_identity(actor, provider, attrs)
+      assert errors_on(changeset) == %{provider_identifier: ["has already been taken"]}
     end
   end
 
   describe "replace_identity/3" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider(account: account)
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
-        ActorsFixtures.create_actor(
+        Fixtures.Actors.create_actor(
           type: :account_admin_user,
           account: account,
           provider: provider
         )
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -1062,20 +1560,21 @@ defmodule Domain.AuthTest do
 
     test "returns error when identity is deleted", %{identity: identity, subject: subject} do
       {:ok, _identity} = delete_identity(identity, subject)
+      attrs = %{provider_identifier: Ecto.UUID.generate()}
 
-      assert replace_identity(identity, Ecto.UUID.generate(), subject) == {:error, :not_found}
+      assert replace_identity(identity, attrs, subject) == {:error, :not_found}
     end
 
     test "replaces existing identity with a new one", %{
       identity: identity,
       subject: subject
     } do
-      provider_identifier = Ecto.UUID.generate()
-      assert {:error, changeset} = replace_identity(identity, provider_identifier, subject)
+      attrs = %{provider_identifier: Ecto.UUID.generate()}
+      assert {:error, changeset} = replace_identity(identity, attrs, subject)
       assert errors_on(changeset) == %{provider_identifier: ["is an invalid email address"]}
 
-      provider_identifier = nil
-      assert {:error, changeset} = replace_identity(identity, provider_identifier, subject)
+      attrs = %{provider_identifier: nil}
+      assert {:error, changeset} = replace_identity(identity, attrs, subject)
       assert errors_on(changeset) == %{provider_identifier: ["can't be blank"]}
 
       refute Repo.get(Auth.Identity, identity.id).deleted_at
@@ -1086,11 +1585,11 @@ defmodule Domain.AuthTest do
       provider: provider,
       subject: subject
     } do
-      provider_identifier = AuthFixtures.random_provider_identifier(provider)
+      attrs = %{provider_identifier: Fixtures.Auth.random_provider_identifier(provider)}
 
-      assert {:ok, new_identity} = replace_identity(identity, provider_identifier, subject)
+      assert {:ok, new_identity} = replace_identity(identity, attrs, subject)
 
-      assert new_identity.provider_identifier == provider_identifier
+      assert new_identity.provider_identifier == attrs.provider_identifier
       assert new_identity.provider_id == identity.provider_id
       assert new_identity.actor_id == identity.actor_id
 
@@ -1108,9 +1607,10 @@ defmodule Domain.AuthTest do
       identity: identity,
       subject: subject
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
+      attrs = %{provider_identifier: Ecto.UUID.generate()}
 
-      assert replace_identity(identity, Ecto.UUID.generate(), subject) ==
+      assert replace_identity(identity, attrs, subject) ==
                {:error,
                 {:unauthorized,
                  [
@@ -1127,19 +1627,19 @@ defmodule Domain.AuthTest do
 
   describe "delete_identity/2" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider(account: account)
+      provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
-        ActorsFixtures.create_actor(
+        Fixtures.Actors.create_actor(
           type: :account_admin_user,
           account: account,
           provider: provider
         )
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -1155,7 +1655,7 @@ defmodule Domain.AuthTest do
       actor: actor,
       subject: subject
     } do
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
       assert {:ok, deleted_identity} = delete_identity(identity, subject)
 
@@ -1170,13 +1670,13 @@ defmodule Domain.AuthTest do
       provider: provider,
       subject: subject
     } do
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
       subject =
         subject
-        |> AuthFixtures.remove_permissions()
-        |> AuthFixtures.add_permission(Authorizer.manage_own_identities_permission())
-        |> AuthFixtures.add_permission(Authorizer.manage_identities_permission())
+        |> Fixtures.Auth.remove_permissions()
+        |> Fixtures.Auth.add_permission(Authorizer.manage_own_identities_permission())
+        |> Fixtures.Auth.add_permission(Authorizer.manage_identities_permission())
 
       assert {:ok, deleted_identity} = delete_identity(identity, subject)
 
@@ -1189,12 +1689,12 @@ defmodule Domain.AuthTest do
     test "does not delete identity that belongs to another actor with manage_own permission", %{
       subject: subject
     } do
-      identity = AuthFixtures.create_identity()
+      identity = Fixtures.Auth.create_identity()
 
       subject =
         subject
-        |> AuthFixtures.remove_permissions()
-        |> AuthFixtures.add_permission(Authorizer.manage_own_identities_permission())
+        |> Fixtures.Auth.remove_permissions()
+        |> Fixtures.Auth.add_permission(Authorizer.manage_own_identities_permission())
 
       assert delete_identity(identity, subject) == {:error, :not_found}
     end
@@ -1202,12 +1702,12 @@ defmodule Domain.AuthTest do
     test "does not delete identity that belongs to another actor with just view permission", %{
       subject: subject
     } do
-      identity = AuthFixtures.create_identity()
+      identity = Fixtures.Auth.create_identity()
 
       subject =
         subject
-        |> AuthFixtures.remove_permissions()
-        |> AuthFixtures.add_permission(Authorizer.manage_own_identities_permission())
+        |> Fixtures.Auth.remove_permissions()
+        |> Fixtures.Auth.add_permission(Authorizer.manage_own_identities_permission())
 
       assert delete_identity(identity, subject) == {:error, :not_found}
     end
@@ -1218,16 +1718,16 @@ defmodule Domain.AuthTest do
       actor: actor,
       subject: subject
     } do
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
       assert {:ok, _identity} = delete_identity(identity, subject)
       assert delete_identity(identity, subject) == {:error, :not_found}
     end
 
     test "returns error when subject can not delete identities", %{subject: subject} do
-      identity = AuthFixtures.create_identity()
+      identity = Fixtures.Auth.create_identity()
 
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert delete_identity(identity, subject) ==
                {:error,
@@ -1244,13 +1744,47 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "delete_actor_identities/1" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      %{
+        account: account,
+        provider: provider
+      }
+    end
+
+    test "removes all identities that belong to an actor", %{account: account, provider: provider} do
+      actor = Fixtures.Actors.create_actor(account: account, provider: provider)
+      Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+
+      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 3
+      assert delete_actor_identities(actor) == :ok
+      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 0
+    end
+
+    test "does not remove identities that belong to another actor", %{
+      account: account,
+      provider: provider
+    } do
+      actor = Fixtures.Actors.create_actor(account: account, provider: provider)
+      Fixtures.Auth.create_identity(account: account, provider: provider)
+      assert delete_actor_identities(actor) == :ok
+      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 1
+    end
+  end
+
   describe "sign_in/5" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider(account: account)
-      user_agent = AuthFixtures.user_agent()
-      remote_ip = AuthFixtures.remote_ip()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      user_agent = Fixtures.Auth.user_agent()
+      remote_ip = Fixtures.Auth.remote_ip()
 
       %{
         account: account,
@@ -1277,7 +1811,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = "foo"
 
       assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
@@ -1290,7 +1824,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
 
       assert {:ok, %Auth.Subject{} = subject} =
@@ -1309,7 +1843,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
 
       assert {:ok, %Auth.Subject{} = subject} =
@@ -1328,8 +1862,8 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
       assert {:ok, %Auth.Subject{} = subject} =
@@ -1338,8 +1872,8 @@ defmodule Domain.AuthTest do
       three_hours = 3 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
 
-      actor = ActorsFixtures.create_actor(type: :account_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
       assert {:ok, %Auth.Subject{} = subject} =
@@ -1355,12 +1889,12 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, _provider} = disable_provider(provider, subject)
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
 
       assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
@@ -1373,10 +1907,10 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
-      subject = AuthFixtures.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, identity} = delete_identity(identity, subject)
 
       assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
@@ -1390,10 +1924,10 @@ defmodule Domain.AuthTest do
       remote_ip: remote_ip
     } do
       actor =
-        ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-        |> ActorsFixtures.disable()
+        Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+        |> Fixtures.Actors.disable()
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
       assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
@@ -1407,10 +1941,10 @@ defmodule Domain.AuthTest do
       remote_ip: remote_ip
     } do
       actor =
-        ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-        |> ActorsFixtures.delete()
+        Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+        |> Fixtures.Actors.delete()
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
       assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
@@ -1423,12 +1957,12 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, _provider} = delete_provider(provider, subject)
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
 
       assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
@@ -1441,7 +1975,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
 
       assert {:ok, _subject} =
@@ -1456,14 +1990,13 @@ defmodule Domain.AuthTest do
 
   describe "sign_in/4" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
 
       {provider, bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
-      user_agent = AuthFixtures.user_agent()
-      remote_ip = AuthFixtures.remote_ip()
+      user_agent = Fixtures.Auth.user_agent()
+      remote_ip = Fixtures.Auth.remote_ip()
 
       %{
         bypass: bypass,
@@ -1481,15 +2014,15 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
       {token, _claims} =
-        AuthFixtures.generate_openid_connect_token(provider, identity, %{
+        Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity, %{
           "sub" => "foo@bar.com"
         })
 
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      AuthFixtures.expect_userinfo(bypass)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -1505,7 +2038,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => "foo"})
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => "foo"})
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -1522,17 +2055,17 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
       token =
-        AuthFixtures.sign_openid_connect_token(%{
+        Mocks.OpenIDConnect.sign_openid_connect_token(%{
           "sub" => identity.provider_identifier,
           "aud" => provider.adapter_config["client_id"],
           "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix()
         })
 
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      AuthFixtures.expect_userinfo(bypass)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -1548,34 +2081,67 @@ defmodule Domain.AuthTest do
       assert subject.context.user_agent == user_agent
     end
 
-    # test "returned subject expiration depends on user type", %{
-    #   account: account,
-    #   provider: provider,
-    #   user_agent: user_agent,
-    #   remote_ip: remote_ip
-    # } do
-    #   actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-    #   identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+    test "returned expiration duration is capped at one week for account users", %{
+      bypass: bypass,
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
-    #   code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
-    #   redirect_uri = "https://example.com/"
-    #   payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      token =
+        Mocks.OpenIDConnect.sign_openid_connect_token(%{
+          "sub" => identity.provider_identifier,
+          "aud" => provider.adapter_config["client_id"],
+          "exp" => DateTime.utc_now() |> DateTime.add(1_000_000, :second) |> DateTime.to_unix()
+        })
 
-    #   assert {:ok, %Auth.Subject{} = subject} =
-    #            sign_in(provider, payload, user_agent, remote_ip)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
-    #   three_hours = 3 * 60 * 60
-    #   assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
+      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-    #   actor = ActorsFixtures.create_actor(type: :account_user, account: account)
-    #   identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      assert {:ok, %Auth.Subject{} = subject} =
+               sign_in(provider, payload, user_agent, remote_ip)
 
-    #   assert {:ok, %Auth.Subject{} = subject} =
-    #            sign_in(provider, payload, user_agent, remote_ip)
+      one_week = 7 * 24 * 60 * 60
+      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
+    end
 
-    #   one_week = 7 * 24 * 60 * 60
-    #   assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
-    # end
+    test "returned expiration duration is capped at 3 hours for account admin users", %{
+      bypass: bypass,
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+
+      token =
+        Mocks.OpenIDConnect.sign_openid_connect_token(%{
+          "sub" => identity.provider_identifier,
+          "aud" => provider.adapter_config["client_id"],
+          "exp" => DateTime.utc_now() |> DateTime.add(1_000_000, :second) |> DateTime.to_unix()
+        })
+
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert {:ok, %Auth.Subject{} = subject} =
+               sign_in(provider, payload, user_agent, remote_ip)
+
+      three_hours = 3 * 60 * 60
+      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
+    end
 
     test "returns error when provider is disabled", %{
       bypass: bypass,
@@ -1584,14 +2150,14 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, _provider} = disable_provider(provider, subject)
 
-      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      AuthFixtures.expect_userinfo(bypass)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -1608,14 +2174,14 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, identity} = delete_identity(identity, subject)
 
-      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      AuthFixtures.expect_userinfo(bypass)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -1633,14 +2199,14 @@ defmodule Domain.AuthTest do
       remote_ip: remote_ip
     } do
       actor =
-        ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-        |> ActorsFixtures.disable()
+        Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+        |> Fixtures.Actors.disable()
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
-      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      AuthFixtures.expect_userinfo(bypass)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -1658,14 +2224,14 @@ defmodule Domain.AuthTest do
       remote_ip: remote_ip
     } do
       actor =
-        ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-        |> ActorsFixtures.delete()
+        Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+        |> Fixtures.Actors.delete()
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
-      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      AuthFixtures.expect_userinfo(bypass)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -1682,14 +2248,14 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, _provider} = delete_provider(provider, subject)
 
-      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      AuthFixtures.expect_userinfo(bypass)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -1706,11 +2272,11 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
-      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      AuthFixtures.expect_userinfo(bypass)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -1728,21 +2294,21 @@ defmodule Domain.AuthTest do
 
   describe "sign_in/3" do
     setup do
-      account = AccountsFixtures.create_account()
+      account = Fixtures.Accounts.create_account()
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider(account: account)
-      user_agent = AuthFixtures.user_agent()
-      remote_ip = AuthFixtures.remote_ip()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      user_agent = Fixtures.Auth.user_agent()
+      remote_ip = Fixtures.Auth.remote_ip()
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
           user_agent: user_agent,
           remote_ip: remote_ip
         )
 
-      subject = AuthFixtures.create_subject(identity)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -1807,10 +2373,10 @@ defmodule Domain.AuthTest do
       subject: subject
     } do
       one_day = DateTime.utc_now() |> DateTime.add(1, :day)
-      provider = AuthFixtures.create_token_provider(account: account)
+      provider = Fixtures.Auth.create_token_provider(account: account)
 
       identity =
-        AuthFixtures.create_identity(
+        Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
           user_agent: user_agent,
@@ -1879,23 +2445,21 @@ defmodule Domain.AuthTest do
 
   describe "create_session_token_from_subject/1" do
     test "returns valid session token for a given subject" do
-      identity = AuthFixtures.create_identity()
-      subject = AuthFixtures.create_subject(identity)
+      subject = Fixtures.Auth.create_subject()
       assert {:ok, _token} = create_session_token_from_subject(subject)
     end
   end
 
   describe "create_client_token_from_subject/1" do
     test "returns valid client token for a given subject" do
-      identity = AuthFixtures.create_identity()
-      subject = AuthFixtures.create_subject(identity)
+      subject = Fixtures.Auth.create_subject()
       assert {:ok, _token} = create_client_token_from_subject(subject)
     end
   end
 
   describe "fetch_session_token_expires_at/2" do
     test "returns datetime when the token expires" do
-      subject = AuthFixtures.create_subject()
+      subject = Fixtures.Auth.create_subject()
       {:ok, token} = create_session_token_from_subject(subject)
 
       assert {:ok, expires_at} = fetch_session_token_expires_at(token)
@@ -1905,17 +2469,17 @@ defmodule Domain.AuthTest do
 
   describe "has_permission?/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{account: account, actor: actor, subject: subject}
     end
 
     test "returns true when subject has given permission", %{subject: subject} do
       subject =
-        AuthFixtures.set_permissions(subject, [
+        Fixtures.Auth.set_permissions(subject, [
           Authorizer.manage_providers_permission()
         ])
 
@@ -1924,7 +2488,7 @@ defmodule Domain.AuthTest do
 
     test "returns true when subject has one of given permission", %{subject: subject} do
       subject =
-        AuthFixtures.set_permissions(subject, [
+        Fixtures.Auth.set_permissions(subject, [
           Authorizer.manage_providers_permission()
         ])
 
@@ -1939,7 +2503,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns false when subject has no given permission", %{subject: subject} do
-      subject = AuthFixtures.set_permissions(subject, [])
+      subject = Fixtures.Auth.set_permissions(subject, [])
       refute has_permission?(subject, Authorizer.manage_providers_permission())
     end
   end
@@ -1953,22 +2517,22 @@ defmodule Domain.AuthTest do
 
   describe "ensure_type/2" do
     test "returns :ok if subject actor has given type" do
-      subject = AuthFixtures.create_subject()
+      subject = Fixtures.Auth.create_subject()
       assert ensure_type(subject, subject.actor.type) == :ok
     end
 
     test "returns error if subject actor has given type" do
-      subject = AuthFixtures.create_subject()
+      subject = Fixtures.Auth.create_subject()
       assert ensure_type(subject, :foo) == {:error, :unauthorized}
     end
   end
 
   describe "ensure_has_access_to/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -1981,7 +2545,7 @@ defmodule Domain.AuthTest do
       subject: subject
     } do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider()
+      provider = Fixtures.Auth.create_email_provider()
       assert ensure_has_access_to(subject, provider) == {:error, :unauthorized}
     end
 
@@ -1990,17 +2554,17 @@ defmodule Domain.AuthTest do
       account: account
     } do
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
-      provider = AuthFixtures.create_email_provider(account: account)
+      provider = Fixtures.Auth.create_email_provider(account: account)
       assert ensure_has_access_to(subject, provider) == :ok
     end
   end
 
   describe "ensure_has_permissions/2" do
     setup do
-      account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
       %{
         account: account,
@@ -2012,7 +2576,7 @@ defmodule Domain.AuthTest do
     test "returns error when subject has no given permissions", %{
       subject: subject
     } do
-      subject = AuthFixtures.set_permissions(subject, [])
+      subject = Fixtures.Auth.set_permissions(subject, [])
 
       required_permissions = [Authorizer.manage_providers_permission()]
 
@@ -2029,7 +2593,7 @@ defmodule Domain.AuthTest do
       subject: subject
     } do
       subject =
-        AuthFixtures.set_permissions(subject, [
+        Fixtures.Auth.set_permissions(subject, [
           Authorizer.manage_providers_permission()
         ])
 

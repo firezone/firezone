@@ -5,11 +5,18 @@ defmodule Domain.Actors.Group do
     field :name, :string
 
     # Those fields will be set for groups we synced from IdP's
-    belongs_to :provider, Domain.Auth.Provider
+    belongs_to :provider, Domain.Auth.Provider, where: [deleted_at: nil]
     field :provider_identifier, :string
 
+    has_many :policies, Domain.Policies.Policy,
+      foreign_key: :actor_group_id,
+      where: [deleted_at: nil]
+
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
-    has_many :actors, through: [:memberships, :actor], where: [deleted_at: nil]
+    has_many :actors, through: [:memberships, :actor]
+
+    field :created_by, Ecto.Enum, values: ~w[identity provider]a
+    belongs_to :created_by_identity, Domain.Auth.Identity
 
     belongs_to :account, Domain.Accounts.Account
 

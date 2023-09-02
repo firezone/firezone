@@ -3,7 +3,6 @@ defmodule API.Gateway.SocketTest do
   import API.Gateway.Socket, except: [connect: 3]
   alias API.Gateway.Socket
   alias Domain.Gateways
-  alias Domain.GatewaysFixtures
 
   @connlib_version "0.1.1"
 
@@ -19,7 +18,7 @@ defmodule API.Gateway.SocketTest do
     end
 
     test "creates a new gateway" do
-      token = GatewaysFixtures.create_token()
+      token = Fixtures.Gateways.create_token()
       encrypted_secret = Gateways.encode_token!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
@@ -35,8 +34,8 @@ defmodule API.Gateway.SocketTest do
     end
 
     test "updates existing gateway" do
-      token = GatewaysFixtures.create_token()
-      existing_gateway = GatewaysFixtures.create_gateway(token: token)
+      token = Fixtures.Gateways.create_token()
+      existing_gateway = Fixtures.Gateways.create_gateway(token: token)
       encrypted_secret = Gateways.encode_token!(token)
 
       attrs = connect_attrs(token: encrypted_secret, external_id: existing_gateway.external_id)
@@ -54,7 +53,7 @@ defmodule API.Gateway.SocketTest do
 
   describe "id/1" do
     test "creates a channel for a gateway" do
-      gateway = GatewaysFixtures.create_gateway()
+      gateway = Fixtures.Gateways.create_gateway()
       socket = socket(API.Gateway.Socket, "", %{gateway: gateway})
 
       assert id(socket) == "gateway:#{gateway.id}"
@@ -62,7 +61,7 @@ defmodule API.Gateway.SocketTest do
   end
 
   defp connect_attrs(attrs) do
-    GatewaysFixtures.gateway_attrs()
+    Fixtures.Gateways.gateway_attrs()
     |> Map.take(~w[external_id public_key]a)
     |> Map.merge(Enum.into(attrs, %{}))
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)

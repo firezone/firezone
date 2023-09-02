@@ -2,7 +2,7 @@ defmodule Web.GatewayGroups.Show do
   use Web, :live_view
   alias Domain.Gateways
 
-  def mount(%{"id" => id} = _params, _session, socket) do
+  def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
            Gateways.fetch_group_by_id(id, socket.assigns.subject,
              preload: [
@@ -14,7 +14,7 @@ defmodule Web.GatewayGroups.Show do
       :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
       {:ok, assign(socket, group: group)}
     else
-      {:error, :not_found} -> raise Web.LiveErrors.NotFoundError
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -51,7 +51,7 @@ defmodule Web.GatewayGroups.Show do
     </.header>
 
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table>
+      <.vertical_table id="group">
         <.vertical_table_row>
           <:label>Instance Group Name</:label>
           <:value><%= @group.name_prefix %></:value>
@@ -67,7 +67,7 @@ defmodule Web.GatewayGroups.Show do
         <.vertical_table_row>
           <:label>Created</:label>
           <:value>
-            <.datetime datetime={@group.inserted_at} /> by <.owner schema={@group} />
+            <.created_by schema={@group} />
           </:value>
         </.vertical_table_row>
       </.vertical_table>
@@ -91,14 +91,11 @@ defmodule Web.GatewayGroups.Show do
           </:col>
           <:col :let={gateway} label="REMOTE IP">
             <code class="block text-xs">
-              <%= gateway.ipv4 %>
-            </code>
-            <code class="block text-xs">
-              <%= gateway.ipv6 %>
+              <%= gateway.last_seen_remote_ip %>
             </code>
           </:col>
           <:col :let={gateway} label="TOKEN CREATED AT">
-            <.datetime datetime={gateway.token.inserted_at} /> by <.owner schema={gateway.token} />
+            <.created_by schema={gateway.token} />
           </:col>
           <:col :let={gateway} label="STATUS">
             <.connection_status schema={gateway} />

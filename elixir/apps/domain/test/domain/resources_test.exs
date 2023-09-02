@@ -1,15 +1,13 @@
 defmodule Domain.ResourcesTest do
   use Domain.DataCase, async: true
   import Domain.Resources
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures, GatewaysFixtures, NetworkFixtures}
-  alias Domain.ResourcesFixtures
   alias Domain.Resources
 
   setup do
-    account = AccountsFixtures.create_account()
-    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-    identity = AuthFixtures.create_identity(account: account, actor: actor)
-    subject = AuthFixtures.create_subject(identity)
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    subject = Fixtures.Auth.create_subject(identity: identity)
 
     %{
       account: account,
@@ -29,7 +27,7 @@ defmodule Domain.ResourcesTest do
     end
 
     test "returns resource when resource exists", %{account: account, subject: subject} do
-      resource = ResourcesFixtures.create_resource(account: account)
+      resource = Fixtures.Resources.create_resource(account: account)
 
       assert {:ok, fetched_resource} = fetch_resource_by_id(resource.id, subject)
       assert fetched_resource.id == resource.id
@@ -37,19 +35,19 @@ defmodule Domain.ResourcesTest do
 
     test "does not return deleted resources", %{account: account, subject: subject} do
       {:ok, resource} =
-        ResourcesFixtures.create_resource(account: account)
+        Fixtures.Resources.create_resource(account: account)
         |> delete_resource(subject)
 
       assert fetch_resource_by_id(resource.id, subject) == {:error, :not_found}
     end
 
     test "does not return resources in other accounts", %{subject: subject} do
-      resource = ResourcesFixtures.create_resource()
+      resource = Fixtures.Resources.create_resource()
       assert fetch_resource_by_id(resource.id, subject) == {:error, :not_found}
     end
 
     test "returns error when subject has no permission to view resources", %{subject: subject} do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert fetch_resource_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -67,7 +65,7 @@ defmodule Domain.ResourcesTest do
 
     # TODO: add a test that soft-deleted assocs are not preloaded
     test "associations are preloaded when opts given", %{account: account, subject: subject} do
-      resource = ResourcesFixtures.create_resource(account: account)
+      resource = Fixtures.Resources.create_resource(account: account)
       {:ok, resource} = fetch_resource_by_id(resource.id, subject, preload: :connections)
 
       assert Ecto.assoc_loaded?(resource.connections) == true
@@ -82,7 +80,7 @@ defmodule Domain.ResourcesTest do
     test "does not list resources from other accounts", %{
       subject: subject
     } do
-      ResourcesFixtures.create_resource()
+      Fixtures.Resources.create_resource()
       assert list_resources(subject) == {:ok, []}
     end
 
@@ -90,7 +88,7 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      ResourcesFixtures.create_resource(account: account)
+      Fixtures.Resources.create_resource(account: account)
       |> delete_resource(subject)
 
       assert list_resources(subject) == {:ok, []}
@@ -99,13 +97,13 @@ defmodule Domain.ResourcesTest do
     test "returns all resources for account admin subject", %{
       account: account
     } do
-      actor = ActorsFixtures.create_actor(type: :account_user, account: account)
-      identity = AuthFixtures.create_identity(account: account, actor: actor)
-      subject = AuthFixtures.create_subject(identity)
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
-      ResourcesFixtures.create_resource(account: account)
-      ResourcesFixtures.create_resource(account: account)
-      ResourcesFixtures.create_resource()
+      Fixtures.Resources.create_resource(account: account)
+      Fixtures.Resources.create_resource(account: account)
+      Fixtures.Resources.create_resource()
 
       assert {:ok, resources} = list_resources(subject)
       assert length(resources) == 2
@@ -115,9 +113,9 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      ResourcesFixtures.create_resource(account: account)
-      ResourcesFixtures.create_resource(account: account)
-      ResourcesFixtures.create_resource()
+      Fixtures.Resources.create_resource(account: account)
+      Fixtures.Resources.create_resource(account: account)
+      Fixtures.Resources.create_resource()
 
       assert {:ok, resources} = list_resources(subject)
       assert length(resources) == 2
@@ -126,7 +124,7 @@ defmodule Domain.ResourcesTest do
     test "returns error when subject has no permission to manage resources", %{
       subject: subject
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert list_resources(subject) ==
                {:error,
@@ -148,7 +146,7 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      gateway = GatewaysFixtures.create_gateway(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account)
 
       assert list_resources_for_gateway(gateway, subject) == {:ok, []}
     end
@@ -157,8 +155,8 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      gateway = GatewaysFixtures.create_gateway(account: account)
-      ResourcesFixtures.create_resource()
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      Fixtures.Resources.create_resource()
 
       assert list_resources_for_gateway(gateway, subject) == {:ok, []}
     end
@@ -167,12 +165,12 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      group = GatewaysFixtures.create_group(account: account, subject: subject)
-      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
 
-      ResourcesFixtures.create_resource(
+      Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
       |> delete_resource(subject)
 
@@ -183,20 +181,20 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      group = GatewaysFixtures.create_group(account: account, subject: subject)
-      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
 
-      ResourcesFixtures.create_resource(
+      Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
 
-      ResourcesFixtures.create_resource(
+      Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
 
-      ResourcesFixtures.create_resource(account: account)
+      Fixtures.Resources.create_resource(account: account)
 
       assert {:ok, resources} = list_resources_for_gateway(gateway, subject)
       assert length(resources) == 2
@@ -206,15 +204,15 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      group = GatewaysFixtures.create_group(account: account, subject: subject)
-      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
 
-      ResourcesFixtures.create_resource(
+      Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
 
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert list_resources_for_gateway(gateway, subject) ==
                {:error,
@@ -236,7 +234,7 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      gateway = GatewaysFixtures.create_gateway(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account)
 
       assert count_resources_for_gateway(gateway, subject) == {:ok, 0}
     end
@@ -245,15 +243,15 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      group = GatewaysFixtures.create_group(account: account, subject: subject)
-      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
 
-      ResourcesFixtures.create_resource(
+      Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
 
-      ResourcesFixtures.create_resource(account: account)
+      Fixtures.Resources.create_resource(account: account)
 
       assert count_resources_for_gateway(gateway, subject) == {:ok, 1}
     end
@@ -262,17 +260,17 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      group = GatewaysFixtures.create_group(account: account, subject: subject)
-      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
 
-      ResourcesFixtures.create_resource(
+      Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
 
-      ResourcesFixtures.create_resource(
+      Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
       |> delete_resource(subject)
 
@@ -284,15 +282,15 @@ defmodule Domain.ResourcesTest do
            account: account,
            subject: subject
          } do
-      group = GatewaysFixtures.create_group(account: account, subject: subject)
-      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
 
-      ResourcesFixtures.create_resource(
+      Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: group.id}]
+        connections: [%{gateway_group_id: group.id}]
       )
 
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert count_resources_for_gateway(gateway, subject) ==
                {:error,
@@ -373,9 +371,9 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      gateway = GatewaysFixtures.create_gateway(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account)
 
-      ResourcesFixtures.create_resource(
+      Fixtures.Resources.create_resource(
         account: account,
         subject: subject,
         type: :cidr,
@@ -391,14 +389,15 @@ defmodule Domain.ResourcesTest do
       assert {:error, changeset} = create_resource(attrs, subject)
       assert "can not overlap with other resource ranges" in errors_on(changeset).address
 
-      subject = AuthFixtures.create_subject()
+      # range is unique per account
+      subject = Fixtures.Auth.create_subject(actor: [type: :account_admin_user])
       assert {:ok, _resource} = create_resource(attrs, subject)
     end
 
     test "returns error on duplicate name", %{account: account, subject: subject} do
-      gateway = GatewaysFixtures.create_gateway(account: account)
-      resource = ResourcesFixtures.create_resource(account: account, subject: subject)
-      address = ResourcesFixtures.resource_attrs().address
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      resource = Fixtures.Resources.create_resource(account: account, subject: subject)
+      address = Fixtures.Resources.resource_attrs().address
 
       attrs = %{
         "name" => resource.name,
@@ -412,10 +411,10 @@ defmodule Domain.ResourcesTest do
     end
 
     test "creates a dns resource", %{account: account, subject: subject} do
-      gateway = GatewaysFixtures.create_gateway(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account)
 
       attrs =
-        ResourcesFixtures.resource_attrs(
+        Fixtures.Resources.resource_attrs(
           connections: [
             %{gateway_group_id: gateway.group_id}
           ]
@@ -447,11 +446,11 @@ defmodule Domain.ResourcesTest do
     end
 
     test "creates a cidr resource", %{account: account, subject: subject} do
-      gateway = GatewaysFixtures.create_gateway(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account)
       address_count = Repo.aggregate(Domain.Network.Address, :count)
 
       attrs =
-        ResourcesFixtures.resource_attrs(
+        Fixtures.Resources.resource_attrs(
           connections: [
             %{gateway_group_id: gateway.group_id}
           ],
@@ -493,10 +492,10 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      gateway = GatewaysFixtures.create_gateway(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account)
 
       attrs =
-        ResourcesFixtures.resource_attrs(
+        Fixtures.Resources.resource_attrs(
           connections: [
             %{gateway_group_id: gateway.group_id}
           ]
@@ -515,11 +514,11 @@ defmodule Domain.ResourcesTest do
       assert %{address: resource.ipv6, type: :ipv6} in addresses
 
       assert_raise Ecto.ConstraintError, fn ->
-        NetworkFixtures.create_address(address: resource.ipv4, account: account)
+        Fixtures.Network.create_address(address: resource.ipv4, account: account)
       end
 
       assert_raise Ecto.ConstraintError, fn ->
-        NetworkFixtures.create_address(address: resource.ipv6, account: account)
+        Fixtures.Network.create_address(address: resource.ipv6, account: account)
       end
     end
 
@@ -527,10 +526,10 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      gateway = GatewaysFixtures.create_gateway(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account)
 
       attrs =
-        ResourcesFixtures.resource_attrs(
+        Fixtures.Resources.resource_attrs(
           connections: [
             %{gateway_group_id: gateway.group_id}
           ]
@@ -538,14 +537,14 @@ defmodule Domain.ResourcesTest do
 
       assert {:ok, resource} = create_resource(attrs, subject)
 
-      assert %Domain.Network.Address{} = NetworkFixtures.create_address(address: resource.ipv4)
-      assert %Domain.Network.Address{} = NetworkFixtures.create_address(address: resource.ipv6)
+      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv4)
+      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv6)
     end
 
     test "returns error when subject has no permission to create resources", %{
       subject: subject
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert create_resource(%{}, subject) ==
                {:error,
@@ -557,7 +556,7 @@ defmodule Domain.ResourcesTest do
   describe "update_resource/3" do
     setup context do
       resource =
-        ResourcesFixtures.create_resource(
+        Fixtures.Resources.create_resource(
           account: context.account,
           subject: context.subject
         )
@@ -593,14 +592,14 @@ defmodule Domain.ResourcesTest do
     end
 
     test "allows to update connections", %{account: account, resource: resource, subject: subject} do
-      gateway1 = GatewaysFixtures.create_gateway(account: account)
+      gateway1 = Fixtures.Gateways.create_gateway(account: account)
 
       attrs = %{"connections" => [%{gateway_group_id: gateway1.group_id}]}
       assert {:ok, resource} = update_resource(resource, attrs, subject)
       gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
       assert gateway_group_ids == [gateway1.group_id]
 
-      gateway2 = GatewaysFixtures.create_gateway(account: account)
+      gateway2 = Fixtures.Gateways.create_gateway(account: account)
 
       attrs = %{
         "connections" => [
@@ -638,7 +637,7 @@ defmodule Domain.ResourcesTest do
       resource: resource,
       subject: subject
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert update_resource(resource, %{}, subject) ==
                {:error,
@@ -650,7 +649,7 @@ defmodule Domain.ResourcesTest do
   describe "delete_resource/2" do
     setup context do
       resource =
-        ResourcesFixtures.create_resource(
+        Fixtures.Resources.create_resource(
           account: context.account,
           subject: context.subject
         )
@@ -676,7 +675,7 @@ defmodule Domain.ResourcesTest do
       resource: resource,
       subject: subject
     } do
-      subject = AuthFixtures.remove_permissions(subject)
+      subject = Fixtures.Auth.remove_permissions(subject)
 
       assert delete_resource(resource, subject) ==
                {:error,
@@ -690,21 +689,21 @@ defmodule Domain.ResourcesTest do
       account: account,
       subject: subject
     } do
-      group = GatewaysFixtures.create_group(account: account, subject: subject)
-      gateway = GatewaysFixtures.create_gateway(account: account, group: group)
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
 
       resource =
-        ResourcesFixtures.create_resource(
+        Fixtures.Resources.create_resource(
           account: account,
-          gateway_groups: [%{gateway_group_id: group.id}]
+          connections: [%{gateway_group_id: group.id}]
         )
 
       assert connected?(resource, gateway)
     end
 
     test "raises resource and gateway don't belong to the same account" do
-      gateway = GatewaysFixtures.create_gateway()
-      resource = ResourcesFixtures.create_resource()
+      gateway = Fixtures.Gateways.create_gateway()
+      resource = Fixtures.Resources.create_resource()
 
       assert_raise FunctionClauseError, fn ->
         connected?(resource, gateway)
@@ -712,8 +711,8 @@ defmodule Domain.ResourcesTest do
     end
 
     test "returns false when resource has no connection to a gateway", %{account: account} do
-      gateway = GatewaysFixtures.create_gateway(account: account)
-      resource = ResourcesFixtures.create_resource(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      resource = Fixtures.Resources.create_resource(account: account)
 
       refute connected?(resource, gateway)
     end

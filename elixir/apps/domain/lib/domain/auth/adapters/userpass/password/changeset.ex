@@ -2,15 +2,11 @@ defmodule Domain.Auth.Adapters.UserPass.Password.Changeset do
   use Domain, :changeset
   alias Domain.Auth.Adapters.UserPass.Password
 
-  @fields ~w[password]a
+  @fields ~w[password password_confirmation]a
   @min_password_length 12
   @max_password_length 72
 
-  def create_changeset(attrs) do
-    changeset(%Password{}, attrs)
-  end
-
-  def changeset(struct, attrs) do
+  def changeset(%Password{} = struct, attrs) do
     struct
     |> cast(attrs, @fields)
     |> validate_required(@fields)
@@ -28,8 +24,6 @@ defmodule Domain.Auth.Adapters.UserPass.Password.Changeset do
     # |> validate_no_sequential_characters(:password)
     # |> validate_no_public_context(:password)
     |> put_hash(:password, to: :password_hash)
-    |> redact_field(:password)
-    |> redact_field(:password_confirmation)
     |> validate_required([:password_hash])
   end
 end

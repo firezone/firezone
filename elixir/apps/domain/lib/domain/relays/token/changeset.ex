@@ -4,7 +4,7 @@ defmodule Domain.Relays.Token.Changeset do
   alias Domain.Accounts
   alias Domain.Relays
 
-  def create_changeset do
+  def create do
     %Relays.Token{}
     |> change()
     |> put_change(:value, Domain.Crypto.rand_string(64))
@@ -14,22 +14,22 @@ defmodule Domain.Relays.Token.Changeset do
     |> put_change(:created_by, :system)
   end
 
-  def create_changeset(%Accounts.Account{} = account, %Auth.Subject{} = subject) do
-    create_changeset()
+  def create(%Accounts.Account{} = account, %Auth.Subject{} = subject) do
+    create()
     |> put_change(:account_id, account.id)
     |> put_change(:created_by, :identity)
     |> put_change(:created_by_identity_id, subject.identity.id)
   end
 
-  def use_changeset(%Relays.Token{} = token) do
+  def use(%Relays.Token{} = token) do
     # TODO: While we don't have token rotation implemented, the tokens are all multi-use
-    # delete_changeset(token)
+    # delete(token)
 
     token
     |> change()
   end
 
-  def delete_changeset(%Relays.Token{} = token) do
+  def delete(%Relays.Token{} = token) do
     token
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())

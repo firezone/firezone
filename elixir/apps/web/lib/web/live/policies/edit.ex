@@ -3,7 +3,7 @@ defmodule Web.Policies.Edit do
 
   alias Domain.Policies
 
-  def mount(%{"id" => id} = _params, _session, socket) do
+  def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <- Policies.fetch_policy_by_id(id, socket.assigns.subject) do
       {:ok, assign(socket, policy: policy)}
     else

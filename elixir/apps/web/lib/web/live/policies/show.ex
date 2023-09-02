@@ -2,7 +2,7 @@ defmodule Web.Policies.Show do
   use Web, :live_view
   alias Domain.Policies
 
-  def mount(%{"id" => id} = _params, _session, socket) do
+  def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
              preload: [:actor_group, :resource, [created_by_identity: :actor]]

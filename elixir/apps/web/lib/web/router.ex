@@ -102,20 +102,35 @@ defmodule Web.Router do
       scope "/actors", Actors do
         live "/", Index
         live "/new", New
-        live "/:id/edit", Edit
         live "/:id", Show
+
+        scope "/users", Users do
+          live "/new", New
+          live "/:id/new_identity", NewIdentity
+        end
+
+        scope "/service_accounts", ServiceAccounts do
+          live "/new", New
+          live "/:id/new_identity", NewIdentity
+        end
+
+        live "/:id/edit", Edit
+        # TODO: REMOVEME it's just another identity
+        live "/:id/new_token", NewToken
       end
 
       scope "/groups", Groups do
         live "/", Index
         live "/new", New
         live "/:id/edit", Edit
+        live "/:id/edit_actors", EditActors
         live "/:id", Show
       end
 
       scope "/devices", Devices do
         live "/", Index
         live "/:id", Show
+        live "/:id/edit", Edit
       end
 
       scope "/relay_groups", RelayGroups do
@@ -193,11 +208,6 @@ defmodule Web.Router do
         end
 
         live "/dns", DNS
-
-        scope "/api_tokens", APITokens do
-          live "/", Index
-          live "/new", New
-        end
       end
     end
   end

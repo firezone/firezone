@@ -1,29 +1,27 @@
 defmodule API.Device.ChannelTest do
   use API.ChannelCase
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures, ResourcesFixtures}
-  alias Domain.{ConfigFixtures, DevicesFixtures, RelaysFixtures, GatewaysFixtures}
 
   setup do
-    account = AccountsFixtures.create_account()
-    ConfigFixtures.upsert_configuration(account: account, devices_upstream_dns: ["1.1.1.1"])
-    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-    identity = AuthFixtures.create_identity(actor: actor, account: account)
-    subject = AuthFixtures.create_subject(identity)
-    device = DevicesFixtures.create_device(subject: subject)
-    gateway = GatewaysFixtures.create_gateway(account: account)
+    account = Fixtures.Accounts.create_account()
+    Fixtures.Config.upsert_configuration(account: account, devices_upstream_dns: ["1.1.1.1"])
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(actor: actor, account: account)
+    subject = Fixtures.Auth.create_subject(identity: identity)
+    device = Fixtures.Devices.create_device(subject: subject)
+    gateway = Fixtures.Gateways.create_gateway(account: account)
 
     dns_resource =
-      ResourcesFixtures.create_resource(
+      Fixtures.Resources.create_resource(
         account: account,
-        gateway_groups: [%{gateway_group_id: gateway.group_id}]
+        connections: [%{gateway_group_id: gateway.group_id}]
       )
 
     cidr_resource =
-      ResourcesFixtures.create_resource(
+      Fixtures.Resources.create_resource(
         type: :cidr,
         address: "192.168.1.1/28",
         account: account,
-        gateway_groups: [%{gateway_group_id: gateway.group_id}]
+        connections: [%{gateway_group_id: gateway.group_id}]
       )
 
     expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -138,7 +136,7 @@ defmodule API.Device.ChannelTest do
       dns_resource: resource,
       socket: socket
     } do
-      gateway = GatewaysFixtures.create_gateway(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account)
       :ok = Domain.Gateways.connect_gateway(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
@@ -152,9 +150,9 @@ defmodule API.Device.ChannelTest do
       socket: socket
     } do
       # Online Relay
-      global_relay_group = RelaysFixtures.create_global_group()
-      global_relay = RelaysFixtures.create_relay(group: global_relay_group, ipv6: nil)
-      relay = RelaysFixtures.create_relay(account: account)
+      global_relay_group = Fixtures.Relays.create_global_group()
+      global_relay = Fixtures.Relays.create_relay(group: global_relay_group, ipv6: nil)
+      relay = Fixtures.Relays.create_relay(account: account)
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
@@ -247,7 +245,7 @@ defmodule API.Device.ChannelTest do
       dns_resource: resource,
       socket: socket
     } do
-      gateway = GatewaysFixtures.create_gateway(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account)
       :ok = Domain.Gateways.connect_gateway(gateway)
 
       attrs = %{
@@ -334,7 +332,7 @@ defmodule API.Device.ChannelTest do
       dns_resource: resource,
       socket: socket
     } do
-      gateway = GatewaysFixtures.create_gateway(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account)
       :ok = Domain.Gateways.connect_gateway(gateway)
 
       attrs = %{
