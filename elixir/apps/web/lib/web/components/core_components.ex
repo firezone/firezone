@@ -615,6 +615,7 @@ defmodule Web.CoreComponents do
   end
 
   attr :type, :string, default: "default"
+  attr :class, :string, default: nil
   attr :rest, :global
   slot :inner_block, required: true
 
@@ -631,7 +632,11 @@ defmodule Web.CoreComponents do
 
     ~H"""
     <span
-      class={"text-xs font-medium mr-2 px-2.5 py-0.5 rounded whitespace-nowrap #{@colors[@type]}"}
+      class={[
+        "text-xs font-medium mr-2 px-2.5 py-0.5 rounded whitespace-nowrap",
+        @colors[@type],
+        @class
+      ]}
       {@rest}
     >
       <%= render_slot(@inner_block) %>

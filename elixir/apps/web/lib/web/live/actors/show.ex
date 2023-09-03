@@ -134,14 +134,16 @@ defmodule Web.Actors.Show do
           <.vertical_table_row>
             <:label>Groups</:label>
             <:value>
-              <span :if={Enum.empty?(@actor.groups)}>none</span>
-              <span :for={group <- @actor.groups}>
-                <.link navigate={~p"/#{@account}/groups/#{group.id}"}>
-                  <.badge>
-                    <%= group.name %>
-                  </.badge>
-                </.link>
-              </span>
+              <div class="flex flex-wrap">
+                <span :if={Enum.empty?(@actor.groups)}>none</span>
+                <span :for={group <- @actor.groups} class="mb-2">
+                  <.link navigate={~p"/#{@account}/groups/#{group.id}"}>
+                    <.badge>
+                      <%= group.name %>
+                    </.badge>
+                  </.link>
+                </span>
+              </div>
             </:value>
           </.vertical_table_row>
 

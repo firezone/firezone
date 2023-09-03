@@ -59,9 +59,11 @@ defmodule Web.GatewayGroups.Show do
         <.vertical_table_row>
           <:label>Tags</:label>
           <:value>
-            <.badge :for={tag <- @group.tags} class="ml-2">
-              <%= tag %>
-            </.badge>
+            <div class="flex flex-wrap">
+              <.badge :for={tag <- @group.tags} class="mb-2">
+                <%= tag %>
+              </.badge>
+            </div>
           </:value>
         </.vertical_table_row>
         <.vertical_table_row>
