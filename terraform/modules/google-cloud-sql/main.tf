@@ -83,7 +83,7 @@ resource "google_sql_database_instance" "master" {
       private_network = var.network
 
       authorized_networks {
-        value = "70.112.0.53/32"
+        value = "189.174.12.18/32"
       }
     }
 
