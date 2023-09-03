@@ -76,11 +76,11 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
         >
           Disable Identity Provider
         </.button>
-        <.button navigate={
+        <.edit_button navigate={
           ~p"/#{@provider.account_id}/settings/identity_providers/openid_connect/#{@provider}/redirect"
         }>
           Reconnect Identity Provider
-        </.button>
+        </.edit_button>
       </:actions>
     </.header>
     <!-- Identity Provider details -->
@@ -130,7 +130,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
         <.vertical_table_row>
           <:label>Created</:label>
           <:value>
-            <.created_by schema={@provider} />
+            <.created_by account={@account} schema={@provider} />
           </:value>
         </.vertical_table_row>
       </.vertical_table>

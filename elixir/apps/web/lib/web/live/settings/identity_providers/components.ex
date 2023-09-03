@@ -76,27 +76,16 @@ defmodule Web.Settings.IdentityProviders.Components do
   def adapter_name(:openid_connect), do: "OpenID Connect"
   def adapter_name(:saml), do: "SAML 2.0"
 
-  def view_provider(%{adapter: adapter} = provider) when adapter in [:email, :userpass, :token],
-    do: ~p"/#{provider.account_id}/settings/identity_providers/system/#{provider}"
+  def view_provider(account, %{adapter: adapter} = provider)
+      when adapter in [:email, :userpass, :token],
+      do: ~p"/#{account}/settings/identity_providers/system/#{provider}"
 
-  def view_provider(%{adapter: :openid_connect} = provider),
-    do: ~p"/#{provider.account_id}/settings/identity_providers/openid_connect/#{provider}"
+  def view_provider(account, %{adapter: :openid_connect} = provider),
+    do: ~p"/#{account}/settings/identity_providers/openid_connect/#{provider}"
 
-  def view_provider(%{adapter: :google_workspace} = provider),
-    do: ~p"/#{provider.account_id}/settings/identity_providers/google_workspace/#{provider}"
+  def view_provider(account, %{adapter: :google_workspace} = provider),
+    do: ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}"
 
-  def view_provider(%{adapter: :saml} = provider),
-    do: ~p"/#{provider.account_id}/settings/identity_providers/saml/#{provider}"
-
-  # def edit_provider(%{adapter: adapter} = provider) when adapter in [:email, :userpass, :token],
-  #   do: ~p"/#{provider.account_id}/settings/identity_providers/system/#{provider}/edit"
-
-  # def edit_provider(%{adapter: :openid_connect} = provider),
-  #   do: ~p"/#{provider.account_id}/settings/identity_providers/openid_connect/#{provider}/edit"
-
-  # def edit_provider(%{adapter: :google_workspace} = provider),
-  #   do: ~p"/#{provider.account_id}/settings/identity_providers/google_workspace/#{provider}/edit"
-
-  # def edit_provider(%{adapter: :saml} = provider),
-  #   do: ~p"/#{provider.account_id}/settings/identity_providers/saml/#{provider}/edit"
+  def view_provider(account, %{adapter: :saml} = provider),
+    do: ~p"/#{account}/settings/identity_providers/saml/#{provider}"
 end

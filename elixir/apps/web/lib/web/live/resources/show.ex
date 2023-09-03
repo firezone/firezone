@@ -85,7 +85,7 @@ defmodule Web.Resources.Show do
             Created
           </:label>
           <:value>
-            <.created_by schema={@resource} />
+            <.created_by account={@account} schema={@resource} />
           </:value>
         </.vertical_table_row>
       </.vertical_table>

@@ -8,7 +8,11 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
     with {:ok, providers} <-
            Domain.Auth.list_providers_pending_token_refresh_by_adapter(:google_workspace) do
       Enum.each(providers, fn provider ->
-        Logger.debug("Refreshing tokens for #{inspect(provider)}")
+        Logger.debug("Refreshing access token",
+          provider_id: provider.id,
+          account_id: provider.account_id
+        )
+
         GoogleWorkspace.refresh_access_token(provider)
       end)
     end
@@ -24,7 +28,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
         Enum.map(providers, fn provider ->
           Logger.debug("Syncing provider", provider_id: provider.id)
 
-          access_token = provider.adapter_state[:access_token]
+          access_token = provider.adapter_state["access_token"]
 
           with {:ok, users} <- GoogleWorkspace.APIClient.list_users(access_token),
                {:ok, organization_units} <-
@@ -36,6 +40,11 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
               Enum.map(users, fn user ->
                 %{
                   "provider_identifier" => user["id"],
+                  "adapter_state" => %{
+                    "userinfo" => %{
+                      "email" => user["primaryEmail"]
+                    }
+                  },
                   "actor" => %{
                     "type" => :account_user,
                     "name" => user["name"]["fullName"]
@@ -64,13 +73,20 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
                     organization_unit["orgUnitPath"] == user["orgUnitPath"]
                   end)
 
-                [{"OU:" <> organization_unit["orgUnitId"], user["id"]}]
+                if organization_unit["orgUnitId"] do
+                  [{"OU:" <> organization_unit["orgUnitId"], user["id"]}]
+                else
+                  []
+                end
               end) ++ tuples
 
             Ecto.Multi.new()
             |> Ecto.Multi.append(Auth.sync_provider_identities_multi(provider, identities_attrs))
             |> Ecto.Multi.append(Actors.sync_provider_groups_multi(provider, actor_groups_attrs))
             |> Actors.sync_provider_memberships_multi(provider, tuples)
+            |> Ecto.Multi.update(:save_last_updated_at, fn _effects_so_far ->
+              Ecto.Changeset.change(provider, last_synced_at: DateTime.utc_now())
+            end)
             |> Domain.Repo.transaction()
 
             Logger.debug("Finished syncing provider", provider_id: provider.id)

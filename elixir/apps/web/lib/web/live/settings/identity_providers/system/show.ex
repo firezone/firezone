@@ -95,7 +95,7 @@ defmodule Web.Settings.IdentityProviders.System.Show do
         <.vertical_table_row>
           <:label>Created</:label>
           <:value>
-            <.created_by schema={@provider} />
+            <.created_by account={@account} schema={@provider} />
           </:value>
         </.vertical_table_row>
       </.vertical_table>

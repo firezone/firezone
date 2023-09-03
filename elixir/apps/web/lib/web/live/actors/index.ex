@@ -38,7 +38,11 @@ defmodule Web.Actors.Index do
           </:col>
 
           <:col :let={actor} label="identifiers" sortable="false">
-            <.identity_identifier :for={identity <- actor.identities} identity={identity} />
+            <.identity_identifier
+              :for={identity <- actor.identities}
+              account={@account}
+              identity={identity}
+            />
           </:col>
 
           <:col :let={actor} label="groups" sortable="false">

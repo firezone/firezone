@@ -303,7 +303,7 @@ defmodule Domain.AuthTest do
         adapter_state: %{
           "access_token" => "OIDC_ACCESS_TOKEN",
           "refresh_token" => "OIDC_REFRESH_TOKEN",
-          "expires_at" => DateTime.utc_now() |> DateTime.add(58, :minute),
+          "expires_at" => DateTime.utc_now() |> DateTime.add(28, :minute),
           "claims" => "openid email profile offline_access"
         }
       })
@@ -1140,7 +1140,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok,
               %{
-                plan_identities: {insert, []},
+                plan_identities: {insert, [], []},
                 insert_identities: [_actor1, _actor2],
                 delete_identities: {0, nil}
               }} = Repo.transaction(multi)
@@ -1160,18 +1160,21 @@ defmodule Domain.AuthTest do
       end
     end
 
-    test "ignores updates to existing identities", %{account: account, provider: provider} do
-      Fixtures.Auth.create_identity(
-        account: account,
-        provider: provider,
-        provider_identifier: "USER_ID1"
-      )
+    test "update to existing actors", %{account: account, provider: provider} do
+      identity1 =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: "USER_ID1",
+          actor: [type: :account_admin_user]
+        )
 
-      Fixtures.Auth.create_identity(
-        account: account,
-        provider: provider,
-        provider_identifier: "USER_ID2"
-      )
+      identity2 =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: "USER_ID2"
+        )
 
       attrs_list = [
         %{
@@ -1194,10 +1197,22 @@ defmodule Domain.AuthTest do
 
       assert {:ok,
               %{
-                plan_identities: {[], []},
+                plan_identities: {[], update, []},
                 delete_identities: {0, nil},
                 insert_identities: []
               }} = Repo.transaction(multi)
+
+      assert length(update) == 2
+      assert identity1.provider_identifier in update
+      assert identity2.provider_identifier in update
+
+      actor = Repo.get(Domain.Actors.Actor, identity1.actor_id)
+      assert actor.type == :account_admin_user
+      assert actor.name == "Brian Manifold"
+
+      actor = Repo.get(Domain.Actors.Actor, identity2.actor_id)
+      assert actor.type == :account_user
+      assert actor.name == "Jennie Smith"
     end
 
     test "deletes removed identities", %{account: account, provider: provider} do
@@ -1221,7 +1236,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok,
               %{
-                plan_identities: {[], delete},
+                plan_identities: {[], [], delete},
                 delete_identities: {2, nil},
                 insert_identities: []
               }} = Repo.transaction(multi)
@@ -1257,9 +1272,10 @@ defmodule Domain.AuthTest do
                {:ok,
                 %{
                   identities: [],
-                  plan_identities: {[], []},
+                  plan_identities: {[], [], []},
                   delete_identities: {0, nil},
-                  insert_identities: []
+                  insert_identities: [],
+                  sync_actors: []
                 }}
     end
 

@@ -45,7 +45,10 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
       with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id),
            {:ok, identity} <-
              GoogleWorkspace.verify_and_upsert_identity(subject.actor, provider, payload),
-           attrs = %{adapter_state: identity.provider_state, disabled_at: nil},
+           attrs = %{
+             adapter_state: identity.provider_state,
+             disabled_at: nil
+           },
            {:ok, _provider} <- Domain.Auth.update_provider(provider, attrs, subject) do
         redirect(conn,
           to: ~p"/#{account}/settings/identity_providers/google_workspace/#{provider_id}"
@@ -68,6 +71,25 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
         {:error, :not_found} ->
           conn
           |> put_flash(:error, "Provider does not exist.")
+          |> redirect(
+            to: ~p"/#{account}/settings/identity_providers/google_workspace/#{provider_id}"
+          )
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          errors =
+            changeset
+            |> Ecto.Changeset.traverse_errors(fn {message, opts} ->
+              Regex.replace(~r"%{(\w+)}", message, fn _, key ->
+                opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+              end)
+            end)
+            |> Map.get(:adapter_config, %{})
+
+          conn
+          |> put_flash(
+            :error,
+            {:validation_errors, "There is an error with provider behaviour", errors}
+          )
           |> redirect(
             to: ~p"/#{account}/settings/identity_providers/google_workspace/#{provider_id}"
           )

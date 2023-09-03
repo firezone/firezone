@@ -58,7 +58,7 @@ defmodule Web.RelayGroups.Show do
         <.vertical_table_row>
           <:label>Created</:label>
           <:value>
-            <.created_by schema={@group} />
+            <.created_by account={@account} schema={@group} />
           </:value>
         </.vertical_table_row>
       </.vertical_table>
@@ -86,7 +86,7 @@ defmodule Web.RelayGroups.Show do
             </.link>
           </:col>
           <:col :let={relay} label="TOKEN CREATED AT">
-            <.created_by schema={relay.token} />
+            <.created_by account={@account} schema={relay.token} />
           </:col>
           <:col :let={relay} label="STATUS">
             <.connection_status schema={relay} />

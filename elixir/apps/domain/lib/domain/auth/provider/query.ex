@@ -34,6 +34,14 @@ defmodule Domain.Auth.Provider.Query do
     )
   end
 
+  def by_non_empty_refresh_token(queryable \\ all()) do
+    where(
+      queryable,
+      [provider: provider],
+      fragment("(?->>'refresh_token') IS NOT NULL", provider.adapter_state)
+    )
+  end
+
   def token_expires_at(queryable \\ all(), {:lt, datetime}) do
     where(
       queryable,

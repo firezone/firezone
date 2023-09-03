@@ -185,11 +185,11 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       assert {:ok, identity, expires_at} = verify_and_update_identity(provider, payload)
 
       assert identity.provider_state == %{
-               access_token: nil,
-               claims: claims,
-               expires_at: expires_at,
-               refresh_token: nil,
-               userinfo: %{
+               "access_token" => nil,
+               "claims" => claims,
+               "expires_at" => expires_at,
+               "refresh_token" => nil,
+               "userinfo" => %{
                  "email" => "ada@example.com",
                  "email_verified" => true,
                  "family_name" => "Lovelace",
@@ -226,9 +226,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
       assert {:ok, identity, _expires_at} = verify_and_update_identity(provider, payload)
 
-      assert identity.provider_state.access_token == "MY_ACCESS_TOKEN"
-      assert identity.provider_state.refresh_token == "MY_REFRESH_TOKEN"
-      assert DateTime.diff(identity.provider_state.expires_at, DateTime.utc_now()) in 3595..3605
+      assert identity.provider_state["access_token"] == "MY_ACCESS_TOKEN"
+      assert identity.provider_state["refresh_token"] == "MY_REFRESH_TOKEN"
+
+      assert DateTime.diff(identity.provider_state["expires_at"], DateTime.utc_now()) in 3595..3605
     end
 
     test "returns error when token is expired", %{
@@ -350,7 +351,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       identity: identity,
       bypass: bypass
     } do
-      {token, claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
 
       Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
@@ -365,11 +366,9 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       assert {:ok, provider} = refresh_access_token(provider)
 
       assert %{
-               access_token: "MY_ACCESS_TOKEN",
-               claims: ^claims,
-               expires_at: _expires_at,
-               refresh_token: "MY_REFRESH_TOKEN",
-               userinfo: %{
+               "access_token" => "MY_ACCESS_TOKEN",
+               "expires_at" => %DateTime{},
+               "userinfo" => %{
                  "email" => "ada@example.com",
                  "email_verified" => true,
                  "family_name" => "Lovelace",

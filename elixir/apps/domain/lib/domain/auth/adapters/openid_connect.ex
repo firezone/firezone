@@ -105,7 +105,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         end
       )
       |> case do
-        {:ok, identity} -> {:ok, identity, identity_state.expires_at}
+        {:ok, identity} -> {:ok, identity, identity_state["expires_at"]}
         {:error, reason} -> {:error, reason}
       end
     else
@@ -147,6 +147,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       Provider.Query.by_id(provider.id)
       |> Repo.fetch_and_update(
         with: fn provider ->
+          adapter_state_updates =
+            Map.take(adapter_state, ["expires_at", "access_token", "userinfo", "claims"])
+
+          adapter_state =
+            Map.merge(provider.adapter_state, adapter_state_updates)
+
           Provider.Changeset.update(provider, %{adapter_state: adapter_state})
         end
       )
@@ -179,11 +185,11 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
       {:ok, provider_identifier,
        %{
-         access_token: tokens["access_token"],
-         refresh_token: tokens["refresh_token"],
-         expires_at: expires_at,
-         userinfo: userinfo,
-         claims: claims
+         "access_token" => tokens["access_token"],
+         "refresh_token" => tokens["refresh_token"],
+         "expires_at" => expires_at,
+         "userinfo" => userinfo,
+         "claims" => claims
        }}
     else
       {:error, {:invalid_jwt, "invalid exp claim: token has expired"}} ->
