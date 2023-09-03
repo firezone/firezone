@@ -108,7 +108,11 @@ defmodule Web.Actors.Show do
         Viewing <%= actor_type(@actor.type) %> <span class="font-bold"><%= @actor.name %></span>
       </:title>
 
-      <:action navigate={~p"/#{@account}/actors/#{@actor}/edit"} icon="hero-pencil">
+      <:action
+        :if={not Actors.actor_synced?(@actor)}
+        navigate={~p"/#{@account}/actors/#{@actor}/edit"}
+        icon="hero-pencil"
+      >
         Edit <%= actor_type(@actor.type) %>
       </:action>
 
@@ -158,7 +162,7 @@ defmodule Web.Actors.Show do
           <:title>
             Authentication Identities
           </:title>
-          <:actions>
+          <:actions :if={not Actors.actor_synced?(@actor)}>
             <.action_button
               :if={@actor.type == :service_account}
               icon="hero-plus"
@@ -178,11 +182,11 @@ defmodule Web.Actors.Show do
 
         <.table id="actors" rows={@actor.identities} row_id={&"identity-#{&1.id}"}>
           <:col :let={identity} label="IDENTITY" sortable="false">
-            <.identity_identifier identity={identity} />
+            <.identity_identifier account={@account} identity={identity} />
           </:col>
 
           <:col :let={identity} label="CREATED" sortable="false">
-            <.created_by schema={identity} />
+            <.created_by account={@account} schema={identity} />
           </:col>
           <:col :let={identity} label="LAST SIGNED IN" sortable="false">
             <.relative_datetime datetime={identity.last_seen_at} />
@@ -205,6 +209,7 @@ defmodule Web.Actors.Show do
 
       <:danger_zone>
         <.action_button
+          :if={not Actors.actor_synced?(@actor)}
           type="danger"
           icon="hero-x-mark"
           phx-click="delete"

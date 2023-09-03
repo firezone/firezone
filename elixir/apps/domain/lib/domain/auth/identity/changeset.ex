@@ -35,7 +35,7 @@ defmodule Domain.Auth.Identity.Changeset do
         attrs
       ) do
     %Identity{}
-    |> cast(attrs, ~w[provider_identifier provider_virtual_state]a)
+    |> cast(attrs, ~w[provider_identifier provider_state provider_virtual_state]a)
     |> validate_required(~w[provider_identifier]a)
     |> cast_assoc(:actor,
       with: fn _actor, attrs ->

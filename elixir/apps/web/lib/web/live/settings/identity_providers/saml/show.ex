@@ -138,7 +138,7 @@ defmodule Web.Settings.IdentityProviders.SAML.Show do
               Created
             </th>
             <td class="px-6 py-4">
-              <.created_by schema={@provider} />
+              <.created_by account={@account} schema={@provider} />
             </td>
           </tr>
         </tbody>

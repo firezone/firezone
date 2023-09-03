@@ -116,7 +116,11 @@ defmodule Web.Groups.EditActors do
               />
             </:col>
             <:col :let={actor} label="IDENTITIES">
-              <.identity_identifier :for={identity <- actor.identities} identity={identity} />
+              <.identity_identifier
+                :for={identity <- actor.identities}
+                account={@account}
+                identity={identity}
+              />
             </:col>
             <:col :let={actor} class="w-1/6">
               <.button

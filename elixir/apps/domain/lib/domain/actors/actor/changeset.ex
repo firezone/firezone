@@ -47,6 +47,13 @@ defmodule Domain.Actors.Actor.Changeset do
     |> changeset()
   end
 
+  def sync(%Actor{} = actor, attrs) do
+    actor
+    |> cast(attrs, ~w[name]a)
+    |> validate_required(~w[name]a)
+    |> changeset()
+  end
+
   def changeset(changeset) do
     changeset
     # Actor name can be very long in case IdP syncs something crazy long to us,

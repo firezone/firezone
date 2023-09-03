@@ -84,7 +84,9 @@ defmodule Domain.Fixtures.Auth do
 
     adapter_config =
       openid_connect_adapter_config(
-        discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+        discovery_document_uri:
+          "http://localhost:#{bypass.port}/.well-known/openid-configuration",
+        scope: Domain.Auth.Adapters.GoogleWorkspace.Settings.scope() |> Enum.join(" ")
       )
 
     provider =

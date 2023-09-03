@@ -1,4 +1,5 @@
 defmodule Domain.Auth.Identity.Sync do
+  alias Domain.Actors
   alias Domain.Auth.{Identity, Provider}
 
   def sync_provider_identities_multi(%Provider{} = provider, attrs_list) do
@@ -20,14 +21,23 @@ defmodule Domain.Auth.Identity.Sync do
     end)
     |> Ecto.Multi.update_all(
       :delete_identities,
-      fn %{plan_identities: {_insert, delete}} ->
+      fn %{plan_identities: {_insert, _update, delete}} ->
         delete_identities_query(provider, delete)
       end,
       set: [deleted_at: now]
     )
-    |> Ecto.Multi.run(:insert_identities, fn repo, %{plan_identities: {insert, _delete}} ->
-      upsert_identities(repo, provider, attrs_by_provider_identifier, insert)
-    end)
+    |> Ecto.Multi.run(
+      :insert_identities,
+      fn repo, %{plan_identities: {insert, _update, _delete}} ->
+        upsert_identities(repo, provider, attrs_by_provider_identifier, insert)
+      end
+    )
+    |> Ecto.Multi.run(
+      :sync_actors,
+      fn _repo, %{identities: identities, plan_identities: {_insert, update, _delete}} ->
+        sync_actors(identities, attrs_by_provider_identifier, update)
+      end
+    )
   end
 
   defp fetch_and_lock_provider_identities_query(provider) do
@@ -37,16 +47,28 @@ defmodule Domain.Auth.Identity.Sync do
   end
 
   defp plan_identities_update(identities, provider_identifiers) do
-    {insert, delete} =
-      Enum.reduce(identities, {provider_identifiers, []}, fn identity, {insert, delete} ->
-        if identity.provider_identifier in provider_identifiers do
-          {insert -- [identity.provider_identifier], delete}
-        else
-          {insert -- [identity.provider_identifier], [identity.provider_identifier] ++ delete}
+    {insert, update, delete} =
+      Enum.reduce(
+        identities,
+        {provider_identifiers, [], []},
+        fn identity, {insert, update, delete} ->
+          if identity.provider_identifier in provider_identifiers do
+            {
+              insert -- [identity.provider_identifier],
+              [identity.provider_identifier] ++ update,
+              delete
+            }
+          else
+            {
+              insert -- [identity.provider_identifier],
+              update,
+              [identity.provider_identifier] ++ delete
+            }
+          end
         end
-      end)
+      )
 
-    {:ok, {insert, delete}}
+    {:ok, {insert, update, delete}}
   end
 
   defp delete_identities_query(provider, provider_identifiers_to_delete) do
@@ -72,6 +94,32 @@ defmodule Domain.Auth.Identity.Sync do
 
         {:error, changeset} ->
           {:halt, {:error, changeset}}
+      end
+    end)
+  end
+
+  defp sync_actors(
+         identities,
+         attrs_by_provider_identifier,
+         provider_identifiers_to_insert
+       ) do
+    identity_by_provider_identifier = Map.new(identities, &{&1.provider_identifier, &1})
+
+    provider_identifiers_to_insert
+    |> Enum.reduce_while({:ok, []}, fn provider_identifier, {:ok, acc} ->
+      attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
+      identity = Map.get(identity_by_provider_identifier, provider_identifier)
+
+      if actor_attrs = Map.get(attrs, "actor", %{}) do
+        case Actors.sync_actor(identity.actor_id, actor_attrs) do
+          {:ok, actor} ->
+            {:cont, {:ok, [actor | acc]}}
+
+          {:error, changeset} ->
+            {:halt, {:error, changeset}}
+        end
+      else
+        {:cont, {:ok, acc}}
       end
     end)
   end

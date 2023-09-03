@@ -67,7 +67,7 @@ defmodule Web.GatewayGroups.Show do
         <.vertical_table_row>
           <:label>Created</:label>
           <:value>
-            <.created_by schema={@group} />
+            <.created_by account={@account} schema={@group} />
           </:value>
         </.vertical_table_row>
       </.vertical_table>
@@ -95,7 +95,7 @@ defmodule Web.GatewayGroups.Show do
             </code>
           </:col>
           <:col :let={gateway} label="TOKEN CREATED AT">
-            <.created_by schema={gateway.token} />
+            <.created_by account={@account} schema={gateway.token} />
           </:col>
           <:col :let={gateway} label="STATUS">
             <.connection_status schema={gateway} />
