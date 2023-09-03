@@ -174,9 +174,9 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
       |> live(~p"/#{account}/settings/identity_providers/openid_connect/#{provider}")
 
     assert lv
-           |> element("button", "Reconnect Identity Provider")
+           |> element("a", "Reconnect Identity Provider")
            |> render()
-           |> Floki.attribute("navigate")
+           |> Floki.attribute("href")
            |> hd() ==
              ~p"/#{account}/settings/identity_providers/openid_connect/#{provider}/redirect"
   end
