@@ -87,7 +87,13 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
                "code_challenge_method" => "S256",
                "redirect_uri" => callback_url,
                "response_type" => "code",
-               "scope" => "openid email profile",
+               "scope" =>
+                 "openid " <>
+                   "email " <>
+                   "profile " <>
+                   "https://www.googleapis.com/auth/admin.directory.orgunit.readonly " <>
+                   "https://www.googleapis.com/auth/admin.directory.group.readonly " <>
+                   "https://www.googleapis.com/auth/admin.directory.user.readonly",
                "state" => state
              }
     end

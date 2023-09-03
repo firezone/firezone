@@ -315,9 +315,26 @@ defmodule Web.CoreComponents do
         <.icon :if={@kind == :error} name="hero-exclamation-circle-mini" class="h-4 w-4" />
         <%= @title %>
       </p>
-      <%= msg %>
+      <%= maybe_render_changeset_as_flash(msg) %>
     </div>
     """
+  end
+
+  def maybe_render_changeset_as_flash({:validation_errors, message, errors}) do
+    assigns = %{message: message, errors: errors}
+
+    ~H"""
+    <%= @message %>:
+    <ul>
+      <li :for={{field, field_errors} <- @errors}>
+        <%= field %>: <%= Enum.join(field_errors, ", ") %>
+      </li>
+    </ul>
+    """
+  end
+
+  def maybe_render_changeset_as_flash(other) do
+    other
   end
 
   @doc """
@@ -598,6 +615,7 @@ defmodule Web.CoreComponents do
   end
 
   attr :type, :string, default: "default"
+  attr :class, :string, default: nil
   attr :rest, :global
   slot :inner_block, required: true
 
@@ -614,7 +632,11 @@ defmodule Web.CoreComponents do
 
     ~H"""
     <span
-      class={"text-xs font-medium mr-2 px-2.5 py-0.5 rounded whitespace-nowrap #{@colors[@type]}"}
+      class={[
+        "text-xs font-medium mr-2 px-2.5 py-0.5 rounded whitespace-nowrap",
+        @colors[@type],
+        @class
+      ]}
       {@rest}
     >
       <%= render_slot(@inner_block) %>
@@ -682,6 +704,7 @@ defmodule Web.CoreComponents do
   @doc """
   Renders creation timestamp and entity.
   """
+  attr :account, :any, required: true
   attr :schema, :any, required: true
 
   def created_by(%{schema: %{created_by: :system}} = assigns) do
@@ -707,20 +730,23 @@ defmodule Web.CoreComponents do
     synced <.relative_datetime datetime={@schema.inserted_at} /> from
     <.link
       class="text-blue-600 hover:underline"
-      navigate={Web.Settings.IdentityProviders.Components.view_provider(@schema.provider)}
+      navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @schema.provider)}
     >
       <%= @schema.provider.name %>
     </.link>
     """
   end
 
-  attr :identity, :string, required: true
+  attr :account, :any, required: true
+  attr :identity, :any, required: true
 
   def identity_identifier(assigns) do
     ~H"""
     <span class="flex inline-flex" data-identity-id={@identity.id}>
       <.link
-        navigate={Web.Settings.IdentityProviders.Components.view_provider(@identity.provider)}
+        navigate={
+          Web.Settings.IdentityProviders.Components.view_provider(@account, @identity.provider)
+        }
         data-provider-id={@identity.provider.id}
         title={@identity.provider.adapter}
         class={~w[
@@ -739,7 +765,7 @@ defmodule Web.CoreComponents do
         "text-blue-800 dark:text-blue-300",
         "bg-blue-50 dark:bg-blue-600"
       ]}>
-        <%= @identity.provider_identifier %>
+        <%= get_in(@identity.provider_state, ["userinfo", "email"]) || @identity.provider_identifier %>
       </span>
       <span :if={not is_nil(@identity.deleted_at)} class="text-sm">
         (deleted)

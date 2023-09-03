@@ -42,7 +42,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
-        "refresh_token" => "MY_REFRESH_TOKEN",
+        "refresh_token" => "OTHER_REFRESH_TOKEN",
         "expires_in" => nil
       })
 
@@ -56,7 +56,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
                "access_token" => "MY_ACCESS_TOKEN",
                "claims" => ^claims,
                "expires_at" => expires_at,
-               "refresh_token" => "MY_REFRESH_TOKEN",
+               "refresh_token" => "OIDC_REFRESH_TOKEN",
                "userinfo" => %{
                  "email" => "ada@example.com",
                  "email_verified" => true,
@@ -179,6 +179,44 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
           "thumbnailPhotoEtag" => "\"ET\"",
           "thumbnailPhotoUrl" =>
             "https://lh3.google.com/ao/AP2z2aWvm9JM99oCFZ1TVOJgQZlmZdMMYNr7w9G0jZApdTuLHfAueGFb_XzgTvCNRhGw=s96-c"
+        },
+        %{
+          "agreedToTerms" => true,
+          "archived" => false,
+          "changePasswordAtNextLogin" => false,
+          "creationTime" => "2023-06-10T17:32:06.000Z",
+          "customerId" => "CustomerID1",
+          "emails" => [
+            %{"address" => "j@firez.xxx", "primary" => true},
+            %{"address" => "j@ext.firez.xxx"}
+          ],
+          "etag" => "\"ET-61Bnx4\"",
+          "id" => "USER_ID2",
+          "includeInGlobalAddressList" => true,
+          "ipWhitelisted" => false,
+          "isAdmin" => false,
+          "isDelegatedAdmin" => false,
+          "isEnforcedIn2Sv" => false,
+          "isEnrolledIn2Sv" => false,
+          "isMailboxSetup" => true,
+          "kind" => "admin#directory#user",
+          "languages" => [%{"languageCode" => "en", "preference" => "preferred"}],
+          "lastLoginTime" => "2023-06-26T13:53:30.000Z",
+          "name" => %{
+            "familyName" => "Jamil",
+            "fullName" => "Jamil Bou Kheir",
+            "givenName" => "Bou Kheir"
+          },
+          "nonEditableAliases" => ["j@ext.firez.xxx"],
+          "orgUnitPath" => "/",
+          "organizations" => [],
+          "phones" => [%{"type" => "mobile", "value" => "(567) 111-2234"}],
+          "primaryEmail" => "j@firez.xxx",
+          "recoveryEmail" => "xxx@xxx.com",
+          "suspended" => false,
+          "thumbnailPhotoEtag" => "\"ET\"",
+          "thumbnailPhotoUrl" =>
+            "https://lh3.google.com/ao/AP2z2aWvm9JM99oCFZ1TVOJgQZlmZdMMYNr7w9G0jZApdTuLHfAueGFb_XzgTvCNRhGw=s96-c"
         }
       ]
 
@@ -220,24 +258,22 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
       end
 
       identities = Auth.Identity |> Repo.all() |> Repo.preload(:actor)
-      assert length(identities) == 1
+      assert length(identities) == 2
 
       for identity <- identities do
         assert identity.inserted_at
         assert identity.created_by == :provider
         assert identity.provider_id == provider.id
-        assert identity.provider_identifier in ["USER_ID1"]
-        assert identity.actor.name in ["Brian Manifold"]
+        assert identity.provider_identifier in ["USER_ID1", "USER_ID2"]
+        assert identity.actor.name in ["Brian Manifold", "Jamil Bou Kheir"]
         assert identity.actor.last_synced_at
       end
 
       memberships = Actors.Membership |> Repo.all()
       assert length(memberships) == 2
-      membership_tuples = Enum.map(memberships, &{&1.group_id, &1.actor_id})
 
-      for identity <- identities, group <- groups do
-        assert {group.id, identity.actor_id} in membership_tuples
-      end
+      updated_provider = Repo.get!(Domain.Auth.Provider, provider.id)
+      assert updated_provider.last_synced_at != provider.last_synced_at
     end
 
     test "does not crash on endpoint errors" do

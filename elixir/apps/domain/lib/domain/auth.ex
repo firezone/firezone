@@ -129,10 +129,11 @@ defmodule Domain.Auth do
   end
 
   def list_providers_pending_token_refresh_by_adapter(adapter) do
-    datetime_filter = DateTime.utc_now() |> DateTime.add(1, :hour)
+    datetime_filter = DateTime.utc_now() |> DateTime.add(30, :minute)
 
     Provider.Query.by_adapter(adapter)
     |> Provider.Query.by_provisioner(:custom)
+    |> Provider.Query.by_non_empty_refresh_token()
     |> Provider.Query.token_expires_at({:lt, datetime_filter})
     |> Provider.Query.not_disabled()
     |> Repo.list()

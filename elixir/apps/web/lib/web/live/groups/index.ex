@@ -58,15 +58,12 @@ defmodule Web.Groups.Index do
       <.table :if={not Enum.empty?(@groups)} id="groups" rows={@groups} row_id={&"user-#{&1.id}"}>
         <:col :let={group} label="NAME" sortable="false">
           <.link
-            :if={not Actors.group_synced?(group)}
             navigate={~p"/#{@account}/groups/#{group.id}"}
             class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
           >
             <%= group.name %>
           </.link>
-          <span :if={Actors.group_synced?(group)}>
-            <%= group.name %>
-          </span>
+
           <span :if={Actors.group_deleted?(group)} class="text-xs text-gray-100">
             (deleted)
           </span>
@@ -96,7 +93,7 @@ defmodule Web.Groups.Index do
           </.peek>
         </:col>
         <:col :let={group} label="SOURCE" sortable="false">
-          <.source group={group} />
+          <.source account={@account} group={group} />
         </:col>
       </.table>
       <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/groups"} />-->

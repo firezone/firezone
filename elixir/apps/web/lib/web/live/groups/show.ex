@@ -55,7 +55,7 @@ defmodule Web.Groups.Show do
         <.vertical_table_row>
           <:label>Source</:label>
           <:value>
-            <.source group={@group} />
+            <.source account={@account} group={@group} />
           </:value>
         </.vertical_table_row>
       </.vertical_table>
@@ -79,7 +79,11 @@ defmodule Web.Groups.Show do
             <.actor_name_and_role account={@account} actor={actor} />
           </:col>
           <:col :let={actor} label="IDENTITIES">
-            <.identity_identifier :for={identity <- actor.identities} identity={identity} />
+            <.identity_identifier
+              :for={identity <- actor.identities}
+              account={@account}
+              identity={identity}
+            />
           </:col>
         </.table>
       </div>

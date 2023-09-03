@@ -1404,6 +1404,20 @@ defmodule Domain.ActorsTest do
     end
   end
 
+  describe "sync_actor/2" do
+    test "updates actor name " do
+      actor = Fixtures.Actors.create_actor()
+      assert {:ok, actor} = sync_actor(actor.id, %{name: "foo"})
+      assert actor.name == "foo"
+    end
+
+    test "does not update actor  type" do
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user)
+      assert {:ok, actor} = sync_actor(actor.id, %{type: :account_user})
+      assert actor.type == :account_admin_user
+    end
+  end
+
   describe "disable_actor/2" do
     test "disables a given actor" do
       account = Fixtures.Accounts.create_account()

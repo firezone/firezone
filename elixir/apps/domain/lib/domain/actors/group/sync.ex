@@ -10,12 +10,14 @@ defmodule Domain.Actors.Group.Sync do
         {Map.fetch!(attrs, "provider_identifier"), attrs}
       end
 
+    provider_identifiers = Map.keys(attrs_by_provider_identifier)
+
     Ecto.Multi.new()
     |> Ecto.Multi.all(:groups, fn _effects_so_far ->
       fetch_and_lock_provider_groups_query(provider)
     end)
     |> Ecto.Multi.run(:plan_groups, fn _repo, %{groups: groups} ->
-      plan_groups_update(groups, attrs_by_provider_identifier)
+      plan_groups_update(groups, provider_identifiers)
     end)
     |> Ecto.Multi.update_all(
       :delete_groups,
@@ -35,19 +37,17 @@ defmodule Domain.Actors.Group.Sync do
     |> Group.Query.lock()
   end
 
-  defp plan_groups_update(groups, attrs_by_provider_identifier) do
-    {update, delete} =
-      Enum.reduce(groups, {[], []}, fn group, {update, delete} ->
-        if Map.has_key?(attrs_by_provider_identifier, group.provider_identifier) do
-          {[group.provider_identifier] ++ update, delete}
+  defp plan_groups_update(groups, provider_identifiers) do
+    {upsert, delete} =
+      Enum.reduce(groups, {provider_identifiers, []}, fn group, {upsert, delete} ->
+        if group.provider_identifier in provider_identifiers do
+          {upsert, delete}
         else
-          {update, [group.provider_identifier] ++ delete}
+          {upsert -- [group.provider_identifier], [group.provider_identifier] ++ delete}
         end
       end)
 
-    insert = Map.keys(attrs_by_provider_identifier) -- (update ++ delete)
-
-    {:ok, {update ++ insert, delete}}
+    {:ok, {upsert, delete}}
   end
 
   defp delete_groups_query(provider, provider_identifiers_to_delete) do

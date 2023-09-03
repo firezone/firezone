@@ -47,11 +47,9 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
       required: true,
       with: fn current_attrs, attrs ->
         Ecto.embedded_load(GoogleWorkspace.Settings, current_attrs, :json)
-        |> OpenIDConnect.Settings.Changeset.changeset(attrs)
+        |> GoogleWorkspace.Settings.Changeset.changeset(attrs)
       end
     )
-
-    # TODO: validate received scopes and show an error if there are missing ones
   end
 
   @impl true

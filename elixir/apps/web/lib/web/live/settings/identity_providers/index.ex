@@ -59,7 +59,7 @@ defmodule Web.Settings.IdentityProviders.Index do
       <.table id="providers" rows={@providers} row_id={&"providers-#{&1.id}"}>
         <:col :let={provider} label="Name">
           <.link
-            navigate={view_provider(provider)}
+            navigate={view_provider(@account, provider)}
             class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
           >
             <%= provider.name %>
