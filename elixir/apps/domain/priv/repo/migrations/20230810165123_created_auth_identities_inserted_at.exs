@@ -3,7 +3,7 @@ defmodule Domain.Repo.Migrations.CreatedAuthIdentitiesInsertedAt do
 
   def change do
     alter table(:auth_identities) do
-      timestamps(updated_at: false)
+      add(:inserted_at, :utc_datetime_usec, null: false, default: fragment("now()"))
     end
   end
 end
