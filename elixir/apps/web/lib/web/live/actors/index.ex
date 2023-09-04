@@ -1,16 +1,20 @@
 defmodule Web.Actors.Index do
   use Web, :live_view
   import Web.Actors.Components
+  alias Domain.Auth
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
     with {:ok, actors} <-
            Actors.list_actors(socket.assigns.subject, preload: [identities: :provider]),
-         {:ok, actor_groups} <- Actors.peek_actor_groups(actors, 3, socket.assigns.subject) do
+         {:ok, actor_groups} <- Actors.peek_actor_groups(actors, 3, socket.assigns.subject),
+         {:ok, providers} <-
+           Auth.list_providers_for_account(socket.assigns.account, socket.assigns.subject) do
       {:ok, socket,
        temporary_assigns: [
          actors: actors,
          actor_groups: actor_groups,
+         providers_by_id: Map.new(providers, &{&1.id, &1}),
          page_title: "Actors"
        ]}
     else
@@ -38,11 +42,13 @@ defmodule Web.Actors.Index do
           </:col>
 
           <:col :let={actor} label="identifiers" sortable="false">
-            <.identity_identifier
-              :for={identity <- actor.identities}
-              account={@account}
-              identity={identity}
-            />
+            <div class="flex flex-wrap gap-y-2">
+              <.identity_identifier
+                :for={identity <- actor.identities}
+                account={@account}
+                identity={identity}
+              />
+            </div>
           </:col>
 
           <:col :let={actor} label="groups" sortable="false">
@@ -52,15 +58,16 @@ defmodule Web.Actors.Index do
               </:empty>
 
               <:item :let={group}>
-                <.link navigate={~p"/#{@account}/groups/#{group}"}>
-                  <.badge>
-                    <%= group.name %>
-                  </.badge>
-                </.link>
+                <.group
+                  account={@account}
+                  group={%{group | provider: Map.get(@providers_by_id, group.provider_id)}}
+                />
               </:item>
 
               <:tail :let={count}>
-                and <%= count %> more.
+                <span class="inline-block whitespace-nowrap">
+                  and <%= count %> more.
+                </span>
               </:tail>
             </.peek>
           </:col>

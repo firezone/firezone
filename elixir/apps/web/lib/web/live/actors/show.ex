@@ -9,7 +9,7 @@ defmodule Web.Actors.Show do
            Actors.fetch_actor_by_id(id, socket.assigns.subject,
              preload: [
                identities: [:provider, created_by_identity: [:actor]],
-               groups: []
+               groups: [:provider]
              ]
            ) do
       {:ok, assign(socket, actor: actor), temporary_assigns: [page_title: actor.name]}
@@ -134,14 +134,10 @@ defmodule Web.Actors.Show do
           <.vertical_table_row>
             <:label>Groups</:label>
             <:value>
-              <div class="flex flex-wrap">
+              <div class="flex flex-wrap gap-y-2">
                 <span :if={Enum.empty?(@actor.groups)}>none</span>
-                <span :for={group <- @actor.groups} class="mb-2">
-                  <.link navigate={~p"/#{@account}/groups/#{group.id}"}>
-                    <.badge>
-                      <%= group.name %>
-                    </.badge>
-                  </.link>
+                <span :for={group <- @actor.groups}>
+                  <.group account={@account} group={group} />
                 </span>
               </div>
             </:value>
