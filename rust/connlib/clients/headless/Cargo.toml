@@ -13,5 +13,5 @@ url = { version = "2.3.1", default-features = false }
 tracing-subscriber = { version = "0.3" }
 tracing = { version = "0.1" }
 anyhow = { version = "1.0" }
-clap = { version = "4.3", features = ["derive"] }
+clap = { version = "4.4", features = ["derive"] }
 ctrlc  = "3.4"
