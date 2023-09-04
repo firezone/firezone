@@ -181,9 +181,10 @@ resource "google_compute_instance_template" "application" {
       }
     })
 
+    google-logging-enabled = "true"
     # Enable FluentBit agent for logging, which will be default one from COS 109
-    google-logging-enabled       = "true"
-    google-logging-use-fluentbit = "true"
+    # Re-enable once https://issuetracker.google.com/issues/285950891 is closed
+    # google-logging-use-fluentbit = "true"
 
     # Report health-related metrics to Cloud Monitoring
     google-monitoring-enabled = "true"
