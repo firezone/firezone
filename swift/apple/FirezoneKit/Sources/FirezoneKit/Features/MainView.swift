@@ -18,15 +18,9 @@ final class MainViewModel: ObservableObject {
   private let appStore: AppStore
   @Dependency(\.mainQueue) private var mainQueue
 
-  struct ResourceListItem: Identifiable {
-    var id: String { location }
-    let name: String
-    let location: String
-  }
-
   @Published var loginStatus: AuthStore.LoginStatus = .uninitialized
   @Published var tunnelStatus: NEVPNStatus = .invalid
-  @Published var orderedResources: [ResourceListItem] = []
+  @Published var orderedResources: [DisplayableResources.Resource] = []
 
   init(appStore: AppStore) {
     self.appStore = appStore
@@ -57,7 +51,9 @@ final class MainViewModel: ObservableObject {
       .receive(on: mainQueue)
       .sink { [weak self] resources in
         guard let self = self else { return }
-        self.orderedResources = resources.orderedResources.map { ResourceListItem(name: $0.name, location: $0.location) }
+        self.orderedResources = resources.orderedResources.map {
+          DisplayableResources.Resource(name: $0.name, location: $0.location)
+        }
       }
       .store(in: &cancellables)
   }
