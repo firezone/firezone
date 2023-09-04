@@ -135,6 +135,15 @@ struct MainView: View {
                 Spacer()
                 Text(resource.location)
                   .foregroundColor(.secondary)
+                Button(
+                  role: .none,
+                  action: { self.copyResourceTapped(resource) },
+                  label: {
+                    Label("", systemImage: "doc.on.doc")
+                      .symbolRenderingMode(.monochrome)
+                      .foregroundColor(.secondary)
+                  }
+                )
               }
             }
           }
@@ -143,6 +152,11 @@ struct MainView: View {
     }
     .listStyle(GroupedListStyle())
     .navigationTitle("firezone")
+  }
+
+  private func copyResourceTapped(_ resource: DisplayableResources.Resource) {
+    let pasteboard = UIPasteboard.general
+    pasteboard.string = resource.location
   }
 }
 
