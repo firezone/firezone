@@ -10,6 +10,7 @@ import Dependencies
 import SwiftUI
 import SwiftUINavigation
 
+#if os(iOS)
 @MainActor
 final class WelcomeViewModel: ObservableObject {
   @Dependency(\.settingsClient) private var settingsClient
@@ -157,3 +158,4 @@ struct WelcomeView_Previews: PreviewProvider {
     )
   }
 }
+#endif

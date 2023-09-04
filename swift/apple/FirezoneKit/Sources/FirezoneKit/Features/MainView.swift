@@ -10,6 +10,7 @@ import NetworkExtension
 import OSLog
 import SwiftUI
 
+#if os(iOS)
 @MainActor
 final class MainViewModel: ObservableObject {
   private let logger = Logger.make(for: MainViewModel.self)
@@ -158,3 +159,4 @@ struct MainView_Previews: PreviewProvider {
     )
   }
 }
+#endif
