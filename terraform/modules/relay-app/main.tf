@@ -274,7 +274,7 @@ resource "google_compute_region_instance_group_manager" "application" {
     type           = "PROACTIVE"
     minimal_action = "RESTART"
 
-    max_unavailable_fixed = 0
+    max_unavailable_fixed = 1
     max_surge_fixed       = max(length(each.value.zones), each.value.replicas - 1)
   }
 
