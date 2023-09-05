@@ -451,7 +451,7 @@ defmodule Domain.ActorsTest do
       assert Repo.aggregate(Actors.Group, :count) == 2
       assert Repo.aggregate(Actors.Group.Query.all(), :count) == 0
 
-      assert Enum.count(group_ids_by_provider_identifier) == 0
+      assert Enum.empty?(group_ids_by_provider_identifier)
     end
 
     test "ignores groups that are not synced from the provider", %{

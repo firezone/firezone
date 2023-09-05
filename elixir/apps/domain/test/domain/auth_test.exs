@@ -1260,7 +1260,7 @@ defmodule Domain.AuthTest do
       assert Repo.aggregate(Auth.Identity, :count) == 2
       assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 0
 
-      assert Enum.count(actor_ids_by_provider_identifier) == 0
+      assert Enum.empty?(actor_ids_by_provider_identifier)
     end
 
     test "ignores identities that are not synced from the provider", %{
