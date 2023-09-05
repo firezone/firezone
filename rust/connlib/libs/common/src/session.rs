@@ -16,7 +16,7 @@ use tokio::{runtime::Runtime, sync::mpsc::Receiver};
 use url::Url;
 
 use crate::{
-    control::{MessageResult, PhoenixChannel, PhoenixSenderWithTopic},
+    control::{MessageResult, PhoenixChannel, PhoenixSenderWithTopic, Reference},
     messages::{Key, ResourceDescription},
     Error, Result,
 };
@@ -33,7 +33,7 @@ pub trait ControlSession<T, CB: Callbacks> {
     /// Start control-plane with the given private-key in the background.
     async fn start(
         private_key: StaticSecret,
-        receiver: Receiver<MessageResult<T>>,
+        receiver: Receiver<(MessageResult<T>, Option<Reference>)>,
         control_signal: PhoenixSenderWithTopic,
         callbacks: CB,
     ) -> Result<()>;
@@ -292,11 +292,11 @@ where
             // to force queue ordering.
             let (control_plane_sender, control_plane_receiver) = tokio::sync::mpsc::channel(1);
 
-            let mut connection = PhoenixChannel::<_, U, R, M>::new(connect_url, move |msg| {
+            let mut connection = PhoenixChannel::<_, U, R, M>::new(connect_url, move |msg, reference| {
                 let control_plane_sender = control_plane_sender.clone();
                 async move {
                     tracing::trace!("Received message: {msg:?}");
-                    if let Err(e) = control_plane_sender.send(msg).await {
+                    if let Err(e) = control_plane_sender.send((msg, reference)).await {
                         tracing::warn!("Received a message after handler already closed: {e}. Probably message received during session clean up.");
                     }
                 }
@@ -318,8 +318,8 @@ where
                     tracing::debug!("Attempting connection to portal...");
                     let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
                     tracing::warn!("Disconnected from the portal");
-                    if let Err(err) = &result {
-                        tracing::warn!("Portal connection error: {err}");
+                    if let Err(e) = &result {
+                        tracing::warn!(error = ?e, "Portal connection error");
                     }
                     if let Some(t) = exponential_backoff.next_backoff() {
                         tracing::warn!("Error connecting to portal, retrying in {} seconds", t.as_secs());

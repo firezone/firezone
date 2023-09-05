@@ -11,9 +11,10 @@ use futures::{
     channel::mpsc::{channel, Receiver, Sender},
     TryStreamExt,
 };
-use futures_util::{Future, SinkExt, StreamExt};
+use futures_util::{Future, SinkExt, StreamExt, TryFutureExt};
 use rand_core::{OsRng, RngCore};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use tokio_stream::StreamExt as _;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{self, handshake::client::Request},
@@ -24,6 +25,10 @@ use url::Url;
 use crate::{get_user_agent, Error, Result};
 
 const CHANNEL_SIZE: usize = 1_000;
+const HEARTBEAT: Duration = Duration::from_secs(30);
+const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(35);
+
+pub type Reference = String;
 
 /// Main struct to interact with the control-protocol channel.
 ///
@@ -79,7 +84,7 @@ where
     I: DeserializeOwned,
     R: DeserializeOwned,
     M: From<I> + From<R>,
-    F: Fn(MessageResult<M>) -> Fut,
+    F: Fn(MessageResult<M>, Option<Reference>) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
 {
     /// Starts the tunnel with the parameters given in [Self::new].
@@ -110,7 +115,10 @@ where
             handler, receiver, ..
         } = self;
 
-        let process_messages = read.try_for_each(|message| async {
+        let process_messages = tokio_stream::StreamExt::map(read.timeout(HEARTBEAT_TIMEOUT), |m| {
+            m.map_err(Error::from)?.map_err(Error::from)
+        })
+        .try_for_each(|message| async {
             Self::message_process(handler, message).await;
             Ok(())
         });
@@ -141,13 +149,20 @@ where
         // Furthermore can this also happen if write errors out? *that* I'd assume is possible...
         // What option is left? write a new future to forward items.
         // For now we should never assume that an item arrived the portal because we sent it!
-        let send_messages = receiver.map(Ok).forward(write);
+        let send_messages = futures::StreamExt::map(receiver, Ok)
+            .forward(write)
+            .map_err(Error::from);
 
         let phoenix_heartbeat = tokio::spawn(async move {
-            let mut timer = tokio::time::interval(Duration::from_secs(30));
+            let mut timer = tokio::time::interval(HEARTBEAT);
             loop {
                 timer.tick().await;
-                let Ok(_) = sender.send("phoenix", EgressControlMessage::Heartbeat(Empty {})).await else { break };
+                let Ok(_) = sender
+                    .send("phoenix", EgressControlMessage::Heartbeat(Empty {}))
+                    .await
+                else {
+                    break;
+                };
             }
         });
 
@@ -174,30 +189,28 @@ where
         match message.into_text() {
             Ok(m_str) => match serde_json::from_str::<PhoenixMessage<I, R>>(&m_str) {
                 Ok(m) => match m.payload {
-                    Payload::Message(m) => handler(Ok(m.into())).await,
+                    Payload::Message(payload) => handler(Ok(payload.into()), m.reference).await,
                     Payload::Reply(status) => match status {
                         ReplyMessage::PhxReply(phx_reply) => match phx_reply {
                             // TODO: Here we should pass error info to a subscriber
                             PhxReply::Error(info) => {
                                 tracing::warn!("Portal error: {info:?}");
-                                handler(Err(ErrorReply {
-                                    error: info,
-                                    reference: m.reference,
-                                }))
-                                .await
+                                handler(Err(ErrorReply { error: info }), m.reference).await
                             }
                             PhxReply::Ok(reply) => match reply {
                                 OkReply::NoMessage(Empty {}) => {
-                                    tracing::trace!("Phoenix status message")
+                                    tracing::trace!(target: "phoenix_status", "Phoenix status message")
                                 }
-                                OkReply::Message(m) => handler(Ok(m.into())).await,
+                                OkReply::Message(payload) => {
+                                    handler(Ok(payload.into()), m.reference).await
+                                }
                             },
                         },
                         ReplyMessage::PhxError(Empty {}) => tracing::error!("Phoenix error"),
                     },
                 },
                 Err(e) => {
-                    tracing::error!("Error deserializing message {m_str}: {e:?}");
+                    tracing::error!(message = "Error deserializing message", message_string =  m_str, error = ?e);
                 }
             },
             _ => tracing::error!("Received message that is not text"),
@@ -254,8 +267,6 @@ pub type MessageResult<M> = std::result::Result<M, ErrorReply>;
 pub struct ErrorReply {
     /// Information of the error
     pub error: ErrorInfo,
-    /// Reference to the message that caused the error
-    pub reference: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
