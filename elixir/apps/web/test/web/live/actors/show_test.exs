@@ -191,6 +191,19 @@ defmodule Web.Live.Actors.ShowTest do
       |> render_click()
 
       assert_redirect(lv, ~p"/#{account}/actors/users/#{actor}/new_identity")
+
+      actor = Fixtures.Actors.update(actor, last_synced_at: DateTime.utc_now())
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      lv
+      |> element("a", "Create new token")
+      |> render_click()
+
+      assert_redirect(lv, ~p"/#{account}/actors/service_accounts/#{actor}/new_identity")
     end
 
     test "allows editing actors", %{

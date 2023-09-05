@@ -160,7 +160,7 @@ defmodule Web.Actors.Show do
           <:title>
             Authentication Identities
           </:title>
-          <:actions :if={not Actors.actor_synced?(@actor)}>
+          <:actions>
             <.action_button
               :if={@actor.type == :service_account}
               icon="hero-plus"
