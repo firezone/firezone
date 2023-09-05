@@ -17,7 +17,6 @@ public final class SettingsViewModel: ObservableObject {
 
   public init() {
     settings = Settings()
-
     load()
   }
 

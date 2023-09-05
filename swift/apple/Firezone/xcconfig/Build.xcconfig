@@ -1,2 +1,5 @@
 CONNLIB_SOURCE_DIR=${PROJECT_DIR}/../../rust/connlib/clients/apple
 CONNLIB_TARGET_DIR=${PROJECT_DIR}/../../rust/target
+
+APP_GROUP_ID[sdk=macosx*] = ${DEVELOPMENT_TEAM}.group.${APP_ID}
+APP_GROUP_ID[sdk=iphoneos*] = group.${APP_ID}
