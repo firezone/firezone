@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tracing::instrument;
 
 use libs_common::{
+    control::Reference,
     messages::{Id, Key, Relay, RequestConnection, ResourceDescription, ReuseConnection},
     Callbacks, Error, Result,
 };
@@ -255,16 +256,39 @@ where
         resource_id: Id,
         gateway_id: Id,
         relays: Vec<Relay>,
+        reference: Option<Reference>,
     ) -> Result<Request> {
-        self.resources_gateways
-            .lock()
-            .insert(resource_id, gateway_id);
+        tracing::trace!("Received gateways and relays for resource, requesting connection");
         let resource_description = self
             .resources
             .read()
             .get_by_id(&resource_id)
             .ok_or(Error::UnknownResource)?
             .clone();
+
+        let reference: usize = reference
+            .ok_or(Error::InvalidReference)?
+            .parse()
+            .map_err(|_| Error::InvalidReference)?;
+        {
+            let mut awaiting_connections = self.awaiting_connection.lock();
+            let Some(awaiting_connection) = awaiting_connections.get_mut(&resource_id) else {
+                return Err(Error::UnexpectedConnectionDetails);
+            };
+            awaiting_connection.response_recieved = true;
+            if awaiting_connection.total_attemps != reference
+                || resource_description
+                    .ips()
+                    .iter()
+                    .any(|&ip| self.peers_by_ip.read().exact_match(ip).is_some())
+            {
+                return Err(Error::UnexpectedConnectionDetails);
+            }
+        }
+
+        self.resources_gateways
+            .lock()
+            .insert(resource_id, gateway_id);
         {
             let mut gateway_awaiting_connection = self.gateway_awaiting_connection.lock();
             if let Some(g) = gateway_awaiting_connection.get_mut(&gateway_id) {
@@ -278,23 +302,38 @@ where
             }
         }
         {
-            let mut peers_by_ip = self.peers_by_ip.write();
-            let peer = peers_by_ip
-                .iter()
-                .find_map(|(_, p)| (p.conn_id == gateway_id).then_some(p))
-                .cloned();
-            if let Some(peer) = peer {
-                for ip in resource_description.ips() {
-                    peer.add_allowed_ip(ip);
-                    peers_by_ip.insert(ip, Arc::clone(&peer));
+            let found = {
+                let mut peers_by_ip = self.peers_by_ip.write();
+                let peer = peers_by_ip
+                    .iter()
+                    .find_map(|(_, p)| (p.conn_id == gateway_id).then_some(p))
+                    .cloned();
+                if let Some(peer) = peer {
+                    for ip in resource_description.ips() {
+                        peer.add_allowed_ip(ip);
+                        peers_by_ip.insert(ip, Arc::clone(&peer));
+                    }
+                    true
+                } else {
+                    false
                 }
+            };
+
+            if found {
+                self.awaiting_connection.lock().remove(&resource_id);
                 return Ok(Request::ReuseConnection(ReuseConnection {
                     resource_id,
                     gateway_id,
                 }));
             }
         }
-        let peer_connection = self.initialize_peer_request(relays).await?;
+        let peer_connection = {
+            let peer_connection = Arc::new(self.initialize_peer_request(relays).await?);
+            let mut peer_connections = self.peer_connections.lock();
+            peer_connections.insert(gateway_id, Arc::clone(&peer_connection));
+            peer_connection
+        };
+
         self.set_connection_state_update_initiator(&peer_connection, gateway_id, resource_id);
 
         let data_channel = peer_connection.create_data_channel("data", None).await?;
@@ -359,10 +398,6 @@ where
             .local_description()
             .await
             .expect("Developer error: set_local_description was just called above");
-
-        self.peer_connections
-            .lock()
-            .insert(gateway_id, peer_connection);
 
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
