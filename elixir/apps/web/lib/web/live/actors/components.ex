@@ -93,6 +93,14 @@ defmodule Web.Actors.Components do
     """
   end
 
+  def map_actor_form_memberships_attr(attrs) do
+    Map.update(attrs, "memberships", [], fn group_ids ->
+      Enum.map(group_ids, fn group_id ->
+        %{group_id: group_id}
+      end)
+    end)
+  end
+
   attr :form, :any, required: true
   attr :provider, :map, required: true
 

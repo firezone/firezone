@@ -18,7 +18,7 @@ defmodule Domain.Actors.Group.Changeset do
     |> changeset()
     |> put_change(:account_id, account.id)
     |> cast_assoc(:memberships,
-      with: &Actors.Membership.Changeset.changeset(account.id, &1, &2)
+      with: &Actors.Membership.Changeset.for_group(account.id, &1, &2)
     )
     |> put_change(:created_by, :identity)
     |> put_change(:created_by_identity_id, subject.identity.id)
@@ -40,7 +40,7 @@ defmodule Domain.Actors.Group.Changeset do
     |> validate_required(~w[name]a)
     |> changeset()
     |> cast_assoc(:memberships,
-      with: &Actors.Membership.Changeset.changeset(group.account_id, &1, &2)
+      with: &Actors.Membership.Changeset.for_group(group.account_id, &1, &2)
     )
   end
 

@@ -9,6 +9,8 @@ defmodule Web.Actors.ServiceAccounts.New do
          {:ok, groups} <- Actors.list_groups(socket.assigns.subject) do
       changeset = Actors.new_actor(%{type: :service_account})
 
+      groups = Enum.reject(groups, &Actors.group_synced?/1)
+
       socket =
         assign(socket,
           groups: groups,
@@ -24,7 +26,7 @@ defmodule Web.Actors.ServiceAccounts.New do
   def handle_event("change", %{"actor" => attrs}, socket) do
     changeset =
       attrs
-      |> map_memberships_attr()
+      |> map_actor_form_memberships_attr()
       |> Map.put("type", :service_account)
       |> Actors.new_actor()
       |> Map.put(:action, :insert)
@@ -36,7 +38,7 @@ defmodule Web.Actors.ServiceAccounts.New do
     attrs =
       attrs
       |> Map.put("type", :service_account)
-      |> map_memberships_attr()
+      |> map_actor_form_memberships_attr()
 
     with {:ok, actor} <-
            Actors.create_actor(
@@ -54,15 +56,6 @@ defmodule Web.Actors.ServiceAccounts.New do
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
-  end
-
-  # TODO: we can get rid off it using native liveView form
-  defp map_memberships_attr(attrs) do
-    Map.update(attrs, "memberships", [], fn group_ids ->
-      Enum.map(group_ids, fn group_id ->
-        %{group_id: group_id}
-      end)
-    end)
   end
 
   def render(assigns) do

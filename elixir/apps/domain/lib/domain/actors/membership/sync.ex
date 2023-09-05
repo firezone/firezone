@@ -11,20 +11,17 @@ defmodule Domain.Actors.Membership.Sync do
       :plan_memberships,
       fn _repo,
          %{
-           identities: identities,
-           insert_identities: insert_identities,
-           groups: groups,
-           upsert_groups: upsert_groups,
+           actor_ids_by_provider_identifier: actor_ids_by_provider_identifier,
+           group_ids_by_provider_identifier: group_ids_by_provider_identifier,
            memberships: memberships
          } ->
-        plan_memberships_update(
-          tuples,
-          identities,
-          insert_identities,
-          groups,
-          upsert_groups,
-          memberships
-        )
+        tuples =
+          Enum.map(tuples, fn {group_provider_identifier, actor_provider_identifier} ->
+            {Map.fetch!(group_ids_by_provider_identifier, group_provider_identifier),
+             Map.fetch!(actor_ids_by_provider_identifier, actor_provider_identifier)}
+          end)
+
+        plan_memberships_update(tuples, memberships)
       end
     )
     |> Ecto.Multi.delete_all(:delete_memberships, fn %{plan_memberships: {_upsert, delete}} ->
@@ -41,30 +38,7 @@ defmodule Domain.Actors.Membership.Sync do
     |> Membership.Query.lock()
   end
 
-  defp plan_memberships_update(
-         tuples,
-         identities,
-         insert_identities,
-         groups,
-         upsert_groups,
-         memberships
-       ) do
-    identity_by_provider_identifier =
-      for identity <- identities ++ insert_identities, into: %{} do
-        {identity.provider_identifier, identity}
-      end
-
-    group_by_provider_identifier =
-      for group <- groups ++ upsert_groups, into: %{} do
-        {group.provider_identifier, group}
-      end
-
-    tuples =
-      Enum.map(tuples, fn {group_provider_identifier, actor_provider_identifier} ->
-        {Map.fetch!(group_by_provider_identifier, group_provider_identifier).id,
-         Map.fetch!(identity_by_provider_identifier, actor_provider_identifier).actor_id}
-      end)
-
+  defp plan_memberships_update(tuples, memberships) do
     {upsert, delete} =
       Enum.reduce(
         memberships,
@@ -73,9 +47,9 @@ defmodule Domain.Actors.Membership.Sync do
           tuple = {membership.group_id, membership.actor_id}
 
           if tuple in tuples do
-            {upsert -- [tuple], delete}
+            {upsert, delete}
           else
-            {upsert -- [tuple], [{membership.group_id, membership.actor_id}] ++ delete}
+            {upsert -- [tuple], [tuple] ++ delete}
           end
         end
       )
@@ -103,7 +77,7 @@ defmodule Domain.Actors.Membership.Sync do
   end
 
   defp upsert_membership(repo, provider, attrs) do
-    Membership.Changeset.changeset(provider.account_id, %Membership{}, attrs)
+    Membership.Changeset.upsert(provider.account_id, %Membership{}, attrs)
     |> repo.insert(
       conflict_target: Membership.Changeset.upsert_conflict_target(),
       on_conflict: Membership.Changeset.upsert_on_conflict(),

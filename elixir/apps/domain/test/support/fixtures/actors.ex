@@ -63,7 +63,7 @@ defmodule Domain.Fixtures.Actors do
     last_name = Enum.random(~w[Robyn Traci Desiree Jon Bob Karl Joe Alberta Lynda Cara Brandi B])
 
     Enum.into(attrs, %{
-      name: "#{first_name} #{last_name}",
+      name: "#{first_name} #{last_name} #{unique_integer()}rd",
       type: :account_user
     })
   end
@@ -115,7 +115,7 @@ defmodule Domain.Fixtures.Actors do
         |> create_actor()
       end)
 
-    Actors.Membership.Changeset.changeset(account.id, %Actors.Membership{}, %{
+    Actors.Membership.Changeset.upsert(account.id, %Actors.Membership{}, %{
       group_id: group_id,
       actor_id: actor_id
     })

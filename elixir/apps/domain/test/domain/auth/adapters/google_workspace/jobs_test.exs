@@ -265,6 +265,12 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
         assert identity.created_by == :provider
         assert identity.provider_id == provider.id
         assert identity.provider_identifier in ["USER_ID1", "USER_ID2"]
+
+        assert identity.provider_state in [
+                 %{"userinfo" => %{"email" => "b@firez.xxx"}},
+                 %{"userinfo" => %{"email" => "j@firez.xxx"}}
+               ]
+
         assert identity.actor.name in ["Brian Manifold", "Jamil Bou Kheir"]
         assert identity.actor.last_synced_at
       end
@@ -284,6 +290,181 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
       assert sync_directory(%{}) == :ok
 
       assert Repo.aggregate(Actors.Group, :count) == 0
+    end
+
+    test "updates existing identities and actors", %{account: account, provider: provider} do
+      bypass = Bypass.open()
+
+      users = [
+        %{
+          "agreedToTerms" => true,
+          "archived" => false,
+          "creationTime" => "2023-06-10T17:32:06.000Z",
+          "id" => "USER_ID1",
+          "kind" => "admin#directory#user",
+          "lastLoginTime" => "2023-06-26T13:53:30.000Z",
+          "name" => %{
+            "familyName" => "Manifold",
+            "fullName" => "Brian Manifold",
+            "givenName" => "Brian"
+          },
+          "orgUnitPath" => "/",
+          "organizations" => [],
+          "phones" => [],
+          "primaryEmail" => "b@firez.xxx"
+        }
+      ]
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: "USER_ID1"
+        )
+
+      GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+      GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, [])
+      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, [])
+      GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, users)
+
+      assert sync_directory(%{}) == :ok
+
+      assert updated_identity =
+               Repo.get(Domain.Auth.Identity, identity.id)
+               |> Repo.preload(:actor)
+
+      assert updated_identity.provider_state == %{"userinfo" => %{"email" => "b@firez.xxx"}}
+      assert updated_identity.actor.name == "Brian Manifold"
+      assert updated_identity.actor.last_synced_at
+    end
+
+    test "updates existing groups and memberships", %{account: account, provider: provider} do
+      bypass = Bypass.open()
+
+      users = [
+        %{
+          "agreedToTerms" => true,
+          "archived" => false,
+          "creationTime" => "2023-06-10T17:32:06.000Z",
+          "id" => "USER_ID1",
+          "kind" => "admin#directory#user",
+          "lastLoginTime" => "2023-06-26T13:53:30.000Z",
+          "name" => %{
+            "familyName" => "Manifold",
+            "fullName" => "Brian Manifold",
+            "givenName" => "Brian"
+          },
+          "orgUnitPath" => "/Engineering",
+          "organizations" => [],
+          "phones" => [],
+          "primaryEmail" => "b@firez.xxx"
+        }
+      ]
+
+      groups = [
+        %{
+          "kind" => "admin#directory#group",
+          "id" => "GROUP_ID1",
+          "etag" => "\"ET\"",
+          "email" => "i@fiez.xxx",
+          "name" => "Infrastructure",
+          "directMembersCount" => "5",
+          "description" => "Group to handle infrastructure alerts and management",
+          "adminCreated" => true,
+          "aliases" => [
+            "pnr@firez.one"
+          ],
+          "nonEditableAliases" => [
+            "i@ext.fiez.xxx"
+          ]
+        }
+      ]
+
+      organization_units = [
+        %{
+          "kind" => "admin#directory#orgUnit",
+          "name" => "Engineering",
+          "description" => "Engineering team",
+          "etag" => "\"ET\"",
+          "blockInheritance" => false,
+          "orgUnitId" => "OU_ID1",
+          "orgUnitPath" => "/Engineering",
+          "parentOrgUnitId" => "OU_ID0",
+          "parentOrgUnitPath" => "/"
+        }
+      ]
+
+      members = [
+        %{
+          "kind" => "admin#directory#member",
+          "etag" => "\"ET\"",
+          "id" => "USER_ID1",
+          "email" => "b@firez.xxx",
+          "role" => "MEMBER",
+          "type" => "USER",
+          "status" => "ACTIVE"
+        }
+      ]
+
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      Fixtures.Auth.create_identity(
+        account: account,
+        provider: provider,
+        actor: actor,
+        provider_identifier: "USER_ID1"
+      )
+
+      group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID1"
+        )
+
+      deleted_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:DELETED_GROUP_ID!"
+        )
+
+      org_unit =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "OU:OU_ID1"
+        )
+
+      Fixtures.Actors.create_membership(account: account, actor: actor)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: deleted_group)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: org_unit)
+
+      GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+      GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, groups)
+      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, organization_units)
+      GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, users)
+
+      Enum.each(groups, fn group ->
+        GoogleWorkspaceDirectory.mock_group_members_list_endpoint(bypass, group["id"], members)
+      end)
+
+      assert sync_directory(%{}) == :ok
+
+      assert updated_group = Repo.get(Domain.Actors.Group, group.id)
+      assert updated_group.name == "Group:Infrastructure"
+
+      assert updated_org_unit = Repo.get(Domain.Actors.Group, org_unit.id)
+      assert updated_org_unit.name == "OrgUnit:Engineering"
+
+      assert memberships = Repo.all(Domain.Actors.Membership.Query.with_joined_groups())
+      assert length(memberships) == 3
+
+      membership_group_ids = Enum.map(memberships, & &1.group_id)
+      assert group.id in membership_group_ids
+      assert org_unit.id in membership_group_ids
+      assert deleted_group.id not in membership_group_ids
     end
   end
 end

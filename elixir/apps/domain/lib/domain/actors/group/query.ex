@@ -24,6 +24,10 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.provider_id == ^provider_id)
   end
 
+  def by_not_empty_provider_id(queryable \\ all()) do
+    where(queryable, [groups: groups], not is_nil(groups.provider_id))
+  end
+
   def by_provider_identifier(queryable \\ all(), provider_identifier)
 
   def by_provider_identifier(queryable, {:in, provider_identifiers}) do

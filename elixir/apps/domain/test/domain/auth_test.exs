@@ -1140,9 +1140,11 @@ defmodule Domain.AuthTest do
 
       assert {:ok,
               %{
+                identities: [],
                 plan_identities: {insert, [], []},
                 insert_identities: [_actor1, _actor2],
-                delete_identities: {0, nil}
+                delete_identities: {0, nil},
+                actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = Repo.transaction(multi)
 
       assert Enum.all?(provider_identifiers, &(&1 in insert))
@@ -1157,7 +1159,12 @@ defmodule Domain.AuthTest do
         assert identity.provider_identifier in provider_identifiers
         assert identity.actor.name in actor_names
         assert identity.actor.last_synced_at
+
+        assert Map.get(actor_ids_by_provider_identifier, identity.provider_identifier) ==
+                 identity.actor_id
       end
+
+      assert Enum.count(actor_ids_by_provider_identifier) == 2
     end
 
     test "update to existing actors", %{account: account, provider: provider} do
@@ -1197,9 +1204,11 @@ defmodule Domain.AuthTest do
 
       assert {:ok,
               %{
+                identities: [_identity1, _identity2],
                 plan_identities: {[], update, []},
                 delete_identities: {0, nil},
-                insert_identities: []
+                insert_identities: [],
+                actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = Repo.transaction(multi)
 
       assert length(update) == 2
@@ -1209,10 +1218,14 @@ defmodule Domain.AuthTest do
       actor = Repo.get(Domain.Actors.Actor, identity1.actor_id)
       assert actor.type == :account_admin_user
       assert actor.name == "Brian Manifold"
+      assert Map.get(actor_ids_by_provider_identifier, identity1.provider_identifier) == actor.id
 
       actor = Repo.get(Domain.Actors.Actor, identity2.actor_id)
       assert actor.type == :account_user
       assert actor.name == "Jennie Smith"
+      assert Map.get(actor_ids_by_provider_identifier, identity2.provider_identifier) == actor.id
+
+      assert Enum.count(actor_ids_by_provider_identifier) == 2
     end
 
     test "deletes removed identities", %{account: account, provider: provider} do
@@ -1236,14 +1249,18 @@ defmodule Domain.AuthTest do
 
       assert {:ok,
               %{
+                identities: [_identity1, _identity2],
                 plan_identities: {[], [], delete},
                 delete_identities: {2, nil},
-                insert_identities: []
+                insert_identities: [],
+                actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = Repo.transaction(multi)
 
       assert Enum.all?(provider_identifiers, &(&1 in delete))
       assert Repo.aggregate(Auth.Identity, :count) == 2
       assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 0
+
+      assert Enum.empty?(actor_ids_by_provider_identifier)
     end
 
     test "ignores identities that are not synced from the provider", %{
@@ -1275,7 +1292,8 @@ defmodule Domain.AuthTest do
                   plan_identities: {[], [], []},
                   delete_identities: {0, nil},
                   insert_identities: [],
-                  sync_actors: []
+                  update_identities_and_actors: [],
+                  actor_ids_by_provider_identifier: %{}
                 }}
     end
 

@@ -88,7 +88,9 @@ defmodule Web.Groups.Index do
             </:item>
 
             <:tail :let={count}>
-              and <%= count %> more.
+              <span class="pl-1">
+                and <%= count %> more.
+              </span>
             </:tail>
           </.peek>
         </:col>

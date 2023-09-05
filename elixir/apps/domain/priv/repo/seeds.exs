@@ -261,20 +261,23 @@ for group <- [eng_group, finance_group, all_group] do
   IO.puts("  Name: #{group.name}  ID: #{group.id}")
 end
 
-Actors.update_group(
-  eng_group,
+eng_group
+|> Repo.preload(:memberships)
+|> Actors.update_group(
   %{memberships: [%{actor_id: admin_subject.actor.id}]},
   admin_subject
 )
 
-Actors.update_group(
-  finance_group,
+finance_group
+|> Repo.preload(:memberships)
+|> Actors.update_group(
   %{memberships: [%{actor_id: unprivileged_subject.actor.id}]},
   admin_subject
 )
 
-Actors.update_group(
-  all_group,
+all_group
+|> Repo.preload(:memberships)
+|> Actors.update_group(
   %{
     memberships: [
       %{actor_id: admin_subject.actor.id},

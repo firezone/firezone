@@ -49,6 +49,17 @@ defmodule Domain.Auth.Identity.Changeset do
     |> changeset()
   end
 
+  def update_identity_and_actor(%Identity{} = identity, attrs) do
+    identity
+    |> cast(attrs, ~w[provider_state]a)
+    |> cast_assoc(:actor,
+      with: fn actor, attrs ->
+        Actors.Actor.Changeset.sync(actor, attrs)
+      end
+    )
+    |> changeset()
+  end
+
   def changeset(changeset) do
     changeset
     |> unique_constraint(:provider_identifier,
