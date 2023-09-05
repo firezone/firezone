@@ -4,9 +4,9 @@ defmodule Domain.Actors.Actor.Changeset do
   alias Domain.Actors
   alias Domain.Actors.Actor
 
-  def keys, do: ~w[type name]a
-  def keys(%Actor{last_synced_at: nil}), do: ~w[type name]a
-  def keys(%Actor{}), do: ~w[type]a
+  def allowed_updates, do: %{fields: ~w[type name]a}
+  def allowed_updates(%Actor{last_synced_at: nil}), do: allowed_updates()
+  def allowed_updates(%Actor{}), do: %{fields: ~w[type]a}
 
   def create(account_id, attrs, %Auth.Subject{} = subject) do
     create(account_id, attrs)
@@ -17,32 +17,36 @@ defmodule Domain.Actors.Actor.Changeset do
     create(attrs)
     |> put_change(:account_id, account_id)
     |> cast_assoc(:memberships,
-      with: &Actors.Membership.Changeset.changeset(account_id, &1, &2)
+      with: &Actors.Membership.Changeset.for_actor(account_id, &1, &2)
     )
   end
 
   def create(attrs) do
-    keys = keys()
+    %{fields: fields} = allowed_updates()
 
     %Actors.Actor{memberships: []}
-    |> cast(attrs, keys)
-    |> validate_required(keys)
+    |> cast(attrs, fields)
+    |> validate_required(fields)
     |> changeset()
   end
 
-  def update(%Actor{} = actor, attrs, %Auth.Subject{} = subject) do
-    update(actor, attrs)
+  def update(%Actor{} = actor, attrs, blacklisted_groups, %Auth.Subject{} = subject) do
+    update(actor, blacklisted_groups, attrs)
     |> validate_granted_permissions(subject)
   end
 
-  def update(%Actor{} = actor, attrs) do
-    keys = keys(actor)
+  def update(%Actor{} = actor, blacklisted_groups, attrs) do
+    %{fields: fields} = allowed_updates(actor)
+    blacklisted_group_ids = Enum.map(blacklisted_groups, & &1.id)
 
     actor
-    |> cast(attrs, keys)
-    |> validate_required(keys)
+    |> cast(attrs, fields)
+    |> validate_required(fields)
     |> cast_assoc(:memberships,
-      with: &Actors.Membership.Changeset.changeset(actor.account_id, &1, &2)
+      with: fn membership, attrs ->
+        Actors.Membership.Changeset.for_actor(actor.account_id, membership, attrs)
+        |> validate_exclusion(:group_id, blacklisted_group_ids)
+      end
     )
     |> changeset()
   end

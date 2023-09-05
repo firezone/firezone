@@ -878,7 +878,7 @@ defmodule Domain.ActorsTest do
     test "returns changeset with given changes" do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account) |> Repo.preload(:memberships)
 
       group_attrs =
         Fixtures.Actors.group_attrs(
@@ -1506,6 +1506,84 @@ defmodule Domain.ActorsTest do
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+    end
+
+    test "allows changing not synced memberships", %{account: account, subject: subject} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      group1 = Fixtures.Actors.create_group(account: account)
+      group2 = Fixtures.Actors.create_group(account: account)
+
+      attrs = %{memberships: []}
+      assert {:ok, %{memberships: []}} = update_actor(actor, attrs, subject)
+
+      attrs = %{memberships: [%{group_id: group1.id}]}
+      assert {:ok, %{memberships: [membership]}} = update_actor(actor, attrs, subject)
+      assert membership.group_id == group1.id
+      assert Repo.one(Actors.Membership).group_id == membership.group_id
+
+      attrs = %{memberships: [%{group_id: group2.id}]}
+      assert {:ok, %{memberships: [membership]}} = update_actor(actor, attrs, subject)
+      assert membership.group_id == group2.id
+      assert Repo.one(Actors.Membership).group_id == membership.group_id
+
+      attrs = %{memberships: [Map.from_struct(membership)]}
+      assert {:ok, %{memberships: [membership]}} = update_actor(actor, attrs, subject)
+      assert membership.group_id == group2.id
+      assert Repo.one(Actors.Membership).group_id == membership.group_id
+
+      attrs = %{memberships: [%{group_id: group1.id}, %{group_id: group2.id}]}
+      assert {:ok, %{memberships: memberships}} = update_actor(actor, attrs, subject)
+      assert [membership1, membership2] = memberships
+      assert membership1.group_id == group1.id
+      assert membership2.group_id == group2.id
+      assert Repo.aggregate(Actors.Membership, :count, :group_id) == 2
+
+      assert {:ok, %{memberships: []}} = update_actor(actor, %{memberships: []}, subject)
+      assert Repo.aggregate(Actors.Membership, :count, :group_id) == 0
+    end
+
+    test "returns error on invalid membership", %{account: account, subject: subject} do
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      attrs = %{memberships: [%{}]}
+      assert {:error, changeset} = update_actor(actor, attrs, subject)
+      assert errors_on(changeset).memberships == [%{group_id: ["can't be blank"]}]
+
+      attrs = %{memberships: [%{actor_id: actor.id}]}
+      assert {:error, changeset} = update_actor(actor, attrs, subject)
+      assert errors_on(changeset).memberships == [%{group_id: ["can't be blank"]}]
+
+      attrs = %{memberships: [%{group_id: Ecto.UUID.generate()}]}
+      assert update_actor(actor, attrs, subject) == {:error, :rollback}
+    end
+
+    test "does not allow to remove membership of a synced group", %{
+      account: account,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
+
+      attrs = %{memberships: []}
+      assert {:ok, %{memberships: []}} = update_actor(actor, attrs, subject)
+      assert membership = Repo.one(Actors.Membership)
+      assert membership.group_id == group.id
+      assert membership.actor_id == actor.id
+    end
+
+    test "does not allow to add membership of a synced group", %{
+      account: account,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
+
+      attrs = %{memberships: [%{group_id: group.id}]}
+      assert {:error, changeset} = update_actor(actor, attrs, subject)
+      assert errors_on(changeset).memberships == [%{group_id: ["is reserved"]}]
     end
   end
 

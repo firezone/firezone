@@ -9,6 +9,8 @@ defmodule Web.Actors.Edit do
          {:ok, groups} <- Actors.list_groups(socket.assigns.subject) do
       changeset = Actors.change_actor(actor)
 
+      groups = Enum.reject(groups, &Actors.group_synced?/1)
+
       {:ok, socket,
        temporary_assigns: [
          actor: actor,
@@ -22,7 +24,7 @@ defmodule Web.Actors.Edit do
   end
 
   def handle_event("change", %{"actor" => attrs}, socket) do
-    attrs = map_memberships_attr(attrs)
+    attrs = map_actor_form_memberships_attr(attrs)
 
     changeset =
       Actors.change_actor(socket.assigns.actor, attrs)
@@ -32,7 +34,7 @@ defmodule Web.Actors.Edit do
   end
 
   def handle_event("submit", %{"actor" => attrs}, socket) do
-    attrs = map_memberships_attr(attrs)
+    attrs = map_actor_form_memberships_attr(attrs)
 
     with {:ok, actor} <- Actors.update_actor(socket.assigns.actor, attrs, socket.assigns.subject) do
       socket = redirect(socket, to: ~p"/#{socket.assigns.account}/actors/#{actor}")
@@ -52,14 +54,6 @@ defmodule Web.Actors.Edit do
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
-  end
-
-  defp map_memberships_attr(attrs) do
-    Map.update(attrs, "memberships", [], fn group_ids ->
-      Enum.map(group_ids, fn group_id ->
-        %{group_id: group_id}
-      end)
-    end)
   end
 
   def render(assigns) do

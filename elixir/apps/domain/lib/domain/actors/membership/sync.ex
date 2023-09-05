@@ -77,7 +77,7 @@ defmodule Domain.Actors.Membership.Sync do
   end
 
   defp upsert_membership(repo, provider, attrs) do
-    Membership.Changeset.changeset(provider.account_id, %Membership{}, attrs)
+    Membership.Changeset.upsert(provider.account_id, %Membership{}, attrs)
     |> repo.insert(
       conflict_target: Membership.Changeset.upsert_conflict_target(),
       on_conflict: Membership.Changeset.upsert_on_conflict(),

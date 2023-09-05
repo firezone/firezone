@@ -200,10 +200,10 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("a", "Create new token")
+      |> element("a", "Create new identity")
       |> render_click()
 
-      assert_redirect(lv, ~p"/#{account}/actors/service_accounts/#{actor}/new_identity")
+      assert_redirect(lv, ~p"/#{account}/actors/users/#{actor}/new_identity")
     end
 
     test "allows editing actors", %{

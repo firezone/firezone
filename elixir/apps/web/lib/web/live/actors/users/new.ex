@@ -48,7 +48,6 @@ defmodule Web.Actors.Users.New do
     end
   end
 
-  # TODO: we can get rid off it using native liveView form
   defp map_memberships_attr(attrs) do
     Map.update(attrs, "memberships", [], fn group_ids ->
       Enum.map(group_ids, fn group_id ->

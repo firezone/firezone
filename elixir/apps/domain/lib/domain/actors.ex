@@ -98,9 +98,7 @@ defmodule Domain.Actors do
   def change_group(group, attrs \\ %{})
 
   def change_group(%Group{provider_id: nil} = group, attrs) do
-    group
-    |> Repo.preload(:memberships)
-    |> Group.Changeset.update(attrs)
+    Group.Changeset.update(group, attrs)
   end
 
   def change_group(%Group{}, _attrs) do
@@ -110,7 +108,6 @@ defmodule Domain.Actors do
   def update_group(%Group{provider_id: nil} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       group
-      |> Repo.preload(:memberships)
       |> Group.Changeset.update(attrs)
       |> Repo.update()
     end
@@ -212,7 +209,7 @@ defmodule Domain.Actors do
   end
 
   def change_actor(%Actor{} = actor, attrs \\ %{}) do
-    Actor.Changeset.update(actor, attrs)
+    Actor.Changeset.update(actor, [], attrs)
   end
 
   def update_actor(%Actor{} = actor, attrs, %Auth.Subject{} = subject) do
@@ -221,8 +218,9 @@ defmodule Domain.Actors do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(
         with: fn actor ->
-          actor = Repo.preload(actor, :memberships)
-          changeset = Actor.Changeset.update(actor, attrs, subject)
+          actor = maybe_preload_not_synced_memberships(actor, attrs)
+          blacklisted_groups = list_blacklisted_groups(attrs)
+          changeset = Actor.Changeset.update(actor, attrs, blacklisted_groups, subject)
 
           cond do
             changeset.data.type != :account_admin_user ->
@@ -239,6 +237,40 @@ defmodule Domain.Actors do
           end
         end
       )
+    end
+  end
+
+  defp maybe_preload_not_synced_memberships(actor, attrs) do
+    if Map.has_key?(attrs, "memberships") || Map.has_key?(attrs, :memberships) do
+      memberships =
+        Membership.Query.by_actor_id(actor.id)
+        |> Membership.Query.by_not_synced_group()
+        |> Membership.Query.lock()
+        |> Repo.all()
+
+      %{actor | memberships: memberships}
+    else
+      actor
+    end
+  end
+
+  defp list_blacklisted_groups(attrs) do
+    (Map.get(attrs, "memberships") || Map.get(attrs, :memberships) || [])
+    |> Enum.flat_map(fn membership ->
+      if group_id = Map.get(membership, "group_id") || Map.get(membership, :group_id) do
+        [group_id]
+      else
+        []
+      end
+    end)
+    |> case do
+      [] ->
+        []
+
+      group_ids ->
+        Group.Query.by_id({:in, group_ids})
+        |> Group.Query.by_not_empty_provider_id()
+        |> Repo.all()
     end
   end
 
