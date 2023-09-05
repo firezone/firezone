@@ -17,7 +17,7 @@ tokio-tungstenite = { version = "0.19", default-features = false, features = ["c
 webrtc = { version = "0.8" }
 uuid = { version = "1.4", default-features = false, features = ["std", "v4", "serde"] }
 thiserror = { version = "1.0", default-features = false }
-tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
+tracing = { workspace = true }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 tokio = { version = "1.32", default-features = false, features = ["rt", "rt-multi-thread"]}
 url = { version = "2.4.1", default-features = false }
