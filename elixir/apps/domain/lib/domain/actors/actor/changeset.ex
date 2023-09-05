@@ -52,6 +52,7 @@ defmodule Domain.Actors.Actor.Changeset do
     |> cast(attrs, ~w[name]a)
     |> validate_required(~w[name]a)
     |> changeset()
+    |> put_change(:last_synced_at, DateTime.utc_now())
   end
 
   def changeset(changeset) do

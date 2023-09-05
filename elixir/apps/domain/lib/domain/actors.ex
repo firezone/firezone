@@ -242,15 +242,6 @@ defmodule Domain.Actors do
     end
   end
 
-  def sync_actor(actor_id, attrs) do
-    Actor.Query.by_id(actor_id)
-    |> Repo.fetch_and_update(
-      with: fn actor ->
-        Actor.Changeset.sync(actor, attrs)
-      end
-    )
-  end
-
   def disable_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Actor.Query.by_id(actor.id)
