@@ -70,7 +70,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip_all)]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn init(
         &mut self,
         InitClient {

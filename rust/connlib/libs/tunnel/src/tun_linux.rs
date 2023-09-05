@@ -276,21 +276,22 @@ impl IfaceConfig {
         ips.try_for_each(|ip| self.0.handle.address().del(ip).execute())
             .await?;
 
-        self.0
+        let res_v4 = self
+            .0
             .handle
             .address()
             .add(self.0.interface_index, config.ipv4.into(), 32)
             .execute()
-            .await
-            .or(self
-                .0
-                .handle
-                .address()
-                .add(self.0.interface_index, config.ipv6.into(), 128)
-                .execute()
-                .await)?;
+            .await;
+        let res_v6 = self
+            .0
+            .handle
+            .address()
+            .add(self.0.interface_index, config.ipv6.into(), 128)
+            .execute()
+            .await;
 
-        Ok(())
+        Ok(res_v4.or(res_v6)?)
     }
 
     pub async fn up(&mut self) -> Result<()> {

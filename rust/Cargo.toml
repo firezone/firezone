@@ -17,9 +17,14 @@ boringtun = { git = "https://github.com/firezone/boringtun", branch = "master", 
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 swift-bridge = "0.1.52"
 backoff = { version = "0.4", features = ["tokio"] }
+tracing = { path = "../../tracing/tracing" }
+tracing-subscriber = { path = "../../tracing/tracing-subscriber", features = ["parking_lot"] }
 
 # Patched to use https://github.com/rust-lang/cc-rs/pull/708
 # (the `patch` section can't be used for build deps...)
 [patch.crates-io]
 ring = { git = "https://github.com/firezone/ring", branch = "v0.16.20-cc-fix" }
 webrtc = { git = "https://github.com/firezone/webrtc", rev = "672e728" }
+
+[profile.release]
+debug = true

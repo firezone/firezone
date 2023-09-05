@@ -13,7 +13,7 @@ use libs_common::{
 };
 use rand_core::OsRng;
 use webrtc::{
-    data_channel::RTCDataChannel,
+    data_channel::{data_channel_init::RTCDataChannelInit, RTCDataChannel},
     ice_transport::{ice_credential_type::RTCIceCredentialType, ice_server::RTCIceServer},
     peer_connection::{
         configuration::RTCConfiguration, peer_connection_state::RTCPeerConnectionState,
@@ -99,7 +99,14 @@ where
                 })
             })
         });
-        self.start_peer_handler(peer)?;
+
+        let Some(device_channel) = self.device_channel.read().clone() else {
+            return Err(Error::NoIface);
+        };
+
+        let tunnel = Arc::clone(self);
+        tokio::spawn(async move { tunnel.peer_handler(peer, device_channel).await });
+
         Ok(())
     }
 
@@ -336,7 +343,16 @@ where
 
         self.set_connection_state_update_initiator(&peer_connection, gateway_id, resource_id);
 
-        let data_channel = peer_connection.create_data_channel("data", None).await?;
+        let data_channel = peer_connection
+            .create_data_channel(
+                "data",
+                Some(RTCDataChannelInit {
+                    ordered: Some(false),
+                    max_retransmits: Some(0),
+                    ..Default::default()
+                }),
+            )
+            .await?;
         let d = Arc::clone(&data_channel);
 
         let tunnel = Arc::clone(self);

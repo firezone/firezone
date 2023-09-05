@@ -1,15 +1,14 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
 use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
-    str::FromStr,
 };
+use tracing_flame::FlameSubscriber;
+use tracing_subscriber::{prelude::*, Registry};
 
-use firezone_client_connlib::{
-    get_device_id, get_user_agent, Callbacks, Error, ResourceDescription, Session,
-};
+use firezone_client_connlib::{get_device_id, Callbacks, Error, ResourceDescription, Session};
 use url::Url;
 
 #[derive(Clone)]
@@ -61,9 +60,6 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-const URL_ENV_VAR: &str = "FZ_URL";
-const SECRET_ENV_VAR: &str = "FZ_SECRET";
-
 fn block_on_ctrl_c() {
     let (tx, rx) = std::sync::mpsc::channel();
     ctrlc::set_handler(move || tx.send(()).expect("Could not send stop signal on channel."))
@@ -71,19 +67,25 @@ fn block_on_ctrl_c() {
     rx.recv().expect("Could not receive ctrl-c signal");
 }
 
-fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
-    let cli = Cli::parse();
-    if cli.print_agent {
-        println!("{}", get_user_agent());
-        return Ok(());
-    }
+fn setup_global_subscriber() -> impl Drop {
+    let fmt_subscriber = tracing_subscriber::fmt::Subscriber::default();
 
-    // TODO: allow passing as arg vars
-    let url = parse_env_var::<Url>(URL_ENV_VAR)?;
-    let secret = parse_env_var::<String>(SECRET_ENV_VAR)?;
+    let (flame_subscriber, _guard) = FlameSubscriber::with_file("./tracing.folded").unwrap();
+
+    let subscriber = Registry::default()
+        .with(fmt_subscriber)
+        .with(flame_subscriber);
+
+    tracing::collect::set_global_default(subscriber).expect("Could not set global default");
+    _guard
+}
+
+fn main() -> Result<()> {
+    let _guard = setup_global_subscriber();
+    let cli = Cli::parse();
+
     let device_id = get_device_id();
-    let mut session = Session::connect(url, secret, device_id, CallbackHandler).unwrap();
+    let mut session = Session::connect(cli.url, cli.secret, device_id, CallbackHandler).unwrap();
     tracing::info!("Started new session");
 
     block_on_ctrl_c();
@@ -92,23 +94,14 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn parse_env_var<T>(key: &str) -> Result<T>
-where
-    T: FromStr,
-    T::Err: std::error::Error + Send + Sync + 'static,
-{
-    let res = std::env::var(key)
-        .with_context(|| format!("`{key}` env variable is unset"))?
-        .parse()
-        .with_context(|| format!("failed to parse {key} env variable"))?;
-
-    Ok(res)
-}
-
 // probably will change this to a subcommand in the future
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    #[arg(short, long)]
-    print_agent: bool,
+    /// Portal's websocket url
+    #[arg(short, long, env = "FZ_URL")]
+    url: Url,
+    /// Service token
+    #[arg(short, long, env = "FZ_SECRET")]
+    secret: String,
 }

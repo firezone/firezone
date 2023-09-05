@@ -111,6 +111,7 @@ where
         Some(answer_builder.finish())
     }
 
+    #[tracing::instrument(level = "trace", skip(self, buf))]
     pub(crate) fn check_for_dns(self: &Arc<Self>, buf: &[u8]) -> Option<SendPacket> {
         let packet = IpPacket::new(buf)?;
         let version = packet.version();

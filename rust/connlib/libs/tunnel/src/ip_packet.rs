@@ -30,6 +30,7 @@ macro_rules! swap_src_dst {
 }
 
 impl<'a> MutableIpPacket<'a> {
+    #[tracing::instrument(level = "trace", skip(data))]
     pub(crate) fn new(data: &mut [u8]) -> Option<MutableIpPacket> {
         match data[0] >> 4 {
             4 => MutableIpv4Packet::new(data).map(Into::into),
@@ -38,6 +39,7 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     pub(crate) fn update_checksum(&mut self) {
         // Note: neither ipv6 nor icmp have a checksum.
         self.set_icmpv6_checksum();
@@ -142,6 +144,7 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip(self, dst))]
     pub(crate) fn set_dst(&mut self, dst: IpAddr) {
         match (self, dst) {
             (Self::MutableIpv4Packet(p), IpAddr::V4(d)) => p.set_destination(d),
