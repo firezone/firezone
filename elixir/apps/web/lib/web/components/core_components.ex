@@ -12,6 +12,7 @@ defmodule Web.CoreComponents do
   use Phoenix.Component
   use Web, :verified_routes
   alias Phoenix.LiveView.JS
+  alias Domain.Actors
 
   def logo(assigns) do
     ~H"""
@@ -583,7 +584,7 @@ defmodule Web.CoreComponents do
 
   def peek(assigns) do
     ~H"""
-    <div class="font-light flex inline-flex">
+    <div class="flex flex-wrap gap-y-2">
       <%= if Enum.empty?(@peek.items) do %>
         <%= render_slot(@empty) %>
       <% else %>
@@ -596,9 +597,9 @@ defmodule Web.CoreComponents do
           <% end %>
         <% end %>
 
-        <span :if={@peek.count > length(@peek.items)} class="pl-1">
+        <%= if @peek.count > length(@peek.items) do %>
           <%= render_slot(@tail, @peek.count - length(@peek.items)) %>
-        </span>
+        <% end %>
       <% end %>
     </div>
     """
@@ -773,9 +774,48 @@ defmodule Web.CoreComponents do
       <span :if={not is_nil(@identity.provider.disabled_at)} class="text-sm">
         (provider disabled)
       </span>
-      <span :if={not is_nil(@identity.deleted_at)} class="text-sm">
+      <span :if={not is_nil(@identity.provider.deleted_at)} class="text-sm">
         (provider deleted)
       </span>
+    </span>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :group, :any, required: true
+
+  def group(assigns) do
+    ~H"""
+    <span class="inline-block whitespace-nowrap mr-2" data-group-id={@group.id}>
+      <.link
+        :if={Actors.group_synced?(@group)}
+        navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @group.provider)}
+        data-provider-id={@group.provider_id}
+        title={@group.provider.adapter}
+        class={[
+          "text-xs font-medium",
+          "rounded-l",
+          "py-0.5 pl-2.5 pr-1.5",
+          "text-blue-800 dark:text-blue-300",
+          "bg-blue-100 dark:bg-blue-900",
+          "whitespace-nowrap"
+        ]}
+      >
+        <%= @group.provider.name %>
+      </.link>
+      <.link
+        navigate={~p"/#{@account}/groups/#{@group}"}
+        class={[
+          "text-xs font-medium",
+          if(Actors.group_synced?(@group), do: "rounded-r pl-1.5 pr-2.5", else: "rounded px-1.5"),
+          "py-0.5",
+          "text-blue-800 dark:text-blue-300",
+          "bg-blue-50 dark:bg-blue-600",
+          "whitespace-nowrap"
+        ]}
+      >
+        <%= @group.name %>
+      </.link>
     </span>
     """
   end

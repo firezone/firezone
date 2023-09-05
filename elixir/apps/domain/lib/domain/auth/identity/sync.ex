@@ -1,5 +1,4 @@
 defmodule Domain.Auth.Identity.Sync do
-  alias Domain.Actors
   alias Domain.Auth.{Identity, Provider}
 
   def sync_provider_identities_multi(%Provider{} = provider, attrs_list) do
@@ -33,9 +32,27 @@ defmodule Domain.Auth.Identity.Sync do
       end
     )
     |> Ecto.Multi.run(
-      :sync_actors,
-      fn _repo, %{identities: identities, plan_identities: {_insert, update, _delete}} ->
-        sync_actors(identities, attrs_by_provider_identifier, update)
+      :update_identities_and_actors,
+      fn repo, %{identities: identities, plan_identities: {_insert, update, _delete}} ->
+        update_identities_and_actors(repo, identities, attrs_by_provider_identifier, update)
+      end
+    )
+    |> Ecto.Multi.run(
+      :actor_ids_by_provider_identifier,
+      fn _repo,
+         %{
+           plan_identities: {_insert, _update, delete},
+           identities: identities,
+           insert_identities: insert_identities
+         } ->
+        actor_ids_by_provider_identifier =
+          for identity <- identities ++ insert_identities,
+              identity.provider_identifier not in delete,
+              into: %{} do
+            {identity.provider_identifier, identity.actor_id}
+          end
+
+        {:ok, actor_ids_by_provider_identifier}
       end
     )
   end
@@ -98,28 +115,32 @@ defmodule Domain.Auth.Identity.Sync do
     end)
   end
 
-  defp sync_actors(
+  defp update_identities_and_actors(
+         repo,
          identities,
          attrs_by_provider_identifier,
-         provider_identifiers_to_insert
+         provider_identifiers_to_update
        ) do
-    identity_by_provider_identifier = Map.new(identities, &{&1.provider_identifier, &1})
+    identity_by_provider_identifier =
+      identities
+      |> Enum.filter(fn identity ->
+        identity.provider_identifier in provider_identifiers_to_update
+      end)
+      |> repo.preload(:actor)
+      |> Map.new(&{&1.provider_identifier, &1})
 
-    provider_identifiers_to_insert
+    provider_identifiers_to_update
     |> Enum.reduce_while({:ok, []}, fn provider_identifier, {:ok, acc} ->
-      attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
       identity = Map.get(identity_by_provider_identifier, provider_identifier)
+      attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
+      changeset = Identity.Changeset.update_identity_and_actor(identity, attrs)
 
-      if actor_attrs = Map.get(attrs, "actor", %{}) do
-        case Actors.sync_actor(identity.actor_id, actor_attrs) do
-          {:ok, actor} ->
-            {:cont, {:ok, [actor | acc]}}
+      case repo.update(changeset) do
+        {:ok, identity} ->
+          {:cont, {:ok, [identity | acc]}}
 
-          {:error, changeset} ->
-            {:halt, {:error, changeset}}
-        end
-      else
-        {:cont, {:ok, acc}}
+        {:error, changeset} ->
+          {:halt, {:error, changeset}}
       end
     end)
   end

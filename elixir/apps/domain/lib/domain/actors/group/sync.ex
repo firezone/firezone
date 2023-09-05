@@ -29,6 +29,24 @@ defmodule Domain.Actors.Group.Sync do
     |> Ecto.Multi.run(:upsert_groups, fn repo, %{plan_groups: {upsert, _delete}} ->
       upsert_groups(repo, provider, attrs_by_provider_identifier, upsert)
     end)
+    |> Ecto.Multi.run(
+      :group_ids_by_provider_identifier,
+      fn _repo,
+         %{
+           plan_groups: {_upsert, delete},
+           groups: groups,
+           upsert_groups: upsert_groups
+         } ->
+        group_ids_by_provider_identifier =
+          for group <- groups ++ upsert_groups,
+              group.provider_identifier not in delete,
+              into: %{} do
+            {group.provider_identifier, group.id}
+          end
+
+        {:ok, group_ids_by_provider_identifier}
+      end
+    )
   end
 
   defp fetch_and_lock_provider_groups_query(provider) do

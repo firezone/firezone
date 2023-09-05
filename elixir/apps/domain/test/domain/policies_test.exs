@@ -112,10 +112,10 @@ defmodule Domain.PoliciesTest do
 
       actor_group = Fixtures.Actors.create_group(account: account, subject: subject)
 
-      Domain.Actors.update_group(
-        actor_group,
-        %{memberships: [%{actor_id: unprivileged_actor.id}]},
-        subject
+      Fixtures.Actors.create_membership(
+        account: account,
+        actor: unprivileged_actor,
+        group: actor_group
       )
 
       Fixtures.Policies.create_policy(account: account, actor_group: actor_group)
