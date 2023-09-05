@@ -2,6 +2,7 @@
 members = [
   "relay",
   "phoenix-channel",
+  "connlib/headless-utils",
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/headless",

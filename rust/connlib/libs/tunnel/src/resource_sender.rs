@@ -14,19 +14,22 @@ where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
-    #[tracing::instrument(level = "trace", skip(self, device_channel, packet))]
-    async fn update_and_send_packet(
-        &self,
-        device_channel: &DeviceChannel,
-        packet: &mut [u8],
-        dst_addr: IpAddr,
-    ) {
+    #[tracing::instrument(level = "trace", skip(self, packet))]
+    fn update_packet(&self, packet: &mut [u8], dst_addr: IpAddr) {
         let Some(mut pkt) = MutableIpPacket::new(packet) else {
             return;
         };
         pkt.set_dst(dst_addr);
         pkt.update_checksum();
+    }
 
+    #[tracing::instrument(level = "trace", skip(self, device_channel, packet))]
+    async fn send_packet(
+        &self,
+        device_channel: &DeviceChannel,
+        packet: &mut [u8],
+        dst_addr: IpAddr,
+    ) {
         match dst_addr {
             IpAddr::V4(addr) => {
                 tracing::trace!("Sending packet to {addr}");
@@ -62,8 +65,8 @@ where
 
             match get_resource_addr_and_port(peer, &resource, &addr, &dst) {
                 Ok((dst_addr, _dst_port)) => {
-                    self.update_and_send_packet(device_channel, packet, dst_addr)
-                        .await
+                    self.update_packet(packet, dst_addr);
+                    self.send_packet(device_channel, packet, dst_addr).await
                 }
                 Err(e) => {
                     tracing::error!(err = ?e, "Couldn't parse resource");

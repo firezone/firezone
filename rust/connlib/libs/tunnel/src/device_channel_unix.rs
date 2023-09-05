@@ -42,6 +42,7 @@ impl DeviceChannel {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip(self, buf))]
     pub(crate) async fn write4(&self, buf: &[u8]) -> std::io::Result<usize> {
         loop {
             let mut guard = self.device.writable().await?;
