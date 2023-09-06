@@ -10,6 +10,7 @@ import Dependencies
 import SwiftUI
 import SwiftUINavigation
 
+#if os(iOS)
 @MainActor
 public final class AppViewModel: ObservableObject {
   @Published var welcomeViewModel: WelcomeViewModel?
@@ -50,3 +51,4 @@ struct AppView_Previews: PreviewProvider {
     AppView(model: AppViewModel())
   }
 }
+#endif

@@ -243,9 +243,9 @@ extension NEVPNStatus: CustomStringConvertible {
     case .disconnected: return "Disconnected"
     case .invalid: return "Invalid"
     case .connected: return "Connected"
-    case .connecting: return "Connecting"
-    case .disconnecting: return "Disconnecting"
-    case .reasserting: return "Reconnecting"
+    case .connecting: return "Connecting…"
+    case .disconnecting: return "Disconnecting…"
+    case .reasserting: return "No network connectivity"
     @unknown default: return "Unknown"
     }
   }
