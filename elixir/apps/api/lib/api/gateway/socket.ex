@@ -33,6 +33,9 @@ defmodule API.Gateway.Socket do
 
       {:ok, socket}
     else
+      {:error, :invalid_token} ->
+        {:error, :invalid_token}
+
       {:error, reason} ->
         Logger.debug("Error connecting gateway websocket: #{inspect(reason)}")
         {:error, reason}
