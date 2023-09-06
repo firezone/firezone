@@ -8,6 +8,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.New do
 
     changeset =
       Auth.new_provider(socket.assigns.account, %{
+        name: "Google Workspace",
         adapter: :google_workspace,
         adapter_config: %{}
       })
