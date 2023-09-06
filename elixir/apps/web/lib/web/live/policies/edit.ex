@@ -8,7 +8,7 @@ defmodule Web.Policies.Edit do
       {:ok,
        assign(socket,
          policy: policy,
-         form: to_form(Policies.Policy.Changeset.update_changeset(policy, %{}))
+         form: to_form(Policies.Policy.Changeset.update(policy, %{}))
        )}
     else
       _other -> raise Web.LiveErrors.NotFoundError
@@ -62,7 +62,7 @@ defmodule Web.Policies.Edit do
 
   def handle_event("validate", %{"policy" => policy_params}, socket) do
     changeset =
-      Policies.Policy.Changeset.update_changeset(socket.assigns.policy, policy_params)
+      Policies.Policy.Changeset.update(socket.assigns.policy, policy_params)
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
