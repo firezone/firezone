@@ -1,2 +1,2 @@
-pre-commit==3.3.3
+pre-commit==3.4.0
 codespell==2.2.5
