@@ -75,6 +75,20 @@ defmodule Web.Live.Actors.EditTest do
       form = form(lv, "form")
 
       assert find_inputs(form) == [
+               "actor[name]",
+               "actor[type]"
+             ]
+
+      Fixtures.Actors.create_group(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/actors/#{actor}/edit")
+
+      form = form(lv, "form")
+
+      assert find_inputs(form) == [
                "actor[memberships][]",
                "actor[name]",
                "actor[type]"
@@ -184,7 +198,7 @@ defmodule Web.Live.Actors.EditTest do
   describe "service account" do
     setup do
       account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
       identity =
         Fixtures.Auth.create_identity(
@@ -260,9 +274,21 @@ defmodule Web.Live.Actors.EditTest do
       form = form(lv, "form")
 
       assert find_inputs(form) == [
+               "actor[name]"
+             ]
+
+      Fixtures.Actors.create_group(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/actors/#{actor}/edit")
+
+      form = form(lv, "form")
+
+      assert find_inputs(form) == [
                "actor[memberships][]",
-               "actor[name]",
-               "actor[type]"
+               "actor[name]"
              ]
     end
 

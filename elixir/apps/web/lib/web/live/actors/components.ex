@@ -76,7 +76,7 @@ defmodule Web.Actors.Components do
         required
       />
     </div>
-    <div>
+    <div :if={@groups != []}>
       <.input
         type="select"
         multiple={true}
