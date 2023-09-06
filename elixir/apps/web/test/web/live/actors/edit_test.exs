@@ -93,6 +93,20 @@ defmodule Web.Live.Actors.EditTest do
                "actor[name]",
                "actor[type]"
              ]
+
+      Fixtures.Actors.update(actor, last_synced_at: DateTime.utc_now())
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/actors/#{actor}/edit")
+
+      form = form(lv, "form")
+
+      assert find_inputs(form) == [
+               "actor[memberships][]",
+               "actor[type]"
+             ]
     end
 
     test "renders changeset errors on input change", %{

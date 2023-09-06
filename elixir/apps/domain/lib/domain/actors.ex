@@ -317,7 +317,6 @@ defmodule Domain.Actors do
     end
   end
 
-  # TODO: when actor is synced we should not allow changing the name
   def actor_synced?(%Actor{last_synced_at: nil}), do: false
   def actor_synced?(%Actor{}), do: true
 

@@ -44,7 +44,7 @@ defmodule Web.Actors.Components do
   end
 
   attr :type, :atom, required: true
-  attr :actor, :any, default: %{memberships: [], last_synced_at: nil}, required: false
+  attr :actor, :any, default: %Actors.Actor{memberships: [], last_synced_at: nil}, required: false
   attr :groups, :any, required: true
   attr :form, :any, required: true
   attr :subject, :any, required: true
@@ -53,7 +53,7 @@ defmodule Web.Actors.Components do
     ~H"""
     <div>
       <.input
-        :if={is_nil(@actor.last_synced_at)}
+        :if={not Actors.actor_synced?(@actor)}
         label="Name"
         field={@form[:name]}
         placeholder="Full Name"
