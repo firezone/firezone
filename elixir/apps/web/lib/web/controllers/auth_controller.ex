@@ -83,7 +83,13 @@ defmodule Web.AuthController do
           identity.provider_virtual_state.sign_in_token
 
         {:ok, _} =
-          Web.Mailer.AuthEmail.sign_in_link_email(identity, email_secret, sign_in_link_params)
+          Web.Mailer.AuthEmail.sign_in_link_email(
+            identity,
+            email_secret,
+            conn.assigns.user_agent,
+            conn.remote_ip,
+            sign_in_link_params
+          )
           |> Web.Mailer.deliver()
 
         put_session(conn, :browser_csrf_token, browser_secret)
