@@ -85,7 +85,7 @@ defmodule Domain.Policies do
       {:one_of, [Authorizer.manage_policies_permission()]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      Policy.Changeset.create_changeset(attrs, subject)
+      Policy.Changeset.create(attrs, subject)
     end
   end
 
