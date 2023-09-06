@@ -70,15 +70,25 @@ defmodule Web.AuthController do
           }
         } = params
       ) do
-    _ =
+    conn =
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
            {:ok, identity} <-
-             Domain.Auth.fetch_identity_by_provider_and_identifier(provider, provider_identifier),
+             Domain.Auth.fetch_identity_by_provider_and_identifier(provider, provider_identifier,
+               preload: :account
+             ),
            {:ok, identity} <- Domain.Auth.Adapters.Email.request_sign_in_token(identity) do
         sign_in_link_params = Map.take(params, ["client_platform", "client_csrf_token"])
 
-        Web.Mailer.AuthEmail.sign_in_link_email(identity, sign_in_link_params)
-        |> Web.Mailer.deliver()
+        <<email_secret::binary-size(5), browser_secret::binary>> =
+          identity.provider_virtual_state.sign_in_token
+
+        {:ok, _} =
+          Web.Mailer.AuthEmail.sign_in_link_email(identity, email_secret, sign_in_link_params)
+          |> Web.Mailer.deliver()
+
+        put_session(conn, :browser_csrf_token, browser_secret)
+      else
+        _ -> conn
       end
 
     redirect_params =
@@ -110,15 +120,16 @@ defmodule Web.AuthController do
           "account_id_or_slug" => account_id_or_slug,
           "provider_id" => provider_id,
           "identity_id" => identity_id,
-          "secret" => secret
+          "secret" => email_secret
         } = params
       ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
+         browser_secret = get_session(conn, :browser_csrf_token) || "=",
          {:ok, subject} <-
            Domain.Auth.sign_in(
              provider,
              identity_id,
-             secret,
+             email_secret <> browser_secret,
              conn.assigns.user_agent,
              conn.remote_ip
            ) do
@@ -128,6 +139,7 @@ defmodule Web.AuthController do
       conn
       |> delete_session(:client_platform)
       |> delete_session(:client_csrf_token)
+      |> delete_session(:browser_csrf_token)
       |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
     else
       {:error, :not_found} ->
@@ -206,6 +218,7 @@ defmodule Web.AuthController do
         conn
         |> delete_session(:client_platform)
         |> delete_session(:client_csrf_token)
+        |> delete_session(:browser_csrf_token)
         |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
       else
         {:error, :not_found} ->

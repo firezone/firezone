@@ -5,22 +5,34 @@ defmodule Domain.Crypto do
     rand_base64(@wg_psk_length)
   end
 
-  def rand_string(length \\ 16) do
+  def rand_number(length \\ 8) when length > 0 do
+    n =
+      :math.pow(10, length)
+      |> round()
+      |> :rand.uniform()
+      |> floor()
+      |> Kernel.-(1)
+
+    :io_lib.format("~#{length}..0B", [n])
+    |> List.to_string()
+  end
+
+  def rand_string(length \\ 16) when length > 0 do
     rand_base64(length, :url)
     |> binary_part(0, length)
   end
 
-  def rand_token(length \\ 8) do
+  def rand_token(length \\ 8) when length > 0 do
     rand_base64(length, :url)
   end
 
-  defp rand_base64(length, :url) do
+  defp rand_base64(length, :url) when length > 0 do
     :crypto.strong_rand_bytes(length)
     # XXX: we want to add `padding: false` to shorten URLs
-    |> Base.url_encode64()
+    |> Base.url_encode64(padding: false)
   end
 
-  defp rand_base64(length) do
+  defp rand_base64(length) when length > 0 do
     :crypto.strong_rand_bytes(length)
     |> Base.encode64()
   end

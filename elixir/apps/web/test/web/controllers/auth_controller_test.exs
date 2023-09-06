@@ -458,6 +458,67 @@ defmodule Web.AuthControllerTest do
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
+    test "redirects back to the form when browser token is invalid", %{conn: conn} do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+
+      {email_token, _browser_token} = split_token(identity)
+
+      conn =
+        conn
+        |> put_session(:browser_csrf_token, "foo")
+        |> put_session(:user_return_to, "/foo/bar")
+        |> get(
+          ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
+          %{
+            "identity_id" => identity.id,
+            "secret" => email_token
+          }
+        )
+
+      assert redirected_to(conn) == "/#{account.id}/sign_in"
+      assert flash(conn, :error) == "The sign in link is invalid or expired."
+    end
+
+    test "redirects back to the form when browser token is not set", %{conn: conn} do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+
+      {email_token, _browser_token} = split_token(identity)
+
+      conn =
+        conn
+        |> put_session(:user_return_to, "/foo/bar")
+        |> get(
+          ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
+          %{
+            "identity_id" => identity.id,
+            "secret" => email_token
+          }
+        )
+
+      assert redirected_to(conn) == "/#{account.id}/sign_in"
+      assert flash(conn, :error) == "The sign in link is invalid or expired."
+    end
+
     test "redirects to the return to path when credentials are valid", %{conn: conn} do
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
@@ -471,14 +532,17 @@ defmodule Web.AuthControllerTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
+      {email_token, browser_token} = split_token(identity)
+
       conn =
         conn
+        |> put_session(:browser_csrf_token, browser_token)
         |> put_session(:user_return_to, "/foo/bar")
         |> get(
           ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
           %{
             "identity_id" => identity.id,
-            "secret" => identity.provider_virtual_state.sign_in_token
+            "secret" => email_token
           }
         )
 
@@ -500,10 +564,14 @@ defmodule Web.AuthControllerTest do
           provider: provider
         )
 
+      {email_token, browser_token} = split_token(identity)
+
       conn =
-        get(conn, ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+        conn
+        |> put_session(:browser_csrf_token, browser_token)
+        |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
-          "secret" => identity.provider_virtual_state.sign_in_token
+          "secret" => email_token
         })
 
       assert redirected_to(conn) == "/#{account.slug}/dashboard"
@@ -522,12 +590,15 @@ defmodule Web.AuthControllerTest do
           provider: provider
         )
 
+      {email_token, browser_token} = split_token(identity)
+
       conn =
         conn
+        |> put_session(:browser_csrf_token, browser_token)
         |> put_session(:client_platform, "apple")
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
-          "secret" => identity.provider_virtual_state.sign_in_token
+          "secret" => email_token
         })
 
       assert conn.assigns.flash == %{}
@@ -556,11 +627,14 @@ defmodule Web.AuthControllerTest do
           provider: provider
         )
 
+      {email_token, browser_token} = split_token(identity)
+
       conn =
         conn
+        |> put_session(:browser_csrf_token, browser_token)
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
-          "secret" => identity.provider_virtual_state.sign_in_token,
+          "secret" => email_token,
           "client_platform" => "apple"
         })
 
@@ -590,16 +664,19 @@ defmodule Web.AuthControllerTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
+      {email_token, browser_token} = split_token(identity)
+
       conn =
         conn
         |> put_session(:foo, "bar")
         |> put_session(:session_token, "foo")
         |> put_session(:preferred_locale, "en_US")
+        |> put_session(:browser_csrf_token, browser_token)
         |> get(
           ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
           %{
             "identity_id" => identity.id,
-            "secret" => identity.provider_virtual_state.sign_in_token
+            "secret" => email_token
           }
         )
 
@@ -908,5 +985,12 @@ defmodule Web.AuthControllerTest do
       assert redirected_to(conn) == "/#{account.id}/sign_in"
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
     end
+  end
+
+  defp split_token(identity, size \\ 5) do
+    <<email_secret::binary-size(size), browser_secret::binary>> =
+      identity.provider_virtual_state.sign_in_token
+
+    {email_secret, browser_secret}
   end
 end

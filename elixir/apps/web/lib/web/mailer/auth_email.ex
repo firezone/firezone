@@ -6,11 +6,11 @@ defmodule Web.Mailer.AuthEmail do
   embed_templates "auth_email/*.html", suffix: "_html"
   embed_templates "auth_email/*.text", suffix: "_text"
 
-  def sign_in_link_email(%Domain.Auth.Identity{} = identity, params \\ %{}) do
+  def sign_in_link_email(%Domain.Auth.Identity{} = identity, email_secret, params \\ %{}) do
     params =
       Map.merge(params, %{
         identity_id: identity.id,
-        secret: identity.provider_virtual_state.sign_in_token
+        secret: email_secret
       })
 
     sign_in_link =
@@ -23,7 +23,7 @@ defmodule Web.Mailer.AuthEmail do
     |> to(identity.provider_identifier)
     |> render_body(__MODULE__, :sign_in_link,
       client_platform: params["client_platform"],
-      secret: identity.provider_virtual_state.sign_in_token,
+      secret: email_secret,
       link: sign_in_link
     )
   end
