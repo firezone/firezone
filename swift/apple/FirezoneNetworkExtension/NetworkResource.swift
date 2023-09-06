@@ -5,6 +5,7 @@
 //
 
 import Foundation
+import FirezoneKit
 
 public struct NetworkResource: Decodable {
   enum ResourceLocation {
@@ -29,8 +30,8 @@ public struct NetworkResource: Decodable {
   let name: String
   let resourceLocation: ResourceLocation
 
-  var displayableResource: (name: String, location: String) {
-    (name: name, location: resourceLocation.toString())
+  var displayableResource: DisplayableResources.Resource {
+    DisplayableResources.Resource(name: name, location: resourceLocation.toString())
   }
 }
 
