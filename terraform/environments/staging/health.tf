@@ -57,7 +57,7 @@ resource "google_monitoring_uptime_check_config" "api-https" {
 resource "google_monitoring_uptime_check_config" "web-https" {
   project = module.google-cloud-project.project.project_id
 
-  display_name = "api-https"
+  display_name = "web-https"
   timeout      = "60s"
 
   http_check {
@@ -173,7 +173,7 @@ resource "google_monitoring_alert_policy" "sql_high_cpu_policy" {
 resource "google_monitoring_alert_policy" "sql_disk_utiliziation_policy" {
   project = module.google-cloud-project.project.project_id
 
-  display_name = "High Cloud SQL disk utilization"
+  display_name = "High Cloud SQL Disk utilization"
   combiner     = "OR"
 
   notification_channels = [
