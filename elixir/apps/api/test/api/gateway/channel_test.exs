@@ -89,7 +89,11 @@ defmodule API.Gateway.ChannelTest do
                name: resource.name,
                type: :dns,
                ipv4: resource.ipv4,
-               ipv6: resource.ipv6
+               ipv6: resource.ipv6,
+               filters: [
+                 %{ports: ["80", "433"], protocol: :tcp},
+                 %{ports: ["100 - 200"], protocol: :udp}
+               ]
              }
 
       assert payload.device_id == device.id
@@ -173,7 +177,11 @@ defmodule API.Gateway.ChannelTest do
                name: resource.name,
                type: :dns,
                ipv4: resource.ipv4,
-               ipv6: resource.ipv6
+               ipv6: resource.ipv6,
+               filters: [
+                 %{ports: ["80", "433"], protocol: :tcp},
+                 %{ports: ["100 - 200"], protocol: :udp}
+               ]
              }
 
       assert payload.device == %{
