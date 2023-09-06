@@ -3,6 +3,17 @@ defmodule Web.AuthController do
   alias Web.Auth
   alias Domain.Auth.Adapters.OpenIDConnect
 
+  # This is the cookie which will store recent account ids
+  # that the user has signed in to.
+  @remember_me_cookie_name "fz_recent_account_ids"
+  @remember_me_cookie_options [
+    sign: true,
+    max_age: 365 * 24 * 60 * 60,
+    same_site: "Lax",
+    secure: true,
+    http_only: true
+  ]
+
   # This is the cookie which will be used to store the
   # state and code verifier for OpenID Connect IdP's
   @state_cookie_key_prefix "fz_auth_state_"
@@ -41,7 +52,10 @@ defmodule Web.AuthController do
            ) do
       client_platform = params["client_platform"]
       client_csrf_token = params["client_csrf_token"]
-      Web.Auth.signed_in_redirect(conn, subject, client_platform, client_csrf_token)
+
+      conn
+      |> persist_recent_account(subject.account)
+      |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
     else
       {:error, :not_found} ->
         conn
@@ -146,6 +160,7 @@ defmodule Web.AuthController do
       |> delete_session(:client_platform)
       |> delete_session(:client_csrf_token)
       |> delete_session(:browser_csrf_token)
+      |> persist_recent_account(subject.account)
       |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
     else
       {:error, :not_found} ->
@@ -225,6 +240,7 @@ defmodule Web.AuthController do
         |> delete_session(:client_platform)
         |> delete_session(:client_csrf_token)
         |> delete_session(:browser_csrf_token)
+        |> persist_recent_account(subject.account)
         |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
       else
         {:error, :not_found} ->
@@ -265,6 +281,7 @@ defmodule Web.AuthController do
   def sign_out(conn, %{"account_id_or_slug" => account_id_or_slug}) do
     # TODO: post logout redirect url
     conn
+    |> maybe_delete_recent_account()
     |> Auth.sign_out()
     |> redirect(to: ~p"/#{account_id_or_slug}/sign_in")
   end
@@ -289,4 +306,44 @@ defmodule Web.AuthController do
   #       |> Plug.Conn.configure_session(drop: true)
   #       |> Phoenix.Controller.redirect(to: ~p"/")
   #   end
+
+  defp maybe_delete_recent_account(%{assigns: %{subject: subject}} = conn) do
+    update_recent_accounts(conn, fn recent_account_ids ->
+      recent_account_ids -- [subject.account.id]
+    end)
+  end
+
+  defp maybe_delete_recent_account(conn) do
+    conn
+  end
+
+  defp persist_recent_account(conn, %Domain.Accounts.Account{} = account) do
+    update_recent_accounts(conn, fn recent_account_ids ->
+      [account.id] ++ recent_account_ids
+    end)
+  end
+
+  defp update_recent_accounts(conn, callback) when is_function(callback, 1) do
+    conn = fetch_cookies(conn, signed: [@remember_me_cookie_name])
+
+    recent_account_ids =
+      if recent_account_ids = Map.get(conn.cookies, @remember_me_cookie_name) do
+        :erlang.binary_to_term(recent_account_ids, [:safe])
+      else
+        []
+      end
+
+    recent_account_ids =
+      recent_account_ids
+      |> callback.()
+      |> Enum.take(5)
+      |> :erlang.term_to_binary()
+
+    put_resp_cookie(
+      conn,
+      @remember_me_cookie_name,
+      recent_account_ids,
+      @remember_me_cookie_options
+    )
+  end
 end
