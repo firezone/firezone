@@ -510,7 +510,7 @@ defmodule Web.AuthControllerTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
-      {email_token, _browser_token} = split_token(identity)
+      {email_token, _sign_in_nonce} = split_token(identity)
 
       conn =
         conn
@@ -541,7 +541,7 @@ defmodule Web.AuthControllerTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
-      {email_token, _browser_token} = split_token(identity)
+      {email_token, _sign_in_nonce} = split_token(identity)
 
       conn =
         conn
@@ -571,17 +571,49 @@ defmodule Web.AuthControllerTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
-      {email_token, browser_token} = split_token(identity)
+      {email_token, sign_in_nonce} = split_token(identity)
 
       conn =
         conn
-        |> put_session(:sign_in_nonce, browser_token)
+        |> put_session(:sign_in_nonce, sign_in_nonce)
         |> put_session(:user_return_to, "/foo/bar")
         |> get(
           ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
           %{
             "identity_id" => identity.id,
             "secret" => email_token
+          }
+        )
+
+      assert conn.assigns.flash == %{}
+      assert redirected_to(conn) == "/foo/bar"
+      assert is_nil(get_session(conn, :user_return_to))
+    end
+
+    test "emailed part of the token is not case sensitive", %{conn: conn} do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+
+      {email_token, sign_in_nonce} = split_token(identity)
+
+      conn =
+        conn
+        |> put_session(:sign_in_nonce, sign_in_nonce)
+        |> put_session(:user_return_to, "/foo/bar")
+        |> get(
+          ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
+          %{
+            "identity_id" => identity.id,
+            "secret" => String.upcase(email_token)
           }
         )
 
@@ -603,11 +635,11 @@ defmodule Web.AuthControllerTest do
           provider: provider
         )
 
-      {email_token, browser_token} = split_token(identity)
+      {email_token, sign_in_nonce} = split_token(identity)
 
       conn =
         conn
-        |> put_session(:sign_in_nonce, browser_token)
+        |> put_session(:sign_in_nonce, sign_in_nonce)
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => email_token
@@ -629,11 +661,11 @@ defmodule Web.AuthControllerTest do
           provider: provider
         )
 
-      {email_token, browser_token} = split_token(identity)
+      {email_token, sign_in_nonce} = split_token(identity)
 
       conn =
         conn
-        |> put_session(:sign_in_nonce, browser_token)
+        |> put_session(:sign_in_nonce, sign_in_nonce)
         |> put_session(:client_platform, "apple")
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
@@ -666,11 +698,11 @@ defmodule Web.AuthControllerTest do
           provider: provider
         )
 
-      {email_token, browser_token} = split_token(identity)
+      {email_token, sign_in_nonce} = split_token(identity)
 
       conn =
         conn
-        |> put_session(:sign_in_nonce, browser_token)
+        |> put_session(:sign_in_nonce, sign_in_nonce)
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => email_token,
@@ -703,14 +735,14 @@ defmodule Web.AuthControllerTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
-      {email_token, browser_token} = split_token(identity)
+      {email_token, sign_in_nonce} = split_token(identity)
 
       conn =
         conn
         |> put_session(:foo, "bar")
         |> put_session(:session_token, "foo")
         |> put_session(:preferred_locale, "en_US")
-        |> put_session(:sign_in_nonce, browser_token)
+        |> put_session(:sign_in_nonce, sign_in_nonce)
         |> get(
           ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
           %{
@@ -746,11 +778,11 @@ defmodule Web.AuthControllerTest do
           provider: provider
         )
 
-      {email_token, browser_token} = split_token(identity)
+      {email_token, sign_in_nonce} = split_token(identity)
 
       conn =
         conn
-        |> put_session(:sign_in_nonce, browser_token)
+        |> put_session(:sign_in_nonce, sign_in_nonce)
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => email_token
@@ -1093,11 +1125,11 @@ defmodule Web.AuthControllerTest do
           provider: provider
         )
 
-      {email_token, browser_token} = split_token(identity)
+      {email_token, sign_in_nonce} = split_token(identity)
 
       authorized_conn =
         conn
-        |> put_session(:sign_in_nonce, browser_token)
+        |> put_session(:sign_in_nonce, sign_in_nonce)
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => email_token
@@ -1155,11 +1187,11 @@ defmodule Web.AuthControllerTest do
             provider: provider
           )
 
-        {email_token, browser_token} = split_token(identity)
+        {email_token, sign_in_nonce} = split_token(identity)
 
         authorized_conn =
           conn
-          |> put_session(:sign_in_nonce, browser_token)
+          |> put_session(:sign_in_nonce, sign_in_nonce)
           |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
             "identity_id" => identity.id,
             "secret" => email_token

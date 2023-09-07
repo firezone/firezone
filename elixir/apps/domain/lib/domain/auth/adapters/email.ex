@@ -64,8 +64,10 @@ defmodule Domain.Auth.Adapters.Email do
     {:ok, provider}
   end
 
-  defp identity_create_state(%Provider{} = _provider) do
-    sign_in_token = Domain.Crypto.random_token(32, encoder: :user_friendly)
+  defp identity_create_state(%Provider{} = provider) do
+    email_token = Domain.Crypto.random_token(5, encoder: :user_friendly)
+    nonce = Domain.Crypto.random_token(27)
+    sign_in_token = String.downcase(email_token) <> nonce
 
     {
       %{
