@@ -46,7 +46,7 @@ defmodule Web.Live.GatewayGroups.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/gateway_groups")
 
-    assert button = Floki.find(html, "a[href='/#{account.id}/gateway_groups/new']")
+    assert button = Floki.find(html, "a[href='/#{account.slug}/gateway_groups/new']")
     assert Floki.text(button) =~ "Add Instance Group"
   end
 
