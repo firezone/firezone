@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
         let tracer = opentelemetry_otlp::new_pipeline()
             .tracing()
             .with_exporter(otlp_exporter)
-            .install_simple()?;
+            .install_batch(opentelemetry::runtime::Tokio)?;
 
         tracing_subscriber::registry()
             .with(

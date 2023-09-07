@@ -2362,6 +2362,8 @@ dependencies = [
  "percent-encoding",
  "rand",
  "thiserror",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
@@ -2827,6 +2829,7 @@ dependencies = [
  "hex",
  "hex-literal",
  "once_cell",
+ "opentelemetry",
  "opentelemetry-otlp",
  "phoenix-channel",
  "prometheus-client",

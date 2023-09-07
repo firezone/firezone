@@ -18,6 +18,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-stackdriver = { version = "0.7.2", features = ["opentelemetry"] }
 tracing-opentelemetry = "0.19.0"
 opentelemetry-otlp = "0.12.0"
+opentelemetry = { version = "0.19.0", features = ["rt-tokio"] }
 env_logger = "0.10.0"
 bytes = "1.4.0"
 sha2 = "0.10.6"
