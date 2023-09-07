@@ -2,10 +2,23 @@ defmodule Domain.Crypto do
   @wg_psk_length 32
 
   def psk do
-    rand_base64(@wg_psk_length)
+    random_token(@wg_psk_length, encoder: :base64)
   end
 
-  def rand_number(length \\ 8) when length > 0 do
+  def random_token(length \\ 16, opts \\ []) do
+    generator = Keyword.get(opts, :generator, :binary)
+    default_encoder = if generator == :numeric, do: :raw, else: :url_encode64
+    encoder = Keyword.get(opts, :encoder, default_encoder)
+
+    generate_random_token(length, generator)
+    |> encode_random_token(length, encoder)
+  end
+
+  defp generate_random_token(bytes, :binary) do
+    :crypto.strong_rand_bytes(bytes)
+  end
+
+  defp generate_random_token(length, :numeric) do
     n =
       :math.pow(10, length)
       |> round()
@@ -17,25 +30,36 @@ defmodule Domain.Crypto do
     |> List.to_string()
   end
 
-  def rand_string(length \\ 16) when length > 0 do
-    rand_base64(length, :url)
-    |> binary_part(0, length)
+  defp encode_random_token(binary, _length, :raw) do
+    binary
   end
 
-  def rand_token(length \\ 8) when length > 0 do
-    rand_base64(length, :url)
+  defp encode_random_token(binary, _length, :url_encode64) do
+    Base.url_encode64(binary, padding: false)
   end
 
-  defp rand_base64(length, :url) when length > 0 do
-    :crypto.strong_rand_bytes(length)
-    # XXX: we want to add `padding: false` to shorten URLs
-    |> Base.url_encode64(padding: false)
+  defp encode_random_token(binary, _length, :base64) do
+    Base.encode64(binary)
   end
 
-  defp rand_base64(length) when length > 0 do
-    :crypto.strong_rand_bytes(length)
-    |> Base.encode64()
+  defp encode_random_token(binary, length, :user_friendly) do
+    encode_random_token(binary, length, :url_encode64)
+    |> String.downcase()
+    |> replace_ambiguous_characters()
+    |> String.slice(0, length)
   end
+
+  defp replace_ambiguous_characters(binary, acc \\ "")
+
+  defp replace_ambiguous_characters("", acc), do: acc
+
+  for {mapping, replacement} <- Enum.zip(~c"-+/lO0=", ~c"ptusxyz") do
+    defp replace_ambiguous_characters(<<unquote(mapping)::utf8, rest::binary>>, acc),
+      do: replace_ambiguous_characters(rest, <<acc::binary, unquote(replacement)::utf8>>)
+  end
+
+  defp replace_ambiguous_characters(<<char::utf8, rest::binary>>, acc),
+    do: replace_ambiguous_characters(rest, <<acc::binary, char::utf8>>)
 
   def hash(value), do: Argon2.hash_pwd_salt(value)
 

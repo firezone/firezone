@@ -93,7 +93,7 @@ defmodule Web.AuthController do
            {:ok, identity} <- Domain.Auth.Adapters.Email.request_sign_in_token(identity) do
         sign_in_link_params = Map.take(params, ["client_platform", "client_csrf_token"])
 
-        <<email_secret::binary-size(5), browser_secret::binary>> =
+        <<email_secret::binary-size(5), nonce::binary>> =
           identity.provider_virtual_state.sign_in_token
 
         {:ok, _} =
@@ -106,7 +106,7 @@ defmodule Web.AuthController do
           )
           |> Web.Mailer.deliver()
 
-        put_session(conn, :sign_in_nonce, browser_secret)
+        put_session(conn, :sign_in_nonce, nonce)
       else
         _ -> conn
       end
@@ -144,12 +144,12 @@ defmodule Web.AuthController do
         } = params
       ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-         browser_secret = get_session(conn, :sign_in_nonce) || "=",
+         nonce = get_session(conn, :sign_in_nonce) || "=",
          {:ok, subject} <-
            Domain.Auth.sign_in(
              provider,
              identity_id,
-             email_secret <> browser_secret,
+             String.downcase(email_secret) <> nonce,
              conn.assigns.user_agent,
              conn.remote_ip
            ) do
