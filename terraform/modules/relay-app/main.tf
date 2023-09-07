@@ -23,8 +23,8 @@ locals {
       value = var.observability_log_level
     },
     {
-      name  = "JSON_LOG"
-      value = "true"
+      name  = "GOOGLE_CLOUD_PROJECT_ID"
+      value = var.project_id
     },
     {
       name  = "METRICS_ADDR"

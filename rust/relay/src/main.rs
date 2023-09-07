@@ -18,6 +18,7 @@ use std::pin::Pin;
 use std::task::Poll;
 use std::time::SystemTime;
 use tracing::level_filters::LevelFilter;
+use tracing_stackdriver::CloudTraceConfiguration;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
@@ -55,9 +56,12 @@ struct Args {
     /// Only available in debug builds.
     #[arg(long, env)]
     rng_seed: Option<u64>,
-    /// Whether to log in JSON format.
-    #[arg(long, env = "JSON_LOG")]
-    json: bool,
+
+    /// The Google Cloud `project-id`.
+    ///
+    /// If specified, logs will be tuned for Google Cloud Trace.
+    #[arg(long, env)]
+    google_cloud_project_id: Option<String>,
 }
 
 #[tokio::main]
@@ -68,9 +72,16 @@ async fn main() -> Result<()> {
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy();
 
-    if args.json {
+    if let Some(project_id) = args.google_cloud_project_id {
         tracing_subscriber::registry()
-            .with(tracing_stackdriver::layer().with_filter(env_filter))
+            .with(
+                tracing_stackdriver::layer()
+                    .with_cloud_trace(CloudTraceConfiguration { project_id })
+                    .with_filter(env_filter),
+            )
+            .with(tracing_opentelemetry::layer().with_tracer(
+                opentelemetry_sdk::export::trace::stdout::new_pipeline().install_simple(),
+            ))
             .init()
     } else {
         tracing_subscriber::fmt().with_env_filter(env_filter).init()
