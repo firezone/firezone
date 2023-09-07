@@ -183,7 +183,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy();
 
-    let registry = tracing_subscriber::registry().with(log_layer(&args)?.with_filter(env_filter));
+    let registry = tracing_subscriber::registry().with(log_layer(args)?.with_filter(env_filter));
 
     match args.otlp_receiver {
         None => registry.try_init(),
