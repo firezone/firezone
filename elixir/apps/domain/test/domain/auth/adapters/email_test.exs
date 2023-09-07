@@ -114,6 +114,18 @@ defmodule Domain.Auth.Adapters.EmailTest do
       assert identity.provider_virtual_state == %{}
     end
 
+    test "removes token after 5 failed attempts", %{
+      identity: identity
+    } do
+      for i <- 1..5 do
+        assert verify_secret(identity, "foo") == {:error, :invalid_secret}
+        assert %{"sign_in_failed_attempts" => ^i} = Repo.one(Auth.Identity).provider_state
+      end
+
+      assert verify_secret(identity, "foo") == {:error, :invalid_secret}
+      assert Repo.one(Auth.Identity).provider_state == %{}
+    end
+
     test "returns error when token is expired", %{
       account: account,
       provider: provider

@@ -7,6 +7,7 @@ defmodule Domain.Auth.Adapters.Email do
   @behaviour Adapter.Local
 
   @sign_in_token_expiration_seconds 15 * 60
+  @sign_in_token_max_attempts 5
 
   def start_link(_init_arg) do
     Supervisor.start_link(__MODULE__, nil, name: __MODULE__)
@@ -111,7 +112,7 @@ defmodule Domain.Auth.Adapters.Email do
             :expired_secret
 
           not Domain.Crypto.equal?(token, sign_in_token_hash) ->
-            :invalid_secret
+            track_failed_attempt!(identity)
 
           true ->
             Identity.Changeset.update_identity_provider_state(identity, %{}, %{})
@@ -122,6 +123,24 @@ defmodule Domain.Auth.Adapters.Email do
       {:ok, identity} -> {:ok, identity, nil}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp track_failed_attempt!(%Identity{} = identity) do
+    attempts = identity.provider_state["sign_in_failed_attempts"] || 0
+    attempt = attempts + 1
+
+    {error, provider_state} =
+      if attempt > @sign_in_token_max_attempts do
+        {:invalid_secret, %{}}
+      else
+        provider_state = Map.put(identity.provider_state, "sign_in_failed_attempts", attempts + 1)
+        {:invalid_secret, provider_state}
+      end
+
+    Identity.Changeset.update_identity_provider_state(identity, provider_state, %{})
+    |> Repo.update!()
+
+    error
   end
 
   defp sign_in_token_expired?(%DateTime{} = sign_in_token_created_at) do
