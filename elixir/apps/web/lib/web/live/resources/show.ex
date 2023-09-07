@@ -21,12 +21,15 @@ defmodule Web.Resources.Show do
         "ICPM: Allowed"
 
       :tcp ->
-        "TCP: #{Enum.join(filter.ports, ", ")}"
+        "TCP: #{pretty_print_ports(filter.ports)}"
 
       :udp ->
-        "UDP: #{Enum.join(filter.ports, ", ")}"
+        "UDP: #{pretty_print_ports(filter.ports)}"
     end
   end
+
+  defp pretty_print_ports([]), do: "any port"
+  defp pretty_print_ports(ports), do: Enum.join(ports, ", ")
 
   def render(assigns) do
     ~H"""
@@ -107,6 +110,10 @@ defmodule Web.Resources.Show do
           >
             <%= gateway_group.name_prefix %>
           </.link>
+        </:col>
+
+        <:col :let={_gateway_group} label="status">
+          <.badge type="success">TODO: Online</.badge>
         </:col>
       </.table>
     </div>

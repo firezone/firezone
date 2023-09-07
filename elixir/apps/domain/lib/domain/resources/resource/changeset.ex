@@ -8,7 +8,7 @@ defmodule Domain.Resources.Resource.Changeset do
   @required_fields ~w[address type]a
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
-    %Resource{}
+    %Resource{connections: []}
     |> cast(attrs, @fields)
     |> changeset()
     |> validate_required(@required_fields)
@@ -132,6 +132,5 @@ defmodule Domain.Resources.Resource.Changeset do
     filter
     |> cast(attrs, [:protocol, :ports])
     |> validate_required([:protocol])
-    |> validate_inclusion(:protocol, [:tcp, :udp, :icmp, :all])
   end
 end

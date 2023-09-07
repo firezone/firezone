@@ -96,7 +96,7 @@ defmodule Domain.Resources do
     end
   end
 
-  def new_resource(attrs, %Auth.Subject{} = subject) do
+  def new_resource(attrs \\ %{}, %Auth.Subject{} = subject) do
     Resource.Changeset.create(subject.account, attrs, subject)
   end
 
@@ -144,6 +144,10 @@ defmodule Domain.Resources do
           {:ok, Domain.Network.fetch_next_available_address!(resource.account_id, type)}
         end
     end)
+  end
+
+  def change_resource(%Resource{} = resource, attrs \\ %{}, %Auth.Subject{} = subject) do
+    Resource.Changeset.update(resource, attrs, subject)
   end
 
   def update_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
