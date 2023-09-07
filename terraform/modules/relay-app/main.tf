@@ -129,6 +129,9 @@ resource "google_compute_instance_template" "application" {
     container-vm = data.google_compute_image.coreos.name
   }, local.application_labels)
 
+  // TODO We need to include the ops-agent configuration file here
+  // See https://cloud.google.com/trace/docs/otlp#config-otlp.
+
   scheduling {
     automatic_restart   = true
     on_host_maintenance = "MIGRATE"
