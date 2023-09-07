@@ -7,7 +7,7 @@
 <div :if={is_nil(@client_platform)}>
   <p>
     Here is the <a href={@link} target="_blank">magic sign-in link</a>
-    you requested to sign in into <b>"<%= @account.name %>"</b>.
+    you requested to sign in to <b>"<%= @account.name %>"</b>.
     It is valid for 15 minutes.
   </p>
 
@@ -18,13 +18,13 @@
 
 <div :if={not is_nil(@client_platform)}>
   <p>
-    Please copy the code and paste it into the Firezone application to proceed with the
-    the sign in into <b>"<%= @account.name %>"</b>:
+    Please copy the code and paste it into the Firezone application to proceed with
+    signing in to <b>"<%= @account.name %>"</b>:
   </p>
   <p style="font-weight:bold; margin-top:1rem; margin-bottom:1rem;">
     <code><%= @secret %></code>
   </p>
-  <p>It is valid for 15 minutes hour.</p>
+  <p>It is valid for 15 minutes.</p>
 </div>
 
 <p>

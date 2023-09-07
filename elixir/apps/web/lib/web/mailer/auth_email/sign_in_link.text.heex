@@ -1,13 +1,13 @@
 Dear Firezone user,
 <%= if is_nil(@client_platform) do %>
-Here is the magic sign-in link you requested to sign in into "<%= @account.name %>":
+Here is the magic sign-in link you requested to sign in to "<%= @account.name %>":
 
 <%= @link %>
 
 Please copy this link and open it in your browser. It is valid for 15 minutes.
 <% else %>
 Please copy the code and paste it into the Firezone application to proceed with
-the sign in into "<%= @account.name %>":
+the sign in to "<%= @account.name %>":
 
 <%= @secret %>
 
