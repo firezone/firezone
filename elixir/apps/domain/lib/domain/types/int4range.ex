@@ -12,7 +12,6 @@ defmodule Domain.Types.Int4Range do
   def type, do: :int4range
 
   def cast(str) when is_binary(str) do
-
     # We need to handle this case since postgre notifies
     # before inserting the range in the database using this format
     parse_str =
