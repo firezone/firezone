@@ -23,8 +23,12 @@ locals {
       value = var.observability_log_level
     },
     {
-      name  = "GOOGLE_CLOUD_PROJECT_ID"
-      value = var.project_id
+      name  = "LOG_FORMAT"
+      value = "google_cloud=${var.project_id}"
+    },
+    {
+      name  = "OTLP_RECEIVER"
+      value = "localhost:4317" // This is where the ops-agent runs the OTLP-receiver: https://cloud.google.com/trace/docs/otlp#combined-receiver-types
     },
     {
       name  = "METRICS_ADDR"
