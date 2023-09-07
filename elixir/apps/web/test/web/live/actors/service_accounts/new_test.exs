@@ -75,6 +75,19 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
+             "actor[name]"
+           ]
+
+    Fixtures.Actors.create_group(account: account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/actors/service_accounts/new")
+
+    form = form(lv, "form")
+
+    assert find_inputs(form) == [
              "actor[memberships][]",
              "actor[name]"
            ]
