@@ -24,12 +24,13 @@ defmodule Domain.Auth.Adapters.EmailTest do
       assert %{
                provider_state: %{
                  "sign_in_token_created_at" => %DateTime{},
-                 "sign_in_token_hash" => sign_in_token_hash
+                 "sign_in_token_hash" => sign_in_token_hash,
+                 "sign_in_token_salt" => sign_in_token_salt
                },
                provider_virtual_state: %{sign_in_token: sign_in_token}
              } = changeset.changes
 
-      assert Domain.Crypto.equal?(sign_in_token, sign_in_token_hash)
+      assert Domain.Crypto.equal?(sign_in_token <> sign_in_token_salt, sign_in_token_hash)
     end
 
     test "trims provider identifier", %{provider: provider, changeset: changeset} do
@@ -80,14 +81,15 @@ defmodule Domain.Auth.Adapters.EmailTest do
 
       assert %{
                "sign_in_token_created_at" => sign_in_token_created_at,
-               "sign_in_token_hash" => sign_in_token_hash
+               "sign_in_token_hash" => sign_in_token_hash,
+               "sign_in_token_salt" => sign_in_token_salt
              } = identity.provider_state
 
       assert %{
                sign_in_token: sign_in_token
              } = identity.provider_virtual_state
 
-      assert Domain.Crypto.equal?(sign_in_token, sign_in_token_hash)
+      assert Domain.Crypto.equal?(sign_in_token <> sign_in_token_salt, sign_in_token_hash)
       assert %DateTime{} = sign_in_token_created_at
     end
   end
@@ -137,8 +139,9 @@ defmodule Domain.Auth.Adapters.EmailTest do
           account: account,
           provider: provider,
           provider_state: %{
-            "sign_in_token_hash" => Domain.Crypto.hash("dummy_token"),
-            "sign_in_token_created_at" => DateTime.to_iso8601(forty_seconds_ago)
+            "sign_in_token_hash" => Domain.Crypto.hash("dummy_token" <> "salty"),
+            "sign_in_token_created_at" => DateTime.to_iso8601(forty_seconds_ago),
+            "sign_in_token_salt" => "salty"
           }
         )
 

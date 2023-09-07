@@ -64,14 +64,17 @@ defmodule Domain.Auth.Adapters.Email do
     {:ok, provider}
   end
 
-  defp identity_create_state(%Provider{} = provider) do
+  defp identity_create_state(%Provider{} = _provider) do
     email_token = Domain.Crypto.random_token(5, encoder: :user_friendly)
     nonce = Domain.Crypto.random_token(27)
     sign_in_token = String.downcase(email_token) <> nonce
 
+    salt = Domain.Crypto.random_token(16)
+
     {
       %{
-        "sign_in_token_hash" => Domain.Crypto.hash(sign_in_token),
+        "sign_in_token_salt" => salt,
+        "sign_in_token_hash" => Domain.Crypto.hash(sign_in_token <> salt),
         "sign_in_token_created_at" => DateTime.utc_now()
       },
       %{
@@ -103,8 +106,15 @@ defmodule Domain.Auth.Adapters.Email do
           identity.provider_state["sign_in_token_created_at"] ||
             identity.provider_state[:sign_in_token_created_at]
 
+        sign_in_token_salt =
+          identity.provider_state["sign_in_token_salt"] ||
+            identity.provider_state[:sign_in_token_salt]
+
         cond do
           is_nil(sign_in_token_hash) ->
+            :invalid_secret
+
+          is_nil(sign_in_token_salt) ->
             :invalid_secret
 
           is_nil(sign_in_token_created_at) ->
@@ -113,7 +123,7 @@ defmodule Domain.Auth.Adapters.Email do
           sign_in_token_expired?(sign_in_token_created_at) ->
             :expired_secret
 
-          not Domain.Crypto.equal?(token, sign_in_token_hash) ->
+          not Domain.Crypto.equal?(token <> sign_in_token_salt, sign_in_token_hash) ->
             track_failed_attempt!(identity)
 
           true ->
