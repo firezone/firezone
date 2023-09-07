@@ -2719,6 +2719,7 @@ dependencies = [
  "hex",
  "hex-literal",
  "once_cell",
+ "opentelemetry_api",
  "opentelemetry_sdk",
  "phoenix-channel",
  "prometheus-client",

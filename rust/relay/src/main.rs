@@ -2,6 +2,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
+use opentelemetry_api::trace::TracerProvider as _;
+use opentelemetry_sdk::trace;
 use phoenix_channel::{Error, Event, PhoenixChannel};
 use prometheus_client::registry::Registry;
 use rand::rngs::StdRng;
@@ -73,19 +75,28 @@ async fn main() -> Result<()> {
         .from_env_lossy();
 
     if let Some(project_id) = args.google_cloud_project_id {
+        let provider = trace::TracerProvider::builder().build();
+        let relay_tracer = provider.tracer("relay");
+
+        opentelemetry_api::global::set_tracer_provider(provider); // Need to set the provider globally for spanIds to work, not sure why because we are setting a tracer further down already as well.
+
         tracing_subscriber::registry()
             .with(
                 tracing_stackdriver::layer()
                     .with_cloud_trace(CloudTraceConfiguration { project_id })
                     .with_filter(env_filter),
             )
-            .with(tracing_opentelemetry::layer().with_tracer(
-                opentelemetry_sdk::export::trace::stdout::new_pipeline().install_simple(),
-            ))
+            .with(
+                tracing_opentelemetry::layer().with_tracer(relay_tracer), // Need to set a tracer to attach spanIds to logs.
+            )
             .init()
     } else {
         tracing_subscriber::fmt().with_env_filter(env_filter).init()
     }
+
+    // Must create a root span for traces to be sampled.
+    let root = tracing::error_span!("root");
+    let _root = root.enter();
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
