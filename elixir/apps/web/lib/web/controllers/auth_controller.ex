@@ -106,7 +106,7 @@ defmodule Web.AuthController do
           )
           |> Web.Mailer.deliver()
 
-        put_session(conn, :browser_csrf_token, browser_secret)
+        put_session(conn, :sign_in_nonce, browser_secret)
       else
         _ -> conn
       end
@@ -144,7 +144,7 @@ defmodule Web.AuthController do
         } = params
       ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-         browser_secret = get_session(conn, :browser_csrf_token) || "=",
+         browser_secret = get_session(conn, :sign_in_nonce) || "=",
          {:ok, subject} <-
            Domain.Auth.sign_in(
              provider,
@@ -159,7 +159,7 @@ defmodule Web.AuthController do
       conn
       |> delete_session(:client_platform)
       |> delete_session(:client_csrf_token)
-      |> delete_session(:browser_csrf_token)
+      |> delete_session(:sign_in_nonce)
       |> persist_recent_account(subject.account)
       |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
     else
@@ -239,7 +239,7 @@ defmodule Web.AuthController do
         conn
         |> delete_session(:client_platform)
         |> delete_session(:client_csrf_token)
-        |> delete_session(:browser_csrf_token)
+        |> delete_session(:sign_in_nonce)
         |> persist_recent_account(subject.account)
         |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
       else

@@ -514,7 +514,7 @@ defmodule Web.AuthControllerTest do
 
       conn =
         conn
-        |> put_session(:browser_csrf_token, "foo")
+        |> put_session(:sign_in_nonce, "foo")
         |> put_session(:user_return_to, "/foo/bar")
         |> get(
           ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
@@ -575,7 +575,7 @@ defmodule Web.AuthControllerTest do
 
       conn =
         conn
-        |> put_session(:browser_csrf_token, browser_token)
+        |> put_session(:sign_in_nonce, browser_token)
         |> put_session(:user_return_to, "/foo/bar")
         |> get(
           ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
@@ -607,7 +607,7 @@ defmodule Web.AuthControllerTest do
 
       conn =
         conn
-        |> put_session(:browser_csrf_token, browser_token)
+        |> put_session(:sign_in_nonce, browser_token)
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => email_token
@@ -633,7 +633,7 @@ defmodule Web.AuthControllerTest do
 
       conn =
         conn
-        |> put_session(:browser_csrf_token, browser_token)
+        |> put_session(:sign_in_nonce, browser_token)
         |> put_session(:client_platform, "apple")
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
@@ -670,7 +670,7 @@ defmodule Web.AuthControllerTest do
 
       conn =
         conn
-        |> put_session(:browser_csrf_token, browser_token)
+        |> put_session(:sign_in_nonce, browser_token)
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => email_token,
@@ -710,7 +710,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:foo, "bar")
         |> put_session(:session_token, "foo")
         |> put_session(:preferred_locale, "en_US")
-        |> put_session(:browser_csrf_token, browser_token)
+        |> put_session(:sign_in_nonce, browser_token)
         |> get(
           ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
           %{
@@ -750,7 +750,7 @@ defmodule Web.AuthControllerTest do
 
       conn =
         conn
-        |> put_session(:browser_csrf_token, browser_token)
+        |> put_session(:sign_in_nonce, browser_token)
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => email_token
@@ -1097,7 +1097,7 @@ defmodule Web.AuthControllerTest do
 
       authorized_conn =
         conn
-        |> put_session(:browser_csrf_token, browser_token)
+        |> put_session(:sign_in_nonce, browser_token)
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => email_token
@@ -1159,7 +1159,7 @@ defmodule Web.AuthControllerTest do
 
         authorized_conn =
           conn
-          |> put_session(:browser_csrf_token, browser_token)
+          |> put_session(:sign_in_nonce, browser_token)
           |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
             "identity_id" => identity.id,
             "secret" => email_token
