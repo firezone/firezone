@@ -81,12 +81,7 @@ defmodule Domain.Policies do
   end
 
   def new_policy(attrs, %Auth.Subject{} = subject) do
-    required_permissions =
-      {:one_of, [Authorizer.manage_policies_permission()]}
-
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      Policy.Changeset.create(attrs, subject)
-    end
+    Policy.Changeset.create(attrs, subject)
   end
 
   def ensure_has_access_to(%Auth.Subject{} = subject, %Policy{} = policy) do
