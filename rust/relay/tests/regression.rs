@@ -1,5 +1,6 @@
 use bytecodec::{DecodeExt, EncodeExt};
-use prometheus_client::registry::Registry;
+use opentelemetry::metrics::noop::NoopMeterProvider;
+use opentelemetry::metrics::MeterProvider as _;
 use rand::rngs::mock::StepRng;
 use relay::{
     AddressFamily, Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData,
@@ -430,7 +431,7 @@ impl TestServer {
             server: Server::new(
                 relay_public_addr,
                 StepRng::new(0, 0),
-                &mut Registry::default(),
+                &NoopMeterProvider::default().meter("relay"),
                 49152,
                 65535,
             ),

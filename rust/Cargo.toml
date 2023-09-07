@@ -23,3 +23,4 @@ backoff = { version = "0.4", features = ["tokio"] }
 [patch.crates-io]
 ring = { git = "https://github.com/firezone/ring", branch = "v0.16.20-cc-fix" }
 webrtc = { git = "https://github.com/firezone/webrtc", rev = "672e728" }
+tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver" }

@@ -31,10 +31,6 @@ locals {
       value = "localhost:4317" // This is where the ops-agent runs the OTLP-receiver: https://cloud.google.com/trace/docs/otlp#combined-receiver-types
     },
     {
-      name  = "METRICS_ADDR"
-      value = "0.0.0.0:8080"
-    },
-    {
       name  = "PORTAL_TOKEN"
       value = var.portal_token
     },

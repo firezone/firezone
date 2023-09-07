@@ -620,7 +620,7 @@ module "relays" {
   application_version = "0-0-1"
 
   health_check = {
-    name     = "metrics"
+    name     = "health"
     protocol = "TCP"
     port     = 8080
 
@@ -632,7 +632,7 @@ module "relays" {
     unhealthy_threshold = 2
 
     http_health_check = {
-      request_path = "/metrics"
+      request_path = "/health"
     }
   }
 

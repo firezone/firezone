@@ -17,10 +17,8 @@ use crate::{IpStack, TimeEvents};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
-use prometheus_client::metrics::counter::Counter;
-use prometheus_client::metrics::family::Family;
-use prometheus_client::metrics::gauge::Gauge;
-use prometheus_client::registry::Registry;
+use opentelemetry::metrics::{Counter, Meter, Unit, UpDownCounter};
+use opentelemetry::KeyValue;
 use rand::Rng;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
@@ -75,9 +73,9 @@ pub struct Server<R> {
 
     time_events: TimeEvents<TimedAction>,
 
-    allocations_gauge: Gauge,
-    responses_counter: Family<ResponsesTotalLabels, Counter>,
-    data_relayed_counter: Counter,
+    allocations_up_down_counter: UpDownCounter<i64>,
+    data_relayed_counter: Counter<u64>,
+    responses_counter: Counter<u64>,
 }
 
 /// The commands returned from a [`Server`].
@@ -156,32 +154,25 @@ where
     pub fn new(
         public_address: impl Into<IpStack>,
         mut rng: R,
-        registry: &mut Registry,
+        meter: &Meter,
         lowest_port: u16,
         highest_port: u16,
     ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
-        let allocations_gauge = Gauge::default();
-        registry.register(
-            "allocations_total",
-            "The number of active allocations",
-            allocations_gauge.clone(),
-        );
-
-        let responses_counter = Family::<ResponsesTotalLabels, Counter>::default();
-        registry.register(
-            "responses",
-            "The number of responses",
-            responses_counter.clone(),
-        );
-
-        let data_relayed_counter = Counter::default();
-        registry.register(
-            "data_relayed_bytes",
-            "The number of bytes relayed",
-            data_relayed_counter.clone(),
-        );
+        let allocations_up_down_counter = meter
+            .i64_up_down_counter("allocations_total")
+            .with_description("The number of active allocations")
+            .init();
+        let responses_counter = meter
+            .u64_counter("responses_total")
+            .with_description("The number of responses")
+            .init();
+        let data_relayed_counter = meter
+            .u64_counter("data_relayed_bytes")
+            .with_description("The number of bytes relayed")
+            .with_unit(Unit::new("kB"))
+            .init();
 
         Self {
             decoder: Default::default(),
@@ -200,7 +191,7 @@ where
             rng,
             time_events: TimeEvents::default(),
             nonces: Default::default(),
-            allocations_gauge,
+            allocations_up_down_counter,
             responses_counter,
             data_relayed_counter,
         }
@@ -360,7 +351,7 @@ where
 
         tracing::debug!(target: "relay", "Relaying {} bytes", bytes.len());
 
-        self.data_relayed_counter.inc_by(bytes.len() as u64);
+        self.data_relayed_counter.add(bytes.len() as u64, &[]);
 
         let data = ChannelData::new(*channel_number, bytes).to_bytes();
 
@@ -538,7 +529,7 @@ where
 
         self.clients_by_allocation.insert(allocation.id, sender);
         self.allocations.insert(sender, allocation);
-        self.allocations_gauge.inc();
+        self.allocations_up_down_counter.add(1, &[]);
 
         Ok(())
     }
@@ -726,7 +717,7 @@ where
 
         tracing::debug!(target: "relay", "Relaying {} bytes", data.len());
 
-        self.data_relayed_counter.inc_by(data.len() as u64);
+        self.data_relayed_counter.add(data.len() as u64, &[]);
 
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(data);
@@ -853,24 +844,25 @@ where
 
         // record metrics
         let response_class = match class {
-            MessageClass::SuccessResponse => ResponseClass::Success,
-            MessageClass::ErrorResponse => ResponseClass::Error,
+            MessageClass::SuccessResponse => "success",
+            MessageClass::ErrorResponse => "error",
             _ => return,
         };
         let message_type = match method {
-            BINDING => MessageType::Binding,
-            ALLOCATE => MessageType::Allocate,
-            REFRESH => MessageType::Refresh,
-            CHANNEL_BIND => MessageType::ChannelBind,
-            CREATE_PERMISSION => MessageType::CreatePermission,
+            BINDING => "binding",
+            ALLOCATE => "allocate",
+            REFRESH => "refresh",
+            CHANNEL_BIND => "channelbind",
+            CREATE_PERMISSION => "createpermission",
             _ => return,
         };
-        self.responses_counter
-            .get_or_create(&ResponsesTotalLabels {
-                class: response_class,
-                message: message_type,
-            })
-            .inc();
+        self.responses_counter.add(
+            1,
+            &[
+                KeyValue::new("response_class", response_class),
+                KeyValue::new("message_type", message_type),
+            ],
+        );
     }
 
     fn get_allocation(&self, id: &AllocationId) -> Option<&Allocation> {
@@ -892,7 +884,7 @@ where
 
         self.allocations_by_port.remove(&port);
 
-        self.allocations_gauge.dec();
+        self.allocations_up_down_counter.add(-1, &[]);
         self.pending_commands.push_back(Command::FreeAllocation {
             id,
             family: allocation.first_relay_addr.family(),
@@ -1130,27 +1122,6 @@ stun_codec::define_attribute_enums!(
         AdditionalAddressFamily
     ]
 );
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq, prometheus_client::encoding::EncodeLabelSet)]
-struct ResponsesTotalLabels {
-    class: ResponseClass,
-    message: MessageType,
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq, prometheus_client::encoding::EncodeLabelValue)]
-enum ResponseClass {
-    Success,
-    Error,
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq, prometheus_client::encoding::EncodeLabelValue)]
-enum MessageType {
-    Binding,
-    Allocate,
-    ChannelBind,
-    CreatePermission,
-    Refresh,
-}
 
 #[cfg(test)]
 mod tests {

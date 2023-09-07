@@ -2,9 +2,10 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
-use opentelemetry_otlp::WithExportConfig;
+use opentelemetry::metrics::noop::NoopMeterProvider;
+use opentelemetry::metrics::{Meter, MeterProvider};
+use opentelemetry_otlp::{TonicExporterBuilder, WithExportConfig};
 use phoenix_channel::{Error, Event, PhoenixChannel};
-use prometheus_client::registry::Registry;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use relay::{
@@ -34,10 +35,11 @@ struct Args {
     /// The public (i.e. internet-reachable) IPv6 address of the relay server.
     #[arg(long, env)]
     public_ip6_addr: Option<Ipv6Addr>,
-    /// The address of the local interface where we should serve the prometheus metrics.
-    /// The metrics will be available at `http://<metrics_addr>/metrics`.
-    #[arg(long, env)]
-    metrics_addr: Option<SocketAddr>,
+    /// The address of the local interface where we should serve our health-check endpoint.
+    ///
+    /// The actual health-check endpoint will be at `http://<health_check_addr>/health`.
+    #[arg(long, env, default_value = "0.0.0.0:8080")]
+    health_check_addr: SocketAddr,
     // See https://www.rfc-editor.org/rfc/rfc8656.html#name-allocations
     /// The lowest port used for TURN allocations.
     #[arg(long, env, default_value = "49152")]
@@ -74,7 +76,7 @@ struct Args {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    setup_tracing(&args)?;
+    let meter = setup_tracing(&args)?;
 
     // Must create a root span for traces to be sampled.
     let root = tracing::error_span!("root");
@@ -89,11 +91,10 @@ async fn main() -> Result<()> {
         }
     };
 
-    let mut metric_registry = Registry::with_prefix("relay");
     let server = Server::new(
         public_addr,
         make_rng(args.rng_seed),
-        &mut metric_registry,
+        &meter,
         args.lowest_port,
         args.highest_port,
     );
@@ -158,11 +159,9 @@ async fn main() -> Result<()> {
         None
     };
 
-    let mut eventloop = Eventloop::new(server, channel, public_addr, &mut metric_registry)?;
+    let mut eventloop = Eventloop::new(server, channel, public_addr, &meter)?;
 
-    if let Some(metrics_addr) = args.metrics_addr {
-        tokio::spawn(relay::metrics::serve(metrics_addr, metric_registry));
-    }
+    tokio::spawn(relay::health_check::serve(args.health_check_addr));
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
@@ -178,35 +177,45 @@ async fn main() -> Result<()> {
 /// See [`log_layer`] for details on the base log layer.
 ///
 /// This function will set up an OTLP-exporter if the user has specified an OTLP-receiver.
-fn setup_tracing(args: &Args) -> Result<()> {
+fn setup_tracing(args: &Args) -> Result<Meter> {
+    const METER_NAME: &str = "relay";
+
     let env_filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy();
 
     let registry = tracing_subscriber::registry().with(log_layer(args)?.with_filter(env_filter));
 
-    match args.otlp_receiver {
-        None => registry.try_init(),
-        Some(otlp_receiver) => {
-            let otlp_exporter = opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint(format!("http://{otlp_receiver}"));
+    let Some(otlp_receiver) = args.otlp_receiver else {
+        registry.try_init().context("Failed to init tracing")?;
+        let meter = NoopMeterProvider::new().meter(METER_NAME);
 
-            let tracer = opentelemetry_otlp::new_pipeline()
-                .tracing()
-                .with_exporter(otlp_exporter)
-                .install_batch(opentelemetry::runtime::Tokio)?;
+        return Ok(meter)
+    };
 
-            // TODO: Add OTLP-metrics exporter here.
+    let tracer = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(tonic_exporter(otlp_receiver))
+        .install_batch(opentelemetry::runtime::Tokio)?;
 
-            registry
-                .with(tracing_opentelemetry::layer().with_tracer(tracer))
-                .try_init()
-        }
-    }
-    .context("Failed to init tracing")?;
+    registry
+        .with(tracing_opentelemetry::layer().with_tracer(tracer))
+        .try_init()
+        .context("Failed to init tracing")?;
 
-    Ok(())
+    let meter = opentelemetry_otlp::new_pipeline()
+        .metrics(opentelemetry::runtime::Tokio)
+        .with_exporter(tonic_exporter(otlp_receiver))
+        .build()?
+        .meter(METER_NAME);
+
+    Ok(meter)
+}
+
+fn tonic_exporter(socket: SocketAddr) -> TonicExporterBuilder {
+    opentelemetry_otlp::new_exporter()
+        .tonic()
+        .with_endpoint(format!("http://{socket}"))
 }
 
 /// Constructs the base log layer.
@@ -296,7 +305,7 @@ where
         server: Server<R>,
         channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
         public_address: IpStack,
-        _: &mut Registry,
+        _: &Meter,
     ) -> Result<Self> {
         let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);
         let (inbound_data_sender, inbound_data_receiver) = mpsc::channel(10);
