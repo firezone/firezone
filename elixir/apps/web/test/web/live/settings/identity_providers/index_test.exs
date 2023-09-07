@@ -142,6 +142,26 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
       assert row["sync status"] == "Synced 2 identities and 1 group 1 hour ago"
     end)
 
+    provider =
+      provider
+      |> Ecto.Changeset.change(
+        adapter_state: %{
+          "refresh_token" => nil,
+          "expires_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+        }
+      )
+      |> Repo.update!()
+
+    {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/identity_providers")
+
+    lv
+    |> element("#providers")
+    |> render()
+    |> table_to_map()
+    |> with_table_row("name", provider.name, fn row ->
+      assert row["status"] =~ "No refresh token provided by IdP and access token expires on"
+    end)
+
     provider
     |> Ecto.Changeset.change(
       disabled_at: DateTime.utc_now(),
@@ -156,7 +176,7 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
     |> render()
     |> table_to_map()
     |> with_table_row("name", provider.name, fn row ->
-      assert row["status"] == "Pending access token, reconnect identity provider"
+      assert row["status"] == "Provisioning connect IdP"
     end)
   end
 

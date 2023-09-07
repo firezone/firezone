@@ -153,7 +153,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
            |> element("#provider")
            |> render()
            |> vertical_table_to_map()
-           |> Map.fetch!("status") == "Pending access token, reconnect identity provider"
+           |> Map.fetch!("status") == "Provisioning connect IdP"
   end
 
   test "disables status while pending for access token", %{

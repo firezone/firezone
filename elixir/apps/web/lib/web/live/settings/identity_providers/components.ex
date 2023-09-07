@@ -15,6 +15,32 @@ defmodule Web.Settings.IdentityProviders.Components do
   def status(
         %{
           provider: %{
+            adapter: :google_workspace,
+            adapter_state: %{"refresh_token" => nil, "expires_at" => expires_at},
+            disabled_at: nil
+          }
+        } = assigns
+      ) do
+    assigns =
+      assign_new(assigns, :expires_at, fn ->
+        {:ok, dt, _} = DateTime.from_iso8601(expires_at)
+        dt
+      end)
+
+    ~H"""
+    <div class="flex items-center">
+      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+      <span class="ml-3">
+        No refresh token provided by IdP and access token expires on
+        <.datetime datetime={@expires_at} /> UTC
+      </span>
+    </div>
+    """
+  end
+
+  def status(
+        %{
+          provider: %{
             disabled_at: disabled_at,
             adapter_state: %{"status" => "pending_access_token"}
           }
@@ -25,7 +51,7 @@ defmodule Web.Settings.IdentityProviders.Components do
     <div class="flex items-center">
       <span class="w-3 h-3 bg-red-500 rounded-full"></span>
       <span class="ml-3">
-        Pending access token,
+        Provisioning
         <span :if={@provider.adapter_state["status"]}>
           <.link navigate={
             ~p"/#{@provider.account_id}/settings/identity_providers/google_workspace/#{@provider}/redirect"
@@ -38,7 +64,7 @@ defmodule Web.Settings.IdentityProviders.Components do
           focus:ring-4 focus:outline-none focus:ring-primary-300
           dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800
           active:text-white/80
-        ]}>reconnect identity provider</button>
+        ]}>connect IdP</button>
           </.link>
         </span>
       </span>
