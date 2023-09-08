@@ -23,12 +23,8 @@ locals {
       value = var.observability_log_level
     },
     {
-      name  = "LOG_FORMAT"
-      value = "google_cloud=${var.project_id}"
-    },
-    {
-      name  = "OTLP_RECEIVER"
-      value = "localhost:4317" // This is where the ops-agent runs the OTLP-receiver: https://cloud.google.com/trace/docs/otlp#combined-receiver-types
+      name  = "GOOGLE_CLOUD_PROJECT_ID"
+      value = var.project_id
     },
     {
       name  = "METRICS_ADDR"
@@ -132,9 +128,6 @@ resource "google_compute_instance_template" "application" {
   labels = merge({
     container-vm = data.google_compute_image.coreos.name
   }, local.application_labels)
-
-  // TODO We need to include the ops-agent configuration file here
-  // See https://cloud.google.com/trace/docs/otlp#config-otlp.
 
   scheduling {
     automatic_restart   = true

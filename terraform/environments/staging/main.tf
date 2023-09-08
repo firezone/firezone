@@ -640,29 +640,6 @@ module "relays" {
   portal_token         = var.relay_portal_token
 }
 
-// TODO: Not sure where this goes? :shrug:
-module "agent_policy" {
-  source     = "terraform-google-modules/cloud-operations/google//modules/agent-policy"
-  version    = "~> 0.2.3"
-
-  project_id = module.google-cloud-project.project.project_id
-  policy_id  = "ops-agents-example-policy"
-  agent_rules = [
-    {
-      type               = "ops-agent"
-      version            = "current-major"
-      package_state      = "installed"
-      enable_autoupgrade = true
-    },
-  ]
-  group_labels = [
-    {
-      application_name = "relay" // How do we say that we only want the ops-agent on machines that run the relay?
-    }
-  ]
-  os_types = []
-}
-
 # Enable SSH on staging
 resource "google_compute_firewall" "ssh" {
   project = module.google-cloud-project.project.project_id
