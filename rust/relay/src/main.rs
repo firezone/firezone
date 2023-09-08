@@ -80,6 +80,7 @@ enum LogFormat {
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
 enum TraceReceiver {
+    /// Sends traces to Google Cloud Trace.
     GoogleCloudTrace,
     // TODO: Extend with OTLP receiver
 }
@@ -191,7 +192,14 @@ async fn main() -> Result<()> {
 ///
 /// See [`log_layer`] for details on the base log layer.
 ///
-/// This function will set up an OTLP-exporter if the user has specified an OTLP-receiver.
+/// If the user has specified [`TraceReceiver::GoogleCloudTrace`], we will attempt to connec to Google Cloud Trace.
+/// This requires authentication.
+/// Here is how we will attempt to obtain those, for details see <https://docs.rs/gcp_auth/0.9.0/gcp_auth/struct.AuthenticationManager.html#method.new>.
+///
+/// 1. Check if the `GOOGLE_APPLICATION_CREDENTIALS` environment variable if set; if so, use a custom service account as the token source.
+/// 2. Look for credentials in `.config/gcloud/application_default_credentials.json`; if found, use these credentials to request refresh tokens.
+/// 3. Send a HTTP request to the internal metadata server to retrieve a token; if it succeeds, use the default service account as the token source.
+/// 4. Check if the `gcloud` tool is available on the PATH; if so, use the `gcloud auth print-access-token` command as the token source.
 async fn setup_tracing(args: &Args) -> Result<()> {
     let registry = tracing_subscriber::registry();
 
