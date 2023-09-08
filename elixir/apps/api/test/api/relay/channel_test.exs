@@ -4,7 +4,7 @@ defmodule API.Relay.ChannelTest do
   setup do
     relay = Fixtures.Relays.create_relay()
 
-    stamp_secret = Domain.Crypto.rand_string()
+    stamp_secret = Domain.Crypto.random_token()
 
     {:ok, _, socket} =
       API.Relay.Socket
@@ -26,7 +26,7 @@ defmodule API.Relay.ChannelTest do
       group = Fixtures.Relays.create_global_group()
       relay = Fixtures.Relays.create_relay(group: group)
 
-      stamp_secret = Domain.Crypto.rand_string()
+      stamp_secret = Domain.Crypto.random_token()
 
       {:ok, _, _socket} =
         API.Relay.Socket

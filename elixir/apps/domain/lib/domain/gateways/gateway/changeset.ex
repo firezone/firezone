@@ -23,7 +23,9 @@ defmodule Domain.Gateways.Gateway.Changeset do
   def upsert(%Gateways.Token{} = token, attrs) do
     %Gateways.Gateway{}
     |> cast(attrs, @upsert_fields)
-    |> put_default_value(:name_suffix, fn -> Domain.Crypto.rand_string(5) end)
+    |> put_default_value(:name_suffix, fn ->
+      Domain.Crypto.random_token(5, encoder: :user_friendly)
+    end)
     |> changeset()
     |> validate_required(@required_fields)
     |> validate_base64(:public_key)

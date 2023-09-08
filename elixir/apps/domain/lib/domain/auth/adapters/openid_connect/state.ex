@@ -1,6 +1,6 @@
 defmodule Domain.Auth.Adapters.OpenIDConnect.State do
   def new do
-    Domain.Crypto.rand_string()
+    Domain.Crypto.random_token(32)
   end
 
   def equal?(state1, state2) do

@@ -8,38 +8,44 @@ defmodule Domain.CryptoTest do
     end
   end
 
-  describe "rand_string/1" do
-    test "it returns a string of default length" do
-      assert 16 == String.length(rand_string())
+  describe "random_token/2" do
+    test "generates random number" do
+      assert random_token(16, generator: :numeric) != random_token(16, generator: :numeric)
     end
 
-    test "it returns a string of proper length" do
-      for length <- [1, 32, 32_768] do
-        assert length == String.length(rand_string(length))
+    test "generates random string" do
+      assert random_token(16, generator: :binary) != random_token(16, generator: :binary)
+    end
+
+    test "generates a random number of given length" do
+      for length <- [1, 2, 4, 16, 32], _i <- 0..100 do
+        assert length == String.length(random_token(length, generator: :numeric))
       end
     end
-  end
 
-  describe "rand_token/1" do
-    test "returns a token of default length" do
-      # 8 bytes is 12 chars in Base64
-      assert 12 == String.length(rand_token())
+    test "generates a random binary of given byte size" do
+      for length <- [1, 2, 4, 16, 32], _i <- 0..100 do
+        assert length == byte_size(random_token(length, encoder: :raw))
+      end
     end
 
-    test "returns a token of length 4 when bytes is 1" do
-      assert 4 == String.length(rand_token(1))
+    test "returns base64 url encoded token by default" do
+      # 2 padding bytes are stripped
+      assert String.length(random_token(1)) == 2
+      assert String.length(random_token(3)) == 4
     end
 
-    test "returns a token of length 4 when bytes is 3" do
-      assert 4 == String.length(rand_token(3))
+    test "returns base64  encoded token doesn't remove padding" do
+      assert String.length(random_token(1, encoder: :base64)) == 4
     end
 
-    test "returns a token of length 40_000 when bytes is 32_768" do
-      assert 44 == String.length(rand_token(32))
-    end
-
-    test "returns a token of length 44 when bytes is 32" do
-      assert 43_692 == String.length(rand_token(32_768))
+    test "user friendly encoder does not print ambiguous or upcased characters" do
+      for _ <- 1..100 do
+        token = random_token(16, encoder: :user_friendly)
+        assert String.downcase(token) == token
+        assert String.printable?(token)
+        refute String.contains?(token, ["-", "+", "/", "l", "I", "O", "0"])
+      end
     end
   end
 end

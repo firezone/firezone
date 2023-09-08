@@ -38,7 +38,7 @@ defmodule Domain.Auth.Adapters.Token do
   end
 
   defp put_hash_and_expiration(changeset) do
-    secret = Domain.Crypto.rand_token(32)
+    secret = Domain.Crypto.random_token(32)
     secret_hash = Domain.Crypto.hash(secret)
 
     data = Map.get(changeset.data, :provider_virtual_state) || %{}

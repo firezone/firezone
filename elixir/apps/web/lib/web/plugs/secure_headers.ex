@@ -10,7 +10,7 @@ defmodule Web.Plugs.SecureHeaders do
   end
 
   defp put_csp_nonce_and_header(conn) do
-    csp_nonce = Domain.Crypto.rand_string(8)
+    csp_nonce = Domain.Crypto.random_token(8)
 
     policy =
       Application.fetch_env!(:web, __MODULE__)

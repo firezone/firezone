@@ -279,7 +279,7 @@ defmodule Domain.Relays do
   def generate_username_and_password(%Relay{stamp_secret: stamp_secret}, %DateTime{} = expires_at)
       when is_binary(stamp_secret) do
     expires_at = DateTime.to_unix(expires_at, :second)
-    salt = Domain.Crypto.rand_string()
+    salt = Domain.Crypto.random_token()
     password = generate_hash(expires_at, stamp_secret, salt)
     %{username: "#{expires_at}:#{salt}", password: password, expires_at: expires_at}
   end

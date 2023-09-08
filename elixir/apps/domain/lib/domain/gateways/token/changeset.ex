@@ -8,7 +8,7 @@ defmodule Domain.Gateways.Token.Changeset do
     %Gateways.Token{}
     |> change()
     |> put_change(:account_id, account.id)
-    |> put_change(:value, Domain.Crypto.rand_string(64))
+    |> put_change(:value, Domain.Crypto.random_token(64))
     |> put_hash(:value, to: :hash)
     |> assoc_constraint(:group)
     |> check_constraint(:hash, name: :hash_not_null, message: "can't be blank")
