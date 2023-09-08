@@ -96,11 +96,8 @@ defmodule Web.Policies.Index do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, socket.assigns.subject) do
-      {:ok, _} = Policies.delete_policy(policy, socket.assigns.subject)
-      {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies")}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, policy} = Policies.fetch_policy_by_id(id, socket.assigns.subject)
+    {:ok, _} = Policies.delete_policy(policy, socket.assigns.subject)
+    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies")}
   end
 end
