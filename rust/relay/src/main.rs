@@ -62,7 +62,7 @@ struct Args {
     rng_seed: Option<u64>,
 
     /// How to format the logs.
-    #[arg(long, env)]
+    #[arg(long, env, default_value = "human")]
     log_format: LogFormat,
 
     /// Where to send trace data to.
@@ -70,9 +70,8 @@ struct Args {
     trace_receiver: Option<TraceReceiver>,
 }
 
-#[derive(clap::ValueEnum, Debug, Default, Clone, Copy)]
+#[derive(clap::ValueEnum, Debug, Clone, Copy)]
 enum LogFormat {
-    #[default]
     Human,
     Json,
     GoogleCloud,
