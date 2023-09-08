@@ -372,7 +372,7 @@ defmodule Web.AuthControllerTest do
         assert email.subject == "Firezone Sign In Link"
 
         verify_sign_in_token_path =
-          "/#{account.id}/sign_in/providers/#{provider.id}/verify_sign_in_token"
+          "/#{account.slug}/sign_in/providers/#{provider.id}/verify_sign_in_token"
 
         assert email.text_body =~ "#{verify_sign_in_token_path}"
         assert email.text_body =~ "identity_id=#{identity.id}"
@@ -524,7 +524,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
@@ -554,7 +554,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
@@ -1172,7 +1172,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) =~ "/#{account.id}/sign_in"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
 
       assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
