@@ -17,8 +17,8 @@ tracing = { version = "0.1.37", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
 tracing-stackdriver = { version = "0.7.2", features = ["opentelemetry"] }
 tracing-opentelemetry = "0.20.0"
-opentelemetry-otlp = { version = "0.13.0", features = ["metrics"] }
 opentelemetry = { version = "0.20.0", features = ["rt-tokio", "metrics"] }
+opentelemetry-stackdriver = { version = "0.17.0", default-features = false, features = ["gcp_auth"] }
 env_logger = "0.10.0"
 bytes = "1.4.0"
 sha2 = "0.10.6"
