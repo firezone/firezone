@@ -27,7 +27,7 @@ locals {
       value = "google-cloud"
     },
     {
-      name  = "TRACE_RECEIVER"
+      name  = "TRACE_COLLECTOR"
       value = "google-cloud-trace"
     },
     {
