@@ -20,7 +20,7 @@ ENV RUST_BACKTRACE=1
 ENV PATH "/app:$PATH"
 ENV PACKAGE_NAME ${PACKAGE}
 RUN apt-get update -y \
-    && apt-get install -y iputils-ping iptables lsof iproute2 curl iperf3 \
+    && apt-get install -y iputils-ping iptables lsof iproute2 curl iperf3 ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
