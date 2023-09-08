@@ -20,7 +20,7 @@ thiserror = { version = "1.0", default-features = false }
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 tokio = { version = "1.32", default-features = false, features = ["rt", "rt-multi-thread"]}
-url = { version = "2.3.1", default-features = false }
+url = { version = "2.4.1", default-features = false }
 rand_core = { version = "0.6.4", default-features = false, features = ["std"] }
 async-trait = { version = "0.1", default-features = false }
 backoff = { workspace = true }
