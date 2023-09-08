@@ -2,7 +2,9 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
-use opentelemetry_otlp::WithExportConfig;
+use opentelemetry::sdk::trace::TracerProvider;
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry_stackdriver::Authorizer;
 use phoenix_channel::{Error, Event, PhoenixChannel};
 use prometheus_client::registry::Registry;
 use rand::rngs::StdRng;
@@ -59,22 +61,34 @@ struct Args {
     #[arg(long, env)]
     rng_seed: Option<u64>,
 
-    /// How logs should be output.
-    #[arg(long, env, default_value = "human")]
-    log_format: String,
-
-    /// The IP and port of the OTLP receiver.
-    ///
-    /// If specified, we will connect to this OTLP receiver and transmit trace and metrics data.
+    /// How to format the logs.
     #[arg(long, env)]
-    otlp_receiver: Option<SocketAddr>,
+    log_format: LogFormat,
+
+    /// Where to send trace data to.
+    #[arg(long, env)]
+    trace_receiver: Option<TraceReceiver>,
+}
+
+#[derive(clap::ValueEnum, Debug, Default, Clone, Copy)]
+enum LogFormat {
+    #[default]
+    Human,
+    Json,
+    GoogleCloud,
+}
+
+#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+enum TraceReceiver {
+    GoogleCloudTrace,
+    // TODO: Extend with OTLP receiver
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    setup_tracing(&args)?;
+    setup_tracing(&args).await?;
 
     // Must create a root span for traces to be sampled.
     let root = tracing::error_span!("root");
@@ -178,28 +192,30 @@ async fn main() -> Result<()> {
 /// See [`log_layer`] for details on the base log layer.
 ///
 /// This function will set up an OTLP-exporter if the user has specified an OTLP-receiver.
-fn setup_tracing(args: &Args) -> Result<()> {
-    let env_filter = EnvFilter::builder()
-        .with_default_directive(LevelFilter::INFO.into())
-        .from_env_lossy();
+async fn setup_tracing(args: &Args) -> Result<()> {
+    let registry = tracing_subscriber::registry();
 
-    let registry = tracing_subscriber::registry().with(log_layer(args)?.with_filter(env_filter));
+    match args.trace_receiver {
+        None => registry.with(log_layer(args, None)).try_init(),
+        Some(TraceReceiver::GoogleCloudTrace) => {
+            let authorizer = opentelemetry_stackdriver::GcpAuthorizer::new()
+                .await
+                .context("Failed to find GCP credentials")?;
 
-    match args.otlp_receiver {
-        None => registry.try_init(),
-        Some(otlp_receiver) => {
-            let otlp_exporter = opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint(format!("http://{otlp_receiver}"));
+            let project_id = authorizer.project_id().to_owned();
 
-            let tracer = opentelemetry_otlp::new_pipeline()
-                .tracing()
-                .with_exporter(otlp_exporter)
-                .install_batch(opentelemetry::runtime::Tokio)?;
+            let (exporter, driver) = opentelemetry_stackdriver::Builder::default()
+                .build(authorizer)
+                .await?;
+            tokio::spawn(driver);
 
-            // TODO: Add OTLP-metrics exporter here.
+            let tracer = TracerProvider::builder()
+                .with_batch_exporter(exporter, opentelemetry::runtime::Tokio)
+                .build()
+                .tracer("relay");
 
             registry
+                .with(log_layer(args, Some(project_id)))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer))
                 .try_init()
         }
@@ -216,33 +232,27 @@ fn setup_tracing(args: &Args) -> Result<()> {
 /// - human-centered formatting
 /// - JSON-formatting
 /// - Google Cloud optimised formatting
-///
-/// In the case of Google Cloud, the user needs to specify the `project-ID` as a parameter.
-/// This is useful in combination with the OTLP exporter which can submit traces to an OTLP-receiver.
-/// Those need to have the `project-ID` set correctly.
-fn log_layer<T>(args: &Args) -> Result<Box<dyn Layer<T> + Send + Sync>>
+fn log_layer<T>(
+    args: &Args,
+    google_cloud_trace_project_id: Option<String>,
+) -> Box<dyn Layer<T> + Send + Sync>
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
-    let layer = match args.log_format.as_str() {
-        "human" => tracing_subscriber::fmt::layer().boxed(),
-        "json" => tracing_subscriber::fmt::layer().json().boxed(),
-        other => {
-            let mut matches = other.matches("google_cloud=(.+)");
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy();
 
-            let Some(project_id) = matches.next() else {
-                bail!("Invalid parameter for `--log-format`. Expected either `human`, `json` or `google_cloud=<PROJECT_ID>`");
-            };
-
-            tracing_stackdriver::layer()
-                .with_cloud_trace(CloudTraceConfiguration {
-                    project_id: project_id.to_owned(),
-                })
-                .boxed()
-        }
+    let log_layer = match (args.log_format, google_cloud_trace_project_id) {
+        (LogFormat::Human, _) => tracing_subscriber::fmt::layer().boxed(),
+        (LogFormat::Json, _) => tracing_subscriber::fmt::layer().json().boxed(),
+        (LogFormat::GoogleCloud, None) => tracing_stackdriver::layer().boxed(),
+        (LogFormat::GoogleCloud, Some(project_id)) => tracing_stackdriver::layer()
+            .with_cloud_trace(CloudTraceConfiguration { project_id })
+            .boxed(),
     };
 
-    Ok(layer)
+    log_layer.with_filter(env_filter).boxed()
 }
 
 #[derive(serde::Serialize, PartialEq, Debug)]
