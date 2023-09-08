@@ -67,7 +67,7 @@ struct Args {
 
     /// Where to send trace data to.
     #[arg(long, env)]
-    trace_receiver: Option<TraceReceiver>,
+    trace_collector: Option<TraceCollector>,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -78,7 +78,7 @@ enum LogFormat {
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
-enum TraceReceiver {
+enum TraceCollector {
     /// Sends traces to Google Cloud Trace.
     GoogleCloudTrace,
     // TODO: Extend with OTLP receiver
@@ -191,7 +191,7 @@ async fn main() -> Result<()> {
 ///
 /// See [`log_layer`] for details on the base log layer.
 ///
-/// If the user has specified [`TraceReceiver::GoogleCloudTrace`], we will attempt to connec to Google Cloud Trace.
+/// If the user has specified [`TraceCollector::GoogleCloudTrace`], we will attempt to connec to Google Cloud Trace.
 /// This requires authentication.
 /// Here is how we will attempt to obtain those, for details see <https://docs.rs/gcp_auth/0.9.0/gcp_auth/struct.AuthenticationManager.html#method.new>.
 ///
@@ -202,9 +202,9 @@ async fn main() -> Result<()> {
 async fn setup_tracing(args: &Args) -> Result<()> {
     let registry = tracing_subscriber::registry();
 
-    match args.trace_receiver {
+    match args.trace_collector {
         None => registry.with(log_layer(args, None)).try_init(),
-        Some(TraceReceiver::GoogleCloudTrace) => {
+        Some(TraceCollector::GoogleCloudTrace) => {
             let authorizer = opentelemetry_stackdriver::GcpAuthorizer::new()
                 .await
                 .context("Failed to find GCP credentials")?;
