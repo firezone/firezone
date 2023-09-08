@@ -9,7 +9,7 @@ edition = "2021"
 dmidecode = "0.7"
 firezone-client-connlib = { path = "../../libs/client" }
 ip_network = "0.4"
-url = { version = "2.3.1", default-features = false }
+url = { version = "2.4.1", default-features = false }
 tracing-subscriber = { version = "0.3" }
 tracing = { version = "0.1" }
 anyhow = { version = "1.0" }
