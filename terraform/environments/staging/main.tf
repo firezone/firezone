@@ -199,9 +199,13 @@ resource "google_compute_subnetwork" "apps" {
 
   name = "app"
 
+  stack_type = "IPV4_IPV6"
+
   ip_cidr_range = "10.128.0.0/20"
   region        = local.region
   network       = module.google-cloud-vpc.id
+
+  ipv6_access_type = "EXTERNAL"
 
   private_ip_google_access = true
 }
@@ -605,8 +609,6 @@ module "relays" {
       zones    = ["us-central1-b"]
     }
   }
-
-  vpc_network = "projects/${module.google-cloud-project.project.project_id}/global/networks/default"
 
   container_registry = module.google-artifact-registry.url
 
