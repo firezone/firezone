@@ -90,6 +90,11 @@ defmodule Domain.Auth.Adapters.Token do
   end
 
   @impl true
+  def sign_out(%Provider{} = _provider, %Identity{} = identity, redirect_url) do
+    {:ok, identity, redirect_url}
+  end
+
+  @impl true
   def verify_secret(%Identity{} = identity, secret) when is_binary(secret) do
     Identity.Query.by_id(identity.id)
     |> Repo.fetch_and_update(

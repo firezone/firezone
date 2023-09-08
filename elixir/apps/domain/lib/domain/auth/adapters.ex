@@ -75,6 +75,11 @@ defmodule Domain.Auth.Adapters do
     end
   end
 
+  def sign_out(%Provider{} = provider, %Identity{} = identity, redirect_url) do
+    adapter = fetch_provider_adapter!(provider)
+    adapter.sign_out(provider, identity, redirect_url)
+  end
+
   def verify_secret(%Provider{} = provider, %Identity{} = identity, secret) do
     adapter = fetch_provider_adapter!(provider)
 
