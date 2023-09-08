@@ -23,8 +23,12 @@ locals {
       value = var.observability_log_level
     },
     {
-      name  = "GOOGLE_CLOUD_PROJECT_ID"
-      value = var.project_id
+      name  = "LOG_FORMAT"
+      value = "google-cloud"
+    },
+    {
+      name  = "TRACE_RECEIVER"
+      value = "google-cloud-trace"
     },
     {
       name  = "METRICS_ADDR"
