@@ -146,22 +146,33 @@ resource "google_compute_instance_template" "application" {
 
   network_interface {
     subnetwork = var.vpc_subnetwork
+    stack_type = "IPV4_IPV6"
+
+    ipv6_access_config {
+      network_tier = "PREMIUM"
+    }
   }
 
   service_account {
     email = google_service_account.application.email
 
     scopes = [
-      # Those are copying gke-default scopes
-      "storage-ro",
-      "logging-write",
-      "monitoring",
-      "service-management",
-      "service-control",
-      "trace",
+      # Those are default scopes
+      "https://www.googleapis.com/auth/devstorage.read_only",
+      "https://www.googleapis.com/auth/logging.write",
+      "https://www.googleapis.com/auth/monitoring.write",
+      "https://www.googleapis.com/auth/service.management.readonly",
+      "https://www.googleapis.com/auth/servicecontrol",
+      "https://www.googleapis.com/auth/trace.append",
       # Required to discover the other instances in the Erlang Cluster
-      "compute-ro",
+      "https://www.googleapis.com/auth/compute.readonly"
     ]
+  }
+
+  shielded_instance_config {
+    enable_integrity_monitoring = true
+    enable_secure_boot          = false
+    enable_vtpm                 = true
   }
 
   metadata = merge({
