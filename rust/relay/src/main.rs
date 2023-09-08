@@ -2,7 +2,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
-use opentelemetry::metrics::Meter;
+use opentelemetry::metrics::noop::NoopMeterProvider;
+use opentelemetry::metrics::{Meter, MeterProvider as _};
 use opentelemetry::sdk::trace::TracerProvider;
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_stackdriver::Authorizer;
@@ -66,9 +67,13 @@ struct Args {
     #[arg(long, env, default_value = "human")]
     log_format: LogFormat,
 
-    /// Where to send trace data to.
+    /// Where to send traces to.
     #[arg(long, env)]
     trace_receiver: Option<TraceReceiver>,
+
+    /// Where to send metrics to.
+    #[arg(long, env)]
+    metrics_receiver: Option<MetricsReceiver>,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -82,6 +87,13 @@ enum LogFormat {
 enum TraceReceiver {
     /// Sends traces to Google Cloud Trace.
     GoogleCloudTrace,
+    // TODO: Extend with OTLP receiver
+}
+
+#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+enum MetricsReceiver {
+    /// Sends metrics to Google Cloud Metrics.
+    GoogleCloudMetrics,
     // TODO: Extend with OTLP receiver
 }
 
@@ -198,10 +210,10 @@ async fn main() -> Result<()> {
 /// 3. Send a HTTP request to the internal metadata server to retrieve a token; if it succeeds, use the default service account as the token source.
 /// 4. Check if the `gcloud` tool is available on the PATH; if so, use the `gcloud auth print-access-token` command as the token source.
 async fn setup_tracing(args: &Args) -> Result<Meter> {
-    let registry = tracing_subscriber::registry();
+    const NAME: &str = "relay";
 
-    match args.trace_receiver {
-        None => registry.with(log_layer(args, None)).try_init(),
+    let (log_layer, trace_layer) = match args.trace_receiver {
+        None => (Some(log_layer(args, None)), None),
         Some(TraceReceiver::GoogleCloudTrace) => {
             let authorizer = opentelemetry_stackdriver::GcpAuthorizer::new()
                 .await
@@ -217,17 +229,32 @@ async fn setup_tracing(args: &Args) -> Result<Meter> {
             let tracer = TracerProvider::builder()
                 .with_batch_exporter(exporter, opentelemetry::runtime::Tokio)
                 .build()
-                .tracer("relay");
+                .tracer(NAME);
 
-            registry
-                .with(log_layer(args, Some(project_id)))
-                .with(tracing_opentelemetry::layer().with_tracer(tracer))
-                .try_init()
+            (
+                Some(log_layer(args, Some(project_id))),
+                Some(tracing_opentelemetry::layer().with_tracer(tracer)),
+            )
         }
-    }
-    .context("Failed to init tracing")?;
+    };
 
-    todo!()
+    let (metrics_layer, meter) = match args.metrics_receiver {
+        None => (None, NoopMeterProvider::new().meter(NAME)),
+        Some(MetricsReceiver::GoogleCloudMetrics) => {
+            // Need to wait for: https://github.com/open-telemetry/opentelemetry-rust/issues/1255
+
+            (None, NoopMeterProvider::new().meter(NAME))
+        }
+    };
+
+    tracing_subscriber::registry()
+        .with(log_layer)
+        .with(trace_layer)
+        .with(metrics_layer)
+        .try_init()
+        .context("Failed to set up tracing")?;
+
+    Ok(meter)
 }
 
 /// Constructs the base log layer.
