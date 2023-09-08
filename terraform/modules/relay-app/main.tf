@@ -390,6 +390,37 @@ resource "google_compute_firewall" "http-health-checks" {
   }
 }
 
+# Allow inbound traffic
+resource "google_compute_firewall" "ingress-ipv4" {
+  project = var.project_id
+
+  name      = "${local.application_name}-ingress-ipv4"
+  network   = google_compute_network.network.self_link
+  direction = "INGRESS"
+
+  target_tags   = ["app-${local.application_name}"]
+  source_ranges = ["0.0.0.0/0"]
+
+  allow {
+    protocol = "udp"
+  }
+}
+
+resource "google_compute_firewall" "ingress-ipv6" {
+  project = var.project_id
+
+  name      = "${local.application_name}-ingress-ipv6"
+  network   = google_compute_network.network.self_link
+  direction = "INGRESS"
+
+  target_tags   = ["app-${local.application_name}"]
+  source_ranges = ["::/0"]
+
+  allow {
+    protocol = "udp"
+  }
+}
+
 # Allow outbound traffic
 resource "google_compute_firewall" "egress-ipv4" {
   project = var.project_id
