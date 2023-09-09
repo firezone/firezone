@@ -14,6 +14,6 @@ public extension Logger {
   }
 
   static func make(category: String) -> Logger {
-    Logger(subsystem: Bundle.main.bundleIdentifier ?? "dev.firezone.firezone", category: category)
+    Logger(subsystem: "dev.firezone.firezone", category: category)
   }
 }

@@ -63,16 +63,19 @@ public struct SettingsView: View {
       NavigationView() {
         VStack() {
           form
-          HStack(spacing: 30) {
-            Button("Cancel", action: {
-              self.cancelButtonTapped()
-            })
-            Button("Save", action: {
+        }
+        .toolbar {
+          ToolbarItem(placement: .navigationBarTrailing) {
+            Button("Save") {
               self.saveButtonTapped()
-            })
+            }
             .disabled(!isTeamIdValid(model.settings.teamId))
           }
-          Spacer()
+          ToolbarItem(placement: .navigationBarLeading) {
+            Button("Cancel") {
+              self.cancelButtonTapped()
+            }
+          }
         }
       }
     }

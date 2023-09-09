@@ -9,7 +9,18 @@
 import Foundation
 
 public class DisplayableResources {
-  public typealias Resource = (name: String, location: String)
+
+  public struct Resource: Identifiable {
+    public var id: String { location }
+    public let name: String
+    public let location: String
+
+    public init(name: String, location: String) {
+      self.name = name
+      self.location = location
+    }
+  }
+
   public private(set) var version: UInt64
   public private(set) var versionString: String
   public private(set) var orderedResources: [Resource]
@@ -54,7 +65,7 @@ extension DisplayableResources {
             let location = components[index].removingPercentEncoding else {
         continue
       }
-      resources.append((name: name, location: location))
+      resources.append(Resource(name: name, location: location))
     }
     self.init(version: version, resources: resources)
   }

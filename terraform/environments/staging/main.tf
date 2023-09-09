@@ -199,9 +199,13 @@ resource "google_compute_subnetwork" "apps" {
 
   name = "app"
 
+  stack_type = "IPV4_IPV6"
+
   ip_cidr_range = "10.128.0.0/20"
   region        = local.region
   network       = module.google-cloud-vpc.id
+
+  ipv6_access_type = "EXTERNAL"
 
   private_ip_google_access = true
 }
@@ -229,8 +233,6 @@ resource "google_sql_database" "firezone" {
 }
 
 locals {
-  target_tags = ["app-web", "app-api", "app-relay"]
-
   cluster = {
     name   = "firezone"
     cookie = base64encode(random_password.erlang_cluster_cookie.result)
@@ -514,7 +516,7 @@ resource "google_compute_firewall" "erlang-distribution" {
   }
 
   source_ranges = [google_compute_subnetwork.apps.ip_cidr_range]
-  target_tags   = local.target_tags
+  target_tags   = concat(module.web.target_tags, module.api.target_tags)
 }
 
 ## Allow service account to list running instances
@@ -606,15 +608,13 @@ module "relays" {
     }
   }
 
-  vpc_network = "projects/${module.google-cloud-project.project.project_id}/global/networks/default"
-
   container_registry = module.google-artifact-registry.url
 
   image_repo = module.google-artifact-registry.repo
   image      = "relay"
   image_tag  = var.relay_image_tag
 
-  observability_log_level = "debug,relay=trace"
+  observability_log_level = "debug,relay=trace,hyper=off,wire=trace"
 
   application_name    = "relay"
   application_version = "0-0-1"
@@ -663,5 +663,32 @@ resource "google_compute_firewall" "ssh" {
   }
 
   source_ranges = ["0.0.0.0/0"]
-  target_tags   = local.target_tags
+  target_tags   = concat(module.web.target_tags, module.api.target_tags)
+}
+
+resource "google_compute_firewall" "relays-ssh" {
+  count = length(module.relays) > 0 ? 1 : 0
+
+  project = module.google-cloud-project.project.project_id
+
+  name    = "staging-relays-ssh"
+  network = module.relays[0].network
+
+  allow {
+    protocol = "tcp"
+    ports    = [22]
+  }
+
+  allow {
+    protocol = "udp"
+    ports    = [22]
+  }
+
+  allow {
+    protocol = "sctp"
+    ports    = [22]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = module.relays[0].target_tags
 }

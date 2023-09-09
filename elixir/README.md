@@ -189,7 +189,7 @@ executing this example:
 :ok = Domain.Gateways.connect_gateway(gateway)
 
 [relay | _rest_relays] = Domain.Repo.all(Domain.Relays.Relay)
-relay_secret = Domain.Crypto.rand_string()
+relay_secret = Domain.Crypto.random_token()
 :ok = Domain.Relays.connect_relay(relay, relay_secret)
 ```
 

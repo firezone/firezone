@@ -1,5 +1,5 @@
 terraform {
-  required_version = "1.5.0"
+  required_version = "1.5.6"
 
   required_providers {
     random = {
@@ -14,12 +14,12 @@ terraform {
 
     google = {
       source  = "hashicorp/google"
-      version = "~> 4.66"
+      version = "~> 4.81"
     }
 
     google-beta = {
       source  = "hashicorp/google-beta"
-      version = "~> 4.66"
+      version = "~> 4.81"
     }
 
     tls = {

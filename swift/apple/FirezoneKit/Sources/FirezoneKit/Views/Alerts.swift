@@ -6,6 +6,7 @@
 
 import _SwiftUINavigationState
 
+#if os(iOS)
 extension AlertState where Action == WelcomeViewModel.UndefinedSettingsAlertAction {
   static let undefinedSettings = AlertState(
     title: TextState("No settings found."),
@@ -16,3 +17,4 @@ extension AlertState where Action == WelcomeViewModel.UndefinedSettingsAlertActi
     )
   )
 }
+#endif
