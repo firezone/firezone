@@ -320,14 +320,14 @@ where
                     tracing::debug!("Attempting connection to portal...");
                     let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
                     if let Err(e) = &result {
-                        tracing::error!(error = ?e, "Portal connection error");
+                        tracing::warn!(error = ?e, "Portal connection error");
                     }
                     if let Some(t) = exponential_backoff.next_backoff() {
                         tracing::warn!("Error connecting to portal, retrying in {} seconds", t.as_secs());
                         let _ = callbacks.on_error(&result.err().unwrap_or(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed)));
                         tokio::time::sleep(t).await;
                     } else {
-                        tracing::warn!("Connection to portal failed, giving up");
+                        tracing::error!("Connection to portal failed, giving up");
                         fatal_error!(
                             result.and(Err(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed))),
                             runtime_stopper,
