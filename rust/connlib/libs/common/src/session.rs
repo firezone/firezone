@@ -23,7 +23,7 @@ use crate::{
 
 pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 
-// Avoids having map types for Windows
+// Avoids having to map types for Windows
 type RawFd = i32;
 
 struct StopRuntime;
@@ -319,16 +319,15 @@ where
                     // `connection.start` calls the callback only after connecting
                     tracing::debug!("Attempting connection to portal...");
                     let result = connection.start(vec![topic.clone()], || exponential_backoff.reset()).await;
-                    tracing::debug!("Disconnected from the portal");
                     if let Err(e) = &result {
-                        tracing::warn!(error = ?e, "Portal connection error");
+                        tracing::error!(error = ?e, "Portal connection error");
                     }
                     if let Some(t) = exponential_backoff.next_backoff() {
                         tracing::warn!("Error connecting to portal, retrying in {} seconds", t.as_secs());
                         let _ = callbacks.on_error(&result.err().unwrap_or(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed)));
                         tokio::time::sleep(t).await;
                     } else {
-                        tracing::error!("Connection to portal failed, giving up");
+                        tracing::warn!("Connection to portal failed, giving up");
                         fatal_error!(
                             result.and(Err(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed))),
                             runtime_stopper,

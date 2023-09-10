@@ -2,12 +2,7 @@
 //!
 //! This module implements a file-based logger for connlib using tracing-appender.
 //!
-//! The log files are rotated hourly and periodically synced to GCP object storage for debugging
-//! by Firezone staff. This is done via a short-lived, signed URL that can be requested
-//! by the Portal over an authenticated control plane connection via the `log_url` message.
-//!
-//! Log files older than 30 days are **not** uploaded. We intentionally don't delete log files
-//! because they may be relevant for admins to debug issues that occurred an unknown time in the past.
+//! The log files are rotated hourly.
 //!
 //! Since these will be leaving the user's device, these logs should contain *only*
 //! the necessary debugging information, and **not** any sensitive information,

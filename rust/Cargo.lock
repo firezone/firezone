@@ -1600,7 +1600,6 @@ dependencies = [
  "firezone-client-connlib",
  "ip_network",
  "tracing",
- "tracing-appender",
  "tracing-subscriber",
  "url",
 ]
