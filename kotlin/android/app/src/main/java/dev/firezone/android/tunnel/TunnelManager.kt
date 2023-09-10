@@ -187,7 +187,7 @@ internal class TunnelManager @Inject constructor(
 
     private fun getLogDir(): String {
         // Create log directory if it doesn't exist
-        val logDir = appContext.filesDir.absolutePath + "/log"
+        val logDir = appContext.cacheDir.absolutePath + "/log"
         Files.createDirectories(Paths.get(logDir))
         return logDir
     }

@@ -76,16 +76,14 @@ fn block_on_ctrl_c() {
 }
 
 fn init_logging(log_dir: PathBuf) {
-    let registry = tracing_subscriber::registry().with(fmt::layer());
+    let init_result = tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(file_logger::layer(log_dir))
+        .try_init();
 
-    match file_logger::layer(log_dir) {
-        Ok(file_layer) => {
-            registry.with(file_layer).init();
-        }
-        Err(e) => {
-            tracing::error!("Failed to initialize file logger: {}", e);
-            registry.init();
-        }
+    match init_result {
+        Ok(()) => tracing::info!("Logging initialized"),
+        Err(e) => tracing::error!("Failed to initialize logging: {}", e),
     }
 }
 

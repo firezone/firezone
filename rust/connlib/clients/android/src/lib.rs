@@ -90,13 +90,13 @@ fn init_logging(log_dir: PathBuf) {
             .with_tag("connlib"),
     );
 
-    match file_logger::layer(log_dir) {
-        Ok(file_layer) => {
-            tracing_subscriber::registry().with(file_layer).init();
-        }
-        Err(e) => {
-            tracing::error!("Failed to initialize file logger: {}", e);
-        }
+    let init_result = tracing_subscriber::registry()
+        .with(file_logger::layer(log_dir))
+        .try_init();
+
+    match init_result {
+        Ok(()) => tracing::info!("Logging initialized"),
+        Err(e) => tracing::error!("Failed to initialize logging: {}", e),
     }
 }
 

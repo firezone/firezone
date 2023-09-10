@@ -10,7 +10,7 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
-use tracing_subscriber::prelude::*;
+use tracing_subscriber::{layer::SubscriberExt, prelude::*};
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -135,20 +135,19 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf) {
-    let registry = tracing_subscriber::registry().with(tracing_oslog::OsLogger::new(
+fn init_logging(_log_dir: PathBuf) {
+    use tracing_subscriber::layer::SubscriberExt as _;
+    let collector = tracing_subscriber::registry().with(tracing_oslog::OsLogger::new(
         "dev.firezone.firezone",
         "connlib",
     ));
 
-    match file_logger::layer(log_dir) {
-        Ok(file_layer) => {
-            registry.with(file_layer).init();
-        }
-        Err(e) => {
-            tracing::error!("Failed to initialize file logger: {}", e);
-            registry.init();
-        }
+    // TODO: File logging is causing a crash on Apple
+    //let collector = collector.with(file_logger::layer(log_dir));
+
+    // This will fail if called more than once, but that doesn't really matter.
+    if tracing::subscriber::set_global_default(collector).is_ok() {
+        tracing::debug!("Subscribed to OS logging");
     }
 }
 

@@ -99,6 +99,7 @@ public class Adapter {
       try FileManager.default.createDirectory(
         at: logDirectory, withIntermediateDirectories: true, attributes: nil)
     } catch {
+      logger.warning("Unable to create log directory \(logDirectory)")
       return ""
     }
 

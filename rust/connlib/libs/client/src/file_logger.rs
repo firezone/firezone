@@ -13,37 +13,33 @@
 //! - Device serials
 //! - MAC addresses
 
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 use tracing::{level_filters::LevelFilter, Subscriber};
 use tracing_subscriber::{EnvFilter, Layer};
 
 const LOG_FILE_BASE_NAME: &str = "connlib.log";
 
-pub fn layer<T>(log_dir: PathBuf) -> Result<Box<dyn Layer<T> + Send + Sync>, std::io::Error>
+pub fn layer<T>(log_dir: PathBuf) -> Box<dyn Layer<T> + Send + Sync>
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
     tracing::info!("Saving log files to: {}", log_dir.display());
 
-    match fs::create_dir_all(&log_dir) {
-        Ok(_) => {
-            let (writer, _guard) = tracing_appender::non_blocking(
-                tracing_appender::rolling::hourly(log_dir, LOG_FILE_BASE_NAME),
-            );
+    let (writer, _guard) = tracing_appender::non_blocking(tracing_appender::rolling::hourly(
+        log_dir,
+        LOG_FILE_BASE_NAME,
+    ));
 
-            // Only log WARN and higher to disk by default
-            let env_filter = EnvFilter::builder()
-                .with_default_directive(LevelFilter::WARN.into())
-                .from_env_lossy();
+    // Only log WARN and higher to disk by default
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::WARN.into())
+        .from_env_lossy();
 
-            // TODO: This could be improved with a GCP project ID
-            let layer = tracing_stackdriver::layer()
-                .with_writer(writer)
-                .with_filter(env_filter)
-                .boxed();
+    // TODO: This could be improved with a GCP project ID
+    let layer = tracing_stackdriver::layer()
+        .with_writer(writer)
+        .with_filter(env_filter)
+        .boxed();
 
-            Ok(layer)
-        }
-        Err(e) => Err(e),
-    }
+    layer
 }
