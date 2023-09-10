@@ -792,7 +792,6 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tracing",
- "tracing-appender",
  "tracing-subscriber",
 ]
 
@@ -1292,6 +1291,8 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-appender",
+ "tracing-stackdriver",
+ "tracing-subscriber",
 ]
 
 [[package]]

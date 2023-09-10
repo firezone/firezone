@@ -2,15 +2,15 @@
 // Swift bridge generated code triggers this below
 #![allow(improper_ctypes, non_camel_case_types)]
 
-use firezone_client_connlib::{
-    file_logger::FileLogger, Callbacks, Error, ResourceDescription, Session,
-};
+use firezone_client_connlib::{file_logger, Callbacks, Error, ResourceDescription, Session};
 use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
+    path::PathBuf,
     sync::Arc,
 };
+use tracing_subscriber::prelude::*;
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -23,7 +23,6 @@ mod ffi {
             token: String,
             device_id: String,
             log_dir: String,
-            debug_mode: bool,
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
@@ -136,23 +135,21 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: String, _debug_mode: bool) {
-    // TODO: Use debug_mode to configure log level
-    use tracing_subscriber::layer::SubscriberExt as _;
-    let collector = tracing_subscriber::registry().with(tracing_oslog::OsLogger::new(
+fn init_logging(log_dir: PathBuf) {
+    let registry = tracing_subscriber::registry().with(tracing_oslog::OsLogger::new(
         "dev.firezone.firezone",
         "connlib",
     ));
-    // This will fail if called more than once, but that doesn't really matter.
-    if tracing::subscriber::set_global_default(collector).is_ok() {
-        tracing::debug!("subscribed to logging");
+
+    match file_logger::layer(log_dir) {
+        Ok(file_layer) => {
+            registry.with(file_layer).init();
+        }
+        Err(e) => {
+            tracing::error!("Failed to initialize file logger: {}", e);
+            registry.init();
+        }
     }
-
-    let file_logger = FileLogger::init(log_dir);
-
-    tracing_subscriber::fmt()
-        .with_writer(file_logger.writer)
-        .init();
 }
 
 impl WrappedSession {
@@ -161,10 +158,9 @@ impl WrappedSession {
         token: String,
         device_id: String,
         log_dir: String,
-        debug_mode: bool,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
-        init_logging(log_dir, debug_mode);
+        init_logging(log_dir.into());
 
         Session::connect(
             portal_url.as_str(),

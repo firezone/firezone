@@ -33,9 +33,6 @@ internal class TunnelManager @Inject constructor(
 
     private var activeTunnel: Tunnel? = null
 
-    // TODO: Make this configurable in Settings UI
-    private val debugMode = true
-
     private val listeners: MutableSet<WeakReference<TunnelListener>> = mutableSetOf()
 
     private val callback: ConnlibCallback = object: ConnlibCallback {
@@ -159,7 +156,6 @@ internal class TunnelManager @Inject constructor(
                     token = config.token,
                     deviceId = deviceId(),
                     logDir = appContext.filesDir.absolutePath,
-                    debugMode = debugMode,
                     callback = callback
                 )
                 Log.d("Connlib", "connlib session started! sessionPtr: ${sessionPtr}")

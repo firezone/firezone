@@ -1,7 +1,6 @@
 //! Connlib File Logger
 //!
-//! This module implements a file-based logger for connlib using tracing-subscriber and
-//! tracing-appender.
+//! This module implements a file-based logger for connlib using tracing-appender.
 //!
 //! The log files are rotated hourly and periodically synced to GCP object storage for debugging
 //! by Firezone staff. This is done via a short-lived, signed URL that can be requested
@@ -19,35 +18,37 @@
 //! - Device serials
 //! - MAC addresses
 
+use std::{fs, path::PathBuf};
+use tracing::{level_filters::LevelFilter, Subscriber};
+use tracing_subscriber::{EnvFilter, Layer};
+
 const LOG_FILE_BASE_NAME: &str = "connlib.log";
 
-use std::path::Path;
+pub fn layer<T>(log_dir: PathBuf) -> Result<Box<dyn Layer<T> + Send + Sync>, std::io::Error>
+where
+    T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+{
+    tracing::info!("Saving log files to: {}", log_dir.display());
 
-pub struct FileLogger {
-    pub writer: tracing_appender::non_blocking::NonBlocking,
-}
+    match fs::create_dir_all(&log_dir) {
+        Ok(_) => {
+            let (writer, _guard) = tracing_appender::non_blocking(
+                tracing_appender::rolling::hourly(log_dir, LOG_FILE_BASE_NAME),
+            );
 
-impl FileLogger {
-    pub fn init(log_dir: String) -> Self {
-        tracing::info!("Saving log files to: {log_dir}");
+            // Only log WARN and higher to disk by default
+            let env_filter = EnvFilter::builder()
+                .with_default_directive(LevelFilter::WARN.into())
+                .from_env_lossy();
 
-        match Path::new(&log_dir).exists() {
-            true => (),
-            false => {
-                tracing::warn!("specified log_dir {log_dir} does not exist! Creating...");
+            // TODO: This could be improved with a GCP project ID
+            let layer = tracing_stackdriver::layer()
+                .with_writer(writer)
+                .with_filter(env_filter)
+                .boxed();
 
-                match std::fs::create_dir_all(&log_dir) {
-                    Ok(_) => (),
-                    Err(e) => tracing::error!("Failed to create log directory {log_dir}: {e}"),
-                }
-            }
+            Ok(layer)
         }
-
-        let (writer, _guard) = tracing_appender::non_blocking(tracing_appender::rolling::hourly(
-            log_dir,
-            LOG_FILE_BASE_NAME,
-        ));
-
-        Self { writer }
+        Err(e) => Err(e),
     }
 }

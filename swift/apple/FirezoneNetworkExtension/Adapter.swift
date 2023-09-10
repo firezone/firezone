@@ -105,9 +105,6 @@ public class Adapter {
     return logDirectory.path
   }
 
-  // TODO: Retrieve this from App Settings
-  private var debugMode: Bool { return true }
-
   public init(
     controlPlaneURLString: String, token: String, packetTunnelProvider: NEPacketTunnelProvider
   ) {
@@ -149,7 +146,7 @@ public class Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            self.controlPlaneURLString, self.token, self.getDeviceId(), self.logDir, self.debugMode,
+            self.controlPlaneURLString, self.token, self.getDeviceId(), self.logDir,
             self.callbackHandler),
           onStarted: completionHandler
         )
@@ -286,7 +283,7 @@ extension Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            controlPlaneURLString, token, self.getDeviceId(), logDir, debugMode,
+            controlPlaneURLString, token, self.getDeviceId(), logDir,
             self.callbackHandler),
           onStarted: { error in
             if let error = error {

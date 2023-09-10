@@ -10,6 +10,8 @@ mock = ["libs-common/mock"]
 tokio = { version = "1.32", default-features = false, features = ["sync"] }
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
 tracing-appender = "0.2"
+tracing-stackdriver = "0.7.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 async-trait = { version = "0.1", default-features = false }
 libs-common = { path = "../common" }
 firezone-tunnel = { path = "../tunnel" }
