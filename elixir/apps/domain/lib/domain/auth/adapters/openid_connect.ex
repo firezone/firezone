@@ -86,6 +86,22 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   @impl true
+  def sign_out(%Provider{} = provider, %Identity{} = identity, redirect_url) do
+    config = config_for_provider(provider)
+
+    case OpenIDConnect.end_session_uri(config, %{
+           id_token_hint: identity.provider_state["id_token"],
+           post_logout_redirect_uri: redirect_url
+         }) do
+      {:ok, end_session_uri} ->
+        {:ok, identity, end_session_uri}
+
+      {:error, _reason} ->
+        {:ok, identity, redirect_url}
+    end
+  end
+
+  @impl true
   def verify_and_update_identity(%Provider{} = provider, {redirect_uri, code_verifier, code}) do
     token_params = %{
       grant_type: "authorization_code",

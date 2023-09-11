@@ -2477,6 +2477,36 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "sign_out/2" do
+    test "redirects to post logout redirect url for OpenID Connect providers" do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+
+      assert {:ok, %Auth.Identity{}, redirect_url} = sign_out(identity, "https://fz.d/sign_out")
+
+      post_redirect_url = URI.encode_www_form("https://fz.d/sign_out")
+
+      assert redirect_url =~ "https://example.com"
+      assert redirect_url =~ "id_token_hint="
+      assert redirect_url =~ "client_id=#{provider.adapter_config["client_id"]}"
+      assert redirect_url =~ "post_logout_redirect_uri=#{post_redirect_url}"
+    end
+
+    test "returns identity and url without changes for other providers" do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+
+      assert {:ok, %Auth.Identity{}, "https://fz.d/sign_out"} =
+               sign_out(identity, "https://fz.d/sign_out")
+    end
+  end
+
   describe "create_session_token_from_subject/1" do
     test "returns valid session token for a given subject" do
       subject = Fixtures.Auth.create_subject()
