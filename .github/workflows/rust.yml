@@ -46,7 +46,7 @@ jobs:
             packages: -p firezone-client-connlib
     runs-on: ${{ matrix.runs-on }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
       # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
@@ -90,7 +90,7 @@ jobs:
       run:
         working-directory: ./rust/relay
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
       # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
@@ -121,7 +121,7 @@ jobs:
         uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - id: auth
         uses: google-github-actions/auth@v1
         with:
@@ -180,7 +180,7 @@ jobs:
         uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - id: auth
         uses: google-github-actions/auth@v1
         with:
