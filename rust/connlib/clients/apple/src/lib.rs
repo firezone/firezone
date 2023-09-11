@@ -10,7 +10,7 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
-use tracing_subscriber::{layer::SubscriberExt, prelude::*};
+use tracing_subscriber::prelude::*;
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -135,20 +135,15 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(_log_dir: PathBuf) {
-    use tracing_subscriber::layer::SubscriberExt as _;
-    let collector = tracing_subscriber::registry().with(tracing_oslog::OsLogger::new(
-        "dev.firezone.firezone",
-        "connlib",
-    ));
+fn init_logging(log_dir: PathBuf) {
+    let collector = tracing_subscriber::registry()
+        .with(tracing_oslog::OsLogger::new(
+            "dev.firezone.firezone",
+            "connlib",
+        ))
+        .with(file_logger::layer(log_dir));
 
-    // TODO: File logging is causing a crash on Apple
-    //let collector = collector.with(file_logger::layer(log_dir));
-
-    // This will fail if called more than once, but that doesn't really matter.
-    if tracing::subscriber::set_global_default(collector).is_ok() {
-        tracing::debug!("Subscribed to OS logging");
-    }
+    let _ = tracing::subscriber::set_global_default(collector);
 }
 
 impl WrappedSession {
