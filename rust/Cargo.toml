@@ -25,7 +25,7 @@ webrtc = { git = "https://github.com/firezone/webrtc", branch = "master" }
 
 # It seems that this contains a dependency that no longer points to a valid ref, so we'll try our luck with
 # the mainline versions. The error from GH actions build pipeline copied here:
-# 
+#
 # Caused by:
 #   failed to load source for dependency `cc`
 #
