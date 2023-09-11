@@ -36,7 +36,7 @@ where
         .with_filter(if cfg!(debug_assertions) {
             LevelFilter::DEBUG
         } else {
-            LevelFilter::INFO
+            LevelFilter::WARN
         })
         .boxed();
 
