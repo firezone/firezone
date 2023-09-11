@@ -76,10 +76,12 @@ fn block_on_ctrl_c() {
 }
 
 fn init_logging(log_dir: PathBuf) {
-    tracing_subscriber::registry()
+    // Calling init twice causes a panic; instead use try_init which will fail
+    // gracefully if this is called more than once.
+    let _ = tracing_subscriber::registry()
         .with(fmt::layer())
         .with(file_logger::layer(log_dir))
-        .init();
+        .try_init();
 }
 
 fn main() -> Result<()> {
