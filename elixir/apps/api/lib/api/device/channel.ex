@@ -1,11 +1,11 @@
-defmodule API.Device.Channel do
+defmodule API.Client.Channel do
   use API, :channel
-  alias API.Device.Views
-  alias Domain.{Devices, Resources, Gateways, Relays}
+  alias API.Client.Views
+  alias Domain.{Clients, Resources, Gateways, Relays}
   require Logger
 
   @impl true
-  def join("device", _payload, socket) do
+  def join("client", _payload, socket) do
     expires_in =
       DateTime.diff(socket.assigns.subject.expires_at, DateTime.utc_now(), :millisecond)
 
@@ -20,15 +20,15 @@ defmodule API.Device.Channel do
 
   @impl true
   def handle_info(:after_join, socket) do
-    API.Endpoint.subscribe("device:#{socket.assigns.device.id}")
-    :ok = Devices.connect_device(socket.assigns.device)
+    API.Endpoint.subscribe("client:#{socket.assigns.client.id}")
+    :ok = Clients.connect_client(socket.assigns.client)
 
     {:ok, resources} = Domain.Resources.list_resources(socket.assigns.subject)
 
     :ok =
       push(socket, "init", %{
         resources: Views.Resource.render_many(resources),
-        interface: Views.Interface.render(socket.assigns.device)
+        interface: Views.Interface.render(socket.assigns.client)
       })
 
     {:noreply, socket}
@@ -40,7 +40,7 @@ defmodule API.Device.Channel do
   end
 
   # This message is sent by the gateway when it is ready
-  # to accept the connection from the device
+  # to accept the connection from the client
   def handle_info(
         {:connect, socket_ref, resource_id, gateway_public_key, rtc_session_description},
         socket
@@ -108,7 +108,7 @@ defmodule API.Device.Channel do
     end
   end
 
-  # This message is sent by the device when it already has connection to a gateway,
+  # This message is sent by the client when it already has connection to a gateway,
   # but wants to connect to a new resource
   def handle_in(
         "reuse_connection",
@@ -127,7 +127,7 @@ defmodule API.Device.Channel do
           gateway,
           {:allow_access,
            %{
-             device_id: socket.assigns.device.id,
+             client_id: socket.assigns.client.id,
              resource_id: resource.id,
              authorization_expires_at: socket.assigns.subject.expires_at
            }}
@@ -140,14 +140,14 @@ defmodule API.Device.Channel do
     end
   end
 
-  # This message is sent by the device when it wants to connect to a new gateway
+  # This message is sent by the client when it wants to connect to a new gateway
   def handle_in(
         "request_connection",
         %{
           "gateway_id" => gateway_id,
           "resource_id" => resource_id,
-          "device_rtc_session_description" => device_rtc_session_description,
-          "device_preshared_key" => preshared_key
+          "client_rtc_session_description" => client_rtc_session_description,
+          "client_preshared_key" => preshared_key
         },
         socket
       ) do
@@ -160,11 +160,11 @@ defmodule API.Device.Channel do
           gateway,
           {:request_connection, {self(), socket_ref(socket)},
            %{
-             device_id: socket.assigns.device.id,
+             client_id: socket.assigns.client.id,
              resource_id: resource.id,
              authorization_expires_at: socket.assigns.subject.expires_at,
-             device_rtc_session_description: device_rtc_session_description,
-             device_preshared_key: preshared_key
+             client_rtc_session_description: client_rtc_session_description,
+             client_preshared_key: preshared_key
            }}
         )
 

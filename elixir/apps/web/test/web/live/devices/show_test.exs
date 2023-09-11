@@ -1,4 +1,4 @@
-defmodule Web.Live.Devices.ShowTest do
+defmodule Web.Live.Clients.ShowTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -7,23 +7,23 @@ defmodule Web.Live.Devices.ShowTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
-    device = Fixtures.Devices.create_device(account: account, actor: actor, identity: identity)
+    client = Fixtures.Clients.create_client(account: account, actor: actor, identity: identity)
 
     %{
       account: account,
       actor: actor,
       identity: identity,
       subject: subject,
-      device: device
+      client: client
     }
   end
 
   test "redirects to sign in page for unauthorized user", %{
     account: account,
-    device: device,
+    client: client,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/devices/#{device}") ==
+    assert live(conn, ~p"/#{account}/clients/#{client}") ==
              {:error,
               {:redirect,
                %{
@@ -32,41 +32,41 @@ defmodule Web.Live.Devices.ShowTest do
                }}}
   end
 
-  test "renders not found error when device is deleted", %{
+  test "renders not found error when client is deleted", %{
     account: account,
-    device: device,
+    client: client,
     identity: identity,
     conn: conn
   } do
-    device = Fixtures.Devices.delete_device(device)
+    client = Fixtures.Clients.delete_client(client)
 
     assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices/#{device}")
+      |> live(~p"/#{account}/clients/#{client}")
     end
   end
 
   test "renders breadcrumbs item", %{
     account: account,
-    device: device,
+    client: client,
     identity: identity,
     conn: conn
   } do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices/#{device}")
+      |> live(~p"/#{account}/clients/#{client}")
 
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
-    assert breadcrumbs =~ "Devices"
-    assert breadcrumbs =~ device.name
+    assert breadcrumbs =~ "Clients"
+    assert breadcrumbs =~ client.name
   end
 
-  test "renders device details", %{
+  test "renders client details", %{
     account: account,
-    device: device,
+    client: client,
     actor: actor,
     identity: identity,
     conn: conn
@@ -74,79 +74,79 @@ defmodule Web.Live.Devices.ShowTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices/#{device}")
+      |> live(~p"/#{account}/clients/#{client}")
 
     table =
       lv
-      |> element("#device")
+      |> element("#client")
       |> render()
       |> vertical_table_to_map()
 
-    assert table["identifier"] == device.id
-    assert table["name"] == device.name
+    assert table["identifier"] == client.id
+    assert table["name"] == client.name
     assert table["owner"] =~ actor.name
     assert table["created"]
     assert table["last seen"]
-    assert table["remote ipv4"] =~ to_string(device.ipv4)
-    assert table["remote ipv6"] =~ to_string(device.ipv6)
-    assert table["client version"] =~ device.last_seen_version
-    assert table["user agent"] =~ device.last_seen_user_agent
+    assert table["remote ipv4"] =~ to_string(client.ipv4)
+    assert table["remote ipv6"] =~ to_string(client.ipv6)
+    assert table["client version"] =~ client.last_seen_version
+    assert table["user agent"] =~ client.last_seen_user_agent
   end
 
-  test "renders device owner", %{
+  test "renders client owner", %{
     account: account,
-    device: device,
+    client: client,
     identity: identity,
     conn: conn
   } do
-    actor = Repo.preload(device, :actor).actor
+    actor = Repo.preload(client, :actor).actor
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices/#{device}")
+      |> live(~p"/#{account}/clients/#{client}")
 
     assert lv
-           |> element("#device")
+           |> element("#client")
            |> render()
            |> vertical_table_to_map()
            |> Map.fetch!("owner") =~ actor.name
   end
 
-  test "allows editing devices", %{
+  test "allows editing clients", %{
     account: account,
-    device: device,
+    client: client,
     identity: identity,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices/#{device}")
+      |> live(~p"/#{account}/clients/#{client}")
 
     assert lv
-           |> element("a", "Edit Device")
+           |> element("a", "Edit Client")
            |> render_click() ==
              {:error,
-              {:live_redirect, %{to: ~p"/#{account}/devices/#{device}/edit", kind: :push}}}
+              {:live_redirect, %{to: ~p"/#{account}/clients/#{client}/edit", kind: :push}}}
   end
 
-  test "allows deleting devices", %{
+  test "allows deleting clients", %{
     account: account,
-    device: device,
+    client: client,
     identity: identity,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices/#{device}")
+      |> live(~p"/#{account}/clients/#{client}")
 
     assert lv
-           |> element("button", "Delete Device")
+           |> element("button", "Delete Client")
            |> render_click() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/devices"}}}
+             {:error, {:redirect, %{to: ~p"/#{account}/clients"}}}
 
-    assert Repo.get(Domain.Devices.Device, device.id).deleted_at
+    assert Repo.get(Domain.Clients.Client, client.id).deleted_at
   end
 end

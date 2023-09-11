@@ -39,8 +39,8 @@
 #     :ok
 #   end
 
-#   def add_device do
-#     PostHog.capture("add_device", common_fields())
+#   def add_client do
+#     PostHog.capture("add_client", common_fields())
 #     :ok
 #   end
 
@@ -54,8 +54,8 @@
 #     :ok
 #   end
 
-#   def delete_device do
-#     PostHog.capture("delete_device", common_fields())
+#   def delete_client do
+#     PostHog.capture("delete_client", common_fields())
 #     :ok
 #   end
 
@@ -94,8 +94,8 @@
 #     :ok
 #   end
 
-#   # How far back to count handshakes as an active device
-#   # @active_device_window 86_400
+#   # How far back to count handshakes as an active client
+#   # @active_client_window 86_400
 #   def ping_data do
 #     %{
 #       local_auth_enabled: {_, local_auth_enabled},
@@ -108,12 +108,12 @@
 
 #     common_fields() ++
 #       [
-#         # devices_active_within_24h: Devices.count_active_within(@active_device_window),
+#         # clients_active_within_24h: Clients.count_active_within(@active_client_window),
 #         # admin_count: Users.count_by_role(:account_admin_user),
 #         # actor_count: Users.count(),
 #         in_docker: in_docker?(),
-#         # device_count: Devices.count(),
-#         # max_devices_for_actors: Devices.count_maximum_for_a_actor(),
+#         # client_count: Clients.count(),
+#         # max_clients_for_actors: Clients.count_maximum_for_a_actor(),
 #         # actors_with_mfa: MFA.count_actors_with_mfa_enabled(),
 #         # actors_with_mfa_totp: MFA.count_actors_with_totp_method(),
 #         local_authentication: local_auth_enabled,

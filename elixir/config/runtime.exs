@@ -28,7 +28,7 @@ if config_env() == :prod do
     path: external_url_path
   } = URI.parse(external_url)
 
-  config :domain, Domain.Devices, upstream_dns: compile_config!(:devices_upstream_dns)
+  config :domain, Domain.Clients, upstream_dns: compile_config!(:clients_upstream_dns)
 
   config :domain, Domain.Gateways,
     gateway_ipv4_masquerade: compile_config!(:gateway_ipv4_masquerade),

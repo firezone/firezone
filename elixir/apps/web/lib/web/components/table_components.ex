@@ -236,7 +236,7 @@ defmodule Web.TableComponents do
   Renders a table with 2 columns and generic styling.
 
   The component will likely be used when displaying the properties of an
-  individual resource (e.g. Gateway, Resource, Device, etc...)
+  individual resource (e.g. Gateway, Resource, Client, etc...)
 
   The component renders a table that is meant to be viewed vertically, with
   the first column being the label and the second column being the value.
@@ -277,7 +277,7 @@ defmodule Web.TableComponents do
   the header and the second column will be the value.
 
   The component will likely be used when displaying the properties of an
-  individual resource (e.g. Gateway, Resource, Device, etc...)
+  individual resource (e.g. Gateway, Resource, Client, etc...)
 
   This component is intended to be used with the `vertical_table` component.
 

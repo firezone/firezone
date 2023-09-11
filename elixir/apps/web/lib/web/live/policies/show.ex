@@ -103,7 +103,7 @@ defmodule Web.Policies.Show do
               Authorized at
             </th>
             <th scope="col" class="px-6 py-3">
-              Device
+              Client
             </th>
             <th scope="col" class="px-6 py-3">
               User
@@ -121,7 +121,7 @@ defmodule Web.Policies.Show do
             <td class="px-6 py-4">
               <.link
                 class="text-blue-600 dark:text-blue-500 hover:underline"
-                navigate={~p"/#{@account}/devices/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                navigate={~p"/#{@account}/clients/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
               >
                 2425BD07A38D
               </.link>

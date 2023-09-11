@@ -1,11 +1,11 @@
-defmodule API.Device.Socket do
+defmodule API.Client.Socket do
   use Phoenix.Socket
-  alias Domain.{Auth, Devices}
+  alias Domain.{Auth, Clients}
   require Logger
 
   ## Channels
 
-  channel "device", API.Device.Channel
+  channel "client", API.Client.Channel
 
   ## Authentication
 
@@ -20,11 +20,11 @@ defmodule API.Device.Socket do
     real_ip = API.Sockets.real_ip(x_headers, peer_data)
 
     with {:ok, subject} <- Auth.sign_in(token, user_agent, real_ip),
-         {:ok, device} <- Devices.upsert_device(attrs, subject) do
+         {:ok, client} <- Clients.upsert_client(attrs, subject) do
       socket =
         socket
         |> assign(:subject, subject)
-        |> assign(:device, device)
+        |> assign(:client, client)
 
       {:ok, socket}
     else
@@ -32,7 +32,7 @@ defmodule API.Device.Socket do
         {:error, :invalid_token}
 
       {:error, reason} ->
-        Logger.debug("Error connecting device websocket: #{inspect(reason)}")
+        Logger.debug("Error connecting client websocket: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -42,5 +42,5 @@ defmodule API.Device.Socket do
   end
 
   @impl true
-  def id(socket), do: "device:#{socket.assigns.device.id}"
+  def id(socket), do: "client:#{socket.assigns.client.id}"
 end
