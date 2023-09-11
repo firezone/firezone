@@ -1,6 +1,9 @@
 defmodule Web.Resources.Components do
   use Web, :component_library
 
+  defp pretty_print_ports([]), do: ""
+  defp pretty_print_ports(ports), do: Enum.join(ports, ", ")
+
   def map_filters_form_attrs(attrs) do
     Map.update(attrs, "filters", [], fn filters ->
       filters =
@@ -33,6 +36,7 @@ defmodule Web.Resources.Components do
   attr :form, :any, required: true
 
   def filters_form(assigns) do
+    # Code is taken from https://github.com/phoenixframework/phoenix_live_view/blob/v0.19.5/lib/phoenix_component.ex#L2356
     %Phoenix.HTML.FormField{field: field_name, form: parent_form} = assigns.form
     options = assigns |> Map.take([:id, :as, :default, :append, :prepend]) |> Keyword.new()
     options = Keyword.merge(parent_form.options, options)
@@ -40,7 +44,6 @@ defmodule Web.Resources.Components do
 
     forms_by_protocol =
       for form <- forms, into: %{} do
-        # Code is taken from https://github.com/phoenixframework/phoenix_live_view/blob/v0.19.5/lib/phoenix_component.ex#L2356
         %Phoenix.HTML.Form{params: params} = form
         id = Ecto.Changeset.apply_changes(form.source).protocol
         form_id = "#{parent_form.id}_#{field_name}_#{id}"
@@ -110,7 +113,7 @@ defmodule Web.Resources.Components do
               type="text"
               field={ports}
               name={"#{@form.name}[tcp][ports]"}
-              value={ports.value}
+              value={pretty_print_ports(ports.value)}
               disabled={Map.has_key?(@forms_by_protocol, :all)}
               placeholder="Enter comma-separated port range(s), eg. 433, 80, 90-99. Matches all ports if empty."
             />
@@ -139,7 +142,7 @@ defmodule Web.Resources.Components do
               type="text"
               field={ports}
               name={"#{@form.name}[udp][ports]"}
-              value={ports.value}
+              value={pretty_print_ports(ports.value)}
               disabled={Map.has_key?(@forms_by_protocol, :all)}
               placeholder="Enter comma-separated port range(s), eg. 433, 80, 90-99. Matches all ports if empty."
             />
@@ -166,10 +169,15 @@ defmodule Web.Resources.Components do
   attr :resource, :any, default: nil
 
   def connections_form(assigns) do
+    assigns = assign(assigns, :errors, Enum.map(assigns.form.errors, &translate_error(&1)))
+
     ~H"""
     <fieldset class="flex flex-col gap-2">
       <legend class="mb-2">Gateway Instance Groups</legend>
 
+      <.error :for={msg <- @errors} data-validation-error-for="connections">
+        <%= msg %>
+      </.error>
       <div :for={gateway_group <- @gateway_groups}>
         <% connected_gateway_group_ids = connected_gateway_group_ids(@form) %>
 

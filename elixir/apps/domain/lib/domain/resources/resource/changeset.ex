@@ -22,6 +22,17 @@ defmodule Domain.Resources.Resource.Changeset do
     |> put_change(:created_by_identity_id, subject.identity.id)
   end
 
+  def create(%Accounts.Account{} = account, attrs) do
+    %Resource{connections: []}
+    |> cast(attrs, @fields)
+    |> changeset()
+    |> validate_required(@required_fields)
+    |> validate_address()
+    |> cast_assoc(:connections,
+      with: &Connection.Changeset.changeset(account.id, &1, &2)
+    )
+  end
+
   def finalize_create(%Resource{} = resource, ipv4, ipv6) do
     resource
     |> change()
@@ -116,10 +127,6 @@ defmodule Domain.Resources.Resource.Changeset do
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
-    |> exclusion_constraint(:address,
-      name: :resources_account_id_cidr_address_index,
-      message: "can not overlap with other resource ranges"
-    )
   end
 
   def delete(%Resource{} = resource) do

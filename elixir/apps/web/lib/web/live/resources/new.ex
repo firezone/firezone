@@ -6,7 +6,7 @@ defmodule Web.Resources.New do
 
   def mount(_params, _session, socket) do
     with {:ok, gateway_groups} <- Gateways.list_groups(socket.assigns.subject) do
-      changeset = Resources.new_resource(socket.assigns.subject)
+      changeset = Resources.new_resource(socket.assigns.account)
 
       {:ok, socket,
        temporary_assigns: [
@@ -76,7 +76,7 @@ defmodule Web.Resources.New do
       |> map_connections_form_attrs()
 
     changeset =
-      Resources.new_resource(attrs, socket.assigns.subject)
+      Resources.new_resource(socket.assigns.account, attrs)
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}

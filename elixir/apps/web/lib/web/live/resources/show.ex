@@ -4,12 +4,14 @@ defmodule Web.Resources.Show do
   alias Domain.Resources
 
   def mount(%{"id" => id}, _session, socket) do
-    {:ok, resource} =
-      Resources.fetch_resource_by_id(id, socket.assigns.subject,
-        preload: [:gateway_groups, created_by_identity: [:actor]]
-      )
-
-    {:ok, assign(socket, resource: resource)}
+    with {:ok, resource} <-
+           Resources.fetch_resource_by_id(id, socket.assigns.subject,
+             preload: [:gateway_groups, created_by_identity: [:actor]]
+           ) do
+      {:ok, assign(socket, resource: resource)}
+    else
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    end
   end
 
   defp pretty_print_filter(filter) do
@@ -51,7 +53,7 @@ defmodule Web.Resources.Show do
     </.header>
     <!-- Resource details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table>
+      <.vertical_table id="resource">
         <.vertical_table_row>
           <:label>
             Name

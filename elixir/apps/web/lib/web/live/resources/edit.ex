@@ -8,12 +8,11 @@ defmodule Web.Resources.Edit do
     with {:ok, resource} <-
            Resources.fetch_resource_by_id(id, socket.assigns.subject, preload: :gateway_groups),
          {:ok, gateway_groups} <- Gateways.list_groups(socket.assigns.subject) do
-      changeset = Resources.change_resource(resource, socket.assigns.subject)
+      form = Resources.change_resource(resource, socket.assigns.subject) |> to_form()
 
-      {:ok, assign(socket, resource: resource),
+      {:ok, assign(socket, resource: resource, gateway_groups: gateway_groups, form: form),
        temporary_assigns: [
-         gateway_groups: gateway_groups,
-         form: to_form(changeset)
+         form: %Phoenix.HTML.Form{}
        ]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
