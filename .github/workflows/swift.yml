@@ -26,9 +26,6 @@ jobs:
           - sdk: iphoneos
             platform: iOS
             destination: generic/platform=iOS
-          - sdk: iphonesimulator
-            platform: iOS
-            destination: generic/platform=iOS
     runs-on: macos-latest
     permissions:
       contents: read
