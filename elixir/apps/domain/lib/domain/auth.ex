@@ -500,6 +500,11 @@ defmodule Domain.Auth do
     Enum.min([expires_at, max_expires_at], DateTime)
   end
 
+  def sign_out(%Identity{} = identity, redirect_url) do
+    identity = Repo.preload(identity, :provider)
+    Adapters.sign_out(identity.provider, identity, redirect_url)
+  end
+
   # Session
 
   @doc """

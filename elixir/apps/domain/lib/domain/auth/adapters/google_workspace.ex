@@ -63,6 +63,11 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
   end
 
   @impl true
+  def sign_out(provider, identity, redirect_url) do
+    OpenIDConnect.sign_out(provider, identity, redirect_url)
+  end
+
+  @impl true
   def verify_and_update_identity(%Provider{} = provider, payload) do
     OpenIDConnect.verify_and_update_identity(provider, payload)
   end

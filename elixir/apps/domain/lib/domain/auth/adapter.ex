@@ -56,6 +56,13 @@ defmodule Domain.Auth.Adapter do
   @callback ensure_deprovisioned(%Provider{}) ::
               {:ok, %Provider{}} | {:error, %Ecto.Changeset{data: %Provider{}}}
 
+  @doc """
+  A callback which is called to clean up the provider data on sign out and,
+  optionally, redirect the user to a different location.
+  """
+  @callback sign_out(%Provider{}, %Identity{}, redirect_url :: String.t()) ::
+              {:ok, %Identity{}, redirect_url :: String.t()}
+
   defmodule Local do
     @doc """
     A callback invoked during sign-in, should verify the secret and return the identity

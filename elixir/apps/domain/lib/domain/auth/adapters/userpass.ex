@@ -88,6 +88,11 @@ defmodule Domain.Auth.Adapters.UserPass do
   end
 
   @impl true
+  def sign_out(%Provider{} = _provider, %Identity{} = identity, redirect_url) do
+    {:ok, identity, redirect_url}
+  end
+
+  @impl true
   def verify_secret(%Identity{} = identity, password) when is_binary(password) do
     Identity.Query.by_id(identity.id)
     |> Repo.fetch_and_update(

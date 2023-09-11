@@ -278,43 +278,28 @@ defmodule Web.AuthController do
     @state_cookie_key_prefix <> provider_id
   end
 
-  def sign_out(conn, %{"account_id_or_slug" => account_id_or_slug}) do
-    # TODO: post logout redirect url
+  def sign_out(%{assigns: %{subject: subject}} = conn, %{
+        "account_id_or_slug" => account_id_or_slug
+      }) do
+    {:ok, _identity, redirect_url} =
+      Domain.Auth.sign_out(subject.identity, url(~p"/#{account_id_or_slug}/sign_in"))
+
     conn
-    |> maybe_delete_recent_account()
+    |> delete_recent_account()
+    |> Auth.sign_out()
+    |> redirect(external: redirect_url)
+  end
+
+  def sign_out(conn, %{"account_id_or_slug" => account_id_or_slug}) do
+    conn
     |> Auth.sign_out()
     |> redirect(to: ~p"/#{account_id_or_slug}/sign_in")
   end
 
-  # def sign_out(conn) do
-  #   with provider_id when not is_nil(provider_id) <- Plug.Conn.get_session(conn, "login_method"),
-  #        token when not is_nil(token) <- Plug.Conn.get_session(conn, "id_token"),
-  #        {:ok, config} <- Auth.fetch_oidc_provider_config(provider_id),
-  #        {:ok, end_session_uri} <-
-  #          OpenIDConnect.end_session_uri(config, %{
-  #            id_token_hint: token,
-  #            post_logout_redirect_uri: url(~p"/")
-  #          }) do
-  #     conn
-  #     |> __MODULE__.Plug.sign_out()
-  #     |> Plug.Conn.configure_session(drop: true)
-  #     |> Phoenix.Controller.redirect(external: end_session_uri)
-  #   else
-  #     _ ->
-  #       conn
-  #       |> __MODULE__.Plug.sign_out()
-  #       |> Plug.Conn.configure_session(drop: true)
-  #       |> Phoenix.Controller.redirect(to: ~p"/")
-  #   end
-
-  defp maybe_delete_recent_account(%{assigns: %{subject: subject}} = conn) do
+  defp delete_recent_account(%{assigns: %{subject: subject}} = conn) do
     update_recent_accounts(conn, fn recent_account_ids ->
       recent_account_ids -- [subject.account.id]
     end)
-  end
-
-  defp maybe_delete_recent_account(conn) do
-    conn
   end
 
   defp persist_recent_account(conn, %Domain.Accounts.Account{} = account) do

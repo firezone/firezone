@@ -64,6 +64,11 @@ defmodule Domain.Auth.Adapters.Email do
     {:ok, provider}
   end
 
+  @impl true
+  def sign_out(%Provider{} = _provider, %Identity{} = identity, redirect_url) do
+    {:ok, identity, redirect_url}
+  end
+
   defp identity_create_state(%Provider{} = _provider) do
     email_token = Domain.Crypto.random_token(5, encoder: :user_friendly)
     nonce = Domain.Crypto.random_token(27)
