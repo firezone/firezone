@@ -20,13 +20,18 @@ use tracing_subscriber::Layer;
 const LOG_FILE_BASE_NAME: &str = "connlib.log";
 
 /// Create a new file logger layer.
-pub fn layer<T>(log_dir: PathBuf) -> Box<dyn Layer<T> + Send + Sync + 'static>
+pub fn layer<T>(
+    log_dir: PathBuf,
+) -> (
+    Box<dyn Layer<T> + Send + Sync + 'static>,
+    tracing_appender::non_blocking::WorkerGuard,
+)
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
     tracing::info!("Saving log files to: {}", log_dir.display());
 
-    let (writer, _guard) = tracing_appender::non_blocking(tracing_appender::rolling::hourly(
+    let (writer, guard) = tracing_appender::non_blocking(tracing_appender::rolling::hourly(
         log_dir,
         LOG_FILE_BASE_NAME,
     ));
@@ -40,5 +45,8 @@ where
         })
         .boxed();
 
-    layer
+    // Return the guard so that the caller maintains a handle to it. Otherwise,
+    // we have to wait for tracing_appender to flush the logs before exiting.
+    // See https://docs.rs/tracing-appender/latest/tracing_appender/non_blocking/struct.WorkerGuard.html
+    (layer, guard)
 }

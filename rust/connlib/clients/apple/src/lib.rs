@@ -136,12 +136,14 @@ impl Callbacks for CallbackHandler {
 }
 
 fn init_logging(log_dir: PathBuf) {
+    let (file_layer, _guard) = file_logger::layer(log_dir.clone());
+
     let collector = tracing_subscriber::registry()
         .with(tracing_oslog::OsLogger::new(
             "dev.firezone.firezone",
             "connlib",
         ))
-        .with(file_logger::layer(log_dir.clone()));
+        .with(file_layer);
 
     match tracing::subscriber::set_global_default(collector) {
         Ok(()) => tracing::info!(

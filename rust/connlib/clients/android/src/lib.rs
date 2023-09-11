@@ -90,11 +90,11 @@ fn init_logging(log_dir: PathBuf) {
             .with_tag("connlib"),
     );
 
+    let (file_layer, _guard) = file_logger::layer(log_dir);
+
     // Calling init twice causes a panic; instead use try_init which will fail
     // gracefully if this is called more than once.
-    let _ = tracing_subscriber::registry()
-        .with(file_logger::layer(log_dir))
-        .try_init();
+    let _ = tracing_subscriber::registry().with(file_layer).try_init();
 }
 
 impl Callbacks for CallbackHandler {
