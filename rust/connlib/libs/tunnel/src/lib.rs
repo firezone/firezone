@@ -193,6 +193,7 @@ where
             let resources = self.resources.read();
             (resources.network_resources(), resources.dns_resources())
         };
+
         let gateway_public_keys = self
             .gateway_public_keys
             .lock()
@@ -307,6 +308,7 @@ where
         }
         let resource_list = {
             let mut resources = self.resources.write();
+            tracing::debug!("{resource_description:?}");
             resources.insert(resource_description);
             resources.resource_list()
         };
