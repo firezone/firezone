@@ -130,7 +130,7 @@ pub trait ControlSignal {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct AwaitingConnectionDetails {
     pub total_attemps: usize,
-    pub response_recieved: bool,
+    pub response_received: bool,
 }
 
 // TODO: We should use newtypes for each kind of Id
@@ -695,7 +695,7 @@ where
                                                 else {
                                                     break;
                                                 };
-                                                if awaiting_connection.response_recieved {
+                                                if awaiting_connection.response_received {
                                                     break;
                                                 }
                                                 awaiting_connection.total_attemps += 1;

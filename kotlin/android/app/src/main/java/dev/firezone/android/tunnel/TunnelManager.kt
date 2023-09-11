@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.VpnService
 import android.provider.Settings
 import android.util.Log
+import com.google.firebase.installations.FirebaseInstallations
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dev.firezone.android.BuildConfig
@@ -16,6 +17,8 @@ import dev.firezone.android.tunnel.callback.TunnelListener
 import dev.firezone.android.tunnel.model.Tunnel
 import dev.firezone.android.tunnel.model.TunnelConfig
 import java.lang.ref.WeakReference
+import java.nio.file.Files
+import java.nio.file.Paths
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -151,7 +154,8 @@ internal class TunnelManager @Inject constructor(
                 sessionPtr = TunnelSession.connect(
                     controlPlaneUrl = BuildConfig.CONTROL_PLANE_URL,
                     token = config.token,
-                    externalId = Settings.Secure.ANDROID_ID,
+                    deviceId = deviceId(),
+                    logDir = appContext.filesDir.absolutePath,
                     callback = callback
                 )
                 Log.d("Connlib", "connlib session started! sessionPtr: ${sessionPtr}")
@@ -169,6 +173,23 @@ internal class TunnelManager @Inject constructor(
         } catch (exception: Exception) {
             Log.e("Disconnection error:", exception.message.toString())
         }
+    }
+
+    private fun deviceId(): String {
+        val deviceId = FirebaseInstallations
+            .getInstance()
+            .getId()
+
+        Log.d("Connlib", "Device ID: ${deviceId}")
+
+        return deviceId.toString()
+     }
+
+    private fun getLogDir(): String {
+        // Create log directory if it doesn't exist
+        val logDir = appContext.cacheDir.absolutePath + "/log"
+        Files.createDirectories(Paths.get(logDir))
+        return logDir
     }
 
     private fun setConnectionStatus(value: Boolean) {
@@ -200,8 +221,6 @@ internal class TunnelManager @Inject constructor(
             Log.d("Connlib","Attempting to load library from main app...")
             System.loadLibrary("connlib")
             Log.d("Connlib","Library loaded from main app!")
-            TunnelLogger.init()
-            Log.d("Connlib","Connlib Logger initialized!")
         }
     }
 }

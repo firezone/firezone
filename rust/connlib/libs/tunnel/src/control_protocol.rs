@@ -275,7 +275,7 @@ where
             let Some(awaiting_connection) = awaiting_connections.get_mut(&resource_id) else {
                 return Err(Error::UnexpectedConnectionDetails);
             };
-            awaiting_connection.response_recieved = true;
+            awaiting_connection.response_received = true;
             if awaiting_connection.total_attemps != reference
                 || resource_description
                     .ips()
@@ -416,7 +416,7 @@ where
     /// - `rtc_sdp`: Remote SDP.
     /// - `gateway_public_key`: Public key of the gateway that is handling that resource for this connection.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn recieved_offer_response(
+    pub async fn received_offer_response(
         self: &Arc<Self>,
         resource_id: Id,
         mut rtc_sdp: RTCSessionDescription,

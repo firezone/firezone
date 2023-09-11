@@ -4,6 +4,7 @@ use messages::EgressMessages;
 use messages::IngressMessages;
 
 mod control;
+pub mod file_logger;
 mod messages;
 
 /// Session type for clients.

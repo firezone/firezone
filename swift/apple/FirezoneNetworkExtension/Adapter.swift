@@ -88,6 +88,23 @@ public class Adapter {
   /// Starting parameters
   private var controlPlaneURLString: String
   private var token: String
+  private var logDir: String {
+    guard
+      let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
+        .first
+    else { return "" }
+
+    let logDirectory = cachesDirectory.appendingPathComponent("log")
+    do {
+      try FileManager.default.createDirectory(
+        at: logDirectory, withIntermediateDirectories: true, attributes: nil)
+    } catch {
+      logger.warning("Unable to create log directory \(logDirectory)")
+      return ""
+    }
+
+    return logDirectory.path
+  }
 
   public init(
     controlPlaneURLString: String, token: String, packetTunnelProvider: NEPacketTunnelProvider
@@ -130,7 +147,8 @@ public class Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            self.controlPlaneURLString, self.token, self.getDeviceId(), self.callbackHandler),
+            self.controlPlaneURLString, self.token, self.getDeviceId(), self.logDir,
+            self.callbackHandler),
           onStarted: completionHandler
         )
       } catch let error {
@@ -266,7 +284,8 @@ extension Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            controlPlaneURLString, token, self.getDeviceId(), self.callbackHandler),
+            controlPlaneURLString, token, self.getDeviceId(), logDir,
+            self.callbackHandler),
           onStarted: { error in
             if let error = error {
               self.logger.error(
