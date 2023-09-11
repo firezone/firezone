@@ -21,5 +21,18 @@ backoff = { version = "0.4", features = ["tokio"] }
 # Patched to use https://github.com/rust-lang/cc-rs/pull/708
 # (the `patch` section can't be used for build deps...)
 [patch.crates-io]
-ring = { git = "https://github.com/firezone/ring", branch = "v0.16.20-cc-fix" }
-webrtc = { git = "https://github.com/firezone/webrtc", rev = "672e728" }
+webrtc = { git = "https://github.com/firezone/webrtc", branch = "master" }
+
+# It seems that this contains a dependency that no longer points to a valid ref, so we'll try our luck with
+# the mainline versions. The error from GH actions build pipeline copied here:
+# 
+# Caused by:
+#   failed to load source for dependency `cc`
+#
+# Caused by:
+#   Unable to update https://github.com/youknowone/cc-rs?rev=4ca92100c25ac2df679f0cce11c4c3e830f2e455#4ca92100
+#
+# Caused by:
+#   object not found - no match for id (4ca92100c25ac2df679f0cce11c4c3e830f2e455); class=Odb (9); code=NotFound (-3)
+#
+# ring = { git = "https://github.com/firezone/ring", branch = "v0.16.20-cc-fix" }
