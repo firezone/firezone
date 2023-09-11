@@ -141,9 +141,15 @@ fn init_logging(log_dir: PathBuf) {
             "dev.firezone.firezone",
             "connlib",
         ))
-        .with(file_logger::layer(log_dir));
+        .with(file_logger::layer(log_dir.clone()));
 
-    let _ = tracing::subscriber::set_global_default(collector);
+    match tracing::subscriber::set_global_default(collector) {
+        Ok(()) => tracing::info!(
+            "File logging initialized! Logging to {:?}",
+            log_dir.display()
+        ),
+        Err(e) => tracing::error!("Failed to initialize logging! {}", e),
+    }
 }
 
 impl WrappedSession {
