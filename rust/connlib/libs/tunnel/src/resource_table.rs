@@ -1,5 +1,5 @@
 //! A resource table is a custom type that allows us to store a resource under an id and possibly multiple ips or even network ranges
-use std::{collections::HashMap, net::IpAddr, ptr::NonNull};
+use std::{collections::HashMap, net::IpAddr, rc::Rc};
 
 use chrono::{DateTime, Utc};
 use ip_network::IpNetwork;
@@ -22,20 +22,18 @@ impl Resource for (ResourceDescription, DateTime<Utc>) {
     }
 }
 
-// Oh boy... here we go
 /// The resource table type
 ///
 /// This is specifically crafted for our use case, so the API is particularly made for us and not generic
 pub(crate) struct ResourceTable<T> {
-    id_table: HashMap<Id, T>,
-    network_table: IpNetworkTable<NonNull<T>>,
-    dns_name: HashMap<String, NonNull<T>>,
+    id_table: HashMap<Id, Rc<T>>,
+    network_table: IpNetworkTable<Rc<T>>,
+    dns_name: HashMap<String, Rc<T>>,
 }
 
-// SAFETY: We actually hold a hashmap internally that the pointers points to
+// SAFETY: This type is send since you can't obtain the underlying `Rc` and the only way to clone it is using `insert` which requires an &mut self
 unsafe impl<T> Send for ResourceTable<T> {}
-// SAFETY: we don't allow interior mutability of the pointers we hold, in fact we don't allow ANY mutability!
-// (this is part of the reason why the API is so limiting, it is easier to reason about.
+// SAFETY: This type is sync since you can't obtain the underlying `Rc` and the only way to clone it is using `insert` which requires an &mut self
 unsafe impl<T> Sync for ResourceTable<T> {}
 
 impl<T> Default for ResourceTable<T> {
@@ -60,14 +58,14 @@ where
     T: Resource + Clone,
 {
     pub fn values(&self) -> impl Iterator<Item = &T> {
-        self.id_table.values()
+        self.id_table.values().map(AsRef::as_ref)
     }
 
     pub fn network_resources(&self) -> HashMap<IpNetwork, T> {
         // Safety: Due to internal consistency, since the value is stored the reference should be valid
         self.network_table
             .iter()
-            .map(|(wg_ip, res)| (wg_ip, unsafe { res.as_ref() }.clone()))
+            .map(|(wg_ip, res)| (wg_ip, res.as_ref().clone()))
             .collect()
     }
 
@@ -75,7 +73,7 @@ where
         // Safety: Due to internal consistency, since the value is stored the reference should be valid
         self.dns_name
             .iter()
-            .map(|(name, res)| (name.clone(), unsafe { res.as_ref() }.clone()))
+            .map(|(name, res)| (name.clone(), res.as_ref().clone()))
             .collect()
     }
 
@@ -86,30 +84,22 @@ where
 
     /// Gets the resource by ip
     pub fn get_by_ip(&self, ip: impl Into<IpAddr>) -> Option<&T> {
-        // SAFETY: if we found the pointer, due to our internal consistency rules it is in the id_table
-        self.network_table
-            .longest_match(ip)
-            .map(|m| unsafe { m.1.as_ref() })
+        self.network_table.longest_match(ip).map(|m| m.1.as_ref())
     }
 
     /// Gets the resource by id
     pub fn get_by_id(&self, id: &Id) -> Option<&T> {
-        self.id_table.get(id)
+        self.id_table.get(id).map(AsRef::as_ref)
     }
 
     /// Gets the resource by name
     pub fn get_by_name(&self, name: impl AsRef<str>) -> Option<&T> {
-        // SAFETY: if we found the pointer, due to our internal consistency rules it is in the id_table
-        self.dns_name
-            .get(name.as_ref())
-            .map(|m| unsafe { m.as_ref() })
+        self.dns_name.get(name.as_ref()).map(AsRef::as_ref)
     }
 
-    // SAFETY: resource_description must still be in storage since we are going to reference it.
-    unsafe fn remove_resource(&mut self, resource_description: NonNull<T>) {
+    fn remove_resource(&mut self, resource_description: &T) {
         let id = {
-            let res = resource_description.as_ref();
-            match res.description() {
+            match resource_description.description() {
                 ResourceDescription::Dns(r) => {
                     self.dns_name.remove(&r.address);
                     self.network_table.remove(r.ipv4);
@@ -128,50 +118,29 @@ where
     pub(crate) fn cleanup_resource(&mut self, resource_description: &T) {
         match resource_description.description() {
             ResourceDescription::Dns(r) => {
-                if let Some(res) = self.id_table.get(&r.id) {
-                    // SAFETY: We are consistent that if the item exists on any of the containers it still exists in the storage
-                    unsafe {
-                        self.remove_resource(res.into());
-                    }
-                    // Don't use res after here
+                if let Some(res) = self.id_table.remove(&r.id) {
+                    self.remove_resource(res.as_ref());
                 }
 
                 if let Some(res) = self.dns_name.remove(&r.address) {
-                    // SAFETY: We are consistent that if the item exists on any of the containers it still exists in the storage
-                    unsafe {
-                        self.remove_resource(res);
-                    }
-                    // Don't use res after here
+                    self.remove_resource(res.as_ref());
                 }
 
                 if let Some(res) = self.network_table.remove(r.ipv4) {
-                    // SAFETY: We are consistent that if the item exists on any of the containers it still exists in the storage
-                    unsafe {
-                        self.remove_resource(res);
-                    }
+                    self.remove_resource(res.as_ref());
                 }
 
                 if let Some(res) = self.network_table.remove(r.ipv6) {
-                    // SAFETY: We are consistent that if the item exists on any of the containers it still exists in the storage
-                    unsafe {
-                        self.remove_resource(res);
-                    }
+                    self.remove_resource(res.as_ref());
                 }
             }
             ResourceDescription::Cidr(r) => {
-                if let Some(res) = self.id_table.get(&r.id) {
-                    // SAFETY: We are consistent that if the item exists on any of the containers it still exists in the storage
-                    unsafe {
-                        self.remove_resource(res.into());
-                    }
-                    // Don't use res after here
+                if let Some(res) = self.id_table.remove(&r.id) {
+                    self.remove_resource(res.as_ref());
                 }
 
                 if let Some(res) = self.network_table.remove(r.address) {
-                    // SAFETY: We are consistent that if the item exists on any of the containers it still exists in the storage
-                    unsafe {
-                        self.remove_resource(res);
-                    }
+                    self.remove_resource(res.as_ref());
                 }
             }
         }
@@ -190,17 +159,21 @@ where
     pub fn insert(&mut self, resource_description: T) {
         self.cleanup_resource(&resource_description);
         let id = resource_description.description().id();
-        self.id_table.insert(id, resource_description);
+        let resource_description = Rc::new(resource_description);
+        self.id_table.insert(id, Rc::clone(&resource_description));
         // we just inserted it we can unwrap
         let res = self.id_table.get(&id).unwrap();
         match res.description() {
             ResourceDescription::Dns(r) => {
-                self.network_table.insert(r.ipv4, res.into());
-                self.network_table.insert(r.ipv6, res.into());
-                self.dns_name.insert(r.address.clone(), res.into());
+                self.network_table
+                    .insert(r.ipv4, Rc::clone(&resource_description));
+                self.network_table
+                    .insert(r.ipv6, Rc::clone(&resource_description));
+                self.dns_name
+                    .insert(r.address.clone(), resource_description);
             }
             ResourceDescription::Cidr(r) => {
-                self.network_table.insert(r.address, res.into());
+                self.network_table.insert(r.address, resource_description);
             }
         }
     }
