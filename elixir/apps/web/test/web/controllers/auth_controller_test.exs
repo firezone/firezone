@@ -1085,7 +1085,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == url(~p"/#{account}/sign_in")
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
 
       assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
@@ -1172,7 +1172,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == "/#{account.slug}/sign_in"
+      assert redirected_to(conn) == url(~p"/#{account}/sign_in")
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
 
       assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
