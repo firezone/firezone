@@ -58,7 +58,7 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers")
 
-    assert button = Floki.find(html, "a[href='/#{account.slug}/settings/identity_providers/new']")
+    assert button = Floki.find(html, "a[href='/#{account.id}/settings/identity_providers/new']")
     assert Floki.text(button) =~ "Add Identity Provider"
   end
 

@@ -179,7 +179,7 @@ defmodule Web.AuthTest do
         |> ensure_authenticated([])
 
       assert conn.halted
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account.slug}/sign_in"
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
                "You must log in to access this page."
@@ -349,7 +349,7 @@ defmodule Web.AuthTest do
 
       assert is_nil(updated_socket.assigns.subject)
 
-      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account}/sign_in"}}
+      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account.slug}/sign_in"}}
     end
 
     test "redirects to login page if there isn't a session_token", %{
@@ -365,7 +365,7 @@ defmodule Web.AuthTest do
 
       assert is_nil(updated_socket.assigns.subject)
 
-      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account}/sign_in"}}
+      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account.slug}/sign_in"}}
     end
   end
 

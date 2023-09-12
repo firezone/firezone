@@ -21,9 +21,7 @@ defmodule Web.Policies.Index do
         All Policies
       </:title>
       <:actions>
-        <.add_button navigate={~p"/#{@account}/policies/new"}>
-          Add a new Policy
-        </.add_button>
+        <.add_button navigate={~p"/#{@account}/policies/new"}>Add Policy</.add_button>
       </:actions>
     </.header>
     <!-- Policies table -->

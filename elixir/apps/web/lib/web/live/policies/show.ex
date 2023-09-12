@@ -37,7 +37,7 @@ defmodule Web.Policies.Show do
     </.header>
     <!-- Show Policy -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table>
+      <.vertical_table id="policy">
         <.vertical_table_row>
           <:label>
             Name
