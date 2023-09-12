@@ -1,0 +1,62 @@
+#cloud-config
+
+users:
+  - name: cloudservice
+    uid: 2000
+
+write_files:
+  - path: /etc/otel/config.yaml
+    permissions: 0644
+    owner: root
+    content: |
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+            http:
+      exporters:
+        googlecloud:
+          log:
+            default_log_name: opentelemetry.io/collector-exported-log
+      processors:
+        memory_limiter:
+          check_interval: 1s
+          limit_percentage: 65
+          spike_limit_percentage: 20
+        batch:
+        resourcedetection:
+          detectors: [gcp]
+          timeout: 10s
+      service:
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [googlecloud]
+          metrics:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [googlecloud]
+          logs:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: []
+
+  - path: /etc/systemd/system/otel-collector.service
+    permissions: 0644
+    owner: root
+    content: |
+      [Unit]
+      Description=Start an OpenTelemetry collector docker container
+
+      [Service]
+      TimeoutStartSec=0
+      Restart=always
+      ExecStartPre=/usr/bin/docker pull otel/opentelemetry-collector-contrib:0.84.0
+      ExecStart=/usr/bin/docker run --rm -u 2000 --name=otel-collector --expose 4317 --expose 55681 otel/opentelemetry-collector-contrib:0.84.0
+      ExecStop=/usr/bin/docker stop otel-collector
+      ExecStopPost=/usr/bin/docker rm otel-collector
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl start otel-collector.service
