@@ -1574,7 +1574,6 @@ dependencies = [
 [[package]]
 name = "interceptor"
 version = "0.9.0"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2633,7 +2632,6 @@ dependencies = [
 [[package]]
 name = "rtcp"
 version = "0.9.0"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "bytes",
  "thiserror",
@@ -2661,7 +2659,6 @@ dependencies = [
 [[package]]
 name = "rtp"
 version = "0.8.0"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "bytes",
  "rand",
@@ -2854,7 +2851,6 @@ dependencies = [
 [[package]]
 name = "sdp"
 version = "0.5.3"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "rand",
  "substring",
@@ -3112,7 +3108,6 @@ dependencies = [
 [[package]]
 name = "stun"
 version = "0.4.4"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "base64 0.21.3",
  "crc",
@@ -3689,7 +3684,6 @@ dependencies = [
 [[package]]
 name = "turn"
 version = "0.6.1"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "async-trait",
  "base64 0.21.3",
@@ -3962,7 +3956,6 @@ dependencies = [
 [[package]]
 name = "webrtc"
 version = "0.8.0"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -4004,7 +3997,6 @@ dependencies = [
 [[package]]
 name = "webrtc-data"
 version = "0.7.0"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "bytes",
  "log",
@@ -4017,7 +4009,6 @@ dependencies = [
 [[package]]
 name = "webrtc-dtls"
 version = "0.7.2"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "aes 0.6.0",
  "aes-gcm",
@@ -4053,7 +4044,6 @@ dependencies = [
 [[package]]
 name = "webrtc-ice"
 version = "0.9.1"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -4076,7 +4066,6 @@ dependencies = [
 [[package]]
 name = "webrtc-mdns"
 version = "0.5.2"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "log",
  "socket2 0.4.9",
@@ -4088,7 +4077,6 @@ dependencies = [
 [[package]]
 name = "webrtc-media"
 version = "0.6.1"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "byteorder",
  "bytes",
@@ -4100,7 +4088,6 @@ dependencies = [
 [[package]]
 name = "webrtc-sctp"
 version = "0.8.0"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -4116,7 +4103,6 @@ dependencies = [
 [[package]]
 name = "webrtc-srtp"
 version = "0.10.0"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "aead 0.4.3",
  "aes 0.7.5",
@@ -4138,7 +4124,6 @@ dependencies = [
 [[package]]
 name = "webrtc-util"
 version = "0.7.0"
-source = "git+https://github.com/firezone/webrtc?rev=672e728#672e728b2386e17d80c210a8be6ec364916ffb17"
 dependencies = [
  "async-trait",
  "bitflags 1.3.2",

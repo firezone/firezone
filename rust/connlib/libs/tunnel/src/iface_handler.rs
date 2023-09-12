@@ -3,10 +3,16 @@ use std::{net::IpAddr, sync::Arc, time::Duration};
 use boringtun::noise::{errors::WireGuardError, Tunn, TunnResult};
 use bytes::Bytes;
 use libs_common::{Callbacks, Error, Result};
+use tokio::{
+    io::{AsyncReadExt, BufReader, ReadHalf},
+    sync::mpsc::Sender,
+};
 
 use crate::{
-    device_channel::DeviceChannel, dns, peer::EncapsulatedPacket, ControlSignal, Tunnel,
-    MAX_UDP_SIZE,
+    device_channel::{DeviceIo, IfaceConfig},
+    dns,
+    peer::EncapsulatedPacket,
+    ControlSignal, Tunnel, MAX_UDP_SIZE,
 };
 
 const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
@@ -129,18 +135,14 @@ where
     #[tracing::instrument(level = "trace", skip(self, src, dst))]
     pub(crate) async fn handle_iface_packet(
         self: &Arc<Self>,
-        device_channel: &Arc<DeviceChannel>,
+        device_writer: &Sender<Vec<u8>>,
         src: &mut [u8],
         dst: &mut [u8],
     ) -> Result<()> {
         if let Some(r) = self.check_for_dns(&src) {
             match r {
-                dns::SendPacket::Ipv4(r) => {
-                    self.write4_device_infallible(&device_channel, &r[..]).await
-                }
-                dns::SendPacket::Ipv6(r) => {
-                    self.write6_device_infallible(&device_channel, &r[..]).await
-                }
+                dns::SendPacket::Ipv4(r) => self.write4_device_infallible(&device_writer, &r[..]),
+                dns::SendPacket::Ipv6(r) => self.write6_device_infallible(&device_writer, &r[..]),
             }
             return Ok(());
         }
@@ -164,8 +166,16 @@ where
             .await
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) async fn iface_handler(self: &Arc<Self>, device_channel: Arc<DeviceChannel>) {
+    #[tracing::instrument(
+        level = "trace",
+        skip(self, iface_config, device_reader, device_writer)
+    )]
+    pub(crate) async fn iface_handler(
+        self: &Arc<Self>,
+        iface_config: Arc<IfaceConfig>,
+        mut device_reader: BufReader<ReadHalf<DeviceIo>>,
+        device_writer: Sender<Vec<u8>>,
+    ) {
         loop {
             let mut src = [0u8; MAX_UDP_SIZE];
             let mut dst = [0u8; MAX_UDP_SIZE];
@@ -174,7 +184,7 @@ where
                 // there's no docs on tun device on when a whole packet is read, is it \n or another thing?
                 // found some comments saying that a single read syscall represents a single packet but no docs on that
                 // See https://stackoverflow.com/questions/18461365/how-to-read-packet-by-packet-from-linux-tun-tap
-                match device_channel.read(&mut src[..device_channel.mtu()]).await {
+                match device_reader.read(&mut src[..iface_config.mtu()]).await {
                     Ok(res) => res,
                     Err(e) => {
                         tracing::error!(error = ?e, "Couldn't read packet from interface");
@@ -187,7 +197,7 @@ where
             tracing::trace!(action = "reading", bytes = res, from = "iface");
             // TODO
             let _ = self
-                .handle_iface_packet(&device_channel, &mut src[..res], &mut dst)
+                .handle_iface_packet(&device_writer, &mut src[..res], &mut dst)
                 .await;
         }
     }

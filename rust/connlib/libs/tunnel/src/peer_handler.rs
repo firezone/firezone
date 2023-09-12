@@ -3,11 +3,9 @@ use std::sync::Arc;
 use boringtun::noise::{handshake::parse_handshake_anon, Packet, TunnResult};
 use bytes::Bytes;
 use libs_common::{Callbacks, Error, Result};
+use tokio::sync::mpsc::Sender;
 
-use crate::{
-    device_channel::DeviceChannel, index::check_packet_index, peer::Peer, ControlSignal, Tunnel,
-    MAX_UDP_SIZE,
-};
+use crate::{index::check_packet_index, peer::Peer, ControlSignal, Tunnel, MAX_UDP_SIZE};
 
 impl<C, CB> Tunnel<C, CB>
 where
@@ -60,11 +58,11 @@ where
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self, device_channel, peer))]
+    #[tracing::instrument(level = "trace", skip(self, device_writer, peer))]
     pub(crate) async fn handle_decapsulated_packet<'a>(
         self: &Arc<Self>,
         peer: &Arc<Peer>,
-        device_channel: &Arc<DeviceChannel>,
+        device_writer: &Sender<Vec<u8>>,
         decapsulate_result: TunnResult<'a>,
     ) -> bool {
         match decapsulate_result {
@@ -82,23 +80,23 @@ where
                 true
             }
             TunnResult::WriteToTunnelV4(packet, addr) => {
-                self.send_to_resource(&device_channel, &peer, addr.into(), packet)
+                self.send_to_resource(&device_writer, &peer, addr.into(), packet)
                     .await;
                 false
             }
             TunnResult::WriteToTunnelV6(packet, addr) => {
-                self.send_to_resource(&device_channel, &peer, addr.into(), packet)
+                self.send_to_resource(&device_writer, &peer, addr.into(), packet)
                     .await;
                 false
             }
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self, device_channel, peer, src, dst))]
+    #[tracing::instrument(level = "trace", skip(self, device_writer, peer, src, dst))]
     pub(crate) async fn handle_peer_packet(
         self: &Arc<Self>,
         peer: &Arc<Peer>,
-        device_channel: &Arc<DeviceChannel>,
+        device_writer: &Sender<Vec<u8>>,
         src: &[u8],
         dst: &mut [u8],
     ) -> Result<()> {
@@ -111,7 +109,7 @@ where
         let decapsulate_result = peer.tunnel.lock().decapsulate(None, src, dst);
 
         if self
-            .handle_decapsulated_packet(peer, device_channel, decapsulate_result)
+            .handle_decapsulated_packet(peer, device_writer, decapsulate_result)
             .await
         {
             // Flush pending queue
@@ -129,11 +127,11 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self, device_channel, peer))]
+    #[tracing::instrument(level = "trace", skip(self, device_writer, peer))]
     pub(crate) async fn peer_handler(
         self: &Arc<Self>,
         peer: Arc<Peer>,
-        device_channel: Arc<DeviceChannel>,
+        device_writer: Sender<Vec<u8>>,
     ) {
         let mut src_buf = [0u8; MAX_UDP_SIZE];
         let mut dst_buf = [0u8; MAX_UDP_SIZE];
@@ -148,7 +146,7 @@ where
 
             tracing::trace!(action = "read", bytes = size, from = "peer");
             let _ = self
-                .handle_peer_packet(&peer, &device_channel, &src_buf[..size], &mut dst_buf)
+                .handle_peer_packet(&peer, &device_writer, &src_buf[..size], &mut dst_buf)
                 .await;
         }
 

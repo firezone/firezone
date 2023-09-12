@@ -5,7 +5,7 @@ use headless_utils::{block_on_ctrl_c, setup_global_subscriber, Cli, NoOpCallback
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let _guard = setup_global_subscriber(cli.bench);
+    //let _guard = setup_global_subscriber(cli.bench);
 
     let device_id = get_device_id();
     let mut session =

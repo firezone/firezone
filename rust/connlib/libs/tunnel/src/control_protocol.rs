@@ -100,12 +100,12 @@ where
             })
         });
 
-        let Some(device_channel) = self.device_channel.read().clone() else {
+        let Some(device_writer) = self.device_writer.read().clone() else {
             return Err(Error::NoIface);
         };
 
         let tunnel = Arc::clone(self);
-        tokio::spawn(async move { tunnel.peer_handler(peer, device_channel).await });
+        tokio::spawn(async move { tunnel.peer_handler(peer, device_writer).await });
 
         Ok(())
     }
@@ -515,7 +515,7 @@ where
                     tracing::trace!("new data channel opened!");
                     Box::pin(async move {
                         {
-                            let Some(ref mut iface_config) = *tunnel.iface_config.lock().await else {
+                            let Some(iface_config) = tunnel.iface_config.read().clone() else {
                                 tracing::error!(message = "Error opening channel", error = "Tried to open a channel before interface was ready");
                                 let _ = tunnel.callbacks().on_error(&Error::NoIface);
                                 return;

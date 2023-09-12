@@ -7,6 +7,7 @@ use boringtun::{
     x25519::{PublicKey, StaticSecret},
 };
 use bytes::Bytes;
+
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use libs_common::{messages::Key, Callbacks, Error, DNS_SENTINEL};
@@ -16,7 +17,7 @@ use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
 use resource_table::ResourceTable;
-use tokio::time::MissedTickBehavior;
+use tokio::{sync::mpsc::Sender, time::MissedTickBehavior};
 use webrtc::{
     api::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
@@ -33,8 +34,7 @@ use libs_common::{
     CallbackErrorFacade, Result,
 };
 
-use device_channel::{create_iface, DeviceChannel};
-use tun::IfaceConfig;
+use device_channel::{create_iface, IfaceConfig};
 
 pub use control_protocol::Request;
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
@@ -136,8 +136,8 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     next_index: Mutex<IndexLfsr>,
     // We use a tokio's mutex here since it makes things easier and we only need it
     // during init, so the performance hit is neglibile
-    iface_config: tokio::sync::Mutex<Option<IfaceConfig>>,
-    device_channel: RwLock<Option<Arc<DeviceChannel>>>,
+    iface_config: RwLock<Option<Arc<IfaceConfig>>>,
+    device_writer: RwLock<Option<tokio::sync::mpsc::Sender<Vec<u8>>>>,
     rate_limiter: Arc<RateLimiter>,
     private_key: StaticSecret,
     public_key: PublicKey,
@@ -236,7 +236,7 @@ where
         let resources_gateways = Default::default();
         let gateway_awaiting_connection = Default::default();
         let iface_config = Default::default();
-        let device_channel = Default::default();
+        let device_writer = Default::default();
 
         // ICE
         let mut media_engine = MediaEngine::default();
@@ -266,7 +266,7 @@ where
             webrtc_api,
             resources,
             iface_config,
-            device_channel,
+            device_writer,
             awaiting_connection,
             gateway_awaiting_connection,
             control_signaler,
@@ -283,7 +283,7 @@ where
     pub async fn add_resource(&self, resource_description: ResourceDescription) -> Result<()> {
         let mut any_valid_route = false;
         {
-            let Some(ref mut iface_config) = *self.iface_config.lock().await else {
+            let Some(iface_config) = self.iface_config.read().clone() else {
                 tracing::error!("Received resource add before initialization.");
                 return Err(Error::ControlProtocolError);
             };
@@ -311,17 +311,21 @@ where
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_interface(self: &Arc<Self>, config: &InterfaceConfig) -> Result<()> {
-        let (mut iface_config, device_channel) = create_iface(config, self.callbacks()).await?;
+        let (iface_config, device_writer, device_reader) =
+            create_iface(config, self.callbacks()).await?;
         iface_config
             .add_route(DNS_SENTINEL.into(), self.callbacks())
             .await?;
+        let iface_config = Arc::new(iface_config);
 
-        let device_channel = Arc::new(device_channel);
-        *self.device_channel.write() = Some(device_channel.clone());
-        *self.iface_config.lock().await = Some(iface_config);
+        *self.device_writer.write() = Some(device_writer.clone());
+        *self.iface_config.write() = Some(Arc::clone(&iface_config));
         self.start_timers()?;
         let dev = Arc::clone(&self);
-        tokio::spawn(async move { dev.iface_handler(device_channel).await });
+        tokio::spawn(async move {
+            dev.iface_handler(iface_config, device_reader, device_writer)
+                .await
+        });
 
         self.callbacks.on_tunnel_ready()?;
 
@@ -428,7 +432,7 @@ where
     }
 
     fn start_refresh_mtu_timer(self: &Arc<Self>) -> Result<()> {
-        let Some(device_channel) = self.device_channel.read().clone() else {
+        let Some(iface_config) = self.iface_config.read().clone() else {
             return Err(Error::NoIface);
         };
         let callbacks = self.callbacks().clone();
@@ -437,7 +441,7 @@ where
             interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
             loop {
                 interval.tick().await;
-                if let Err(e) = device_channel.refresh_mtu().await {
+                if let Err(e) = iface_config.refresh_mtu().await {
                     tracing::error!(error = ?e, "Couldn't refresh mtu");
                     let _ = callbacks.0.on_error(&e);
                 }
@@ -454,18 +458,15 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self, device_channel))]
-    async fn write4_device_infallible(&self, device_channel: &DeviceChannel, packet: &[u8]) {
-        if let Err(e) = device_channel.write4(packet).await {
-            let _ = self.callbacks.on_error(&e.into());
-        }
+    #[tracing::instrument(level = "trace", skip(self, device_writer))]
+    fn write4_device_infallible(&self, device_writer: &Sender<Vec<u8>>, packet: &[u8]) {
+        tracing::trace!("delete me :( writing blublubli");
+        device_writer.try_send(packet.to_vec());
     }
 
-    #[tracing::instrument(level = "trace", skip(self, device_channel))]
-    async fn write6_device_infallible(&self, device_channel: &DeviceChannel, packet: &[u8]) {
-        if let Err(e) = device_channel.write6(packet).await {
-            let _ = self.callbacks.on_error(&e.into());
-        }
+    #[tracing::instrument(level = "trace", skip(self, device_writer))]
+    fn write6_device_infallible(&self, device_writer: &Sender<Vec<u8>>, packet: &[u8]) {
+        device_writer.try_send(packet.to_vec());
     }
 
     fn get_resource(&self, buff: &[u8]) -> Option<ResourceDescription> {

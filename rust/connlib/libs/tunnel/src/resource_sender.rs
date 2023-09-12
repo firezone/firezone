@@ -3,11 +3,10 @@ use std::{
     sync::Arc,
 };
 
-use crate::{
-    device_channel::DeviceChannel, ip_packet::MutableIpPacket, peer::Peer, ControlSignal, Tunnel,
-};
+use crate::{ip_packet::MutableIpPacket, peer::Peer, ControlSignal, Tunnel};
 
 use libs_common::{messages::ResourceDescription, Callbacks, Error, Result};
+use tokio::sync::mpsc::Sender;
 
 impl<C, CB> Tunnel<C, CB>
 where
@@ -23,29 +22,24 @@ where
         pkt.update_checksum();
     }
 
-    #[tracing::instrument(level = "trace", skip(self, device_channel, packet))]
-    async fn send_packet(
-        &self,
-        device_channel: &DeviceChannel,
-        packet: &mut [u8],
-        dst_addr: IpAddr,
-    ) {
+    #[tracing::instrument(level = "trace", skip(self, device_writer, packet))]
+    fn send_packet(&self, device_writer: &Sender<Vec<u8>>, packet: &mut [u8], dst_addr: IpAddr) {
         match dst_addr {
             IpAddr::V4(addr) => {
                 tracing::trace!("Sending packet to {addr}");
-                self.write4_device_infallible(device_channel, packet).await;
+                self.write4_device_infallible(device_writer, packet);
             }
             IpAddr::V6(addr) => {
                 tracing::trace!("Sending packet to {addr}");
-                self.write6_device_infallible(device_channel, packet).await;
+                self.write6_device_infallible(device_writer, packet);
             }
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self, device_channel, peer, packet))]
+    #[tracing::instrument(level = "trace", skip(self, device_writer, peer, packet))]
     pub(crate) async fn send_to_resource(
         &self,
-        device_channel: &DeviceChannel,
+        device_writer: &Sender<Vec<u8>>,
         peer: &Arc<Peer>,
         addr: IpAddr,
         packet: &mut [u8],
@@ -55,10 +49,10 @@ where
                 // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
                 // and we just trust gateways.
                 // In gateways this should never happen.
-                tracing::trace!("Writing to interface with addr: {addr}");
+                //tracing::trace!("Writing to interface with addr: {addr}");
                 match addr {
-                    IpAddr::V4(_) => self.write4_device_infallible(device_channel, packet).await,
-                    IpAddr::V6(_) => self.write6_device_infallible(device_channel, packet).await,
+                    IpAddr::V4(_) => self.write4_device_infallible(device_writer, packet),
+                    IpAddr::V6(_) => self.write6_device_infallible(device_writer, packet),
                 }
                 return;
             };
@@ -66,7 +60,8 @@ where
             match get_resource_addr_and_port(peer, &resource, &addr, &dst) {
                 Ok((dst_addr, _dst_port)) => {
                     self.update_packet(packet, dst_addr);
-                    self.send_packet(device_channel, packet, dst_addr).await
+                    //self.send_packet(device_channel, packet, dst_addr);
+                    self.write4_device_infallible(device_writer, packet);
                 }
                 Err(e) => {
                     tracing::error!(err = ?e, "Couldn't parse resource");

@@ -1,92 +1,140 @@
-use std::sync::{
-    atomic::{AtomicUsize, Ordering::Relaxed},
-    Arc,
+use std::{
+    sync::atomic::{AtomicUsize, Ordering::Relaxed},
+    task::Poll,
+    time::Duration,
 };
 
-use libs_common::{messages::Interface, CallbackErrorFacade, Callbacks, Error, Result};
-use tokio::io::unix::AsyncFd;
+use futures_util::ready;
+use ip_network::IpNetwork;
+use libs_common::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
+use tokio::{
+    io::{unix::AsyncFd, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, BufWriter},
+    sync::mpsc::Sender,
+    time::Instant,
+};
 
-use crate::tun::{IfaceConfig, IfaceDevice};
+use crate::tun::{IfaceDevice, IfaceStream};
 
-#[derive(Debug)]
-pub(crate) struct DeviceChannel {
-    device: AsyncFd<Arc<IfaceDevice>>,
+const WRITER_CHANNEL_SIZE: usize = 1024;
+
+pub(crate) struct IfaceConfig {
     mtu: AtomicUsize,
+    iface: IfaceDevice,
 }
 
-impl DeviceChannel {
+pub(crate) struct DeviceIo(AsyncFd<IfaceStream>);
+
+impl AsyncWrite for DeviceIo {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::result::Result<usize, std::io::Error>> {
+        loop {
+            let mut guard = ready!(self.0.poll_write_ready(cx))?;
+
+            match guard.try_io(|inner| inner.get_ref().write(buf)) {
+                Ok(result) => return Poll::Ready(result),
+                Err(_would_block) => continue,
+            }
+        }
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl AsyncRead for DeviceIo {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        loop {
+            let mut guard = ready!(self.0.poll_read_ready(cx))?;
+
+            let unfilled = buf.initialize_unfilled();
+            match guard.try_io(|inner| inner.get_ref().read(unfilled)) {
+                Ok(Ok(len)) => {
+                    buf.advance(len);
+                    return Poll::Ready(Ok(()));
+                }
+                Ok(Err(err)) => return Poll::Ready(Err(err)),
+                Err(_would_block) => continue,
+            }
+        }
+    }
+}
+
+impl IfaceConfig {
     pub(crate) fn mtu(&self) -> usize {
         self.mtu.load(Relaxed)
     }
 
     pub(crate) async fn refresh_mtu(&self) -> Result<usize> {
-        let mtu = self.device.get_ref().mtu().await?;
+        let mtu = self.iface.mtu().await?;
         self.mtu.store(mtu, Relaxed);
         Ok(mtu)
     }
 
-    #[tracing::instrument(level = "trace", skip(self, out))]
-    pub(crate) async fn read(&self, out: &mut [u8]) -> std::io::Result<usize> {
-        loop {
-            let mut guard = self.device.readable().await?;
-
-            match guard.try_io(|inner| {
-                inner.get_ref().read(out).map_err(|err| match err {
-                    Error::IfaceRead(e) => e,
-                    _ => panic!("Unexpected error while trying to read network interface"),
-                })
-            }) {
-                Ok(result) => break result.map(|e| e.len()),
-                Err(_would_block) => continue,
-            }
-        }
-    }
-
-    #[tracing::instrument(level = "trace", skip(self, buf))]
-    pub(crate) async fn write4(&self, buf: &[u8]) -> std::io::Result<usize> {
-        loop {
-            let mut guard = self.device.writable().await?;
-
-            // write4 and write6 does the same
-            match guard.try_io(|inner| match inner.get_ref().write4(buf) {
-                0 => Err(std::io::Error::last_os_error()),
-                i => Ok(i),
-            }) {
-                Ok(result) => break result,
-                Err(_would_block) => continue,
-            }
-        }
-    }
-
-    pub(crate) async fn write6(&self, buf: &[u8]) -> std::io::Result<usize> {
-        loop {
-            let mut guard = self.device.writable().await?;
-
-            // write4 and write6 does the same
-            match guard.try_io(|inner| match inner.get_ref().write6(buf) {
-                0 => Err(std::io::Error::last_os_error()),
-                i => Ok(i),
-            }) {
-                Ok(result) => break result,
-                Err(_would_block) => continue,
-            }
-        }
+    pub(crate) async fn add_route(
+        &self,
+        route: IpNetwork,
+        callbacks: &CallbackErrorFacade<impl Callbacks>,
+    ) -> Result<()> {
+        self.iface.add_route(route, callbacks).await
     }
 }
 
 pub(crate) async fn create_iface(
     config: &Interface,
     callbacks: &CallbackErrorFacade<impl Callbacks>,
-) -> Result<(IfaceConfig, DeviceChannel)> {
-    let dev = Arc::new(IfaceDevice::new(config, callbacks).await?);
-    let async_dev = Arc::clone(&dev);
-    let mtu = async_dev.mtu().await?;
-    let device_channel = DeviceChannel {
-        device: AsyncFd::new(async_dev)?,
+) -> Result<(
+    IfaceConfig,
+    Sender<Vec<u8>>,
+    BufReader<tokio::io::ReadHalf<DeviceIo>>,
+)> {
+    let (stream, iface) = IfaceDevice::new(config, callbacks).await?;
+    iface.up().await?;
+    let device_io = DeviceIo(AsyncFd::new(stream)?);
+    let (device_reader, mut device_writer) = tokio::io::split(device_io);
+    let device_reader = BufReader::new(device_reader);
+    //let mut device_writer = BufWriter::new(device_writer);
+    let (writer_tx, mut writer_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(WRITER_CHANNEL_SIZE);
+    tokio::spawn(async move {
+        let sleep = tokio::time::sleep(Duration::from_millis(5));
+        tokio::pin!(sleep);
+        loop {
+            tokio::select! {
+                Some(rx) = writer_rx.recv() => {
+                    device_writer.write_all(&rx).await;
+                    sleep.as_mut().reset(Instant::now() + Duration::from_millis(5));
+                }
+                () = &mut sleep => {
+                    device_writer.flush().await;
+                    sleep.as_mut().reset(Instant::now() + Duration::from_millis(5));
+                }
+                else => break
+            }
+        }
+        device_writer.flush().await;
+    });
+    let mtu = iface.mtu().await?;
+    let iface_config = IfaceConfig {
+        iface,
         mtu: AtomicUsize::new(mtu),
     };
-    let mut iface_config = IfaceConfig(dev);
-    iface_config.up().await?;
 
-    Ok((iface_config, device_channel))
+    Ok((iface_config, writer_tx, device_reader))
 }
