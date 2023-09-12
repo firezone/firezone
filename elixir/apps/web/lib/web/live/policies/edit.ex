@@ -5,11 +5,9 @@ defmodule Web.Policies.Edit do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <- Policies.fetch_policy_by_id(id, socket.assigns.subject) do
-      {:ok,
-       assign(socket,
-         policy: policy,
-         form: to_form(Policies.Policy.Changeset.update(policy, %{}))
-       )}
+      form = to_form(Policies.Policy.Changeset.update(policy, %{}))
+      socket = assign(socket, policy: policy, form: form)
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end

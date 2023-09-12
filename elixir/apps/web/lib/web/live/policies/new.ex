@@ -15,7 +15,7 @@ defmodule Web.Policies.New do
           form: form
         )
 
-      {:ok, socket}
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end
@@ -36,12 +36,7 @@ defmodule Web.Policies.New do
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
         <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Policy details</h2>
-        <.simple_form
-          for={@form}
-          class="space-y-4 lg:space-y-6"
-          phx-submit="submit"
-          phx-change="validate"
-        >
+        <.simple_form for={@form} phx-submit="submit" phx-change="validate">
           <.input
             field={@form[:name]}
             type="text"
