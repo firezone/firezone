@@ -4,6 +4,7 @@ use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
 use opentelemetry::sdk::trace::TracerProvider;
 use opentelemetry::trace::TracerProvider as _;
+use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_stackdriver::Authorizer;
 use phoenix_channel::{Error, Event, PhoenixChannel};
 use prometheus_client::registry::Registry;
@@ -68,6 +69,12 @@ struct Args {
     /// Where to send trace data to.
     #[arg(long, env)]
     trace_collector: Option<TraceCollector>,
+
+    /// Which OTLP collector we should connect to.
+    ///
+    /// This setting only has an effect if `TRACE_COLLECTOR` is set to `otlp`.
+    #[arg(env, default_value = "127.0.0.1:4317")]
+    otlp_grpc_endpoint: SocketAddr,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -81,7 +88,8 @@ enum LogFormat {
 enum TraceCollector {
     /// Sends traces to Google Cloud Trace.
     GoogleCloudTrace,
-    // TODO: Extend with OTLP receiver
+    /// Sends traces to an OTLP collector.
+    Otlp,
 }
 
 #[tokio::main]
@@ -223,6 +231,24 @@ async fn setup_tracing(args: &Args) -> Result<()> {
 
             registry
                 .with(log_layer(args, Some(project_id)))
+                .with(tracing_opentelemetry::layer().with_tracer(tracer))
+                .try_init()
+        }
+        Some(TraceCollector::Otlp) => {
+            let exporter = opentelemetry_otlp::new_exporter()
+                .tonic()
+                .with_endpoint(args.otlp_grpc_endpoint.to_string());
+
+            let tracer = opentelemetry_otlp::new_pipeline()
+                .tracing()
+                .with_exporter(exporter)
+                .install_batch(opentelemetry::runtime::Tokio)
+                .context("Failed to create OTLP pipeline")?;
+
+            // TODO: This is where we could also configure metrics.
+
+            registry
+                .with(log_layer(args, None))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer))
                 .try_init()
         }
