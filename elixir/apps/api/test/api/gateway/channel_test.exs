@@ -91,8 +91,9 @@ defmodule API.Gateway.ChannelTest do
                ipv4: resource.ipv4,
                ipv6: resource.ipv6,
                filters: [
-                 %{ports: ["80", "433"], protocol: :tcp},
-                 %{ports: ["100 - 200"], protocol: :udp}
+                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
+                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
+                 %{protocol: :udp, port_range_start: 100, port_range_end: 200}
                ]
              }
 
@@ -179,8 +180,9 @@ defmodule API.Gateway.ChannelTest do
                ipv4: resource.ipv4,
                ipv6: resource.ipv6,
                filters: [
-                 %{ports: ["80", "433"], protocol: :tcp},
-                 %{ports: ["100 - 200"], protocol: :udp}
+                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
+                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
+                 %{protocol: :udp, port_range_start: 100, port_range_end: 200}
                ]
              }
 
