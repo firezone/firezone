@@ -169,7 +169,7 @@ defmodule Web.AuthTest do
 
   describe "ensure_authenticated/2" do
     setup context do
-      %{conn: %{context.conn | path_params: %{"account_id_or_slug" => context.account.id}}}
+      %{conn: %{context.conn | path_params: %{"account_id_or_slug" => context.account.slug}}}
     end
 
     test "redirects if user is not authenticated", %{account: account, conn: conn} do
@@ -179,7 +179,7 @@ defmodule Web.AuthTest do
         |> ensure_authenticated([])
 
       assert conn.halted
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account.slug}/sign_in"
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
                "You must log in to access this page."
@@ -342,14 +342,14 @@ defmodule Web.AuthTest do
     } do
       session_token = "invalid_token"
       session = conn |> put_session(:session_token, session_token) |> get_session()
-      params = %{"account_id_or_slug" => subject.account.id}
+      params = %{"account_id_or_slug" => subject.account.slug}
 
       assert {:halt, updated_socket} =
                on_mount(:ensure_authenticated, params, session, socket)
 
       assert is_nil(updated_socket.assigns.subject)
 
-      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account}/sign_in"}}
+      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account.slug}/sign_in"}}
     end
 
     test "redirects to login page if there isn't a session_token", %{
@@ -358,14 +358,14 @@ defmodule Web.AuthTest do
       admin_subject: subject
     } do
       session = conn |> get_session()
-      params = %{"account_id_or_slug" => subject.account.id}
+      params = %{"account_id_or_slug" => subject.account.slug}
 
       assert {:halt, updated_socket} =
                on_mount(:ensure_authenticated, params, session, socket)
 
       assert is_nil(updated_socket.assigns.subject)
 
-      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account}/sign_in"}}
+      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account.slug}/sign_in"}}
     end
   end
 

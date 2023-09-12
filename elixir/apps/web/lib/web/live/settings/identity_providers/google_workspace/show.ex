@@ -79,7 +79,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
           </.button>
         <% end %>
         <.edit_button navigate={
-          ~p"/#{@provider.account_id}/settings/identity_providers/google_workspace/#{@provider}/redirect"
+          ~p"/#{@account}/settings/identity_providers/google_workspace/#{@provider}/redirect"
         }>
           Reconnect Identity Provider
         </.edit_button>

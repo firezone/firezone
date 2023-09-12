@@ -191,7 +191,7 @@ defmodule Web.AuthController do
       conn = put_session(conn, :client_csrf_token, params["client_csrf_token"])
 
       redirect_url =
-        url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
+        url(~p"/#{account_id_or_slug}/sign_in/providers/#{provider.id}/handle_callback")
 
       redirect_to_idp(conn, redirect_url, provider)
     else

@@ -37,7 +37,7 @@ defmodule Web.Policies.Show do
     </.header>
     <!-- Show Policy -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table>
+      <.vertical_table id="policy">
         <.vertical_table_row>
           <:label>
             Name
@@ -144,11 +144,16 @@ defmodule Web.Policies.Show do
         Danger zone
       </:title>
       <:actions>
-        <.delete_button>
+        <.delete_button phx-click="delete" phx-value-id={@policy.id}>
           Delete Policy
         </.delete_button>
       </:actions>
     </.header>
     """
+  end
+
+  def handle_event("delete", %{"id" => _policy_id}, socket) do
+    {:ok, _} = Policies.delete_policy(socket.assigns.policy, socket.assigns.subject)
+    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies")}
   end
 end

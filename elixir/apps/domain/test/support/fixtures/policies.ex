@@ -1,5 +1,6 @@
 defmodule Domain.Fixtures.Policies do
   use Domain.Fixture
+  alias Domain.Policies
 
   def policy_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
@@ -40,6 +41,19 @@ defmodule Domain.Fixtures.Policies do
       |> Map.put(:resource_id, resource_id)
       |> Domain.Policies.create_policy(subject)
 
+    policy
+  end
+
+  def delete_policy(policy) do
+    policy = Repo.preload(policy, :account)
+
+    subject =
+      Fixtures.Auth.create_subject(
+        account: policy.account,
+        actor: [type: :account_admin_user]
+      )
+
+    {:ok, policy} = Policies.delete_policy(policy, subject)
     policy
   end
 end

@@ -77,7 +77,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
           Disable Identity Provider
         </.button>
         <.edit_button navigate={
-          ~p"/#{@provider.account_id}/settings/identity_providers/openid_connect/#{@provider}/redirect"
+          ~p"/#{@account}/settings/identity_providers/openid_connect/#{@provider}/redirect"
         }>
           Reconnect Identity Provider
         </.edit_button>

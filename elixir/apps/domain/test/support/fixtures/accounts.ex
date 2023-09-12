@@ -3,8 +3,11 @@ defmodule Domain.Fixtures.Accounts do
   alias Domain.Accounts
 
   def account_attrs(attrs \\ %{}) do
+    unique_num = unique_integer()
+
     Enum.into(attrs, %{
-      name: "acc-#{unique_integer()}"
+      name: "acc-#{unique_num}",
+      slug: "acc_#{unique_num}"
     })
   end
 
