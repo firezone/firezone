@@ -2,13 +2,15 @@
 // Swift bridge generated code triggers this below
 #![allow(improper_ctypes, non_camel_case_types)]
 
-use firezone_client_connlib::{Callbacks, Error, ResourceDescription, Session};
+use firezone_client_connlib::{file_logger, Callbacks, Error, ResourceDescription, Session};
 use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
+    path::PathBuf,
     sync::Arc,
 };
+use tracing_subscriber::prelude::*;
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -20,6 +22,7 @@ mod ffi {
             portal_url: String,
             token: String,
             device_id: String,
+            log_dir: String,
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
@@ -132,15 +135,22 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging() {
-    use tracing_subscriber::layer::SubscriberExt as _;
-    let collector = tracing_subscriber::registry().with(tracing_oslog::OsLogger::new(
-        "dev.firezone.firezone",
-        "connlib",
-    ));
-    // This will fail if called more than once, but that doesn't really matter.
-    if tracing::subscriber::set_global_default(collector).is_ok() {
-        tracing::debug!("subscribed to logging");
+fn init_logging(log_dir: PathBuf) {
+    let (file_layer, _guard) = file_logger::layer(log_dir.clone());
+
+    let collector = tracing_subscriber::registry()
+        .with(tracing_oslog::OsLogger::new(
+            "dev.firezone.firezone",
+            "connlib",
+        ))
+        .with(file_layer);
+
+    match tracing::subscriber::set_global_default(collector) {
+        Ok(()) => tracing::info!(
+            "File logging initialized! Logging to {:?}",
+            log_dir.display()
+        ),
+        Err(e) => tracing::error!("Failed to initialize logging! {}", e),
     }
 }
 
@@ -149,9 +159,11 @@ impl WrappedSession {
         portal_url: String,
         token: String,
         device_id: String,
+        log_dir: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
-        init_logging();
+        init_logging(log_dir.into());
+
         Session::connect(
             portal_url.as_str(),
             token,

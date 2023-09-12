@@ -1085,11 +1085,33 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in"
+      assert redirected_to(conn) =~ "/#{account.id}/sign_in"
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
 
       assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
       assert :erlang.binary_to_term(fz_recent_account_ids) == []
+    end
+
+    test "redirects to the IdP sign out page", %{conn: conn} do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+
+      conn =
+        conn
+        |> authorize_conn(identity)
+        |> get(~p"/#{account}/sign_out")
+
+      post_redirect_url = URI.encode_www_form(url(~p"/#{account}/sign_in"))
+
+      assert redirect_url = redirected_to(conn)
+      assert redirect_url =~ "https://example.com"
+      assert redirect_url =~ "id_token_hint="
+      assert redirect_url =~ "client_id=#{provider.adapter_config["client_id"]}"
+      assert redirect_url =~ "post_logout_redirect_uri=#{post_redirect_url}"
     end
 
     test "broadcasts to the given live_socket_id", %{conn: conn} do
@@ -1150,7 +1172,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in"
+      assert redirected_to(conn) =~ "/#{account.id}/sign_in"
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
 
       assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies

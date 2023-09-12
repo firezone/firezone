@@ -199,7 +199,7 @@ async fn main() -> Result<()> {
 ///
 /// See [`log_layer`] for details on the base log layer.
 ///
-/// If the user has specified [`TraceCollector::GoogleCloudTrace`], we will attempt to connec to Google Cloud Trace.
+/// If the user has specified [`TraceCollector::GoogleCloudTrace`], we will attempt to connect to Google Cloud Trace.
 /// This requires authentication.
 /// Here is how we will attempt to obtain those, for details see <https://docs.rs/gcp_auth/0.9.0/gcp_auth/struct.AuthenticationManager.html#method.new>.
 ///
