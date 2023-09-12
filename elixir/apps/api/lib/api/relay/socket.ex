@@ -33,6 +33,9 @@ defmodule API.Relay.Socket do
 
       {:ok, socket}
     else
+      {:error, :invalid_token} ->
+        {:error, :invalid_token}
+
       {:error, reason} ->
         Logger.debug("Error connecting relay websocket: #{inspect(reason)}")
         {:error, reason}
