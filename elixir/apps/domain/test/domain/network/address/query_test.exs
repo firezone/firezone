@@ -37,7 +37,7 @@ defmodule Domain.Network.Address.QueryTest do
       assert Repo.one(queryable) == %Postgrex.INET{address: {10, 3, 3, 3}}
     end
 
-    test "forward scans available address after offset it it's assigned to a device", %{
+    test "forward scans available address after offset it it's assigned to a client", %{
       account: account
     } do
       cidr = string_to_cidr("10.3.4.0/29")
@@ -141,7 +141,7 @@ defmodule Domain.Network.Address.QueryTest do
       assert Repo.one(queryable) == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 0, 64, 0}}
     end
 
-    test "works when netmask allows a large number of devices", %{account: account} do
+    test "works when netmask allows a large number of clients", %{account: account} do
       cidr = string_to_cidr("fd00::/70")
       offset = 9_223_372_036_854_775_807
 

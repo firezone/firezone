@@ -222,7 +222,7 @@ IO.puts(
 IO.puts("")
 
 _user_iphone =
-  Domain.Devices.upsert_device(
+  Domain.Clients.upsert_client(
     %{
       name: "FZ User iPhone",
       external_id: Ecto.UUID.generate(),
@@ -233,7 +233,7 @@ _user_iphone =
   )
 
 _admin_iphone =
-  Domain.Devices.upsert_device(
+  Domain.Clients.upsert_client(
     %{
       name: "FZ Admin iPhone",
       external_id: Ecto.UUID.generate(),
@@ -243,7 +243,7 @@ _admin_iphone =
     admin_subject
   )
 
-IO.puts("Devices created")
+IO.puts("Clients created")
 IO.puts("")
 
 IO.puts("Created Actor Groups: ")
@@ -453,6 +453,6 @@ IO.puts("")
 {:ok, unprivileged_subject_client_token} =
   Auth.create_client_token_from_subject(unprivileged_subject)
 
-IO.puts("Created device tokens:")
+IO.puts("Created client tokens:")
 IO.puts("  #{unprivileged_actor_email} token: #{unprivileged_subject_client_token}")
 IO.puts("")

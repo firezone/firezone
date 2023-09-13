@@ -139,7 +139,7 @@ mod test {
     fn connection_ready_deserialization() {
         let message = r#"{
             "ref": "0",
-            "topic": "device",
+            "topic": "client",
             "event": "phx_reply",
             "payload": {
                 "status": "ok",
@@ -160,7 +160,7 @@ mod test {
     #[test]
     fn init_phoenix_message() {
         let m = PhoenixMessage::new(
-            "device",
+            "client",
             IngressMessages::Init(InitClient {
                 interface: Interface {
                     ipv4: "100.72.112.111".parse().unwrap(),
@@ -210,7 +210,7 @@ mod test {
                 ]
             },
             "ref": null,
-            "topic": "device"
+            "topic": "client"
         }"#;
         let ingress_message: PhoenixMessage<IngressMessages, ReplyMessages> =
             serde_json::from_str(message).unwrap();
@@ -220,7 +220,7 @@ mod test {
     #[test]
     fn list_relays_message() {
         let m = PhoenixMessage::<EgressMessages, ()>::new(
-            "device",
+            "client",
             EgressMessages::PrepareConnection {
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
                 connected_gateway_ids: vec![],
@@ -235,7 +235,7 @@ mod test {
                     "connected_gateway_ids": []
                 },
                 "ref":null,
-                "topic": "device"
+                "topic": "client"
             }
         "#;
         let egress_message = serde_json::from_str(message).unwrap();
@@ -245,7 +245,7 @@ mod test {
     #[test]
     fn connection_details_reply() {
         let m = PhoenixMessage::<IngressMessages, ReplyMessages>::new_reply(
-            "device",
+            "client",
             ReplyMessages::ConnectionDetails(ConnectionDetails {
                 gateway_id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
                 gateway_remote_ip: "172.28.0.1".parse().unwrap(),
@@ -279,7 +279,7 @@ mod test {
         let message = r#"
             {
                 "ref":null,
-                "topic":"device",
+                "topic":"client",
                 "event": "phx_reply",
                 "payload": {
                     "response": {

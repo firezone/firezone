@@ -1,16 +1,16 @@
-defmodule API.Gateway.Views.Device do
-  alias Domain.Devices
+defmodule API.Gateway.Views.Client do
+  alias Domain.Clients
 
-  def render(%Devices.Device{} = device, device_rtc_session_description, preshared_key) do
+  def render(%Clients.Client{} = client, client_rtc_session_description, preshared_key) do
     %{
-      id: device.id,
-      rtc_session_description: device_rtc_session_description,
+      id: client.id,
+      rtc_session_description: client_rtc_session_description,
       peer: %{
         persistent_keepalive: 25,
-        public_key: device.public_key,
+        public_key: client.public_key,
         preshared_key: preshared_key,
-        ipv4: device.ipv4,
-        ipv6: device.ipv6
+        ipv4: client.ipv4,
+        ipv6: client.ipv6
       }
     }
   end

@@ -21,7 +21,7 @@ defmodule Domain.Accounts.Account do
     has_many :resources, Domain.Resources.Resource, where: [deleted_at: nil]
     has_many :resource_connections, Domain.Resources.Connection, where: [deleted_at: nil]
 
-    has_many :devices, Domain.Devices.Device, where: [deleted_at: nil]
+    has_many :clients, Domain.Clients.Client, where: [deleted_at: nil]
 
     has_many :gateways, Domain.Gateways.Gateway, where: [deleted_at: nil]
     has_many :gateway_groups, Domain.Gateways.Group, where: [deleted_at: nil]
