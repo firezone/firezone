@@ -632,7 +632,7 @@ module "relays" {
     unhealthy_threshold = 2
 
     http_health_check = {
-      request_path = "/health"
+      request_path = "/healthz"
     }
   }
 
