@@ -104,13 +104,6 @@ enum MetricsReceiver {
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
-enum LogFormat {
-    Human,
-    Json,
-    GoogleCloud,
-}
-
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
 enum TraceCollector {
     /// Sends traces to an OTLP collector.
     Otlp,
