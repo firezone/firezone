@@ -3,6 +3,17 @@ defmodule Web.AuthController do
   alias Web.Auth
   alias Domain.Auth.Adapters.OpenIDConnect
 
+  # This is the cookie which will store recent account ids
+  # that the user has signed in to.
+  @remember_me_cookie_name "fz_recent_account_ids"
+  @remember_me_cookie_options [
+    sign: true,
+    max_age: 365 * 24 * 60 * 60,
+    same_site: "Lax",
+    secure: true,
+    http_only: true
+  ]
+
   # This is the cookie which will be used to store the
   # state and code verifier for OpenID Connect IdP's
   @state_cookie_key_prefix "fz_auth_state_"
@@ -41,7 +52,10 @@ defmodule Web.AuthController do
            ) do
       client_platform = params["client_platform"]
       client_csrf_token = params["client_csrf_token"]
-      Web.Auth.signed_in_redirect(conn, subject, client_platform, client_csrf_token)
+
+      conn
+      |> persist_recent_account(subject.account)
+      |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
     else
       {:error, :not_found} ->
         conn
@@ -70,15 +84,31 @@ defmodule Web.AuthController do
           }
         } = params
       ) do
-    _ =
+    conn =
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
            {:ok, identity} <-
-             Domain.Auth.fetch_identity_by_provider_and_identifier(provider, provider_identifier),
+             Domain.Auth.fetch_identity_by_provider_and_identifier(provider, provider_identifier,
+               preload: :account
+             ),
            {:ok, identity} <- Domain.Auth.Adapters.Email.request_sign_in_token(identity) do
         sign_in_link_params = Map.take(params, ["client_platform", "client_csrf_token"])
 
-        Web.Mailer.AuthEmail.sign_in_link_email(identity, sign_in_link_params)
-        |> Web.Mailer.deliver()
+        <<email_secret::binary-size(5), nonce::binary>> =
+          identity.provider_virtual_state.sign_in_token
+
+        {:ok, _} =
+          Web.Mailer.AuthEmail.sign_in_link_email(
+            identity,
+            email_secret,
+            conn.assigns.user_agent,
+            conn.remote_ip,
+            sign_in_link_params
+          )
+          |> Web.Mailer.deliver()
+
+        put_session(conn, :sign_in_nonce, nonce)
+      else
+        _ -> conn
       end
 
     redirect_params =
@@ -110,15 +140,16 @@ defmodule Web.AuthController do
           "account_id_or_slug" => account_id_or_slug,
           "provider_id" => provider_id,
           "identity_id" => identity_id,
-          "secret" => secret
+          "secret" => email_secret
         } = params
       ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
+         nonce = get_session(conn, :sign_in_nonce) || "=",
          {:ok, subject} <-
            Domain.Auth.sign_in(
              provider,
              identity_id,
-             secret,
+             String.downcase(email_secret) <> nonce,
              conn.assigns.user_agent,
              conn.remote_ip
            ) do
@@ -128,6 +159,8 @@ defmodule Web.AuthController do
       conn
       |> delete_session(:client_platform)
       |> delete_session(:client_csrf_token)
+      |> delete_session(:sign_in_nonce)
+      |> persist_recent_account(subject.account)
       |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
     else
       {:error, :not_found} ->
@@ -158,7 +191,7 @@ defmodule Web.AuthController do
       conn = put_session(conn, :client_csrf_token, params["client_csrf_token"])
 
       redirect_url =
-        url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
+        url(~p"/#{account_id_or_slug}/sign_in/providers/#{provider.id}/handle_callback")
 
       redirect_to_idp(conn, redirect_url, provider)
     else
@@ -206,6 +239,8 @@ defmodule Web.AuthController do
         conn
         |> delete_session(:client_platform)
         |> delete_session(:client_csrf_token)
+        |> delete_session(:sign_in_nonce)
+        |> persist_recent_account(subject.account)
         |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
       else
         {:error, :not_found} ->
@@ -243,31 +278,57 @@ defmodule Web.AuthController do
     @state_cookie_key_prefix <> provider_id
   end
 
+  def sign_out(%{assigns: %{subject: subject}} = conn, %{
+        "account_id_or_slug" => account_id_or_slug
+      }) do
+    {:ok, _identity, redirect_url} =
+      Domain.Auth.sign_out(subject.identity, url(~p"/#{account_id_or_slug}/sign_in"))
+
+    conn
+    |> delete_recent_account()
+    |> Auth.sign_out()
+    |> redirect(external: redirect_url)
+  end
+
   def sign_out(conn, %{"account_id_or_slug" => account_id_or_slug}) do
-    # TODO: post logout redirect url
     conn
     |> Auth.sign_out()
     |> redirect(to: ~p"/#{account_id_or_slug}/sign_in")
   end
 
-  # def sign_out(conn) do
-  #   with provider_id when not is_nil(provider_id) <- Plug.Conn.get_session(conn, "login_method"),
-  #        token when not is_nil(token) <- Plug.Conn.get_session(conn, "id_token"),
-  #        {:ok, config} <- Auth.fetch_oidc_provider_config(provider_id),
-  #        {:ok, end_session_uri} <-
-  #          OpenIDConnect.end_session_uri(config, %{
-  #            id_token_hint: token,
-  #            post_logout_redirect_uri: url(~p"/")
-  #          }) do
-  #     conn
-  #     |> __MODULE__.Plug.sign_out()
-  #     |> Plug.Conn.configure_session(drop: true)
-  #     |> Phoenix.Controller.redirect(external: end_session_uri)
-  #   else
-  #     _ ->
-  #       conn
-  #       |> __MODULE__.Plug.sign_out()
-  #       |> Plug.Conn.configure_session(drop: true)
-  #       |> Phoenix.Controller.redirect(to: ~p"/")
-  #   end
+  defp delete_recent_account(%{assigns: %{subject: subject}} = conn) do
+    update_recent_accounts(conn, fn recent_account_ids ->
+      recent_account_ids -- [subject.account.id]
+    end)
+  end
+
+  defp persist_recent_account(conn, %Domain.Accounts.Account{} = account) do
+    update_recent_accounts(conn, fn recent_account_ids ->
+      [account.id] ++ recent_account_ids
+    end)
+  end
+
+  defp update_recent_accounts(conn, callback) when is_function(callback, 1) do
+    conn = fetch_cookies(conn, signed: [@remember_me_cookie_name])
+
+    recent_account_ids =
+      if recent_account_ids = Map.get(conn.cookies, @remember_me_cookie_name) do
+        :erlang.binary_to_term(recent_account_ids, [:safe])
+      else
+        []
+      end
+
+    recent_account_ids =
+      recent_account_ids
+      |> callback.()
+      |> Enum.take(5)
+      |> :erlang.term_to_binary()
+
+    put_resp_cookie(
+      conn,
+      @remember_me_cookie_name,
+      recent_account_ids,
+      @remember_me_cookie_options
+    )
+  end
 end

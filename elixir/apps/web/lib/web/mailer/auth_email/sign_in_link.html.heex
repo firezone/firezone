@@ -7,8 +7,8 @@
 <div :if={is_nil(@client_platform)}>
   <p>
     Here is the <a href={@link} target="_blank">magic sign-in link</a>
-    you requested. It is valid for 1 hour.
-    If you didn't request this, you can safely discard this email.
+    you requested to sign in to <b>"<%= @account.name %>"</b>.
+    It is valid for 15 minutes.
   </p>
 
   <small>
@@ -18,14 +18,25 @@
 
 <div :if={not is_nil(@client_platform)}>
   <p>
-    Please copy the code and paste it into the Firezone application to proceed with the login:
-    <div style="font-weight:bold; margin-top:1rem; margin-bottom:1rem;">
-      <code><%= @secret %></code>
-    </div>
-    It is valid for 1 hour.
+    Please copy the code and paste it into the Firezone application to proceed with
+    signing in to <b>"<%= @account.name %>"</b>:
   </p>
-
-  <p>
-    If you didn't request this, you can safely discard this email.
+  <p style="font-weight:bold; margin-top:1rem; margin-bottom:1rem;">
+    <code><%= @secret %></code>
   </p>
+  <p>It is valid for 15 minutes.</p>
 </div>
+
+<p>
+  If you did not request this action and have received this email in error, you can safely ignore
+  and discard this email. However, if you continue to receive multiple unsolicited emails of this nature,
+  we strongly recommend contacting your system administrator to report the issue.
+</p>
+
+<p>
+  <b>Request details:</b>
+  <br /> Time: <%= @sign_in_token_created_at %>
+  <br /> IP address: <%= @remote_ip %>
+  <br /> User Agent: <%= @user_agent %>
+  <br /> Account ID: <%= @account.id %>
+</p>

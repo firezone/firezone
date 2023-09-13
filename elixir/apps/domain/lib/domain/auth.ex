@@ -448,10 +448,23 @@ defmodule Domain.Auth do
     end
   end
 
-  def fetch_identity_by_provider_and_identifier(%Provider{} = provider, provider_identifier) do
+  def fetch_identity_by_provider_and_identifier(
+        %Provider{} = provider,
+        provider_identifier,
+        opts \\ []
+      ) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
     Identity.Query.by_provider_id(provider.id)
     |> Identity.Query.by_provider_identifier(provider_identifier)
     |> Repo.fetch()
+    |> case do
+      {:ok, identity} ->
+        {:ok, Repo.preload(identity, preload)}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc false
@@ -485,6 +498,11 @@ defmodule Domain.Auth do
     max_expires_at = DateTime.add(now, max_session_duration_hours, :hour)
 
     Enum.min([expires_at, max_expires_at], DateTime)
+  end
+
+  def sign_out(%Identity{} = identity, redirect_url) do
+    identity = Repo.preload(identity, :provider)
+    Adapters.sign_out(identity.provider, identity, redirect_url)
   end
 
   # Session

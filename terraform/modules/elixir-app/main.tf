@@ -28,6 +28,10 @@ locals {
     {
       name  = "LOG_LEVEL"
       value = var.observability_log_level
+    },
+    {
+      name  = "OTLP_ENDPOINT",
+      value = "127.0.0.1:4317"
     }
   ], var.application_environment_variables)
 
@@ -114,6 +118,10 @@ resource "google_project_iam_member" "cloudtrace" {
 }
 
 # Deploy the app
+data "template_file" "clout-init" {
+  template = file("${path.module}/templates/cloud-init.yaml")
+}
+
 resource "google_compute_instance_template" "application" {
   project = var.project_id
 
@@ -146,25 +154,36 @@ resource "google_compute_instance_template" "application" {
 
   network_interface {
     subnetwork = var.vpc_subnetwork
+    stack_type = "IPV4_IPV6"
+
+    ipv6_access_config {
+      network_tier = "PREMIUM"
+    }
   }
 
   service_account {
     email = google_service_account.application.email
 
     scopes = [
-      # Those are copying gke-default scopes
-      "storage-ro",
-      "logging-write",
-      "monitoring",
-      "service-management",
-      "service-control",
-      "trace",
+      # Those are default scopes
+      "https://www.googleapis.com/auth/devstorage.read_only",
+      "https://www.googleapis.com/auth/logging.write",
+      "https://www.googleapis.com/auth/monitoring.write",
+      "https://www.googleapis.com/auth/service.management.readonly",
+      "https://www.googleapis.com/auth/servicecontrol",
+      "https://www.googleapis.com/auth/trace.append",
       # Required to discover the other instances in the Erlang Cluster
-      "compute-ro",
+      "https://www.googleapis.com/auth/compute.readonly"
     ]
   }
 
-  metadata = merge({
+  shielded_instance_config {
+    enable_integrity_monitoring = true
+    enable_secure_boot          = false
+    enable_vtpm                 = true
+  }
+
+  metadata = {
     gce-container-declaration = yamlencode({
       spec = {
         containers = [{
@@ -179,6 +198,8 @@ resource "google_compute_instance_template" "application" {
       }
     })
 
+    user-data = data.template_file.clout-init.rendered
+
     google-logging-enabled = "true"
     # Enable FluentBit agent for logging, which will be default one from COS 109
     # Re-enable once https://issuetracker.google.com/issues/285950891 is closed
@@ -186,7 +207,7 @@ resource "google_compute_instance_template" "application" {
 
     # Report health-related metrics to Cloud Monitoring
     google-monitoring-enabled = "true"
-  })
+  }
 
   depends_on = [
     google_project_service.compute,

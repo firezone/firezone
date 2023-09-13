@@ -38,7 +38,7 @@ defmodule Domain.Auth.Adapters.Token do
   end
 
   defp put_hash_and_expiration(changeset) do
-    secret = Domain.Crypto.rand_token(32)
+    secret = Domain.Crypto.random_token(32)
     secret_hash = Domain.Crypto.hash(secret)
 
     data = Map.get(changeset.data, :provider_virtual_state) || %{}
@@ -87,6 +87,11 @@ defmodule Domain.Auth.Adapters.Token do
   @impl true
   def ensure_deprovisioned(%Provider{} = provider) do
     {:ok, provider}
+  end
+
+  @impl true
+  def sign_out(%Provider{} = _provider, %Identity{} = identity, redirect_url) do
+    {:ok, identity, redirect_url}
   end
 
   @impl true

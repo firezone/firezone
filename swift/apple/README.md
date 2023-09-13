@@ -49,9 +49,7 @@ is a great resource to use as a starting point.
 
 Network Extensions
 [can't be debugged](https://developer.apple.com/forums/thread/101663) in the iOS
-simulator, so you'll need a physical iOS device or Mac to debug. We're currently
-building for the iphonesimulator target in CI to ensure the build continues
-work.
+simulator, so you'll need a physical iOS device or Mac to debug.
 
 ### NetworkExtension not loading (macOS)
 

@@ -23,12 +23,16 @@ locals {
       value = var.observability_log_level
     },
     {
+      name  = "RUST_BACKTRACE"
+      value = "full"
+    },
+    {
       name  = "LOG_FORMAT"
       value = "google-cloud"
     },
     {
-      name  = "TRACE_RECEIVER"
-      value = "google-cloud-trace"
+      name  = "TRACE_COLLECTOR"
+      value = "otlp"
     },
     {
       name  = "PORTAL_TOKEN"
@@ -110,6 +114,41 @@ resource "google_project_iam_member" "cloudtrace" {
   member = "serviceAccount:${google_service_account.application.email}"
 }
 
+# Create network
+resource "google_compute_network" "network" {
+  project = var.project_id
+  name    = "relays"
+
+  routing_mode = "GLOBAL"
+
+  auto_create_subnetworks = false
+
+  depends_on = [
+    google_project_service.compute
+  ]
+}
+
+resource "google_compute_subnetwork" "subnetwork" {
+  for_each = var.instances
+
+  project = var.project_id
+
+  name   = "relays-${each.key}"
+  region = each.key
+
+  network = google_compute_network.network.self_link
+
+  stack_type               = "IPV4_IPV6"
+  ip_cidr_range            = "10.128.0.0/20"
+  ipv6_access_type         = "EXTERNAL"
+  private_ip_google_access = true
+}
+
+# Deploy app
+data "template_file" "clout-init" {
+  template = file("${path.module}/templates/cloud-init.yaml")
+}
+
 resource "google_compute_instance_template" "application" {
   for_each = var.instances
 
@@ -142,7 +181,14 @@ resource "google_compute_instance_template" "application" {
   }
 
   network_interface {
-    network = var.vpc_network
+    subnetwork = google_compute_subnetwork.subnetwork[each.key].self_link
+
+    stack_type = "IPV4_IPV6"
+
+    ipv6_access_config {
+      network_tier = "PREMIUM"
+      # Ephimerical IP address
+    }
 
     access_config {
       network_tier = "PREMIUM"
@@ -154,19 +200,23 @@ resource "google_compute_instance_template" "application" {
     email = google_service_account.application.email
 
     scopes = [
-      # Those are copying gke-default scopes
-      "storage-ro",
-      "logging-write",
-      "monitoring",
-      "service-management",
-      "service-control",
-      "trace",
-      # Required to discover the other instances in the Erlang Cluster
-      "compute-ro",
+      # Those are default scopes
+      "https://www.googleapis.com/auth/devstorage.read_only",
+      "https://www.googleapis.com/auth/logging.write",
+      "https://www.googleapis.com/auth/monitoring.write",
+      "https://www.googleapis.com/auth/service.management.readonly",
+      "https://www.googleapis.com/auth/servicecontrol",
+      "https://www.googleapis.com/auth/trace.append",
     ]
   }
 
-  metadata = merge({
+  shielded_instance_config {
+    enable_integrity_monitoring = true
+    enable_secure_boot          = false
+    enable_vtpm                 = true
+  }
+
+  metadata = {
     gce-container-declaration = yamlencode({
       spec = {
         containers = [{
@@ -181,6 +231,8 @@ resource "google_compute_instance_template" "application" {
       }
     })
 
+    user-data = data.template_file.clout-init.rendered
+
     google-logging-enabled = "true"
     # Enable FluentBit agent for logging, which will be default one from COS 109
     # Re-enable once https://issuetracker.google.com/issues/285950891 is closed
@@ -188,7 +240,7 @@ resource "google_compute_instance_template" "application" {
 
     # Report health-related metrics to Cloud Monitoring
     google-monitoring-enabled = "true"
-  })
+  }
 
   depends_on = [
     google_project_service.compute,
@@ -312,7 +364,7 @@ resource "google_compute_firewall" "stun-turn" {
   project = var.project_id
 
   name    = "${local.application_name}-firewall-lb-to-instances"
-  network = var.vpc_network
+  network = google_compute_network.network.self_link
 
   source_ranges = ["0.0.0.0/0"]
   target_tags   = ["app-${local.application_name}"]
@@ -333,7 +385,7 @@ resource "google_compute_firewall" "http-health-checks" {
   project = var.project_id
 
   name    = "${local.application_name}-healthcheck"
-  network = var.vpc_network
+  network = google_compute_network.network.self_link
 
   source_ranges = local.google_health_check_ip_ranges
   target_tags   = ["app-${local.application_name}"]
@@ -344,12 +396,43 @@ resource "google_compute_firewall" "http-health-checks" {
   }
 }
 
+# Allow inbound traffic
+resource "google_compute_firewall" "ingress-ipv4" {
+  project = var.project_id
+
+  name      = "${local.application_name}-ingress-ipv4"
+  network   = google_compute_network.network.self_link
+  direction = "INGRESS"
+
+  target_tags   = ["app-${local.application_name}"]
+  source_ranges = ["0.0.0.0/0"]
+
+  allow {
+    protocol = "udp"
+  }
+}
+
+resource "google_compute_firewall" "ingress-ipv6" {
+  project = var.project_id
+
+  name      = "${local.application_name}-ingress-ipv6"
+  network   = google_compute_network.network.self_link
+  direction = "INGRESS"
+
+  target_tags   = ["app-${local.application_name}"]
+  source_ranges = ["::/0"]
+
+  allow {
+    protocol = "udp"
+  }
+}
+
 # Allow outbound traffic
 resource "google_compute_firewall" "egress-ipv4" {
   project = var.project_id
 
   name      = "${local.application_name}-egress-ipv4"
-  network   = var.vpc_network
+  network   = google_compute_network.network.self_link
   direction = "EGRESS"
 
   target_tags        = ["app-${local.application_name}"]
@@ -364,7 +447,7 @@ resource "google_compute_firewall" "egress-ipv6" {
   project = var.project_id
 
   name      = "${local.application_name}-egress-ipv6"
-  network   = var.vpc_network
+  network   = google_compute_network.network.self_link
   direction = "EGRESS"
 
   target_tags        = ["app-${local.application_name}"]

@@ -80,6 +80,10 @@ defmodule Domain.Policies do
     end
   end
 
+  def new_policy(attrs, %Auth.Subject{} = subject) do
+    Policy.Changeset.create(attrs, subject)
+  end
+
   def ensure_has_access_to(%Auth.Subject{} = subject, %Policy{} = policy) do
     if subject.account.id == policy.account_id do
       :ok

@@ -108,11 +108,7 @@ defmodule Web.Actors.Show do
         Viewing <%= actor_type(@actor.type) %> <span class="font-bold"><%= @actor.name %></span>
       </:title>
 
-      <:action
-        :if={not Actors.actor_synced?(@actor)}
-        navigate={~p"/#{@account}/actors/#{@actor}/edit"}
-        icon="hero-pencil"
-      >
+      <:action navigate={~p"/#{@account}/actors/#{@actor}/edit"} icon="hero-pencil">
         Edit <%= actor_type(@actor.type) %>
       </:action>
 

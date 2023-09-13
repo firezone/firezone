@@ -153,7 +153,7 @@ defmodule Web.AuthControllerTest do
       conn =
         conn
         |> post(
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
+          ~p"/#{account}/sign_in/providers/#{provider.id}/verify_credentials",
           %{
             "userpass" => %{
               "provider_identifier" => identity.provider_identifier,
@@ -162,7 +162,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == "/#{account.slug}/dashboard"
+      assert redirected_to(conn) == ~p"/#{account.slug}/dashboard"
     end
 
     test "renews the session when credentials are valid", %{conn: conn} do
@@ -310,6 +310,45 @@ defmodule Web.AuthControllerTest do
       assert redirected_to(conn) == ~p"/#{account.id}/"
       assert is_nil(get_session(conn, :user_return_to))
     end
+
+    test "persists account into list of recent accounts when credentials are valid", %{
+      conn: conn
+    } do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      password = "Firezone1234"
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_user,
+          account: account,
+          provider: provider
+        )
+
+      identity =
+        Fixtures.Auth.create_identity(
+          actor: actor,
+          account: account,
+          provider: provider,
+          provider_virtual_state: %{"password" => password, "password_confirmation" => password}
+        )
+
+      conn =
+        conn
+        |> post(
+          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
+          %{
+            "userpass" => %{
+              "provider_identifier" => identity.provider_identifier,
+              "secret" => password
+            },
+            "client_platform" => "platform"
+          }
+        )
+
+      assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
+      assert :erlang.binary_to_term(fz_recent_account_ids) == [identity.account_id]
+    end
   end
 
   describe "request_magic_link/2" do
@@ -333,7 +372,7 @@ defmodule Web.AuthControllerTest do
         assert email.subject == "Firezone Sign In Link"
 
         verify_sign_in_token_path =
-          "/#{account.id}/sign_in/providers/#{provider.id}/verify_sign_in_token"
+          ~p"/#{account.id}/sign_in/providers/#{provider.id}/verify_sign_in_token"
 
         assert email.text_body =~ "#{verify_sign_in_token_path}"
         assert email.text_body =~ "identity_id=#{identity.id}"
@@ -454,7 +493,68 @@ defmodule Web.AuthControllerTest do
           "secret" => "bar"
         })
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert flash(conn, :error) == "The sign in link is invalid or expired."
+    end
+
+    test "redirects back to the form when browser token is invalid", %{conn: conn} do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+
+      {email_token, _sign_in_nonce} = split_token(identity)
+
+      conn =
+        conn
+        |> put_session(:sign_in_nonce, "foo")
+        |> put_session(:user_return_to, "/foo/bar")
+        |> get(
+          ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
+          %{
+            "identity_id" => identity.id,
+            "secret" => email_token
+          }
+        )
+
+      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert flash(conn, :error) == "The sign in link is invalid or expired."
+    end
+
+    test "redirects back to the form when browser token is not set", %{conn: conn} do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+
+      {email_token, _sign_in_nonce} = split_token(identity)
+
+      conn =
+        conn
+        |> put_session(:user_return_to, "/foo/bar")
+        |> get(
+          ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
+          %{
+            "identity_id" => identity.id,
+            "secret" => email_token
+          }
+        )
+
+      assert redirected_to(conn) == ~p"/#{account}/sign_in"
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
@@ -471,14 +571,49 @@ defmodule Web.AuthControllerTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
+      {email_token, sign_in_nonce} = split_token(identity)
+
       conn =
         conn
+        |> put_session(:sign_in_nonce, sign_in_nonce)
         |> put_session(:user_return_to, "/foo/bar")
         |> get(
           ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
           %{
             "identity_id" => identity.id,
-            "secret" => identity.provider_virtual_state.sign_in_token
+            "secret" => email_token
+          }
+        )
+
+      assert conn.assigns.flash == %{}
+      assert redirected_to(conn) == "/foo/bar"
+      assert is_nil(get_session(conn, :user_return_to))
+    end
+
+    test "emailed part of the token is not case sensitive", %{conn: conn} do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+
+      {email_token, sign_in_nonce} = split_token(identity)
+
+      conn =
+        conn
+        |> put_session(:sign_in_nonce, sign_in_nonce)
+        |> put_session(:user_return_to, "/foo/bar")
+        |> get(
+          ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
+          %{
+            "identity_id" => identity.id,
+            "secret" => String.upcase(email_token)
           }
         )
 
@@ -500,13 +635,17 @@ defmodule Web.AuthControllerTest do
           provider: provider
         )
 
+      {email_token, sign_in_nonce} = split_token(identity)
+
       conn =
-        get(conn, ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+        conn
+        |> put_session(:sign_in_nonce, sign_in_nonce)
+        |> get(~p"/#{account.id}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
-          "secret" => identity.provider_virtual_state.sign_in_token
+          "secret" => email_token
         })
 
-      assert redirected_to(conn) == "/#{account.slug}/dashboard"
+      assert redirected_to(conn) == ~p"/#{account.slug}/dashboard"
     end
 
     test "redirects to the platform link when credentials are valid for account users", %{
@@ -522,12 +661,15 @@ defmodule Web.AuthControllerTest do
           provider: provider
         )
 
+      {email_token, sign_in_nonce} = split_token(identity)
+
       conn =
         conn
+        |> put_session(:sign_in_nonce, sign_in_nonce)
         |> put_session(:client_platform, "apple")
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
-          "secret" => identity.provider_virtual_state.sign_in_token
+          "secret" => email_token
         })
 
       assert conn.assigns.flash == %{}
@@ -556,11 +698,14 @@ defmodule Web.AuthControllerTest do
           provider: provider
         )
 
+      {email_token, sign_in_nonce} = split_token(identity)
+
       conn =
         conn
+        |> put_session(:sign_in_nonce, sign_in_nonce)
         |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
-          "secret" => identity.provider_virtual_state.sign_in_token,
+          "secret" => email_token,
           "client_platform" => "apple"
         })
 
@@ -590,16 +735,19 @@ defmodule Web.AuthControllerTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
+      {email_token, sign_in_nonce} = split_token(identity)
+
       conn =
         conn
         |> put_session(:foo, "bar")
         |> put_session(:session_token, "foo")
         |> put_session(:preferred_locale, "en_US")
+        |> put_session(:sign_in_nonce, sign_in_nonce)
         |> get(
           ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
           %{
             "identity_id" => identity.id,
-            "secret" => identity.provider_virtual_state.sign_in_token
+            "secret" => email_token
           }
         )
 
@@ -615,6 +763,33 @@ defmodule Web.AuthControllerTest do
       assert subject.identity.last_seen_user_agent == "testing"
       assert subject.identity.last_seen_remote_ip.address == {127, 0, 0, 1}
       assert subject.identity.last_seen_at
+    end
+
+    test "persists account into list of recent accounts when credentials are valid", %{
+      conn: conn
+    } do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      identity =
+        Fixtures.Auth.create_identity(
+          actor: [type: :account_admin_user],
+          account: account,
+          provider: provider
+        )
+
+      {email_token, sign_in_nonce} = split_token(identity)
+
+      conn =
+        conn
+        |> put_session(:sign_in_nonce, sign_in_nonce)
+        |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+          "identity_id" => identity.id,
+          "secret" => email_token
+        })
+
+      assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
+      assert :erlang.binary_to_term(fz_recent_account_ids) == [identity.account_id]
     end
   end
 
@@ -795,7 +970,7 @@ defmodule Web.AuthControllerTest do
           "code" => "MyFakeCode"
         })
 
-      assert redirected_to(conn) == "/#{account.slug}/dashboard"
+      assert redirected_to(conn) == ~p"/#{account.slug}/dashboard"
 
       assert %{
                "live_socket_id" => "actors_sessions:" <> socket_id,
@@ -857,6 +1032,43 @@ defmodule Web.AuthControllerTest do
       assert not is_nil(query_params["client_auth_token"])
       assert query_params["identity_provider_identifier"] == identity.provider_identifier
     end
+
+    test "persists account into list of recent accounts when credentials are valid", %{
+      account: account,
+      provider: provider,
+      bypass: bypass,
+      conn: conn,
+      redirected_conn: redirected_conn
+    } do
+      identity =
+        Fixtures.Auth.create_identity(
+          actor: [type: :account_admin_user],
+          account: account,
+          provider: provider
+        )
+
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      cookie_key = "fz_auth_state_#{provider.id}"
+      redirected_conn = fetch_cookies(redirected_conn)
+      {state, _verifier} = redirected_conn.cookies[cookie_key] |> :erlang.binary_to_term([:safe])
+      %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
+
+      conn =
+        conn
+        |> put_req_cookie(cookie_key, signed_state)
+        |> put_session(:foo, "bar")
+        |> put_session(:preferred_locale, "en_US")
+        |> get(~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback", %{
+          "state" => state,
+          "code" => "MyFakeCode"
+        })
+
+      assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
+      assert :erlang.binary_to_term(fz_recent_account_ids) == [identity.account_id]
+    end
   end
 
   describe "sign_out/2" do
@@ -873,8 +1085,33 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in"
+      assert redirected_to(conn) == url(~p"/#{account}/sign_in")
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
+
+      assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
+      assert :erlang.binary_to_term(fz_recent_account_ids) == []
+    end
+
+    test "redirects to the IdP sign out page", %{conn: conn} do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+
+      conn =
+        conn
+        |> authorize_conn(identity)
+        |> get(~p"/#{account}/sign_out")
+
+      post_redirect_url = URI.encode_www_form(url(~p"/#{account}/sign_in"))
+
+      assert redirect_url = redirected_to(conn)
+      assert redirect_url =~ "https://example.com"
+      assert redirect_url =~ "id_token_hint="
+      assert redirect_url =~ "client_id=#{provider.adapter_config["client_id"]}"
+      assert redirect_url =~ "post_logout_redirect_uri=#{post_redirect_url}"
     end
 
     test "broadcasts to the given live_socket_id", %{conn: conn} do
@@ -892,9 +1129,54 @@ defmodule Web.AuthControllerTest do
         |> put_session(:live_socket_id, live_socket_id)
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}/sign_in"
 
       assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^live_socket_id}
+    end
+
+    test "removes current account id from list of recent ones", %{conn: conn} do
+      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      identity =
+        Fixtures.Auth.create_identity(
+          actor: [type: :account_admin_user],
+          account: account,
+          provider: provider
+        )
+
+      {email_token, sign_in_nonce} = split_token(identity)
+
+      authorized_conn =
+        conn
+        |> put_session(:sign_in_nonce, sign_in_nonce)
+        |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+          "identity_id" => identity.id,
+          "secret" => email_token
+        })
+        |> fetch_cookies()
+
+      recent_account_ids =
+        authorized_conn.cookies["fz_recent_account_ids"]
+        |> :erlang.binary_to_term()
+
+      assert recent_account_ids == [account.id]
+      %{value: signed_state} = authorized_conn.resp_cookies["fz_recent_account_ids"]
+
+      conn =
+        conn
+        |> put_req_cookie("fz_recent_account_ids", signed_state)
+        |> authorize_conn(identity)
+        |> put_session(:preferred_locale, "en_US")
+        |> get(~p"/#{account}/sign_out")
+
+      assert redirected_to(conn) == url(~p"/#{account}/sign_in")
+      assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
+
+      assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
+      assert :erlang.binary_to_term(fz_recent_account_ids) == []
     end
 
     test "works even if user is already logged out", %{conn: conn} do
@@ -905,8 +1187,57 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}/sign_in"
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
+
+      refute Map.has_key?(conn.cookies, "fz_recent_account_ids")
     end
+  end
+
+  test "keeps up to 5 recent accounts the used signed in to", %{conn: conn} do
+    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+
+    {conn, account_ids} =
+      Enum.reduce(1..6, {conn, []}, fn _i, {conn, account_ids} ->
+        account = Fixtures.Accounts.create_account()
+        provider = Fixtures.Auth.create_email_provider(account: account)
+
+        identity =
+          Fixtures.Auth.create_identity(
+            actor: [type: :account_admin_user],
+            account: account,
+            provider: provider
+          )
+
+        {email_token, sign_in_nonce} = split_token(identity)
+
+        authorized_conn =
+          conn
+          |> put_session(:sign_in_nonce, sign_in_nonce)
+          |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+            "identity_id" => identity.id,
+            "secret" => email_token
+          })
+          |> fetch_cookies()
+
+        %{value: signed_state} = authorized_conn.resp_cookies["fz_recent_account_ids"]
+        conn = put_req_cookie(conn, "fz_recent_account_ids", signed_state)
+
+        {conn, [account.id] ++ account_ids}
+      end)
+
+    conn = %{conn | secret_key_base: Web.Endpoint.config(:secret_key_base)}
+    conn = fetch_cookies(conn, signed: ["fz_recent_account_ids"])
+    assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
+    recent_account_ids = :erlang.binary_to_term(fz_recent_account_ids)
+    assert length(recent_account_ids) == 5
+    assert recent_account_ids == Enum.take(account_ids, 5)
+  end
+
+  defp split_token(identity, size \\ 5) do
+    <<email_secret::binary-size(size), browser_secret::binary>> =
+      identity.provider_virtual_state.sign_in_token
+
+    {email_secret, browser_secret}
   end
 end

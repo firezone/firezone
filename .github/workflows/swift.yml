@@ -26,9 +26,6 @@ jobs:
           - sdk: iphoneos
             platform: iOS
             destination: generic/platform=iOS
-          - sdk: iphonesimulator
-            platform: iOS
-            destination: generic/platform=iOS
     runs-on: macos-latest
     permissions:
       contents: read
@@ -36,7 +33,7 @@ jobs:
       run:
         working-directory: ./swift
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
