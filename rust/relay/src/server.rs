@@ -17,7 +17,7 @@ use crate::{IpStack, TimeEvents};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
-use opentelemetry::metrics::{Counter, Meter, Unit, UpDownCounter};
+use opentelemetry::metrics::{Counter, Unit, UpDownCounter};
 use opentelemetry::{Context, KeyValue};
 use rand::Rng;
 use std::collections::{HashMap, VecDeque};
@@ -154,11 +154,12 @@ where
     pub fn new(
         public_address: impl Into<IpStack>,
         mut rng: R,
-        meter: &Meter,
         lowest_port: u16,
         highest_port: u16,
     ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
+
+        let meter = opentelemetry_api::global::meter("relay");
 
         let allocations_up_down_counter = meter
             .i64_up_down_counter("allocations_total")

@@ -1,6 +1,4 @@
 use bytecodec::{DecodeExt, EncodeExt};
-use opentelemetry::metrics::noop::NoopMeterProvider;
-use opentelemetry::metrics::MeterProvider as _;
 use rand::rngs::mock::StepRng;
 use relay::{
     AddressFamily, Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData,
@@ -428,13 +426,7 @@ struct TestServer {
 impl TestServer {
     fn new(relay_public_addr: impl Into<IpStack>) -> Self {
         Self {
-            server: Server::new(
-                relay_public_addr,
-                StepRng::new(0, 0),
-                &NoopMeterProvider::default().meter("relay"),
-                49152,
-                65535,
-            ),
+            server: Server::new(relay_public_addr, StepRng::new(0, 0), 49152, 65535),
             id_to_port: Default::default(),
         }
     }

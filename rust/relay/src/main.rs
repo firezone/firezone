@@ -2,10 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
-use opentelemetry::metrics::noop::NoopMeterProvider;
-use opentelemetry::metrics::{Meter, MeterProvider as _};
 use opentelemetry::sdk::export::metrics;
-use opentelemetry::sdk::metrics::controllers::BasicController;
 use opentelemetry_otlp::WithExportConfig;
 use phoenix_channel::{Error, Event, PhoenixChannel};
 use rand::rngs::StdRng;
@@ -21,13 +18,10 @@ use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::task::Poll;
 use std::time::SystemTime;
-use tracing::level_filters::LevelFilter;
-use tracing::Subscriber;
+use tracing::{level_filters::LevelFilter, Subscriber};
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{EnvFilter, Layer};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 use url::Url;
 
 #[derive(Parser, Debug)]
@@ -93,11 +87,7 @@ enum LogFormat {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let controller = setup_tracing(&args).await?;
-
-    let meter = controller
-        .map(|c| c.meter("relay"))
-        .unwrap_or_else(|| NoopMeterProvider::new().meter("relay"));
+    setup_tracing(&args).await?;
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
@@ -111,7 +101,6 @@ async fn main() -> Result<()> {
     let server = Server::new(
         public_addr,
         make_rng(args.rng_seed),
-        &meter,
         args.lowest_port,
         args.highest_port,
     );
@@ -176,7 +165,7 @@ async fn main() -> Result<()> {
         None
     };
 
-    let mut eventloop = Eventloop::new(server, channel, public_addr, &meter)?;
+    let mut eventloop = Eventloop::new(server, channel, public_addr)?;
 
     tokio::spawn(relay::health_check::serve(args.health_check_addr));
 
@@ -196,18 +185,15 @@ async fn main() -> Result<()> {
 /// ## Integration with OTLP
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
-async fn setup_tracing(args: &Args) -> Result<Option<BasicController>> {
+async fn setup_tracing(args: &Args) -> Result<()> {
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
         &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
 
-    let (dispatch, controller): (Dispatch, _) = match args.otlp_grpc_endpoint {
-        None => (
-            tracing_subscriber::registry().with(log_layer(args)).into(),
-            None,
-        ),
+    let dispatch: Dispatch = match args.otlp_grpc_endpoint {
+        None => tracing_subscriber::registry().with(log_layer(args)).into(),
         Some(endpoint) => {
             let grpc_endpoint = format!("http://{endpoint}");
 
@@ -229,29 +215,22 @@ async fn setup_tracing(args: &Args) -> Result<Option<BasicController>> {
                 .tonic()
                 .with_endpoint(grpc_endpoint);
 
-            let controller = opentelemetry_otlp::new_pipeline()
+            opentelemetry_otlp::new_pipeline()
                 .metrics(
                     opentelemetry::sdk::metrics::selectors::simple::inexpensive(),
-                    metrics::aggregation::stateless_temporality_selector(),
+                    metrics::aggregation::cumulative_temporality_selector(),
                     opentelemetry::runtime::Tokio,
                 )
                 .with_exporter(exporter)
                 .build()
                 .context("Failed to create OTLP metrics pipeline")?;
 
-            controller
-                .start(
-                    &opentelemetry::Context::current(),
-                    opentelemetry::runtime::Tokio,
-                )
-                .context("Failed to start OTLP metrics controller")?;
+            tracing::trace!("Successfully initialized metric controller on tokio runtime");
 
-            let dispatch = tracing_subscriber::registry()
+            tracing_subscriber::registry()
                 .with(log_layer(args))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer))
-                .into();
-
-            (dispatch, Some(controller))
+                .into()
         }
     };
 
@@ -261,7 +240,7 @@ async fn setup_tracing(args: &Args) -> Result<Option<BasicController>> {
         .try_init()
         .context("Failed to initialize tracing")?;
 
-    Ok(controller)
+    Ok(())
 }
 
 /// Constructs the base log layer.
@@ -346,7 +325,6 @@ where
         server: Server<R>,
         channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
         public_address: IpStack,
-        _: &Meter,
     ) -> Result<Self> {
         let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);
         let (inbound_data_sender, inbound_data_receiver) = mpsc::channel(10);

@@ -2798,6 +2798,7 @@ dependencies = [
  "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
+ "opentelemetry_api",
  "phoenix-channel",
  "proptest",
  "rand",
