@@ -2376,6 +2376,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "opentelemetry-otlp"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8af72d59a4484654ea8eb183fea5ae4eb6a41d7ac3e3bae5f4d2a282a3a7d3ca"
+dependencies = [
+ "async-trait",
+ "futures",
+ "futures-util",
+ "http",
+ "opentelemetry",
+ "opentelemetry-proto",
+ "prost",
+ "thiserror",
+ "tokio",
+ "tonic",
+]
+
+[[package]]
+name = "opentelemetry-proto"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "045f8eea8c0fa19f7d48e7bc3128a39c2e5c533d5c61298c548dfefc1064474c"
+dependencies = [
+ "futures",
+ "futures-util",
+ "opentelemetry",
+ "prost",
+ "tonic",
+]
+
+[[package]]
 name = "opentelemetry-semantic-conventions"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2935,6 +2966,7 @@ dependencies = [
  "hex-literal",
  "once_cell",
  "opentelemetry",
+ "opentelemetry-otlp",
  "opentelemetry-stackdriver",
  "phoenix-channel",
  "prometheus-client",
@@ -2948,6 +2980,7 @@ dependencies = [
  "test-strategy",
  "tokio",
  "tracing",
+ "tracing-core",
  "tracing-opentelemetry",
  "tracing-stackdriver",
  "tracing-subscriber",
