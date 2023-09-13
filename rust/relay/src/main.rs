@@ -36,7 +36,7 @@ struct Args {
     public_ip6_addr: Option<Ipv6Addr>,
     /// The address of the local interface where we should serve our health-check endpoint.
     ///
-    /// The actual health-check endpoint will be at `http://<health_check_addr>/health`.
+    /// The actual health-check endpoint will be at `http://<health_check_addr>/healthz`.
     #[arg(long, env, default_value = "0.0.0.0:8080")]
     health_check_addr: SocketAddr,
     // See https://www.rfc-editor.org/rfc/rfc8656.html#name-allocations

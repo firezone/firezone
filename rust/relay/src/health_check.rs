@@ -7,7 +7,7 @@ pub async fn serve(addr: impl Into<SocketAddr>) -> Result<()> {
     let addr = addr.into();
 
     let service = Router::new()
-        .route("/health", get(|| async { "" }))
+        .route("/healthz", get(|| async { "" }))
         .into_make_service();
 
     Server::try_bind(&addr)?.serve(service).await?;
