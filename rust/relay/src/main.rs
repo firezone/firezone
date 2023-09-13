@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
+use opentelemetry::{sdk, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use phoenix_channel::{Error, Event, PhoenixChannel};
 use prometheus_client::registry::Registry;
@@ -219,11 +220,15 @@ async fn setup_tracing(args: &Args) -> Result<()> {
                 .tonic()
                 .with_endpoint(grpc_endpoint);
 
-            let tracer = opentelemetry_otlp::new_pipeline()
-                .tracing()
-                .with_exporter(exporter)
-                .install_batch(opentelemetry::runtime::Tokio)
-                .context("Failed to create OTLP pipeline")?;
+            let tracer =
+                opentelemetry_otlp::new_pipeline()
+                    .tracing()
+                    .with_exporter(exporter)
+                    .with_trace_config(sdk::trace::Config::default().with_resource(
+                        sdk::Resource::new(vec![KeyValue::new("service.name", "relay")]),
+                    ))
+                    .install_batch(opentelemetry::runtime::Tokio)
+                    .context("Failed to create OTLP pipeline")?;
 
             tracing::trace!("Successfully initialized trace provider on tokio runtime");
 
@@ -365,6 +370,9 @@ where
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
+        let span = tracing::error_span!("Eventloop::poll");
+        let _guard = span.enter();
+
         loop {
             let now = SystemTime::now();
 
@@ -372,6 +380,9 @@ where
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
                     Command::SendMessage { payload, recipient } => {
+                        let span = tracing::error_span!("Command::SendMessage");
+                        let _guard = span.enter();
+
                         let sender = match recipient.family() {
                             AddressFamily::V4 => &mut self.outbound_ip4_data_sender,
                             AddressFamily::V6 => &mut self.outbound_ip6_data_sender,
@@ -390,12 +401,19 @@ where
                         }
                     }
                     Command::CreateAllocation { id, family, port } => {
+                        let span =
+                            tracing::error_span!("Command::CreateAllocation", %id, %family, %port);
+                        let _guard = span.enter();
+
                         self.allocations.insert(
                             (id, family),
                             Allocation::new(self.relay_data_sender.clone(), id, family, port),
                         );
                     }
                     Command::FreeAllocation { id, family } => {
+                        let span = tracing::error_span!("Command::FreeAllocation", %id, %family);
+                        let _guard = span.enter();
+
                         if self.allocations.remove(&(id, family)).is_none() {
                             tracing::debug!("Unknown allocation {id}");
                             continue;
@@ -404,6 +422,9 @@ where
                         tracing::info!("Freeing addresses of allocation {id}");
                     }
                     Command::Wake { deadline } => {
+                        let span = tracing::error_span!("Command::Wake", ?deadline);
+                        let _guard = span.enter();
+
                         match deadline.duration_since(now) {
                             Ok(duration) => {
                                 tracing::trace!(?duration, "Suspending event loop")
@@ -421,6 +442,9 @@ where
                         Pin::new(&mut self.sleep).reset(deadline);
                     }
                     Command::ForwardData { id, data, receiver } => {
+                        let span = tracing::error_span!("Command::ForwardData", %id, %receiver);
+                        let _guard = span.enter();
+
                         let mut allocation = match self.allocations.entry((id, receiver.family())) {
                             Entry::Occupied(entry) => entry,
                             Entry::Vacant(_) => {
