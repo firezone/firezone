@@ -2,6 +2,10 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
+use opentelemetry::metrics::noop::NoopMeterProvider;
+use opentelemetry::metrics::{Meter, MeterProvider as _};
+use opentelemetry::sdk::export::metrics;
+use opentelemetry::sdk::metrics::controllers::BasicController;
 use opentelemetry_otlp::WithExportConfig;
 use phoenix_channel::{Error, Event, PhoenixChannel};
 use rand::rngs::StdRng;
@@ -64,22 +68,18 @@ struct Args {
     #[arg(long, env, default_value = "human")]
     log_format: LogFormat,
 
-    /// Where to send trace data to.
-    #[arg(long, env)]
-    trace_collector: Option<TraceCollector>,
-
     /// Which OTLP collector we should connect to.
     ///
-    /// This setting only has an effect if `TRACE_COLLECTOR` is set to `otlp`.
-    #[arg(long, env, default_value = "127.0.0.1:4317")]
-    otlp_grpc_endpoint: SocketAddr,
+    /// If set, we will report traces and metrics to this collector via gRPC.
+    #[arg(long, env)]
+    otlp_grpc_endpoint: Option<SocketAddr>,
 
     /// The Google Project ID to embed in spans.
     ///
     /// Set this if you are running on Google Cloud but using the OTLP trace collector.
     /// OTLP is vendor-agnostic but for spans to be correctly recognised by Google Cloud, they need the project ID to be set.
     #[arg(long, env)]
-    metrics_receiver: Option<MetricsReceiver>,
+    google_cloud_project_id: Option<String>,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -89,32 +89,16 @@ enum LogFormat {
     GoogleCloud,
 }
 
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
-enum TraceReceiver {
-    /// Sends traces to Google Cloud Trace.
-    GoogleCloudTrace,
-    // TODO: Extend with OTLP receiver
-}
-
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
-enum MetricsReceiver {
-    /// Sends metrics to Google Cloud Metrics.
-    GoogleCloudMetrics,
-    // TODO: Extend with OTLP receiver
-}
-
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
-enum TraceCollector {
-    /// Sends traces to an OTLP collector.
-    Otlp,
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let root_span = setup_tracing(&args).await?;
+    let (root_span, controller) = setup_tracing(&args).await?;
     let _guard = root_span.enter();
+
+    let meter = controller
+        .map(|c| c.meter("relay"))
+        .unwrap_or_else(|| NoopMeterProvider::new().meter("relay"));
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
@@ -213,38 +197,62 @@ async fn main() -> Result<()> {
 /// ## Integration with OTLP
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
-async fn setup_tracing(args: &Args) -> Result<Span> {
+async fn setup_tracing(args: &Args) -> Result<(Span, Option<BasicController>)> {
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
         &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
 
-    let dispatch: Dispatch = match args.trace_collector {
-        None => tracing_subscriber::registry().with(log_layer(args)).into(),
-        Some(TraceCollector::Otlp) => {
-            let grpc_endpoint = format!("http://{}", args.otlp_grpc_endpoint);
+    let (dispatch, controller): (Dispatch, _) = match args.otlp_grpc_endpoint {
+        None => (
+            tracing_subscriber::registry().with(log_layer(args)).into(),
+            None,
+        ),
+        Some(endpoint) => {
+            let grpc_endpoint = format!("http://{endpoint}");
 
             tracing::trace!(%grpc_endpoint, "Setting up OTLP exporter for collector");
 
             let exporter = opentelemetry_otlp::new_exporter()
                 .tonic()
-                .with_endpoint(grpc_endpoint);
+                .with_endpoint(grpc_endpoint.clone());
 
             let tracer = opentelemetry_otlp::new_pipeline()
                 .tracing()
                 .with_exporter(exporter)
                 .install_batch(opentelemetry::runtime::Tokio)
-                .context("Failed to create OTLP pipeline")?;
+                .context("Failed to create OTLP trace pipeline")?;
 
             tracing::trace!("Successfully initialized trace provider on tokio runtime");
 
-            // TODO: This is where we could also configure metrics.
+            let exporter = opentelemetry_otlp::new_exporter()
+                .tonic()
+                .with_endpoint(grpc_endpoint);
 
-            tracing_subscriber::registry()
+            let controller = opentelemetry_otlp::new_pipeline()
+                .metrics(
+                    opentelemetry::sdk::metrics::selectors::simple::inexpensive(),
+                    metrics::aggregation::stateless_temporality_selector(),
+                    opentelemetry::runtime::Tokio,
+                )
+                .with_exporter(exporter)
+                .build()
+                .context("Failed to create OTLP metrics pipeline")?;
+
+            controller
+                .start(
+                    &opentelemetry::Context::current(),
+                    opentelemetry::runtime::Tokio,
+                )
+                .context("Failed to start OTLP metrics controller")?;
+
+            let dispatch = tracing_subscriber::registry()
                 .with(log_layer(args))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer))
-                .into()
+                .into();
+
+            (dispatch, Some(controller))
         }
     };
 
@@ -255,13 +263,13 @@ async fn setup_tracing(args: &Args) -> Result<Span> {
         .context("Failed to initialize tracing")?;
 
     // If we have a trace collector, we must define a root span, otherwise traces will not be sampled, i.e. discarded.
-    let root_span = if args.trace_collector.is_some() {
+    let root_span = if args.otlp_grpc_endpoint.is_some() {
         tracing::error_span!("root")
     } else {
         Span::none()
     };
 
-    Ok(root_span)
+    Ok((root_span, controller))
 }
 
 /// Constructs the base log layer.

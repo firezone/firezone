@@ -18,7 +18,7 @@ use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
 use opentelemetry::metrics::{Counter, Meter, Unit, UpDownCounter};
-use opentelemetry::KeyValue;
+use opentelemetry::{Context, KeyValue};
 use rand::Rng;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
@@ -351,7 +351,8 @@ where
 
         tracing::debug!(target: "relay", "Relaying {} bytes", bytes.len());
 
-        self.data_relayed_counter.add(bytes.len() as u64, &[]);
+        self.data_relayed_counter
+            .add(&Context::current(), bytes.len() as u64, &[]);
 
         let data = ChannelData::new(*channel_number, bytes).to_bytes();
 
@@ -529,7 +530,8 @@ where
 
         self.clients_by_allocation.insert(allocation.id, sender);
         self.allocations.insert(sender, allocation);
-        self.allocations_up_down_counter.add(1, &[]);
+        self.allocations_up_down_counter
+            .add(&Context::current(), 1, &[]);
 
         Ok(())
     }
@@ -717,7 +719,8 @@ where
 
         tracing::debug!(target: "relay", "Relaying {} bytes", data.len());
 
-        self.data_relayed_counter.add(data.len() as u64, &[]);
+        self.data_relayed_counter
+            .add(&Context::current(), data.len() as u64, &[]);
 
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(data);
@@ -857,6 +860,7 @@ where
             _ => return,
         };
         self.responses_counter.add(
+            &Context::current(),
             1,
             &[
                 KeyValue::new("response_class", response_class),
@@ -884,7 +888,8 @@ where
 
         self.allocations_by_port.remove(&port);
 
-        self.allocations_up_down_counter.add(-1, &[]);
+        self.allocations_up_down_counter
+            .add(&Context::current(), -1, &[]);
         self.pending_commands.push_back(Command::FreeAllocation {
             id,
             family: allocation.first_relay_addr.family(),
