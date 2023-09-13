@@ -31,6 +31,10 @@ locals {
       value = "otlp"
     },
     {
+      name  = "GOOGLE_CLOUD_PROJECT_ID"
+      value = var.project_id
+    },
+    {
       name  = "METRICS_ADDR"
       value = "0.0.0.0:8080"
     },
