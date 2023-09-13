@@ -28,6 +28,14 @@ locals {
     {
       name  = "LOG_LEVEL"
       value = var.observability_log_level
+    },
+    {
+      name  = "OTLP_ENDPOINT",
+      value = "http://127.0.0.1:4318"
+    },
+    {
+      name  = "OTEL_RESOURCE_ATTRIBUTES"
+      value = "application.name=${local.application_name}"
     }
   ], var.application_environment_variables)
 
@@ -114,6 +122,10 @@ resource "google_project_iam_member" "cloudtrace" {
 }
 
 # Deploy the app
+data "template_file" "clout-init" {
+  template = file("${path.module}/templates/cloud-init.yaml")
+}
+
 resource "google_compute_instance_template" "application" {
   project = var.project_id
 
@@ -175,7 +187,7 @@ resource "google_compute_instance_template" "application" {
     enable_vtpm                 = true
   }
 
-  metadata = merge({
+  metadata = {
     gce-container-declaration = yamlencode({
       spec = {
         containers = [{
@@ -190,6 +202,8 @@ resource "google_compute_instance_template" "application" {
       }
     })
 
+    user-data = data.template_file.clout-init.rendered
+
     google-logging-enabled = "true"
     # Enable FluentBit agent for logging, which will be default one from COS 109
     # Re-enable once https://issuetracker.google.com/issues/285950891 is closed
@@ -197,7 +211,7 @@ resource "google_compute_instance_template" "application" {
 
     # Report health-related metrics to Cloud Monitoring
     google-monitoring-enabled = "true"
-  })
+  }
 
   depends_on = [
     google_project_service.compute,

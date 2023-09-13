@@ -314,4 +314,22 @@ defmodule Web.TableComponents do
     </tr>
     """
   end
+
+  @doc ~S"""
+  This component is meant to be used with the table component.  It renders a
+  <.link> component that has a specific style for actions in a table.
+  """
+  attr :navigate, :string, required: true
+  slot :inner_block
+
+  def action_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+    >
+      <%= render_slot(@inner_block) %>
+    </.link>
+    """
+  end
 end

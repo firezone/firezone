@@ -21,9 +21,7 @@ defmodule Web.Policies.Index do
         All Policies
       </:title>
       <:actions>
-        <.add_button navigate={~p"/#{@account}/policies/new"}>
-          Add a new Policy
-        </.add_button>
+        <.add_button navigate={~p"/#{@account}/policies/new"}>Add Policy</.add_button>
       </:actions>
     </.header>
     <!-- Policies table -->
@@ -51,13 +49,19 @@ defmodule Web.Policies.Index do
             <%= policy.resource.name %>
           </.link>
         </:col>
-        <:action>
-          <a
-            href="#"
-            class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+        <:action :let={policy}>
+          <.action_link navigate={~p"/#{@account}/policies/#{policy}/edit"}>
+            Edit
+          </.action_link>
+        </:action>
+        <:action :let={policy}>
+          <div
+            phx-click="delete"
+            phx-value-id={policy.id}
+            class="block py-2 px-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
           >
             Delete
-          </a>
+          </div>
         </:action>
       </.table>
       <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/gateway_groups"} />
@@ -87,5 +91,11 @@ defmodule Web.Policies.Index do
       </div>
     </div>
     """
+  end
+
+  def handle_event("delete", %{"id" => id}, socket) do
+    {:ok, policy} = Policies.fetch_policy_by_id(id, socket.assigns.subject)
+    {:ok, _} = Policies.delete_policy(policy, socket.assigns.subject)
+    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies")}
   end
 end

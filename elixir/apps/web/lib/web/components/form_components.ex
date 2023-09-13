@@ -365,11 +365,12 @@ defmodule Web.FormComponents do
 
   def delete_button(assigns) do
     ~H"""
-    <button
-      type="button"
-      class="text-red-600 inline-flex items-center hover:text-white border border-red-600 hover:bg-red-600 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:border-red-500 dark:text-red-500 dark:hover:text-white dark:hover:bg-red-600 dark:focus:ring-red-900"
-      {@rest}
-    >
+    <button type="button" class={~w[
+        text-red-600 inline-flex items-center hover:text-white border border-red-600 hover:bg-red-600
+        focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5
+        text-center dark:border-red-500 dark:text-red-500 dark:hover:text-white dark:hover:bg-red-600
+        dark:focus:ring-red-900
+      ]} {@rest}>
       <!-- XXX: Fix icon for dark mode -->
       <!-- <.icon name="hero-trash-solid" class="text-red-600 w-5 h-5 mr-1 -ml-1" /> -->
       <%= render_slot(@inner_block) %>

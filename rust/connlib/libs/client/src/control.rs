@@ -111,7 +111,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     ) {
         if let Err(e) = self
             .tunnel
-            .recieved_offer_response(
+            .received_offer_response(
                 resource_id,
                 gateway_rtc_session_description,
                 gateway_public_key.0.into(),

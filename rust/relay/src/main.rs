@@ -2,9 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
-use opentelemetry::sdk::trace::TracerProvider;
-use opentelemetry::trace::TracerProvider as _;
-use opentelemetry_stackdriver::Authorizer;
+use opentelemetry_otlp::WithExportConfig;
 use phoenix_channel::{Error, Event, PhoenixChannel};
 use prometheus_client::registry::Registry;
 use rand::rngs::StdRng;
@@ -22,6 +20,7 @@ use std::task::Poll;
 use std::time::SystemTime;
 use tracing::level_filters::LevelFilter;
 use tracing::Subscriber;
+use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -68,6 +67,19 @@ struct Args {
     /// Where to send trace data to.
     #[arg(long, env)]
     trace_collector: Option<TraceCollector>,
+
+    /// Which OTLP collector we should connect to.
+    ///
+    /// This setting only has an effect if `TRACE_COLLECTOR` is set to `otlp`.
+    #[arg(long, env, default_value = "127.0.0.1:4317")]
+    otlp_grpc_endpoint: SocketAddr,
+
+    /// The Google Project ID to embed in spans.
+    ///
+    /// Set this if you are running on Google Cloud but using the OTLP trace collector.
+    /// OTLP is vendor-agnostic but for spans to be correctly recognised by Google Cloud, they need the project ID to be set.
+    #[arg(long, env)]
+    google_cloud_project_id: Option<String>,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -79,9 +91,8 @@ enum LogFormat {
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
 enum TraceCollector {
-    /// Sends traces to Google Cloud Trace.
-    GoogleCloudTrace,
-    // TODO: Extend with OTLP receiver
+    /// Sends traces to an OTLP collector.
+    Otlp,
 }
 
 #[tokio::main]
@@ -89,10 +100,6 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     setup_tracing(&args).await?;
-
-    // Must create a root span for traces to be sampled.
-    let root = tracing::error_span!("root");
-    let _root = root.enter();
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
@@ -191,43 +198,49 @@ async fn main() -> Result<()> {
 ///
 /// See [`log_layer`] for details on the base log layer.
 ///
-/// If the user has specified [`TraceCollector::GoogleCloudTrace`], we will attempt to connec to Google Cloud Trace.
-/// This requires authentication.
-/// Here is how we will attempt to obtain those, for details see <https://docs.rs/gcp_auth/0.9.0/gcp_auth/struct.AuthenticationManager.html#method.new>.
+/// ## Integration with OTLP
 ///
-/// 1. Check if the `GOOGLE_APPLICATION_CREDENTIALS` environment variable if set; if so, use a custom service account as the token source.
-/// 2. Look for credentials in `.config/gcloud/application_default_credentials.json`; if found, use these credentials to request refresh tokens.
-/// 3. Send a HTTP request to the internal metadata server to retrieve a token; if it succeeds, use the default service account as the token source.
-/// 4. Check if the `gcloud` tool is available on the PATH; if so, use the `gcloud auth print-access-token` command as the token source.
+/// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
 async fn setup_tracing(args: &Args) -> Result<()> {
-    let registry = tracing_subscriber::registry();
+    // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
+    // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
+    let temp_logger_guard = tracing_core::dispatcher::set_default(
+        &tracing_subscriber::registry().with(log_layer(args)).into(),
+    );
 
-    match args.trace_collector {
-        None => registry.with(log_layer(args, None)).try_init(),
-        Some(TraceCollector::GoogleCloudTrace) => {
-            let authorizer = opentelemetry_stackdriver::GcpAuthorizer::new()
-                .await
-                .context("Failed to find GCP credentials")?;
+    let dispatch: Dispatch = match args.trace_collector {
+        None => tracing_subscriber::registry().with(log_layer(args)).into(),
+        Some(TraceCollector::Otlp) => {
+            let grpc_endpoint = format!("http://{}", args.otlp_grpc_endpoint);
 
-            let project_id = authorizer.project_id().to_owned();
+            tracing::trace!(%grpc_endpoint, "Setting up OTLP exporter for collector");
 
-            let (exporter, driver) = opentelemetry_stackdriver::Builder::default()
-                .build(authorizer)
-                .await?;
-            tokio::spawn(driver);
+            let exporter = opentelemetry_otlp::new_exporter()
+                .tonic()
+                .with_endpoint(grpc_endpoint);
 
-            let tracer = TracerProvider::builder()
-                .with_batch_exporter(exporter, opentelemetry::runtime::Tokio)
-                .build()
-                .tracer("relay");
+            let tracer = opentelemetry_otlp::new_pipeline()
+                .tracing()
+                .with_exporter(exporter)
+                .install_batch(opentelemetry::runtime::Tokio)
+                .context("Failed to create OTLP pipeline")?;
 
-            registry
-                .with(log_layer(args, Some(project_id)))
+            tracing::trace!("Successfully initialized trace provider on tokio runtime");
+
+            // TODO: This is where we could also configure metrics.
+
+            tracing_subscriber::registry()
+                .with(log_layer(args))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer))
-                .try_init()
+                .into()
         }
-    }
-    .context("Failed to init tracing")?;
+    };
+
+    drop(temp_logger_guard); // Drop as late as possible
+
+    dispatch
+        .try_init()
+        .context("Failed to initialize tracing")?;
 
     Ok(())
 }
@@ -239,10 +252,7 @@ async fn setup_tracing(args: &Args) -> Result<()> {
 /// - human-centered formatting
 /// - JSON-formatting
 /// - Google Cloud optimised formatting
-fn log_layer<T>(
-    args: &Args,
-    google_cloud_trace_project_id: Option<String>,
-) -> Box<dyn Layer<T> + Send + Sync>
+fn log_layer<T>(args: &Args) -> Box<dyn Layer<T> + Send + Sync>
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
@@ -250,10 +260,14 @@ where
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy();
 
-    let log_layer = match (args.log_format, google_cloud_trace_project_id) {
+    let log_layer = match (args.log_format, args.google_cloud_project_id.clone()) {
         (LogFormat::Human, _) => tracing_subscriber::fmt::layer().boxed(),
         (LogFormat::Json, _) => tracing_subscriber::fmt::layer().json().boxed(),
-        (LogFormat::GoogleCloud, None) => tracing_stackdriver::layer().boxed(),
+        (LogFormat::GoogleCloud, None) => {
+            tracing::warn!("Emitting logs in Google Cloud format but without the project ID set. Spans will be emitted without IDs!");
+
+            tracing_stackdriver::layer().boxed()
+        }
         (LogFormat::GoogleCloud, Some(project_id)) => tracing_stackdriver::layer()
             .with_cloud_trace(CloudTraceConfiguration { project_id })
             .boxed(),
@@ -352,6 +366,8 @@ where
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
         loop {
+            let now = SystemTime::now();
+
             // Priority 1: Execute the pending commands of the server.
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
@@ -388,6 +404,20 @@ where
                         tracing::info!("Freeing addresses of allocation {id}");
                     }
                     Command::Wake { deadline } => {
+                        match deadline.duration_since(now) {
+                            Ok(duration) => {
+                                tracing::trace!(?duration, "Suspending event loop")
+                            }
+                            Err(e) => {
+                                let difference = e.duration();
+
+                                tracing::warn!(
+                                    ?difference,
+                                    "Wake time is already in the past, waking now"
+                                )
+                            }
+                        }
+
                         Pin::new(&mut self.sleep).reset(deadline);
                     }
                     Command::ForwardData { id, data, receiver } => {
@@ -411,7 +441,7 @@ where
 
             // Priority 2: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
-                self.server.handle_deadline_reached(SystemTime::now());
+                self.server.handle_deadline_reached(now);
                 continue; // Handle potentially new commands.
             }
 
@@ -427,8 +457,7 @@ where
             if let Poll::Ready(Some((buffer, sender))) =
                 self.inbound_data_receiver.poll_next_unpin(cx)
             {
-                self.server
-                    .handle_client_input(&buffer, sender, SystemTime::now());
+                self.server.handle_client_input(&buffer, sender, now);
                 continue; // Handle potentially new commands.
             }
 

@@ -121,11 +121,15 @@ if config_env() == :prod do
   ###############################
 
   if System.get_env("OTLP_ENDPOINT") do
+    config :opentelemetry, resource_detectors: [:otel_resource_env_var, :otel_resource_app_env]
+
     config :opentelemetry,
+      span_processor: :batch,
       traces_exporter: :otlp
 
     config :opentelemetry_exporter,
       otlp_protocol: :http_protobuf,
+      otlp_traces_protocol: :http_protobuf,
       otlp_endpoint: System.get_env("OTLP_ENDPOINT")
   end
 

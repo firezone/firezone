@@ -47,4 +47,4 @@ swift-bridge = { workspace = true }
 android_logger = "0.13"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-rtnetlink = { version = "0.12", default-features = false, features = ["tokio_socket"] }
+rtnetlink = { version = "0.13", default-features = false, features = ["tokio_socket"] }

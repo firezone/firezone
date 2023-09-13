@@ -16,17 +16,17 @@ defmodule API.Sockets do
     ]
   end
 
+  def handle_error(conn, :invalid_token),
+    do: Plug.Conn.send_resp(conn, 401, "Invalid token")
+
   def handle_error(conn, :unauthenticated),
     do: Plug.Conn.send_resp(conn, 403, "Forbidden")
 
-  def handle_error(conn, :invalid_token),
-    do: Plug.Conn.send_resp(conn, 422, "Unprocessable Entity")
+  def handle_error(conn, %Ecto.Changeset{}),
+    do: Plug.Conn.send_resp(conn, 422, "Invalid or missing connection parameters")
 
   def handle_error(conn, :rate_limit),
     do: Plug.Conn.send_resp(conn, 429, "Too many requests")
-
-  def handle_error(conn, %Ecto.Changeset{}),
-    do: Plug.Conn.send_resp(conn, 422, "Invalid or missing connection parameters")
 
   def real_ip(x_headers, peer_data) do
     real_ip =

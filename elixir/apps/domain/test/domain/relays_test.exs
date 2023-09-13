@@ -630,7 +630,7 @@ defmodule Domain.RelaysTest do
       assert Repo.one(Relays.Relay)
     end
 
-    test "updates relay when it already exists", %{
+    test "updates ipv4 relay when it already exists", %{
       token: token
     } do
       relay = Fixtures.Relays.create_relay(token: token)
@@ -659,6 +659,40 @@ defmodule Domain.RelaysTest do
       assert updated_relay.ipv4 == relay.ipv4
       assert updated_relay.ipv6.address == attrs.ipv6
       assert updated_relay.ipv6 != relay.ipv6
+      assert updated_relay.port == 3478
+
+      assert Repo.aggregate(Domain.Network.Address, :count) == 0
+    end
+
+    test "updates ipv6 relay when it already exists", %{
+      token: token
+    } do
+      relay = Fixtures.Relays.create_relay(ipv4: nil, token: token)
+
+      attrs =
+        Fixtures.Relays.relay_attrs(
+          ipv4: nil,
+          ipv6: relay.ipv6,
+          last_seen_remote_ip: relay.ipv6,
+          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+        )
+
+      assert {:ok, updated_relay} = upsert_relay(token, attrs)
+
+      assert Repo.aggregate(Relays.Relay, :count, :id) == 1
+
+      assert updated_relay.last_seen_remote_ip.address == attrs.last_seen_remote_ip.address
+      assert updated_relay.last_seen_user_agent == attrs.last_seen_user_agent
+      assert updated_relay.last_seen_user_agent != relay.last_seen_user_agent
+      assert updated_relay.last_seen_version == "0.7.411"
+      assert updated_relay.last_seen_at
+      assert updated_relay.last_seen_at != relay.last_seen_at
+
+      assert updated_relay.token_id == token.id
+      assert updated_relay.group_id == token.group_id
+
+      assert updated_relay.ipv4 == nil
+      assert updated_relay.ipv6.address == attrs.ipv6.address
       assert updated_relay.port == 3478
 
       assert Repo.aggregate(Domain.Network.Address, :count) == 0
