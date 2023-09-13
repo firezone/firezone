@@ -273,7 +273,7 @@ impl IfaceConfig {
     }
 
     pub async fn up(&mut self) -> Result<()> {
-        tracing::debug!("`up` unimplemented on darwin");
+        tracing::debug!("`up` unimplemented");
         Ok(())
     }
 }

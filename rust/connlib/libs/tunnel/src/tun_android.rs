@@ -156,7 +156,7 @@ impl IfaceConfig {
     }
 
     pub async fn up(&mut self) -> Result<()> {
-        tracing::debug!("`up` unimplemented on Android");
+        tracing::debug!("`up` unimplemented");
         Ok(())
     }
 }

@@ -58,8 +58,7 @@ pub struct Session<T, U, V, R, M, CB: Callbacks> {
     runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
     // The guard must not be dropped before the runtime is dropped, otherwise logs won't get
     // flushed to the logfile.
-    #[allow(dead_code)]
-    logging_guard: Option<WorkerGuard>,
+    _logging_guard: Option<WorkerGuard>,
     callbacks: CallbackErrorFacade<CB>,
     _phantom: PhantomData<(T, U, V, R, M)>,
 }
@@ -380,16 +379,6 @@ where
     /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
     pub fn disconnect(&mut self, error: Option<Error>) {
         Self::disconnect_inner(self.runtime_stopper.clone(), &self.callbacks, error)
-    }
-
-    // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#L177
-    pub fn bump_sockets(&self) {
-        tracing::error!("`bump_sockets` is unimplemented");
-    }
-
-    // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
-    pub fn disable_some_roaming_for_broken_mobile_semantics(&self) {
-        tracing::error!("`disable_some_roaming_for_broken_mobile_semantics` is unimplemented");
     }
 }
 
