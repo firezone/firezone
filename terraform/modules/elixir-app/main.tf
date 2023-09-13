@@ -28,6 +28,10 @@ locals {
     {
       name  = "LOG_LEVEL"
       value = var.observability_log_level
+    },
+    {
+      name  = "OTLP_ENDPOINT",
+      value = "127.0.0.1:4317"
     }
   ], var.application_environment_variables)
 
