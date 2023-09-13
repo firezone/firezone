@@ -28,7 +28,7 @@ locals {
     },
     {
       name  = "TRACE_COLLECTOR"
-      value = "google-cloud-trace"
+      value = "otlp"
     },
     {
       name  = "METRICS_ADDR"
