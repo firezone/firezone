@@ -219,8 +219,6 @@ impl IfaceDevice {
             return Err(get_last_error());
         }
 
-        let mtu = unsafe { ifr.ifr_ifru.ifru_mtu };
-
         Ok(unsafe { ifr.ifr_ifru.ifru_mtu } as _)
     }
 
