@@ -20,7 +20,7 @@ use std::pin::Pin;
 use std::task::Poll;
 use std::time::SystemTime;
 use tracing::level_filters::LevelFilter;
-use tracing::Subscriber;
+use tracing::{Instrument, Subscriber};
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
 use tracing_subscriber::layer::SubscriberExt;
@@ -120,60 +120,15 @@ async fn main() -> Result<()> {
         args.highest_port,
     );
 
-    let channel = if let Some(token) = args.portal_token {
-        let mut url = args.portal_ws_url.clone();
-        if !url.path().is_empty() {
-            tracing::warn!("Overwriting path component of portal URL with '/relay/websocket'");
-        }
+    let channel = if let Some(token) = args.portal_token.as_ref() {
+        let url = args.portal_ws_url.clone();
+        let stamp_secret = server.auth_secret().to_string();
 
-        url.set_path("relay/websocket");
-        url.query_pairs_mut().append_pair("token", &token);
+        let span = tracing::error_span!("connect_to_portal", config_url = %url);
 
-        if let Some(public_ip4_addr) = args.public_ip4_addr {
-            url.query_pairs_mut()
-                .append_pair("ipv4", &public_ip4_addr.to_string());
-        }
-        if let Some(public_ip6_addr) = args.public_ip6_addr {
-            url.query_pairs_mut()
-                .append_pair("ipv6", &public_ip6_addr.to_string());
-        }
-
-        let mut channel = PhoenixChannel::<InboundPortalMessage, ()>::connect(
-            url,
-            format!("relay/{}", env!("CARGO_PKG_VERSION")),
-        )
-        .await
-        .context("Failed to connect to the portal")?;
-
-        tracing::info!("Connected to portal, waiting for init message",);
-
-        channel.join(
-            "relay",
-            JoinMessage {
-                stamp_secret: server.auth_secret().to_string(),
-            },
-        );
-
-        loop {
-            match future::poll_fn(|cx| channel.poll(cx))
-                .await
-                .context("portal connection failed")?
-            {
-                Event::JoinedRoom { topic } if topic == "relay" => {
-                    tracing::info!("Joined relay room on portal")
-                }
-                Event::InboundMessage {
-                    topic,
-                    msg: InboundPortalMessage::Init {},
-                } => {
-                    tracing::info!("Received init message from portal on topic {topic}, starting relay activities");
-                    break Some(channel);
-                }
-                other => {
-                    tracing::debug!("Unhandled message from portal: {other:?}");
-                }
-            }
-        }
+        connect_to_portal(&args, token, url, stamp_secret)
+            .instrument(span)
+            .await?
     } else {
         tracing::warn!("No portal token supplied, starting standalone mode");
 
@@ -279,6 +234,63 @@ where
     };
 
     log_layer.with_filter(env_filter).boxed()
+}
+
+async fn connect_to_portal(
+    args: &Args,
+    token: &str,
+    mut url: Url,
+    stamp_secret: String,
+) -> Result<Option<PhoenixChannel<InboundPortalMessage, ()>>> {
+    if !url.path().is_empty() {
+        tracing::warn!("Overwriting path component of portal URL with '/relay/websocket'");
+    }
+
+    url.set_path("relay/websocket");
+    url.query_pairs_mut().append_pair("token", token);
+
+    if let Some(public_ip4_addr) = args.public_ip4_addr {
+        url.query_pairs_mut()
+            .append_pair("ipv4", &public_ip4_addr.to_string());
+    }
+    if let Some(public_ip6_addr) = args.public_ip6_addr {
+        url.query_pairs_mut()
+            .append_pair("ipv6", &public_ip6_addr.to_string());
+    }
+
+    let mut channel = PhoenixChannel::<InboundPortalMessage, ()>::connect(
+        url,
+        format!("relay/{}", env!("CARGO_PKG_VERSION")),
+    )
+    .await
+    .context("Failed to connect to the portal")?;
+
+    tracing::info!("Connected to portal, waiting for init message",);
+
+    channel.join("relay", JoinMessage { stamp_secret });
+
+    loop {
+        match future::poll_fn(|cx| channel.poll(cx))
+            .await
+            .context("portal connection failed")?
+        {
+            Event::JoinedRoom { topic } if topic == "relay" => {
+                tracing::info!("Joined relay room on portal")
+            }
+            Event::InboundMessage {
+                topic,
+                msg: InboundPortalMessage::Init {},
+            } => {
+                tracing::info!(
+                    "Received init message from portal on topic {topic}, starting relay activities"
+                );
+                return Ok(Some(channel));
+            }
+            other => {
+                tracing::debug!("Unhandled message from portal: {other:?}");
+            }
+        }
+    }
 }
 
 #[derive(serde::Serialize, PartialEq, Debug)]
