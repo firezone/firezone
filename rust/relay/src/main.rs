@@ -23,6 +23,7 @@ use std::task::Poll;
 use std::time::SystemTime;
 use tracing::level_filters::LevelFilter;
 use tracing::{Span, Subscriber};
+use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -73,8 +74,15 @@ struct Args {
     /// Which OTLP collector we should connect to.
     ///
     /// This setting only has an effect if `TRACE_COLLECTOR` is set to `otlp`.
-    #[arg(env, default_value = "127.0.0.1:4317")]
+    #[arg(long, env, default_value = "127.0.0.1:4317")]
     otlp_grpc_endpoint: SocketAddr,
+
+    /// The Google Project ID to embed in spans.
+    ///
+    /// Set this if you are running on Google Cloud but using the OTLP trace collector.
+    /// OTLP is vendor-agnostic but for spans to be correctly recognised by Google Cloud, they need the project ID to be set.
+    #[arg(long, env)]
+    google_cloud_project_id: Option<String>,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -215,16 +223,14 @@ async fn setup_tracing(args: &Args) -> Result<Span> {
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
         &tracing_subscriber::registry()
-            .with(log_layer(args, None))
+            .with(log_layer(args, args.google_cloud_project_id.clone()))
             .into(),
     );
 
-    match args.trace_collector {
-        None => {
-            drop(temp_logger_guard);
-
-            tracing_subscriber::registry().with(log_layer(args, None)).try_init()
-        }
+    let dispatch: Dispatch = match args.trace_collector {
+        None => tracing_subscriber::registry()
+            .with(log_layer(args, args.google_cloud_project_id.clone()))
+            .into(),
         Some(TraceCollector::GoogleCloudTrace) => {
             tracing::trace!("Setting up Google-Cloud-Trace collector");
 
@@ -238,7 +244,8 @@ async fn setup_tracing(args: &Args) -> Result<Span> {
 
             let (exporter, driver) = opentelemetry_stackdriver::Builder::default()
                 .build(authorizer)
-                .await.context("Failed to create StackDriverExporter")?;
+                .await
+                .context("Failed to create StackDriverExporter")?;
             tokio::spawn(driver);
 
             let tracer = TracerProvider::builder()
@@ -248,12 +255,10 @@ async fn setup_tracing(args: &Args) -> Result<Span> {
 
             tracing::trace!("Successfully initialized trace provider on tokio runtime");
 
-            drop(temp_logger_guard);
-
             tracing_subscriber::registry()
                 .with(log_layer(args, Some(project_id)))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer))
-                .try_init()
+                .into()
         }
         Some(TraceCollector::Otlp) => {
             let grpc_endpoint = format!("http://{}", args.otlp_grpc_endpoint);
@@ -274,15 +279,18 @@ async fn setup_tracing(args: &Args) -> Result<Span> {
 
             // TODO: This is where we could also configure metrics.
 
-            drop(temp_logger_guard);
-
             tracing_subscriber::registry()
-                .with(log_layer(args, None))
+                .with(log_layer(args, args.google_cloud_project_id.clone()))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer))
-                .try_init()
+                .into()
         }
-    }
-    .context("Failed to init tracing")?;
+    };
+
+    drop(temp_logger_guard); // Drop as late as possible
+
+    dispatch
+        .try_init()
+        .context("Failed to initialize tracing")?;
 
     // If we have a trace collector, we must define a root span, otherwise traces will not be sampled, i.e. discarded.
     let root_span = if args.trace_collector.is_some() {
@@ -315,7 +323,11 @@ where
     let log_layer = match (args.log_format, google_cloud_trace_project_id) {
         (LogFormat::Human, _) => tracing_subscriber::fmt::layer().boxed(),
         (LogFormat::Json, _) => tracing_subscriber::fmt::layer().json().boxed(),
-        (LogFormat::GoogleCloud, None) => tracing_stackdriver::layer().boxed(),
+        (LogFormat::GoogleCloud, None) => {
+            tracing::warn!("Emitting logs in Google Cloud format but without the project ID set. Spans will be emitted without IDs!");
+
+            tracing_stackdriver::layer().boxed()
+        }
         (LogFormat::GoogleCloud, Some(project_id)) => tracing_stackdriver::layer()
             .with_cloud_trace(CloudTraceConfiguration { project_id })
             .boxed(),
