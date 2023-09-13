@@ -15,7 +15,6 @@ internal class PreferenceRepositoryImpl @Inject constructor(
 
     override fun getConfigSync(): Config = Config(
         accountId = sharedPreferences.getString(ACCOUNT_ID_KEY, null),
-        isConnected = sharedPreferences.getBoolean(IS_CONNECTED_KEY, false),
         token = sharedPreferences.getString(TOKEN_KEY, null),
     )
 
@@ -41,19 +40,6 @@ internal class PreferenceRepositoryImpl @Inject constructor(
         )
     }.flowOn(coroutineDispatcher)
 
-    override fun saveIsConnectedSync(value: Boolean) {
-        sharedPreferences
-            .edit()
-            .putBoolean(IS_CONNECTED_KEY, value)
-            .apply()
-    }
-
-    override fun saveIsConnected(value: Boolean): Flow<Unit> = flow {
-        emit(
-            saveIsConnectedSync(value)
-        )
-    }.flowOn(coroutineDispatcher)
-
     override fun validateCsrfToken(value: String): Flow<Boolean> = flow {
         val token = sharedPreferences.getString(CSRF_KEY, "")
         emit(token == value)
@@ -61,7 +47,6 @@ internal class PreferenceRepositoryImpl @Inject constructor(
 
     companion object {
         private const val ACCOUNT_ID_KEY = "accountId"
-        private const val IS_CONNECTED_KEY = "isConnected"
         private const val TOKEN_KEY = "token"
         private const val CSRF_KEY = "csrf"
     }

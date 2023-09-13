@@ -12,9 +12,5 @@ internal interface PreferenceRepository {
 
     fun saveToken(value: String): Flow<Unit>
 
-    fun saveIsConnectedSync(value: Boolean)
-
-    fun saveIsConnected(value: Boolean): Flow<Unit>
-
     fun validateCsrfToken(value: String): Flow<Boolean>
 }

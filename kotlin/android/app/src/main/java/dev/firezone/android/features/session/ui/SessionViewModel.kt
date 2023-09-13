@@ -9,6 +9,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.tunnel.callback.TunnelListener
 import dev.firezone.android.tunnel.TunnelManager
 import dev.firezone.android.tunnel.model.Resource
+import dev.firezone.android.tunnel.model.Tunnel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
@@ -25,39 +26,15 @@ internal class SessionViewModel @Inject constructor(
     val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
     private val tunnelListener = object: TunnelListener {
-        override fun onSetInterfaceConfig(
-            tunnelAddressIPv4: String,
-            tunnelAddressIPv6: String,
-            dnsAddress: String,
-            dnsFallbackStrategy: String
-        ) {
-            //TODO("Not yet implemented")
+        override fun onTunnelStateUpdate(state: Tunnel.State) {
+            TODO("Not yet implemented")
         }
 
-        override fun onTunnelReady(): Boolean {
-            //TODO("Not yet implemented")
-            return true
-        }
-
-        override fun onAddRoute(cidrAddress: String) {
-            //TODO("Not yet implemented")
-        }
-
-        override fun onRemoveRoute(cidrAddress: String) {
-            //TODO("Not yet implemented")
-        }
-
-        override fun onUpdateResources(resources: List<Resource>) {
-            //TODO("Not yet implemented")
+        override fun onResourcesUpdate(resources: List<Resource>) {
             Log.d("TunnelManager", "onUpdateResources: $resources")
             _uiState.value = _uiState.value.copy (
                 resources = resources
             )
-        }
-
-        override fun onDisconnect(error: String?): Boolean {
-            //TODO("Not yet implemented")
-            return true
         }
 
         override fun onError(error: String): Boolean {
