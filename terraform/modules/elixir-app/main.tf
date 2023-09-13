@@ -31,7 +31,7 @@ locals {
     },
     {
       name  = "OTLP_ENDPOINT",
-      value = "127.0.0.1:4317"
+      value = "127.0.0.1:4318"
     }
   ], var.application_environment_variables)
 

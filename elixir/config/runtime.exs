@@ -126,6 +126,7 @@ if config_env() == :prod do
 
     config :opentelemetry_exporter,
       otlp_protocol: :http_protobuf,
+      otlp_traces_protocol: :http_protobuf,
       otlp_endpoint: System.get_env("OTLP_ENDPOINT")
   end
 
