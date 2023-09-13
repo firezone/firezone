@@ -31,7 +31,11 @@ locals {
     },
     {
       name  = "OTLP_ENDPOINT",
-      value = "127.0.0.1:4317"
+      value = "http://127.0.0.1:4318"
+    },
+    {
+      name  = "OTEL_RESOURCE_ATTRIBUTES"
+      value = "application.name=${local.application_name}"
     }
   ], var.application_environment_variables)
 
