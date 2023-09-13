@@ -1,8 +1,8 @@
 defmodule Domain.Actors do
   alias Domain.Actors.Membership
-  alias Web.Devices
+  alias Web.Clients
   alias Domain.{Repo, Validator}
-  alias Domain.{Accounts, Auth, Devices}
+  alias Domain.{Accounts, Auth, Clients}
   alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
 
@@ -306,7 +306,7 @@ defmodule Domain.Actors do
         with: fn actor ->
           if actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
             :ok = Auth.delete_actor_identities(actor)
-            :ok = Devices.delete_actor_devices(actor)
+            :ok = Clients.delete_actor_clients(actor)
 
             Actor.Changeset.delete_actor(actor)
           else

@@ -1810,7 +1810,7 @@ defmodule Domain.ActorsTest do
       assert is_nil(other_actor.deleted_at)
     end
 
-    test "deletes actor identities and devices" do
+    test "deletes actor identities and clients" do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
@@ -1818,12 +1818,12 @@ defmodule Domain.ActorsTest do
 
       actor_to_delete = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       Fixtures.Auth.create_identity(account: account, actor: actor_to_delete)
-      Fixtures.Devices.create_device(account: account, actor: actor_to_delete)
+      Fixtures.Clients.create_client(account: account, actor: actor_to_delete)
 
       assert {:ok, actor} = delete_actor(actor_to_delete, subject)
       assert actor.deleted_at
 
-      assert Repo.aggregate(Domain.Devices.Device.Query.all(), :count) == 0
+      assert Repo.aggregate(Domain.Clients.Client.Query.all(), :count) == 0
       assert Repo.aggregate(Domain.Auth.Identity.Query.all(), :count) == 1
     end
 

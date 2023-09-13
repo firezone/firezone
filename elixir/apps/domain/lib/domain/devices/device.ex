@@ -1,7 +1,7 @@
-defmodule Domain.Devices.Device do
+defmodule Domain.Clients.Client do
   use Domain, :schema
 
-  schema "devices" do
+  schema "clients" do
     field :external_id, :string
 
     field :name, :string

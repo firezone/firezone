@@ -1,8 +1,8 @@
-defmodule Domain.Devices do
+defmodule Domain.Clients do
   use Supervisor
   alias Domain.{Repo, Auth, Validator}
   alias Domain.Actors
-  alias Domain.Devices.{Device, Authorizer, Presence}
+  alias Domain.Clients.{Client, Authorizer, Presence}
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -17,38 +17,38 @@ defmodule Domain.Devices do
   end
 
   def count_by_account_id(account_id) do
-    Device.Query.by_account_id(account_id)
+    Client.Query.by_account_id(account_id)
     |> Repo.aggregate(:count)
   end
 
   def count_by_actor_id(actor_id) do
-    Device.Query.by_actor_id(actor_id)
+    Client.Query.by_actor_id(actor_id)
     |> Repo.aggregate(:count)
   end
 
-  def fetch_device_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
+  def fetch_client_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
       {:one_of,
        [
-         Authorizer.manage_devices_permission(),
-         Authorizer.manage_own_devices_permission()
+         Authorizer.manage_clients_permission(),
+         Authorizer.manage_own_clients_permission()
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Validator.valid_uuid?(id) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-      Device.Query.by_id(id)
+      Client.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
-        {:ok, device} ->
-          device =
-            device
+        {:ok, client} ->
+          client =
+            client
             |> Repo.preload(preload)
             |> preload_online_status()
 
-          {:ok, device}
+          {:ok, client}
 
         {:error, reason} ->
           {:error, reason}
@@ -59,63 +59,63 @@ defmodule Domain.Devices do
     end
   end
 
-  def fetch_device_by_id!(id, opts \\ []) do
+  def fetch_client_by_id!(id, opts \\ []) do
     {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-    Device.Query.by_id(id)
+    Client.Query.by_id(id)
     |> Repo.one!()
     |> Repo.preload(preload)
     |> preload_online_status()
   end
 
-  def list_devices(%Auth.Subject{} = subject, opts \\ []) do
+  def list_clients(%Auth.Subject{} = subject, opts \\ []) do
     {preload, _opts} = Keyword.pop(opts, :preload, [])
 
     required_permissions =
       {:one_of,
        [
-         Authorizer.manage_devices_permission(),
-         Authorizer.manage_own_devices_permission()
+         Authorizer.manage_clients_permission(),
+         Authorizer.manage_own_clients_permission()
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      {:ok, devices} =
-        Device.Query.all()
+      {:ok, clients} =
+        Client.Query.all()
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 
-      devices =
-        devices
+      clients =
+        clients
         |> preload_online_statuses()
 
-      {:ok, Repo.preload(devices, preload)}
+      {:ok, Repo.preload(clients, preload)}
     end
   end
 
-  def list_devices_for_actor(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
-    list_devices_by_actor_id(actor.id, subject)
+  def list_clients_for_actor(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
+    list_clients_by_actor_id(actor.id, subject)
   end
 
-  def list_devices_by_actor_id(actor_id, %Auth.Subject{} = subject) do
+  def list_clients_by_actor_id(actor_id, %Auth.Subject{} = subject) do
     required_permissions =
       {:one_of,
        [
-         Authorizer.manage_devices_permission(),
-         Authorizer.manage_own_devices_permission()
+         Authorizer.manage_clients_permission(),
+         Authorizer.manage_own_clients_permission()
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Validator.valid_uuid?(actor_id) do
-      {:ok, devices} =
-        Device.Query.by_actor_id(actor_id)
+      {:ok, clients} =
+        Client.Query.by_actor_id(actor_id)
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 
-      devices =
-        devices
+      clients =
+        clients
         |> preload_online_statuses()
 
-      {:ok, devices}
+      {:ok, clients}
     else
       false -> {:error, :not_found}
       other -> other
@@ -123,67 +123,67 @@ defmodule Domain.Devices do
   end
 
   # TODO: this is ugly!
-  defp preload_online_status(device) do
-    connected_devices = Presence.list("devices:#{device.id}")
-    %{device | online?: Map.has_key?(connected_devices, device.id)}
+  defp preload_online_status(client) do
+    connected_clients = Presence.list("clients:#{client.id}")
+    %{client | online?: Map.has_key?(connected_clients, client.id)}
   end
 
   defp preload_online_statuses([]), do: []
 
-  defp preload_online_statuses([device | _] = devices) do
-    connected_devices = Presence.list("devices:#{device.account_id}")
+  defp preload_online_statuses([client | _] = clients) do
+    connected_clients = Presence.list("clients:#{client.account_id}")
 
-    Enum.map(devices, fn device ->
-      %{device | online?: Map.has_key?(connected_devices, device.id)}
+    Enum.map(clients, fn client ->
+      %{client | online?: Map.has_key?(connected_clients, client.id)}
     end)
   end
 
-  def change_device(%Device{} = device, attrs \\ %{}) do
-    Device.Changeset.update(device, attrs)
+  def change_client(%Client{} = client, attrs \\ %{}) do
+    Client.Changeset.update(client, attrs)
   end
 
-  def upsert_device(attrs \\ %{}, %Auth.Subject{identity: %Auth.Identity{} = identity} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_devices_permission()) do
-      changeset = Device.Changeset.upsert(identity, subject.context, attrs)
+  def upsert_client(attrs \\ %{}, %Auth.Subject{identity: %Auth.Identity{} = identity} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_clients_permission()) do
+      changeset = Client.Changeset.upsert(identity, subject.context, attrs)
 
       Ecto.Multi.new()
-      |> Ecto.Multi.insert(:device, changeset,
-        conflict_target: Device.Changeset.upsert_conflict_target(),
-        on_conflict: Device.Changeset.upsert_on_conflict(),
+      |> Ecto.Multi.insert(:client, changeset,
+        conflict_target: Client.Changeset.upsert_conflict_target(),
+        on_conflict: Client.Changeset.upsert_on_conflict(),
         returning: true
       )
       |> resolve_address_multi(:ipv4)
       |> resolve_address_multi(:ipv6)
-      |> Ecto.Multi.update(:device_with_address, fn
-        %{device: %Device{} = device, ipv4: ipv4, ipv6: ipv6} ->
-          Device.Changeset.finalize_upsert(device, ipv4, ipv6)
+      |> Ecto.Multi.update(:client_with_address, fn
+        %{client: %Client{} = client, ipv4: ipv4, ipv6: ipv6} ->
+          Client.Changeset.finalize_upsert(client, ipv4, ipv6)
       end)
       |> Repo.transaction()
       |> case do
-        {:ok, %{device_with_address: device}} -> {:ok, device}
-        {:error, :device, changeset, _effects_so_far} -> {:error, changeset}
+        {:ok, %{client_with_address: client}} -> {:ok, client}
+        {:error, :client, changeset, _effects_so_far} -> {:error, changeset}
       end
     end
   end
 
   defp resolve_address_multi(multi, type) do
-    Ecto.Multi.run(multi, type, fn _repo, %{device: %Device{} = device} ->
-      if address = Map.get(device, type) do
+    Ecto.Multi.run(multi, type, fn _repo, %{client: %Client{} = client} ->
+      if address = Map.get(client, type) do
         {:ok, address}
       else
-        {:ok, Domain.Network.fetch_next_available_address!(device.account_id, type)}
+        {:ok, Domain.Network.fetch_next_available_address!(client.account_id, type)}
       end
     end)
   end
 
-  def update_device(%Device{} = device, attrs, %Auth.Subject{} = subject) do
-    with :ok <- authorize_actor_device_management(device.actor_id, subject) do
-      Device.Query.by_id(device.id)
+  def update_client(%Client{} = client, attrs, %Auth.Subject{} = subject) do
+    with :ok <- authorize_actor_client_management(client.actor_id, subject) do
+      Client.Query.by_id(client.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Device.Changeset.update(&1, attrs))
+      |> Repo.fetch_and_update(with: &Client.Changeset.update(&1, attrs))
       |> case do
-        {:ok, device} ->
-          {:ok, preload_online_status(device)}
+        {:ok, client} ->
+          {:ok, preload_online_status(client)}
 
         {:error, reason} ->
           {:error, reason}
@@ -191,49 +191,49 @@ defmodule Domain.Devices do
     end
   end
 
-  def delete_device(%Device{} = device, %Auth.Subject{} = subject) do
-    with :ok <- authorize_actor_device_management(device.actor_id, subject) do
-      Device.Query.by_id(device.id)
+  def delete_client(%Client{} = client, %Auth.Subject{} = subject) do
+    with :ok <- authorize_actor_client_management(client.actor_id, subject) do
+      Client.Query.by_id(client.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Device.Changeset.delete/1)
+      |> Repo.fetch_and_update(with: &Client.Changeset.delete/1)
     end
   end
 
-  def delete_actor_devices(%Actors.Actor{} = actor) do
+  def delete_actor_clients(%Actors.Actor{} = actor) do
     {_count, nil} =
-      Device.Query.by_actor_id(actor.id)
+      Client.Query.by_actor_id(actor.id)
       |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
 
     :ok
   end
 
-  def authorize_actor_device_management(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
-    authorize_actor_device_management(actor.id, subject)
+  def authorize_actor_client_management(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
+    authorize_actor_client_management(actor.id, subject)
   end
 
-  def authorize_actor_device_management(actor_id, %Auth.Subject{actor: %{id: actor_id}} = subject) do
-    Auth.ensure_has_permissions(subject, Authorizer.manage_own_devices_permission())
+  def authorize_actor_client_management(actor_id, %Auth.Subject{actor: %{id: actor_id}} = subject) do
+    Auth.ensure_has_permissions(subject, Authorizer.manage_own_clients_permission())
   end
 
-  def authorize_actor_device_management(_actor_id, %Auth.Subject{} = subject) do
-    Auth.ensure_has_permissions(subject, Authorizer.manage_devices_permission())
+  def authorize_actor_client_management(_actor_id, %Auth.Subject{} = subject) do
+    Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission())
   end
 
-  def connect_device(%Device{} = device) do
+  def connect_client(%Client{} = client) do
     {:ok, _} =
-      Presence.track(self(), "devices:#{device.account_id}", device.id, %{
+      Presence.track(self(), "clients:#{client.account_id}", client.id, %{
         online_at: System.system_time(:second)
       })
 
-    {:ok, _} = Presence.track(self(), "actor_devices:#{device.actor_id}", device.id, %{})
+    {:ok, _} = Presence.track(self(), "actor_clients:#{client.actor_id}", client.id, %{})
 
     :ok
   end
 
-  def fetch_device_config!(%Device{} = device) do
+  def fetch_client_config!(%Client{} = client) do
     %{
-      devices_upstream_dns: upstream_dns
-    } = Domain.Config.fetch_resolved_configs!(device.account_id, [:devices_upstream_dns])
+      clients_upstream_dns: upstream_dns
+    } = Domain.Config.fetch_resolved_configs!(client.account_id, [:clients_upstream_dns])
 
     [upstream_dns: upstream_dns]
   end

@@ -17,7 +17,7 @@ defmodule Domain.Mocks.OpenIDConnect do
         "issuer" => "#{endpoint}/",
         "authorization_endpoint" => "#{endpoint}/authorize",
         "token_endpoint" => "#{endpoint}/oauth/token",
-        "device_authorization_endpoint" => "#{endpoint}/oauth/device/code",
+        "client_authorization_endpoint" => "#{endpoint}/oauth/client/code",
         "userinfo_endpoint" => "#{endpoint}/userinfo",
         "mfa_challenge_endpoint" => "#{endpoint}/mfa/challenge",
         "jwks_uri" => "#{endpoint}/.well-known/jwks.json",

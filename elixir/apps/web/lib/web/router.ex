@@ -127,7 +127,7 @@ defmodule Web.Router do
         live "/:id", Show
       end
 
-      scope "/devices", Devices do
+      scope "/clients", Clients do
         live "/", Index
         live "/:id", Show
         live "/:id/edit", Edit
