@@ -2,9 +2,9 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
+use opentelemetry::sdk::export::metrics;
 use opentelemetry_otlp::WithExportConfig;
 use phoenix_channel::{Error, Event, PhoenixChannel};
-use prometheus_client::registry::Registry;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use relay::{
@@ -18,13 +18,10 @@ use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::task::Poll;
 use std::time::SystemTime;
-use tracing::level_filters::LevelFilter;
-use tracing::Subscriber;
+use tracing::{level_filters::LevelFilter, Subscriber};
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{EnvFilter, Layer};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 use url::Url;
 
 #[derive(Parser, Debug)]
@@ -35,10 +32,11 @@ struct Args {
     /// The public (i.e. internet-reachable) IPv6 address of the relay server.
     #[arg(long, env)]
     public_ip6_addr: Option<Ipv6Addr>,
-    /// The address of the local interface where we should serve the prometheus metrics.
-    /// The metrics will be available at `http://<metrics_addr>/metrics`.
-    #[arg(long, env)]
-    metrics_addr: Option<SocketAddr>,
+    /// The address of the local interface where we should serve our health-check endpoint.
+    ///
+    /// The actual health-check endpoint will be at `http://<health_check_addr>/healthz`.
+    #[arg(long, env, default_value = "0.0.0.0:8080")]
+    health_check_addr: SocketAddr,
     // See https://www.rfc-editor.org/rfc/rfc8656.html#name-allocations
     /// The lowest port used for TURN allocations.
     #[arg(long, env, default_value = "49152")]
@@ -64,15 +62,11 @@ struct Args {
     #[arg(long, env, default_value = "human")]
     log_format: LogFormat,
 
-    /// Where to send trace data to.
-    #[arg(long, env)]
-    trace_collector: Option<TraceCollector>,
-
     /// Which OTLP collector we should connect to.
     ///
-    /// This setting only has an effect if `TRACE_COLLECTOR` is set to `otlp`.
-    #[arg(long, env, default_value = "127.0.0.1:4317")]
-    otlp_grpc_endpoint: SocketAddr,
+    /// If set, we will report traces and metrics to this collector via gRPC.
+    #[arg(long, env)]
+    otlp_grpc_endpoint: Option<SocketAddr>,
 
     /// The Google Project ID to embed in spans.
     ///
@@ -87,12 +81,6 @@ enum LogFormat {
     Human,
     Json,
     GoogleCloud,
-}
-
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
-enum TraceCollector {
-    /// Sends traces to an OTLP collector.
-    Otlp,
 }
 
 #[tokio::main]
@@ -110,11 +98,9 @@ async fn main() -> Result<()> {
         }
     };
 
-    let mut metric_registry = Registry::with_prefix("relay");
     let server = Server::new(
         public_addr,
         make_rng(args.rng_seed),
-        &mut metric_registry,
         args.lowest_port,
         args.highest_port,
     );
@@ -179,11 +165,9 @@ async fn main() -> Result<()> {
         None
     };
 
-    let mut eventloop = Eventloop::new(server, channel, public_addr, &mut metric_registry)?;
+    let mut eventloop = Eventloop::new(server, channel, public_addr)?;
 
-    if let Some(metrics_addr) = args.metrics_addr {
-        tokio::spawn(relay::metrics::serve(metrics_addr, metric_registry));
-    }
+    tokio::spawn(relay::health_check::serve(args.health_check_addr));
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
@@ -208,26 +192,40 @@ async fn setup_tracing(args: &Args) -> Result<()> {
         &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
 
-    let dispatch: Dispatch = match args.trace_collector {
+    let dispatch: Dispatch = match args.otlp_grpc_endpoint {
         None => tracing_subscriber::registry().with(log_layer(args)).into(),
-        Some(TraceCollector::Otlp) => {
-            let grpc_endpoint = format!("http://{}", args.otlp_grpc_endpoint);
+        Some(endpoint) => {
+            let grpc_endpoint = format!("http://{endpoint}");
 
             tracing::trace!(%grpc_endpoint, "Setting up OTLP exporter for collector");
 
             let exporter = opentelemetry_otlp::new_exporter()
                 .tonic()
-                .with_endpoint(grpc_endpoint);
+                .with_endpoint(grpc_endpoint.clone());
 
             let tracer = opentelemetry_otlp::new_pipeline()
                 .tracing()
                 .with_exporter(exporter)
                 .install_batch(opentelemetry::runtime::Tokio)
-                .context("Failed to create OTLP pipeline")?;
+                .context("Failed to create OTLP trace pipeline")?;
 
             tracing::trace!("Successfully initialized trace provider on tokio runtime");
 
-            // TODO: This is where we could also configure metrics.
+            let exporter = opentelemetry_otlp::new_exporter()
+                .tonic()
+                .with_endpoint(grpc_endpoint);
+
+            opentelemetry_otlp::new_pipeline()
+                .metrics(
+                    opentelemetry::sdk::metrics::selectors::simple::inexpensive(),
+                    metrics::aggregation::cumulative_temporality_selector(),
+                    opentelemetry::runtime::Tokio,
+                )
+                .with_exporter(exporter)
+                .build()
+                .context("Failed to create OTLP metrics pipeline")?;
+
+            tracing::trace!("Successfully initialized metric controller on tokio runtime");
 
             tracing_subscriber::registry()
                 .with(log_layer(args))
@@ -327,7 +325,6 @@ where
         server: Server<R>,
         channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
         public_address: IpStack,
-        _: &mut Registry,
     ) -> Result<Self> {
         let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);
         let (inbound_data_sender, inbound_data_receiver) = mpsc::channel(10);
