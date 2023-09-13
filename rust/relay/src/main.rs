@@ -452,14 +452,18 @@ where
                         tracing::info!("Freeing addresses of allocation {id}");
                     }
                     Command::Wake { deadline } => {
-                        if let Some(duration) = deadline.duration_since(now) {
-                            tracing::trace!(?duration, "Suspending event loop")
-                        } else {
-                            tracing::warn!(
-                                ?deadline,
-                                ?now,
-                                "Wake time is already in the past, waking now"
-                            )
+                        match deadline.duration_since(now) {
+                            Ok(duration) => {
+                                tracing::trace!(?duration, "Suspending event loop")
+                            }
+                            Err(e) => {
+                                let difference = e.duration();
+
+                                tracing::warn!(
+                                    ?difference,
+                                    "Wake time is already in the past, waking now"
+                                )
+                            }
                         }
 
                         Pin::new(&mut self.sleep).reset(deadline);
