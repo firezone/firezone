@@ -20,14 +20,11 @@ impl Sleep {
     pub fn reset(self: Pin<&mut Self>, deadline: SystemTime) {
         let this = self.get_mut();
 
-        this.inner = Some(
-            tokio::time::sleep(
-                deadline
-                    .duration_since(SystemTime::now())
-                    .expect("deadline must be in the future"),
-            )
-            .boxed(),
-        );
+        let duration = deadline
+            .duration_since(SystemTime::now())
+            .unwrap_or_default();
+
+        this.inner = Some(tokio::time::sleep(duration).boxed());
 
         if let Some(waker) = this.waker.take() {
             waker.wake();
@@ -83,5 +80,13 @@ mod tests {
 
         assert!(first_poll.is_ready());
         assert!(second_poll.is_pending())
+    }
+
+    #[tokio::test]
+    async fn does_not_crash_and_fires_immediately_when_reset_to_past() {
+        let mut sleep = Sleep::default();
+        Pin::new(&mut sleep).reset(SystemTime::now() - Duration::from_millis(100));
+
+        sleep.await;
     }
 }
