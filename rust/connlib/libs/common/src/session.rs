@@ -20,6 +20,7 @@ use crate::{
     messages::{Key, ResourceDescription},
     Error, Result,
 };
+use tracing_appender::non_blocking::WorkerGuard;
 
 pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 
@@ -55,6 +56,10 @@ pub trait ControlSession<T, CB: Callbacks> {
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session<T, U, V, R, M, CB: Callbacks> {
     runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
+    // The guard must not be dropped before the runtime is dropped, otherwise logs won't get
+    // flushed to the logfile.
+    #[allow(dead_code)]
+    logging_guard: Option<WorkerGuard>,
     callbacks: CallbackErrorFacade<CB>,
     _phantom: PhantomData<(T, U, V, R, M)>,
 }
@@ -217,11 +222,12 @@ where
         portal_url: impl TryInto<Url>,
         token: String,
         device_id: String,
+        logging_guard: Option<WorkerGuard>,
         callbacks: CB,
     ) -> Result<Self> {
         // TODO: We could use tokio::runtime::current() to get the current runtime
-        // which could work with swif-rust that already runs a runtime. But IDK if that will work
-        // in all pltaforms, a couple of new threads shouldn't bother none.
+        // which could work with swift-rust that already runs a runtime. But IDK if that will work
+        // in all platforms, a couple of new threads shouldn't bother none.
         // Big question here however is how do we get the result? We could block here await the result and spawn a new task.
         // but then platforms should know that this function is blocking.
 
@@ -229,6 +235,7 @@ where
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         let this = Self {
             runtime_stopper: tx.clone(),
+            logging_guard,
             callbacks,
             _phantom: PhantomData,
         };

@@ -221,7 +221,6 @@ impl IfaceDevice {
 
         let mtu = unsafe { ifr.ifr_ifru.ifru_mtu };
 
-        tracing::debug!("MTU for {} is {}", name, mtu);
         Ok(unsafe { ifr.ifr_ifru.ifru_mtu } as _)
     }
 

@@ -17,6 +17,7 @@ use std::{
 };
 use thiserror::Error;
 use tracing::log::LevelFilter;
+use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::prelude::*;
 
 pub struct CallbackHandler {
@@ -77,7 +78,7 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: PathBuf) {
+fn init_logging(log_dir: PathBuf) -> WorkerGuard {
     // Initializes integration with Logcat for Android
     // This can be called many times, but will only initialize logging once
     android_logger::init_once(
@@ -90,11 +91,13 @@ fn init_logging(log_dir: PathBuf) {
             .with_tag("connlib"),
     );
 
-    let (file_layer, _guard) = file_logger::layer(log_dir);
+    let (file_layer, guard) = file_logger::layer(log_dir);
 
     // Calling init twice causes a panic; instead use try_init which will fail
     // gracefully if this is called more than once.
     let _ = tracing_subscriber::registry().with(file_layer).try_init();
+
+    guard
 }
 
 impl Callbacks for CallbackHandler {
@@ -260,14 +263,14 @@ impl Callbacks for CallbackHandler {
 fn throw(env: &mut JNIEnv, class: &str, msg: impl Into<JNIString>) {
     if let Err(err) = env.throw_new(class, msg) {
         // We can't panic, since unwinding across the FFI boundary is UB...
-        log::error!("failed to throw Java exception: {err}");
+        tracing::error!("failed to throw Java exception: {err}");
     }
 }
 
 fn catch_and_throw<F: FnOnce(&mut JNIEnv) -> R, R>(env: &mut JNIEnv, f: F) -> Option<R> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(env)))
         .map_err(|info| {
-            log::error!("catching Rust panic");
+            tracing::error!("catching Rust panic");
             throw(
                 env,
                 "java/lang/Exception",
@@ -334,12 +337,13 @@ fn connect(
         callback_handler,
     };
 
-    init_logging(log_dir.into());
+    let guard = init_logging(log_dir.into());
 
     Session::connect(
         portal_url.as_str(),
         portal_token,
         device_id,
+        Some(guard),
         callback_handler,
     )
     .map_err(Into::into)

@@ -32,6 +32,7 @@ chrono = { workspace = true }
 parking_lot = "0.12"
 ring = "0.16"
 tokio-stream = { version = "0.1", features = ["time"] }
+tracing-appender = "0.2"
 
 # Needed for Android logging until tracing is working
 log = "0.4"

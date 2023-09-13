@@ -787,6 +787,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tracing",
+ "tracing-appender",
  "tracing-subscriber",
 ]
 
@@ -803,6 +804,7 @@ dependencies = [
  "swift-bridge",
  "swift-bridge-build",
  "tracing",
+ "tracing-appender",
  "tracing-oslog",
  "tracing-subscriber",
  "walkdir",
@@ -1521,6 +1523,7 @@ dependencies = [
  "firezone-client-connlib",
  "ip_network",
  "tracing",
+ "tracing-appender",
  "tracing-subscriber",
  "url",
 ]
@@ -1936,6 +1939,7 @@ dependencies = [
  "tokio-stream",
  "tokio-tungstenite",
  "tracing",
+ "tracing-appender",
  "url",
  "uuid",
  "webrtc",
