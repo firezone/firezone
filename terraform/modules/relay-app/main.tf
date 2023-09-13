@@ -23,6 +23,10 @@ locals {
       value = var.observability_log_level
     },
     {
+      name  = "RUST_BACKTRACE"
+      value = "full"
+    },
+    {
       name  = "LOG_FORMAT"
       value = "google-cloud"
     },
