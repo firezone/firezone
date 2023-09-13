@@ -12,7 +12,7 @@ defmodule Web.Settings.DNS do
       </:title>
     </.header>
     <p class="ml-4 mb-4 font-medium bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-500">
-      Configure the default resolver used by connected Devices in your Firezone network. Queries for
+      Configure the default resolver used by connected Clients in your Firezone network. Queries for
       defined Resources will <strong>always</strong>
       use Firezone's internal DNS. All other queries will
       use the resolver configured below.
@@ -29,7 +29,7 @@ defmodule Web.Settings.DNS do
     </p>
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Device DNS</h2>
+        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Client DNS</h2>
         <form action="#">
           <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
             <div>

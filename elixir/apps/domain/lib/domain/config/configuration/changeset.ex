@@ -2,14 +2,14 @@ defmodule Domain.Config.Configuration.Changeset do
   use Domain, :changeset
   import Domain.Config, only: [config_changeset: 2]
 
-  @fields ~w[devices_upstream_dns]a
+  @fields ~w[clients_upstream_dns]a
 
   def changeset(configuration, attrs) do
     changeset =
       configuration
       |> cast(attrs, @fields)
       |> cast_embed(:logo)
-      |> trim_change(:devices_upstream_dns)
+      |> trim_change(:clients_upstream_dns)
 
     Enum.reduce(@fields, changeset, fn field, changeset ->
       config_changeset(changeset, field)

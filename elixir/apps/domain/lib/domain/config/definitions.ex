@@ -86,9 +86,9 @@ defmodule Domain.Config.Definitions do
          :cookie_signing_salt,
          :cookie_encryption_salt
        ]},
-      {"Devices",
+      {"Clients",
        [
-         :devices_upstream_dns
+         :clients_upstream_dns
        ]},
       {"Authorization",
        """
@@ -403,19 +403,19 @@ defmodule Domain.Config.Definitions do
   )
 
   ##############################################
-  ## Devices
+  ## Clients
   ##############################################
 
   @doc """
-  Comma-separated list of upstream DNS servers to use for devices.
+  Comma-separated list of upstream DNS servers to use for clients.
 
   It can be either an IP address or a FQDN if you intend to use a DNS-over-TLS server.
 
   Leave this blank to omit the `DNS` section from generated configs,
-  which will make devices use default system-provided DNS even when VPN session is active.
+  which will make clients use default system-provided DNS even when VPN session is active.
   """
   defconfig(
-    :devices_upstream_dns,
+    :clients_upstream_dns,
     {:array, ",", {:one_of, [Types.IP, :string]}, validate_unique: true},
     default: [],
     changeset: fn

@@ -4,7 +4,7 @@ defmodule Domain.Fixtures.Config do
 
   def configuration_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
-      devices_upstream_dns: ["1.1.1.1"]
+      clients_upstream_dns: ["1.1.1.1"]
     })
   end
 

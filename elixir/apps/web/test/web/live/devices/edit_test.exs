@@ -1,4 +1,4 @@
-defmodule Web.Live.Devices.EditTest do
+defmodule Web.Live.Clients.EditTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -6,22 +6,22 @@ defmodule Web.Live.Devices.EditTest do
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
 
-    device = Fixtures.Devices.create_device(account: account, actor: actor, identity: identity)
+    client = Fixtures.Clients.create_client(account: account, actor: actor, identity: identity)
 
     %{
       account: account,
       actor: actor,
       identity: identity,
-      device: device
+      client: client
     }
   end
 
   test "redirects to sign in page for unauthorized user", %{
     account: account,
-    device: device,
+    client: client,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/devices/#{device}/edit") ==
+    assert live(conn, ~p"/#{account}/clients/#{client}/edit") ==
              {:error,
               {:redirect,
                %{
@@ -30,80 +30,80 @@ defmodule Web.Live.Devices.EditTest do
                }}}
   end
 
-  test "renders not found error when device is deleted", %{
+  test "renders not found error when client is deleted", %{
     account: account,
     identity: identity,
-    device: device,
+    client: client,
     conn: conn
   } do
-    device = Fixtures.Devices.delete_device(device)
+    client = Fixtures.Clients.delete_client(client)
 
     assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices/#{device}/edit")
+      |> live(~p"/#{account}/clients/#{client}/edit")
     end
   end
 
   test "renders breadcrumbs item", %{
     account: account,
     identity: identity,
-    device: device,
+    client: client,
     conn: conn
   } do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices/#{device}/edit")
+      |> live(~p"/#{account}/clients/#{client}/edit")
 
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
-    assert breadcrumbs =~ "Devices"
-    assert breadcrumbs =~ device.name
+    assert breadcrumbs =~ "Clients"
+    assert breadcrumbs =~ client.name
     assert breadcrumbs =~ "Edit"
   end
 
   test "renders form", %{
     account: account,
     identity: identity,
-    device: device,
+    client: client,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices/#{device}/edit")
+      |> live(~p"/#{account}/clients/#{client}/edit")
 
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "device[name]"
+             "client[name]"
            ]
   end
 
   test "renders changeset errors on input change", %{
     account: account,
     identity: identity,
-    device: device,
+    client: client,
     conn: conn
   } do
-    attrs = Fixtures.Devices.device_attrs() |> Map.take([:name])
+    attrs = Fixtures.Clients.client_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices/#{device}/edit")
+      |> live(~p"/#{account}/clients/#{client}/edit")
 
     lv
-    |> form("form", device: attrs)
-    |> validate_change(%{device: %{name: String.duplicate("a", 256)}}, fn form, _html ->
+    |> form("form", client: attrs)
+    |> validate_change(%{client: %{name: String.duplicate("a", 256)}}, fn form, _html ->
       assert form_validation_errors(form) == %{
-               "device[name]" => ["should be at most 255 character(s)"]
+               "client[name]" => ["should be at most 255 character(s)"]
              }
     end)
-    |> validate_change(%{device: %{name: ""}}, fn form, _html ->
+    |> validate_change(%{client: %{name: ""}}, fn form, _html ->
       assert form_validation_errors(form) == %{
-               "device[name]" => ["can't be blank"]
+               "client[name]" => ["can't be blank"]
              }
     end)
   end
@@ -112,44 +112,44 @@ defmodule Web.Live.Devices.EditTest do
     account: account,
     actor: actor,
     identity: identity,
-    device: device,
+    client: client,
     conn: conn
   } do
-    other_device = Fixtures.Devices.create_device(account: account, actor: actor)
-    attrs = %{name: other_device.name}
+    other_client = Fixtures.Clients.create_client(account: account, actor: actor)
+    attrs = %{name: other_client.name}
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices/#{device}/edit")
+      |> live(~p"/#{account}/clients/#{client}/edit")
 
     assert lv
-           |> form("form", device: attrs)
+           |> form("form", client: attrs)
            |> render_submit()
            |> form_validation_errors() == %{
-             "device[name]" => ["has already been taken"]
+             "client[name]" => ["has already been taken"]
            }
   end
 
-  test "creates a new device on valid attrs", %{
+  test "creates a new client on valid attrs", %{
     account: account,
     identity: identity,
-    device: device,
+    client: client,
     conn: conn
   } do
-    attrs = Fixtures.Devices.device_attrs() |> Map.take([:name])
+    attrs = Fixtures.Clients.client_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices/#{device}/edit")
+      |> live(~p"/#{account}/clients/#{client}/edit")
 
     assert lv
-           |> form("form", device: attrs)
+           |> form("form", client: attrs)
            |> render_submit() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/devices/#{device}"}}}
+             {:error, {:redirect, %{to: ~p"/#{account}/clients/#{client}"}}}
 
-    assert device = Repo.get_by(Domain.Devices.Device, id: device.id)
-    assert device.name == attrs.name
+    assert client = Repo.get_by(Domain.Clients.Client, id: client.id)
+    assert client.name == attrs.name
   end
 end

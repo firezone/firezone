@@ -280,7 +280,7 @@ impl<CB: Callbacks + 'static> ControlSession<Messages, CB> for ControlPlane<CB> 
     }
 
     fn socket_path() -> &'static str {
-        "device"
+        "client"
     }
 
     fn retry_strategy() -> ExponentialBackoff {

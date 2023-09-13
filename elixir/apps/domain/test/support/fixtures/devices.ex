@@ -1,17 +1,17 @@
-defmodule Domain.Fixtures.Devices do
+defmodule Domain.Fixtures.Clients do
   use Domain.Fixture
-  alias Domain.Devices
+  alias Domain.Clients
 
-  def device_attrs(attrs \\ %{}) do
+  def client_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
       external_id: Ecto.UUID.generate(),
-      name: "device-#{unique_integer()}",
+      name: "client-#{unique_integer()}",
       public_key: unique_public_key()
     })
   end
 
-  def create_device(attrs \\ %{}) do
-    attrs = device_attrs(attrs)
+  def create_client(attrs \\ %{}) do
+    attrs = client_attrs(attrs)
 
     {account, attrs} =
       pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
@@ -47,20 +47,20 @@ defmodule Domain.Fixtures.Devices do
         |> Fixtures.Auth.create_subject()
       end)
 
-    {:ok, device} = Devices.upsert_device(attrs, subject)
-    %{device | online?: false}
+    {:ok, client} = Clients.upsert_client(attrs, subject)
+    %{client | online?: false}
   end
 
-  def delete_device(device) do
-    device = Repo.preload(device, :account)
+  def delete_client(client) do
+    client = Repo.preload(client, :account)
 
     subject =
       Fixtures.Auth.create_subject(
-        account: device.account,
+        account: client.account,
         actor: [type: :account_admin_user]
       )
 
-    {:ok, device} = Devices.delete_device(device, subject)
-    device
+    {:ok, client} = Clients.delete_client(client, subject)
+    client
   end
 end

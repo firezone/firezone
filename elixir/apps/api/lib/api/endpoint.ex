@@ -21,7 +21,7 @@ defmodule API.Endpoint do
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
   socket "/gateway", API.Gateway.Socket, API.Sockets.options()
-  socket "/device", API.Device.Socket, API.Sockets.options()
+  socket "/client", API.Client.Socket, API.Sockets.options()
   socket "/relay", API.Relay.Socket, API.Sockets.options()
 
   plug :healthz

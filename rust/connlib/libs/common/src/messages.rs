@@ -40,9 +40,9 @@ pub struct RequestConnection {
     /// Resource id the request is for.
     pub resource_id: Id,
     /// The preshared key the client generated for the connection that it is trying to establish.
-    pub device_preshared_key: Key,
+    pub client_preshared_key: Key,
     /// Client's local RTC Session Description that the client will use for this connection.
-    pub device_rtc_session_description: RTCSessionDescription,
+    pub client_rtc_session_description: RTCSessionDescription,
 }
 
 /// Represent a request to reuse an existing gateway connection from a client to a given resource.
@@ -61,7 +61,7 @@ pub struct ReuseConnection {
 impl PartialEq for RequestConnection {
     fn eq(&self, other: &Self) -> bool {
         self.resource_id == other.resource_id
-            && self.device_preshared_key == other.device_preshared_key
+            && self.client_preshared_key == other.client_preshared_key
     }
 }
 

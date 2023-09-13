@@ -37,10 +37,10 @@ defmodule Domain.Config.ResolverTest do
 
     test "returns variable from database" do
       env_configurations = %{}
-      db_configurations = %Domain.Config.Configuration{devices_upstream_dns: "1.2.3.4"}
+      db_configurations = %Domain.Config.Configuration{clients_upstream_dns: "1.2.3.4"}
 
-      assert resolve(:devices_upstream_dns, env_configurations, db_configurations, []) ==
-               {:ok, {{:db, :devices_upstream_dns}, "1.2.3.4"}}
+      assert resolve(:clients_upstream_dns, env_configurations, db_configurations, []) ==
+               {:ok, {{:db, :clients_upstream_dns}, "1.2.3.4"}}
     end
 
     test "precedence" do

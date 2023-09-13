@@ -94,7 +94,7 @@ Now you can verify that it's working by connecting to a websocket:
 
 </details>
 <details>
-  <summary>Device</summary>
+  <summary>Client</summary>
 
 ```elixir
 ❯ export CLIENT_TOKEN_FROM_SEEDS="SFMyNTY.g2gDaANkAAhpZGVudGl0eW0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACDZI3ehOZSu3JOSMREkvzrtKjs8jkrW6fpbVw9opDYmi24GANjCD-qIAWIB4TOA.XhoLEDjIzuv1SXEVUV6lfIHW12n5-J5aBDUKCl8ovMk"
@@ -102,25 +102,25 @@ Now you can verify that it's working by connecting to a websocket:
 # Panel will only accept token if it's coming with this User-Agent header and from IP 172.28.0.1
 ❯ export CLIENT_USER_AGENT="iOS/12.5 (iPhone) connlib/0.7.412"
 
-❯ websocat --header="User-Agent: ${CLIENT_USER_AGENT}" "ws://127.0.0.1:8081/device/websocket?token=${CLIENT_TOKEN_FROM_SEEDS}&external_id=thisisrandomandpersistent&name_suffix=kkX1&public_key=kceI60D6PrwOIiGoVz6hD7VYCgD1H57IVQlPJTTieUE="
+❯ websocat --header="User-Agent: ${CLIENT_USER_AGENT}" "ws://127.0.0.1:8081/client/websocket?token=${CLIENT_TOKEN_FROM_SEEDS}&external_id=thisisrandomandpersistent&name_suffix=kkX1&public_key=kceI60D6PrwOIiGoVz6hD7VYCgD1H57IVQlPJTTieUE="
 
 # Here is what you will see in docker logs firezone-api-1
-# firezone-api-1  | {"domain":["elixir"],"erl_level":"info","logging.googleapis.com/sourceLocation":{"file":"lib/phoenix/logger.ex","line":306,"function":"Elixir.Phoenix.Logger.phoenix_socket_connected/4"},"message":"CONNECTED TO API.Device.Socket in 83ms\n  Transport: :websocket\n  Serializer: Phoenix.Socket.V1.JSONSerializer\n  Parameters: %{\"external_id\" => \"thisisrandomandpersistent\", \"name_suffix\" => \"kkX1\", \"public_key\" => \"[FILTERED]\", \"token\" => \"[FILTERED]\"}","severity":"INFO","time":"2023-06-23T21:01:49.566Z"}
+# firezone-api-1  | {"domain":["elixir"],"erl_level":"info","logging.googleapis.com/sourceLocation":{"file":"lib/phoenix/logger.ex","line":306,"function":"Elixir.Phoenix.Logger.phoenix_socket_connected/4"},"message":"CONNECTED TO API.Client.Socket in 83ms\n  Transport: :websocket\n  Serializer: Phoenix.Socket.V1.JSONSerializer\n  Parameters: %{\"external_id\" => \"thisisrandomandpersistent\", \"name_suffix\" => \"kkX1\", \"public_key\" => \"[FILTERED]\", \"token\" => \"[FILTERED]\"}","severity":"INFO","time":"2023-06-23T21:01:49.566Z"}
 
-# After this you need to join the `device` topic and pass a `stamp_secret` in the payload.
+# After this you need to join the `client` topic and pass a `stamp_secret` in the payload.
 # For details on this structure see https://hexdocs.pm/phoenix/Phoenix.Socket.Message.html
-❯ {"event":"phx_join","topic":"device","payload":{},"ref":"unique_string_ref","join_ref":"unique_join_ref"}
+❯ {"event":"phx_join","topic":"client","payload":{},"ref":"unique_string_ref","join_ref":"unique_join_ref"}
 
-{"ref":"unique_string_ref","topic":"device","event":"phx_reply","payload":{"status":"ok","response":{}}}
-{"ref":null,"topic":"device","event":"init","payload":{"interface":{"ipv6":"fd00:2021:1111::11:f4bd","upstream_dns":[],"ipv4":"100.71.71.245"},"resources":[{"id":"4429d3aa-53ea-4c03-9435-4dee2899672b","name":"172.20.0.1/16","type":"cidr","address":"172.20.0.0/16"},{"id":"85a1cffc-70d3-46dd-aa6b-776192af7b06","name":"gitlab.mycorp.com","type":"dns","address":"gitlab.mycorp.com","ipv6":"fd00:2021:1111::5:b370","ipv4":"100.85.109.146"}]}}
+{"ref":"unique_string_ref","topic":"client","event":"phx_reply","payload":{"status":"ok","response":{}}}
+{"ref":null,"topic":"client","event":"init","payload":{"interface":{"ipv6":"fd00:2021:1111::11:f4bd","upstream_dns":[],"ipv4":"100.71.71.245"},"resources":[{"id":"4429d3aa-53ea-4c03-9435-4dee2899672b","name":"172.20.0.1/16","type":"cidr","address":"172.20.0.0/16"},{"id":"85a1cffc-70d3-46dd-aa6b-776192af7b06","name":"gitlab.mycorp.com","type":"dns","address":"gitlab.mycorp.com","ipv6":"fd00:2021:1111::5:b370","ipv4":"100.85.109.146"}]}}
 
 # List online relays for a Resource
-❯ {"event":"list_relays","topic":"device","payload":{"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b"},"ref":"unique_list_relays_ref"}
+❯ {"event":"list_relays","topic":"client","payload":{"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b"},"ref":"unique_list_relays_ref"}
 
-{"ref":"unique_list_relays_ref","topic":"device","event":"phx_reply","payload":{"status":"ok","response":{"relays":[{"type":"stun","uri":"stun:172.28.0.101:3478"},{"type":"turn","username":"1719090081:UVxHhieTJWaD8_Sg","password":"Ml65XDZyYpuBiEIvk/q0Zy6EEJ1ZwGa4pWztXFP+tOo","uri":"turn:172.28.0.101:3478","expires_at":1719090081}],"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b"}}}
+{"ref":"unique_list_relays_ref","topic":"client","event":"phx_reply","payload":{"status":"ok","response":{"relays":[{"type":"stun","uri":"stun:172.28.0.101:3478"},{"type":"turn","username":"1719090081:UVxHhieTJWaD8_Sg","password":"Ml65XDZyYpuBiEIvk/q0Zy6EEJ1ZwGa4pWztXFP+tOo","uri":"turn:172.28.0.101:3478","expires_at":1719090081}],"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b"}}}
 
 # Initiate connection to a resource
-❯ {"event":"request_connection","topic":"device","payload":{"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b","device_rtc_session_description":"RTC_SD","device_preshared_key":"+HapiGI5UdeRjKuKTwk4ZPPYpCnlXHvvqebcIevL+2A="},"ref":"unique_request_connection_ref"}
+❯ {"event":"request_connection","topic":"client","payload":{"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b","client_rtc_session_description":"RTC_SD","client_preshared_key":"+HapiGI5UdeRjKuKTwk4ZPPYpCnlXHvvqebcIevL+2A="},"ref":"unique_request_connection_ref"}
 
 ```
 
@@ -212,7 +212,7 @@ identity = Domain.Repo.get_by(Domain.Auth.Identity, provider_id: provider.id, pr
 subject = Domain.Auth.build_subject(identity, nil, user_agent, remote_ip)
 ```
 
-Listing connected gateways, relays, devices for an account:
+Listing connected gateways, relays, clients for an account:
 
 ```elixir
 account_id = "c89bcc8c-9392-4dae-a40d-888aef6d28e0"
@@ -220,7 +220,7 @@ account_id = "c89bcc8c-9392-4dae-a40d-888aef6d28e0"
 %{
   gateways: Domain.Gateways.Presence.list("gateways:#{account_id}"),
   relays: Domain.Relays.Presence.list("relays:#{account_id}"),
-  devices: Domain.Devices.Presence.list("devices:#{account_id}"),
+  clients: Domain.Clients.Presence.list("clients:#{account_id}"),
 }
 ```
 

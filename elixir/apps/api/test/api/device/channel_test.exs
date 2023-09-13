@@ -1,13 +1,13 @@
-defmodule API.Device.ChannelTest do
+defmodule API.Client.ChannelTest do
   use API.ChannelCase
 
   setup do
     account = Fixtures.Accounts.create_account()
-    Fixtures.Config.upsert_configuration(account: account, devices_upstream_dns: ["1.1.1.1"])
+    Fixtures.Config.upsert_configuration(account: account, clients_upstream_dns: ["1.1.1.1"])
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(actor: actor, account: account)
     subject = Fixtures.Auth.create_subject(identity: identity)
-    device = Fixtures.Devices.create_device(subject: subject)
+    client = Fixtures.Clients.create_client(subject: subject)
     gateway = Fixtures.Gateways.create_gateway(account: account)
 
     dns_resource =
@@ -29,19 +29,19 @@ defmodule API.Device.ChannelTest do
     subject = %{subject | expires_at: expires_at}
 
     {:ok, _reply, socket} =
-      API.Device.Socket
-      |> socket("device:#{device.id}", %{
-        device: device,
+      API.Client.Socket
+      |> socket("client:#{client.id}", %{
+        client: client,
         subject: subject
       })
-      |> subscribe_and_join(API.Device.Channel, "device")
+      |> subscribe_and_join(API.Client.Channel, "client")
 
     %{
       account: account,
       actor: actor,
       identity: identity,
       subject: subject,
-      device: device,
+      client: client,
       gateway: gateway,
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
@@ -50,14 +50,14 @@ defmodule API.Device.ChannelTest do
   end
 
   describe "join/3" do
-    test "tracks presence after join", %{account: account, device: device} do
-      presence = Domain.Devices.Presence.list("devices:#{account.id}")
+    test "tracks presence after join", %{account: account, client: client} do
+      presence = Domain.Clients.Presence.list("clients:#{account.id}")
 
-      assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, device.id)
+      assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, client.id)
       assert is_number(online_at)
     end
 
-    test "expires the channel when token is expired", %{device: device, subject: subject} do
+    test "expires the channel when token is expired", %{client: client, subject: subject} do
       expires_at = DateTime.utc_now() |> DateTime.add(25, :millisecond)
       subject = %{subject | expires_at: expires_at}
 
@@ -66,18 +66,18 @@ defmodule API.Device.ChannelTest do
       Process.flag(:trap_exit, true)
 
       {:ok, _reply, _socket} =
-        API.Device.Socket
-        |> socket("device:#{device.id}", %{
-          device: device,
+        API.Client.Socket
+        |> socket("client:#{client.id}", %{
+          client: client,
           subject: subject
         })
-        |> subscribe_and_join(API.Device.Channel, "device")
+        |> subscribe_and_join(API.Client.Channel, "client")
 
       assert_push "token_expired", %{}, 250
     end
 
     test "sends list of resources after join", %{
-      device: device,
+      client: client,
       dns_resource: dns_resource,
       cidr_resource: cidr_resource
     } do
@@ -100,8 +100,8 @@ defmodule API.Device.ChannelTest do
              } in resources
 
       assert interface == %{
-               ipv4: device.ipv4,
-               ipv6: device.ipv6,
+               ipv4: client.ipv4,
+               ipv6: client.ipv6,
                upstream_dns: [
                  %Postgrex.INET{address: {1, 1, 1, 1}}
                ]
@@ -274,11 +274,11 @@ defmodule API.Device.ChannelTest do
     test "broadcasts allow_access to the gateways and then returns connect message", %{
       dns_resource: resource,
       gateway: gateway,
-      device: device,
+      client: client,
       socket: socket
     } do
       resource_id = resource.id
-      device_id = device.id
+      client_id = client.id
 
       :ok = Domain.Gateways.connect_gateway(gateway)
       Phoenix.PubSub.subscribe(Domain.PubSub, API.Gateway.Socket.id(gateway))
@@ -294,7 +294,7 @@ defmodule API.Device.ChannelTest do
 
       assert %{
                resource_id: ^resource_id,
-               device_id: ^device_id,
+               client_id: ^client_id,
                authorization_expires_at: authorization_expires_at
              } = payload
 
@@ -307,8 +307,8 @@ defmodule API.Device.ChannelTest do
       attrs = %{
         "resource_id" => Ecto.UUID.generate(),
         "gateway_id" => gateway.id,
-        "device_rtc_session_description" => "RTC_SD",
-        "device_preshared_key" => "PSK"
+        "client_rtc_session_description" => "RTC_SD",
+        "client_preshared_key" => "PSK"
       }
 
       ref = push(socket, "request_connection", attrs)
@@ -319,8 +319,8 @@ defmodule API.Device.ChannelTest do
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => Ecto.UUID.generate(),
-        "device_rtc_session_description" => "RTC_SD",
-        "device_preshared_key" => "PSK"
+        "client_rtc_session_description" => "RTC_SD",
+        "client_preshared_key" => "PSK"
       }
 
       ref = push(socket, "request_connection", attrs)
@@ -338,8 +338,8 @@ defmodule API.Device.ChannelTest do
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => gateway.id,
-        "device_rtc_session_description" => "RTC_SD",
-        "device_preshared_key" => "PSK"
+        "client_rtc_session_description" => "RTC_SD",
+        "client_preshared_key" => "PSK"
       }
 
       ref = push(socket, "request_connection", attrs)
@@ -354,8 +354,8 @@ defmodule API.Device.ChannelTest do
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => gateway.id,
-        "device_rtc_session_description" => "RTC_SD",
-        "device_preshared_key" => "PSK"
+        "client_rtc_session_description" => "RTC_SD",
+        "client_preshared_key" => "PSK"
       }
 
       ref = push(socket, "request_connection", attrs)
@@ -365,12 +365,12 @@ defmodule API.Device.ChannelTest do
     test "broadcasts request_connection to the gateways and then returns connect message", %{
       dns_resource: resource,
       gateway: gateway,
-      device: device,
+      client: client,
       socket: socket
     } do
       public_key = gateway.public_key
       resource_id = resource.id
-      device_id = device.id
+      client_id = client.id
 
       :ok = Domain.Gateways.connect_gateway(gateway)
       Phoenix.PubSub.subscribe(Domain.PubSub, API.Gateway.Socket.id(gateway))
@@ -378,8 +378,8 @@ defmodule API.Device.ChannelTest do
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => gateway.id,
-        "device_rtc_session_description" => "RTC_SD",
-        "device_preshared_key" => "PSK"
+        "client_rtc_session_description" => "RTC_SD",
+        "client_preshared_key" => "PSK"
       }
 
       ref = push(socket, "request_connection", attrs)
@@ -388,9 +388,9 @@ defmodule API.Device.ChannelTest do
 
       assert %{
                resource_id: ^resource_id,
-               device_id: ^device_id,
-               device_preshared_key: "PSK",
-               device_rtc_session_description: "RTC_SD",
+               client_id: ^client_id,
+               client_preshared_key: "PSK",
+               client_rtc_session_description: "RTC_SD",
                authorization_expires_at: authorization_expires_at
              } = payload
 

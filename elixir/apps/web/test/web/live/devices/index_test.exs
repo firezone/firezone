@@ -1,4 +1,4 @@
-defmodule Web.Live.Devices.IndexTest do
+defmodule Web.Live.Clients.IndexTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -12,7 +12,7 @@ defmodule Web.Live.Devices.IndexTest do
   end
 
   test "redirects to sign in page for unauthorized user", %{account: account, conn: conn} do
-    assert live(conn, ~p"/#{account}/devices") ==
+    assert live(conn, ~p"/#{account}/clients") ==
              {:error,
               {:redirect,
                %{
@@ -29,14 +29,14 @@ defmodule Web.Live.Devices.IndexTest do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices")
+      |> live(~p"/#{account}/clients")
 
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
-    assert breadcrumbs =~ "Devices"
+    assert breadcrumbs =~ "Clients"
   end
 
-  test "renders empty table when there are no devices", %{
+  test "renders empty table when there are no clients", %{
     account: account,
     identity: identity,
     conn: conn
@@ -44,39 +44,39 @@ defmodule Web.Live.Devices.IndexTest do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices")
+      |> live(~p"/#{account}/clients")
 
-    assert html =~ "There are no devices to display."
+    assert html =~ "There are no clients to display."
     refute html =~ "tbody"
   end
 
-  test "renders devices table", %{
+  test "renders clients table", %{
     account: account,
     identity: identity,
     conn: conn
   } do
-    online_device = Fixtures.Devices.create_device(account: account)
-    offline_device = Fixtures.Devices.create_device(account: account)
+    online_client = Fixtures.Clients.create_client(account: account)
+    offline_client = Fixtures.Clients.create_client(account: account)
 
-    :ok = Domain.Devices.connect_device(online_device)
+    :ok = Domain.Clients.connect_client(online_client)
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/devices")
+      |> live(~p"/#{account}/clients")
 
     lv
-    |> element("#devices")
+    |> element("#clients")
     |> render()
     |> table_to_map()
-    |> with_table_row("name", online_device.name, fn row ->
+    |> with_table_row("name", online_client.name, fn row ->
       assert row["status"] == "Online"
-      name = Repo.preload(online_device, :actor).actor.name
+      name = Repo.preload(online_client, :actor).actor.name
       assert row["user"] =~ name
     end)
-    |> with_table_row("name", offline_device.name, fn row ->
+    |> with_table_row("name", offline_client.name, fn row ->
       assert row["status"] == "Offline"
-      name = Repo.preload(offline_device, :actor).actor.name
+      name = Repo.preload(offline_client, :actor).actor.name
       assert row["user"] =~ name
     end)
   end

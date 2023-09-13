@@ -90,9 +90,9 @@ defmodule Domain.ConfigTest do
     end
 
     test "returns source and config values", %{account: account} do
-      assert fetch_resolved_configs!(account.id, [:devices_upstream_dns, :devices_upstream_dns]) ==
+      assert fetch_resolved_configs!(account.id, [:clients_upstream_dns, :clients_upstream_dns]) ==
                %{
-                 devices_upstream_dns: [%Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil}]
+                 clients_upstream_dns: [%Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil}]
                }
     end
 
@@ -137,10 +137,10 @@ defmodule Domain.ConfigTest do
     end
 
     test "returns source and config values", %{account: account} do
-      assert fetch_resolved_configs_with_sources!(account.id, [:devices_upstream_dns]) ==
+      assert fetch_resolved_configs_with_sources!(account.id, [:clients_upstream_dns]) ==
                %{
-                 devices_upstream_dns:
-                   {{:db, :devices_upstream_dns},
+                 clients_upstream_dns:
+                   {{:db, :clients_upstream_dns},
                     [%Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil}]}
                }
     end
@@ -350,7 +350,7 @@ defmodule Domain.ConfigTest do
     } do
       assert get_account_config_by_account_id(account.id) == %Domain.Config.Configuration{
                account_id: account.id,
-               devices_upstream_dns: []
+               clients_upstream_dns: []
              }
     end
   end
@@ -387,7 +387,7 @@ defmodule Domain.ConfigTest do
 
       assert config == %Domain.Config.Configuration{
                account_id: account.id,
-               devices_upstream_dns: []
+               clients_upstream_dns: []
              }
     end
 
@@ -442,13 +442,13 @@ defmodule Domain.ConfigTest do
       config = get_account_config_by_account_id(account.id)
 
       attrs = %{
-        devices_upstream_dns: ["!!!"]
+        clients_upstream_dns: ["!!!"]
       }
 
       assert {:error, changeset} = update_config(config, attrs)
 
       assert errors_on(changeset) == %{
-               devices_upstream_dns: [
+               clients_upstream_dns: [
                  "!!! is not a valid FQDN",
                  "must be one of: Elixir.Domain.Types.IP, string"
                ]
@@ -456,20 +456,20 @@ defmodule Domain.ConfigTest do
     end
 
     test "returns error when trying to change overridden value", %{account: account} do
-      put_system_env_override(:devices_upstream_dns, ["1.2.3.4"])
+      put_system_env_override(:clients_upstream_dns, ["1.2.3.4"])
 
       config = get_account_config_by_account_id(account.id)
 
       attrs = %{
-        devices_upstream_dns: ["4.1.2.3"]
+        clients_upstream_dns: ["4.1.2.3"]
       }
 
       assert {:error, changeset} = update_config(config, attrs)
 
       assert errors_on(changeset) ==
                %{
-                 devices_upstream_dns: [
-                   "cannot be changed; it is overridden by DEVICES_UPSTREAM_DNS environment variable"
+                 clients_upstream_dns: [
+                   "cannot be changed; it is overridden by CLIENTS_UPSTREAM_DNS environment variable"
                  ]
                }
     end
@@ -478,27 +478,27 @@ defmodule Domain.ConfigTest do
       config = get_account_config_by_account_id(account.id)
 
       attrs = %{
-        devices_upstream_dns: ["   foobar.com", "google.com   "]
+        clients_upstream_dns: ["   foobar.com", "google.com   "]
       }
 
       assert {:ok, config} = update_config(config, attrs)
-      assert config.devices_upstream_dns == ["foobar.com", "google.com"]
+      assert config.clients_upstream_dns == ["foobar.com", "google.com"]
     end
 
     test "changes database config value when it did not exist", %{account: account} do
       config = get_account_config_by_account_id(account.id)
-      attrs = %{devices_upstream_dns: ["foobar.com", "google.com"]}
+      attrs = %{clients_upstream_dns: ["foobar.com", "google.com"]}
       assert {:ok, config} = update_config(config, attrs)
-      assert config.devices_upstream_dns == attrs.devices_upstream_dns
+      assert config.clients_upstream_dns == attrs.clients_upstream_dns
     end
 
     test "changes database config value when it existed", %{account: account} do
       Fixtures.Config.upsert_configuration(account: account)
 
       config = get_account_config_by_account_id(account.id)
-      attrs = %{devices_upstream_dns: ["foobar.com", "google.com"]}
+      attrs = %{clients_upstream_dns: ["foobar.com", "google.com"]}
       assert {:ok, config} = update_config(config, attrs)
-      assert config.devices_upstream_dns == attrs.devices_upstream_dns
+      assert config.clients_upstream_dns == attrs.clients_upstream_dns
     end
   end
 end

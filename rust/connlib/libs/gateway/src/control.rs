@@ -82,10 +82,10 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         tokio::spawn(async move {
             match tunnel
                 .set_peer_connection_request(
-                    connection_request.device.rtc_session_description,
-                    connection_request.device.peer.into(),
+                    connection_request.client.rtc_session_description,
+                    connection_request.client.peer.into(),
                     connection_request.relays,
-                    connection_request.device.id,
+                    connection_request.client.id,
                     connection_request.expires_at,
                     connection_request.resource,
                 )
@@ -100,12 +100,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         }))
                         .await
                     {
-                        tunnel.cleanup_connection(connection_request.device.id);
+                        tunnel.cleanup_connection(connection_request.client.id);
                         let _ = tunnel.callbacks().on_error(&err);
                     }
                 }
                 Err(err) => {
-                    tunnel.cleanup_connection(connection_request.device.id);
+                    tunnel.cleanup_connection(connection_request.client.id);
                     let _ = tunnel.callbacks().on_error(&err);
                 }
             }
@@ -116,12 +116,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     fn allow_access(
         &self,
         AllowAccess {
-            device_id,
+            client_id,
             resource,
             expires_at,
         }: AllowAccess,
     ) {
-        self.tunnel.allow_access(resource, device_id, expires_at)
+        self.tunnel.allow_access(resource, client_id, expires_at)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

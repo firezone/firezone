@@ -6,7 +6,7 @@ defmodule API.Gateway.ChannelTest do
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(actor: actor, account: account)
     subject = Fixtures.Auth.create_subject(identity: identity)
-    device = Fixtures.Devices.create_device(subject: subject)
+    client = Fixtures.Clients.create_client(subject: subject)
     gateway = Fixtures.Gateways.create_gateway(account: account)
 
     resource =
@@ -27,7 +27,7 @@ defmodule API.Gateway.ChannelTest do
       actor: actor,
       identity: identity,
       subject: subject,
-      device: device,
+      client: client,
       gateway: gateway,
       resource: resource,
       relay: relay,
@@ -61,7 +61,7 @@ defmodule API.Gateway.ChannelTest do
 
   describe "handle_info/2 :allow_access" do
     test "pushes allow_access message", %{
-      device: device,
+      client: client,
       resource: resource,
       relay: relay,
       socket: socket
@@ -75,7 +75,7 @@ defmodule API.Gateway.ChannelTest do
         socket.channel_pid,
         {:allow_access,
          %{
-           device_id: device.id,
+           client_id: client.id,
            resource_id: resource.id,
            authorization_expires_at: expires_at
          }}
@@ -97,14 +97,14 @@ defmodule API.Gateway.ChannelTest do
                ]
              }
 
-      assert payload.device_id == device.id
+      assert payload.client_id == client.id
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
     end
   end
 
   describe "handle_info/2 :request_connection" do
     test "pushes request_connection message", %{
-      device: device,
+      client: client,
       resource: resource,
       relay: relay,
       socket: socket
@@ -122,18 +122,18 @@ defmodule API.Gateway.ChannelTest do
         socket.channel_pid,
         {:request_connection, {channel_pid, socket_ref},
          %{
-           device_id: device.id,
+           client_id: client.id,
            resource_id: resource.id,
            authorization_expires_at: expires_at,
-           device_rtc_session_description: rtc_session_description,
-           device_preshared_key: preshared_key
+           client_rtc_session_description: rtc_session_description,
+           client_preshared_key: preshared_key
          }}
       )
 
       assert_push "request_connection", payload
 
       assert is_binary(payload.ref)
-      assert payload.actor == %{id: device.actor_id}
+      assert payload.actor == %{id: client.actor_id}
 
       ipv4_stun_uri = "stun:#{relay.ipv4}:#{relay.port}"
       ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
@@ -186,14 +186,14 @@ defmodule API.Gateway.ChannelTest do
                ]
              }
 
-      assert payload.device == %{
-               id: device.id,
+      assert payload.client == %{
+               id: client.id,
                peer: %{
-                 ipv4: device.ipv4,
-                 ipv6: device.ipv6,
+                 ipv4: client.ipv4,
+                 ipv6: client.ipv6,
                  persistent_keepalive: 25,
                  preshared_key: preshared_key,
-                 public_key: device.public_key
+                 public_key: client.public_key
                },
                rtc_session_description: rtc_session_description
              }
@@ -203,8 +203,8 @@ defmodule API.Gateway.ChannelTest do
   end
 
   describe "handle_in/3 connection_ready" do
-    test "forwards RFC session description to the device channel", %{
-      device: device,
+    test "forwards RFC session description to the client channel", %{
+      client: client,
       resource: resource,
       relay: relay,
       gateway: gateway,
@@ -224,11 +224,11 @@ defmodule API.Gateway.ChannelTest do
         socket.channel_pid,
         {:request_connection, {channel_pid, socket_ref},
          %{
-           device_id: device.id,
+           client_id: client.id,
            resource_id: resource.id,
            authorization_expires_at: expires_at,
-           device_rtc_session_description: rtc_session_description,
-           device_preshared_key: preshared_key
+           client_rtc_session_description: rtc_session_description,
+           client_preshared_key: preshared_key
          }}
       )
 

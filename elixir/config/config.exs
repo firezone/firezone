@@ -29,7 +29,7 @@ config :domain, Domain.Repo,
   migration_timestamps: [type: :timestamptz],
   start_apps_before_migration: [:ssl, :logger_json]
 
-config :domain, Domain.Devices, upstream_dns: ["1.1.1.1"]
+config :domain, Domain.Clients, upstream_dns: ["1.1.1.1"]
 
 config :domain, Domain.Gateways,
   gateway_ipv4_masquerade: true,

@@ -7,7 +7,7 @@ defmodule Domain.Actors.Actor do
     field :name, :string
 
     has_many :identities, Domain.Auth.Identity, where: [deleted_at: nil]
-    has_many :devices, Domain.Devices.Device, where: [deleted_at: nil]
+    has_many :clients, Domain.Clients.Client, where: [deleted_at: nil]
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
     has_many :groups, through: [:memberships, :group]
 

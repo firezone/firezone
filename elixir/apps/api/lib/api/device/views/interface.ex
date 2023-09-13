@@ -1,15 +1,15 @@
-defmodule API.Device.Views.Interface do
-  alias Domain.Devices
+defmodule API.Client.Views.Interface do
+  alias Domain.Clients
 
-  def render(%Devices.Device{} = device) do
+  def render(%Clients.Client{} = client) do
     upstream_dns =
-      Devices.fetch_device_config!(device)
+      Clients.fetch_client_config!(client)
       |> Keyword.fetch!(:upstream_dns)
 
     %{
       upstream_dns: upstream_dns,
-      ipv4: device.ipv4,
-      ipv6: device.ipv6
+      ipv4: client.ipv4,
+      ipv6: client.ipv6
     }
   end
 end

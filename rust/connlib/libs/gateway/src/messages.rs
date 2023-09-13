@@ -19,7 +19,7 @@ pub struct Actor {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct Device {
+pub struct Client {
     pub id: Id,
     pub rtc_session_description: RTCSessionDescription,
     pub peer: Peer,
@@ -27,20 +27,20 @@ pub struct Device {
 
 // rtc_sdp is ignored from eq since RTCSessionDescription doesn't implement this
 // this will probably be changed in the future.
-impl PartialEq for Device {
+impl PartialEq for Client {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id && self.peer == other.peer
     }
 }
 
-impl Eq for Device {}
+impl Eq for Client {}
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct RequestConnection {
     pub actor: Actor,
     pub relays: Vec<Relay>,
     pub resource: ResourceDescription,
-    pub device: Device,
+    pub client: Client,
     #[serde(rename = "ref")]
     pub reference: String,
     #[serde(with = "ts_seconds")]
@@ -73,7 +73,7 @@ pub struct RemoveResource {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct AllowAccess {
-    pub device_id: Id,
+    pub client_id: Id,
     pub resource: ResourceDescription,
     #[serde(with = "ts_seconds")]
     pub expires_at: DateTime<Utc>,
@@ -122,7 +122,7 @@ mod test {
             "topic": "gateway",
             "event": "request_connection",
             "payload": {
-                "device": {
+                "client": {
                     "id": "3a25ff38-f8d7-47de-9b30-c7c40c206083",
                     "peer": {
                         "ipv6": "fd00:2021:1111::3a:ab1b",
