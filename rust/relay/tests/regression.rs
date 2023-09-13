@@ -1,5 +1,4 @@
 use bytecodec::{DecodeExt, EncodeExt};
-use prometheus_client::registry::Registry;
 use rand::rngs::mock::StepRng;
 use relay::{
     AddressFamily, Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData,
@@ -427,13 +426,7 @@ struct TestServer {
 impl TestServer {
     fn new(relay_public_addr: impl Into<IpStack>) -> Self {
         Self {
-            server: Server::new(
-                relay_public_addr,
-                StepRng::new(0, 0),
-                &mut Registry::default(),
-                49152,
-                65535,
-            ),
+            server: Server::new(relay_public_addr, StepRng::new(0, 0), 49152, 65535),
             id_to_port: Default::default(),
         }
     }
