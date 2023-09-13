@@ -450,6 +450,14 @@ where
                         tracing::info!("Freeing addresses of allocation {id}");
                     }
                     Command::Wake { deadline } => {
+                        let now = SystemTime::now();
+
+                        if let Some(duration) = deadline.duration_since(now) {
+                            tracing::trace!("Putting event-loop to sleep for at most {duration:?}")
+                        } else {
+                            tracing::warn!("Server wants to be woken at {deadline:?} but it is already {now:?}")
+                        }
+
                         Pin::new(&mut self.sleep).reset(deadline);
                     }
                     Command::ForwardData { id, data, receiver } => {
