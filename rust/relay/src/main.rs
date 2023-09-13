@@ -2,10 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
-use opentelemetry::sdk::trace::TracerProvider;
-use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_stackdriver::Authorizer;
 use phoenix_channel::{Error, Event, PhoenixChannel};
 use prometheus_client::registry::Registry;
 use rand::rngs::StdRng;
@@ -94,8 +91,6 @@ enum LogFormat {
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
 enum TraceCollector {
-    /// Sends traces to Google Cloud Trace.
-    GoogleCloudTrace,
     /// Sends traces to an OTLP collector.
     Otlp,
 }
@@ -203,17 +198,6 @@ async fn main() -> Result<()> {
 ///
 /// See [`log_layer`] for details on the base log layer.
 ///
-/// ## Integration with Google Cloud Trace
-///
-/// If the user has specified [`TraceCollector::GoogleCloudTrace`], we will attempt to connect to Google Cloud Trace.
-/// This requires authentication.
-/// Here is how we will attempt to obtain those, for details see <https://docs.rs/gcp_auth/0.9.0/gcp_auth/struct.AuthenticationManager.html#method.new>.
-///
-/// 1. Check if the `GOOGLE_APPLICATION_CREDENTIALS` environment variable if set; if so, use a custom service account as the token source.
-/// 2. Look for credentials in `.config/gcloud/application_default_credentials.json`; if found, use these credentials to request refresh tokens.
-/// 3. Send a HTTP request to the internal metadata server to retrieve a token; if it succeeds, use the default service account as the token source.
-/// 4. Check if the `gcloud` tool is available on the PATH; if so, use the `gcloud auth print-access-token` command as the token source.
-///
 /// ## Integration with OTLP
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
@@ -221,44 +205,11 @@ async fn setup_tracing(args: &Args) -> Result<()> {
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
-        &tracing_subscriber::registry()
-            .with(log_layer(args, args.google_cloud_project_id.clone()))
-            .into(),
+        &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
 
     let dispatch: Dispatch = match args.trace_collector {
-        None => tracing_subscriber::registry()
-            .with(log_layer(args, args.google_cloud_project_id.clone()))
-            .into(),
-        Some(TraceCollector::GoogleCloudTrace) => {
-            tracing::trace!("Setting up Google-Cloud-Trace collector");
-
-            let authorizer = opentelemetry_stackdriver::GcpAuthorizer::new()
-                .await
-                .context("Failed to find GCP credentials")?;
-
-            let project_id = authorizer.project_id().to_owned();
-
-            tracing::trace!(%project_id, "Successfully retrieved authentication token for Google services");
-
-            let (exporter, driver) = opentelemetry_stackdriver::Builder::default()
-                .build(authorizer)
-                .await
-                .context("Failed to create StackDriverExporter")?;
-            tokio::spawn(driver);
-
-            let tracer = TracerProvider::builder()
-                .with_batch_exporter(exporter, opentelemetry::runtime::Tokio)
-                .build()
-                .tracer("relay");
-
-            tracing::trace!("Successfully initialized trace provider on tokio runtime");
-
-            tracing_subscriber::registry()
-                .with(log_layer(args, Some(project_id)))
-                .with(tracing_opentelemetry::layer().with_tracer(tracer))
-                .into()
-        }
+        None => tracing_subscriber::registry().with(log_layer(args)).into(),
         Some(TraceCollector::Otlp) => {
             let grpc_endpoint = format!("http://{}", args.otlp_grpc_endpoint);
 
@@ -279,7 +230,7 @@ async fn setup_tracing(args: &Args) -> Result<()> {
             // TODO: This is where we could also configure metrics.
 
             tracing_subscriber::registry()
-                .with(log_layer(args, args.google_cloud_project_id.clone()))
+                .with(log_layer(args))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer))
                 .into()
         }
@@ -301,10 +252,7 @@ async fn setup_tracing(args: &Args) -> Result<()> {
 /// - human-centered formatting
 /// - JSON-formatting
 /// - Google Cloud optimised formatting
-fn log_layer<T>(
-    args: &Args,
-    google_cloud_trace_project_id: Option<String>,
-) -> Box<dyn Layer<T> + Send + Sync>
+fn log_layer<T>(args: &Args) -> Box<dyn Layer<T> + Send + Sync>
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
@@ -312,7 +260,7 @@ where
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy();
 
-    let log_layer = match (args.log_format, google_cloud_trace_project_id) {
+    let log_layer = match (args.log_format, args.google_cloud_project_id.clone()) {
         (LogFormat::Human, _) => tracing_subscriber::fmt::layer().boxed(),
         (LogFormat::Json, _) => tracing_subscriber::fmt::layer().json().boxed(),
         (LogFormat::GoogleCloud, None) => {
