@@ -402,8 +402,8 @@ where
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
             gateway_id,
-            device_preshared_key: Key(preshared_key.to_bytes()),
-            device_rtc_session_description: local_description,
+            client_preshared_key: Key(preshared_key.to_bytes()),
+            client_rtc_session_description: local_description,
         }))
     }
 
