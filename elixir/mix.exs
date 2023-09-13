@@ -72,14 +72,18 @@ defmodule Firezone.MixProject do
         include_executables_for: [:unix],
         validate_compile_env: true,
         applications: [
-          web: :permanent
+          web: :permanent,
+          opentelemetry: :temporary,
+          opentelemetry_exporter: :permanent
         ]
       ],
       api: [
         include_executables_for: [:unix],
         validate_compile_env: true,
         applications: [
-          api: :permanent
+          api: :permanent,
+          opentelemetry: :temporary,
+          opentelemetry_exporter: :permanent
         ]
       ]
     ]

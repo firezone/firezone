@@ -338,11 +338,6 @@ locals {
       name  = "TELEMETRY_ENABLED"
       value = "false"
     },
-    # OpenTelemetry requires an exporter to be set on every node
-    # {
-    #   name  = "OTLP_ENDPOINT"
-    #   value = "http://0.0.0.0:55680",
-    # },
     # Emails
     {
       name  = "OUTBOUND_EMAIL_ADAPTER"
