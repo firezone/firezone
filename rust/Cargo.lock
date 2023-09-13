@@ -2980,6 +2980,7 @@ dependencies = [
  "test-strategy",
  "tokio",
  "tracing",
+ "tracing-core",
  "tracing-opentelemetry",
  "tracing-stackdriver",
  "tracing-subscriber",

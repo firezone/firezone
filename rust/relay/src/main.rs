@@ -199,6 +199,8 @@ async fn main() -> Result<()> {
 ///
 /// See [`log_layer`] for details on the base log layer.
 ///
+/// ## Integration with Google Cloud Trace
+///
 /// If the user has specified [`TraceCollector::GoogleCloudTrace`], we will attempt to connect to Google Cloud Trace.
 /// This requires authentication.
 /// Here is how we will attempt to obtain those, for details see <https://docs.rs/gcp_auth/0.9.0/gcp_auth/struct.AuthenticationManager.html#method.new>.
@@ -207,21 +209,39 @@ async fn main() -> Result<()> {
 /// 2. Look for credentials in `.config/gcloud/application_default_credentials.json`; if found, use these credentials to request refresh tokens.
 /// 3. Send a HTTP request to the internal metadata server to retrieve a token; if it succeeds, use the default service account as the token source.
 /// 4. Check if the `gcloud` tool is available on the PATH; if so, use the `gcloud auth print-access-token` command as the token source.
+///
+/// ## Integration with OTLP
+///
+/// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
 async fn setup_tracing(args: &Args) -> Result<()> {
-    let registry = tracing_subscriber::registry();
+    // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
+    // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
+    let temp_logger_guard = tracing_core::dispatcher::set_default(
+        &tracing_subscriber::registry()
+            .with(log_layer(args, None))
+            .into(),
+    );
 
     match args.trace_collector {
-        None => registry.with(log_layer(args, None)).try_init(),
+        None => {
+            drop(temp_logger_guard);
+
+            tracing_subscriber::registry().with(log_layer(args, None)).try_init()
+        }
         Some(TraceCollector::GoogleCloudTrace) => {
+            tracing::trace!("Setting up Google-Cloud-Trace collector");
+
             let authorizer = opentelemetry_stackdriver::GcpAuthorizer::new()
                 .await
                 .context("Failed to find GCP credentials")?;
 
             let project_id = authorizer.project_id().to_owned();
 
+            tracing::trace!(%project_id, "Successfully retrieved authentication token for Google services");
+
             let (exporter, driver) = opentelemetry_stackdriver::Builder::default()
                 .build(authorizer)
-                .await?;
+                .await.context("Failed to create StackDriverExporter")?;
             tokio::spawn(driver);
 
             let tracer = TracerProvider::builder()
@@ -229,15 +249,23 @@ async fn setup_tracing(args: &Args) -> Result<()> {
                 .build()
                 .tracer("relay");
 
-            registry
+            tracing::trace!("Successfully initialized trace provider on tokio runtime");
+
+            drop(temp_logger_guard);
+
+            tracing_subscriber::registry()
                 .with(log_layer(args, Some(project_id)))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer))
                 .try_init()
         }
         Some(TraceCollector::Otlp) => {
+            let grpc_endpoint = format!("http://{}", args.otlp_grpc_endpoint);
+
+            tracing::trace!(%grpc_endpoint, "Setting up OTLP exporter for collector");
+
             let exporter = opentelemetry_otlp::new_exporter()
                 .tonic()
-                .with_endpoint(args.otlp_grpc_endpoint.to_string());
+                .with_endpoint(grpc_endpoint);
 
             let tracer = opentelemetry_otlp::new_pipeline()
                 .tracing()
@@ -245,9 +273,13 @@ async fn setup_tracing(args: &Args) -> Result<()> {
                 .install_batch(opentelemetry::runtime::Tokio)
                 .context("Failed to create OTLP pipeline")?;
 
+            tracing::trace!("Successfully initialized trace provider on tokio runtime");
+
             // TODO: This is where we could also configure metrics.
 
-            registry
+            drop(temp_logger_guard);
+
+            tracing_subscriber::registry()
                 .with(log_layer(args, None))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer))
                 .try_init()
