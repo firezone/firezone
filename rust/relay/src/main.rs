@@ -22,7 +22,7 @@ use std::pin::Pin;
 use std::task::Poll;
 use std::time::SystemTime;
 use tracing::level_filters::LevelFilter;
-use tracing::{Span, Subscriber};
+use tracing::Subscriber;
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
 use tracing_subscriber::layer::SubscriberExt;
@@ -104,8 +104,7 @@ enum TraceCollector {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let root_span = setup_tracing(&args).await?;
-    let _guard = root_span.enter();
+    setup_tracing(&args).await?;
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
@@ -218,7 +217,7 @@ async fn main() -> Result<()> {
 /// ## Integration with OTLP
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
-async fn setup_tracing(args: &Args) -> Result<Span> {
+async fn setup_tracing(args: &Args) -> Result<()> {
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
@@ -292,14 +291,7 @@ async fn setup_tracing(args: &Args) -> Result<Span> {
         .try_init()
         .context("Failed to initialize tracing")?;
 
-    // If we have a trace collector, we must define a root span, otherwise traces will not be sampled, i.e. discarded.
-    let root_span = if args.trace_collector.is_some() {
-        tracing::error_span!("root")
-    } else {
-        Span::none()
-    };
-
-    Ok(root_span)
+    Ok(())
 }
 
 /// Constructs the base log layer.
