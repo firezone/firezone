@@ -414,6 +414,8 @@ where
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
         loop {
+            let now = SystemTime::now();
+
             // Priority 1: Execute the pending commands of the server.
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
@@ -450,12 +452,14 @@ where
                         tracing::info!("Freeing addresses of allocation {id}");
                     }
                     Command::Wake { deadline } => {
-                        let now = SystemTime::now();
-
                         if let Some(duration) = deadline.duration_since(now) {
-                            tracing::trace!("Putting event-loop to sleep for at most {duration:?}")
+                            tracing::trace!(?duration, "Suspending event loop")
                         } else {
-                            tracing::warn!("Server wants to be woken at {deadline:?} but it is already {now:?}")
+                            tracing::warn!(
+                                ?deadline,
+                                ?now,
+                                "Wake time is already in the past, waking now"
+                            )
                         }
 
                         Pin::new(&mut self.sleep).reset(deadline);
@@ -481,7 +485,7 @@ where
 
             // Priority 2: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
-                self.server.handle_deadline_reached(SystemTime::now());
+                self.server.handle_deadline_reached(now);
                 continue; // Handle potentially new commands.
             }
 
@@ -497,8 +501,7 @@ where
             if let Poll::Ready(Some((buffer, sender))) =
                 self.inbound_data_receiver.poll_next_unpin(cx)
             {
-                self.server
-                    .handle_client_input(&buffer, sender, SystemTime::now());
+                self.server.handle_client_input(&buffer, sender, now);
                 continue; // Handle potentially new commands.
             }
 
