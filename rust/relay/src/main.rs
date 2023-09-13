@@ -206,15 +206,11 @@ async fn setup_tracing(args: &Args) -> Result<Span> {
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
-        &tracing_subscriber::registry()
-            .with(log_layer(args, args.google_cloud_project_id.clone()))
-            .into(),
+        &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
 
     let dispatch: Dispatch = match args.trace_collector {
-        None => tracing_subscriber::registry()
-            .with(log_layer(args, args.google_cloud_project_id.clone()))
-            .into(),
+        None => tracing_subscriber::registry().with(log_layer(args)).into(),
         Some(TraceCollector::Otlp) => {
             let grpc_endpoint = format!("http://{}", args.otlp_grpc_endpoint);
 
@@ -235,7 +231,7 @@ async fn setup_tracing(args: &Args) -> Result<Span> {
             // TODO: This is where we could also configure metrics.
 
             tracing_subscriber::registry()
-                .with(log_layer(args, args.google_cloud_project_id.clone()))
+                .with(log_layer(args))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer))
                 .into()
         }
@@ -264,10 +260,7 @@ async fn setup_tracing(args: &Args) -> Result<Span> {
 /// - human-centered formatting
 /// - JSON-formatting
 /// - Google Cloud optimised formatting
-fn log_layer<T>(
-    args: &Args,
-    google_cloud_trace_project_id: Option<String>,
-) -> Box<dyn Layer<T> + Send + Sync>
+fn log_layer<T>(args: &Args) -> Box<dyn Layer<T> + Send + Sync>
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
@@ -275,7 +268,7 @@ where
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy();
 
-    let log_layer = match (args.log_format, google_cloud_trace_project_id) {
+    let log_layer = match (args.log_format, args.google_cloud_project_id.clone()) {
         (LogFormat::Human, _) => tracing_subscriber::fmt::layer().boxed(),
         (LogFormat::Json, _) => tracing_subscriber::fmt::layer().json().boxed(),
         (LogFormat::GoogleCloud, None) => {
