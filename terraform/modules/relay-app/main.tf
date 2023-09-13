@@ -31,16 +31,12 @@ locals {
       value = "google-cloud"
     },
     {
-      name  = "TRACE_COLLECTOR"
-      value = "otlp"
-    },
-    {
       name  = "GOOGLE_CLOUD_PROJECT_ID"
       value = var.project_id
     },
     {
-      name  = "METRICS_ADDR"
-      value = "0.0.0.0:8080"
+      name  = "OTLP_GRPC_ENDPOINT"
+      value = "127.0.0.1:4317"
     },
     {
       name  = "PORTAL_TOKEN"
