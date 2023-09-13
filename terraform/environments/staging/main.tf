@@ -636,10 +636,10 @@ module "relays" {
 }
 
 # Enable SSH on staging
-resource "google_compute_firewall" "ssh" {
+resource "google_compute_firewall" "ssh-ipv4" {
   project = module.google-cloud-project.project.project_id
 
-  name    = "staging-ssh"
+  name    = "staging-ssh-ipv4"
   network = module.google-cloud-vpc.self_link
 
   allow {
@@ -660,13 +660,37 @@ resource "google_compute_firewall" "ssh" {
   source_ranges = ["0.0.0.0/0"]
   target_tags   = concat(module.web.target_tags, module.api.target_tags)
 }
+resource "google_compute_firewall" "ssh-ipv6" {
+  project = module.google-cloud-project.project.project_id
 
-resource "google_compute_firewall" "relays-ssh" {
+  name    = "staging-ssh-ipv6"
+  network = module.google-cloud-vpc.self_link
+
+  allow {
+    protocol = "tcp"
+    ports    = [22]
+  }
+
+  allow {
+    protocol = "udp"
+    ports    = [22]
+  }
+
+  allow {
+    protocol = "sctp"
+    ports    = [22]
+  }
+
+  source_ranges = ["::0/0"]
+  target_tags   = concat(module.web.target_tags, module.api.target_tags)
+}
+
+resource "google_compute_firewall" "relays-ssh-ipv4" {
   count = length(module.relays) > 0 ? 1 : 0
 
   project = module.google-cloud-project.project.project_id
 
-  name    = "staging-relays-ssh"
+  name    = "staging-relays-ssh-ipv4"
   network = module.relays[0].network
 
   allow {
@@ -685,5 +709,32 @@ resource "google_compute_firewall" "relays-ssh" {
   }
 
   source_ranges = ["0.0.0.0/0"]
+  target_tags   = module.relays[0].target_tags
+}
+
+resource "google_compute_firewall" "relays-ssh-ipv4" {
+  count = length(module.relays) > 0 ? 1 : 0
+
+  project = module.google-cloud-project.project.project_id
+
+  name    = "staging-relays-ssh-ipv4"
+  network = module.relays[0].network
+
+  allow {
+    protocol = "tcp"
+    ports    = [22]
+  }
+
+  allow {
+    protocol = "udp"
+    ports    = [22]
+  }
+
+  allow {
+    protocol = "sctp"
+    ports    = [22]
+  }
+
+  source_ranges = ["::0/0"]
   target_tags   = module.relays[0].target_tags
 }
