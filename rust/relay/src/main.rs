@@ -177,7 +177,7 @@ async fn setup_tracing(args: &Args) -> Result<()> {
 
             opentelemetry_otlp::new_pipeline()
                 .metrics(
-                    opentelemetry::sdk::metrics::selectors::simple::inexpensive(),
+                    sdk::metrics::selectors::simple::inexpensive(),
                     metrics::aggregation::cumulative_temporality_selector(),
                     opentelemetry::runtime::Tokio,
                 )
@@ -189,7 +189,11 @@ async fn setup_tracing(args: &Args) -> Result<()> {
 
             tracing_subscriber::registry()
                 .with(log_layer(args))
-                .with(tracing_opentelemetry::layer().with_tracer(tracer))
+                .with(
+                    tracing_opentelemetry::layer()
+                        .with_tracer(tracer)
+                        .with_filter(env_filter()),
+                )
                 .into()
         }
     };
@@ -214,10 +218,6 @@ fn log_layer<T>(args: &Args) -> Box<dyn Layer<T> + Send + Sync>
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
-    let env_filter = EnvFilter::builder()
-        .with_default_directive(LevelFilter::INFO.into())
-        .from_env_lossy();
-
     let log_layer = match (args.log_format, args.google_cloud_project_id.clone()) {
         (LogFormat::Human, _) => tracing_subscriber::fmt::layer().boxed(),
         (LogFormat::Json, _) => tracing_subscriber::fmt::layer().json().boxed(),
@@ -231,7 +231,13 @@ where
             .boxed(),
     };
 
-    log_layer.with_filter(env_filter).boxed()
+    log_layer.with_filter(env_filter()).boxed()
+}
+
+fn env_filter() -> EnvFilter {
+    EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy()
 }
 
 async fn connect_to_portal(
