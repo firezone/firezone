@@ -48,6 +48,7 @@ defmodule Domain.Jobs.Executors.Global do
   """
   use GenServer
   require Logger
+  require OpenTelemetry.Tracer
 
   def start_link({{module, function}, interval, config}) do
     GenServer.start_link(__MODULE__, {{module, function}, interval, config})
@@ -156,13 +157,19 @@ defmodule Domain.Jobs.Executors.Global do
   end
 
   defp execute_handler(module, function, config) do
-    Logger.metadata(
+    attributes = [
       job_runner: __MODULE__,
       job_execution_id: Ecto.UUID.generate(),
       job_callback: "#{module}.#{function}/1"
-    )
+    ]
 
-    _ = apply(module, function, [config])
+    Logger.metadata(attributes)
+
+    OpenTelemetry.Tracer.with_span "operation" do
+      OpenTelemetry.Tracer.set_attributes(attributes)
+      _ = apply(module, function, [config])
+    end
+
     :ok
   end
 
