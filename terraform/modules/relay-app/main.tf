@@ -292,6 +292,10 @@ resource "google_compute_health_check" "port" {
     request_path = var.health_check.http_health_check.request_path
     response     = var.health_check.http_health_check.response
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Use template to deploy zonal instance group
