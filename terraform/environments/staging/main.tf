@@ -712,12 +712,12 @@ resource "google_compute_firewall" "relays-ssh-ipv4" {
   target_tags   = module.relays[0].target_tags
 }
 
-resource "google_compute_firewall" "relays-ssh-ipv4" {
+resource "google_compute_firewall" "relays-ssh-ipv6" {
   count = length(module.relays) > 0 ? 1 : 0
 
   project = module.google-cloud-project.project.project_id
 
-  name    = "staging-relays-ssh-ipv4"
+  name    = "staging-relays-ssh-ipv6"
   network = module.relays[0].network
 
   allow {
