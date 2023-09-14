@@ -3,6 +3,7 @@ use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
 use opentelemetry::sdk::export::metrics;
+use opentelemetry::{sdk, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use phoenix_channel::{Error, Event, PhoenixChannel};
 use rand::rngs::StdRng;
@@ -18,7 +19,7 @@ use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::task::Poll;
 use std::time::SystemTime;
-use tracing::{level_filters::LevelFilter, Subscriber};
+use tracing::{level_filters::LevelFilter, Instrument, Subscriber};
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
@@ -105,60 +106,15 @@ async fn main() -> Result<()> {
         args.highest_port,
     );
 
-    let channel = if let Some(token) = args.portal_token {
-        let mut url = args.portal_ws_url.clone();
-        if !url.path().is_empty() {
-            tracing::warn!("Overwriting path component of portal URL with '/relay/websocket'");
-        }
+    let channel = if let Some(token) = args.portal_token.as_ref() {
+        let url = args.portal_ws_url.clone();
+        let stamp_secret = server.auth_secret().to_string();
 
-        url.set_path("relay/websocket");
-        url.query_pairs_mut().append_pair("token", &token);
+        let span = tracing::error_span!("connect_to_portal", config_url = %url);
 
-        if let Some(public_ip4_addr) = args.public_ip4_addr {
-            url.query_pairs_mut()
-                .append_pair("ipv4", &public_ip4_addr.to_string());
-        }
-        if let Some(public_ip6_addr) = args.public_ip6_addr {
-            url.query_pairs_mut()
-                .append_pair("ipv6", &public_ip6_addr.to_string());
-        }
-
-        let mut channel = PhoenixChannel::<InboundPortalMessage, ()>::connect(
-            url,
-            format!("relay/{}", env!("CARGO_PKG_VERSION")),
-        )
-        .await
-        .context("Failed to connect to the portal")?;
-
-        tracing::info!("Connected to portal, waiting for init message",);
-
-        channel.join(
-            "relay",
-            JoinMessage {
-                stamp_secret: server.auth_secret().to_string(),
-            },
-        );
-
-        loop {
-            match future::poll_fn(|cx| channel.poll(cx))
-                .await
-                .context("portal connection failed")?
-            {
-                Event::JoinedRoom { topic } if topic == "relay" => {
-                    tracing::info!("Joined relay room on portal")
-                }
-                Event::InboundMessage {
-                    topic,
-                    msg: InboundPortalMessage::Init {},
-                } => {
-                    tracing::info!("Received init message from portal on topic {topic}, starting relay activities");
-                    break Some(channel);
-                }
-                other => {
-                    tracing::debug!("Unhandled message from portal: {other:?}");
-                }
-            }
-        }
+        connect_to_portal(&args, token, url, stamp_secret)
+            .instrument(span)
+            .await?
     } else {
         tracing::warn!("No portal token supplied, starting standalone mode");
 
@@ -203,11 +159,15 @@ async fn setup_tracing(args: &Args) -> Result<()> {
                 .tonic()
                 .with_endpoint(grpc_endpoint.clone());
 
-            let tracer = opentelemetry_otlp::new_pipeline()
-                .tracing()
-                .with_exporter(exporter)
-                .install_batch(opentelemetry::runtime::Tokio)
-                .context("Failed to create OTLP trace pipeline")?;
+            let tracer =
+                opentelemetry_otlp::new_pipeline()
+                    .tracing()
+                    .with_exporter(exporter)
+                    .with_trace_config(sdk::trace::Config::default().with_resource(
+                        sdk::Resource::new(vec![KeyValue::new("service.name", "relay")]),
+                    ))
+                    .install_batch(opentelemetry::runtime::Tokio)
+                    .context("Failed to create OTLP trace pipeline")?;
 
             tracing::trace!("Successfully initialized trace provider on tokio runtime");
 
@@ -272,6 +232,63 @@ where
     };
 
     log_layer.with_filter(env_filter).boxed()
+}
+
+async fn connect_to_portal(
+    args: &Args,
+    token: &str,
+    mut url: Url,
+    stamp_secret: String,
+) -> Result<Option<PhoenixChannel<InboundPortalMessage, ()>>> {
+    if !url.path().is_empty() {
+        tracing::warn!("Overwriting path component of portal URL with '/relay/websocket'");
+    }
+
+    url.set_path("relay/websocket");
+    url.query_pairs_mut().append_pair("token", token);
+
+    if let Some(public_ip4_addr) = args.public_ip4_addr {
+        url.query_pairs_mut()
+            .append_pair("ipv4", &public_ip4_addr.to_string());
+    }
+    if let Some(public_ip6_addr) = args.public_ip6_addr {
+        url.query_pairs_mut()
+            .append_pair("ipv6", &public_ip6_addr.to_string());
+    }
+
+    let mut channel = PhoenixChannel::<InboundPortalMessage, ()>::connect(
+        url,
+        format!("relay/{}", env!("CARGO_PKG_VERSION")),
+    )
+    .await
+    .context("Failed to connect to the portal")?;
+
+    tracing::info!("Connected to portal, waiting for init message",);
+
+    channel.join("relay", JoinMessage { stamp_secret });
+
+    loop {
+        match future::poll_fn(|cx| channel.poll(cx))
+            .await
+            .context("portal connection failed")?
+        {
+            Event::JoinedRoom { topic } if topic == "relay" => {
+                tracing::info!("Joined relay room on portal")
+            }
+            Event::InboundMessage {
+                topic,
+                msg: InboundPortalMessage::Init {},
+            } => {
+                tracing::info!(
+                    "Received init message from portal on topic {topic}, starting relay activities"
+                );
+                return Ok(Some(channel));
+            }
+            other => {
+                tracing::debug!("Unhandled message from portal: {other:?}");
+            }
+        }
+    }
 }
 
 #[derive(serde::Serialize, PartialEq, Debug)]
@@ -362,6 +379,9 @@ where
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
+        let span = tracing::error_span!("Eventloop::poll");
+        let _guard = span.enter();
+
         loop {
             let now = SystemTime::now();
 
@@ -369,6 +389,9 @@ where
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
                     Command::SendMessage { payload, recipient } => {
+                        let span = tracing::error_span!("Command::SendMessage");
+                        let _guard = span.enter();
+
                         let sender = match recipient.family() {
                             AddressFamily::V4 => &mut self.outbound_ip4_data_sender,
                             AddressFamily::V6 => &mut self.outbound_ip6_data_sender,
@@ -387,12 +410,19 @@ where
                         }
                     }
                     Command::CreateAllocation { id, family, port } => {
+                        let span =
+                            tracing::error_span!("Command::CreateAllocation", %id, %family, %port);
+                        let _guard = span.enter();
+
                         self.allocations.insert(
                             (id, family),
                             Allocation::new(self.relay_data_sender.clone(), id, family, port),
                         );
                     }
                     Command::FreeAllocation { id, family } => {
+                        let span = tracing::error_span!("Command::FreeAllocation", %id, %family);
+                        let _guard = span.enter();
+
                         if self.allocations.remove(&(id, family)).is_none() {
                             tracing::debug!("Unknown allocation {id}");
                             continue;
@@ -401,6 +431,9 @@ where
                         tracing::info!("Freeing addresses of allocation {id}");
                     }
                     Command::Wake { deadline } => {
+                        let span = tracing::error_span!("Command::Wake", ?deadline);
+                        let _guard = span.enter();
+
                         match deadline.duration_since(now) {
                             Ok(duration) => {
                                 tracing::trace!(?duration, "Suspending event loop")
@@ -418,6 +451,9 @@ where
                         Pin::new(&mut self.sleep).reset(deadline);
                     }
                     Command::ForwardData { id, data, receiver } => {
+                        let span = tracing::error_span!("Command::ForwardData", %id, %receiver);
+                        let _guard = span.enter();
+
                         let mut allocation = match self.allocations.entry((id, receiver.family())) {
                             Entry::Occupied(entry) => entry,
                             Entry::Vacant(_) => {
