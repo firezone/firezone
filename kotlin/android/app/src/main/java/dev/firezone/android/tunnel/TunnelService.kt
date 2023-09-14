@@ -107,16 +107,16 @@ class TunnelService: VpnService() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d("FirezoneVpnService", "onCreate")
+        Log.d(TAG, "onCreate")
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d("FirezoneVpnService", "onDestroy")
+        Log.d(TAG, "onDestroy")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d("FirezoneVpnService", "onStartCommand")
+        Log.d(TAG, "onStartCommand")
 
         if (intent != null && ACTION_DISCONNECT == intent.action) {
             disconnect()
@@ -146,14 +146,14 @@ class TunnelService: VpnService() {
                     logDir = getLogDir(),
                     callback = callback
                 )
-                Log.d("Connlib", "connlib session started! sessionPtr: $sessionPtr")
+                Log.d(TAG, "connlib session started! sessionPtr: $sessionPtr")
 
                 onTunnelStateUpdate(Tunnel.State.Connecting)
 
                 updateStatusNotification("Status: Connecting...")
             }
         } catch (exception: Exception) {
-            Log.e("Connection error:", exception.message.toString())
+            Log.e(TAG, exception.message.toString())
         }
     }
 
@@ -164,7 +164,7 @@ class TunnelService: VpnService() {
             }
             tunnelRepository.setState(Tunnel.State.Down)
         } catch (exception: Exception) {
-            Log.e("Disconnection error:", exception.message.toString())
+            Log.e(TAG, exception.message.toString())
         }
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
@@ -172,7 +172,7 @@ class TunnelService: VpnService() {
     private fun deviceId(): String {
         val deviceId = FirebaseInstallations.getInstance().id
 
-        Log.d("Connlib", "Device ID: $deviceId")
+        Log.d(TAG, "Device ID: $deviceId")
 
         return deviceId.toString()
     }
@@ -257,7 +257,7 @@ class TunnelService: VpnService() {
         private const val STATUS_NOTIFICATION_ID = 1337
         private const val NOTIFICATION_TITLE = "Firezone Vpn Status"
 
-        private const val TAG: String = "TunnelManager"
+        private const val TAG: String = "TunnelService"
         private const val SESSION_NAME: String = "Firezone VPN"
         private const val DEFAULT_MTU: Int = 1280
     }

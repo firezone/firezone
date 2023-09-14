@@ -11,7 +11,6 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.tunnel.TunnelManager
 import dev.firezone.android.tunnel.data.TunnelRepository
 import dev.firezone.android.tunnel.data.TunnelRepositoryImpl
@@ -47,8 +46,6 @@ object TunnelModule {
     @Provides
     internal fun provideTunnelManager(
         @ApplicationContext appContext: Context,
-        getConfigUseCase: GetConfigUseCase,
         tunnelRepository: TunnelRepository,
-        moshi: Moshi,
-    ): TunnelManager = TunnelManager(appContext, getConfigUseCase, tunnelRepository, moshi)
+    ): TunnelManager = TunnelManager(appContext, tunnelRepository)
 }

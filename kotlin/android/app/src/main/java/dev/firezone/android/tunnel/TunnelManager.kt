@@ -4,8 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.util.Log
-import com.squareup.moshi.Moshi
-import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.tunnel.callback.TunnelListener
 import dev.firezone.android.tunnel.data.TunnelRepository
 import dev.firezone.android.tunnel.model.Tunnel
@@ -16,14 +14,12 @@ import javax.inject.Singleton
 @Singleton
 internal class TunnelManager @Inject constructor(
     private val appContext: Context,
-    private val getConfigUseCase: GetConfigUseCase,
     private val tunnelRepository: TunnelRepository,
-    private val moshi: Moshi,
 ) {
 
     private val listeners: MutableSet<WeakReference<TunnelListener>> = mutableSetOf()
 
-    private val tunnelRepositoryListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, s ->
+    private val tunnelRepositoryListener = SharedPreferences.OnSharedPreferenceChangeListener { _, s ->
         if (s == TunnelRepository.RESOURCES_KEY) {
             listeners.forEach {
                 it.get()?.onResourcesUpdate(tunnelRepository.getResources())
@@ -81,9 +77,9 @@ internal class TunnelManager @Inject constructor(
         private const val TAG: String = "TunnelManager"
 
         init {
-            Log.d("Connlib","Attempting to load library from main app...")
+            Log.d(TAG,"Attempting to load library from main app...")
             System.loadLibrary("connlib")
-            Log.d("Connlib","Library loaded from main app!")
+            Log.d(TAG,"Library loaded from main app!")
         }
     }
 }
