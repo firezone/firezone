@@ -622,7 +622,7 @@ resource "google_compute_firewall" "egress-ipv6" {
   direction = "EGRESS"
 
   target_tags        = ["app-${local.application_name}"]
-  destination_ranges = ["::/0"]
+  destination_ranges = ["::0/0"]
 
   allow {
     protocol = "all"
