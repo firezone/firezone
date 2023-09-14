@@ -448,7 +448,7 @@ resource "google_compute_firewall" "ingress-ipv6" {
   direction = "INGRESS"
 
   target_tags   = ["app-${local.application_name}"]
-  source_ranges = ["::/0"]
+  source_ranges = ["::0/0"]
 
   allow {
     protocol = "udp"
@@ -479,7 +479,7 @@ resource "google_compute_firewall" "egress-ipv6" {
   direction = "EGRESS"
 
   target_tags        = ["app-${local.application_name}"]
-  destination_ranges = ["::/0"]
+  destination_ranges = ["::0/0"]
 
   allow {
     protocol = "udp"
