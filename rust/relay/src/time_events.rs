@@ -39,6 +39,8 @@ where
         let remaining_actions = self.events.split_off(split_index);
         let events = mem::replace(&mut self.events, remaining_actions);
 
+        tracing::trace!("Got {} pending actions", events.len());
+
         events.into_iter().map(|event| event.action)
     }
 

@@ -69,10 +69,10 @@ where
     ///
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
-    pub async fn connect(uri: Url, user_agent: String) -> Result<Self, Error> {
+    pub async fn connect(url: Url, user_agent: String) -> Result<Self, Error> {
         tracing::trace!("Trying to connect to the portal...");
 
-        let (stream, _) = connect_async(make_request(&uri, user_agent)?).await?;
+        let (stream, _) = connect_async(make_request(&url, user_agent)?).await?;
 
         tracing::trace!("Successfully connected to portal");
 

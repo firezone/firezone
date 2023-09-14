@@ -213,7 +213,8 @@ where
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
     pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr, now: SystemTime) {
-        let span = tracing::error_span!("client", %sender,  transaction_id = field::Empty);
+        let span =
+            tracing::error_span!("handle_client_input", %sender,  transaction_id = field::Empty);
         let _guard = span.enter();
 
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
@@ -313,7 +314,7 @@ where
         sender: SocketAddr,
         allocation_id: AllocationId,
     ) {
-        let span = tracing::error_span!("peer", %sender, %allocation_id, recipient = field::Empty, channel = field::Empty);
+        let span = tracing::error_span!("handle_relay_input", %sender, %allocation_id, recipient = field::Empty, channel = field::Empty);
         let _guard = span.enter();
 
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
@@ -369,6 +370,9 @@ where
     }
 
     pub fn handle_deadline_reached(&mut self, now: SystemTime) {
+        let span = tracing::error_span!("handle_deadline_reached", ?now);
+        let _guard = span.enter();
+
         for action in self.time_events.pending_actions(now) {
             match action {
                 TimedAction::ExpireAllocation(id) => {
@@ -409,11 +413,20 @@ where
 
     /// An allocation failed.
     pub fn handle_allocation_failed(&mut self, id: AllocationId) {
+        let span = tracing::error_span!("handle_allocation_failed", %id);
+        let _guard = span.enter();
+
         self.delete_allocation(id)
     }
 
     /// Return the next command to be executed.
     pub fn next_command(&mut self) -> Option<Command> {
+        let num_commands = self.pending_commands.len();
+
+        if num_commands > 0 {
+            tracing::trace!(%num_commands, "Popping next command");
+        }
+
         self.pending_commands.pop_front()
     }
 
@@ -439,8 +452,7 @@ where
     ) -> Result<(), Message<Attribute>> {
         let effective_lifetime = request.effective_lifetime();
 
-        let span =
-            tracing::error_span!("allocate", lifetime = %effective_lifetime.lifetime().as_secs());
+        let span = tracing::error_span!("handle_allocate_request", lifetime = %effective_lifetime.lifetime().as_secs());
         let _guard = span.enter();
 
         self.verify_auth(&request, now)?;
@@ -548,8 +560,7 @@ where
     ) -> Result<(), Message<Attribute>> {
         let effective_lifetime = request.effective_lifetime();
 
-        let span =
-            tracing::error_span!("refresh", lifetime = %effective_lifetime.lifetime().as_secs());
+        let span = tracing::error_span!("handle_refresh_request", lifetime = %effective_lifetime.lifetime().as_secs());
         let _guard = span.enter();
 
         self.verify_auth(&request, now)?;
@@ -608,7 +619,7 @@ where
         let requested_channel = request.channel_number().value();
         let peer_address = request.xor_peer_address().address();
 
-        let span = tracing::error_span!("channel_bind", %requested_channel, %peer_address, allocation = field::Empty);
+        let span = tracing::error_span!("handle_channel_bind_request", %requested_channel, %peer_address, allocation = field::Empty);
         let _guard = span.enter();
 
         self.verify_auth(&request, now)?;
@@ -699,7 +710,7 @@ where
         let channel_number = message.channel();
         let data = message.data();
 
-        let span = tracing::error_span!("channel_data", channel = %channel_number, recipient = field::Empty);
+        let span = tracing::error_span!("handle_channel_data_message", channel = %channel_number, recipient = field::Empty);
         let _guard = span.enter();
 
         let Some(channel) = self.channels_by_number.get(&channel_number) else {
@@ -878,6 +889,8 @@ where
 
     fn delete_allocation(&mut self, id: AllocationId) {
         let Some(client) = self.clients_by_allocation.remove(&id) else {
+            tracing::debug!("Unknown allocation");
+
             return;
         };
         let allocation = self
