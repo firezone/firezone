@@ -3,6 +3,9 @@ defmodule API.Application do
 
   @impl true
   def start(_type, _args) do
+    _ = :opentelemetry_cowboy.setup()
+    _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
+
     children = [
       API.Telemetry,
       API.Endpoint

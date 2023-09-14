@@ -368,13 +368,33 @@ resource "google_compute_security_policy" "default" {
 }
 
 # Open ports for the web
-resource "google_compute_firewall" "stun-turn" {
+resource "google_compute_firewall" "stun-turn-ipv4" {
   project = var.project_id
 
-  name    = "${local.application_name}-firewall-lb-to-instances"
+  name    = "${local.application_name}-firewall-lb-to-instances-ipv4"
   network = google_compute_network.network.self_link
 
   source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["app-${local.application_name}"]
+
+  allow {
+    protocol = "tcp"
+    ports    = ["3478", "49152-65535"]
+  }
+
+  allow {
+    protocol = "udp"
+    ports    = ["3478", "49152-65535"]
+  }
+}
+
+resource "google_compute_firewall" "stun-turn-ipv6" {
+  project = var.project_id
+
+  name    = "${local.application_name}-firewall-lb-to-instances-ipv6"
+  network = google_compute_network.network.self_link
+
+  source_ranges = ["::0/0"]
   target_tags   = ["app-${local.application_name}"]
 
   allow {

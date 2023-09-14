@@ -253,7 +253,7 @@ web-6k3n  us-east1-d  n1-standard-1               10.128.0.20               RUNN
 SSH into the VM and enter remote Elixir shell:
 
 ```bash
-❯ gcloud compute ssh api-b02t
+❯ gcloud compute ssh api-b02t --tunnel-through-iap
 No zone specified. Using zone [us-east1-d] for instance: [api-b02t].
 ...
 
@@ -275,7 +275,7 @@ iex(api@api-b02t.us-east1-d.c.firezone-staging.internal)1>
 ### Creating an account on staging instance using CLI
 
 ```elixir
-❯ gcloud compute ssh web-3vmw
+❯ gcloud compute ssh web-3vmw --tunnel-through-iap
 
 andrew@web-3vmw ~ $ docker ps --format json | jq '"\(.ID) \(.Image)"'
 "09eff3c0ebe8 us-east1-docker.pkg.dev/firezone-staging/firezone/web:b9c11007a4e230ab28f0138afc98188b1956dfd3"

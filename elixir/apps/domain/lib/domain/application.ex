@@ -13,6 +13,7 @@ defmodule Domain.Application do
         :debug
       )
 
+    _ = OpentelemetryLoggerMetadata.setup()
     _ = OpentelemetryEcto.setup([:domain, :repo])
     _ = OpentelemetryFinch.setup()
 
