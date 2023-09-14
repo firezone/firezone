@@ -27,6 +27,24 @@ write_files:
         resourcedetection:
           detectors: [gcp]
           timeout: 10s
+        transform:
+          # "location", "cluster", "namespace", "job", "instance", and "project_id" are reserved, and
+          # metrics containing these labels will be rejected.  Prefix them with exported_ to prevent this.
+          metric_statements:
+          - context: datapoint
+            statements:
+            - set(attributes["exported_location"], attributes["location"])
+            - delete_key(attributes, "location")
+            - set(attributes["exported_cluster"], attributes["cluster"])
+            - delete_key(attributes, "cluster")
+            - set(attributes["exported_namespace"], attributes["namespace"])
+            - delete_key(attributes, "namespace")
+            - set(attributes["exported_job"], attributes["job"])
+            - delete_key(attributes, "job")
+            - set(attributes["exported_instance"], attributes["instance"])
+            - delete_key(attributes, "instance")
+            - set(attributes["exported_project_id"], attributes["project_id"])
+            - delete_key(attributes, "project_id")
       service:
         pipelines:
           traces:
@@ -35,7 +53,7 @@ write_files:
             exporters: [googlecloud]
           metrics:
             receivers: [otlp]
-            processors: [memory_limiter, batch]
+            processors: [memory_limiter, batch, transform]
             exporters: [googlecloud]
           logs:
             receivers: [otlp]
