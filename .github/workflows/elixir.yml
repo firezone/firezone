@@ -184,7 +184,7 @@ jobs:
       MIX_ENV: dev
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      MASTER_BRANCH: main
+      MAIN_BRANCH: main
     services:
       postgres:
         image: postgres:15
@@ -228,31 +228,31 @@ jobs:
         run: mix deps.get --only $MIX_ENV
       - name: Compile
         run: mix compile
-      # - name: Download master branch DB dump
-      #   id: download-artifact
-      #   uses: dawidd6/action-download-artifact@v2
-      #   if: !contains(github.ref, env.MASTER_BRANCH)
-      #   with:
-      #     branch: ${{ env.MASTER_BRANCH }}
-      #     name: db-dump
-      #     path: elixir/apps/domain/priv/repo/
-      #     search_artifacts: true
-      #     workflow_conclusion: completed
-      #     if_no_artifact_found: fail
+      - name: Download main branch DB dump
+        id: download-artifact
+        uses: dawidd6/action-download-artifact@v2
+        if: !contains(github.ref, env.MAIN_BRANCH)
+        with:
+          branch: ${{ env.MAIN_BRANCH }}
+          name: db-dump
+          path: elixir/apps/domain/priv/repo/
+          search_artifacts: true
+          workflow_conclusion: completed
+          if_no_artifact_found: fail
       - name: Create Database
         run: |
           mix ecto.create
-      # - name: Restore DB dump
-      #   if: !contains(github.ref, env.MASTER_BRANCH)
-      #   env:
-      #     PGPASSWORD: postgres
-      #   run: |
-      #     mix ecto.load
-      # - name: Run new migrations
-      #   run: |
-      #     mix ecto.migrate
+      - name: Restore DB dump
+        if: !contains(github.ref, env.MAIN_BRANCH)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          mix ecto.load
+      - name: Run new migrations
+        run: |
+          mix ecto.migrate
       - name: Dump DB
-        if: contains(github.ref, env.MASTER_BRANCH)
+        if: contains(github.ref, env.MAIN_BRANCH)
         env:
           PGPASSWORD: postgres
         run: |
@@ -261,8 +261,8 @@ jobs:
             --file apps/domain/priv/repo/structure.sql \
             --no-acl \
             --no-owner
-      - name: Upload master branch DB dump
-        if: contains(github.ref, env.MASTER_BRANCH)
+      - name: Upload main branch DB dump
+        if: contains(github.ref, env.MAIN_BRANCH)
         uses: actions/upload-artifact@v3
         with:
           name: db-dump
