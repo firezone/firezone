@@ -231,7 +231,7 @@ jobs:
       - name: Download main branch DB dump
         id: download-artifact
         uses: dawidd6/action-download-artifact@v2
-        if: !contains(github.ref, env.MAIN_BRANCH)
+        if: ${{ !contains(github.ref, env.MAIN_BRANCH) }}
         with:
           branch: ${{ env.MAIN_BRANCH }}
           name: db-dump
@@ -243,7 +243,7 @@ jobs:
         run: |
           mix ecto.create
       - name: Restore DB dump
-        if: !contains(github.ref, env.MAIN_BRANCH)
+        if: ${{ !contains(github.ref, env.MAIN_BRANCH) }}
         env:
           PGPASSWORD: postgres
         run: |
