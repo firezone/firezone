@@ -157,15 +157,17 @@ defmodule Domain.Jobs.Executors.Global do
   end
 
   defp execute_handler(module, function, config) do
+    job_callback = "#{module}.#{function}/1"
+
     attributes = [
       job_runner: __MODULE__,
       job_execution_id: Ecto.UUID.generate(),
-      job_callback: "#{module}.#{function}/1"
+      job_callback: job_callback
     ]
 
     Logger.metadata(attributes)
 
-    OpenTelemetry.Tracer.with_span "operation" do
+    OpenTelemetry.Tracer.with_span job_callback do
       OpenTelemetry.Tracer.set_attributes(attributes)
       _ = apply(module, function, [config])
     end
