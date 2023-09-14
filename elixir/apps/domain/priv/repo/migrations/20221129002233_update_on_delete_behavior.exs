@@ -2,8 +2,6 @@ defmodule Domain.Repo.Migrations.UpdateOnDeleteBehavior do
   use Ecto.Migration
 
   def change do
-    drop(constraint(:oidc_connections, "oidc_connections_user_id_fkey"))
-
     alter table(:oidc_connections) do
       modify(
         :user_id,
@@ -15,8 +13,6 @@ defmodule Domain.Repo.Migrations.UpdateOnDeleteBehavior do
         }
       )
     end
-
-    drop(constraint(:mfa_methods, "mfa_methods_user_id_fkey"))
 
     alter table(:mfa_methods) do
       modify(
