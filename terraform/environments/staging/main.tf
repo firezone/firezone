@@ -660,6 +660,7 @@ resource "google_compute_firewall" "ssh-ipv4" {
   source_ranges = ["0.0.0.0/0"]
   target_tags   = concat(module.web.target_tags, module.api.target_tags)
 }
+
 resource "google_compute_firewall" "ssh-ipv6" {
   project = module.google-cloud-project.project.project_id
 
@@ -681,7 +682,7 @@ resource "google_compute_firewall" "ssh-ipv6" {
     ports    = [22]
   }
 
-  source_ranges = ["::0/0"]
+  source_ranges = ["::/0"]
   target_tags   = concat(module.web.target_tags, module.api.target_tags)
 }
 
@@ -735,6 +736,6 @@ resource "google_compute_firewall" "relays-ssh-ipv6" {
     ports    = [22]
   }
 
-  source_ranges = ["::0/0"]
+  source_ranges = ["::/0"]
   target_tags   = module.relays[0].target_tags
 }
