@@ -12,7 +12,6 @@ import XCTestDynamicOverlay
 
 @MainActor
 final class AuthViewModel: ObservableObject {
-  @Dependency(\.settingsClient) private var settingsClient
   @Dependency(\.authStore) private var authStore
 
   var settingsUndefined: () -> Void = unimplemented("\(AuthViewModel.self).settingsUndefined")
@@ -20,13 +19,14 @@ final class AuthViewModel: ObservableObject {
   private var cancellables = Set<AnyCancellable>()
 
   func signInButtonTapped() async {
-    guard let teamId = settingsClient.fetchSettings()?.teamId, !teamId.isEmpty else {
+    guard let accountId = authStore.tunnelStore.tunnelAuthStatus.accountId(),
+          !accountId.isEmpty else {
       settingsUndefined()
       return
     }
 
     do {
-      try await authStore.signIn(teamId: teamId)
+      try await authStore.signIn(accountId: accountId)
     } catch {
       dump(error)
     }

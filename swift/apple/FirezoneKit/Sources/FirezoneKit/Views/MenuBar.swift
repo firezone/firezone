@@ -43,7 +43,7 @@ public final class MenuBar: NSObject {
     private var connectingAnimationTimer: Timer?
 
     let settingsViewModel: SettingsViewModel
-    private var loginStatus: AuthStore.LoginStatus = .signedOut
+    private var loginStatus: AuthStore.LoginStatus = .signedOut(accountId: nil)
     private var tunnelStatus: NEVPNStatus = .invalid
 
 
@@ -64,8 +64,7 @@ public final class MenuBar: NSObject {
       }
 
       Task {
-        let tunnel = try await TunnelStore.loadOrCreate()
-        self.appStore = AppStore(tunnelStore: TunnelStore(tunnel: tunnel))
+        self.appStore = AppStore(tunnelStore: TunnelStore.shared)
         updateStatusItemIcon()
       }
     }
@@ -206,12 +205,11 @@ public final class MenuBar: NSObject {
 
     @objc private func reconnectButtonTapped() {
       Task {
-        if case .signedIn(let authResponse) = appStore?.auth.loginStatus {
+        if case .signedIn = appStore?.auth.loginStatus {
           do {
-            try await appStore?.tunnel.start(authResponse: authResponse)
+            try await appStore?.tunnel.start()
           } catch {
-            logger.error("error connecting to tunnel: \(String(describing: error)) -- signing out")
-            appStore?.auth.signOut()
+            logger.error("error connecting to tunnel (reconnect): \(String(describing: error))")
           }
         }
       }
@@ -230,7 +228,13 @@ public final class MenuBar: NSObject {
     }
 
     @objc private func signOutButtonTapped() {
-      appStore?.auth.signOut()
+      Task {
+        do {
+          try await appStore?.auth.signOut()
+        } catch {
+          logger.error("error signing out: \(String(describing: error))")
+        }
+      }
     }
 
     @objc private func settingsButtonTapped() {
@@ -306,13 +310,8 @@ public final class MenuBar: NSObject {
           signInMenuItem.title = "Sign In"
           signInMenuItem.target = self
           signOutMenuItem.isHidden = true
-        case .signedIn(let authResponse):
-          signInMenuItem.title = {
-            guard let actorName = authResponse.actorName else {
-              return "Signed in"
-            }
-            return "Signed in as \(actorName)"
-          }()
+        case .signedIn(_, let actorName):
+          signInMenuItem.title = actorName.isEmpty ? "Signed in" : "Signed in as \(actorName)"
           signInMenuItem.target = nil
           signOutMenuItem.isHidden = false
       }

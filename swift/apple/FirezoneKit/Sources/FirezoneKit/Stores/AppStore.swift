@@ -43,12 +43,11 @@ final class AppStore: ObservableObject {
 
   private func handleLoginStatusChanged(_ loginStatus: AuthStore.LoginStatus) async {
     switch loginStatus {
-    case .signedIn(let authResponse):
+    case .signedIn:
       do {
-        try await tunnel.start(authResponse: authResponse)
+        try await tunnel.start()
       } catch {
-        logger.error("Error starting tunnel: \(String(describing: error)) -- signing out")
-        auth.signOut()
+        logger.error("Error starting tunnel: \(String(describing: error))")
       }
     case .signedOut:
       tunnel.stop()
@@ -59,6 +58,8 @@ final class AppStore: ObservableObject {
 
   private func signOutAndStopTunnel() {
     tunnel.stop()
-    auth.signOut()
+    Task {
+      try? await auth.signOut()
+    }
   }
 }

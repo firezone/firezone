@@ -8,9 +8,9 @@ import Dependencies
 import Foundation
 
 struct KeychainStorage: Sendable {
-  var store: @Sendable (String, Data) async throws -> Void
-  var load: @Sendable (String) async throws -> Data?
-  var delete: @Sendable (String) async throws -> Void
+  var store: @Sendable (Keychain.Token, Keychain.TokenAttributes) async throws -> Keychain.PersistentRef
+  var delete: @Sendable (Keychain.PersistentRef) async throws -> Void
+  var loadAttributes: @Sendable (Keychain.PersistentRef) async -> Keychain.TokenAttributes?
 }
 
 extension KeychainStorage: DependencyKey {
@@ -18,25 +18,29 @@ extension KeychainStorage: DependencyKey {
     let keychain = Keychain()
 
     return KeychainStorage(
-      store: { try await keychain.store(key: $0, data: $1) },
-      load: { try await keychain.load(key: $0) },
-      delete: { try await keychain.delete(key: $0) }
+      store: { try await keychain.store(token: $0, tokenAttributes: $1) },
+      delete: { try await keychain.delete(persistentRef: $0) },
+      loadAttributes: { await keychain.loadAttributes(persistentRef: $0) }
     )
   }
 
   static var testValue: KeychainStorage {
-    let storage = LockIsolated([String: Data]())
+    let storage = LockIsolated([Data: (Keychain.Token, Keychain.TokenAttributes)]())
     return KeychainStorage(
-      store: { key, data in
+      store: { token, attributes in
         storage.withValue {
-          $0[key] = data
+          let uuid = UUID().uuidString.data(using: .utf8)!
+          $0[uuid] = (token, attributes)
+          return uuid
         }
       },
-      load: { storage.value[$0] },
-      delete: { key in
+      delete: { ref in
         storage.withValue {
-          $0[key] = nil
+          $0[ref] = nil
         }
+      },
+      loadAttributes: { ref in
+        storage.value[ref]?.1
       }
     )
   }

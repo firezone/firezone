@@ -7,9 +7,11 @@
 import Dependencies
 import NetworkExtension
 import os
+import FirezoneKit
 
-enum PacketTunnelProviderError: String, Error {
-  case savedProtocolConfigurationIsInvalid
+enum PacketTunnelProviderError: Error {
+  case savedProtocolConfigurationIsInvalid(String)
+  case tokenNotFoundInKeychain
   case couldNotSetNetworkSettings
 }
 
@@ -23,31 +25,38 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     completionHandler: @escaping (Error?) -> Void
   ) {
     Self.logger.trace("\(#function)")
-    guard let tunnelProviderProtocol = self.protocolConfiguration as? NETunnelProviderProtocol else {
-      completionHandler(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid)
+
+    guard let controlPlaneURLString = protocolConfiguration.serverAddress else {
+      Self.logger.error("serverAddress is missing")
+      completionHandler(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
       return
     }
 
-    let providerConfiguration = tunnelProviderProtocol.providerConfiguration
-    guard let controlPlaneURLString = providerConfiguration?["controlPlaneURL"] as? String else {
-      completionHandler(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid)
+    guard let tokenRef = protocolConfiguration.passwordReference else {
+      Self.logger.error("passwordReference is missing")
+      completionHandler(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("passwordReference"))
       return
     }
-    guard let token = providerConfiguration?["token"] as? String else {
-      completionHandler(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid)
-      return
-    }
-    let adapter = Adapter(controlPlaneURLString: controlPlaneURLString, token: token, packetTunnelProvider: self)
-    self.adapter = adapter
-    do {
-      try adapter.start() { error in
-        if let error {
-          Self.logger.error("Error in adapter.start: \(error)")
+
+    Task {
+      let keychain = Keychain()
+      guard let token = await keychain.load(persistentRef: tokenRef) else {
+        completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
+        return
+      }
+
+      let adapter = Adapter(controlPlaneURLString: controlPlaneURLString, token: token, packetTunnelProvider: self)
+      self.adapter = adapter
+      do {
+        try adapter.start() { error in
+          if let error {
+            Self.logger.error("Error in adapter.start: \(error)")
+          }
+          completionHandler(error)
         }
+      } catch {
         completionHandler(error)
       }
-    } catch {
-      completionHandler(error)
     }
   }
 
