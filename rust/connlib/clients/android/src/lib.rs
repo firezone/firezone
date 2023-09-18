@@ -78,26 +78,31 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: PathBuf) -> WorkerGuard {
+fn init_logging(log_dir: PathBuf) -> Option<WorkerGuard> {
+    #[cfg(debug_assertions)]
+    let log_level = LevelFilter::Debug;
+
+    #[cfg(not(debug_assertions))]
+    let log_level = LevelFilter::Info;
+
     // Initializes integration with Logcat for Android
     // This can be called many times, but will only initialize logging once
-    android_logger::init_once(
-        android_logger::Config::default()
-            .with_max_level(if cfg!(debug_assertions) {
-                LevelFilter::Debug
-            } else {
-                LevelFilter::Info
-            })
-            .with_tag("connlib"),
-    );
+    android_logger::init_once(android_logger::Config::default().with_max_level(log_level));
 
     let (file_layer, guard) = file_logger::layer(log_dir);
 
     // Calling init twice causes a panic; instead use try_init which will fail
     // gracefully if this is called more than once.
-    let _ = tracing_subscriber::registry().with(file_layer).try_init();
-
-    guard
+    match tracing_subscriber::registry().with(file_layer).try_init() {
+        Ok(_) => {
+            tracing::info!("File logging initialized!");
+            Some(guard)
+        }
+        Err(err) => {
+            tracing::error!("Failed to initialize file logging: {}", err);
+            None
+        }
+    }
 }
 
 impl Callbacks for CallbackHandler {
@@ -337,13 +342,11 @@ fn connect(
         callback_handler,
     };
 
-    let guard = init_logging(log_dir.into());
-
     Session::connect(
         portal_url.as_str(),
         portal_token,
         device_id,
-        Some(guard),
+        init_logging(log_dir.into()),
         callback_handler,
     )
     .map_err(Into::into)

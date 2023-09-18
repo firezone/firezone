@@ -221,7 +221,7 @@ where
         portal_url: impl TryInto<Url>,
         token: String,
         device_id: String,
-        logging_guard: Option<WorkerGuard>,
+        _logging_guard: Option<WorkerGuard>,
         callbacks: CB,
     ) -> Result<Self> {
         // TODO: We could use tokio::runtime::current() to get the current runtime
@@ -234,7 +234,7 @@ where
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         let this = Self {
             runtime_stopper: tx.clone(),
-            logging_guard,
+            _logging_guard,
             callbacks,
             _phantom: PhantomData,
         };
