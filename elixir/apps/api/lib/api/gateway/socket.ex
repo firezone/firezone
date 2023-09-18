@@ -2,6 +2,7 @@ defmodule API.Gateway.Socket do
   use Phoenix.Socket
   alias Domain.Gateways
   require Logger
+  require OpenTelemetry.Tracer
 
   ## Channels
 
@@ -11,34 +12,41 @@ defmodule API.Gateway.Socket do
 
   @impl true
   def connect(%{"token" => encrypted_secret} = attrs, socket, connect_info) do
-    %{
-      user_agent: user_agent,
-      x_headers: x_headers,
-      peer_data: peer_data
-    } = connect_info
+    :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
-    real_ip = API.Sockets.real_ip(x_headers, peer_data)
+    OpenTelemetry.Tracer.with_span "connect" do
+      %{
+        user_agent: user_agent,
+        x_headers: x_headers,
+        peer_data: peer_data
+      } = connect_info
 
-    attrs =
-      attrs
-      |> Map.take(~w[external_id name_suffix public_key])
-      |> Map.put("last_seen_user_agent", user_agent)
-      |> Map.put("last_seen_remote_ip", real_ip)
+      real_ip = API.Sockets.real_ip(x_headers, peer_data)
 
-    with {:ok, token} <- Gateways.authorize_gateway(encrypted_secret),
-         {:ok, gateway} <- Gateways.upsert_gateway(token, attrs) do
-      socket =
-        socket
-        |> assign(:gateway, gateway)
+      attrs =
+        attrs
+        |> Map.take(~w[external_id name_suffix public_key])
+        |> Map.put("last_seen_user_agent", user_agent)
+        |> Map.put("last_seen_remote_ip", real_ip)
 
-      {:ok, socket}
-    else
-      {:error, :invalid_token} ->
-        {:error, :invalid_token}
+      with {:ok, token} <- Gateways.authorize_gateway(encrypted_secret),
+           {:ok, gateway} <- Gateways.upsert_gateway(token, attrs) do
+        socket =
+          socket
+          |> assign(:gateway, gateway)
+          |> assign(:opentelemetry_ctx, OpenTelemetry.Tracer.current_span_ctx())
 
-      {:error, reason} ->
-        Logger.debug("Error connecting gateway websocket: #{inspect(reason)}")
-        {:error, reason}
+        {:ok, socket}
+      else
+        {:error, :invalid_token} ->
+          OpenTelemetry.Tracer.set_status(:error, "invalid_token")
+          {:error, :invalid_token}
+
+        {:error, reason} ->
+          OpenTelemetry.Tracer.set_status(:error, inspect(reason))
+          Logger.debug("Error connecting gateway websocket: #{inspect(reason)}")
+          {:error, reason}
+      end
     end
   end
 

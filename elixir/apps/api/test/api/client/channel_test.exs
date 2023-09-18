@@ -32,6 +32,7 @@ defmodule API.Client.ChannelTest do
     {:ok, _reply, socket} =
       API.Client.Socket
       |> socket("client:#{client.id}", %{
+        opentelemetry_ctx: OpenTelemetry.Tracer.start_span("test"),
         client: client,
         subject: subject
       })
@@ -69,6 +70,7 @@ defmodule API.Client.ChannelTest do
       {:ok, _reply, _socket} =
         API.Client.Socket
         |> socket("client:#{client.id}", %{
+          opentelemetry_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
           subject: subject
         })
@@ -319,7 +321,7 @@ defmodule API.Client.ChannelTest do
 
       push(socket, "reuse_connection", attrs)
 
-      assert_receive {:allow_access, payload}
+      assert_receive {:allow_access, payload, _opentelemetry_ctx}
 
       assert %{
                resource_id: ^resource_id,
@@ -413,7 +415,7 @@ defmodule API.Client.ChannelTest do
 
       ref = push(socket, "request_connection", attrs)
 
-      assert_receive {:request_connection, {channel_pid, socket_ref}, payload}
+      assert_receive {:request_connection, {channel_pid, socket_ref}, payload, _opentelemetry_ctx}
 
       assert %{
                resource_id: ^resource_id,
@@ -425,7 +427,11 @@ defmodule API.Client.ChannelTest do
 
       assert authorization_expires_at == socket.assigns.subject.expires_at
 
-      send(channel_pid, {:connect, socket_ref, resource.id, gateway.public_key, "FULL_RTC_SD"})
+      send(
+        channel_pid,
+        {:connect, socket_ref, resource.id, gateway.public_key, "FULL_RTC_SD",
+         OpenTelemetry.Tracer.start_span("connect")}
+      )
 
       assert_reply ref, :ok, %{
         resource_id: ^resource_id,

@@ -8,7 +8,10 @@ defmodule API.Relay.ChannelTest do
 
     {:ok, _, socket} =
       API.Relay.Socket
-      |> socket("relay:#{relay.id}", %{relay: relay})
+      |> socket("relay:#{relay.id}", %{
+        relay: relay,
+        opentelemetry_ctx: OpenTelemetry.Tracer.start_span("test")
+      })
       |> subscribe_and_join(API.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
 
     %{relay: relay, socket: socket}
@@ -30,7 +33,10 @@ defmodule API.Relay.ChannelTest do
 
       {:ok, _, _socket} =
         API.Relay.Socket
-        |> socket("relay:#{relay.id}", %{relay: relay})
+        |> socket("relay:#{relay.id}", %{
+          relay: relay,
+          opentelemetry_ctx: OpenTelemetry.Tracer.start_span("test")
+        })
         |> subscribe_and_join(API.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
 
       presence = Domain.Relays.Presence.list("relays")

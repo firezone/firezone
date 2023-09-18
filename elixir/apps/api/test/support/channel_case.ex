@@ -15,6 +15,7 @@ defmodule API.ChannelCase do
       import API.ChannelCase
       alias Domain.Repo
       alias Domain.Fixtures
+      require OpenTelemetry.Tracer
 
       # The default endpoint for testing
       @endpoint API.Endpoint

@@ -17,7 +17,10 @@ defmodule API.Gateway.ChannelTest do
 
     {:ok, _, socket} =
       API.Gateway.Socket
-      |> socket("gateway:#{gateway.id}", %{gateway: gateway})
+      |> socket("gateway:#{gateway.id}", %{
+        gateway: gateway,
+        opentelemetry_ctx: OpenTelemetry.Tracer.start_span("test")
+      })
       |> subscribe_and_join(API.Gateway.Channel, "gateway")
 
     relay = Fixtures.Relays.create_relay(account: account)
@@ -67,6 +70,7 @@ defmodule API.Gateway.ChannelTest do
       socket: socket
     } do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      opentelemetry_ctx = OpenTelemetry.Tracer.start_span("test")
 
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
@@ -78,7 +82,7 @@ defmodule API.Gateway.ChannelTest do
            client_id: client.id,
            resource_id: resource.id,
            authorization_expires_at: expires_at
-         }}
+         }, opentelemetry_ctx}
       )
 
       assert_push "allow_access", payload
@@ -115,6 +119,8 @@ defmodule API.Gateway.ChannelTest do
       preshared_key = "PSK"
       rtc_session_description = "RTC_SD"
 
+      opentelemetry_ctx = OpenTelemetry.Tracer.start_span("test")
+
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
@@ -127,7 +133,7 @@ defmodule API.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            client_rtc_session_description: rtc_session_description,
            client_preshared_key: preshared_key
-         }}
+         }, opentelemetry_ctx}
       )
 
       assert_push "request_connection", payload
@@ -217,6 +223,8 @@ defmodule API.Gateway.ChannelTest do
       gateway_public_key = gateway.public_key
       rtc_session_description = "RTC_SD"
 
+      opentelemetry_ctx = OpenTelemetry.Tracer.start_span("test")
+
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
@@ -229,7 +237,7 @@ defmodule API.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            client_rtc_session_description: rtc_session_description,
            client_preshared_key: preshared_key
-         }}
+         }, opentelemetry_ctx}
       )
 
       assert_push "request_connection", %{ref: ref}
@@ -243,7 +251,7 @@ defmodule API.Gateway.ChannelTest do
       assert_reply push_ref, :ok
 
       assert_receive {:connect, ^socket_ref, resource_id, ^gateway_public_key,
-                      ^rtc_session_description}
+                      ^rtc_session_description, _opentelemetry_ctx}
 
       assert resource_id == resource.id
     end
