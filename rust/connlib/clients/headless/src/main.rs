@@ -106,7 +106,7 @@ fn main() -> Result<()> {
         url,
         secret,
         device_id,
-        Some(init_logging(log_dir.into())),
+        Some(init_logging(log_dir)),
         CallbackHandler,
     )
     .unwrap();
