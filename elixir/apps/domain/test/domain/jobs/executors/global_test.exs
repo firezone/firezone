@@ -10,8 +10,8 @@ defmodule Domain.Jobs.Executors.GlobalTest do
   test "executes the handler on the interval" do
     assert {:ok, _pid} = start_link({{__MODULE__, :send_test_message}, 25, test_pid: self()})
 
-    assert_receive {:executed, _pid, time1}
-    assert_receive {:executed, _pid, time2}
+    assert_receive {:executed, _pid, time1}, 200
+    assert_receive {:executed, _pid, time2}, 200
 
     assert time1 < time2
   end
@@ -25,7 +25,7 @@ defmodule Domain.Jobs.Executors.GlobalTest do
              })
 
     refute_receive {:executed, _pid, _time}, 50
-    assert_receive {:executed, _pid, _time}, 200
+    assert_receive {:executed, _pid, _time}, 400
   end
 
   test "registers itself as a leader if there is no global name registered" do

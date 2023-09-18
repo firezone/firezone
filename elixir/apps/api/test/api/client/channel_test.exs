@@ -1,5 +1,6 @@
 defmodule API.Client.ChannelTest do
   use API.ChannelCase
+  alias Domain.Mocks.GoogleCloudPlatform
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -31,6 +32,7 @@ defmodule API.Client.ChannelTest do
     {:ok, _reply, socket} =
       API.Client.Socket
       |> socket("client:#{client.id}", %{
+        opentelemetry_ctx: OpenTelemetry.Tracer.start_span("test"),
         client: client,
         subject: subject
       })
@@ -68,6 +70,7 @@ defmodule API.Client.ChannelTest do
       {:ok, _reply, _socket} =
         API.Client.Socket
         |> socket("client:#{client.id}", %{
+          opentelemetry_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
           subject: subject
         })
@@ -106,6 +109,34 @@ defmodule API.Client.ChannelTest do
                  %Postgrex.INET{address: {1, 1, 1, 1}}
                ]
              }
+    end
+  end
+
+  describe "handle_in/3 create_log_sink" do
+    test "returns error when feature is disabled", %{socket: socket} do
+      Domain.Config.put_env_override(Domain.Instrumentation, client_logs_enabled: false)
+
+      ref = push(socket, "create_log_sink", %{})
+      assert_reply ref, :error, :disabled
+    end
+
+    test "returns a signed URL which can be used to upload the logs", %{
+      socket: socket,
+      client: client
+    } do
+      bypass = Bypass.open()
+      GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
+      GoogleCloudPlatform.mock_sign_blob_endpoint(bypass, "foo")
+
+      ref = push(socket, "create_log_sink", %{})
+      assert_reply ref, :ok, signed_url
+
+      assert signed_uri = URI.parse(signed_url)
+      assert signed_uri.scheme == "https"
+      assert signed_uri.host == "storage.googleapis.com"
+
+      assert String.starts_with?(signed_uri.path, "/logs/clients/#{client.id}/")
+      assert String.ends_with?(signed_uri.path, ".json")
     end
   end
 
@@ -290,7 +321,7 @@ defmodule API.Client.ChannelTest do
 
       push(socket, "reuse_connection", attrs)
 
-      assert_receive {:allow_access, payload}
+      assert_receive {:allow_access, payload, _opentelemetry_ctx}
 
       assert %{
                resource_id: ^resource_id,
@@ -384,7 +415,7 @@ defmodule API.Client.ChannelTest do
 
       ref = push(socket, "request_connection", attrs)
 
-      assert_receive {:request_connection, {channel_pid, socket_ref}, payload}
+      assert_receive {:request_connection, {channel_pid, socket_ref}, payload, _opentelemetry_ctx}
 
       assert %{
                resource_id: ^resource_id,
@@ -396,7 +427,11 @@ defmodule API.Client.ChannelTest do
 
       assert authorization_expires_at == socket.assigns.subject.expires_at
 
-      send(channel_pid, {:connect, socket_ref, resource.id, gateway.public_key, "FULL_RTC_SD"})
+      send(
+        channel_pid,
+        {:connect, socket_ref, resource.id, gateway.public_key, "FULL_RTC_SD",
+         OpenTelemetry.Tracer.start_span("connect")}
+      )
 
       assert_reply ref, :ok, %{
         resource_id: ^resource_id,

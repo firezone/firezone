@@ -394,7 +394,7 @@ resource "google_compute_firewall" "stun-turn-ipv6" {
   name    = "${local.application_name}-firewall-lb-to-instances-ipv6"
   network = google_compute_network.network.self_link
 
-  source_ranges = ["::0/0"]
+  source_ranges = ["::/0"]
   target_tags   = ["app-${local.application_name}"]
 
   allow {
@@ -448,7 +448,7 @@ resource "google_compute_firewall" "ingress-ipv6" {
   direction = "INGRESS"
 
   target_tags   = ["app-${local.application_name}"]
-  source_ranges = ["::0/0"]
+  source_ranges = ["::/0"]
 
   allow {
     protocol = "udp"
@@ -479,7 +479,7 @@ resource "google_compute_firewall" "egress-ipv6" {
   direction = "EGRESS"
 
   target_tags        = ["app-${local.application_name}"]
-  destination_ranges = ["::0/0"]
+  destination_ranges = ["::/0"]
 
   allow {
     protocol = "udp"
