@@ -36,6 +36,17 @@ locals {
     {
       name  = "OTEL_RESOURCE_ATTRIBUTES"
       value = "application.name=${local.application_name}"
+    },
+    {
+      name  = "PLATFORM_ADAPTER"
+      value = "Elixir.Domain.GoogleCloudPlatform"
+    },
+    {
+      name = "PLATFORM_ADAPTER_CONFIG"
+      value = jsonencode({
+        project_id            = var.project_id
+        service_account_email = google_service_account.application.email
+      })
     }
   ], var.application_environment_variables)
 
@@ -168,7 +179,7 @@ resource "google_compute_instance_template" "application" {
   service_account {
     email = google_service_account.application.email
 
-    scopes = [
+    scopes = concat([
       # Those are default scopes
       "https://www.googleapis.com/auth/devstorage.read_only",
       "https://www.googleapis.com/auth/logging.write",
@@ -178,7 +189,7 @@ resource "google_compute_instance_template" "application" {
       "https://www.googleapis.com/auth/trace.append",
       # Required to discover the other instances in the Erlang Cluster
       "https://www.googleapis.com/auth/compute.readonly"
-    ]
+    ], var.application_token_scopes)
   }
 
   shielded_instance_config {

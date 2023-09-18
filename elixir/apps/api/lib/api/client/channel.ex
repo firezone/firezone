@@ -1,6 +1,7 @@
 defmodule API.Client.Channel do
   use API, :channel
   alias API.Client.Views
+  alias Domain.Instrumentation
   alias Domain.{Clients, Resources, Gateways, Relays}
   require Logger
 
@@ -78,6 +79,13 @@ defmodule API.Client.Channel do
   def handle_info({:resource_removed, resource_id}, socket) do
     push(socket, "resource_removed", resource_id)
     {:noreply, socket}
+  end
+
+  def handle_in("create_log_sink", _attrs, socket) do
+    case Instrumentation.create_remote_log_sink(socket.assigns.client) do
+      {:ok, signed_url} -> {:reply, {:ok, signed_url}, socket}
+      {:error, :disabled} -> {:reply, {:error, :disabled}, socket}
+    end
   end
 
   @impl true

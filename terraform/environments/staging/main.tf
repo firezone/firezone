@@ -232,6 +232,47 @@ resource "google_sql_database" "firezone" {
   instance = module.google-cloud-sql.master_instance_name
 }
 
+
+resource "google_storage_bucket" "client-logs" {
+  project = module.google-cloud-project.project.project_id
+  name    = "${module.google-cloud-project.project.project_id}-client-logs"
+
+  location = "US"
+
+  lifecycle_rule {
+    condition {
+      age = 3
+    }
+
+    action {
+      type = "Delete"
+    }
+  }
+
+  lifecycle_rule {
+    condition {
+      age = 1
+    }
+
+    action {
+      type = "AbortIncompleteMultipartUpload"
+    }
+  }
+
+  logging {
+    log_bucket        = true
+    log_object_prefix = "firezone.dev/clients"
+  }
+
+  public_access_prevention    = "enforced"
+  uniform_bucket_level_access = true
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = []
+  }
+}
+
 locals {
   cluster = {
     name   = "firezone"
@@ -337,6 +378,14 @@ locals {
     {
       name  = "TELEMETRY_ENABLED"
       value = "false"
+    },
+    {
+      name  = "INSTRUMENTATION_CLIENT_LOGS_ENABLED"
+      value = true
+    },
+    {
+      name  = "INSTRUMENTATION_CLIENT_LOGS_BUCKET"
+      value = google_storage_bucket.client-logs.name
     },
     # Emails
     {
@@ -490,6 +539,35 @@ module "api" {
   application_labels = {
     "cluster_name" = local.cluster.name
   }
+
+  application_token_scopes = [
+    "https://www.googleapis.com/auth/cloud-platform"
+  ]
+}
+
+## Allow API nodes to sign URLs for Google Cloud Storage
+resource "google_storage_bucket_iam_member" "dealerships-catalog-photos-public-rule" {
+  bucket = google_storage_bucket.client-logs.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${module.api.service_account.email}"
+}
+
+resource "google_project_iam_custom_role" "sign-urls" {
+  project = module.google-cloud-project.project.project_id
+
+  title = "Sign URLs for Google Cloud Storage"
+
+  role_id = "iam.sign_urls"
+
+  permissions = [
+    "iam.serviceAccounts.signBlob"
+  ]
+}
+
+resource "google_project_iam_member" "sign-urls" {
+  project = module.google-cloud-project.project.project_id
+  role    = "projects/${module.google-cloud-project.project.project_id}/roles/${google_project_iam_custom_role.sign-urls.role_id}"
+  member  = "serviceAccount:${module.api.service_account.email}"
 }
 
 # Erlang Cluster

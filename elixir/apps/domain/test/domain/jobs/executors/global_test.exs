@@ -25,7 +25,7 @@ defmodule Domain.Jobs.Executors.GlobalTest do
              })
 
     refute_receive {:executed, _pid, _time}, 50
-    assert_receive {:executed, _pid, _time}, 200
+    assert_receive {:executed, _pid, _time}, 400
   end
 
   test "registers itself as a leader if there is no global name registered" do

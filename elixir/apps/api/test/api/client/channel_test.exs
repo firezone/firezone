@@ -1,5 +1,6 @@
 defmodule API.Client.ChannelTest do
   use API.ChannelCase
+  alias Domain.Mocks.GoogleCloudPlatform
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -106,6 +107,34 @@ defmodule API.Client.ChannelTest do
                  %Postgrex.INET{address: {1, 1, 1, 1}}
                ]
              }
+    end
+  end
+
+  describe "handle_in/3 create_log_sink" do
+    test "returns error when feature is disabled", %{socket: socket} do
+      Domain.Config.put_env_override(Domain.Instrumentation, client_logs_enabled: false)
+
+      ref = push(socket, "create_log_sink", %{})
+      assert_reply ref, :error, :disabled
+    end
+
+    test "returns a signed URL which can be used to upload the logs", %{
+      socket: socket,
+      client: client
+    } do
+      bypass = Bypass.open()
+      GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
+      GoogleCloudPlatform.mock_sign_blob_endpoint(bypass, "foo")
+
+      ref = push(socket, "create_log_sink", %{})
+      assert_reply ref, :ok, signed_url
+
+      assert signed_uri = URI.parse(signed_url)
+      assert signed_uri.scheme == "https"
+      assert signed_uri.host == "storage.googleapis.com"
+
+      assert String.starts_with?(signed_uri.path, "/logs/clients/#{client.id}/")
+      assert String.ends_with?(signed_uri.path, ".json")
     end
   end
 

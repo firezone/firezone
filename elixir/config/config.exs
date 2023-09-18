@@ -53,6 +53,24 @@ config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
   endpoint: "https://admin.googleapis.com",
   finch_transport_opts: []
 
+config :domain, platform_adapter: nil
+
+config :domain, Domain.GoogleCloudPlatform,
+  token_endpoint_url:
+    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+  aggregated_list_endpoint_url:
+    "https://compute.googleapis.com/compute/v1/projects/${project_id}/aggregated/instances",
+  sign_endpoint_url: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/",
+  cloud_storage_url: "https://storage.googleapis.com"
+
+config :domain, Domain.Cluster,
+  adapter: Domain.Cluster.Local,
+  adapter_config: []
+
+config :domain, Domain.Instrumentation,
+  client_logs_enabled: true,
+  client_logs_bucket: "logs"
+
 ###############################
 ##### Web #####################
 ###############################
@@ -133,20 +151,6 @@ config :api,
 config :api,
   external_trusted_proxies: [],
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
-
-###############################
-##### Erlang Cluster ##########
-###############################
-
-config :domain, Domain.Cluster.GoogleComputeLabelsStrategy,
-  token_endpoint_url:
-    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
-  aggregated_list_endpoint_url:
-    "https://compute.googleapis.com/compute/v1/projects/${project_id}/aggregated/instances"
-
-config :domain, Domain.Cluster,
-  adapter: Domain.Cluster.Local,
-  adapter_config: []
 
 ###############################
 ##### Third-party configs #####

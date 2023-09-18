@@ -61,6 +61,12 @@ defmodule Domain.Crypto do
   defp replace_ambiguous_characters(<<char::utf8, rest::binary>>, acc),
     do: replace_ambiguous_characters(rest, <<acc::binary, char::utf8>>)
 
+  def hash(type, value) do
+    :crypto.hash(type, value)
+    |> Base.encode16()
+    |> String.downcase()
+  end
+
   def hash(value), do: Argon2.hash_pwd_salt(value)
 
   def equal?(token, hash) when is_nil(token) or is_nil(hash), do: Argon2.no_user_verify()

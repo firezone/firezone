@@ -212,6 +212,14 @@ variable "application_labels" {
   description = "Labels to add to all created by this module resources."
 }
 
+variable "application_token_scopes" {
+  type     = list(string)
+  nullable = false
+  default  = []
+
+  description = "Any extra oAuth2 token scopes granted to the token of default service account."
+}
+
 variable "application_dns_tld" {
   type     = string
   nullable = false
