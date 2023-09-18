@@ -35,6 +35,7 @@ defmodule Domain.Config.Resolver do
   if Mix.env() == :test do
     def fetch_process_env(pdict_key) do
       with :error <- fetch_process_value(pdict_key),
+           :error <- fetch_process_value(Process.get(:last_caller_pid), pdict_key),
            :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$ancestors"), pdict_key),
            :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$callers"), pdict_key) do
         :error

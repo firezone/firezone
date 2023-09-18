@@ -22,21 +22,23 @@ defmodule Domain.Application do
 
   def children do
     [
-      # Infrastructure services
+      # Core services
       Domain.Repo,
       {Phoenix.PubSub, name: Domain.PubSub},
+
+      # Infrastructure services
+      # Note: only one of platform adapters will be actually started.
+      Domain.GoogleCloudPlatform,
+      Domain.Cluster,
 
       # Application
       Domain.Auth,
       Domain.Relays,
       Domain.Gateways,
-      Domain.Clients,
+      Domain.Clients
 
       # Observability
       # Domain.Telemetry
-
-      # Erlang Clustering
-      Domain.Cluster
     ]
   end
 end

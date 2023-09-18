@@ -9,7 +9,8 @@ defmodule API.Gateway.SocketTest do
   @connect_info %{
     user_agent: "iOS/12.7 (iPhone) connlib/#{@connlib_version}",
     peer_data: %{address: {189, 172, 73, 001}},
-    x_headers: [{"x-forwarded-for", "189.172.73.153"}]
+    x_headers: [{"x-forwarded-for", "189.172.73.153"}],
+    trace_context_headers: []
   }
 
   describe "connect/3" do

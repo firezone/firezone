@@ -1,13 +1,8 @@
 defmodule Domain.Mocks.GoogleCloudPlatform do
   def override_endpoint_url(endpoint, url) do
-    config = Domain.Config.fetch_env!(:domain, Domain.Cluster.GoogleComputeLabelsStrategy)
-    strategy_config = Keyword.put(config, endpoint, url)
-
-    Domain.Config.put_env_override(
-      :domain,
-      Domain.Cluster.GoogleComputeLabelsStrategy,
-      strategy_config
-    )
+    config = Domain.Config.fetch_env!(:domain, Domain.GoogleCloudPlatform)
+    config = Keyword.put(config, endpoint, url)
+    Domain.Config.put_env_override(:domain, Domain.GoogleCloudPlatform, config)
   end
 
   def mock_instance_metadata_token_endpoint(bypass, resp \\ nil) do
@@ -23,7 +18,7 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
 
     test_pid = self()
 
-    Bypass.expect(bypass, "GET", token_endpoint_path, fn conn ->
+    Bypass.stub(bypass, "GET", token_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
       Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
@@ -32,6 +27,35 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
     override_endpoint_url(
       :token_endpoint_url,
       "http://localhost:#{bypass.port}/#{token_endpoint_path}"
+    )
+
+    bypass
+  end
+
+  def mock_sign_blob_endpoint(bypass, service_account_email, resp \\ nil) do
+    token_endpoint_path = "service_accounts/#{service_account_email}:signBlob"
+
+    test_pid = self()
+
+    Bypass.expect(bypass, "POST", token_endpoint_path, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+      send(test_pid, {:bypass_request, conn})
+      {:ok, binary, conn} = Plug.Conn.read_body(conn)
+      %{"payload" => payload} = Jason.decode!(binary)
+
+      resp =
+        resp ||
+          %{
+            "keyId" => Ecto.UUID.generate(),
+            "signedBlob" => Domain.Crypto.hash(:md5, service_account_email <> payload)
+          }
+
+      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+    end)
+
+    override_endpoint_url(
+      :sign_endpoint_url,
+      "http://localhost:#{bypass.port}/service_accounts/"
     )
 
     bypass

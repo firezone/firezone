@@ -309,8 +309,6 @@ services:
       EXTERNAL_URL: http://localhost:8081/
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
-      ERLANG_CLUSTER_ADAPTER: "Elixir.Domain.Cluster.Local"
-      ERLANG_CLUSTER_ADAPTER_CONFIG: '{}'
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       RELEASE_HOSTNAME: "mix.cluster.local"
       RELEASE_NAME: "mix"

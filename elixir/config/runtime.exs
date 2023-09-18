@@ -51,6 +51,20 @@ if config_env() == :prod do
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
     finch_transport_opts: compile_config!(:http_client_ssl_opts)
 
+  config :domain, platform_adapter: compile_config!(:platform_adapter)
+
+  if platform_adapter = compile_config!(:platform_adapter) do
+    config :domain, platform_adapter, compile_config!(:platform_adapter_config)
+  end
+
+  config :domain, Domain.Cluster,
+    adapter: compile_config!(:erlang_cluster_adapter),
+    adapter_config: compile_config!(:erlang_cluster_adapter_config)
+
+  config :domain, Domain.Instrumentation,
+    client_logs_enabled: compile_config!(:instrumentation_client_logs_enabled),
+    client_logs_bucket: compile_config!(:instrumentation_client_logs_bucket)
+
   ###############################
   ##### Web #####################
   ###############################
@@ -107,14 +121,6 @@ if config_env() == :prod do
   config :api,
     external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
     private_clients: compile_config!(:phoenix_private_clients)
-
-  ###############################
-  ##### Erlang Cluster ##########
-  ###############################
-
-  config :domain, Domain.Cluster,
-    adapter: compile_config!(:erlang_cluster_adapter),
-    adapter_config: compile_config!(:erlang_cluster_adapter_config)
 
   ###############################
   ##### Third-party configs #####

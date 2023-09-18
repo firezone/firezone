@@ -22,6 +22,12 @@ config :domain, Domain.Telemetry, enabled: false
 
 config :domain, Domain.ConnectivityChecks, enabled: false
 
+config :domain, platform_adapter: Domain.GoogleCloudPlatform
+
+config :domain, Domain.GoogleCloudPlatform,
+  project_id: "fz-test",
+  service_account_email: "foo@iam.example.com"
+
 ###############################
 ##### Web #####################
 ###############################

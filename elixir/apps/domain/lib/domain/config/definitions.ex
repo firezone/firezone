@@ -63,6 +63,11 @@ defmodule Domain.Config.Definitions do
          :database_ssl_opts,
          :database_parameters
        ]},
+      {"Cloud Platform",
+       [
+         :platform_adapter,
+         :platform_adapter_config
+       ]},
       {"Erlang Cluster",
        [
          :erlang_cluster_adapter,
@@ -113,6 +118,11 @@ defmodule Domain.Config.Definitions do
          :outbound_email_from,
          :outbound_email_adapter,
          :outbound_email_adapter_opts
+       ]},
+      {"Instrumentation",
+       [
+         :instrumentation_client_logs_enabled,
+         :instrumentation_client_logs_bucket
        ]},
       {"Telemetry",
        [
@@ -279,13 +289,38 @@ defmodule Domain.Config.Definitions do
   )
 
   ##############################################
+  ## Platform
+  ##############################################
+
+  @doc """
+  Cloud platform on which the Firezone runs on which is used to unlock
+  platform-specific features (logging, tracing, monitoring, clustering).
+  """
+  defconfig(
+    :platform_adapter,
+    {:parameterized, Ecto.Enum,
+     Ecto.Enum.init(
+       values: [
+         Elixir.Domain.GoogleCloudPlatform
+       ]
+     )},
+    default: nil
+  )
+
+  @doc """
+  Config for the platform adapter.
+  """
+  defconfig(:platform_adapter_config, :map,
+    default: [],
+    dump: &Dumper.keyword/1
+  )
+
+  ##############################################
   ## Erlang Cluster
   ##############################################
 
   @doc """
   An adapter that will be used to discover and connect nodes to the Erlang cluster.
-
-  Set to `Domain.Cluster.Local` to disable
   """
   defconfig(
     :erlang_cluster_adapter,
@@ -295,18 +330,17 @@ defmodule Domain.Config.Definitions do
          Elixir.Cluster.Strategy.LocalEpmd,
          Elixir.Cluster.Strategy.Epmd,
          Elixir.Cluster.Strategy.Gossip,
-         Elixir.Domain.Cluster.GoogleComputeLabelsStrategy,
-         Domain.Cluster.Local
+         Elixir.Domain.Cluster.GoogleComputeLabelsStrategy
        ]
      )},
-    default: Domain.Cluster.Local
+    default: nil
   )
 
   @doc """
   Config for the Erlang cluster adapter.
   """
   defconfig(:erlang_cluster_adapter_config, :map,
-    default: [],
+    default: %{},
     dump: fn map ->
       keyword = Dumper.keyword(map)
 
@@ -449,6 +483,22 @@ defmodule Domain.Config.Definitions do
     ]a)}},
     default: ~w[email openid_connect google_workspace token]a
   )
+
+  ##############################################
+  ## Telemetry
+  ##############################################
+
+  @doc """
+  Enable or disable the Firezone telemetry collection.
+
+  For more details see https://docs.firezone.dev/reference/telemetry/.
+  """
+  defconfig(:instrumentation_client_logs_enabled, :boolean, default: true)
+
+  @doc """
+  Name of the bucket to store client-, relay- and gateway-submitted instrumentation logs in.
+  """
+  defconfig(:instrumentation_client_logs_bucket, :string, default: "logs")
 
   ##############################################
   ## Telemetry
