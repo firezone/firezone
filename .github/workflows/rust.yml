@@ -145,7 +145,7 @@ jobs:
           TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
           echo "TAG=branch-${TAG}" >> $GITHUB_ENV
       - name: Build and push Docker image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           platforms: linux/amd64
           build-args: |
@@ -204,7 +204,7 @@ jobs:
           TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
           echo "TAG=branch-${TAG}" >> $GITHUB_ENV
       - name: Build and push Docker image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           platforms: linux/amd64
           build-args: |
