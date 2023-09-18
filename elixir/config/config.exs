@@ -64,7 +64,7 @@ config :domain, Domain.GoogleCloudPlatform,
   cloud_storage_url: "https://storage.googleapis.com"
 
 config :domain, Domain.Cluster,
-  adapter: Domain.Cluster.Local,
+  adapter: nil,
   adapter_config: []
 
 config :domain, Domain.Instrumentation,

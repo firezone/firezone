@@ -19,7 +19,7 @@ defmodule Domain.Cluster do
     ]
 
     children =
-      if adapter != Domain.Cluster.Local do
+      if adapter do
         [
           {Cluster.Supervisor, [topology_config, [name: __MODULE__]]}
         ]

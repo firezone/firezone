@@ -321,8 +321,6 @@ defmodule Domain.Config.Definitions do
 
   @doc """
   An adapter that will be used to discover and connect nodes to the Erlang cluster.
-
-  Set to `Domain.Cluster.Local` to disable
   """
   defconfig(
     :erlang_cluster_adapter,
