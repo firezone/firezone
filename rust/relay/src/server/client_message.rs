@@ -2,6 +2,7 @@ use crate::auth::{generate_password, split_username, systemtime_from_unix, FIREZ
 use crate::rfc8656::{AdditionalAddressFamily, AddressFamily, RequestedAddressFamily};
 use crate::server::channel_data::ChannelData;
 use crate::server::UDP_TRANSPORT;
+use crate::stun_codec_ext::MethodExt;
 use crate::Attribute;
 use bytecodec::DecodeExt;
 use std::io;
@@ -13,7 +14,7 @@ use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress,
 };
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
-use stun_codec::{BrokenMessage, Message, MessageClass, TransactionId};
+use stun_codec::{Message, MessageClass, Method, TransactionId};
 use uuid::Uuid;
 
 /// The maximum lifetime of an allocation.
@@ -37,7 +38,20 @@ impl Decoder {
         // De-multiplex as per <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
         match input.first() {
             Some(0..=3) => {
-                let message = self.stun_message_decoder.decode_from_bytes(input)??;
+                let message = match self.stun_message_decoder.decode_from_bytes(input)? {
+                    Ok(message) => message,
+                    Err(broken_message) => {
+                        let method = broken_message.method();
+                        let transaction_id = broken_message.transaction_id();
+                        let error = broken_message.error().clone();
+
+                        tracing::debug!(transaction_id = %hex::encode(transaction_id.as_bytes()), method = %method.as_str(), %error, "Failed to decode attributes of message");
+
+                        let error_code = ErrorCode::from(error);
+
+                        return Ok(Err(error_response(method, transaction_id, error_code)));
+                    }
+                };
 
                 use MessageClass::*;
                 match (message.method(), message.class()) {
@@ -532,12 +546,20 @@ fn compute_effective_lifetime(requested_lifetime: Option<&Lifetime>) -> Lifetime
 }
 
 fn bad_request(message: &Message<Attribute>) -> Message<Attribute> {
-    let mut message = Message::new(
-        MessageClass::ErrorResponse,
+    error_response(
         message.method(),
         message.transaction_id(),
-    );
-    message.add_attribute(ErrorCode::from(BadRequest).into());
+        ErrorCode::from(BadRequest),
+    )
+}
+
+fn error_response(
+    method: Method,
+    transaction_id: TransactionId,
+    error_code: ErrorCode,
+) -> Message<Attribute> {
+    let mut message = Message::new(MessageClass::ErrorResponse, method, transaction_id);
+    message.add_attribute(error_code.into());
 
     message
 }
@@ -548,12 +570,6 @@ pub enum Error {
     DecodeStun(bytecodec::Error),
     UnknownMessageType(u8),
     Eof,
-}
-
-impl From<BrokenMessage> for Error {
-    fn from(msg: BrokenMessage) -> Self {
-        Error::DecodeStun(msg.into())
-    }
 }
 
 impl From<bytecodec::Error> for Error {
