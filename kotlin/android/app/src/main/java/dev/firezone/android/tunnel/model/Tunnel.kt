@@ -1,15 +1,19 @@
 package dev.firezone.android.tunnel.model
 
-data class Tunnel(
-    val config: TunnelConfig,
-    var state: State = State.Down,
-    val routes: MutableList<String> = mutableListOf(),
-    val resources: MutableList<String> = mutableListOf(),
-) {
+import android.os.Parcelable
+import com.squareup.moshi.JsonClass
+import kotlinx.parcelize.Parcelize
 
-    sealed interface State {
-        object Up: State
-        object CONNECTING: State
-        object Down: State
+@JsonClass(generateAdapter = true)
+@Parcelize
+data class Tunnel(
+    val config: TunnelConfig = TunnelConfig(),
+    var state: State = State.Down,
+    val routes: List<String> = emptyList(),
+    val resources: List<Resource> = emptyList(),
+): Parcelable {
+
+    enum class State {
+        Up, Connecting, Down;
     }
 }

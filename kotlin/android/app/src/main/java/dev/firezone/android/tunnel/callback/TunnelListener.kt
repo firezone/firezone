@@ -1,20 +1,13 @@
 package dev.firezone.android.tunnel.callback
 
 import dev.firezone.android.tunnel.model.Resource
+import dev.firezone.android.tunnel.model.Tunnel
 
 interface TunnelListener {
 
-    fun onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String, dnsFallbackStrategy: String)
+    fun onTunnelStateUpdate(state: Tunnel.State)
 
-    fun onTunnelReady(): Boolean
-
-    fun onAddRoute(cidrAddress: String)
-
-    fun onRemoveRoute(cidrAddress: String)
-
-    fun onUpdateResources(resources: List<Resource>)
-
-    fun onDisconnect(error: String?): Boolean
+    fun onResourcesUpdate(resources: List<Resource>)
 
     fun onError(error: String): Boolean
 }
