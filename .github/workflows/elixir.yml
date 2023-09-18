@@ -435,7 +435,7 @@ jobs:
       - name: Change current gcloud account
         run: gcloud --quiet config set project ${GCLOUD_PROJECT}
       - name: Login to Google Artifact Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: oauth2accesstoken
@@ -495,7 +495,7 @@ jobs:
       - name: Change current gcloud account
         run: gcloud --quiet config set project ${GCLOUD_PROJECT}
       - name: Login to Google Artifact Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: oauth2accesstoken
