@@ -76,25 +76,17 @@ fn block_on_ctrl_c() {
     rx.recv().expect("Could not receive ctrl-c signal");
 }
 
-fn init_logging(log_dir: PathBuf) -> Option<WorkerGuard> {
+fn init_logging(log_dir: PathBuf) -> WorkerGuard {
     let (file_layer, guard) = file_logger::layer(log_dir);
 
     // Calling init twice causes a panic; instead use try_init which will fail
     // gracefully if this is called more than once.
-    match tracing_subscriber::registry()
+    let _ = tracing_subscriber::registry()
         .with(fmt::layer())
         .with(file_layer)
-        .try_init()
-    {
-        Ok(_) => {
-            tracing::info!("File logging initialized!");
-            Some(guard)
-        }
-        Err(err) => {
-            tracing::error!("Failed to initialize file logging: {}", err);
-            None
-        }
-    }
+        .try_init();
+
+    guard
 }
 
 fn main() -> Result<()> {
@@ -114,7 +106,7 @@ fn main() -> Result<()> {
         url,
         secret,
         device_id,
-        init_logging(log_dir.into()),
+        Some(init_logging(log_dir.into())),
         CallbackHandler,
     )
     .unwrap();

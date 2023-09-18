@@ -78,7 +78,7 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: PathBuf) -> Option<WorkerGuard> {
+fn init_logging(log_dir: PathBuf) -> WorkerGuard {
     #[cfg(debug_assertions)]
     let log_level = LevelFilter::Debug;
 
@@ -93,16 +93,9 @@ fn init_logging(log_dir: PathBuf) -> Option<WorkerGuard> {
 
     // Calling init twice causes a panic; instead use try_init which will fail
     // gracefully if this is called more than once.
-    match tracing_subscriber::registry().with(file_layer).try_init() {
-        Ok(_) => {
-            tracing::info!("File logging initialized!");
-            Some(guard)
-        }
-        Err(err) => {
-            tracing::error!("Failed to initialize file logging: {}", err);
-            None
-        }
-    }
+    let _ = tracing_subscriber::registry().with(file_layer).try_init();
+
+    guard
 }
 
 impl Callbacks for CallbackHandler {
@@ -346,7 +339,7 @@ fn connect(
         portal_url.as_str(),
         portal_token,
         device_id,
-        init_logging(log_dir.into()),
+        Some(init_logging(log_dir.into())),
         callback_handler,
     )
     .map_err(Into::into)

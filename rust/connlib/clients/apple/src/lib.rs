@@ -136,26 +136,18 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf) -> Option<WorkerGuard> {
+fn init_logging(log_dir: PathBuf) -> WorkerGuard {
     let (file_layer, guard) = file_logger::layer(log_dir.clone());
 
-    match tracing_subscriber::registry()
+    let _ = tracing_subscriber::registry()
         .with(tracing_oslog::OsLogger::new(
             "dev.firezone.firezone",
             "connlib",
         ))
         .with(file_layer)
-        .try_init()
-    {
-        Ok(_) => {
-            tracing::info!("File logging initialized!");
-            Some(guard)
-        }
-        Err(err) => {
-            tracing::error!("Failed to initialize file logging: {}", err);
-            None
-        }
-    }
+        .try_init();
+
+    guard
 }
 
 impl WrappedSession {
@@ -170,7 +162,7 @@ impl WrappedSession {
             portal_url.as_str(),
             token,
             device_id,
-            init_logging(log_dir.into()),
+            Some(init_logging(log_dir.into())),
             CallbackHandler(callback_handler.into()),
         )
         .map(|session| Self { session })
