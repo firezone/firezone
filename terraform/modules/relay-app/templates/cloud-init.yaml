@@ -28,8 +28,8 @@ write_files:
           detectors: [gcp]
           timeout: 10s
         transform:
-          # "location", "cluster", "namespace", "job", "instance", and "project_id" are reserved, and
-          # metrics containing these labels will be rejected.  Prefix them with exported_ to prevent this.
+          # Several metrics labels are reserved on Google Cloud. We need to prefix them with `exported_` to prevent the exporter from failing.
+          # See https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/googlecloudexporter/README.md#preventing-metric-label-collisions for example.
           metric_statements:
           - context: datapoint
             statements:
@@ -45,6 +45,16 @@ write_files:
             - delete_key(attributes, "instance")
             - set(attributes["exported_project_id"], attributes["project_id"])
             - delete_key(attributes, "project_id")
+            - set(attributes["exported_service_name"], attributes["service_name"])
+            - delete_key(attributes, "service_name")
+            - set(attributes["exported_service_namespace"], attributes["service_namespace"])
+            - delete_key(attributes, "service_namespace")
+            - set(attributes["exported_service_instance_id"], attributes["service_instance_id"])
+            - delete_key(attributes, "service_instance_id")
+            - set(attributes["exported_instrumentation_source"], attributes["instrumentation_source"])
+            - delete_key(attributes, "instrumentation_source")
+            - set(attributes["exported_instrumentation_version"], attributes["instrumentation_version"])
+            - delete_key(attributes, "instrumentation_version")
       service:
         pipelines:
           traces:
