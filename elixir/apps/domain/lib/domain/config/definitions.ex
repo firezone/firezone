@@ -340,7 +340,7 @@ defmodule Domain.Config.Definitions do
   Config for the Erlang cluster adapter.
   """
   defconfig(:erlang_cluster_adapter_config, :map,
-    default: [],
+    default: %{},
     dump: fn map ->
       keyword = Dumper.keyword(map)
 
