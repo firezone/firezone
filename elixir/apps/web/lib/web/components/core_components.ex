@@ -52,9 +52,9 @@ defmodule Web.CoreComponents do
     The lazy brown fox jumped over the quick dog.
   </.code_block>
   """
-  attr(:id, :string, required: true)
-  attr(:class, :string, default: "")
-  slot(:inner_block, required: true)
+  attr :id, :string, required: true
+  attr :class, :string, default: ""
+  slot :inner_block, required: true
 
   def code_block(assigns) do
     ~H"""
@@ -65,7 +65,10 @@ defmodule Web.CoreComponents do
       bg-gray-800
       relative
     ], @class]}>
-      <code class="block w-full no-scrollbar whitespace-nowrap overflow-x-auto rounded-b-lg" data-copy>
+      <code
+        class="block  w-full no-scrollbar whitespace-nowrap overflow-x-auto rounded-b-lg"
+        data-copy
+      >
         <%= render_slot(@inner_block) %>
       </code>
       <.icon name="hero-clipboard-document" data-icon class={~w[
@@ -93,11 +96,11 @@ defmodule Web.CoreComponents do
   </.tabs>
   """
 
-  attr(:id, :string, required: true, doc: "ID of the tabs container")
+  attr :id, :string, required: true, doc: "ID of the tabs container"
 
   slot :tab, required: true, doc: "Tab content" do
-    attr(:id, :string, required: true, doc: "ID of the tab")
-    attr(:label, :any, required: true, doc: "Display label for the tab")
+    attr :id, :string, required: true, doc: "ID of the tab"
+    attr :label, :any, required: true, doc: "Display label for the tab"
   end
 
   def tabs(assigns) do
@@ -163,8 +166,8 @@ defmodule Web.CoreComponents do
       </:actions>
     </.section>
   """
-  slot(:title, required: true, doc: "Title of the section")
-  slot(:actions, required: false, doc: "Buttons or other action elements")
+  slot :title, required: true, doc: "Title of the section"
+  slot :actions, required: false, doc: "Buttons or other action elements"
 
   def header(assigns) do
     ~H"""
@@ -193,9 +196,9 @@ defmodule Web.CoreComponents do
       total_pages={100}
       collection_base_path={~p"/actors"}/>
   """
-  attr(:page, :integer, required: true, doc: "Current page")
-  attr(:total_pages, :integer, required: true, doc: "Total number of pages")
-  attr(:collection_base_path, :string, required: true, doc: "Base path for collection")
+  attr :page, :integer, required: true, doc: "Current page"
+  attr :total_pages, :integer, required: true, doc: "Total number of pages"
+  attr :collection_base_path, :string, required: true, doc: "Base path for collection"
 
   def paginator(assigns) do
     # XXX: Stubbing out this pagination helper for now, but we probably won't have users that
@@ -288,14 +291,14 @@ defmodule Web.CoreComponents do
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:info} phx-mounted={show("#flash")}>Welcome Back!</.flash>
   """
-  attr(:id, :string, default: "flash", doc: "the optional id of flash container")
-  attr(:flash, :map, default: %{}, doc: "the map of flash messages to display")
-  attr(:title, :string, default: nil)
-  attr(:kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup")
-  attr(:rest, :global, doc: "the arbitrary HTML attributes to add to the flash container")
-  attr(:style, :string, default: "pill")
+  attr :id, :string, default: "flash", doc: "the optional id of flash container"
+  attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
+  attr :title, :string, default: nil
+  attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
+  attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
+  attr :style, :string, default: "pill"
 
-  slot(:inner_block, doc: "the optional inner block that renders the flash message")
+  slot :inner_block, doc: "the optional inner block that renders the flash message"
 
   def flash(assigns) do
     ~H"""
@@ -345,7 +348,7 @@ defmodule Web.CoreComponents do
 
       <.flash_group flash={@flash} />
   """
-  attr(:flash, :map, required: true, doc: "the map of flash messages")
+  attr :flash, :map, required: true, doc: "the map of flash messages"
 
   def flash_group(assigns) do
     ~H"""
@@ -367,9 +370,9 @@ defmodule Web.CoreComponents do
   @doc """
   Renders a standard form label.
   """
-  attr(:for, :string, default: nil)
-  attr(:class, :string, default: nil)
-  slot(:inner_block, required: true)
+  attr :for, :string, default: nil
+  attr :class, :string, default: nil
+  slot :inner_block, required: true
 
   def label(assigns) do
     ~H"""
@@ -382,8 +385,8 @@ defmodule Web.CoreComponents do
   @doc """
   Generates a generic error message.
   """
-  attr(:rest, :global)
-  slot(:inner_block, required: true)
+  attr :rest, :global
+  slot :inner_block, required: true
 
   def error(assigns) do
     ~H"""
@@ -402,9 +405,9 @@ defmodule Web.CoreComponents do
 
       <.base_error form={@form} field={:base} />
   """
-  attr(:form, :any, required: true, doc: "the form")
-  attr(:field, :atom, doc: "field name")
-  attr(:rest, :global)
+  attr :form, :any, required: true, doc: "the form"
+  attr :field, :atom, doc: "field name"
+  attr :rest, :global
 
   def base_error(assigns) do
     assigns = assign_new(assigns, :error, fn -> assigns.form.errors[assigns.field] end)
@@ -433,7 +436,7 @@ defmodule Web.CoreComponents do
       </.list>
   """
   slot :item, required: true do
-    attr(:title, :string, required: true)
+    attr :title, :string, required: true
   end
 
   def list(assigns) do
@@ -467,9 +470,9 @@ defmodule Web.CoreComponents do
       <.icon name="hero-x-mark-solid" />
       <.icon name="hero-arrow-path" class="ml-1 w-3 h-3 animate-spin" />
   """
-  attr(:name, :string, required: true)
-  attr(:class, :string, default: nil)
-  attr(:rest, :global)
+  attr :name, :string, required: true
+  attr :class, :string, default: nil
+  attr :rest, :global
 
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
@@ -480,9 +483,9 @@ defmodule Web.CoreComponents do
   @doc """
   Renders Gravatar img tag.
   """
-  attr(:email, :string, required: true)
-  attr(:size, :integer, default: 40)
-  attr(:rest, :global, doc: "the arbitrary HTML attributes to add to the flash container")
+  attr :email, :string, required: true
+  attr :size, :integer, default: 40
+  attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
   def gravatar(assigns) do
     ~H"""
@@ -526,9 +529,9 @@ defmodule Web.CoreComponents do
   </.intersperse_blocks>
   ```
   """
-  slot(:separator, required: true, doc: "the slot for the separator")
-  slot(:item, required: true, doc: "the slots to intersperse with separators")
-  slot(:empty, required: false, doc: "the slots to render when there are no items")
+  slot :separator, required: true, doc: "the slot for the separator"
+  slot :item, required: true, doc: "the slots to intersperse with separators"
+  slot :empty, required: false, doc: "the slots to render when there are no items"
 
   def intersperse_blocks(assigns) do
     ~H"""
@@ -573,15 +576,14 @@ defmodule Web.CoreComponents do
   </.peek>
   ```
   """
-  attr(:peek, :any,
+  attr :peek, :any,
     required: true,
     doc: "a tuple with the total number of items and items for a preview"
-  )
 
-  slot(:empty, required: false, doc: "the slots to render when there are no items")
-  slot(:item, required: true, doc: "the slots to intersperse with separators")
-  slot(:separator, required: false, doc: "the slot for the separator")
-  slot(:tail, required: true, doc: "the slots to render to show the remaining count")
+  slot :empty, required: false, doc: "the slots to render when there are no items"
+  slot :item, required: true, doc: "the slots to intersperse with separators"
+  slot :separator, required: false, doc: "the slot for the separator"
+  slot :tail, required: true, doc: "the slots to render to show the remaining count"
 
   def peek(assigns) do
     ~H"""
@@ -616,10 +618,10 @@ defmodule Web.CoreComponents do
     """
   end
 
-  attr(:type, :string, default: "default")
-  attr(:class, :string, default: nil)
-  attr(:rest, :global)
-  slot(:inner_block, required: true)
+  attr :type, :string, default: "default"
+  attr :class, :string, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
 
   def badge(assigns) do
     colors = %{
@@ -649,8 +651,8 @@ defmodule Web.CoreComponents do
   @doc """
   Renders datetime field in a format that is suitable for the user's locale.
   """
-  attr(:datetime, DateTime, required: true)
-  attr(:format, :atom, default: :short)
+  attr :datetime, DateTime, required: true
+  attr :format, :atom, default: :short
 
   def datetime(assigns) do
     ~H"""
@@ -664,8 +666,8 @@ defmodule Web.CoreComponents do
   Returns a string the represents a relative time for a given Datetime
   from the current time or a given base time
   """
-  attr(:datetime, DateTime, default: nil)
-  attr(:relative_to, DateTime, required: false)
+  attr :datetime, DateTime, default: nil
+  attr :relative_to, DateTime, required: false
 
   def relative_datetime(assigns) do
     assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
@@ -683,7 +685,7 @@ defmodule Web.CoreComponents do
   @doc """
   Renders online or offline status using an `online?` field of the schema.
   """
-  attr(:schema, :any, required: true)
+  attr :schema, :any, required: true
 
   def connection_status(assigns) do
     assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
@@ -706,8 +708,8 @@ defmodule Web.CoreComponents do
   @doc """
   Renders creation timestamp and entity.
   """
-  attr(:account, :any, required: true)
-  attr(:schema, :any, required: true)
+  attr :account, :any, required: true
+  attr :schema, :any, required: true
 
   def created_by(%{schema: %{created_by: :system}} = assigns) do
     ~H"""
@@ -739,8 +741,8 @@ defmodule Web.CoreComponents do
     """
   end
 
-  attr(:account, :any, required: true)
-  attr(:identity, :any, required: true)
+  attr :account, :any, required: true
+  attr :identity, :any, required: true
 
   def identity_identifier(assigns) do
     ~H"""
@@ -782,8 +784,8 @@ defmodule Web.CoreComponents do
     """
   end
 
-  attr(:account, :any, required: true)
-  attr(:group, :any, required: true)
+  attr :account, :any, required: true
+  attr :group, :any, required: true
 
   def group(assigns) do
     ~H"""
@@ -830,16 +832,16 @@ defmodule Web.CoreComponents do
   other numbers that are not `one`. For example, if you want to pluralize the word "file" you would
   set `one` to "file" and `other` to "files".
   """
-  attr(:number, :integer, required: true)
+  attr :number, :integer, required: true
 
-  attr(:zero, :string, required: false)
-  attr(:one, :string, required: false)
-  attr(:two, :string, required: false)
-  attr(:few, :string, required: false)
-  attr(:many, :string, required: false)
-  attr(:other, :string, required: true)
+  attr :zero, :string, required: false
+  attr :one, :string, required: false
+  attr :two, :string, required: false
+  attr :few, :string, required: false
+  attr :many, :string, required: false
+  attr :other, :string, required: true
 
-  attr(:rest, :global)
+  attr :rest, :global
 
   def cardinal_number(assigns) do
     opts = Map.take(assigns, [:zero, :one, :two, :few, :many, :other])
