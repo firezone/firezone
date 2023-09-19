@@ -128,22 +128,95 @@ defmodule Web.AuthTest do
   end
 
   describe "sign_out/1" do
-    test "erases session and cookies", %{conn: conn, admin_subject: subject} do
+    test "erases session, session cookie and redirects to sign in page", %{
+      conn: conn,
+      account: account,
+      admin_subject: subject
+    } do
       {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
 
       conn =
         conn
+        |> assign(:account, account)
         |> put_session(:session_token, session_token)
         |> fetch_cookies()
         |> sign_out()
 
       refute get_session(conn, :session_token)
       refute get_session(conn, :live_socket_id)
+
+      assert redirected_to(conn, 302) == ~p"/#{subject.account}"
     end
 
-    test "keeps preferred_locale session value", %{conn: conn} do
+    test "redirects to the sign in page even on invalid account ids", %{
+      conn: conn,
+      admin_subject: subject
+    } do
+      account_slug = "foo"
+      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
+
+      conn =
+        %{
+          conn
+          | path_params: %{"account_id_or_slug" => account_slug}
+        }
+        |> put_session(:session_token, session_token)
+        |> fetch_cookies()
+        |> sign_out()
+
+      refute get_session(conn, :session_token)
+      refute get_session(conn, :live_socket_id)
+
+      assert redirected_to(conn, 302) == ~p"/#{account_slug}"
+    end
+
+    test "keeps client_platform param during sign out", %{
+      conn: conn,
+      account: account
+    } do
+      conn =
+        %{
+          conn
+          | path_params: %{"account_id_or_slug" => account.id},
+            query_params: %{"client_platform" => "apple"}
+        }
+        |> sign_out()
+
+      refute get_session(conn, :session_token)
+      refute get_session(conn, :live_socket_id)
+
+      assert redirected_to(conn, 302) == ~p"/#{account}?client_platform=apple"
+    end
+
+    test "erases session, session cookie and redirects to IdP sign out page", %{
+      conn: conn,
+      account: account
+    } do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
+
       conn =
         conn
+        |> assign(:account, account)
+        |> put_session(:session_token, session_token)
+        |> fetch_cookies()
+        |> sign_out()
+
+      refute get_session(conn, :session_token)
+      refute get_session(conn, :live_socket_id)
+
+      assert redirected_to(conn, 302) == ~p"/#{subject.account}"
+    end
+
+    test "keeps preferred_locale session value", %{account: account, conn: conn} do
+      conn =
+        conn
+        |> assign(:account, account)
         |> put_session(:preferred_locale, "uk_UA")
         |> fetch_cookies()
         |> sign_out()
@@ -151,11 +224,16 @@ defmodule Web.AuthTest do
       assert get_session(conn, :preferred_locale) == "uk_UA"
     end
 
-    test "broadcasts to the given live_socket_id", %{admin_subject: subject, conn: conn} do
+    test "broadcasts to the given live_socket_id", %{
+      account: account,
+      admin_subject: subject,
+      conn: conn
+    } do
       live_socket_id = "actors_sessions:#{subject.actor.id}"
       Web.Endpoint.subscribe(live_socket_id)
 
       conn
+      |> assign(:account, account)
       |> put_private(:phoenix_endpoint, @endpoint)
       |> put_session(:live_socket_id, live_socket_id)
       |> sign_out()

@@ -290,17 +290,9 @@ defmodule Web.AuthController do
     @state_cookie_key_prefix <> provider_id
   end
 
-  def sign_out(%{assigns: %{subject: subject}} = conn, %{
-        "account_id_or_slug" => account_id_or_slug
-      }) do
-    redirect_params = Map.take(conn.params, ["client_platform"])
-
-    {:ok, _identity, redirect_url} =
-      Domain.Auth.sign_out(subject.identity, url(~p"/#{account_id_or_slug}?#{redirect_params}"))
-
+  def sign_out(conn, _params) do
     conn
     |> Auth.sign_out()
-    |> redirect(external: redirect_url)
   end
 
   def sign_out(conn, %{"account_id_or_slug" => account_id_or_slug}) do

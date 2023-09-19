@@ -122,15 +122,31 @@ defmodule Web.Auth do
   It clears all session data for safety. See `renew_session/1`.
   """
   def sign_out(%Plug.Conn{} = conn) do
-    # token = Plug.Conn.get_session(conn, :session_token)
-    # subject && Accounts.delete_user_session_token(subject)
-
     if live_socket_id = Plug.Conn.get_session(conn, :live_socket_id) do
       conn.private.phoenix_endpoint.broadcast(live_socket_id, "disconnect", %{})
     end
 
+    account_id_or_slug = Map.get(conn.assigns, :account, conn.path_params["account_id_or_slug"])
+    redirect_params = Map.take(conn.query_params, ["client_platform"])
+
     conn
     |> renew_session()
+    |> sign_out_redirect(account_id_or_slug, redirect_params)
+  end
+
+  defp sign_out_redirect(
+         %{assigns: %{subject: %Auth.Subject{} = subject}} = conn,
+         account_id_or_slug,
+         redirect_params
+       ) do
+    {:ok, _identity, redirect_url} =
+      Domain.Auth.sign_out(subject.identity, url(~p"/#{account_id_or_slug}?#{redirect_params}"))
+
+    Phoenix.Controller.redirect(conn, external: redirect_url)
+  end
+
+  defp sign_out_redirect(conn, account_id_or_slug, redirect_params) do
+    Phoenix.Controller.redirect(conn, to: ~p"/#{account_id_or_slug}?#{redirect_params}")
   end
 
   @doc """
