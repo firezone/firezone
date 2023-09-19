@@ -47,6 +47,8 @@ defmodule Web.FormComponents do
     include: ~w(autocomplete cols disabled form list max maxlength min minlength
                 pattern placeholder readonly required rows size step)
 
+  attr :schemaless, :boolean, default: false, required: false
+
   slot :inner_block
 
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
@@ -205,6 +207,36 @@ defmodule Web.FormComponents do
     """
   end
 
+  def input(%{schemaless: true} = schemaless_assigns) do
+    errors =
+      get_deep_given(schemaless_assigns)
+      |> get_deep_given_errors()
+
+    assigns =
+      assign(schemaless_assigns, :errors, errors)
+
+    ~H"""
+    <div phx-feedback-for={@name}>
+      <.label :if={not is_nil(@label)} for={@id}><%= @label %></.label>
+      <input
+        type={@type}
+        name={@name}
+        id={@id}
+        value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+        class={[
+          "bg-gray-50 p-2.5 block w-full rounded-lg border text-gray-900 focus:ring-primary-600 text-sm",
+          "phx-no-feedback:border-gray-300 phx-no-feedback:focus:border-primary-600",
+          "disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200 disabled:shadow-none",
+          "border-gray-300 focus:border-primary-600",
+          @errors != [] && "border-rose-400 focus:border-rose-400"
+        ]}
+        {@rest}
+      />
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+    </div>
+    """
+  end
+
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
@@ -227,6 +259,34 @@ defmodule Web.FormComponents do
       <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
     </div>
     """
+  end
+
+  defp get_deep_given(%{__given__: given}) do
+    get_deep_given(given)
+  end
+
+  defp get_deep_given(assigns) do
+    assigns
+  end
+
+  defp get_deep_given_errors(assigns) do
+    assigns
+    |> get_in([
+      Access.key!(:field),
+      Access.key!(:form),
+      Access.key!(:source),
+      Access.key!(:errors)
+    ])
+    |> case do
+      error_list when is_list(error_list) ->
+        error_list
+        |> Enum.map(fn {_field, {message, _}} ->
+          message
+        end)
+
+      _ ->
+        []
+    end
   end
 
   attr :name, :any

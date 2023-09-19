@@ -76,51 +76,51 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
            ]
   end
 
-  # TODO: LiveView to_form doesn't read the changeset errors when we inject a dynamic changeset in an adapter,
-  # will need to find a workaround later
-  # test "renders changeset errors on input change", %{
-  #   account: account,
-  #   actor: actor,
-  #   identity: identity,
-  #   conn: conn
-  # } do
-  #   {:ok, lv, _html} =
-  #     conn
-  #     |> authorize_conn(identity)
-  #     |> live(~p"/#{account}/actors/service_accounts/#{actor}/new_identity")
+  test "renders changeset errors on input change", %{
+    account: account,
+    actor: actor,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/actors/service_accounts/#{actor}/new_identity")
 
-  #   lv
-  #   |> form("form", identity: %{})
-  #   |> validate_change(
-  #     %{identity: %{provider_virtual_state: %{expires_at: "1991-01-01"}}},
-  #     fn form, _html ->
-  #       assert form_validation_errors(form) == %{
-  #                "identity[provider_virtual_state][expires_at]" => ["can't be blank"]
-  #              }
-  #     end
-  #   )
-  # end
+    lv
+    |> form("form", identity: %{})
+    |> validate_change(
+      %{identity: %{provider_virtual_state: %{expires_at: "1991-01-01"}}},
+      fn form, _html ->
+        assert %{
+                 "identity[provider_virtual_state][expires_at]" => [message]
+               } = form_validation_errors(form)
 
-  # test "renders changeset errors on submit", %{
-  #   account: account,
-  #   actor: actor,
-  #   identity: identity,
-  #   conn: conn
-  # } do
-  #   attrs = %{provider_virtual_state: %{expires_at: "1991-01-01"}}
+        assert String.contains?(message, "must be greater than")
+      end
+    )
+  end
 
-  #   {:ok, lv, _html} =
-  #     conn
-  #     |> authorize_conn(identity)
-  #     |> live(~p"/#{account}/actors/service_accounts/#{actor}/new_identity")
+  test "renders changeset errors on submit", %{
+    account: account,
+    actor: actor,
+    identity: identity,
+    conn: conn
+  } do
+    attrs = %{provider_virtual_state: %{expires_at: nil}}
 
-  #   assert lv
-  #          |> form("form", identity: attrs)
-  #          |> render_submit()
-  #          |> form_validation_errors() == %{
-  #            "identity[provider_virtual_state][expires_at]" => ["can't be blank"]
-  #          }
-  # end
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/actors/service_accounts/#{actor}/new_identity")
+
+    assert lv
+           |> form("form", identity: attrs)
+           |> render_submit()
+           |> form_validation_errors() == %{
+             "identity[provider_virtual_state][expires_at]" => ["can't be blank"]
+           }
+  end
 
   test "creates a new actor on valid attrs", %{
     account: account,

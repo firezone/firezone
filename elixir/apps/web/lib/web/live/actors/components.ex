@@ -111,6 +111,7 @@ defmodule Web.Actors.Components do
         <.input
           label="Token Expires At"
           type="date"
+          schemaless={true}
           field={form[:expires_at]}
           min={Date.utc_today()}
           value={Date.utc_today() |> Date.add(365)}
