@@ -20,7 +20,7 @@
 	<string name="error_dialog_message">Ops, something went wrong. Please try again later.</string>
 	<string name="error_dialog_button_text">Ok</string>
 	<string name="enable_vpn_permission">Enable VPN Permission</string>
-	<string name="vpn_permission_description">This app requires VPN permission to function effectively and provide you with a secure and private browsing experience. The VPN service encrypts your internet connection, ensuring that your data remains protected from potential threats and unauthorized access.\n\nRest assured, we highly prioritize your online privacy, and the VPN permission is solely used for providing the VPN service within the app. We do not monitor or log your online activities.\n\nTo proceed and enjoy the benefits of a secure connection, please grant the VPN permission by tapping the button below.</string>
+	<string name="vpn_permission_description">Firezone requires the VPN permission in order to route packets from your device to protected resources in a secure manner. All communication is end-to-end encrypted; we can never decrypt or otherwise monitor your communication. Please grant the VPN permission by tapping the button below.</string>
 	<string name="request_permission">Request Permission</string>
 	<string name="enter_team_id">Enter team id</string>
 	<string name="sign_in_debug_user">Sign In (Debug User)</string>

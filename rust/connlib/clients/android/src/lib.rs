@@ -390,15 +390,14 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_dis
     _: JClass,
     session: *mut Session<CallbackHandler>,
 ) {
-    if let Some(session) = session.as_mut() {
-        catch_and_throw(&mut env, |_| {
-            session.disconnect(None);
-        });
-    } else {
-        throw(
-            &mut env,
-            "java/lang/NullPointerException",
-            "Cannot disconnect because \"session\" is null",
-        );
-    }
+    tracing::debug!("disconnecting");
+
+    let mut session = Box::from_raw(session);
+    tracing::debug!("{}", session.callbacks.0.callback_handler.is_null());
+
+    catch_and_throw(&mut env, |_| {
+        session.disconnect(None);
+    });
+
+    tracing::debug!("disconnected");
 }

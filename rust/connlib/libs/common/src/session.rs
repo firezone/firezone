@@ -59,7 +59,7 @@ pub struct Session<T, U, V, R, M, CB: Callbacks> {
     // The guard must not be dropped before the runtime is dropped, otherwise logs won't get
     // flushed to the logfile.
     _logging_guard: Option<WorkerGuard>,
-    callbacks: CallbackErrorFacade<CB>,
+    pub callbacks: CallbackErrorFacade<CB>,
     _phantom: PhantomData<(T, U, V, R, M)>,
 }
 
@@ -353,8 +353,8 @@ where
         error: Option<Error>,
     ) {
         // 1. Close the websocket connection
-        // 2. Free the device handle (UNIX)
-        // 3. Close the file descriptor (UNIX)
+        // 2. Free the device handle (Linux)
+        // 3. Close the file descriptor (Linux/Android)
         // 4. Remove the mapping
 
         // The way we cleanup the tasks is we drop the runtime
@@ -366,6 +366,7 @@ where
         // if there's no receiver the runtime is already stopped
         // there's an edge case where this is called before the thread is listening for stop threads.
         // but I believe in that case the channel will be in a signaled state achieving the same result
+
         if let Err(err) = runtime_stopper.try_send(StopRuntime) {
             tracing::error!("Couldn't stop runtime: {err}");
         }
