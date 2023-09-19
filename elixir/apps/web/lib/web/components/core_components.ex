@@ -66,7 +66,7 @@ defmodule Web.CoreComponents do
       relative
     ], @class]}>
       <code
-        class="block  w-full no-scrollbar whitespace-nowrap overflow-x-auto rounded-b-lg"
+        class="block w-full no-scrollbar whitespace-nowrap overflow-x-auto rounded-b-lg"
         data-copy
       >
         <%= render_slot(@inner_block) %>
