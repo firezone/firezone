@@ -32,7 +32,10 @@ impl Clone for CallbackHandler {
         // dumb pointers but the wrappers don't implement `Clone`.
         //
         // SAFETY: `self` is guaranteed to be valid and `Self` is POD.
-        unsafe { std::ptr::read(self) }
+        Self {
+            vm: unsafe { std::ptr::read(&self.vm) },
+            callback_handler: self.callback_handler.clone(),
+        }
     }
 }
 
