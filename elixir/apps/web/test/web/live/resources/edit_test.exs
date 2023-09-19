@@ -7,7 +7,6 @@ defmodule Web.Live.Resources.EditTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
-    # group = Fixtures.Gateways.create_group(account: account)
     resource = Fixtures.Resources.create_resource(account: account, subject: subject)
 
     %{
@@ -32,7 +31,7 @@ defmodule Web.Live.Resources.EditTest do
                }}}
   end
 
-  test "renders not found error when gateway is deleted", %{
+  test "renders not found error when resource is deleted", %{
     account: account,
     identity: identity,
     resource: resource,

@@ -125,11 +125,16 @@ defmodule Web.Resources.Show do
         Danger zone
       </:title>
       <:actions>
-        <.delete_button>
+        <.delete_button phx-click="delete" phx-value-id={@resource.id}>
           Delete Resource
         </.delete_button>
       </:actions>
     </.header>
     """
+  end
+
+  def handle_event("delete", %{"id" => _resource_id}, socket) do
+    {:ok, _} = Resources.delete_resource(socket.assigns.resource, socket.assigns.subject)
+    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources")}
   end
 end

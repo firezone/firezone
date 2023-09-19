@@ -144,23 +144,22 @@ defmodule Web.Live.Resources.ShowTest do
     end
   end
 
-  # TODO: Uncomment this test once functionality is implemented
-  # test "allows deleting resource", %{
-  #  account: account,
-  #  resource: resource,
-  #  identity: identity,
-  #  conn: conn
-  # } do
-  #  {:ok, lv, _html} =
-  #    conn
-  #    |> authorize_conn(identity)
-  #    |> live(~p"/#{account}/resources/#{resource}")
+  test "allows deleting resource", %{
+    account: account,
+    resource: resource,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}")
 
-  #  assert lv
-  #         |> element("button", "Delete Resource")
-  #         |> render_click() ==
-  #           {:error, {:redirect, %{to: ~p"/#{account}/resources"}}}
+    assert lv
+           |> element("button", "Delete Resource")
+           |> render_click() ==
+             {:error, {:live_redirect, %{to: ~p"/#{account}/resources", kind: :push}}}
 
-  #  assert Repo.get(Domain.Resources.Resource, resource.id).deleted_at
-  # end
+    assert Repo.get(Domain.Resources.Resource, resource.id).deleted_at
+  end
 end
