@@ -10,6 +10,7 @@ use jni::{
     strings::JNIString,
     JNIEnv, JavaVM,
 };
+use once_cell::sync::OnceCell;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
@@ -24,6 +25,8 @@ pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
 }
+
+static LOGGING_GUARD: OnceCell<WorkerGuard> = OnceCell::new();
 
 impl Clone for CallbackHandler {
     fn clone(&self) -> Self {
@@ -81,7 +84,13 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: PathBuf) -> WorkerGuard {
+fn init_logging(log_dir: PathBuf) {
+    // On Android, we can only init logging once after the lib is loaded. However,
+    // session connect and disconnect can happen many times in that timespan.
+    if LOGGING_GUARD.get().is_some() {
+        return;
+    }
+
     #[cfg(debug_assertions)]
     let log_level = LevelFilter::Debug;
 
@@ -89,16 +98,15 @@ fn init_logging(log_dir: PathBuf) -> WorkerGuard {
     let log_level = LevelFilter::Info;
 
     // Initializes integration with Logcat for Android
-    // This can be called many times, but will only initialize logging once
     android_logger::init_once(android_logger::Config::default().with_max_level(log_level));
 
     let (file_layer, guard) = file_logger::layer(log_dir);
 
-    // Calling init twice causes a panic; instead use try_init which will fail
-    // gracefully if this is called more than once.
-    let _ = tracing_subscriber::registry().with(file_layer).try_init();
+    LOGGING_GUARD
+        .set(guard)
+        .expect("Logging guard should never be initialized twice");
 
-    guard
+    let _ = tracing_subscriber::registry().with(file_layer).try_init();
 }
 
 impl Callbacks for CallbackHandler {
@@ -338,11 +346,13 @@ fn connect(
         callback_handler,
     };
 
+    init_logging(log_dir.into());
+
     Session::connect(
         portal_url.as_str(),
         portal_token,
         device_id,
-        Some(init_logging(log_dir.into())),
+        None,
         callback_handler,
     )
     .map_err(Into::into)
@@ -393,14 +403,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_dis
     _: JClass,
     session: *mut Session<CallbackHandler>,
 ) {
-    tracing::debug!("disconnecting");
-
-    let mut session = Box::from_raw(session);
-    tracing::debug!("{}", session.callbacks.0.callback_handler.is_null());
-
     catch_and_throw(&mut env, |_| {
-        session.disconnect(None);
+        Box::from_raw(session).disconnect(None);
     });
-
-    tracing::debug!("disconnected");
 }

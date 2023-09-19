@@ -784,6 +784,7 @@ dependencies = [
  "ip_network",
  "jni 0.21.1",
  "log",
+ "once_cell",
  "serde_json",
  "thiserror",
  "tracing",

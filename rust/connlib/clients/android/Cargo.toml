@@ -12,6 +12,7 @@ doc = false
 mock = ["firezone-client-connlib/mock"]
 
 [dependencies]
+once_cell = "1.18"
 android_logger = "0.13"
 tracing = { version = "0.1", features = ["log-always", "std", "attributes"] }
 tracing-subscriber = "0.3"
