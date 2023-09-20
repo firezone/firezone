@@ -45,4 +45,17 @@ defmodule Domain.Fixtures.Resources do
 
     resource
   end
+
+  def delete_resource(resource) do
+    resource = Repo.preload(resource, :account)
+
+    subject =
+      Fixtures.Auth.create_subject(
+        account: resource.account,
+        actor: [type: :account_admin_user]
+      )
+
+    {:ok, resource} = Domain.Resources.delete_resource(resource, subject)
+    resource
+  end
 end

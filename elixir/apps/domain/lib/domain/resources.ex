@@ -1,6 +1,6 @@
 defmodule Domain.Resources do
   alias Domain.{Repo, Validator, Auth}
-  alias Domain.Gateways
+  alias Domain.{Accounts, Gateways}
   alias Domain.Resources.{Authorizer, Resource, Connection}
 
   def fetch_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
@@ -96,6 +96,10 @@ defmodule Domain.Resources do
     end
   end
 
+  def new_resource(%Accounts.Account{} = account, attrs \\ %{}) do
+    Resource.Changeset.create(account, attrs)
+  end
+
   def create_resource(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       changeset = Resource.Changeset.create(subject.account, attrs, subject)
@@ -140,6 +144,10 @@ defmodule Domain.Resources do
           {:ok, Domain.Network.fetch_next_available_address!(resource.account_id, type)}
         end
     end)
+  end
+
+  def change_resource(%Resource{} = resource, attrs \\ %{}, %Auth.Subject{} = subject) do
+    Resource.Changeset.update(resource, attrs, subject)
   end
 
   def update_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
