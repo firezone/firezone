@@ -1,6 +1,100 @@
 defmodule Web.Settings.DNS do
   use Web, :live_view
 
+  alias Domain.Config
+
+  defp pretty_print_addrs([]), do: ""
+  defp pretty_print_addrs(addrs), do: Enum.join(addrs, ", ")
+
+  defp addrs_to_list(nil), do: []
+
+  defp addrs_to_list(addrs_str) do
+    addrs_str
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.uniq()
+  end
+
+  defp config_to_params(config) do
+    addrs_str = Enum.join(config.clients_upstream_dns, ", ")
+    resolver = if addrs_str == "", do: "system", else: "custom"
+
+    %{
+      "resolver" => resolver,
+      "clients_upstream_dns" => addrs_str
+    }
+  end
+
+  defp params_to_form(params, errors \\ []) do
+    addrs =
+      case params["resolver"] do
+        "system" -> []
+        "custom" -> addrs_to_list(params["clients_upstream_dns"])
+        _ -> []
+      end
+
+    to_form(
+      %{
+        "resolver" => params["resolver"],
+        "clients_upstream_dns" => addrs
+      },
+      errors: errors
+    )
+  end
+
+  def mount(_params, _session, socket) do
+    resolver_opts = %{"System Default" => "system", "Custom" => "custom"}
+    {:ok, config} = Config.fetch_account_config(socket.assigns.subject)
+    form = config_to_params(config) |> params_to_form()
+
+    socket =
+      assign(socket,
+        config: config,
+        resolver_opts: resolver_opts,
+        form: form
+      )
+
+    {:ok, socket}
+  end
+
+  def handle_event("change", params, socket) do
+    form = params_to_form(params)
+    {:noreply, assign(socket, form: form)}
+  end
+
+  def handle_event("submit", params, socket) do
+    addrs =
+      case params["resolver"] do
+        "system" -> []
+        "custom" -> addrs_to_list(params["clients_upstream_dns"])
+        _ -> []
+      end
+
+    case Config.update_config(
+           socket.assigns.config,
+           %{"clients_upstream_dns" => addrs},
+           socket.assigns.subject
+         ) do
+      {:ok, updated_config} ->
+        form = config_to_params(updated_config) |> params_to_form() |> dbg()
+
+        socket =
+          socket
+          |> assign(form: form, config: updated_config)
+          |> put_flash(:success, "DNS settings have been updated!")
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        form =
+          params
+          |> Map.put("action", "validate")
+          |> params_to_form(changeset.errors)
+
+        {:noreply, assign(socket, form: form)}
+    end
+  end
+
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
@@ -29,50 +123,37 @@ defmodule Web.Settings.DNS do
     </p>
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+        <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
         <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Client DNS</h2>
-        <form action="#">
+        <.form for={@form} phx-change={:change} phx-submit={:submit}>
           <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
             <div>
-              <label
-                for="resolver"
-                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
-              >
-                Resolver
-              </label>
-              <select
-                id="resolver"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-              >
-                <option>System default</option>
-                <option selected>Custom</option>
-              </select>
-            </div>
-            <div>
-              <.label for="resolver-address">
-                Address
-              </.label>
-              <input
-                type="text"
-                name="address"
-                id="resolver-address"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                value="https://doh.familyshield.opendns.com/dns-query"
+              <.input
+                label="Resolver"
+                type="select"
+                field={@form[:resolver]}
+                options={@resolver_opts}
                 required
+              />
+            </div>
+
+            <div>
+              <.input
+                label="Address"
+                field={@form[:clients_upstream_dns]}
+                value={pretty_print_addrs(@form[:clients_upstream_dns].value)}
+                placeholder="DNS Server Address"
+                disabled={@form[:resolver].value == "system"}
               />
               <p id="address-explanation" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                 IP addresses, FQDNs, and DNS-over-HTTPS (DoH) addresses are supported.
               </p>
             </div>
           </div>
-          <div class="flex items-center space-x-4">
-            <button
-              type="submit"
-              class="text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:outline-none focus:ring-primary-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800"
-            >
-              Save
-            </button>
-          </div>
-        </form>
+          <.submit_button>
+            Save
+          </.submit_button>
+        </.form>
       </div>
     </section>
     """

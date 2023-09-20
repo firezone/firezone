@@ -459,7 +459,6 @@ defmodule Domain.Config.Definitions do
       :string, changeset, key ->
         changeset
         |> Domain.Validator.trim_change(key)
-        |> Domain.Validator.validate_fqdn(key)
     end
   )
 

@@ -438,23 +438,6 @@ defmodule Domain.ConfigTest do
       %{account: account}
     end
 
-    test "returns error when changeset is invalid", %{account: account} do
-      config = get_account_config_by_account_id(account.id)
-
-      attrs = %{
-        clients_upstream_dns: ["!!!"]
-      }
-
-      assert {:error, changeset} = update_config(config, attrs)
-
-      assert errors_on(changeset) == %{
-               clients_upstream_dns: [
-                 "!!! is not a valid FQDN",
-                 "must be one of: Elixir.Domain.Types.IP, string"
-               ]
-             }
-    end
-
     test "returns error when trying to change overridden value", %{account: account} do
       put_system_env_override(:clients_upstream_dns, ["1.2.3.4"])
 
