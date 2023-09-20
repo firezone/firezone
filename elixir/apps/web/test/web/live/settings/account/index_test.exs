@@ -53,7 +53,6 @@ defmodule Web.Live.Settings.Account.IndexTest do
       |> element("#account")
       |> render()
       |> vertical_table_to_map()
-      |> dbg()
 
     assert rows["account name"] == account.name
     assert rows["account id"] == account.id
