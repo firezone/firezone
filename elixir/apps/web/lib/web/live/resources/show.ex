@@ -4,12 +4,14 @@ defmodule Web.Resources.Show do
   alias Domain.Resources
 
   def mount(%{"id" => id}, _session, socket) do
-    {:ok, resource} =
-      Resources.fetch_resource_by_id(id, socket.assigns.subject,
-        preload: [:gateway_groups, created_by_identity: [:actor]]
-      )
-
-    {:ok, assign(socket, resource: resource)}
+    with {:ok, resource} <-
+           Resources.fetch_resource_by_id(id, socket.assigns.subject,
+             preload: [:gateway_groups, created_by_identity: [:actor]]
+           ) do
+      {:ok, assign(socket, resource: resource)}
+    else
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    end
   end
 
   defp pretty_print_filter(filter) do
@@ -21,19 +23,22 @@ defmodule Web.Resources.Show do
         "ICPM: Allowed"
 
       :tcp ->
-        "TCP: #{Enum.join(filter.ports, ", ")}"
+        "TCP: #{pretty_print_ports(filter.ports)}"
 
       :udp ->
-        "UDP: #{Enum.join(filter.ports, ", ")}"
+        "UDP: #{pretty_print_ports(filter.ports)}"
     end
   end
+
+  defp pretty_print_ports([]), do: "any port"
+  defp pretty_print_ports(ports), do: Enum.join(ports, ", ")
 
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
       <.breadcrumb path={~p"/#{@account}/resources"}>Resources</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/resources/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}>
-        Jira
+      <.breadcrumb path={~p"/#{@account}/resources/#{@resource.id}"}>
+        <%= @resource.name %>
       </.breadcrumb>
     </.breadcrumbs>
     <.header>
@@ -48,7 +53,7 @@ defmodule Web.Resources.Show do
     </.header>
     <!-- Resource details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table>
+      <.vertical_table id="resource">
         <.vertical_table_row>
           <:label>
             Name
@@ -108,6 +113,10 @@ defmodule Web.Resources.Show do
             <%= gateway_group.name_prefix %>
           </.link>
         </:col>
+
+        <:col :let={_gateway_group} label="status">
+          <.badge type="success">TODO: Online</.badge>
+        </:col>
       </.table>
     </div>
 
@@ -116,11 +125,20 @@ defmodule Web.Resources.Show do
         Danger zone
       </:title>
       <:actions>
-        <.delete_button>
+        <.delete_button
+          phx-click="delete"
+          phx-value-id={@resource.id}
+          data-confirm="Are you sure want to delete this resource?"
+        >
           Delete Resource
         </.delete_button>
       </:actions>
     </.header>
     """
+  end
+
+  def handle_event("delete", %{"id" => _resource_id}, socket) do
+    {:ok, _} = Resources.delete_resource(socket.assigns.resource, socket.assigns.subject)
+    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources")}
   end
 end

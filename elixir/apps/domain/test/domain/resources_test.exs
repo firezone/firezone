@@ -313,8 +313,7 @@ defmodule Domain.ResourcesTest do
 
       assert errors_on(changeset) == %{
                address: ["can't be blank"],
-               connections: ["can't be blank"],
-               type: ["can't be blank"]
+               connections: ["can't be blank"]
              }
     end
 
@@ -326,8 +325,7 @@ defmodule Domain.ResourcesTest do
                address: ["can't be blank"],
                name: ["should be at most 255 character(s)"],
                filters: ["is invalid"],
-               connections: ["is invalid"],
-               type: ["can't be blank"]
+               connections: ["is invalid"]
              }
     end
 
@@ -365,33 +363,6 @@ defmodule Domain.ResourcesTest do
       attrs = %{"address" => "0.0.0.0/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
       refute Map.has_key?(errors_on(changeset), :address)
-    end
-
-    test "does not allow cidr addresses to overlap for the same account", %{
-      account: account,
-      subject: subject
-    } do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      Fixtures.Resources.create_resource(
-        account: account,
-        subject: subject,
-        type: :cidr,
-        address: "192.168.1.1/28"
-      )
-
-      attrs = %{
-        "address" => "192.168.1.8/26",
-        "type" => "cidr",
-        "connections" => [%{"gateway_group_id" => gateway.group_id}]
-      }
-
-      assert {:error, changeset} = create_resource(attrs, subject)
-      assert "can not overlap with other resource ranges" in errors_on(changeset).address
-
-      # range is unique per account
-      subject = Fixtures.Auth.create_subject(actor: [type: :account_admin_user])
-      assert {:ok, _resource} = create_resource(attrs, subject)
     end
 
     test "returns error on duplicate name", %{account: account, subject: subject} do

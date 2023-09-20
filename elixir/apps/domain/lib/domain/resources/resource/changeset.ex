@@ -8,10 +8,10 @@ defmodule Domain.Resources.Resource.Changeset do
   @required_fields ~w[address type]a
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
-    %Resource{}
+    %Resource{connections: []}
     |> cast(attrs, @fields)
-    |> validate_required(@required_fields)
     |> changeset()
+    |> validate_required(@required_fields)
     |> put_change(:account_id, account.id)
     |> validate_address()
     |> cast_assoc(:connections,
@@ -20,6 +20,17 @@ defmodule Domain.Resources.Resource.Changeset do
     )
     |> put_change(:created_by, :identity)
     |> put_change(:created_by_identity_id, subject.identity.id)
+  end
+
+  def create(%Accounts.Account{} = account, attrs) do
+    %Resource{connections: []}
+    |> cast(attrs, @fields)
+    |> changeset()
+    |> validate_required(@required_fields)
+    |> validate_address()
+    |> cast_assoc(:connections,
+      with: &Connection.Changeset.changeset(account.id, &1, &2)
+    )
   end
 
   def finalize_create(%Resource{} = resource, ipv4, ipv6) do
@@ -73,6 +84,28 @@ defmodule Domain.Resources.Resource.Changeset do
     end
   end
 
+  def put_resource_type(changeset) do
+    put_default_value(changeset, :type, fn _cs ->
+      address = get_field(changeset, :address)
+
+      if address_contains_cidr?(address) do
+        :cidr
+      else
+        :dns
+      end
+    end)
+  end
+
+  defp address_contains_cidr?(address) do
+    case Domain.Types.INET.cast(address) do
+      {:ok, _} ->
+        true
+
+      _ ->
+        false
+    end
+  end
+
   def update(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     resource
     |> cast(attrs, @update_fields)
@@ -88,15 +121,12 @@ defmodule Domain.Resources.Resource.Changeset do
     changeset
     |> put_default_value(:name, from: :address)
     |> validate_length(:name, min: 1, max: 255)
+    |> put_resource_type()
     |> unique_constraint(:address, name: :resources_account_id_address_index)
     |> unique_constraint(:name, name: :resources_account_id_name_index)
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
-    |> exclusion_constraint(:address,
-      name: :resources_account_id_cidr_address_index,
-      message: "can not overlap with other resource ranges"
-    )
   end
 
   def delete(%Resource{} = resource) do
@@ -108,5 +138,6 @@ defmodule Domain.Resources.Resource.Changeset do
   defp cast_filter(%Resource.Filter{} = filter, attrs) do
     filter
     |> cast(attrs, [:protocol, :ports])
+    |> validate_required([:protocol])
   end
 end
