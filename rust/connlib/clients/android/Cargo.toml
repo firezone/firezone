@@ -12,9 +12,10 @@ doc = false
 mock = ["firezone-client-connlib/mock"]
 
 [dependencies]
-android_logger = "0.13"
-tracing = { version = "0.1", features = ["log", "std", "attributes"] }
+tracing-android = "0.2"
+tracing = { version = "0.1", features = ["std", "attributes"] }
 tracing-subscriber = "0.3"
+tracing-appender = "0.2"
 firezone-client-connlib = { path = "../../libs/client" }
 jni = { version = "0.21.1", features = ["invocation"] }
 ip_network = "0.4"

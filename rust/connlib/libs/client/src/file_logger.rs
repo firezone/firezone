@@ -29,7 +29,11 @@ pub fn layer<T>(
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
-    tracing::info!("Saving log files to: {}", log_dir.display());
+    #[cfg(debug_assertions)]
+    let level = LevelFilter::DEBUG;
+
+    #[cfg(not(debug_assertions))]
+    let level = LevelFilter::WARN;
 
     let (writer, guard) = tracing_appender::non_blocking(tracing_appender::rolling::hourly(
         log_dir,
@@ -38,11 +42,7 @@ where
 
     let layer = tracing_stackdriver::layer()
         .with_writer(writer)
-        .with_filter(if cfg!(debug_assertions) {
-            LevelFilter::DEBUG
-        } else {
-            LevelFilter::WARN
-        })
+        .with_filter(level)
         .boxed();
 
     // Return the guard so that the caller maintains a handle to it. Otherwise,

@@ -219,9 +219,6 @@ impl IfaceDevice {
             return Err(get_last_error());
         }
 
-        let mtu = unsafe { ifr.ifr_ifru.ifru_mtu };
-
-        tracing::debug!("MTU for {} is {}", name, mtu);
         Ok(unsafe { ifr.ifr_ifru.ifru_mtu } as _)
     }
 
@@ -276,7 +273,7 @@ impl IfaceConfig {
     }
 
     pub async fn up(&mut self) -> Result<()> {
-        tracing::debug!("`up` unimplemented on darwin");
+        tracing::debug!("`up` unimplemented");
         Ok(())
     }
 }

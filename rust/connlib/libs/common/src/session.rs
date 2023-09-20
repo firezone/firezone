@@ -20,6 +20,7 @@ use crate::{
     messages::{Key, ResourceDescription},
     Error, Result,
 };
+use tracing_appender::non_blocking::WorkerGuard;
 
 pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 
@@ -55,7 +56,10 @@ pub trait ControlSession<T, CB: Callbacks> {
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session<T, U, V, R, M, CB: Callbacks> {
     runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
-    callbacks: CallbackErrorFacade<CB>,
+    // The guard must not be dropped before the runtime is dropped, otherwise logs won't get
+    // flushed to the logfile.
+    _logging_guard: Option<WorkerGuard>,
+    pub callbacks: CallbackErrorFacade<CB>,
     _phantom: PhantomData<(T, U, V, R, M)>,
 }
 
@@ -217,11 +221,12 @@ where
         portal_url: impl TryInto<Url>,
         token: String,
         device_id: String,
+        _logging_guard: Option<WorkerGuard>,
         callbacks: CB,
     ) -> Result<Self> {
         // TODO: We could use tokio::runtime::current() to get the current runtime
-        // which could work with swif-rust that already runs a runtime. But IDK if that will work
-        // in all pltaforms, a couple of new threads shouldn't bother none.
+        // which could work with swift-rust that already runs a runtime. But IDK if that will work
+        // in all platforms, a couple of new threads shouldn't bother none.
         // Big question here however is how do we get the result? We could block here await the result and spawn a new task.
         // but then platforms should know that this function is blocking.
 
@@ -229,6 +234,7 @@ where
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         let this = Self {
             runtime_stopper: tx.clone(),
+            _logging_guard,
             callbacks,
             _phantom: PhantomData,
         };
@@ -347,8 +353,8 @@ where
         error: Option<Error>,
     ) {
         // 1. Close the websocket connection
-        // 2. Free the device handle (UNIX)
-        // 3. Close the file descriptor (UNIX)
+        // 2. Free the device handle (Linux)
+        // 3. Close the file descriptor (Linux/Android)
         // 4. Remove the mapping
 
         // The way we cleanup the tasks is we drop the runtime
@@ -360,6 +366,7 @@ where
         // if there's no receiver the runtime is already stopped
         // there's an edge case where this is called before the thread is listening for stop threads.
         // but I believe in that case the channel will be in a signaled state achieving the same result
+
         if let Err(err) = runtime_stopper.try_send(StopRuntime) {
             tracing::error!("Couldn't stop runtime: {err}");
         }
@@ -373,16 +380,6 @@ where
     /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
     pub fn disconnect(&mut self, error: Option<Error>) {
         Self::disconnect_inner(self.runtime_stopper.clone(), &self.callbacks, error)
-    }
-
-    // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#L177
-    pub fn bump_sockets(&self) {
-        tracing::error!("`bump_sockets` is unimplemented");
-    }
-
-    // TODO: See https://github.com/WireGuard/wireguard-apple/blob/2fec12a6e1f6e3460b6ee483aa00ad29cddadab1/Sources/WireGuardKitGo/api-apple.go#LL197C6-L197C50
-    pub fn disable_some_roaming_for_broken_mobile_semantics(&self) {
-        tracing::error!("`disable_some_roaming_for_broken_mobile_semantics` is unimplemented");
     }
 }
 

@@ -7,6 +7,7 @@ use std::{
     path::PathBuf,
     str::FromStr,
 };
+use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{fmt, prelude::*};
 
 use firezone_client_connlib::{
@@ -75,8 +76,8 @@ fn block_on_ctrl_c() {
     rx.recv().expect("Could not receive ctrl-c signal");
 }
 
-fn init_logging(log_dir: PathBuf) {
-    let (file_layer, _guard) = file_logger::layer(log_dir);
+fn init_logging(log_dir: PathBuf) -> WorkerGuard {
+    let (file_layer, guard) = file_logger::layer(log_dir);
 
     // Calling init twice causes a panic; instead use try_init which will fail
     // gracefully if this is called more than once.
@@ -84,6 +85,8 @@ fn init_logging(log_dir: PathBuf) {
         .with(fmt::layer())
         .with(file_layer)
         .try_init();
+
+    guard
 }
 
 fn main() -> Result<()> {
@@ -99,9 +102,14 @@ fn main() -> Result<()> {
     let device_id = get_device_id();
     let log_dir = parse_env_var::<PathBuf>(LOG_DIR_ENV_VAR).unwrap_or(DEFAULT_LOG_DIR.into());
 
-    init_logging(log_dir);
-
-    let mut session = Session::connect(url, secret, device_id, CallbackHandler).unwrap();
+    let mut session = Session::connect(
+        url,
+        secret,
+        device_id,
+        Some(init_logging(log_dir)),
+        CallbackHandler,
+    )
+    .unwrap();
     tracing::info!("Started new session");
 
     block_on_ctrl_c();

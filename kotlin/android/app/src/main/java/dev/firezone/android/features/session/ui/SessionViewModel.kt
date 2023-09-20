@@ -57,6 +57,8 @@ internal class SessionViewModel @Inject constructor(
     }
 
     fun onDisconnect() {
+        tunnelManager.disconnect()
+        tunnelManager.removeListener(tunnelListener)
         actionMutableLiveData.postValue(ViewAction.NavigateToSignInFragment)
     }
 
