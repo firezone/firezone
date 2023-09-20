@@ -38,7 +38,7 @@ rtnetlink = { version = "0.13", default-features = false, features = ["tokio_soc
 
 # Android tunnel dependencies
 [target.'cfg(target_os = "android")'.dependencies]
-android_logger = "0.13"
+tracing-android = "0.2"
 
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]

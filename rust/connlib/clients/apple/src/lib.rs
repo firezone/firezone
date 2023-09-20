@@ -10,6 +10,7 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
+use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::prelude::*;
 
 #[swift_bridge::bridge]
@@ -135,23 +136,18 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf) {
-    let (file_layer, _guard) = file_logger::layer(log_dir.clone());
+fn init_logging(log_dir: PathBuf) -> WorkerGuard {
+    let (file_layer, guard) = file_logger::layer(log_dir.clone());
 
-    let collector = tracing_subscriber::registry()
+    let _ = tracing_subscriber::registry()
         .with(tracing_oslog::OsLogger::new(
             "dev.firezone.firezone",
             "connlib",
         ))
-        .with(file_layer);
+        .with(file_layer)
+        .try_init();
 
-    match tracing::subscriber::set_global_default(collector) {
-        Ok(()) => tracing::info!(
-            "File logging initialized! Logging to {:?}",
-            log_dir.display()
-        ),
-        Err(e) => tracing::error!("Failed to initialize logging! {}", e),
-    }
+    guard
 }
 
 impl WrappedSession {
@@ -162,12 +158,11 @@ impl WrappedSession {
         log_dir: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
-        init_logging(log_dir.into());
-
         Session::connect(
             portal_url.as_str(),
             token,
             device_id,
+            Some(init_logging(log_dir.into())),
             CallbackHandler(callback_handler.into()),
         )
         .map(|session| Self { session })

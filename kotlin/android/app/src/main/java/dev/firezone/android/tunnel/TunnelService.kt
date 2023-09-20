@@ -158,11 +158,12 @@ class TunnelService: VpnService() {
     }
 
     private fun disconnect() {
+        Log.d(TAG, "Attempting to disconnect session")
         try {
             sessionPtr?.let {
+                Log.d(TAG, "calling TunnelSession.disconnect")
                 TunnelSession.disconnect(it)
             }
-            tunnelRepository.setState(Tunnel.State.Down)
         } catch (exception: Exception) {
             Log.e(TAG, exception.message.toString())
         }
@@ -230,7 +231,7 @@ class TunnelService: VpnService() {
             NOTIFICATION_CHANNEL_NAME,
             NotificationManager.IMPORTANCE_DEFAULT
         )
-        chan.description = "firezone vpn status"
+        chan.description = "firezone connection status"
 
         manager.createNotificationChannel(chan)
 
@@ -252,13 +253,13 @@ class TunnelService: VpnService() {
         const val ACTION_CONNECT = "dev.firezone.android.tunnel.CONNECT"
         const val ACTION_DISCONNECT = "dev.firezone.android.tunnel.DISCONNECT"
 
-        private const val NOTIFICATION_CHANNEL_ID = "firezone-vpn-status"
-        private const val NOTIFICATION_CHANNEL_NAME = "firezone-vpn-status"
+        private const val NOTIFICATION_CHANNEL_ID = "firezone-connection-status"
+        private const val NOTIFICATION_CHANNEL_NAME = "firezone-connection-status"
         private const val STATUS_NOTIFICATION_ID = 1337
-        private const val NOTIFICATION_TITLE = "Firezone Vpn Status"
+        private const val NOTIFICATION_TITLE = "Firezone Connection Status"
 
         private const val TAG: String = "TunnelService"
-        private const val SESSION_NAME: String = "Firezone VPN"
+        private const val SESSION_NAME: String = "Firezone Connection"
         private const val DEFAULT_MTU: Int = 1280
     }
 }
