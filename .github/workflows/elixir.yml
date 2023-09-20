@@ -236,7 +236,8 @@ jobs:
           branch: ${{ env.MAIN_BRANCH }}
           name: db-dump
           path: elixir/apps/domain/priv/repo/
-          search_artifacts: true
+          search_artifacts: false
+          workflow: cd.yml
           workflow_conclusion: completed
           if_no_artifact_found: fail
       - name: Create Database
