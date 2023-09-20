@@ -125,7 +125,11 @@ defmodule Web.Resources.Show do
         Danger zone
       </:title>
       <:actions>
-        <.delete_button phx-click="delete" phx-value-id={@resource.id}>
+        <.delete_button
+          phx-click="delete"
+          phx-value-id={@resource.id}
+          data-confirm="Are you sure want to delete this resource?"
+        >
           Delete Resource
         </.delete_button>
       </:actions>
