@@ -13,7 +13,11 @@ defmodule Web.Settings.Account do
       </:title>
     </.header>
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table>
+      <.vertical_table id="account">
+        <.vertical_table_row>
+          <:label>Account Name</:label>
+          <:value><%= @account.name %></:value>
+        </.vertical_table_row>
         <.vertical_table_row>
           <:label>Account ID</:label>
           <:value><%= @account.id %></:value>
