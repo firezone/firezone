@@ -10,14 +10,13 @@ use jni::{
     strings::JNIString,
     JNIEnv, JavaVM,
 };
-use once_cell::sync::OnceCell;
+use std::sync::OnceLock;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
     path::PathBuf,
 };
 use thiserror::Error;
-use tracing::log::LevelFilter;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::prelude::*;
 
@@ -26,7 +25,7 @@ pub struct CallbackHandler {
     callback_handler: GlobalRef,
 }
 
-static LOGGING_GUARD: OnceCell<WorkerGuard> = OnceCell::new();
+static LOGGING_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
 impl Clone for CallbackHandler {
     fn clone(&self) -> Self {
@@ -85,20 +84,17 @@ fn call_method(
 }
 
 fn init_logging(log_dir: PathBuf) {
-    // On Android, we can only init logging once after the lib is loaded. However,
-    // session connect and disconnect can happen many times in that timespan.
+    // On Android, logging state is persisted indefinitely after the System.loadLibrary
+    // call, which means that a disconnect and tunnel process restart will not
+    // reinitialize the guard. This is a problem because the guard remains tied to
+    // the original process, which means that log events will not be rewritten to the log
+    // file after a disconnect and reconnect.
+    //
+    // So we use a static variable to track whether the guard has been initialized and avoid
+    // re-initialized it if so.
     if LOGGING_GUARD.get().is_some() {
         return;
     }
-
-    #[cfg(debug_assertions)]
-    let log_level = LevelFilter::Debug;
-
-    #[cfg(not(debug_assertions))]
-    let log_level = LevelFilter::Info;
-
-    // Initializes integration with Logcat for Android
-    android_logger::init_once(android_logger::Config::default().with_max_level(log_level));
 
     let (file_layer, guard) = file_logger::layer(log_dir);
 
@@ -106,7 +102,10 @@ fn init_logging(log_dir: PathBuf) {
         .set(guard)
         .expect("Logging guard should never be initialized twice");
 
-    let _ = tracing_subscriber::registry().with(file_layer).try_init();
+    let _ = tracing_subscriber::registry()
+        .with(file_layer)
+        .with(tracing_android::layer("connlib").unwrap())
+        .try_init();
 }
 
 impl Callbacks for CallbackHandler {

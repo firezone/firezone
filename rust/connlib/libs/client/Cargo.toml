@@ -20,8 +20,8 @@ boringtun = { workspace = true }
 backoff = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
-tracing = { version = "0.1", default-features = false, features = ["log-always", "std", "attributes"] }
-android_logger = "0.13"
+tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
+tracing-android = "0.2"
 
 [dev-dependencies]
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
