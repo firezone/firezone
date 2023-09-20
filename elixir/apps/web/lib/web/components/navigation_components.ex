@@ -64,12 +64,12 @@ defmodule Web.NavigationComponents do
     </div>
     <ul class="py-1 text-gray-700 dark:text-gray-300" aria-labelledby="user-menu-dropdown">
       <li>
-        <a
-          href="#"
-          class="block py-2 px-4 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 dark:text-gray-400 dark:hover:text-white"
-        >
-          Account settings
-        </a>
+        <.link navigate={~p"/#{@subject.account}/actors/#{@subject.actor}"} class={~w[
+          block py-2 px-4 text-sm hover:bg-gray-100
+          dark:hover:bg-gray-600 dark:text-gray-400
+          dark:hover:text-white]}>
+          Profile
+        </.link>
       </li>
     </ul>
     <ul class="py-1 text-gray-700 dark:text-gray-300" aria-labelledby="user-menu-dropdown">
