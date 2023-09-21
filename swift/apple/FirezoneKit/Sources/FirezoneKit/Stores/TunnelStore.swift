@@ -100,6 +100,7 @@ final class TunnelStore: ObservableObject {
 
     tunnel.isEnabled = true
     try await tunnel.saveToPreferences()
+    try await tunnel.loadFromPreferences()
 
     let session = tunnel.connection as! NETunnelProviderSession
     try session.startTunnel()
