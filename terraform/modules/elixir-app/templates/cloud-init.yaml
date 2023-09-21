@@ -27,19 +27,24 @@ write_files:
         resourcedetection:
           detectors: [gcp]
           timeout: 10s
+        filter/drophttp:
+          error_mode: ignore
+          traces:
+            span:
+              - 'attributes["http.target"] == "/healthz"'
       service:
         pipelines:
           traces:
             receivers: [otlp]
-            processors: [memory_limiter, batch]
+            processors: [memory_limiter, filter/drophttp, batch]
             exporters: [googlecloud]
           metrics:
             receivers: [otlp]
-            processors: [memory_limiter, batch]
+            processors: [memory_limiter, filter/drophttp, batch]
             exporters: [googlecloud]
           logs:
             receivers: [otlp]
-            processors: [memory_limiter, batch]
+            processors: [memory_limiter, filter/drophttp, batch]
             exporters: [googlecloud]
 
   - path: /etc/systemd/system/otel-collector.service
