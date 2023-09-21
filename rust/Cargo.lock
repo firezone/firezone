@@ -1094,9 +1094,9 @@ dependencies = [
 
 [[package]]
 name = "domain"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04c9fdb317c54875188fea3e4ae483d4b3cf71b131888e9b7665fd6b020fb327"
+checksum = "c2fbe77a63bf2445649b4ec41ba5300d30dc8358fef4503da03bf2313e31bef3"
 dependencies = [
  "octseq",
  "rand",
