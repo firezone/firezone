@@ -18,6 +18,8 @@ write_files:
         googlecloud:
           log:
             default_log_name: opentelemetry.io/collector-exported-log
+        debug:
+          verbosity: detailed
       processors:
         memory_limiter:
           check_interval: 1s
@@ -56,6 +58,9 @@ write_files:
             - set(attributes["exported_instrumentation_version"], attributes["instrumentation_version"])
             - delete_key(attributes, "instrumentation_version")
       service:
+        telemetry:
+          logs:
+            level: "debug"
         pipelines:
           traces:
             receivers: [otlp]
