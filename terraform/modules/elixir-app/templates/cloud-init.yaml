@@ -12,8 +12,8 @@ write_files:
       receivers:
         otlp:
           protocols:
-            grpc:
             http:
+              endpoint: localhost:4318
       exporters:
         googlecloud:
           log:
