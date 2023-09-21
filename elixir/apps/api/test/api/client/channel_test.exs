@@ -32,7 +32,8 @@ defmodule API.Client.ChannelTest do
     {:ok, _reply, socket} =
       API.Client.Socket
       |> socket("client:#{client.id}", %{
-        opentelemetry_ctx: OpenTelemetry.Tracer.start_span("test"),
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
         client: client,
         subject: subject
       })
@@ -70,7 +71,8 @@ defmodule API.Client.ChannelTest do
       {:ok, _reply, _socket} =
         API.Client.Socket
         |> socket("client:#{client.id}", %{
-          opentelemetry_ctx: OpenTelemetry.Tracer.start_span("test"),
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
           subject: subject
         })
@@ -427,10 +429,11 @@ defmodule API.Client.ChannelTest do
 
       assert authorization_expires_at == socket.assigns.subject.expires_at
 
+      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+
       send(
         channel_pid,
-        {:connect, socket_ref, resource.id, gateway.public_key, "FULL_RTC_SD",
-         OpenTelemetry.Tracer.start_span("connect")}
+        {:connect, socket_ref, resource.id, gateway.public_key, "FULL_RTC_SD", otel_ctx}
       )
 
       assert_reply ref, :ok, %{

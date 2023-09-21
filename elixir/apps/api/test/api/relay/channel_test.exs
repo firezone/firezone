@@ -10,7 +10,8 @@ defmodule API.Relay.ChannelTest do
       API.Relay.Socket
       |> socket("relay:#{relay.id}", %{
         relay: relay,
-        opentelemetry_ctx: OpenTelemetry.Tracer.start_span("test")
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
       |> subscribe_and_join(API.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
 
@@ -35,7 +36,8 @@ defmodule API.Relay.ChannelTest do
         API.Relay.Socket
         |> socket("relay:#{relay.id}", %{
           relay: relay,
-          opentelemetry_ctx: OpenTelemetry.Tracer.start_span("test")
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
         })
         |> subscribe_and_join(API.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
 
