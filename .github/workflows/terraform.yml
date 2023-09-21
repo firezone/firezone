@@ -38,6 +38,7 @@ jobs:
         run: |
           sudo apt-get install -y cloud-init
           sudo cloud-init schema --config-file terraform/modules/relay-app/templates/cloud-init.yaml
+          sudo cloud-init schema --config-file terraform/modules/elixir-app/templates/cloud-init.yaml
 
       - name: Check Formatting
         working-directory: terraform
