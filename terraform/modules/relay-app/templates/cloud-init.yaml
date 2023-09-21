@@ -19,6 +19,7 @@ write_files:
           log:
             default_log_name: opentelemetry.io/collector-exported-log
         debug:
+          verbosity: detailed
       processors:
         memory_limiter:
           check_interval: 1s
