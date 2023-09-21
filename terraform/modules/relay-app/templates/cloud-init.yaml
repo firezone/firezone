@@ -45,16 +45,7 @@ write_files:
             - delete_key(attributes, "instance")
             - set(attributes["exported_project_id"], attributes["project_id"])
             - delete_key(attributes, "project_id")
-            - set(attributes["exported_service_name"], attributes["service_name"])
-            - delete_key(attributes, "service_name")
-            - set(attributes["exported_service_namespace"], attributes["service_namespace"])
-            - delete_key(attributes, "service_namespace")
-            - set(attributes["exported_service_instance_id"], attributes["service_instance_id"])
-            - delete_key(attributes, "service_instance_id")
-            - set(attributes["exported_instrumentation_source"], attributes["instrumentation_source"])
-            - delete_key(attributes, "instrumentation_source")
-            - set(attributes["exported_instrumentation_version"], attributes["instrumentation_version"])
-            - delete_key(attributes, "instrumentation_version")
+            - delete_key(attributes, "service.name")
       service:
         pipelines:
           traces:
