@@ -25,6 +25,16 @@ updates:
     directory: "rust/"
     schedule:
       interval: "weekly"
+    groups:
+      otel:
+        patterns:
+          - "opentelemetry"
+          - "opentelemetry_api"
+          - "opentelemetry-otlp"
+          - "tracing-opentelemetry"
+          - "tracing-stackdriver"
+        update-types:
+          - "minor"
   - package-ecosystem: "maven"
     directory: "rust/connlib/clients/android"
     schedule:
