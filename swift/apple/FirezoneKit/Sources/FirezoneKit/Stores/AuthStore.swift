@@ -52,7 +52,7 @@ final class AuthStore: ObservableObject {
 
   private init(tunnelStore: TunnelStore) {
     self.tunnelStore = tunnelStore
-    self.authBaseURL = Self.getAuthBaseURLFromInfoPlist()
+    self.authBaseURL = AppInfoPlistConstants.authBaseURL
     self.loginStatus = .uninitialized
 
     tunnelStore.$tunnelAuthStatus
@@ -133,21 +133,6 @@ final class AuthStore: ObservableObject {
     } else {
       return .signedOut(authBaseURL: authBaseURL, accountId: accountId)
     }
-  }
-
-  static func getAuthBaseURLFromInfoPlist() -> URL {
-    let infoPlistDictionary = Bundle.main.infoDictionary
-    guard let urlScheme = (infoPlistDictionary?["AuthURLScheme"] as? String), !urlScheme.isEmpty else {
-      fatalError("AuthURLScheme missing in Info.plist. Please define AUTH_URL_SCHEME, AUTH_URL_HOST, CONTROL_PLANE_URL_SCHEME, and CONTROL_PLANE_URL_HOST in Server.xcconfig.")
-    }
-    guard let urlHost = (infoPlistDictionary?["AuthURLHost"] as? String), !urlHost.isEmpty else {
-      fatalError("AuthURLHost missing in Info.plist. Please define AUTH_URL_SCHEME, AUTH_URL_HOST, CONTROL_PLANE_URL_SCHEME, and CONTROL_PLANE_URL_HOST in Server.xcconfig.")
-    }
-    let urlString = "\(urlScheme)://\(urlHost)/"
-    guard let url = URL(string: urlString) else {
-      fatalError("Cannot form valid URL from string: \(urlString)")
-    }
-    return url
   }
 
   func authURL(accountId: String) -> URL {

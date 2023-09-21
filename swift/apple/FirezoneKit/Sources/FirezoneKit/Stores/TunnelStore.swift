@@ -275,7 +275,7 @@ enum TunnelAuthStatus {
     protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
       "\($0).network-extension"
     }
-    protocolConfiguration.serverAddress = Self.getControlPlaneURLFromInfoPlist().absoluteString
+    protocolConfiguration.serverAddress = AppInfoPlistConstants.controlPlaneURL.absoluteString
 
     switch self {
       case .tunnelUninitialized, .accountNotSetup:
@@ -305,21 +305,6 @@ enum TunnelAuthStatus {
       case .signedIn(_, let accountId, _):
         return accountId
     }
-  }
-
-  static func getControlPlaneURLFromInfoPlist() -> URL {
-    let infoPlistDictionary = Bundle.main.infoDictionary
-    guard let urlScheme = (infoPlistDictionary?["ControlPlaneURLScheme"] as? String), !urlScheme.isEmpty else {
-      fatalError("AuthURLScheme missing in Info.plist. Please define AUTH_URL_SCHEME, AUTH_URL_HOST, CONTROL_PLANE_URL_SCHEME, and CONTROL_PLANE_URL_HOST in Server.xcconfig.")
-    }
-    guard let urlHost = (infoPlistDictionary?["ControlPlaneURLHost"] as? String), !urlHost.isEmpty else {
-      fatalError("AuthURLHost missing in Info.plist. Please define AUTH_URL_SCHEME, AUTH_URL_HOST, CONTROL_PLANE_URL_SCHEME, and CONTROL_PLANE_URL_HOST in Server.xcconfig.")
-    }
-    let urlString = "\(urlScheme)://\(urlHost)/"
-    guard let url = URL(string: urlString) else {
-      fatalError("Cannot form valid URL from string: \(urlString)")
-    }
-    return url
   }
 }
 

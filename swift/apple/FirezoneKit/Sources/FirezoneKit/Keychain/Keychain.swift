@@ -62,7 +62,7 @@ public actor Keychain {
       kSecReturnPersistentRef: true,
       kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
       // Specific to iOS:
-      kSecAttrAccessGroup: (try getAppGroupId()) as CFString as Any
+      kSecAttrAccessGroup: AppInfoPlistConstants.appGroupId as CFString as Any
     ] as [CFString: Any]
     #elseif os(macOS)
     let query = [
@@ -240,13 +240,6 @@ public actor Keychain {
         }
       }
     }
-  }
-
-  private func getAppGroupId() throws -> CFString {
-    guard let appGroupId = Bundle.main.infoDictionary?["AppGroupIdentifier"] as? String else {
-      throw KeychainError.unableToGetAppGroupIdFromInfoPlist
-    }
-    return appGroupId as CFString
   }
 
   private func securityError(_ status: OSStatus) -> Error {

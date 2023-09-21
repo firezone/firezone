@@ -125,7 +125,7 @@ public struct SettingsView: View {
       Section {
         FormTextField(
           title: "Account ID:",
-          baseURLString: AuthStore.getAuthBaseURLFromInfoPlist().absoluteString,
+          baseURLString: AppInfoPlistConstants.authBaseURL.absoluteString,
           placeholder: "account-id",
           text: Binding(
             get: { model.settings.accountId },
