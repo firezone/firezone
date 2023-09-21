@@ -34,6 +34,24 @@ defmodule API.Gateway.SocketTest do
       assert gateway.last_seen_version == @connlib_version
     end
 
+    test "propagates trace context" do
+      token = Fixtures.Gateways.create_token()
+      encrypted_secret = Gateways.encode_token!(token)
+      attrs = connect_attrs(token: encrypted_secret)
+
+      span_ctx = OpenTelemetry.Tracer.start_span("test")
+      OpenTelemetry.Tracer.set_current_span(span_ctx)
+
+      trace_context_headers = [
+        {"traceparent", "00-a1bf53221e0be8000000000000000002-f316927eb144aa62-01"}
+      ]
+
+      connect_info = %{@connect_info | trace_context_headers: trace_context_headers}
+
+      assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert span_ctx != OpenTelemetry.Tracer.current_span_ctx()
+    end
+
     test "updates existing gateway" do
       token = Fixtures.Gateways.create_token()
       existing_gateway = Fixtures.Gateways.create_gateway(token: token)

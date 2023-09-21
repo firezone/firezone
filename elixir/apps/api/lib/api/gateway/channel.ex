@@ -12,17 +12,31 @@ defmodule API.Gateway.Channel do
 
   @impl true
   def join("gateway", _payload, socket) do
-    OpenTelemetry.Tracer.with_span socket.assigns.opentelemetry_ctx, "join", %{} do
-      opentelemetry_ctx = OpenTelemetry.Tracer.current_span_ctx()
-      send(self(), {:after_join, opentelemetry_ctx})
-      socket = assign(socket, :refs, %{})
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "join" do
+      opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
+      opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
+      send(self(), {:after_join, {opentelemetry_ctx, opentelemetry_span_ctx}})
+
+      socket =
+        assign(socket,
+          opentelemetry_ctx: opentelemetry_ctx,
+          opentelemetry_span_ctx: opentelemetry_span_ctx,
+          refs: %{}
+        )
+
       {:ok, socket}
     end
   end
 
   @impl true
-  def handle_info({:after_join, opentelemetry_ctx}, socket) do
-    OpenTelemetry.Tracer.with_span opentelemetry_ctx, "after_join", %{} do
+  def handle_info({:after_join, {opentelemetry_ctx, opentelemetry_span_ctx}}, socket) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "after_join" do
       :ok = Gateways.connect_gateway(socket.assigns.gateway)
       :ok = API.Endpoint.subscribe("gateway:#{socket.assigns.gateway.id}")
 
@@ -37,8 +51,11 @@ defmodule API.Gateway.Channel do
     end
   end
 
-  def handle_info({:allow_access, attrs, opentelemetry_ctx}, socket) do
-    OpenTelemetry.Tracer.with_span opentelemetry_ctx, "allow_access", %{} do
+  def handle_info({:allow_access, attrs, {opentelemetry_ctx, opentelemetry_span_ctx}}, socket) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "allow_access" do
       %{
         client_id: client_id,
         resource_id: resource_id,
@@ -58,11 +75,16 @@ defmodule API.Gateway.Channel do
   end
 
   def handle_info(
-        {:request_connection, {channel_pid, socket_ref}, attrs, opentelemetry_ctx},
+        {:request_connection, {channel_pid, socket_ref}, attrs,
+         {opentelemetry_ctx, opentelemetry_span_ctx}},
         socket
       ) do
-    OpenTelemetry.Tracer.with_span opentelemetry_ctx, "allow_access", %{} do
-      opentelemetry_ctx = OpenTelemetry.Tracer.current_span_ctx()
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "allow_access" do
+      opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
+      opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
       %{
         client_id: client_id,
@@ -102,7 +124,7 @@ defmodule API.Gateway.Channel do
         Map.put(
           socket.assigns.refs,
           ref,
-          {channel_pid, socket_ref, resource_id, opentelemetry_ctx}
+          {channel_pid, socket_ref, resource_id, {opentelemetry_ctx, opentelemetry_span_ctx}}
         )
 
       socket = assign(socket, :refs, refs)
@@ -120,16 +142,22 @@ defmodule API.Gateway.Channel do
         },
         socket
       ) do
-    {{channel_pid, socket_ref, resource_id, opentelemetry_ctx}, refs} =
+    {{channel_pid, socket_ref, resource_id, {opentelemetry_ctx, opentelemetry_span_ctx}}, refs} =
       Map.pop(socket.assigns.refs, ref)
 
-    OpenTelemetry.Tracer.with_span opentelemetry_ctx, "connection_ready", %{} do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "connection_ready" do
+      opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
+      opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
+
       socket = assign(socket, :refs, refs)
 
       send(
         channel_pid,
         {:connect, socket_ref, resource_id, socket.assigns.gateway.public_key,
-         rtc_session_description, opentelemetry_ctx}
+         rtc_session_description, {opentelemetry_ctx, opentelemetry_span_ctx}}
       )
 
       Logger.debug("Gateway replied to the Client with :connect message",
