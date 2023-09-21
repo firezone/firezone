@@ -25,6 +25,10 @@ jobs:
       TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
       TF_WORKSPACE: "staging"
     steps:
+      - name: Validate cloud-init
+        run: |
+          sudo apt-get install -y cloud-init
+          sudo cloud-init schema --config-file terraform/modules/relay-app/templates/cloud-init.yaml
       - name: Get Terraform Version
         run: |
           TERRAFORM_VERSION=$(cat .tool-versions | grep terraform | awk '{ print $NF; }')
