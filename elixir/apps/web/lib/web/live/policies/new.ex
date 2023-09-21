@@ -15,7 +15,7 @@ defmodule Web.Policies.New do
           form: form
         )
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+      {:ok, socket, temporary_assigns: [section: :policies, form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end

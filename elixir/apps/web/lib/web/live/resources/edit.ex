@@ -12,6 +12,7 @@ defmodule Web.Resources.Edit do
 
       {:ok, assign(socket, resource: resource, gateway_groups: gateway_groups, form: form),
        temporary_assigns: [
+         section: :resources,
          form: %Phoenix.HTML.Form{}
        ]}
     else

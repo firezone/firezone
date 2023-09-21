@@ -12,6 +12,7 @@ defmodule Web.Actors.Index do
            Auth.list_providers_for_account(socket.assigns.account, socket.assigns.subject) do
       {:ok, socket,
        temporary_assigns: [
+         section: :actors,
          actors: actors,
          actor_groups: actor_groups,
          providers_by_id: Map.new(providers, &{&1.id, &1}),

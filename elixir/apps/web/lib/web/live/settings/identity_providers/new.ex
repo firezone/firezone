@@ -11,6 +11,7 @@ defmodule Web.Settings.IdentityProviders.New do
 
     {:ok, socket,
      temporary_assigns: [
+       section: [settings: :identity_providers],
        adapters: adapters
      ]}
   end

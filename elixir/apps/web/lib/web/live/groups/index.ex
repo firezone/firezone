@@ -11,6 +11,7 @@ defmodule Web.Groups.Index do
          {:ok, group_actors} <- Actors.peek_group_actors(groups, 3, socket.assigns.subject) do
       {:ok, socket,
        temporary_assigns: [
+         section: :groups,
          page_title: "Groups",
          groups: groups,
          group_actors: group_actors

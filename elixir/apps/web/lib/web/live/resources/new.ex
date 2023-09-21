@@ -10,6 +10,7 @@ defmodule Web.Resources.New do
 
       {:ok, socket,
        temporary_assigns: [
+         section: :resources,
          gateway_groups: gateway_groups,
          form: to_form(changeset)
        ]}
