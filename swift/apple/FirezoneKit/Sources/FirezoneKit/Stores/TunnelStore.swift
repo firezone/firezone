@@ -77,6 +77,10 @@ final class TunnelStore: ObservableObject {
       fatalError("Tunnel not initialized yet")
     }
 
+    let wasConnected = (tunnel.connection.status == .connected || tunnel.connection.status == .connecting)
+    if wasConnected {
+      stop()
+    }
     tunnel.protocolConfiguration = tunnelAuthStatus.toProtocolConfiguration()
     try await tunnel.saveToPreferences()
     self.tunnelAuthStatus = tunnelAuthStatus

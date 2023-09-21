@@ -11,6 +11,7 @@ struct KeychainStorage: Sendable {
   var store: @Sendable (Keychain.Token, Keychain.TokenAttributes) async throws -> Keychain.PersistentRef
   var delete: @Sendable (Keychain.PersistentRef) async throws -> Void
   var loadAttributes: @Sendable (Keychain.PersistentRef) async -> Keychain.TokenAttributes?
+  var searchByAuthURL: @Sendable (URL) async -> Keychain.PersistentRef?
 }
 
 extension KeychainStorage: DependencyKey {
@@ -20,7 +21,8 @@ extension KeychainStorage: DependencyKey {
     return KeychainStorage(
       store: { try await keychain.store(token: $0, tokenAttributes: $1) },
       delete: { try await keychain.delete(persistentRef: $0) },
-      loadAttributes: { await keychain.loadAttributes(persistentRef: $0) }
+      loadAttributes: { await keychain.loadAttributes(persistentRef: $0) },
+      searchByAuthURL: { await keychain.search(authURLString: $0.absoluteString) }
     )
   }
 
@@ -41,6 +43,9 @@ extension KeychainStorage: DependencyKey {
       },
       loadAttributes: { ref in
         storage.value[ref]?.1
+      },
+      searchByAuthURL: { authURL in
+        nil
       }
     )
   }

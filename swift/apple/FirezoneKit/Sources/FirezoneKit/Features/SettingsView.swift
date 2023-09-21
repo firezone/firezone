@@ -37,11 +37,16 @@ public final class SettingsViewModel: ObservableObject {
 
   func save() {
     Task {
-      let tunnelAuthStatus: TunnelAuthStatus = {
+      let accountId = await authStore.loginStatus.accountId
+      if accountId == settings.accountId {
+        // Not changed
+        return
+      }
+      let tunnelAuthStatus: TunnelAuthStatus = await {
         if settings.accountId.isEmpty {
           return .accountNotSetup
         } else {
-          return .signedOut(authBaseURL: authStore.authBaseURL, accountId: settings.accountId)
+          return await authStore.tunnelAuthStatusForAccount(accountId: settings.accountId)
         }
       }()
       try await authStore.tunnelStore.setAuthStatus(tunnelAuthStatus)

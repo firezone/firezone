@@ -30,6 +30,14 @@ final class AuthStore: ObservableObject {
     case uninitialized
     case signedOut(accountId: String?)
     case signedIn(accountId: String, actorName: String)
+
+    var accountId: String? {
+      switch self {
+        case .uninitialized: return nil
+        case .signedOut(let accountId): return accountId
+        case .signedIn(let accountId, _): return accountId
+      }
+    }
   }
 
   @Dependency(\.keychain) private var keychain
@@ -75,7 +83,7 @@ final class AuthStore: ObservableObject {
         }
         let tunnelPortalURLString = self.authURL(accountId: tunnelAccountId).absoluteString
         guard let tokenAttributes = await keychain.loadAttributes(tokenReference),
-              tunnelPortalURLString == tokenAttributes.portalURLString else {
+              tunnelPortalURLString == tokenAttributes.authURLString else {
           return .signedOut(accountId: tunnelAccountId)
         }
         return .signedIn(accountId: tunnelAccountId, actorName: tokenAttributes.actorName)
@@ -87,7 +95,7 @@ final class AuthStore: ObservableObject {
 
     let portalURL = authURL(accountId: accountId)
     let authResponse = try await auth.signIn(portalURL)
-    let attributes = Keychain.TokenAttributes(portalURLString: portalURL.absoluteString, actorName: authResponse.actorName ?? "")
+    let attributes = Keychain.TokenAttributes(authURLString: portalURL.absoluteString, actorName: authResponse.actorName ?? "")
     let tokenRef = try await keychain.store(authResponse.token, attributes)
 
     try await tunnelStore.setAuthStatus(.signedIn(authBaseURL: self.authBaseURL, accountId: accountId, tokenReference: tokenRef))
@@ -115,6 +123,15 @@ final class AuthStore: ObservableObject {
       if let tokenRef = try await tunnelStore.stopAndSignOut() {
         try await keychain.delete(tokenRef)
       }
+    }
+  }
+
+  func tunnelAuthStatusForAccount(accountId: String) async -> TunnelAuthStatus {
+    let portalURL = authURL(accountId: accountId)
+    if let tokenRef = await keychain.searchByAuthURL(portalURL) {
+      return .signedIn(authBaseURL: authBaseURL, accountId: accountId, tokenReference: tokenRef)
+    } else {
+      return .signedOut(authBaseURL: authBaseURL, accountId: accountId)
     }
   }
 

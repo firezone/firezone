@@ -25,7 +25,7 @@ public actor Keychain {
   public typealias PersistentRef = Data
 
   public struct TokenAttributes {
-    let portalURLString: String
+    let authURLString: String
     let actorName: String
   }
 
@@ -56,7 +56,7 @@ public actor Keychain {
       kSecClass: kSecClassGenericPassword,
       kSecAttrLabel: "Firezone access token (\(tokenAttributes.actorName))",
       kSecAttrDescription: "Firezone access token",
-      kSecAttrService: tokenAttributes.portalURLString,
+      kSecAttrService: tokenAttributes.authURLString,
       kSecAttrAccount: "\(tokenAttributes.actorName): \(UUID().uuidString)", // The UUID uniquifies this item in the keychain
       kSecValueData: token.data(using: .utf8) as Any,
       kSecReturnPersistentRef: true,
@@ -70,7 +70,7 @@ public actor Keychain {
       kSecClass: kSecClassGenericPassword,
       kSecAttrLabel: "Firezone access token (\(tokenAttributes.actorName))",
       kSecAttrDescription: "Firezone access token",
-      kSecAttrService: tokenAttributes.portalURLString,
+      kSecAttrService: tokenAttributes.authURLString,
       kSecAttrAccount: "\(tokenAttributes.actorName): \(UUID().uuidString)", // The UUID uniquifies this item in the keychain
       kSecValueData: token.data(using: .utf8) as Any,
       kSecReturnPersistentRef: true,
@@ -95,7 +95,7 @@ public actor Keychain {
         var checkForStaleItemsResult: CFTypeRef?
         let checkForStaleItemsQuery = [
           kSecClass: kSecClassGenericPassword,
-          kSecAttrService: tokenAttributes.portalURLString,
+          kSecAttrService: tokenAttributes.authURLString,
           kSecMatchLimit: kSecMatchLimitAll,
           kSecReturnPersistentRef: true
         ] as [CFString: Any]
@@ -196,7 +196,7 @@ public actor Keychain {
                let account = dict[kSecAttrAccount] as? String {
               let actorName = String(account[account.startIndex ..< (account.lastIndex(of: ":") ?? account.endIndex)])
               let attributes = TokenAttributes(
-                portalURLString: service,
+                authURLString: service,
                 actorName: actorName)
               continuation.resume(returning: attributes)
               return
@@ -218,6 +218,26 @@ public actor Keychain {
           return
         }
         continuation.resume(returning: ())
+      }
+    }
+  }
+
+  func search(authURLString: String) async -> PersistentRef? {
+    return await withCheckedContinuation { [weak self] continuation in
+      self?.workQueue.async {
+        let query = [
+          kSecClass: kSecClassGenericPassword,
+          kSecAttrDescription: "Firezone access token",
+          kSecAttrService: authURLString,
+          kSecReturnPersistentRef: true,
+        ] as [CFString: Any]
+        var result: CFTypeRef?
+        let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))
+        if ret.isSuccess, let tokenRef = result as? Data {
+          continuation.resume(returning: tokenRef)
+        } else {
+          continuation.resume(returning: nil)
+        }
       }
     }
   }
