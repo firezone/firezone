@@ -59,10 +59,11 @@ defmodule API.Client.Channel do
   def handle_info(:token_expired, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-    OpenTelemetry.Tracer.add_event("token_expired", %{})
 
-    push(socket, "token_expired", %{})
-    {:stop, :token_expired, socket}
+    OpenTelemetry.Tracer.with_span "token_expired" do
+      push(socket, "token_expired", %{})
+      {:stop, :token_expired, socket}
+    end
   end
 
   # This message is sent by the gateway when it is ready
@@ -74,53 +75,57 @@ defmodule API.Client.Channel do
       ) do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
-    OpenTelemetry.Tracer.add_event("connect", %{resource_id: resource_id})
 
-    reply(
-      socket_ref,
-      {:ok,
-       %{
-         resource_id: resource_id,
-         persistent_keepalive: 25,
-         gateway_public_key: gateway_public_key,
-         gateway_rtc_session_description: rtc_session_description
-       }}
-    )
+    OpenTelemetry.Tracer.with_span "connect", %{resource_id: resource_id} do
+      reply(
+        socket_ref,
+        {:ok,
+         %{
+           resource_id: resource_id,
+           persistent_keepalive: 25,
+           gateway_public_key: gateway_public_key,
+           gateway_rtc_session_description: rtc_session_description
+         }}
+      )
 
-    {:noreply, socket}
+      {:noreply, socket}
+    end
   end
 
   def handle_info({:resource_added, resource_id}, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-    OpenTelemetry.Tracer.add_event("resource_added", %{resource_id: resource_id})
 
-    with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject) do
-      push(socket, "resource_added", Views.Resource.render(resource))
+    OpenTelemetry.Tracer.with_span "resource_added", %{resource_id: resource_id} do
+      with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject) do
+        push(socket, "resource_added", Views.Resource.render(resource))
+      end
+
+      {:noreply, socket}
     end
-
-    {:noreply, socket}
   end
 
   def handle_info({:resource_updated, resource_id}, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-    OpenTelemetry.Tracer.add_event("resource_updated", %{resource_id: resource_id})
 
-    with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject) do
-      push(socket, "resource_updated", Views.Resource.render(resource))
+    OpenTelemetry.Tracer.with_span "resource_updated", %{resource_id: resource_id} do
+      with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject) do
+        push(socket, "resource_updated", Views.Resource.render(resource))
+      end
+
+      {:noreply, socket}
     end
-
-    {:noreply, socket}
   end
 
   def handle_info({:resource_removed, resource_id}, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-    OpenTelemetry.Tracer.add_event("resource_updated", %{resource_id: resource_id})
 
-    push(socket, "resource_removed", resource_id)
-    {:noreply, socket}
+    OpenTelemetry.Tracer.with_span "resource_removed", %{resource_id: resource_id} do
+      push(socket, "resource_removed", resource_id)
+      {:noreply, socket}
+    end
   end
 
   def handle_in("create_log_sink", _attrs, socket) do
