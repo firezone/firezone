@@ -14,7 +14,6 @@ write_files:
           protocols:
             grpc:
               endpoint: localhost:4317
-            http:
       exporters:
         googlecloud:
           log:
