@@ -144,6 +144,7 @@ class TunnelService: VpnService() {
                     token = config.token,
                     deviceId = deviceId(),
                     logDir = getLogDir(),
+                    logString = "connlib_android=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn",
                     callback = callback
                 )
                 Log.d(TAG, "connlib session started! sessionPtr: $sessionPtr")

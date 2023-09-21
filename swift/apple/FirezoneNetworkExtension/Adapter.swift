@@ -148,6 +148,7 @@ public class Adapter {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
             self.controlPlaneURLString, self.token, self.getDeviceId(), self.logDir,
+            "connlib_android=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn",
             self.callbackHandler),
           onStarted: completionHandler
         )
@@ -285,6 +286,7 @@ extension Adapter {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
             controlPlaneURLString, token, self.getDeviceId(), logDir,
+            "connlib_android=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn",
             self.callbackHandler),
           onStarted: { error in
             if let error = error {

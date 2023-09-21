@@ -252,7 +252,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     pub(super) async fn stats_event(&mut self) {
-        tracing::debug!(target: "tunnel_state", "{:#?}", self.tunnel.stats());
+        tracing::debug!(target: "tunnel_state", stats = ?self.tunnel.stats());
     }
 }
 

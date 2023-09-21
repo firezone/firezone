@@ -83,7 +83,17 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: PathBuf) {
+#[cfg(target_os = "android")]
+fn android_layer() -> tracing_android::layer::Layer {
+    tracing_android::layer("connlib").unwrap()
+}
+
+#[cfg(not(target_os = "android"))]
+fn android_layer() -> tracing_subscriber::layer::Identity {
+    tracing_subscriber::layer::Identity::new()
+}
+
+fn init_logging(log_dir: PathBuf, log_string: String) {
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to
@@ -96,7 +106,7 @@ fn init_logging(log_dir: PathBuf) {
         return;
     }
 
-    let (file_layer, guard) = file_logger::layer(log_dir);
+    let (file_layer, guard) = file_logger::layer(log_dir, log_string);
 
     LOGGING_GUARD
         .set(guard)
@@ -104,7 +114,7 @@ fn init_logging(log_dir: PathBuf) {
 
     let _ = tracing_subscriber::registry()
         .with(file_layer)
-        .with(tracing_android::layer("connlib").unwrap())
+        .with(android_layer())
         .try_init();
 }
 
@@ -310,6 +320,7 @@ fn connect(
     portal_token: JString,
     device_id: JString,
     log_dir: JString,
+    log_string: JString,
     callback_handler: GlobalRef,
 ) -> Result<Session<CallbackHandler>, ConnectError> {
     let portal_url = String::from(env.get_string(&portal_url).map_err(|source| {
@@ -340,12 +351,19 @@ fn connect(
                     source,
                 })?,
         );
+
+    let log_string = String::from(env.get_string(&log_string).map_err(|source| {
+        ConnectError::StringInvalid {
+            name: "log_string",
+            source,
+        }
+    })?);
     let callback_handler = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
     };
 
-    init_logging(log_dir.into());
+    init_logging(log_dir.into(), log_string.into());
 
     Session::connect(
         portal_url.as_str(),
@@ -369,6 +387,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
     portal_token: JString,
     device_id: JString,
     log_dir: JString,
+    log_string: JString,
     callback_handler: JObject,
 ) -> *const Session<CallbackHandler> {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else {
@@ -382,6 +401,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
             portal_token,
             device_id,
             log_dir,
+            log_string,
             callback_handler,
         )
     }) {

@@ -3,10 +3,11 @@ use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
+    path::PathBuf,
 };
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, EnvFilter, Layer, Registry};
 
-use firezone_client_connlib::{Callbacks, Error, ResourceDescription};
+use firezone_client_connlib::{file_logger, Callbacks, Error, ResourceDescription, WorkerGuard};
 use url::Url;
 
 #[derive(Clone)]
@@ -65,12 +66,23 @@ pub fn block_on_ctrl_c() {
     rx.recv().expect("Could not receive ctrl-c signal");
 }
 
-pub fn setup_global_subscriber() {
-    let fmt_subscriber = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .finish();
+pub fn setup_global_subscriber(log_dir: Option<PathBuf>) -> Option<WorkerGuard> {
+    let fmt_subscriber =
+        tracing_subscriber::fmt::layer().with_filter(EnvFilter::from_default_env());
+    let guard = if let Some(log_dir) = log_dir {
+        let (file_logger, guard) = file_logger::layer(log_dir, EnvFilter::from_default_env());
 
-    tracing::subscriber::set_global_default(fmt_subscriber).expect("Could not set global default");
+        let subscriber = Registry::default().with(fmt_subscriber).with(file_logger);
+        tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
+
+        Some(guard)
+    } else {
+        let subscriber = Registry::default().with(fmt_subscriber);
+        tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
+        None
+    };
+
+    guard
 }
 
 #[derive(Parser)]
@@ -82,4 +94,7 @@ pub struct Cli {
     /// Service token
     #[arg(short, long, env = "FZ_SECRET")]
     pub secret: String,
+    /// File logging directory optionally
+    #[arg(short, long, env = "FZ_LOG_DIR")]
+    pub log_dir: Option<PathBuf>,
 }

@@ -5,12 +5,12 @@ use headless_utils::{block_on_ctrl_c, setup_global_subscriber, Cli, NoOpCallback
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    setup_global_subscriber();
+    let guard = setup_global_subscriber(cli.log_dir);
 
     let device_id = get_device_id();
     let mut session =
-        Session::connect(cli.url, cli.secret, device_id, None, NoOpCallbackHandler).unwrap();
-    tracing::info!("Started new session");
+        Session::connect(cli.url, cli.secret, device_id, guard, NoOpCallbackHandler).unwrap();
+    tracing::info!("new_session");
 
     block_on_ctrl_c();
 

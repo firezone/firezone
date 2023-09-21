@@ -22,3 +22,4 @@ pub type Session<CB> = libs_common::Session<
 pub use libs_common::{get_device_id, messages::ResourceDescription, Callbacks, Error};
 use messages::Messages;
 use messages::ReplyMessages;
+pub use tracing_appender::non_blocking::WorkerGuard;
