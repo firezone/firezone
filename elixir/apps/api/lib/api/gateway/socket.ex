@@ -34,7 +34,8 @@ defmodule API.Gateway.Socket do
         socket =
           socket
           |> assign(:gateway, gateway)
-          |> assign(:opentelemetry_ctx, OpenTelemetry.Tracer.current_span_ctx())
+          |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
+          |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
         {:ok, socket}
       else

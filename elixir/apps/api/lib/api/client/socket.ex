@@ -29,7 +29,8 @@ defmodule API.Client.Socket do
           socket
           |> assign(:subject, subject)
           |> assign(:client, client)
-          |> assign(:opentelemetry_ctx, OpenTelemetry.Tracer.current_span_ctx())
+          |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
+          |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
         {:ok, socket}
       else
