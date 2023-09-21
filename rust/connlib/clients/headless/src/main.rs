@@ -16,7 +16,9 @@ use firezone_client_connlib::{
 use url::Url;
 
 #[derive(Clone)]
-pub struct CallbackHandler;
+pub struct CallbackHandler {
+    log_dir: PathBuf,
+}
 
 impl Callbacks for CallbackHandler {
     type Error = std::convert::Infallible;
@@ -62,6 +64,10 @@ impl Callbacks for CallbackHandler {
         tracing::warn!("Encountered recoverable error: {error}");
         Ok(())
     }
+
+    fn upload_logs(&self, _: Url) {
+        tracing::debug!("Uploading logs found in {}", self.log_dir.display());
+    }
 }
 
 const URL_ENV_VAR: &str = "FZ_URL";
@@ -76,7 +82,7 @@ fn block_on_ctrl_c() {
     rx.recv().expect("Could not receive ctrl-c signal");
 }
 
-fn init_logging(log_dir: PathBuf) -> WorkerGuard {
+fn init_logging(log_dir: &PathBuf) -> WorkerGuard {
     let (file_layer, guard) = file_logger::layer(log_dir);
 
     // Calling init twice causes a panic; instead use try_init which will fail
@@ -106,8 +112,8 @@ fn main() -> Result<()> {
         url,
         secret,
         device_id,
-        Some(init_logging(log_dir)),
-        CallbackHandler,
+        Some(init_logging(&log_dir)),
+        CallbackHandler { log_dir },
     )
     .unwrap();
     tracing::info!("Started new session");

@@ -30,6 +30,7 @@ use webrtc::{
 };
 
 use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
+use url::Url;
 
 use libs_common::{
     messages::{Id, Interface as InterfaceConfig, ResourceDescription},
@@ -335,6 +336,10 @@ where
         tracing::trace!("Started background loops");
 
         Ok(())
+    }
+
+    pub fn upload_logs(&self, url: Url) {
+        self.callbacks.upload_logs(url);
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

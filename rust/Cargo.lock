@@ -777,6 +777,7 @@ dependencies = [
  "tracing-android",
  "tracing-appender",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -1239,6 +1240,7 @@ dependencies = [
  "tracing-appender",
  "tracing-stackdriver",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -1285,6 +1287,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-android",
+ "url",
  "webrtc",
  "wintun",
 ]
@@ -4005,6 +4008,7 @@ dependencies = [
  "form_urlencoded",
  "idna",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use libs_common::messages::{
     Id, Interface, Key, Relay, RequestConnection, ResourceDescription, ReuseConnection,
 };
+use url::Url;
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct InitClient {
@@ -66,6 +67,8 @@ pub enum IngressMessages {
 pub enum ReplyMessages {
     ConnectionDetails(ConnectionDetails),
     Connect(Connect),
+    /// Response for [`EgressMessages::CreateLogSink`].
+    SignedLogUrl(Url),
 }
 
 /// The totality of all messages (might have a macro in the future to derive the other types)
@@ -75,6 +78,7 @@ pub enum Messages {
     Init(InitClient),
     ConnectionDetails(ConnectionDetails),
     Connect(Connect),
+    SignedLogUrl(Url),
 
     // Resources: arrive in an orderly fashion
     ResourceAdded(ResourceDescription),
@@ -98,6 +102,7 @@ impl From<ReplyMessages> for Messages {
         match value {
             ReplyMessages::ConnectionDetails(m) => Self::ConnectionDetails(m),
             ReplyMessages::Connect(m) => Self::Connect(m),
+            ReplyMessages::SignedLogUrl(url) => Self::SignedLogUrl(url),
         }
     }
 }
@@ -113,6 +118,7 @@ pub enum EgressMessages {
         resource_id: Id,
         connected_gateway_ids: Vec<Id>,
     },
+    CreateLogSink {},
     RequestConnection(RequestConnection),
     ReuseConnection(ReuseConnection),
 }

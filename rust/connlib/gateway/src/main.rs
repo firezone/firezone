@@ -56,6 +56,10 @@ impl Callbacks for CallbackHandler {
         tracing::warn!("Encountered recoverable error: {error}");
         Ok(())
     }
+
+    fn upload_logs(&self, _: Url) {
+        tracing::warn!("Gateway does not upload logs to portal");
+    }
 }
 
 const URL_ENV_VAR: &str = "FZ_URL";

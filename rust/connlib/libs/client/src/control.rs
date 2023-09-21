@@ -12,6 +12,7 @@ use libs_common::{
 use async_trait::async_trait;
 use firezone_tunnel::{ControlSignal, Request, Tunnel};
 use tokio::sync::{mpsc::Receiver, Mutex};
+use url::Url;
 
 #[async_trait]
 impl ControlSignal for ControlSignaler {
@@ -54,7 +55,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         mut self,
         mut receiver: Receiver<(MessageResult<Messages>, Option<Reference>)>,
     ) -> Result<()> {
-        let mut interval = tokio::time::interval(Duration::from_secs(10));
+        let mut log_stats_interval = tokio::time::interval(Duration::from_secs(10));
+        let mut upload_logs_interval = tokio::time::interval(upload_interval_from_env_or_default());
         loop {
             tokio::select! {
                 Some((msg, reference)) = receiver.recv() => {
@@ -63,7 +65,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         Err(err) => self.handle_error(err, reference).await,
                     }
                 },
-                _ = interval.tick() => self.stats_event().await,
+                _ = log_stats_interval.tick() => self.stats_event().await,
+                _ = upload_logs_interval.tick() => self.request_log_upload_url().await,
                 else => break
             }
         }
@@ -141,6 +144,11 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
+    fn upload_logs(&mut self, url: Url) {
+        self.tunnel.upload_logs(url)
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
     fn connection_details(
         &self,
         ConnectionDetails {
@@ -212,6 +220,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Messages::ResourceAdded(resource) => self.add_resource(resource).await,
             Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
             Messages::ResourceUpdated(resource) => self.update_resource(resource),
+            Messages::SignedLogUrl(url) => self.upload_logs(url),
         }
         Ok(())
     }
@@ -254,6 +263,43 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     pub(super) async fn stats_event(&mut self) {
         tracing::debug!(target: "tunnel_state", "{:#?}", self.tunnel.stats());
     }
+    async fn request_log_upload_url(&mut self) {
+        tracing::info!("Requesting log upload URL from portal");
+
+        let _ = self
+            .control_signaler
+            .control_signal
+            .send(EgressMessages::CreateLogSink {})
+            .await;
+    }
+}
+
+/// Parses an interval from the _compile-time_ env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS`.
+///
+/// If not present or parsing as u64 fails, we fall back to a default interval of 1 hour.
+fn upload_interval_from_env_or_default() -> Duration {
+    const DEFAULT: Duration = Duration::from_secs(60 * 60);
+
+    let Some(interval) = option_env!("CONNLIB_LOG_UPLOAD_INTERVAL_SECS") else {
+        tracing::warn!(interval = ?DEFAULT, "Env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS` was not set during compile-time, falling back to default");
+
+        return DEFAULT
+    };
+
+    let interval = match interval.parse() {
+        Ok(i) => i,
+        Err(e) => {
+            tracing::warn!(interval = ?DEFAULT, "Failed to parse `CONNLIB_LOG_UPLOAD_INTERVAL_SECS` as u64: {e}");
+            return DEFAULT;
+        }
+    };
+
+    tracing::info!(
+        ?interval,
+        "Using upload interval specified at compile-time via `CONNLIB_LOG_UPLOAD_INTERVAL_SECS`"
+    );
+
+    Duration::from_secs(interval)
 }
 
 #[async_trait]

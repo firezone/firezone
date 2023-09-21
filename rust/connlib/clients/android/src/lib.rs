@@ -19,10 +19,12 @@ use std::{
 use thiserror::Error;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::prelude::*;
+use url::Url;
 
 pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
+    log_dir: PathBuf,
 }
 
 static LOGGING_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
@@ -37,6 +39,7 @@ impl Clone for CallbackHandler {
         Self {
             vm: unsafe { std::ptr::read(&self.vm) },
             callback_handler: self.callback_handler.clone(),
+            log_dir: self.log_dir.clone(),
         }
     }
 }
@@ -83,7 +86,7 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: PathBuf) {
+fn init_logging(log_dir: &PathBuf) {
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to
@@ -266,6 +269,10 @@ impl Callbacks for CallbackHandler {
             )
         })
     }
+
+    fn upload_logs(&self, _: Url) {
+        tracing::debug!("Uploading logs found in {}", self.log_dir.display());
+    }
 }
 
 fn throw(env: &mut JNIEnv, class: &str, msg: impl Into<JNIString>) {
@@ -332,20 +339,19 @@ fn connect(
                     source,
                 })?,
         );
-    let log_dir =
-        String::from(
-            env.get_string(&log_dir)
-                .map_err(|source| ConnectError::StringInvalid {
-                    name: "log_dir",
-                    source,
-                })?,
-        );
+    let log_dir = PathBuf::from(String::from(env.get_string(&log_dir).map_err(
+        |source| ConnectError::StringInvalid {
+            name: "log_dir",
+            source,
+        },
+    )?));
+    init_logging(&log_dir);
+
     let callback_handler = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
+        log_dir,
     };
-
-    init_logging(log_dir.into());
 
     Session::connect(
         portal_url.as_str(),

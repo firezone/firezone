@@ -21,7 +21,7 @@ const LOG_FILE_BASE_NAME: &str = "connlib.log";
 
 /// Create a new file logger layer.
 pub fn layer<T>(
-    log_dir: PathBuf,
+    log_dir: &PathBuf,
 ) -> (
     Box<dyn Layer<T> + Send + Sync + 'static>,
     tracing_appender::non_blocking::WorkerGuard,

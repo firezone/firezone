@@ -94,6 +94,8 @@ pub trait Callbacks: Clone + Send + Sync {
     fn on_disconnect(&self, error: Option<&Error>) -> StdResult<(), Self::Error>;
     /// Called when there's a recoverable error.
     fn on_error(&self, error: &Error) -> StdResult<(), Self::Error>;
+    /// Called when we are given an log-upload URL by the portal.
+    fn upload_logs(&self, url: Url);
 }
 
 #[derive(Clone)]
@@ -182,6 +184,10 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         }
         // There's nothing we really want to do if `on_error` fails.
         Ok(())
+    }
+
+    fn upload_logs(&self, url: Url) {
+        self.0.upload_logs(url)
     }
 }
 
