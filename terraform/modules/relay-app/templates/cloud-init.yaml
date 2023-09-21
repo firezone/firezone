@@ -13,6 +13,7 @@ write_files:
         otlp:
           protocols:
             grpc:
+              endpoint: localhost:4317
             http:
       exporters:
         googlecloud:
