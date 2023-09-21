@@ -29,7 +29,7 @@ impl DeviceIo {
         }
     }
 
-    // Note: write is synchroneous because it's non-blocking
+    // Note: write is synchronous because it's non-blocking
     // and some losiness is acceptable and increseases performance
     // since we don't block the reading loops.
     pub fn write4(&self, buf: &[u8]) -> std::io::Result<usize> {

@@ -11,4 +11,3 @@ headless-utils = { path = "../../headless-utils" }
 anyhow = { version = "1.0" }
 tracing = { workspace = true }
 clap = { version = "4.4", features = ["derive",  "env"] }
-
