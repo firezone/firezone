@@ -1,5 +1,5 @@
-use crate::rfc8656::AddressFamily;
 use std::net::{IpAddr, SocketAddr};
+use stun_codec::rfc8656::attributes::AddressFamily;
 
 pub trait IpAddrExt {
     fn family(&self) -> AddressFamily;
