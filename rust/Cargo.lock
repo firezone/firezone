@@ -3327,9 +3327,9 @@ dependencies = [
 
 [[package]]
 name = "stun_codec"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4089f66744a63bc909eed6ece965b493030ca896f21c24d9f26c659926c7e05b"
+checksum = "1eff17d3ec0a1d210cbe5c870857c306823417f468bebde28e8c29970f6a1da4"
 dependencies = [
  "bytecodec",
  "byteorder",

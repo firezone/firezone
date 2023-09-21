@@ -571,7 +571,7 @@ fn binding_response(
 ) -> Message<Attribute> {
     let mut message =
         Message::<Attribute>::new(MessageClass::SuccessResponse, BINDING, transaction_id);
-    message.add_attribute(XorMappedAddress::new(address.into()).into());
+    message.add_attribute(XorMappedAddress::new(address.into()));
 
     message
 }
@@ -585,11 +585,12 @@ fn allocate_response(
 ) -> Message<Attribute> {
     let mut message =
         Message::<Attribute>::new(MessageClass::SuccessResponse, ALLOCATE, transaction_id);
-    message.add_attribute(
-        XorRelayAddress::new(SocketAddr::new(public_relay_addr.into(), port)).into(),
-    );
-    message.add_attribute(XorMappedAddress::new(source.into()).into());
-    message.add_attribute(lifetime.clone().into());
+    message.add_attribute(XorRelayAddress::new(SocketAddr::new(
+        public_relay_addr.into(),
+        port,
+    )));
+    message.add_attribute(XorMappedAddress::new(source.into()));
+    message.add_attribute(lifetime.clone());
 
     message
 }
@@ -600,13 +601,9 @@ fn unauthorized_allocate_response(
 ) -> Message<Attribute> {
     let mut message =
         Message::<Attribute>::new(MessageClass::ErrorResponse, ALLOCATE, transaction_id);
-    message.add_attribute(ErrorCode::from(Unauthorized).into());
-    message.add_attribute(
-        Nonce::new(nonce.as_hyphenated().to_string())
-            .unwrap()
-            .into(),
-    );
-    message.add_attribute(Realm::new("firezone".to_owned()).unwrap().into());
+    message.add_attribute(ErrorCode::from(Unauthorized));
+    message.add_attribute(Nonce::new(nonce.as_hyphenated().to_string()).unwrap());
+    message.add_attribute(Realm::new("firezone".to_owned()).unwrap());
 
     message
 }
@@ -614,7 +611,7 @@ fn unauthorized_allocate_response(
 fn refresh_response(transaction_id: TransactionId, lifetime: Lifetime) -> Message<Attribute> {
     let mut message =
         Message::<Attribute>::new(MessageClass::SuccessResponse, REFRESH, transaction_id);
-    message.add_attribute(lifetime.into());
+    message.add_attribute(lifetime);
 
     message
 }

@@ -8,11 +8,6 @@ pub use crate::server::client_message::{
 
 use crate::auth::{MessageIntegrityExt, Nonces, FIREZONE};
 use crate::net_ext::IpAddrExt;
-use crate::rfc8656::{
-    AdditionalAddressFamily, AddressFamily, AddressFamilyNotSupported, PeerAddressFamilyMismatch,
-    RequestedAddressFamily,
-};
-use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::{IpStack, TimeEvents};
 use anyhow::Result;
 use bytecodec::EncodeExt;
@@ -34,6 +29,10 @@ use stun_codec::rfc5766::attributes::{
 };
 use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
+use stun_codec::rfc8656::attributes::{
+    AdditionalAddressFamily, AddressFamily, RequestedAddressFamily,
+};
+use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
 use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
 use tracing::{field, log, Span};
 use uuid::Uuid;
@@ -291,8 +290,8 @@ where
 
             self.add_nonce(new_nonce);
 
-            error_response.add_attribute(Nonce::new(new_nonce.to_string()).unwrap().into());
-            error_response.add_attribute((*FIREZONE).clone().into());
+            error_response.add_attribute(Nonce::new(new_nonce.to_string()).unwrap());
+            error_response.add_attribute((*FIREZONE).clone());
         }
 
         self.send_message(error_response, sender);
@@ -421,7 +420,7 @@ where
             BINDING,
             message.transaction_id(),
         );
-        message.add_attribute(XorMappedAddress::new(sender).into());
+        message.add_attribute(XorMappedAddress::new(sender));
 
         self.send_message(message, sender);
     }
@@ -476,16 +475,19 @@ where
 
         let port = allocation.port;
 
-        message
-            .add_attribute(XorRelayAddress::new(SocketAddr::new(first_relay_address, port)).into());
+        message.add_attribute(XorRelayAddress::new(SocketAddr::new(
+            first_relay_address,
+            port,
+        )));
         if let Some(second_relay_address) = maybe_second_relay_addr {
-            message.add_attribute(
-                XorRelayAddress::new(SocketAddr::new(second_relay_address, port)).into(),
-            );
+            message.add_attribute(XorRelayAddress::new(SocketAddr::new(
+                second_relay_address,
+                port,
+            )));
         }
 
-        message.add_attribute(XorMappedAddress::new(sender).into());
-        message.add_attribute(effective_lifetime.clone().into());
+        message.add_attribute(XorMappedAddress::new(sender));
+        message.add_attribute(effective_lifetime.clone());
 
         let wake_deadline = self.time_events.add(
             allocation.expires_at,
@@ -822,7 +824,7 @@ where
     fn send_message(&mut self, message: Message<Attribute>, recipient: SocketAddr) {
         let method = message.method();
         let class = message.class();
-        tracing::trace!(target: "relay",  method = %message.method().as_str(), class = %message.class().as_str(), "Sending message");
+        tracing::trace!(target: "relay",  method = %message.method(), class = %message.class(), "Sending message");
 
         let Ok(bytes) = self.encoder.encode_into_bytes(message) else {
             debug_assert!(false, "Encoding should never fail");
@@ -917,7 +919,7 @@ fn refresh_success_response(
     transaction_id: TransactionId,
 ) -> Message<Attribute> {
     let mut message = Message::new(MessageClass::SuccessResponse, REFRESH, transaction_id);
-    message.add_attribute(effective_lifetime.into());
+    message.add_attribute(effective_lifetime);
     message
 }
 

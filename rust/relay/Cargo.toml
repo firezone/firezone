@@ -11,7 +11,7 @@ futures = "0.3.28"
 hex = "0.4.3"
 hex-literal = "0.4.1"
 rand = "0.8.5"
-stun_codec = "0.3.1"
+stun_codec = "0.3.3"
 tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread", "net", "time"] }
 tracing = { version = "0.1.37", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }

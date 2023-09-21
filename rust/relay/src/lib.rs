@@ -1,10 +1,8 @@
 mod allocation;
 mod auth;
 mod net_ext;
-mod rfc8656;
 mod server;
 mod sleep;
-mod stun_codec_ext;
 mod time_events;
 mod udp_socket;
 
@@ -14,12 +12,12 @@ pub mod proptest;
 
 pub use allocation::Allocation;
 pub use net_ext::{IpAddrExt, SocketAddrExt};
-pub use rfc8656::AddressFamily;
 pub use server::{
     Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, Command,
     CreatePermission, Refresh, Server,
 };
 pub use sleep::Sleep;
+pub use stun_codec::rfc8656::attributes::AddressFamily;
 pub use udp_socket::UdpSocket;
 
 pub(crate) use time_events::TimeEvents;
