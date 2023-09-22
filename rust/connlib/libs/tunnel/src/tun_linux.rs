@@ -13,18 +13,14 @@ use std::{
     os::fd::{AsRawFd, RawFd},
     sync::Arc,
 };
+use tokio::io::unix::AsyncFd;
 
 use super::InterfaceConfig;
-
-#[derive(Debug)]
-pub(crate) struct IfaceConfig(pub(crate) Arc<IfaceDevice>);
 
 const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: u64 = 0x4004_54ca;
 const TUN_FILE: &[u8] = b"/dev/net/tun\0";
 const RT_PROT_STATIC: u8 = 4;
-// This MTU will always work
-const MTU: u32 = 1280;
 
 #[repr(C)]
 union IfrIfru {
@@ -53,37 +49,61 @@ pub struct ifreq {
 
 #[derive(Debug)]
 pub struct IfaceDevice {
-    fd: RawFd,
     handle: Handle,
     connection: tokio::task::JoinHandle<()>,
     interface_index: u32,
 }
 
-impl Drop for IfaceDevice {
-    fn drop(&mut self) {
-        self.connection.abort();
-        unsafe { close(self.fd) };
+#[derive(Debug)]
+pub struct IfaceStream(RawFd);
+
+impl AsRawFd for IfaceStream {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0
     }
 }
 
-impl AsRawFd for IfaceDevice {
-    fn as_raw_fd(&self) -> RawFd {
-        self.fd
+impl Drop for IfaceStream {
+    fn drop(&mut self) {
+        unsafe { close(self.0) };
+    }
+}
+
+impl Drop for IfaceDevice {
+    fn drop(&mut self) {
+        self.connection.abort();
+    }
+}
+
+impl IfaceStream {
+    fn write(&self, buf: &[u8]) -> std::io::Result<usize> {
+        match unsafe { write(self.0, buf.as_ptr() as _, buf.len() as _) } {
+            -1 => Err(io::Error::last_os_error()),
+            n => Ok(n as usize),
+        }
+    }
+
+    pub fn write4(&self, buf: &[u8]) -> std::io::Result<usize> {
+        self.write(buf)
+    }
+
+    pub fn write6(&self, buf: &[u8]) -> std::io::Result<usize> {
+        self.write(buf)
+    }
+
+    pub fn read(&self, dst: &mut [u8]) -> std::io::Result<usize> {
+        match unsafe { read(self.0, dst.as_mut_ptr() as _, dst.len()) } {
+            -1 => Err(io::Error::last_os_error()),
+            n => Ok(n as usize),
+        }
     }
 }
 
 impl IfaceDevice {
-    fn write(&self, buf: &[u8]) -> usize {
-        match unsafe { write(self.fd, buf.as_ptr() as _, buf.len() as _) } {
-            -1 => 0,
-            n => n as usize,
-        }
-    }
-
     pub async fn new(
         config: &InterfaceConfig,
-        _: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<IfaceDevice> {
+        cb: &CallbackErrorFacade<impl Callbacks>,
+    ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
         debug_assert!(IFACE_NAME.as_bytes().len() < IFNAMSIZ);
 
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
@@ -117,60 +137,17 @@ impl IfaceDevice {
             .header
             .index;
 
-        let mut this = Self {
-            fd,
+        set_non_blocking(fd)?;
+
+        let this = Self {
             handle,
             connection: join_handle,
             interface_index,
         };
 
-        this.set_iface_config(config).await?;
-        this.set_non_blocking()?;
+        this.set_iface_config(config, cb).await?;
 
-        Ok(this)
-    }
-
-    async fn set_iface_config(&mut self, config: &InterfaceConfig) -> Result<()> {
-        let ips = self
-            .handle
-            .address()
-            .get()
-            .set_link_index_filter(self.interface_index)
-            .execute();
-
-        ips.try_for_each(|ip| self.handle.address().del(ip).execute())
-            .await?;
-
-        self.handle
-            .address()
-            .add(self.interface_index, config.ipv4.into(), 32)
-            .execute()
-            .await
-            .or(self
-                .handle
-                .address()
-                .add(self.interface_index, config.ipv6.into(), 128)
-                .execute()
-                .await)?;
-
-        self.handle
-            .link()
-            .set(self.interface_index)
-            .mtu(MTU)
-            .execute()
-            .await?;
-
-        Ok(())
-    }
-
-    fn set_non_blocking(&self) -> Result<()> {
-        match unsafe { fcntl(self.fd, F_GETFL) } {
-            -1 => Err(get_last_error()),
-            flags => match unsafe { fcntl(self.fd, F_SETFL, flags | O_NONBLOCK) } {
-                -1 => Err(get_last_error()),
-                _ => Ok(()),
-            },
-        }
+        Ok((this, Arc::new(AsyncFd::new(IfaceStream(fd))?)))
     }
 
     /// Get the current MTU value
@@ -194,38 +171,16 @@ impl IfaceDevice {
         Err(Error::NoMtu)
     }
 
-    pub fn write4(&self, src: &[u8]) -> usize {
-        self.write(src)
-    }
-
-    pub fn write6(&self, src: &[u8]) -> usize {
-        self.write(src)
-    }
-
-    pub fn read<'a>(&self, dst: &'a mut [u8]) -> Result<&'a mut [u8]> {
-        match unsafe { read(self.fd, dst.as_mut_ptr() as _, dst.len()) } {
-            -1 => Err(Error::IfaceRead(io::Error::last_os_error())),
-            n => Ok(&mut dst[..n as usize]),
-        }
-    }
-}
-
-fn get_last_error() -> Error {
-    Error::Io(io::Error::last_os_error())
-}
-
-impl IfaceConfig {
     pub async fn add_route(
-        &mut self,
+        &self,
         route: IpNetwork,
         _callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
         let req = self
-            .0
             .handle
             .route()
             .add()
-            .output_interface(self.0.interface_index)
+            .output_interface(self.interface_index)
             .protocol(RT_PROT_STATIC)
             .scope(RT_SCOPE_UNIVERSE);
         match route {
@@ -261,46 +216,57 @@ impl IfaceConfig {
 
     #[tracing::instrument(level = "trace", skip(self, _callbacks))]
     pub async fn set_iface_config(
-        &mut self,
+        &self,
         config: &InterfaceConfig,
         _callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
         let ips = self
-            .0
             .handle
             .address()
             .get()
-            .set_link_index_filter(self.0.interface_index)
+            .set_link_index_filter(self.interface_index)
             .execute();
 
-        ips.try_for_each(|ip| self.0.handle.address().del(ip).execute())
+        ips.try_for_each(|ip| self.handle.address().del(ip).execute())
             .await?;
 
-        self.0
+        let res_v4 = self
             .handle
             .address()
-            .add(self.0.interface_index, config.ipv4.into(), 32)
+            .add(self.interface_index, config.ipv4.into(), 32)
             .execute()
-            .await
-            .or(self
-                .0
-                .handle
-                .address()
-                .add(self.0.interface_index, config.ipv6.into(), 128)
-                .execute()
-                .await)?;
+            .await;
+        let res_v6 = self
+            .handle
+            .address()
+            .add(self.interface_index, config.ipv6.into(), 128)
+            .execute()
+            .await;
 
-        Ok(())
+        Ok(res_v4.or(res_v6)?)
     }
 
-    pub async fn up(&mut self) -> Result<()> {
-        self.0
-            .handle
+    pub async fn up(&self) -> Result<()> {
+        self.handle
             .link()
-            .set(self.0.interface_index)
+            .set(self.interface_index)
             .up()
             .execute()
             .await?;
         Ok(())
+    }
+}
+
+fn get_last_error() -> Error {
+    Error::Io(io::Error::last_os_error())
+}
+
+fn set_non_blocking(fd: RawFd) -> Result<()> {
+    match unsafe { fcntl(fd, F_GETFL) } {
+        -1 => Err(get_last_error()),
+        flags => match unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) } {
+            -1 => Err(get_last_error()),
+            _ => Ok(()),
+        },
     }
 }
