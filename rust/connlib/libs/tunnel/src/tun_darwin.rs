@@ -202,7 +202,7 @@ impl IfaceDevice {
                     "system_resolver".to_string(),
                 );
 
-                set_non_blocking(fd);
+                set_non_blocking(fd)?;
 
                 return Ok((
                     Self { name: name(fd)? },

@@ -84,12 +84,18 @@ fn call_method(
 }
 
 #[cfg(target_os = "android")]
-fn android_layer() -> tracing_android::layer::Layer {
+fn android_layer<S>() -> impl tracing_subscriber::Layer<S>
+where
+    S: tracing::Subscriber,
+{
     tracing_android::layer("connlib").unwrap()
 }
 
 #[cfg(not(target_os = "android"))]
-fn android_layer() -> tracing_subscriber::layer::Identity {
+fn android_layer<S>() -> impl tracing_subscriber::Layer<S>
+where
+    S: tracing::Subscriber,
+{
     tracing_subscriber::layer::Identity::new()
 }
 

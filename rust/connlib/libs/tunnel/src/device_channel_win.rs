@@ -1,4 +1,4 @@
-use crate::tun::IfaceConfig;
+use ip_network::IpNetwork;
 use libs_common::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
 
 #[derive(Clone)]
