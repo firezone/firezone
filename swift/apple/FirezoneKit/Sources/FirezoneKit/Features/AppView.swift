@@ -17,12 +17,9 @@ public final class AppViewModel: ObservableObject {
 
   public init() {
     Task {
-      let tunnel = try await TunnelStore.loadOrCreate()
       self.welcomeViewModel = WelcomeViewModel(
         appStore: AppStore(
-          tunnelStore: TunnelStore(
-            tunnel: tunnel
-          )
+          tunnelStore: TunnelStore.shared
         )
       )
     }
