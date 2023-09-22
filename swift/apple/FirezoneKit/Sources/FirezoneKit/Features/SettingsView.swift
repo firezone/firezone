@@ -7,29 +7,51 @@
 import Dependencies
 import SwiftUI
 import XCTestDynamicOverlay
+import Combine
 
 public final class SettingsViewModel: ObservableObject {
-  @Dependency(\.settingsClient) private var settingsClient
+  @Dependency(\.authStore) private var authStore
 
   @Published var settings: Settings
 
   public var onSettingsSaved: () -> Void = unimplemented()
+  private var cancellables = Set<AnyCancellable>()
 
   public init() {
     settings = Settings()
-
     load()
   }
 
   func load() {
-    if let storedSettings = settingsClient.fetchSettings() {
-      settings = storedSettings
+    Task {
+      authStore.tunnelStore.$tunnelAuthStatus
+        .filter { $0.isInitialized }
+        .receive(on: RunLoop.main)
+        .sink { [weak self] tunnelAuthStatus in
+          guard let self = self else { return }
+          self.settings = Settings(accountId: tunnelAuthStatus.accountId() ?? "")
+        }
+        .store(in: &cancellables)
     }
   }
 
   func save() {
-    settingsClient.saveSettings(settings)
-    onSettingsSaved()
+    Task {
+      let accountId = await authStore.loginStatus.accountId
+      if accountId == settings.accountId {
+        // Not changed
+        return
+      }
+      let tunnelAuthStatus: TunnelAuthStatus = await {
+        if settings.accountId.isEmpty {
+          return .accountNotSetup
+        } else {
+          return await authStore.tunnelAuthStatusForAccount(accountId: settings.accountId)
+        }
+      }()
+      try await authStore.tunnelStore.setAuthStatus(tunnelAuthStatus)
+      onSettingsSaved()
+    }
   }
 }
 
@@ -69,7 +91,7 @@ public struct SettingsView: View {
             Button("Save") {
               self.saveButtonTapped()
             }
-            .disabled(!isTeamIdValid(model.settings.teamId))
+            .disabled(!isTeamIdValid(model.settings.accountId))
           }
           ToolbarItem(placement: .navigationBarLeading) {
             Button("Cancel") {
@@ -92,7 +114,7 @@ public struct SettingsView: View {
           Button("Save", action: {
             self.saveButtonTapped()
           })
-          .disabled(!isTeamIdValid(model.settings.teamId))
+          .disabled(!isTeamIdValid(model.settings.accountId))
         }
       }
     }
@@ -102,12 +124,12 @@ public struct SettingsView: View {
     Form {
       Section {
         FormTextField(
-          title: "Team ID:",
-          baseURLString: AuthStore.getAuthBaseURLFromInfoPlist().absoluteString,
-          placeholder: "team-id",
+          title: "Account ID:",
+          baseURLString: AppInfoPlistConstants.authBaseURL.absoluteString,
+          placeholder: "account-id",
           text: Binding(
-            get: { model.settings.teamId },
-            set: { model.settings.teamId = $0 }
+            get: { model.settings.accountId },
+            set: { model.settings.accountId = $0 }
           )
         )
       }

@@ -4,4 +4,4 @@ DEVELOPMENT_TEAM = <team_id>
 // The bundle identifier of the apps.
 // Should be an app id created at developer.apple.com
 // with Network Extensions capability.
-PRODUCT_BUNDLE_IDENTIFIER = <app_id>
+APP_ID = <app_id>

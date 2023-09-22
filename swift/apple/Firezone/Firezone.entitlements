@@ -6,6 +6,10 @@
 	<array>
 		<string>packet-tunnel-provider</string>
 	</array>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>${APP_GROUP_ID}</string>
+	</array>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
 	<key>com.apple.security.network.client</key>

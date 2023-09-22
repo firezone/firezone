@@ -24,106 +24,118 @@ extension DependencyValues {
 final class AuthStore: ObservableObject {
   private let logger = Logger.make(for: AuthStore.self)
 
-  static let shared = AuthStore()
+  static let shared = AuthStore(tunnelStore: TunnelStore.shared)
 
   enum LoginStatus {
     case uninitialized
-    case signedOut
-    case signedIn(AuthResponse)
+    case signedOut(accountId: String?)
+    case signedIn(accountId: String, actorName: String)
+
+    var accountId: String? {
+      switch self {
+        case .uninitialized: return nil
+        case .signedOut(let accountId): return accountId
+        case .signedIn(let accountId, _): return accountId
+      }
+    }
   }
 
   @Dependency(\.keychain) private var keychain
   @Dependency(\.auth) private var auth
-  @Dependency(\.settingsClient) private var settingsClient
 
-  private let authBaseURL: URL
+  let tunnelStore: TunnelStore
+
+  public let authBaseURL: URL
   private var cancellables = Set<AnyCancellable>()
 
   @Published private(set) var loginStatus: LoginStatus
 
-  private init() {
-    self.authBaseURL = Self.getAuthBaseURLFromInfoPlist()
+  private init(tunnelStore: TunnelStore) {
+    self.tunnelStore = tunnelStore
+    self.authBaseURL = AppInfoPlistConstants.authBaseURL
     self.loginStatus = .uninitialized
-    Task {
-      self.loginStatus = await { () -> LoginStatus in
-        guard let teamId = settingsClient.fetchSettings()?.teamId else {
-          logger.debug("No team-id found in settings")
-          return .signedOut
-        }
-        guard let token = try? await keychain.token() else {
-          logger.debug("Token not found in keychain")
-          return .signedOut
-        }
-        guard let actorName = try? await keychain.actorName() else {
-          logger.debug("Actor not found in keychain")
-          return .signedOut
-        }
-        let portalURL = self.authURL(teamId: teamId)
-        let authResponse = AuthResponse(portalURL: portalURL, token: token, actorName: actorName)
-        logger.debug("Token recovered from keychain.")
-        return .signedIn(authResponse)
-      }()
-    }
 
-    $loginStatus
-      .sink { [weak self] loginStatus in
-        Task { [weak self] in
-          switch loginStatus {
-            case .signedIn(let authResponse):
-              try? await self?.keychain.save(token: authResponse.token, actorName: authResponse.actorName)
-              self?.logger.debug("authResponse saved on keychain.")
-            case .signedOut:
-              try? await self?.keychain.deleteAuthResponse()
-              self?.logger.debug("token deleted from keychain.")
-            case .uninitialized:
-              break
-          }
+    tunnelStore.$tunnelAuthStatus
+      .sink { [weak self] tunnelAuthStatus in
+        guard let self = self else { return }
+        Task {
+          self.loginStatus = await self.getLoginStatus(from: tunnelAuthStatus)
         }
       }
       .store(in: &cancellables)
   }
 
-  func signIn(teamId: String) async throws {
+  private func getLoginStatus(from tunnelAuthStatus: TunnelAuthStatus) async -> LoginStatus {
+    switch tunnelAuthStatus {
+      case .tunnelUninitialized:
+        return .uninitialized
+      case .accountNotSetup:
+        return .signedOut(accountId: nil)
+      case .signedOut(let tunnelAuthBaseURL, let tunnelAccountId):
+        if self.authBaseURL == tunnelAuthBaseURL {
+          return .signedOut(accountId: tunnelAccountId)
+        } else {
+          return .signedOut(accountId: nil)
+        }
+      case .signedIn(let tunnelAuthBaseURL, let tunnelAccountId, let tokenReference):
+        guard self.authBaseURL == tunnelAuthBaseURL else {
+          return .signedOut(accountId: nil)
+        }
+        let tunnelPortalURLString = self.authURL(accountId: tunnelAccountId).absoluteString
+        guard let tokenAttributes = await keychain.loadAttributes(tokenReference),
+              tunnelPortalURLString == tokenAttributes.authURLString else {
+          return .signedOut(accountId: tunnelAccountId)
+        }
+        return .signedIn(accountId: tunnelAccountId, actorName: tokenAttributes.actorName)
+    }
+  }
+
+  func signIn(accountId: String) async throws {
     logger.trace("\(#function)")
 
-    let portalURL = authURL(teamId: teamId)
+    let portalURL = authURL(accountId: accountId)
     let authResponse = try await auth.signIn(portalURL)
-    self.loginStatus = .signedIn(authResponse)
+    let attributes = Keychain.TokenAttributes(authURLString: portalURL.absoluteString, actorName: authResponse.actorName ?? "")
+    let tokenRef = try await keychain.store(authResponse.token, attributes)
+
+    try await tunnelStore.setAuthStatus(.signedIn(authBaseURL: self.authBaseURL, accountId: accountId, tokenReference: tokenRef))
   }
 
   func signIn() async throws {
     logger.trace("\(#function)")
 
-    guard let teamId = settingsClient.fetchSettings()?.teamId, !teamId.isEmpty else {
-      logger.debug("No team-id found in settings")
+    guard case .signedOut(let accountId) = self.loginStatus, let accountId = accountId, !accountId.isEmpty else {
+      logger.debug("No account-id found in tunnel")
       throw FirezoneError.missingTeamId
     }
 
-    try await signIn(teamId: teamId)
+    try await signIn(accountId: accountId)
   }
 
-  func signOut() {
+  func signOut() async throws {
     logger.trace("\(#function)")
 
-    loginStatus = .signedOut
+    guard case .signedIn = self.loginStatus else {
+      return
+    }
+
+    Task {
+      if let tokenRef = try await tunnelStore.stopAndSignOut() {
+        try await keychain.delete(tokenRef)
+      }
+    }
   }
 
-  static func getAuthBaseURLFromInfoPlist() -> URL {
-    let infoPlistDictionary = Bundle.main.infoDictionary
-    guard let urlScheme = (infoPlistDictionary?["AuthURLScheme"] as? String), !urlScheme.isEmpty else {
-      fatalError("AuthURLScheme missing in Info.plist. Please define AUTH_URL_SCHEME, AUTH_URL_HOST, CONTROL_PLANE_URL_SCHEME, and CONTROL_PLANE_URL_HOST in Server.xcconfig.")
+  func tunnelAuthStatusForAccount(accountId: String) async -> TunnelAuthStatus {
+    let portalURL = authURL(accountId: accountId)
+    if let tokenRef = await keychain.searchByAuthURL(portalURL) {
+      return .signedIn(authBaseURL: authBaseURL, accountId: accountId, tokenReference: tokenRef)
+    } else {
+      return .signedOut(authBaseURL: authBaseURL, accountId: accountId)
     }
-    guard let urlHost = (infoPlistDictionary?["AuthURLHost"] as? String), !urlHost.isEmpty else {
-      fatalError("AuthURLHost missing in Info.plist. Please define AUTH_URL_SCHEME, AUTH_URL_HOST, CONTROL_PLANE_URL_SCHEME, and CONTROL_PLANE_URL_HOST in Server.xcconfig.")
-    }
-    let urlString = "\(urlScheme)://\(urlHost)/"
-    guard let url = URL(string: urlString) else {
-      fatalError("Cannot form valid URL from string: \(urlString)")
-    }
-    return url
   }
 
-  func authURL(teamId: String) -> URL {
-    self.authBaseURL.appendingPathComponent(teamId)
+  func authURL(accountId: String) -> URL {
+    self.authBaseURL.appendingPathComponent(accountId)
   }
 }

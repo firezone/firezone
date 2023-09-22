@@ -1,2 +1,2 @@
 DEVELOPMENT_TEAM = 0000000000
-PRODUCT_BUNDLE_IDENTIFIER = dev.firezone.macos
+APP_ID = dev.firezone.macos

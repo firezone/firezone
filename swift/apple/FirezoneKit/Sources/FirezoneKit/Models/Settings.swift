@@ -7,5 +7,5 @@
 import Foundation
 
 struct Settings: Codable, Hashable {
-  var teamId: String = ""
+  var accountId: String = ""
 }

@@ -9,5 +9,7 @@
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).PacketTunnelProvider</string>
 	</dict>
+	<key>AppGroupIdentifier</key>
+	<string>${APP_GROUP_ID}</string>
 </dict>
 </plist>

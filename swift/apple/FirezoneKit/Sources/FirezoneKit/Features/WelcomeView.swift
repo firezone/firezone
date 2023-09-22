@@ -13,7 +13,6 @@ import SwiftUINavigation
 #if os(iOS)
 @MainActor
 final class WelcomeViewModel: ObservableObject {
-  @Dependency(\.settingsClient) private var settingsClient
   @Dependency(\.mainQueue) private var mainQueue
 
   private var cancellables = Set<AnyCancellable>()
@@ -56,7 +55,7 @@ final class WelcomeViewModel: ObservableObject {
 
     defer { bindDestination() }
 
-    if settingsClient.fetchSettings()?.teamId == nil {
+    if case .accountNotSetup = appStore.tunnel.tunnelAuthStatus {
       destination = .undefinedSettingsAlert(.undefinedSettings)
     }
 
@@ -154,7 +153,7 @@ struct WelcomeView: View {
 struct WelcomeView_Previews: PreviewProvider {
   static var previews: some View {
     WelcomeView(
-      model: WelcomeViewModel(appStore: AppStore(tunnelStore: TunnelStore(tunnel: .init())))
+      model: WelcomeViewModel(appStore: AppStore(tunnelStore: TunnelStore.shared))
     )
   }
 }
