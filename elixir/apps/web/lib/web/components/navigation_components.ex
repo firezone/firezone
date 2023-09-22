@@ -146,14 +146,17 @@ defmodule Web.NavigationComponents do
   attr :icon, :string, required: true
   attr :navigate, :string, required: true
   slot :inner_block, required: true
+  attr :active_path, :string, required: true
 
   def sidebar_item(assigns) do
+    active_class = "dark:bg-gray-700 bg-gray-100"
     ~H"""
     <li>
       <.link navigate={@navigate} class={~w[
       flex items-center p-2
       text-base font-medium text-gray-900
       rounded-lg
+      #{if String.starts_with?(@active_path, @navigate), do: active_class, else: ""}
       hover:bg-gray-100
       dark:text-white dark:hover:bg-gray-700 group]}>
         <.icon name={@icon} class={~w[
@@ -176,9 +179,11 @@ defmodule Web.NavigationComponents do
 
   slot :item, required: true do
     attr :navigate, :string, required: true
+    attr :active_path, :string, required: true
   end
 
   def sidebar_item_group(assigns) do
+    active_class = "dark:bg-gray-700 bg-gray-100"
     ~H"""
     <li>
       <button
@@ -208,6 +213,7 @@ defmodule Web.NavigationComponents do
           <.link navigate={item.navigate} class={~w[
               flex items-center p-2 pl-11 w-full group rounded-lg
               text-base font-medium text-gray-900
+              #{if String.starts_with?(@active_path, item.navigate), do: active_class, else: ""}
               transition duration-75
               hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700]}>
             <%= render_slot(item) %>

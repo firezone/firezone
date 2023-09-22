@@ -1,10 +1,6 @@
 defmodule Web.Settings.Account do
   use Web, :live_view
 
-  def mount(_params, _session, socket) do
-    {:ok, socket, temporary_assigns: [section: [settings: :account]]}
-  end
-
   def render(assigns) do
     ~H"""
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>

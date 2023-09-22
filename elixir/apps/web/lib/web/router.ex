@@ -95,7 +95,8 @@ defmodule Web.Router do
         Web.Sandbox,
         {Web.Auth, :ensure_authenticated},
         {Web.Auth, :ensure_account_admin_user_actor},
-        {Web.Auth, :mount_account}
+        {Web.Auth, :mount_account},
+        {Web.Nav, :set_active_sidebar_item}
       ] do
       live "/dashboard", Dashboard
 
@@ -162,7 +163,7 @@ defmodule Web.Router do
         live "/:id", Show
       end
 
-      scope "/policies", Policies do
+      scope "/policies", Policies, assigns: %{active_sidebar_item: :policies} do
         live "/", Index
         live "/new", New
         live "/:id/edit", Edit
