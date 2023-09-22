@@ -198,13 +198,14 @@ impl Peer {
         dst: &'a mut [u8],
     ) -> Result<EncapsulatedPacket<'a>> {
         let Some(mut packet) = MutableIpPacket::new(src) else {
+            debug_assert!(false, "Got non-ip packet from the tunnel interface");
             tracing::error!("Developer error: we should never see a packet through the tunnel wire that isn't ip");
             return Err(Error::BadPacket);
         };
         if let Some(resource) = self.get_translation(packet.to_immutable().source()) {
             let ResourceDescription::Dns(resource) = resource else {
                 tracing::error!(
-                    "Developer error: only dns resources should have a resource_address"
+                    "Control protocol error: only dns resources should have a resource_address"
                 );
                 return Err(Error::ControlProtocolError);
             };
