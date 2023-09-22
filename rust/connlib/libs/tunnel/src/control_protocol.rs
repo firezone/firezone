@@ -146,7 +146,7 @@ where
         gateway_id: Id,
         resource_id: Id,
     ) {
-        tracing::trace!(?state, "peer_state");
+        tracing::trace!("peer_state");
         if state == RTCPeerConnectionState::Failed {
             self.awaiting_connection.lock().remove(&resource_id);
             self.peer_connections.lock().remove(&gateway_id);
@@ -352,7 +352,7 @@ where
         let p_key = preshared_key.clone();
         data_channel.on_open(Box::new(move || {
             Box::pin(async move {
-                tracing::trace!("data_channel");
+                tracing::trace!("new_data_channel_opened");
                 let index = tunnel.next_index();
                 let Some(gateway_public_key) =
                     tunnel.gateway_public_keys.lock().remove(&gateway_id)
@@ -493,14 +493,14 @@ where
         self.set_connection_state_update_responder(&peer_connection, client_id);
 
         peer_connection.on_data_channel(Box::new(move |d| {
-            tracing::trace!("data_channel");
+            tracing::trace!("new_data_channel");
             let data_channel = Arc::clone(&d);
             let peer = peer.clone();
             let tunnel = Arc::clone(&tunnel);
             let resource = resource.clone();
             Box::pin(async move {
                 d.on_open(Box::new(move || {
-                    tracing::trace!("channel_open");
+                    tracing::trace!("new_data_channel_open");
                     Box::pin(async move {
                         {
                             let Some(iface_config) = tunnel.iface_config.read().clone() else {

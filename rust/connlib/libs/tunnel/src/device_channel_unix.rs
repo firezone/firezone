@@ -5,7 +5,7 @@ use std::sync::{
 
 use ip_network::IpNetwork;
 use libs_common::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
-use tokio::io::unix::AsyncFd;
+use tokio::io::{unix::AsyncFd, Interest};
 
 use crate::tun::{IfaceDevice, IfaceStream};
 
@@ -19,14 +19,9 @@ pub(crate) struct DeviceIo(Arc<AsyncFd<IfaceStream>>);
 
 impl DeviceIo {
     pub async fn read(&self, out: &mut [u8]) -> std::io::Result<usize> {
-        loop {
-            let mut guard = self.0.readable().await?;
-
-            match guard.try_io(|inner| inner.get_ref().read(out)) {
-                Ok(result) => return result,
-                Err(_would_block) => continue,
-            }
-        }
+        self.0
+            .async_io(Interest::READABLE, |inner| inner.read(out))
+            .await
     }
 
     // Note: write is synchronous because it's non-blocking
