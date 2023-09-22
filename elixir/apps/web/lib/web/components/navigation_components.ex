@@ -101,8 +101,8 @@ defmodule Web.NavigationComponents do
         bg-white border-r border-gray-200
         md:translate-x-0
         dark:bg-gray-800 dark:border-gray-700]} aria-label="Sidenav" id="drawer-navigation">
-      <div class="overflow-y-auto py-5 px-3 h-full bg-white dark:bg-gray-800">
-        <ul class="space-y-2">
+      <div class="overflow-y-auto py-1 px-1 h-full bg-white dark:bg-gray-800">
+        <ul>
           <%= render_slot(@inner_block) %>
         </ul>
       </div>
@@ -203,7 +203,7 @@ defmodule Web.NavigationComponents do
           group-hover:text-gray-900
           dark:text-gray-400 dark:group-hover:text-white]} />
       </button>
-      <ul id={"dropdown-#{@id}"} class="py-2 space-y-2">
+      <ul id={"dropdown-#{@id}"}>
         <li :for={item <- @item}>
           <.link navigate={item.navigate} class={~w[
               flex items-center p-2 pl-11 w-full group rounded-lg
