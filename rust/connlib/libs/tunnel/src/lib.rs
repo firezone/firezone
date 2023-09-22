@@ -51,12 +51,6 @@ mod peer_handler;
 mod resource_sender;
 mod resource_table;
 
-// TODO: For now all tunnel implementations are the same
-// will divide when we start introducing differences.
-#[cfg(target_os = "windows")]
-#[path = "tun_win.rs"]
-mod tun;
-
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 #[path = "tun_darwin.rs"]
 mod tun;
