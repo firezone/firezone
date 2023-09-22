@@ -312,7 +312,7 @@ jobs:
           # https://github.com/nanasess/setup-chromedriver/issues/199
           # Still, it may not hurt to pin chromedriver and/or Chrome for more repeatable tests and
           # possibly even matrix these to multiple versions to increase browser coverage.
-          chromedriver-version: '115.0.5790.102'
+          chromedriver-version: '117.0.5938'
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "26.0.2"
