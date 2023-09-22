@@ -319,6 +319,19 @@ enum ConnectError {
     ConnectFailed(#[from] Error),
 }
 
+macro_rules! string_from_jstring {
+    ($env:expr, $j:ident) => {
+        String::from(
+            ($env)
+                .get_string(&($j))
+                .map_err(|source| ConnectError::StringInvalid {
+                    name: stringify!($j),
+                    source,
+                })?,
+        )
+    };
+}
+
 fn connect(
     env: &mut JNIEnv,
     portal_url: JString,
@@ -328,41 +341,11 @@ fn connect(
     log_string: JString,
     callback_handler: GlobalRef,
 ) -> Result<Session<CallbackHandler>, ConnectError> {
-    let portal_url = String::from(env.get_string(&portal_url).map_err(|source| {
-        ConnectError::StringInvalid {
-            name: "portal_url",
-            source,
-        }
-    })?);
-    let portal_token = String::from(env.get_string(&portal_token).map_err(|source| {
-        ConnectError::StringInvalid {
-            name: "portal_token",
-            source,
-        }
-    })?);
-    let device_id =
-        String::from(
-            env.get_string(&device_id)
-                .map_err(|source| ConnectError::StringInvalid {
-                    name: "device_id",
-                    source,
-                })?,
-        );
-    let log_dir =
-        String::from(
-            env.get_string(&log_dir)
-                .map_err(|source| ConnectError::StringInvalid {
-                    name: "log_dir",
-                    source,
-                })?,
-        );
-
-    let log_string = String::from(env.get_string(&log_string).map_err(|source| {
-        ConnectError::StringInvalid {
-            name: "log_string",
-            source,
-        }
-    })?);
+    let portal_url = string_from_jstring!(env, portal_url);
+    let portal_token = string_from_jstring!(env, portal_token);
+    let device_id = string_from_jstring!(env, device_id);
+    let log_dir = string_from_jstring!(env, log_dir);
+    let log_string = string_from_jstring!(env, log_string);
     let callback_handler = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
