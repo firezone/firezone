@@ -163,7 +163,7 @@ defmodule Web.Router do
         live "/:id", Show
       end
 
-      scope "/policies", Policies, assigns: %{active_sidebar_item: :policies} do
+      scope "/policies", Policies do
         live "/", Index
         live "/new", New
         live "/:id/edit", Edit
