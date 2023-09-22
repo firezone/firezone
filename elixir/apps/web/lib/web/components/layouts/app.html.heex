@@ -1,17 +1,33 @@
 <.topbar subject={@subject} />
 
 <.sidebar>
-  <.sidebar_item active_path={@active_path} navigate={~p"/#{@account}/dashboard"} icon="hero-chart-bar-square-solid">
+  <.sidebar_item
+    active_path={@active_path}
+    navigate={~p"/#{@account}/dashboard"}
+    icon="hero-chart-bar-square-solid"
+  >
     Dashboard
   </.sidebar_item>
 
-  <.sidebar_item active_path={@active_path} navigate={~p"/#{@account}/actors"} icon="hero-user-circle-solid">
+  <.sidebar_item
+    active_path={@active_path}
+    navigate={~p"/#{@account}/actors"}
+    icon="hero-user-circle-solid"
+  >
     Actors
   </.sidebar_item>
-  <.sidebar_item active_path={@active_path} navigate={~p"/#{@account}/groups"} icon="hero-user-group-solid">
+  <.sidebar_item
+    active_path={@active_path}
+    navigate={~p"/#{@account}/groups"}
+    icon="hero-user-group-solid"
+  >
     Groups
   </.sidebar_item>
-  <.sidebar_item active_path={@active_path} navigate={~p"/#{@account}/clients"} icon="hero-device-phone-mobile-solid">
+  <.sidebar_item
+    active_path={@active_path}
+    navigate={~p"/#{@account}/clients"}
+    icon="hero-device-phone-mobile-solid"
+  >
     Clients
   </.sidebar_item>
 
@@ -23,15 +39,27 @@
     Gateways
   </.sidebar_item>
 
-  <.sidebar_item active_path={@active_path} navigate={~p"/#{@account}/relay_groups"} icon="hero-arrows-right-left">
+  <.sidebar_item
+    active_path={@active_path}
+    navigate={~p"/#{@account}/relay_groups"}
+    icon="hero-arrows-right-left"
+  >
     Relays
   </.sidebar_item>
 
-  <.sidebar_item active_path={@active_path} navigate={~p"/#{@account}/resources"} icon="hero-server-stack-solid">
+  <.sidebar_item
+    active_path={@active_path}
+    navigate={~p"/#{@account}/resources"}
+    icon="hero-server-stack-solid"
+  >
     Resources
   </.sidebar_item>
 
-  <.sidebar_item active_path={@active_path} navigate={~p"/#{@account}/policies"} icon="hero-shield-check-solid">
+  <.sidebar_item
+    active_path={@active_path}
+    navigate={~p"/#{@account}/policies"}
+    icon="hero-shield-check-solid"
+  >
     Policies
   </.sidebar_item>
 
@@ -39,7 +67,9 @@
     <:name>Settings</:name>
 
     <:item active_path={@active_path} navigate={~p"/#{@account}/settings/account"}>Account</:item>
-    <:item active_path={@active_path} navigate={~p"/#{@account}/settings/identity_providers"}>Identity Providers</:item>
+    <:item active_path={@active_path} navigate={~p"/#{@account}/settings/identity_providers"}>
+      Identity Providers
+    </:item>
     <:item active_path={@active_path} navigate={~p"/#{@account}/settings/dns"}>DNS</:item>
   </.sidebar_item_group>
 
