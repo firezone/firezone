@@ -97,7 +97,7 @@ where
     tracing_subscriber::layer::Identity::new()
 }
 
-fn init_logging(log_dir: PathBuf, log_string: String) {
+fn init_logging(log_dir: PathBuf, log_filter: String) {
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to
@@ -111,7 +111,7 @@ fn init_logging(log_dir: PathBuf, log_string: String) {
         return;
     }
 
-    let (file_layer, guard) = file_logger::layer(log_dir, log_string);
+    let (file_layer, guard) = file_logger::layer(log_dir, log_filter);
 
     LOGGING_GUARD
         .set(guard)
@@ -338,20 +338,20 @@ fn connect(
     portal_token: JString,
     device_id: JString,
     log_dir: JString,
-    log_string: JString,
+    log_filter: JString,
     callback_handler: GlobalRef,
 ) -> Result<Session<CallbackHandler>, ConnectError> {
     let portal_url = string_from_jstring!(env, portal_url);
     let portal_token = string_from_jstring!(env, portal_token);
     let device_id = string_from_jstring!(env, device_id);
     let log_dir = string_from_jstring!(env, log_dir);
-    let log_string = string_from_jstring!(env, log_string);
+    let log_filter = string_from_jstring!(env, log_filter);
     let callback_handler = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
     };
 
-    init_logging(log_dir.into(), log_string.into());
+    init_logging(log_dir.into(), log_filter.into());
 
     Session::connect(
         portal_url.as_str(),
@@ -374,7 +374,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
     portal_token: JString,
     device_id: JString,
     log_dir: JString,
-    log_string: JString,
+    log_filter: JString,
     callback_handler: JObject,
 ) -> *const Session<CallbackHandler> {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else {
@@ -388,7 +388,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
             portal_token,
             device_id,
             log_dir,
-            log_string,
+            log_filter,
             callback_handler,
         )
     }) {

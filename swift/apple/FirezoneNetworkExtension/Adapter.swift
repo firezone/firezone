@@ -149,7 +149,8 @@ public class Adapter {
           session: try WrappedSession.connect(
             self.controlPlaneURLString, self.token, self.getDeviceId(), self.logDir,
             // TODO: make logging string depend on build config #2067
-            "connlib_android=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn",
+            // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
+            "connlib_apple=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn",
             self.callbackHandler),
           onStarted: completionHandler
         )

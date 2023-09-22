@@ -23,7 +23,7 @@ mod ffi {
             token: String,
             device_id: String,
             log_dir: String,
-            log_string: String,
+            log_filter: String,
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
@@ -137,8 +137,8 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf, log_string: String) -> WorkerGuard {
-    let (file_layer, guard) = file_logger::layer(log_dir.clone(), log_string);
+fn init_logging(log_dir: PathBuf, log_filter: String) -> WorkerGuard {
+    let (file_layer, guard) = file_logger::layer(log_dir.clone(), log_filter);
 
     let _ = tracing_subscriber::registry()
         .with(tracing_oslog::OsLogger::new(
@@ -157,10 +157,10 @@ impl WrappedSession {
         token: String,
         device_id: String,
         log_dir: String,
-        log_string: String,
+        log_filter: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
-        let _guard = init_logging(log_dir.into(), log_string);
+        let _guard = init_logging(log_dir.into(), log_filter);
 
         let session = Session::connect(
             portal_url.as_str(),
