@@ -213,7 +213,7 @@ defmodule Web.NavigationComponents do
           <.link navigate={item.navigate} class={~w[
               flex items-center p-2 pl-11 w-full group rounded-lg
               text-base font-medium text-gray-900
-              #{if String.starts_with?(@active_path, item.navigate), do: @active_class, else: ""}
+              #{if String.starts_with?(item.active_path, item.navigate), do: @active_class, else: ""}
               transition duration-75
               hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700]}>
             <%= render_slot(item) %>
