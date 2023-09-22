@@ -150,6 +150,7 @@ defmodule Web.NavigationComponents do
 
   def sidebar_item(assigns) do
     assigns = assign(assigns, active_class: "dark:bg-gray-700 bg-gray-100")
+
     ~H"""
     <li>
       <.link navigate={@navigate} class={~w[
@@ -184,6 +185,7 @@ defmodule Web.NavigationComponents do
 
   def sidebar_item_group(assigns) do
     assigns = assign(assigns, active_class: "dark:bg-gray-700 bg-gray-100")
+
     ~H"""
     <li>
       <button
