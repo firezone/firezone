@@ -109,7 +109,7 @@ pub enum ConnlibError {
     #[error("Invalid phoenix channel reply reference")]
     InvalidReference,
     /// Invalid packet format
-    #[error("Received baddly formatted packet")]
+    #[error("Received badly formatted packet")]
     BadPacket,
     /// Tunnel is under load
     #[error("Under load")]
