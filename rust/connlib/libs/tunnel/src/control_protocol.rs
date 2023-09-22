@@ -17,7 +17,10 @@ use libs_common::{
 use rand_core::OsRng;
 use webrtc::{
     data_channel::{data_channel_init::RTCDataChannelInit, RTCDataChannel},
-    ice_transport::{ice_credential_type::RTCIceCredentialType, ice_server::RTCIceServer},
+    ice_transport::{
+        ice_candidate::RTCIceCandidateInit, ice_credential_type::RTCIceCredentialType,
+        ice_server::RTCIceServer,
+    },
     peer_connection::{
         configuration::RTCConfiguration, peer_connection_state::RTCPeerConnectionState,
         sdp::session_description::RTCSessionDescription, RTCPeerConnection,
@@ -28,6 +31,8 @@ use crate::{peer::Peer, ConnId, ControlSignal, PeerConfig, Tunnel};
 
 mod candidate_parser;
 
+const ICE_CANDIDATE_BUFFER: usize = 100;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
 pub enum Request {
@@ -37,7 +42,7 @@ pub enum Request {
 
 impl<C, CB> Tunnel<C, CB>
 where
-    C: ControlSignal + Send + Sync + 'static,
+    C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
     #[instrument(level = "trace", skip(self, data_channel, peer_config))]
@@ -123,6 +128,7 @@ where
     async fn initialize_peer_request(
         self: &Arc<Self>,
         relays: Vec<Relay>,
+        conn_id: ConnId,
     ) -> Result<Arc<RTCPeerConnection>> {
         let config = RTCConfiguration {
             ice_servers: relays
@@ -144,6 +150,23 @@ where
             ..Default::default()
         };
         let peer_connection = Arc::new(self.webrtc_api.new_peer_connection(config).await?);
+
+        let (ice_candidate_tx, ice_candidate_rx) = tokio::sync::mpsc::channel(ICE_CANDIDATE_BUFFER);
+        self.ice_candidate_queue
+            .lock()
+            .insert(conn_id, ice_candidate_rx);
+
+        let callbacks = self.callbacks().clone();
+        peer_connection.on_ice_candidate(Box::new(move |candidate| {
+            let ice_candidate_tx = ice_candidate_tx.clone();
+            let callbacks = callbacks.clone();
+            Box::pin(async move {
+                if let Err(e) = ice_candidate_tx.send(candidate).await {
+                    tracing::error!(err = ?e, "buffer_ice_candidate");
+                    let _ = callbacks.on_error(&e.into());
+                }
+            })
+        }));
 
         Ok(peer_connection)
     }
@@ -345,7 +368,10 @@ where
             }
         }
         let peer_connection = {
-            let peer_connection = Arc::new(self.initialize_peer_request(relays).await?);
+            let peer_connection = Arc::new(
+                self.initialize_peer_request(relays, gateway_id.into())
+                    .await?,
+            );
             let mut peer_connections = self.peer_connections.lock();
             peer_connections.insert(ConnId::from(gateway_id), Arc::clone(&peer_connection));
             peer_connection
@@ -423,22 +449,13 @@ where
         }));
 
         let offer = peer_connection.create_offer(None).await?;
-        let mut gather_complete = peer_connection.gathering_complete_promise().await;
-        // TODO: Remove tunnel ip from offer
-        peer_connection.set_local_description(offer).await?;
-
-        // FIXME: timeout here! (but probably don't even bother because we need to implement ICE trickle)
-        let _ = gather_complete.recv().await;
-        let local_description = peer_connection
-            .local_description()
-            .await
-            .expect("Developer error: set_local_description was just called above");
+        peer_connection.set_local_description(offer.clone()).await?;
 
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
             gateway_id,
             client_preshared_key: Key(preshared_key.to_bytes()),
-            client_rtc_session_description: local_description,
+            client_rtc_session_description: offer,
         }))
     }
 
@@ -484,6 +501,26 @@ where
         rtc_sdp.sdp = sdp.marshal();
 
         peer_connection.set_remote_description(rtc_sdp).await?;
+        let mut ice_candidate_rx = self
+            .ice_candidate_queue
+            .lock()
+            .remove(&gateway_id.into())
+            .ok_or(Error::ControlProtocolError)?;
+        let control_signaler = self.control_signaler.clone();
+        let callbacks = self.callbacks().clone();
+
+        tokio::spawn(async move {
+            while let Some(ice_candidate) = ice_candidate_rx.recv().await.flatten() {
+                if let Err(e) = control_signaler
+                    .signal_ice_candidate(ice_candidate, gateway_id.into())
+                    .await
+                {
+                    tracing::error!(err = ?e, "add_ice_candidate");
+                    let _ = callbacks.on_error(&e);
+                }
+            }
+        });
+
         Ok(())
     }
 
@@ -491,11 +528,6 @@ where
     ///
     /// Sets a connection to a remote SDP, creates the local SDP
     /// and returns it.
-    ///
-    /// # Note
-    ///
-    /// This function blocks until it gathers all the ICE candidates
-    /// so it might block for a long time.
     ///
     /// # Parameters
     /// - `sdp_session`: Remote session description.
@@ -514,7 +546,23 @@ where
         expires_at: DateTime<Utc>,
         resource: ResourceDescription,
     ) -> Result<RTCSessionDescription> {
-        let peer_connection = self.initialize_peer_request(relays).await?;
+        let peer_connection = self
+            .initialize_peer_request(relays, client_id.into())
+            .await?;
+
+        let mut ice_candidate_rx = self
+            .ice_candidate_queue
+            .lock()
+            .remove(&client_id.into())
+            .ok_or(Error::ControlProtocolError)?;
+        let control_signaler = self.control_signaler.clone();
+        tokio::spawn(async move {
+            while let Some(ice_candidate) = ice_candidate_rx.recv().await.flatten() {
+                control_signaler
+                    .signal_ice_candidate(ice_candidate, client_id.into())
+                    .await;
+            }
+        });
         let index = self.next_index();
         let tunnel = Arc::clone(self);
         self.peer_connections
@@ -581,16 +629,29 @@ where
         peer_connection.set_remote_description(sdp_session).await?;
 
         // TODO: remove tunnel IP from answer
-        let mut gather_complete = peer_connection.gathering_complete_promise().await;
         let answer = peer_connection.create_answer(None).await?;
         peer_connection.set_local_description(answer).await?;
-        let _ = gather_complete.recv().await;
         let local_desc = peer_connection
             .local_description()
             .await
             .ok_or(Error::ConnectionEstablishError)?;
 
         Ok(local_desc)
+    }
+
+    pub async fn add_ice_candidate(
+        &self,
+        conn_id: ConnId,
+        ice_candidate: RTCIceCandidateInit,
+    ) -> Result<()> {
+        let peer_connection = self
+            .peer_connections
+            .lock()
+            .get(&conn_id)
+            .ok_or(Error::ControlProtocolError)?
+            .clone();
+        peer_connection.add_ice_candidate(ice_candidate).await?;
+        Ok(())
     }
 
     pub fn allow_access(

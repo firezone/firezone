@@ -24,6 +24,7 @@ use webrtc::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
         setting_engine::SettingEngine, APIBuilder, API,
     },
+    ice_transport::ice_candidate::RTCIceCandidate,
     interceptor::registry::Registry,
     peer_connection::RTCPeerConnection,
 };
@@ -143,6 +144,13 @@ pub trait ControlSignal {
         connected_gateway_ids: &[GatewayId],
         reference: usize,
     ) -> Result<()>;
+
+    /// Signals a new candidate to the control plane
+    async fn signal_ice_candidate(
+        &self,
+        ice_candidate: RTCIceCandidate,
+        conn_id: ConnId,
+    ) -> Result<()>;
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -165,6 +173,8 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<ConnId, Arc<RTCPeerConnection>>>,
+    ice_candidate_queue:
+        Mutex<HashMap<ConnId, tokio::sync::mpsc::Receiver<Option<RTCIceCandidate>>>>,
     awaiting_connection: Mutex<HashMap<ConnId, AwaitingConnectionDetails>>,
     gateway_awaiting_connection: Mutex<HashMap<GatewayId, Vec<IpNetwork>>>,
     resources_gateways: Mutex<HashMap<ResourceId, GatewayId>>,
@@ -260,6 +270,7 @@ where
         let gateway_awaiting_connection = Default::default();
         let iface_config = Default::default();
         let device_io = Default::default();
+        let ice_candidate_queue = Default::default();
 
         // ICE
         let mut media_engine = MediaEngine::default();
@@ -294,6 +305,7 @@ where
             gateway_awaiting_connection,
             control_signaler,
             resources_gateways,
+            ice_candidate_queue,
             callbacks: CallbackErrorFacade(callbacks),
         })
     }

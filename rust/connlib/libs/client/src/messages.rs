@@ -7,6 +7,7 @@ use libs_common::messages::{
     GatewayId, Interface, Key, Relay, RequestConnection, ResourceDescription, ResourceId,
     ReuseConnection,
 };
+use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct InitClient {
@@ -58,6 +59,26 @@ pub enum IngressMessages {
     ResourceAdded(ResourceDescription),
     ResourceRemoved(RemoveResource),
     ResourceUpdated(ResourceDescription),
+
+    IceCandidates(GatewayIceCandidates),
+}
+
+/// A gateway's ice candidate message.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct BroadcastGatewayIceCandidates {
+    /// Gateway's id the ice candidates are meant for
+    pub gateway_ids: Vec<GatewayId>,
+    /// Actual RTC ice candidates
+    pub candidates: Vec<RTCIceCandidateInit>,
+}
+
+/// A gateway's ice candidate message.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct GatewayIceCandidates {
+    /// Gateway's id the ice candidates are from
+    pub gateway_id: GatewayId,
+    /// Actual RTC ice candidates
+    pub candidates: Vec<RTCIceCandidateInit>,
 }
 
 /// The replies that can arrive from the channel by a client
@@ -81,6 +102,8 @@ pub enum Messages {
     ResourceAdded(ResourceDescription),
     ResourceRemoved(RemoveResource),
     ResourceUpdated(ResourceDescription),
+
+    IceCandidates(GatewayIceCandidates),
 }
 
 impl From<IngressMessages> for Messages {
@@ -90,6 +113,7 @@ impl From<IngressMessages> for Messages {
             IngressMessages::ResourceAdded(m) => Self::ResourceAdded(m),
             IngressMessages::ResourceRemoved(m) => Self::ResourceRemoved(m),
             IngressMessages::ResourceUpdated(m) => Self::ResourceUpdated(m),
+            IngressMessages::IceCandidates(m) => Self::IceCandidates(m),
         }
     }
 }
@@ -116,6 +140,7 @@ pub enum EgressMessages {
     },
     RequestConnection(RequestConnection),
     ReuseConnection(ReuseConnection),
+    BroadcastIceCandidates(BroadcastGatewayIceCandidates),
 }
 
 #[cfg(test)]
