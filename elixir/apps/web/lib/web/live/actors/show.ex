@@ -12,8 +12,7 @@ defmodule Web.Actors.Show do
                groups: [:provider]
              ]
            ) do
-      {:ok, assign(socket, actor: actor),
-       temporary_assigns: [section: :actors, page_title: actor.name]}
+      {:ok, assign(socket, actor: actor), temporary_assigns: [page_title: actor.name]}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end

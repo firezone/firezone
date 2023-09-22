@@ -13,7 +13,6 @@ defmodule Web.Actors.Edit do
 
       {:ok, socket,
        temporary_assigns: [
-         section: :actors,
          actor: actor,
          groups: groups,
          form: to_form(changeset),

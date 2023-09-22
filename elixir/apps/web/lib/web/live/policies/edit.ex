@@ -7,7 +7,7 @@ defmodule Web.Policies.Edit do
     with {:ok, policy} <- Policies.fetch_policy_by_id(id, socket.assigns.subject) do
       form = to_form(Policies.Policy.Changeset.update(policy, %{}))
       socket = assign(socket, policy: policy, form: form)
-      {:ok, socket, temporary_assigns: [section: :policies, form: %Phoenix.HTML.Form{}]}
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end

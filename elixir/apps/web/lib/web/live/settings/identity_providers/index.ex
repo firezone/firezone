@@ -14,7 +14,6 @@ defmodule Web.Settings.IdentityProviders.Index do
            Actors.fetch_groups_count_grouped_by_provider_id(subject) do
       {:ok, socket,
        temporary_assigns: [
-         section: [settings: :identity_providers],
          identities_count_by_provider_id: identities_count_by_provider_id,
          groups_count_by_provider_id: groups_count_by_provider_id,
          providers: providers,
