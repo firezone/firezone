@@ -11,9 +11,9 @@ use firezone_client_connlib::{file_logger, Callbacks, Error, ResourceDescription
 use url::Url;
 
 #[derive(Clone)]
-pub struct NoOpCallbackHandler;
+pub struct HeadlessCallbackHandler;
 
-impl Callbacks for NoOpCallbackHandler {
+impl Callbacks for HeadlessCallbackHandler {
     type Error = std::convert::Infallible;
 
     fn on_set_interface_config(

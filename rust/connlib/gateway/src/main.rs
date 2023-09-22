@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use firezone_gateway_connlib::{get_device_id, Session};
-use headless_utils::{block_on_ctrl_c, setup_global_subscriber, Cli, NoOpCallbackHandler};
+use headless_utils::{block_on_ctrl_c, setup_global_subscriber, Cli, HeadlessCallbackHandler};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -9,7 +9,7 @@ fn main() -> Result<()> {
 
     let device_id = get_device_id();
     let mut session =
-        Session::connect(cli.url, cli.secret, device_id, NoOpCallbackHandler).unwrap();
+        Session::connect(cli.url, cli.secret, device_id, HeadlessCallbackHandler).unwrap();
     tracing::info!("new_session");
 
     block_on_ctrl_c();
