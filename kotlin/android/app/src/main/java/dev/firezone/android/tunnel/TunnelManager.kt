@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.util.Log
+import dev.firezone.android.core.data.PreferenceRepository
 import dev.firezone.android.tunnel.callback.TunnelListener
 import dev.firezone.android.tunnel.data.TunnelRepository
 import dev.firezone.android.tunnel.model.Tunnel
@@ -15,6 +16,7 @@ import javax.inject.Singleton
 internal class TunnelManager @Inject constructor(
     private val appContext: Context,
     private val tunnelRepository: TunnelRepository,
+    private val preferenceRepository: PreferenceRepository,
 ) {
 
     private val listeners: MutableSet<WeakReference<TunnelListener>> = mutableSetOf()
@@ -71,6 +73,8 @@ internal class TunnelManager @Inject constructor(
         val intent = Intent(appContext, TunnelService::class.java)
         intent.action = TunnelService.ACTION_DISCONNECT
         appContext.startService(intent)
+        tunnelRepository.clear()
+        preferenceRepository.clear()
     }
 
     internal companion object {

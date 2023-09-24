@@ -1,8 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:app="http://schemas.android.com/apk/res-auto"
 	xmlns:tools="http://schemas.android.com/tools"
 	android:layout_width="match_parent"
 	android:layout_height="match_parent"
+	android:padding="@dimen/spacing_medium"
 	tools:context=".features.auth.ui.AuthActivity">
+
+	<androidx.appcompat.widget.LinearLayoutCompat
+		android:id="@+id/llContainer"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:gravity="center"
+		android:orientation="horizontal"
+		app:layout_constraintEnd_toEndOf="parent"
+		app:layout_constraintStart_toStartOf="parent"
+		app:layout_constraintTop_toTopOf="parent">
+
+		<androidx.appcompat.widget.AppCompatImageView
+			android:id="@+id/ivLogo"
+			android:layout_width="@dimen/iv_logo_size"
+			android:layout_height="@dimen/iv_logo_size"
+			android:src="@drawable/ic_firezone_logo" />
+
+		<com.google.android.material.textview.MaterialTextView
+			android:id="@+id/tvHeaderTitle"
+			style="@style/AppTheme.Base.HeaderText"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:layout_marginStart="@dimen/spacing_small"
+			android:gravity="center"
+			android:text="@string/app_short_name" />
+
+	</androidx.appcompat.widget.LinearLayoutCompat>
+
+	<com.google.android.material.textview.MaterialTextView
+		android:id="@+id/tvSignStatus"
+		style="@style/AppTheme.Base.Body1"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:text="@string/launching_auth_flow"
+		app:layout_constraintStart_toStartOf="parent"
+		app:layout_constraintTop_toBottomOf="@+id/llContainer"
+		app:layout_constraintBottom_toBottomOf="parent"
+		app:layout_constraintStart_toEndOf="parent"
+		app:layout_constraintEnd_toEndOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
