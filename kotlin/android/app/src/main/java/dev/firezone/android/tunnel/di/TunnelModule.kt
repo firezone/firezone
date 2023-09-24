@@ -11,6 +11,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dev.firezone.android.core.data.PreferenceRepository
 import dev.firezone.android.tunnel.TunnelManager
 import dev.firezone.android.tunnel.data.TunnelRepository
 import dev.firezone.android.tunnel.data.TunnelRepositoryImpl
@@ -47,5 +48,6 @@ object TunnelModule {
     internal fun provideTunnelManager(
         @ApplicationContext appContext: Context,
         tunnelRepository: TunnelRepository,
-    ): TunnelManager = TunnelManager(appContext, tunnelRepository)
+        preferenceRepository: PreferenceRepository,
+    ): TunnelManager = TunnelManager(appContext, tunnelRepository, preferenceRepository)
 }

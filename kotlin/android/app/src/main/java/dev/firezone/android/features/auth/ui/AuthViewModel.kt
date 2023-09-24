@@ -31,9 +31,13 @@ internal class AuthViewModel @Inject constructor(
                 .firstOrNull() ?: throw Exception("csrfToken cannot be null")
 
             actionMutableLiveData.postValue(
-                ViewAction.LaunchAuthFlow(
-                    url = "$AUTH_URL${config.accountId}/sign_in?client_csrf_token=${csrfToken}&client_platform=android"
-                )
+                if (config.token != null) {
+                    ViewAction.NavigateToSignInFragment
+                } else {
+                    ViewAction.LaunchAuthFlow(
+                        url = "$AUTH_URL${config.accountId}/sign_in?client_csrf_token=${csrfToken}&client_platform=android"
+                    )
+                }
             )
         }
     } catch (e: Exception) {
@@ -48,7 +52,7 @@ internal class AuthViewModel @Inject constructor(
 
         data class LaunchAuthFlow(val url: String) : ViewAction()
 
-        object AuthFlowComplete : ViewAction()
+        object NavigateToSignInFragment : ViewAction()
 
         object ShowError : ViewAction()
     }

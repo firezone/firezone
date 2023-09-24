@@ -45,6 +45,10 @@ internal class PreferenceRepositoryImpl @Inject constructor(
         emit(token == value)
     }.flowOn(coroutineDispatcher)
 
+    override fun clear() {
+        sharedPreferences.edit().clear().apply()
+    }
+
     companion object {
         private const val ACCOUNT_ID_KEY = "accountId"
         private const val TOKEN_KEY = "token"

@@ -1,5 +1,6 @@
 package dev.firezone.android.features.session.ui
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -14,6 +15,7 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.core.utils.ClipboardUtils
 import dev.firezone.android.databinding.FragmentSessionBinding
 import kotlinx.coroutines.launch
@@ -55,10 +57,14 @@ internal class SessionFragment : Fragment(R.layout.fragment_session) {
     private fun setupObservers() {
         viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
             when (action) {
-                SessionViewModel.ViewAction.NavigateToSignInFragment ->
-                    findNavController().navigate(
-                        SessionFragmentDirections.navigateToSignInFragment()
-                    )
+                SessionViewModel.ViewAction.NavigateToSignInFragment -> {
+                    requireActivity().run {
+                        startActivity(
+                            Intent(this, MainActivity::class.java)
+                        )
+                        finish()
+                    }
+                }
                 SessionViewModel.ViewAction.ShowError -> showError()
             }
         }
