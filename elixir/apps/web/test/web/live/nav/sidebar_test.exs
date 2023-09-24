@@ -13,6 +13,25 @@ defmodule Web.Live.Nav.SidebarTest do
     }
   end
 
+  test "hides dropdown when path is not within dropdown children", %{
+    conn: conn,
+    account: account,
+    identity: identity
+  } do
+    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/actors")
+    assert length(Floki.find(html, "ul#dropdown-settings.hidden")) == 1
+  end
+
+  test "shows dropdown when path is within dropdown children", %{
+    conn: conn,
+    account: account,
+    identity: identity
+  } do
+    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/settings/dns")
+    assert length(Floki.find(html, "ul#dropdown-settings.hidden")) == 0
+    assert length(Floki.find(html, "ul#dropdown-settings")) == 1
+  end
+
   test "renders proper active sidebar item class for actors", %{
     account: account,
     identity: identity,

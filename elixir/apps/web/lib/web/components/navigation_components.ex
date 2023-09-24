@@ -147,10 +147,9 @@ defmodule Web.NavigationComponents do
   attr :navigate, :string, required: true
   slot :inner_block, required: true
   attr :active_path, :string, required: true
+  attr :active_class, :string, required: false, default: "dark:bg-gray-700 bg-gray-100"
 
   def sidebar_item(assigns) do
-    assigns = assign(assigns, active_class: "dark:bg-gray-700 bg-gray-100")
-
     ~H"""
     <li>
       <.link navigate={@navigate} class={~w[
@@ -174,17 +173,22 @@ defmodule Web.NavigationComponents do
 
   attr :id, :string, required: true, doc: "ID of the nav group container"
   attr :icon, :string, required: true
-  # attr :navigate, :string, required: true
+  attr :active_path, :string, required: true
+  attr :active_class, :string, required: false, default: "dark:bg-gray-700 bg-gray-100"
 
   slot :name, required: true
 
   slot :item, required: true do
     attr :navigate, :string, required: true
-    attr :active_path, :string, required: true
   end
 
   def sidebar_item_group(assigns) do
-    assigns = assign(assigns, active_class: "dark:bg-gray-700 bg-gray-100")
+    dropdown_hidden =
+      !Enum.any?(assigns.item, fn item ->
+        String.starts_with?(assigns.active_path, item.navigate)
+      end)
+
+    assigns = assign(assigns, dropdown_hidden: dropdown_hidden)
 
     ~H"""
     <li>
@@ -197,6 +201,7 @@ defmodule Web.NavigationComponents do
           hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700]}
         aria-controls={"dropdown-#{@id}"}
         data-collapse-toggle={"dropdown-#{@id}"}
+        aria-hidden={@dropdown_hidden}
       >
         <.icon name={@icon} class={~w[
           w-6 h-6 text-gray-500
@@ -210,12 +215,12 @@ defmodule Web.NavigationComponents do
           group-hover:text-gray-900
           dark:text-gray-400 dark:group-hover:text-white]} />
       </button>
-      <ul id={"dropdown-#{@id}"}>
+      <ul id={"dropdown-#{@id}"} class={if @dropdown_hidden, do: "hidden", else: ""}>
         <li :for={item <- @item}>
           <.link navigate={item.navigate} class={~w[
               flex items-center p-2 pl-11 w-full group rounded-lg
               text-base font-medium text-gray-900
-              #{if String.starts_with?(item.active_path, item.navigate), do: @active_class, else: ""}
+              #{if String.starts_with?(@active_path, item.navigate), do: @active_class, else: ""}
               transition duration-75
               hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700]}>
             <%= render_slot(item) %>
