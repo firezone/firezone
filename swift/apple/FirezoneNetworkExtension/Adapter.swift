@@ -289,7 +289,7 @@ extension Adapter {
           session: try WrappedSession.connect(
             controlPlaneURLString, token, self.getDeviceId(), logDir,
             // TODO: make logging string depend on build config #2067
-            "connlib_android=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn",
+            "connlib_apple=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn",
             self.callbackHandler),
           onStarted: { error in
             if let error = error {
