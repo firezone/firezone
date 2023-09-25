@@ -13,8 +13,8 @@ let package = Package(
   ],
   dependencies: [
     // Dependencies declare other packages that this package depends on.
-    .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "0.1.3"),
-    .package(url: "https://github.com/pointfreeco/swiftui-navigation", from: "0.5.0"),
+    .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.0.0"),
+    .package(url: "https://github.com/pointfreeco/swiftui-navigation", from: "1.0.0"),
   ],
   targets: [
     .target(
