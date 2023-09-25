@@ -18,8 +18,9 @@ concurrency:
 jobs:
   swift_build:
     strategy:
+      fail-fast: false
       matrix:
-        os:
+        runs-on:
           - macos-11
           - macos-12
           - macos-13

@@ -16,7 +16,7 @@ jobs:
   swift_build:
     strategy:
       matrix:
-        os:
+        runs-on:
           - macos-11
           - macos-12
           - macos-13
