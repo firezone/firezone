@@ -31,7 +31,7 @@ locals {
     },
     {
       name  = "OTLP_ENDPOINT",
-      value = "http://127.0.0.1:4318"
+      value = "http://localhost:4318"
     },
     {
       name  = "OTEL_RESOURCE_ATTRIBUTES"

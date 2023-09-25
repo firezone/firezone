@@ -34,7 +34,8 @@ defmodule API.Relay.Socket do
         socket =
           socket
           |> assign(:relay, relay)
-          |> assign(:opentelemetry_ctx, OpenTelemetry.Tracer.current_span_ctx())
+          |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
+          |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
         {:ok, socket}
       else

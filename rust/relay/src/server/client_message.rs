@@ -1,8 +1,6 @@
 use crate::auth::{generate_password, split_username, systemtime_from_unix, FIREZONE};
-use crate::rfc8656::{AdditionalAddressFamily, AddressFamily, RequestedAddressFamily};
 use crate::server::channel_data::ChannelData;
 use crate::server::UDP_TRANSPORT;
-use crate::stun_codec_ext::MethodExt;
 use crate::Attribute;
 use bytecodec::DecodeExt;
 use std::io;
@@ -14,6 +12,9 @@ use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress,
 };
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
+use stun_codec::rfc8656::attributes::{
+    AdditionalAddressFamily, AddressFamily, RequestedAddressFamily,
+};
 use stun_codec::{Message, MessageClass, Method, TransactionId};
 use uuid::Uuid;
 
@@ -45,7 +46,7 @@ impl Decoder {
                         let transaction_id = broken_message.transaction_id();
                         let error = broken_message.error().clone();
 
-                        tracing::debug!(transaction_id = %hex::encode(transaction_id.as_bytes()), method = %method.as_str(), %error, "Failed to decode attributes of message");
+                        tracing::debug!(transaction_id = %hex::encode(transaction_id.as_bytes()), %method, %error, "Failed to decode attributes of message");
 
                         let error_code = ErrorCode::from(error);
 
@@ -207,10 +208,10 @@ impl Allocate {
 
         let mut message =
             Message::<Attribute>::new(MessageClass::Request, ALLOCATE, transaction_id);
-        message.add_attribute(requested_transport.clone().into());
+        message.add_attribute(requested_transport.clone());
 
         if let Some(lifetime) = &lifetime {
-            message.add_attribute(lifetime.clone().into());
+            message.add_attribute(lifetime.clone());
         }
 
         Self {
@@ -238,16 +239,16 @@ impl Allocate {
 
         let mut message =
             Message::<Attribute>::new(MessageClass::Request, ALLOCATE, transaction_id);
-        message.add_attribute(requested_transport.clone().into());
-        message.add_attribute(username.clone().into());
-        message.add_attribute(nonce.clone().into());
+        message.add_attribute(requested_transport.clone());
+        message.add_attribute(username.clone());
+        message.add_attribute(nonce.clone());
 
         if let Some(requested_address_family) = requested_address_family {
-            message.add_attribute(requested_address_family.into());
+            message.add_attribute(requested_address_family);
         }
 
         if let Some(lifetime) = &lifetime {
-            message.add_attribute(lifetime.clone().into());
+            message.add_attribute(lifetime.clone());
         }
 
         let (expiry, salt) = split_username(username.name()).expect("a valid username");
@@ -338,11 +339,11 @@ impl Refresh {
         let nonce = Nonce::new(nonce.as_hyphenated().to_string()).expect("len(uuid) < 128");
 
         let mut message = Message::<Attribute>::new(MessageClass::Request, REFRESH, transaction_id);
-        message.add_attribute(username.clone().into());
-        message.add_attribute(nonce.clone().into());
+        message.add_attribute(username.clone());
+        message.add_attribute(nonce.clone());
 
         if let Some(lifetime) = &lifetime {
-            message.add_attribute(lifetime.clone().into());
+            message.add_attribute(lifetime.clone());
         }
 
         let (expiry, salt) = split_username(username.name()).expect("a valid username");
@@ -422,10 +423,10 @@ impl ChannelBind {
 
         let mut message =
             Message::<Attribute>::new(MessageClass::Request, CHANNEL_BIND, transaction_id);
-        message.add_attribute(username.clone().into());
-        message.add_attribute(channel_number.into());
-        message.add_attribute(xor_peer_address.clone().into());
-        message.add_attribute(nonce.clone().into());
+        message.add_attribute(username.clone());
+        message.add_attribute(channel_number);
+        message.add_attribute(xor_peer_address.clone());
+        message.add_attribute(nonce.clone());
 
         let (expiry, salt) = split_username(username.name()).expect("a valid username");
         let expiry_systemtime = systemtime_from_unix(expiry);
@@ -559,7 +560,7 @@ fn error_response(
     error_code: ErrorCode,
 ) -> Message<Attribute> {
     let mut message = Message::new(MessageClass::ErrorResponse, method, transaction_id);
-    message.add_attribute(error_code.into());
+    message.add_attribute(error_code);
 
     message
 }

@@ -60,17 +60,22 @@ final class MainViewModel: ObservableObject {
   }
 
   func signOutButtonTapped() {
-    appStore.auth.signOut()
+    Task {
+      do {
+        try await appStore.auth.signOut()
+      } catch {
+        logger.error("Error signing out: \(String(describing: error))")
+      }
+    }
   }
 
   func startTunnel() async {
     do {
-      if case .signedIn(let authResponse) = self.loginStatus {
-        try await appStore.tunnel.start(authResponse: authResponse)
+      if case .signedIn = self.loginStatus {
+        try await appStore.tunnel.start()
       }
     } catch {
-      logger.error("Error starting tunnel: \(String(describing: error)) -- signing out")
-      appStore.auth.signOut()
+      logger.error("Error starting tunnel: \(String(describing: error))")
     }
   }
 
@@ -87,11 +92,11 @@ struct MainView: View {
       Section(header: Text("Authentication")) {
         Group {
           switch self.model.loginStatus {
-            case .signedIn(let authResponse):
+            case .signedIn(_, let actorName):
               HStack {
-                Text(authResponse.actorName == nil ? "Signed in" : "Signed in as")
+                Text(actorName.isEmpty ? "Signed in" : "Signed in as")
                 Spacer()
-                Text(authResponse.actorName ?? "")
+                Text(actorName)
                   .foregroundColor(.secondary)
               }
               HStack {
@@ -165,9 +170,7 @@ struct MainView_Previews: PreviewProvider {
     MainView(
       model: MainViewModel(
         appStore: AppStore(
-          tunnelStore: TunnelStore(
-            tunnel: NETunnelProviderManager()
-          )
+          tunnelStore: TunnelStore.shared
         )
       )
     )

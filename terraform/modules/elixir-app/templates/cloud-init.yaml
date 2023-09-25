@@ -6,14 +6,14 @@ users:
 
 write_files:
   - path: /etc/otelcol-contrib/config.yaml
-    permissions: 0644
+    permissions: "0644"
     owner: root
     content: |
       receivers:
         otlp:
           protocols:
-            grpc:
             http:
+              endpoint: localhost:4318
       exporters:
         googlecloud:
           log:
@@ -27,23 +27,28 @@ write_files:
         resourcedetection:
           detectors: [gcp]
           timeout: 10s
+        filter/drophttp:
+          error_mode: ignore
+          traces:
+            span:
+              - 'attributes["http.target"] == "/healthz"'
       service:
         pipelines:
           traces:
             receivers: [otlp]
-            processors: [memory_limiter, batch]
+            processors: [memory_limiter, filter/drophttp, batch]
             exporters: [googlecloud]
           metrics:
             receivers: [otlp]
-            processors: [memory_limiter, batch]
+            processors: [memory_limiter, filter/drophttp, batch]
             exporters: [googlecloud]
           logs:
             receivers: [otlp]
-            processors: [memory_limiter, batch]
+            processors: [memory_limiter, filter/drophttp, batch]
             exporters: [googlecloud]
 
   - path: /etc/systemd/system/otel-collector.service
-    permissions: 0644
+    permissions: "0644"
     owner: root
     content: |
       [Unit]

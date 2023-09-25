@@ -15,6 +15,9 @@
 	<string name="resources">Resources</string>
 	<string name="sign_out_activity_button_text">Sign Out</string>
 
+	<!-- Auth Activity -->
+	<string name="launching_auth_flow">Launching Auth Flow…</string>
+
 	<!-- Error Dialog -->
 	<string name="error_dialog_title">Error</string>
 	<string name="error_dialog_message">Ops, something went wrong. Please try again later.</string>
