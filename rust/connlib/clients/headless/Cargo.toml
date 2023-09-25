@@ -16,4 +16,3 @@ tracing-appender = "0.2"
 anyhow = { version = "1.0" }
 clap = { version = "4.4", features = ["derive"] }
 ctrlc  = "3.4"
-tracing-on-demand-rolling-appender = { workspace = true }

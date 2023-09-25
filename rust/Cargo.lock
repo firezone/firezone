@@ -776,7 +776,6 @@ dependencies = [
  "tracing",
  "tracing-android",
  "tracing-appender",
- "tracing-on-demand-rolling-appender",
  "tracing-subscriber",
  "url",
 ]
@@ -795,7 +794,6 @@ dependencies = [
  "swift-bridge-build",
  "tracing",
  "tracing-appender",
- "tracing-on-demand-rolling-appender",
  "tracing-oslog",
  "tracing-subscriber",
  "walkdir",
@@ -1240,7 +1238,6 @@ dependencies = [
  "tracing",
  "tracing-android",
  "tracing-appender",
- "tracing-on-demand-rolling-appender",
  "tracing-stackdriver",
  "tracing-subscriber",
  "url",
@@ -1518,7 +1515,6 @@ dependencies = [
  "ip_network",
  "tracing",
  "tracing-appender",
- "tracing-on-demand-rolling-appender",
  "tracing-subscriber",
  "url",
 ]
@@ -3784,10 +3780,6 @@ dependencies = [
  "log",
  "tracing-core",
 ]
-
-[[package]]
-name = "tracing-on-demand-rolling-appender"
-version = "0.1.0"
 
 [[package]]
 name = "tracing-opentelemetry"

@@ -18,7 +18,7 @@ use url::Url;
 
 #[derive(Clone)]
 pub struct CallbackHandler {
-    handle: tracing_on_demand_rolling_appender::Handle,
+    handle: file_logger::Handle,
 }
 
 impl Callbacks for CallbackHandler {
@@ -85,7 +85,7 @@ fn block_on_ctrl_c() {
     rx.recv().expect("Could not receive ctrl-c signal");
 }
 
-fn init_logging(log_dir: &Path) -> (WorkerGuard, tracing_on_demand_rolling_appender::Handle) {
+fn init_logging(log_dir: &Path) -> (WorkerGuard, file_logger::Handle) {
     let (file_layer, guard, handle) = file_logger::layer(log_dir);
 
     // Calling init twice causes a panic; instead use try_init which will fail

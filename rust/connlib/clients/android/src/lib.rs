@@ -25,11 +25,10 @@ use url::Url;
 pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
-    handle: tracing_on_demand_rolling_appender::Handle,
+    handle: file_logger::Handle,
 }
 
-static LOGGING_GUARD: OnceLock<(WorkerGuard, tracing_on_demand_rolling_appender::Handle)> =
-    OnceLock::new();
+static LOGGING_GUARD: OnceLock<(WorkerGuard, file_logger::Handle)> = OnceLock::new();
 
 impl Clone for CallbackHandler {
     fn clone(&self) -> Self {
@@ -88,7 +87,7 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: &Path) -> tracing_on_demand_rolling_appender::Handle {
+fn init_logging(log_dir: &Path) -> file_logger::Handle {
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to

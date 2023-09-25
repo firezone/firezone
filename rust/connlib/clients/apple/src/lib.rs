@@ -79,7 +79,7 @@ unsafe impl Sync for ffi::CallbackHandler {}
 // recount. Instead, we just wrap it in an `Arc`.
 pub struct CallbackHandler {
     inner: Arc<ffi::CallbackHandler>,
-    handle: tracing_on_demand_rolling_appender::Handle,
+    handle: file_logger::Handle,
 }
 
 impl Callbacks for CallbackHandler {
@@ -145,7 +145,7 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf) -> (WorkerGuard, tracing_on_demand_rolling_appender::Handle) {
+fn init_logging(log_dir: PathBuf) -> (WorkerGuard, file_logger::Handle) {
     let (file_layer, guard, handle) = file_logger::layer(&log_dir);
 
     let _ = tracing_subscriber::registry()
