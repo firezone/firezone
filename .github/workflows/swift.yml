@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   swift_build:
+    runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
