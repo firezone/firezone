@@ -3219,9 +3219,9 @@ checksum = "62bb4feee49fdd9f707ef802e22365a35de4b7b299de4763d44bfea899442ff9"
 
 [[package]]
 name = "smbios-lib"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "923b9d6161c2f7e29070f0b8642a9cf9f53bffd9bcf6c12cf0e295387f2fbaaa"
+checksum = "7585696daa0d95717d4ff4dc78a5d2e4e8091d85bafe92f28397de5190d7b00d"
 dependencies = [
  "core-foundation 0.6.4",
  "core-foundation-sys 0.6.2",
