@@ -73,11 +73,10 @@ unsafe impl Send for ffi::CallbackHandler {}
 unsafe impl Sync for ffi::CallbackHandler {}
 
 #[derive(Clone)]
-#[repr(transparent)]
-// Generated Swift opaque type wrappers have a `Drop` impl that decrements the
-// refcount, but there's no way to generate a `Clone` impl that increments the
-// recount. Instead, we just wrap it in an `Arc`.
 pub struct CallbackHandler {
+    // Generated Swift opaque type wrappers have a `Drop` impl that decrements the
+    // refcount, but there's no way to generate a `Clone` impl that increments the
+    // recount. Instead, we just wrap it in an `Arc`.
     inner: Arc<ffi::CallbackHandler>,
     handle: file_logger::Handle,
 }
@@ -138,7 +137,7 @@ impl Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn upload_logs(&self, url: url::Url) {
+    fn upload_logs(&self, _: url::Url) {
         let old_file = match self.handle.roll_to_new_file() {
             Ok(Some(old_file)) => old_file,
             Ok(None) => {
@@ -178,13 +177,13 @@ impl WrappedSession {
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
         let log_dir = PathBuf::from(log_dir);
-        let (guard, handle) = init_logging(&log_dir);
+        let (guard, handle) = init_logging(log_dir);
 
         Session::connect(
             portal_url.as_str(),
             token,
             device_id,
-            Some((guard, handle)),
+            Some(guard),
             CallbackHandler {
                 inner: Arc::new(callback_handler),
                 handle,
