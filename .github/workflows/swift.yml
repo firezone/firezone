@@ -17,14 +17,17 @@ concurrency:
 
 jobs:
   swift_build:
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: ${{ matrix.runs-on.os }}
     strategy:
       fail-fast: false
       matrix:
         runs-on:
-          - macos-11
-          - macos-12
-          - macos-13
+          - os: macos-11
+            xcode-ver: '14'
+          - os: macos-12
+            xcode-ver: '14'
+          - os: macos-13
+            xcode-ver: '15'
         target:
           - sdk: macosx
             platform: macOS
@@ -55,11 +58,10 @@ jobs:
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: ${{ matrix.runs-on.xcode-ver }}
       - name: Build app
         env:
           ONLY_ACTIVE_ARCH: no
-
         working-directory: ./swift/apple
         run: |
           cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
