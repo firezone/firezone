@@ -274,9 +274,19 @@ impl Callbacks for CallbackHandler {
     }
 
     fn upload_logs(&self, _: Url) {
-        let old_file = self.handle.roll_to_new_file();
+        let old_file = match self.handle.roll_to_new_file() {
+            Ok(Some(old_file)) => old_file,
+            Ok(None) => {
+                tracing::debug!("No log file yet, nothing to upload");
+                return;
+            }
+            Err(e) => {
+                tracing::debug!("Failed to roll over to new file: {e}");
+                return;
+            }
+        };
 
-        tracing::debug!("Uploading log file {}", old_file.display());
+        tracing::debug!("Uploading log-file {}", old_file.display());
     }
 }
 

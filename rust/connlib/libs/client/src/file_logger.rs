@@ -14,8 +14,10 @@
 //! - MAC addresses
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::{fs, io};
+
+use time::OffsetDateTime;
 use tracing::{level_filters::LevelFilter, Subscriber};
 use tracing_subscriber::Layer;
 
@@ -38,7 +40,7 @@ where
     #[cfg(not(debug_assertions))]
     let level = LevelFilter::WARN;
 
-    let (appender, handle) = new_appender(log_dir.to_path_buf(), LOG_FILE_BASE_NAME.to_owned());
+    let (appender, handle) = new_appender(log_dir.to_path_buf());
 
     let (writer, guard) = tracing_appender::non_blocking(appender);
 
@@ -53,8 +55,11 @@ where
     (layer, guard, handle)
 }
 
-fn new_appender(directory: PathBuf, name: String) -> (Appender, Handle) {
-    let inner = Arc::new(Mutex::new(Inner { directory, name }));
+fn new_appender(directory: PathBuf) -> (Appender, Handle) {
+    let inner = Arc::new(Mutex::new(Inner {
+        directory,
+        current: None,
+    }));
     let appender = Appender {
         inner: inner.clone(),
     };
@@ -68,49 +73,93 @@ pub struct Handle {
     inner: Arc<Mutex<Inner>>,
 }
 
+impl Handle {
+    /// Rolls over to a new file.
+    ///
+    /// Returns the path to the now unused, previous log file.
+    /// If we don't have a log-file yet, `Ok(None)` is returned.
+    pub fn roll_to_new_file(&self) -> io::Result<Option<PathBuf>> {
+        let mut inner = try_unlock(&self.inner);
+        let new_writer = inner.create_new_writer()?;
+        let Some((_, name)) = inner.current.replace(new_writer) else {
+            return Ok(None)
+        };
+
+        Ok(Some(inner.directory.join(name)))
+    }
+}
+
 #[derive(Debug)]
 struct Appender {
     inner: Arc<Mutex<Inner>>,
 }
 
-impl Handle {
-    /// Rolls over to a new file.
-    ///
-    /// Returns the path to the now unused, previous log file.
-    pub fn roll_to_new_file(&self) -> PathBuf {
-        todo!()
-    }
-}
-
 #[derive(Debug)]
 struct Inner {
     directory: PathBuf,
-    name: String,
+    current: Option<(fs::File, String)>,
+}
+
+impl Inner {
+    fn with_current_file<R>(
+        &mut self,
+        cb: impl Fn(&mut fs::File) -> io::Result<R>,
+    ) -> io::Result<R> {
+        match self.current.as_mut() {
+            None => {
+                let (mut file, name) = self.create_new_writer()?;
+
+                let ret = cb(&mut file);
+
+                self.current = Some((file, name));
+
+                ret
+            }
+            Some((file, _)) => cb(file),
+        }
+    }
+
+    // Inspired from `tracing-appender/src/rolling.rs`.
+    fn create_new_writer(&self) -> io::Result<(fs::File, String)> {
+        let format =
+            time::format_description::parse("[year]-[month]-[day]-[hour]-[minute]-[second]")
+                .expect("static format description to be valid");
+        let date = OffsetDateTime::now_utc()
+            .format(&format)
+            .expect("static format description to be valid");
+
+        let filename = format!("{LOG_FILE_BASE_NAME}.{date}");
+
+        let path = self.directory.join(&filename);
+        let mut open_options = fs::OpenOptions::new();
+        open_options.append(true).create(true);
+
+        let new_file = open_options.open(path.as_path());
+        if new_file.is_err() {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+                let file = open_options.open(path)?;
+
+                return Ok((file, filename));
+            }
+        }
+
+        let file = new_file?;
+
+        Ok((file, filename))
+    }
 }
 
 impl io::Write for Appender {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        todo!()
+        try_unlock(&self.inner).with_current_file(|f| f.write(buf))
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        todo!()
+        try_unlock(&self.inner).with_current_file(|f| f.flush())
     }
 }
 
-// Copied from `tracing-appender/src/rolling.rs`.
-fn create_writer(directory: &str, filename: &str) -> io::Result<fs::File> {
-    let path = Path::new(directory).join(filename);
-    let mut open_options = fs::OpenOptions::new();
-    open_options.append(true).create(true);
-
-    let new_file = open_options.open(path.as_path());
-    if new_file.is_err() {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-            return open_options.open(path);
-        }
-    }
-
-    new_file
+fn try_unlock(inner: &Mutex<Inner>) -> MutexGuard<'_, Inner> {
+    inner.lock().unwrap_or_else(|e| e.into_inner())
 }
