@@ -146,6 +146,8 @@ defmodule Web.NavigationComponents do
   attr :icon, :string, required: true
   attr :navigate, :string, required: true
   slot :inner_block, required: true
+  attr :current_path, :string, required: true
+  attr :active_class, :string, required: false, default: "dark:bg-gray-700 bg-gray-100"
 
   def sidebar_item(assigns) do
     ~H"""
@@ -154,6 +156,7 @@ defmodule Web.NavigationComponents do
       flex items-center p-2
       text-base font-medium text-gray-900
       rounded-lg
+      #{String.starts_with?(@current_path, @navigate) && @active_class}
       hover:bg-gray-100
       dark:text-white dark:hover:bg-gray-700 group]}>
         <.icon name={@icon} class={~w[
@@ -170,7 +173,8 @@ defmodule Web.NavigationComponents do
 
   attr :id, :string, required: true, doc: "ID of the nav group container"
   attr :icon, :string, required: true
-  # attr :navigate, :string, required: true
+  attr :current_path, :string, required: true
+  attr :active_class, :string, required: false, default: "dark:bg-gray-700 bg-gray-100"
 
   slot :name, required: true
 
@@ -179,6 +183,13 @@ defmodule Web.NavigationComponents do
   end
 
   def sidebar_item_group(assigns) do
+    dropdown_hidden =
+      !Enum.any?(assigns.item, fn item ->
+        String.starts_with?(assigns.current_path, item.navigate)
+      end)
+
+    assigns = assign(assigns, dropdown_hidden: dropdown_hidden)
+
     ~H"""
     <li>
       <button
@@ -190,6 +201,7 @@ defmodule Web.NavigationComponents do
           hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700]}
         aria-controls={"dropdown-#{@id}"}
         data-collapse-toggle={"dropdown-#{@id}"}
+        aria-hidden={@dropdown_hidden}
       >
         <.icon name={@icon} class={~w[
           w-6 h-6 text-gray-500
@@ -203,11 +215,12 @@ defmodule Web.NavigationComponents do
           group-hover:text-gray-900
           dark:text-gray-400 dark:group-hover:text-white]} />
       </button>
-      <ul id={"dropdown-#{@id}"}>
+      <ul id={"dropdown-#{@id}"} class={if @dropdown_hidden, do: "hidden", else: ""}>
         <li :for={item <- @item}>
           <.link navigate={item.navigate} class={~w[
               flex items-center p-2 pl-11 w-full group rounded-lg
               text-base font-medium text-gray-900
+              #{String.starts_with?(@current_path, item.navigate) && @active_class}
               transition duration-75
               hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700]}>
             <%= render_slot(item) %>
