@@ -19,7 +19,7 @@ defmodule Web.Live.Nav.SidebarTest do
     identity: identity
   } do
     {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/actors")
-    assert length(Floki.find(html, "ul#dropdown-settings.hidden")) == 1
+    refute Enum.empty?(Floki.find(html, "ul#dropdown-settings.hidden"))
   end
 
   test "shows dropdown when path is within dropdown children", %{
@@ -28,8 +28,8 @@ defmodule Web.Live.Nav.SidebarTest do
     identity: identity
   } do
     {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/settings/dns")
-    assert length(Floki.find(html, "ul#dropdown-settings.hidden")) == 0
-    assert length(Floki.find(html, "ul#dropdown-settings")) == 1
+    assert Enum.empty?(Floki.find(html, "ul#dropdown-settings.hidden"))
+    refute Enum.empty?(Floki.find(html, "ul#dropdown-settings"))
   end
 
   test "renders proper active sidebar item class for actors", %{
