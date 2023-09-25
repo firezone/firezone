@@ -103,10 +103,10 @@ defmodule Web.NavigationComponents do
         dark:bg-gray-800 dark:border-gray-700]} aria-label="Sidenav" id="drawer-navigation">
       <div class="overflow-y-auto py-1 px-1 h-full bg-white dark:bg-gray-800">
         <ul>
-          <%= render_slot @inner_block) %>
+          <%= render_slot(@inner_block) %>
         </ul>
       </div>
-      <%= render_slot @bottom) %>
+      <%= render_slot(@bottom) %>
     </aside>
     """
   end
@@ -127,7 +127,7 @@ defmodule Web.NavigationComponents do
       aria-expanded="false"
       data-dropdown-toggle={"#{@id}-dropdown"}
     >
-      <%= render_slot @button) %>
+      <%= render_slot(@button) %>
     </button>
     <div
       class={[
@@ -138,7 +138,7 @@ defmodule Web.NavigationComponents do
       ]}
       id={"#{@id}-dropdown"}
     >
-      <%= render_slot @dropdown) %>
+      <%= render_slot(@dropdown) %>
     </div>
     """
   end
@@ -165,7 +165,7 @@ defmodule Web.NavigationComponents do
         transition duration-75
         group-hover:text-gray-900
         dark:text-gray-400 dark:group-hover:text-white]} />
-        <span class="ml-3"><%= render_slot @inner_block) %></span>
+        <span class="ml-3"><%= render_slot(@inner_block) %></span>
       </.link>
     </li>
     """
@@ -208,7 +208,7 @@ defmodule Web.NavigationComponents do
           transition duration-75
           group-hover:text-gray-900
           dark:text-gray-400 dark:group-hover:text-white]} />
-        <span class="flex-1 ml-3 text-left whitespace-nowrap"><%= render_slot @name) %></span>
+        <span class="flex-1 ml-3 text-left whitespace-nowrap"><%= render_slot(@name) %></span>
         <.icon name="hero-chevron-down-solid" class={~w[
           w-6 h-6 text-gray-500
           transition duration-75
@@ -223,7 +223,7 @@ defmodule Web.NavigationComponents do
               #{String.starts_with?(@current_path, item.navigate) && @active_class}
               transition duration-75
               hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700]}>
-            <%= render_slot item) %>
+            <%= render_slot(item) %>
           </.link>
         </li>
       </ul>
@@ -255,7 +255,7 @@ defmodule Web.NavigationComponents do
             <.icon name="hero-home-solid" class="w-4 h-4 mr-2" /> Home
           </.link>
 
-          <%= render_slot @inner_block) %>
+          <%= render_slot(@inner_block) %>
         </li>
       </ol>
     </nav>
@@ -277,7 +277,7 @@ defmodule Web.NavigationComponents do
           navigate={@path}
           class="ml-1 text-sm font-medium text-gray-700 hover:text-gray-900 md:ml-2 dark:text-gray-300 dark:hover:text-white"
         >
-          <%= render_slot @inner_block) %>
+          <%= render_slot(@inner_block) %>
         </.link>
       </div>
     </li>
@@ -302,7 +302,7 @@ defmodule Web.NavigationComponents do
         class="text-sm font-semibold leading-6 text-zinc-900 hover:text-zinc-700"
       >
         <.icon name="hero-arrow-left-solid" class="h-3 w-3" />
-        <%= render_slot @inner_block) %>
+        <%= render_slot(@inner_block) %>
       </.link>
     </div>
     """
