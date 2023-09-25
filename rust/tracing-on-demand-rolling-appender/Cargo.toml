@@ -1,0 +1,4 @@
+[package]
+name = "tracing-on-demand-rolling-appender"
+version = "0.1.0"
+edition = "2021"

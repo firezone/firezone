@@ -776,6 +776,7 @@ dependencies = [
  "tracing",
  "tracing-android",
  "tracing-appender",
+ "tracing-on-demand-rolling-appender",
  "tracing-subscriber",
  "url",
 ]

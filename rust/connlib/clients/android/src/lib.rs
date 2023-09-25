@@ -25,10 +25,11 @@ use url::Url;
 pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
-    log_dir: PathBuf,
+    handle: tracing_on_demand_rolling_appender::Handle,
 }
 
-static LOGGING_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
+static LOGGING_GUARD: OnceLock<(WorkerGuard, tracing_on_demand_rolling_appender::Handle)> =
+    OnceLock::new();
 
 impl Clone for CallbackHandler {
     fn clone(&self) -> Self {
@@ -40,7 +41,7 @@ impl Clone for CallbackHandler {
         Self {
             vm: unsafe { std::ptr::read(&self.vm) },
             callback_handler: self.callback_handler.clone(),
-            log_dir: self.log_dir.clone(),
+            handle: self.handle.clone(),
         }
     }
 }
@@ -87,7 +88,7 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: &Path) {
+fn init_logging(log_dir: &Path) -> tracing_on_demand_rolling_appender::Handle {
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to
@@ -96,20 +97,22 @@ fn init_logging(log_dir: &Path) {
     //
     // So we use a static variable to track whether the guard has been initialized and avoid
     // re-initialized it if so.
-    if LOGGING_GUARD.get().is_some() {
-        return;
+    if let Some((_, handle)) = LOGGING_GUARD.get() {
+        return handle.clone();
     }
 
-    let (file_layer, guard, _) = file_logger::layer(log_dir);
+    let (file_layer, guard, handle) = file_logger::layer(log_dir);
 
     LOGGING_GUARD
-        .set(guard)
+        .set((guard, handle.clone()))
         .expect("Logging guard should never be initialized twice");
 
     let _ = tracing_subscriber::registry()
         .with(file_layer)
         .with(tracing_android::layer("connlib").unwrap())
         .try_init();
+
+    handle
 }
 
 impl Callbacks for CallbackHandler {
@@ -272,7 +275,9 @@ impl Callbacks for CallbackHandler {
     }
 
     fn upload_logs(&self, _: Url) {
-        tracing::debug!("Uploading logs found in {}", self.log_dir.display());
+        let old_file = self.handle.roll_to_new_file();
+
+        tracing::debug!("Uploading log file {}", old_file.display());
     }
 }
 
@@ -346,12 +351,12 @@ fn connect(
             source,
         },
     )?));
-    init_logging(&log_dir);
+    let handle = init_logging(&log_dir);
 
     let callback_handler = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
-        log_dir,
+        handle,
     };
 
     Session::connect(
