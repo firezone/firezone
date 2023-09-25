@@ -64,6 +64,7 @@ mod ffi {
 /// This is used by the apple client to interact with our code.
 pub struct WrappedSession {
     session: Session<CallbackHandler>,
+    _guard: WorkerGuard,
 }
 
 // SAFETY: `CallbackHandler.swift` promises to be thread-safe.
@@ -157,15 +158,17 @@ impl WrappedSession {
         log_dir: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
-        Session::connect(
+        let _guard = init_logging(log_dir.into());
+
+        let session = Session::connect(
             portal_url.as_str(),
             token,
             device_id,
-            Some(init_logging(log_dir.into())),
             CallbackHandler(callback_handler.into()),
         )
-        .map(|session| Self { session })
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+
+        Ok(Self { session, _guard })
     }
 
     fn disconnect(&mut self) {

@@ -351,7 +351,6 @@ fn connect(
         portal_url.as_str(),
         portal_token,
         device_id,
-        None,
         callback_handler,
     )
     .map_err(Into::into)

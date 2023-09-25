@@ -20,7 +20,6 @@ use crate::{
     messages::{Key, ResourceDescription},
     Error, Result,
 };
-use tracing_appender::non_blocking::WorkerGuard;
 
 pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 
@@ -56,9 +55,6 @@ pub trait ControlSession<T, CB: Callbacks> {
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session<T, U, V, R, M, CB: Callbacks> {
     runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
-    // The guard must not be dropped before the runtime is dropped, otherwise logs won't get
-    // flushed to the logfile.
-    _logging_guard: Option<WorkerGuard>,
     pub callbacks: CallbackErrorFacade<CB>,
     _phantom: PhantomData<(T, U, V, R, M)>,
 }
@@ -221,7 +217,6 @@ where
         portal_url: impl TryInto<Url>,
         token: String,
         device_id: String,
-        _logging_guard: Option<WorkerGuard>,
         callbacks: CB,
     ) -> Result<Self> {
         // TODO: We could use tokio::runtime::current() to get the current runtime
@@ -234,7 +229,6 @@ where
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         let this = Self {
             runtime_stopper: tx.clone(),
-            _logging_guard,
             callbacks,
             _phantom: PhantomData,
         };
