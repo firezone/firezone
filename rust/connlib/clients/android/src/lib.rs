@@ -347,13 +347,14 @@ fn connect(
 
     init_logging(log_dir.into());
 
-    Session::connect(
+    let session = Session::connect(
         portal_url.as_str(),
         portal_token,
         device_id,
         callback_handler,
-    )
-    .map_err(Into::into)
+    )?;
+
+    Ok(session)
 }
 
 /// # Safety
