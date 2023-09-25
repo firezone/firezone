@@ -42,4 +42,4 @@ tracing-android = "0.2"
 
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
-wintun = "0.2.1"
+wintun = "0.3.1"
