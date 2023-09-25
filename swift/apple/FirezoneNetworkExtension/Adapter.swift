@@ -88,6 +88,16 @@ public class Adapter {
   /// Starting parameters
   private var controlPlaneURLString: String
   private var token: String
+
+  // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
+  #if DEBUG
+    private let logFilterString =
+      "connlib_apple=debug,firezone_tunnel=trace,libs_common=debug,firezone_client_connlib=debug,warn"
+  #else
+    private let logFilterString =
+      "connlib_apple=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn"
+  #endif
+
   private var logDir: String {
     guard
       let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
@@ -148,10 +158,7 @@ public class Adapter {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
             self.controlPlaneURLString, self.token, self.getDeviceId(), self.logDir,
-            // TODO: make logging string depend on build config #2067
-            // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
-            "connlib_apple=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn",
-            self.callbackHandler),
+            self.logFilterString, self.callbackHandler),
           onStarted: completionHandler
         )
       } catch let error {
@@ -287,9 +294,7 @@ extension Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            controlPlaneURLString, token, self.getDeviceId(), logDir,
-            // TODO: make logging string depend on build config #2067
-            "connlib_apple=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn",
+            controlPlaneURLString, token, self.getDeviceId(), logDir, logFilterString,
             self.callbackHandler),
           onStarted: { error in
             if let error = error {
