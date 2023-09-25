@@ -338,7 +338,7 @@ defmodule Web.Documentation.Generator do
   defp b_req_body(params) when params == %{}, do: ""
 
   defp b_req_body(params) do
-    i(1, "--data-binary @- << EOF\n#{Jason.encode!(params, pretty: true)}'\nEOF")
+    i(1, "--data-binary @- << EOF\n#{Jason.encode!(params, pretty: true)}\nEOF")
   end
 
   defp b_resp_headers(conn) do
