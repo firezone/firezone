@@ -16,6 +16,10 @@ jobs:
   swift_build:
     strategy:
       matrix:
+        os:
+          - macos-11
+          - macos-12
+          - macos-13
         target:
           - sdk: macosx
             platform: macOS
@@ -23,9 +27,5 @@ jobs:
           - sdk: iphoneos
             platform: iOS
             destination: generic/platform=iOS
-    runs-on:
-      - macos-11
-      - macos-12
-      - macos-13
     steps:
       - run: 'echo "No build required"'
