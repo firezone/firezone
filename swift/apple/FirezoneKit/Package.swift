@@ -21,7 +21,7 @@ let package = Package(
       name: "FirezoneKit",
       dependencies: [
         .product(name: "SwiftUINavigation", package: "swiftui-navigation"),
-        .product(name: "_SwiftUINavigationState", package: "swiftui-navigation"),
+        .product(name: "SwiftUINavigationCore", package: "swiftui-navigation"),
         .product(name: "Dependencies", package: "swift-dependencies"),
       ]
     ),
