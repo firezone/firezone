@@ -6,6 +6,15 @@ defmodule API.Client.Channel do
   require Logger
   require OpenTelemetry.Tracer
 
+  def broadcast(%Clients.Client{} = client, payload) do
+    broadcast(client.id, payload)
+  end
+
+  def broadcast(client_id, payload) do
+    Logger.debug("Client message is being dispatched", client_id: client_id)
+    Phoenix.PubSub.broadcast(Domain.PubSub, "client:#{client_id}", payload)
+  end
+
   @impl true
   def join("client", _payload, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
@@ -41,7 +50,7 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "after_join" do
-      API.Endpoint.subscribe("client:#{socket.assigns.client.id}")
+      :ok = API.Endpoint.subscribe("client:#{socket.assigns.client.id}")
       :ok = Clients.connect_client(socket.assigns.client)
 
       {:ok, resources} = Domain.Resources.list_resources(socket.assigns.subject)
@@ -63,6 +72,23 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.with_span "token_expired" do
       push(socket, "token_expired", %{})
       {:stop, :token_expired, socket}
+    end
+  end
+
+  def handle_info(
+        {:ice_candidates, gateway_id, candidates, {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "ice_candidates" do
+      push(socket, "ice_candidates", %{
+        gateway_id: gateway_id,
+        candidates: candidates
+      })
+
+      {:noreply, socket}
     end
   end
 
@@ -269,6 +295,31 @@ defmodule API.Client.Channel do
           OpenTelemetry.Tracer.set_status(:error, "offline")
           {:reply, {:error, :offline}, socket}
       end
+    end
+  end
+
+  def handle_in(
+        "broadcast_ice_candidates",
+        %{"candidates" => candidates, "gateway_ids" => gateway_ids},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "broadcast_ice_candidates" do
+      opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
+      opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
+
+      :ok =
+        Enum.each(gateway_ids, fn gateway_id ->
+          API.Gateway.Channel.broadcast(
+            gateway_id,
+            {:ice_candidates, socket.assigns.client.id, candidates,
+             {opentelemetry_ctx, opentelemetry_span_ctx}}
+          )
+        end)
+
+      {:noreply, socket}
     end
   end
 end

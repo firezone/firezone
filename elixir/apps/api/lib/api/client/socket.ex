@@ -51,5 +51,6 @@ defmodule API.Client.Socket do
   end
 
   @impl true
-  def id(socket), do: "client:#{socket.assigns.client.id}"
+  def id(%Clients.Client{} = client), do: "client:#{client.id}"
+  def id(socket), do: id(socket.assigns.client)
 end
