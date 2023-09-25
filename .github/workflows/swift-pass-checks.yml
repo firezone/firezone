@@ -24,7 +24,8 @@ jobs:
             platform: iOS
             destination: generic/platform=iOS
     runs-on:
-      - macos-latest
+      - macos-11
+      - macos-12
       - macos-13
     steps:
       - run: 'echo "No build required"'
