@@ -169,7 +169,7 @@ impl WrappedSession {
         )
         .map_err(|err| err.to_string())?;
 
-        Self { session, _guard }
+        Ok(Self { session, _guard })
     }
 
     fn disconnect(&mut self) {
