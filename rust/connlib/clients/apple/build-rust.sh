@@ -29,12 +29,12 @@ export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
 # Borrowed from https://github.com/signalapp/libsignal/commit/02899cac643a14b2ced7c058cc15a836a2165b6d
 # Thanks to @francesca64 for the fix
 # EDIT: It appears we may not need this workaround with the new linker in Xcode 15.
-if [[ -n "${DEVELOPER_SDK_DIR:-}" ]]; then
+if [[ -n "${DEVELOPER_SDK_DIR:-}" && "$XCODE_VERSION_MAJOR" -lt "1500" ]]; then
   # Assume we're in Xcode, which means we're probably cross-compiling.
   # In this case, we need to add an extra library search path for build scripts and proc-macros,
   # which run on the host instead of the target.
   # (macOS Big Sur does not have linkable libraries in /usr/lib/.)
-  if [[ ("$PLATFORM_NAME" = "macosx" && "$XCODE_VERSION_MAJOR" -lt "1500") || "$PLATFORM_NAME" = "iphoneos" ]]; then
+  if [[ "$PLATFORM_NAME" = "macosx" || "$PLATFORM_NAME" = "iphoneos" ]]; then
     export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${LIBRARY_PATH:-}"
   elif [[ "$PLATFORM_NAME" = "iphonesimulator" ]]; then
     export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/iPhoneSimulator.sdk/usr/lib:${LIBRARY_PATH:-}"
