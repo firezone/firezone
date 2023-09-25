@@ -18,8 +18,10 @@ jobs:
     strategy:
       matrix:
         runs-on:
-          - macos-12
-          - macos-13
+          - os: macos-12
+            xcode-ver: '14'
+          - os: macos-13
+            xcode-ver: '15'
         target:
           - sdk: macosx
             platform: macOS
