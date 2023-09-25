@@ -114,6 +114,29 @@ defmodule API.Client.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :ice_candidates" do
+    test "pushes ice_candidates message", %{
+      gateway: gateway,
+      socket: socket
+    } do
+      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+
+      candidates = ["foo", "bar"]
+
+      send(
+        socket.channel_pid,
+        {:ice_candidates, gateway.id, candidates, otel_ctx}
+      )
+
+      assert_push "ice_candidates", payload
+
+      assert payload == %{
+               candidates: candidates,
+               gateway_id: gateway.id
+             }
+    end
+  end
+
   describe "handle_in/3 create_log_sink" do
     test "returns error when feature is disabled", %{socket: socket} do
       Domain.Config.put_env_override(Domain.Instrumentation, client_logs_enabled: false)
@@ -442,6 +465,43 @@ defmodule API.Client.ChannelTest do
         gateway_public_key: ^public_key,
         gateway_rtc_session_description: "FULL_RTC_SD"
       }
+    end
+  end
+
+  describe "handle_in/3 broadcast_ice_candidates" do
+    test "does nothing when gateways list is empty", %{
+      socket: socket
+    } do
+      candidates = ["foo", "bar"]
+
+      attrs = %{
+        "candidates" => candidates,
+        "gateway_ids" => []
+      }
+
+      push(socket, "broadcast_ice_candidates", attrs)
+      refute_receive {:ice_candidates, _client_id, _candidates, _opentelemetry_ctx}
+    end
+
+    test "broadcasts :ice_candidates message to all gateways", %{
+      client: client,
+      gateway: gateway,
+      socket: socket
+    } do
+      candidates = ["foo", "bar"]
+
+      attrs = %{
+        "candidates" => candidates,
+        "gateway_ids" => [gateway.id]
+      }
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+      Phoenix.PubSub.subscribe(Domain.PubSub, API.Gateway.Socket.id(gateway))
+
+      push(socket, "broadcast_ice_candidates", attrs)
+
+      assert_receive {:ice_candidates, client_id, ^candidates, _opentelemetry_ctx}, 200
+      assert client.id == client_id
     end
   end
 end
