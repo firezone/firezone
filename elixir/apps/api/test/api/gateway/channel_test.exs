@@ -107,6 +107,29 @@ defmodule API.Gateway.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :ice_candidates" do
+    test "pushes ice_candidates message", %{
+      client: client,
+      socket: socket
+    } do
+      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+
+      candidates = ["foo", "bar"]
+
+      send(
+        socket.channel_pid,
+        {:ice_candidates, client.id, candidates, otel_ctx}
+      )
+
+      assert_push "ice_candidates", payload
+
+      assert payload == %{
+               candidates: candidates,
+               client_id: client.id
+             }
+    end
+  end
+
   describe "handle_info/2 :request_connection" do
     test "pushes request_connection message", %{
       client: client,
@@ -255,6 +278,43 @@ defmodule API.Gateway.ChannelTest do
                       ^rtc_session_description, _opentelemetry_ctx}
 
       assert resource_id == resource.id
+    end
+  end
+
+  describe "handle_in/3 broadcast_ice_candidates" do
+    test "does nothing when gateways list is empty", %{
+      socket: socket
+    } do
+      candidates = ["foo", "bar"]
+
+      attrs = %{
+        "candidates" => candidates,
+        "client_ids" => []
+      }
+
+      push(socket, "broadcast_ice_candidates", attrs)
+      refute_receive {:ice_candidates, _client_id, _candidates, _opentelemetry_ctx}
+    end
+
+    test "broadcasts :ice_candidates message to all gateways", %{
+      client: client,
+      gateway: gateway,
+      socket: socket
+    } do
+      candidates = ["foo", "bar"]
+
+      attrs = %{
+        "candidates" => candidates,
+        "client_ids" => [client.id]
+      }
+
+      :ok = Domain.Clients.connect_client(client)
+      Phoenix.PubSub.subscribe(Domain.PubSub, API.Client.Socket.id(client))
+
+      push(socket, "broadcast_ice_candidates", attrs)
+
+      assert_receive {:ice_candidates, gateway_id, ^candidates, _opentelemetry_ctx}, 200
+      assert gateway.id == gateway_id
     end
   end
 end

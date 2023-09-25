@@ -6,8 +6,12 @@ defmodule API.Gateway.Channel do
   require OpenTelemetry.Tracer
 
   def broadcast(%Gateways.Gateway{} = gateway, payload) do
-    Logger.debug("Gateway message is being dispatched", gateway_id: gateway.id)
-    Phoenix.PubSub.broadcast(Domain.PubSub, "gateway:#{gateway.id}", payload)
+    broadcast(gateway.id, payload)
+  end
+
+  def broadcast(gateway_id, payload) do
+    Logger.debug("Gateway message is being dispatched", gateway_id: gateway_id)
+    Phoenix.PubSub.broadcast(Domain.PubSub, "gateway:#{gateway_id}", payload)
   end
 
   @impl true
@@ -45,6 +49,23 @@ defmodule API.Gateway.Channel do
         # TODO: move to settings
         ipv4_masquerade_enabled: true,
         ipv6_masquerade_enabled: true
+      })
+
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(
+        {:ice_candidates, client_id, candidates, {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "ice_candidates" do
+      push(socket, "ice_candidates", %{
+        client_id: client_id,
+        candidates: candidates
       })
 
       {:noreply, socket}
@@ -167,6 +188,31 @@ defmodule API.Gateway.Channel do
       )
 
       {:reply, :ok, socket}
+    end
+  end
+
+  def handle_in(
+        "broadcast_ice_candidates",
+        %{"candidates" => candidates, "client_ids" => client_ids},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "broadcast_ice_candidates" do
+      opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
+      opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
+
+      :ok =
+        Enum.each(client_ids, fn client_id ->
+          API.Client.Channel.broadcast(
+            client_id,
+            {:ice_candidates, socket.assigns.gateway.id, candidates,
+             {opentelemetry_ctx, opentelemetry_span_ctx}}
+          )
+        end)
+
+      {:noreply, socket}
     end
   end
 
