@@ -28,8 +28,6 @@ pub struct CallbackHandler {
     handle: file_logger::Handle,
 }
 
-static LOGGING_GUARD: OnceLock<(WorkerGuard, file_logger::Handle)> = OnceLock::new();
-
 impl Clone for CallbackHandler {
     fn clone(&self) -> Self {
         // This is essentially a `memcpy` to bypass redundant checks from
@@ -88,6 +86,7 @@ fn call_method(
 }
 
 fn init_logging(log_dir: &Path) -> file_logger::Handle {
+    static LOGGING_GUARD: OnceLock<(WorkerGuard, file_logger::Handle)> = OnceLock::new();
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to
