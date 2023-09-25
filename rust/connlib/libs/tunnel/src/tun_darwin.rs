@@ -12,6 +12,7 @@ use std::{
     os::fd::{AsRawFd, RawFd},
     sync::Arc,
 };
+use tokio::io::unix::AsyncFd;
 
 use super::InterfaceConfig;
 
@@ -19,16 +20,18 @@ const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 const SIOCGIFMTU: u64 = 0x0000_0000_c020_6933;
 
 #[derive(Debug)]
-pub(crate) struct IfaceConfig(pub(crate) Arc<IfaceDevice>);
+pub(crate) struct IfaceDevice {
+    name: String,
+}
 
 #[derive(Debug)]
-pub(crate) struct IfaceDevice {
+pub(crate) struct IfaceStream {
     fd: RawFd,
 }
 
 mod wrapped_socket;
 
-impl AsRawFd for IfaceDevice {
+impl AsRawFd for IfaceStream {
     fn as_raw_fd(&self) -> RawFd {
         self.fd
     }
@@ -61,8 +64,47 @@ union IfrIfru {
     ifru_functional_type: u32,
 }
 
-impl IfaceDevice {
-    fn write(&self, src: &[u8], af: u8) -> usize {
+impl IfaceStream {
+    pub fn write4(&self, src: &[u8]) -> std::io::Result<usize> {
+        self.write(src, AF_INET as u8)
+    }
+
+    pub fn write6(&self, src: &[u8]) -> std::io::Result<usize> {
+        self.write(src, AF_INET6 as u8)
+    }
+
+    pub fn read(&self, dst: &mut [u8]) -> std::io::Result<usize> {
+        let mut hdr = [0u8; 4];
+
+        let mut iov = [
+            iovec {
+                iov_base: hdr.as_mut_ptr() as _,
+                iov_len: hdr.len(),
+            },
+            iovec {
+                iov_base: dst.as_mut_ptr() as _,
+                iov_len: dst.len(),
+            },
+        ];
+
+        let mut msg_hdr = msghdr {
+            msg_name: std::ptr::null_mut(),
+            msg_namelen: 0,
+            msg_iov: &mut iov[0],
+            msg_iovlen: iov.len() as _,
+            msg_control: std::ptr::null_mut(),
+            msg_controllen: 0,
+            msg_flags: 0,
+        };
+
+        match unsafe { recvmsg(self.fd, &mut msg_hdr, 0) } {
+            -1 => Err(io::Error::last_os_error()),
+            0..=4 => Ok(0),
+            n => Ok((n - 4) as usize),
+        }
+    }
+
+    fn write(&self, src: &[u8], af: u8) -> std::io::Result<usize> {
         let mut hdr = [0, 0, 0, af];
         let mut iov = [
             iovec {
@@ -86,15 +128,17 @@ impl IfaceDevice {
         };
 
         match unsafe { sendmsg(self.fd, &msg_hdr, 0) } {
-            -1 => 0,
-            n => n as usize,
+            -1 => Err(io::Error::last_os_error()),
+            n => Ok(n as usize),
         }
     }
+}
 
+impl IfaceDevice {
     pub async fn new(
         config: &InterfaceConfig,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<Self> {
+    ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
         let mut info = ctl_info {
             ctl_id: 0,
             ctl_name: [0; 96],
@@ -157,45 +201,17 @@ impl IfaceDevice {
                     DNS_SENTINEL,
                     "system_resolver".to_string(),
                 );
-                tracing::debug!("Found tun device file descriptor {}", fd);
-                let this = Self { fd };
-                let _ = this.set_non_blocking();
-                return Ok(this);
+
+                set_non_blocking(fd)?;
+
+                return Ok((
+                    Self { name: name(fd)? },
+                    Arc::new(AsyncFd::new(IfaceStream { fd })?),
+                ));
             }
         }
 
-        tracing::debug!("Error: No tun device file descriptor found!");
         Err(get_last_error())
-    }
-
-    fn set_non_blocking(&self) -> Result<()> {
-        match unsafe { fcntl(self.fd, F_GETFL) } {
-            -1 => Err(get_last_error()),
-            flags => match unsafe { fcntl(self.fd, F_SETFL, flags | O_NONBLOCK) } {
-                -1 => Err(get_last_error()),
-                _ => Ok(()),
-            },
-        }
-    }
-
-    pub fn name(&self) -> Result<String> {
-        let mut tunnel_name = [0u8; IF_NAMESIZE];
-        let mut tunnel_name_len = tunnel_name.len() as socklen_t;
-        if unsafe {
-            getsockopt(
-                self.fd,
-                SYSPROTO_CONTROL,
-                UTUN_OPT_IFNAME,
-                tunnel_name.as_mut_ptr() as _,
-                &mut tunnel_name_len,
-            )
-        } < 0
-            || tunnel_name_len == 0
-        {
-            return Err(get_last_error());
-        }
-
-        Ok(String::from_utf8_lossy(&tunnel_name[..(tunnel_name_len - 1) as usize]).to_string())
     }
 
     /// Get the current MTU value
@@ -206,8 +222,7 @@ impl IfaceDevice {
             fd => fd,
         };
 
-        let name = self.name()?;
-        let iface_name: &[u8] = name.as_ref();
+        let iface_name: &[u8] = self.name.as_ref();
         let mut ifr = ifreq {
             ifr_name: [0; IF_NAMESIZE],
             ifr_ifru: IfrIfru { ifru_mtu: 0 },
@@ -222,62 +237,49 @@ impl IfaceDevice {
         Ok(unsafe { ifr.ifr_ifru.ifru_mtu } as _)
     }
 
-    pub fn write4(&self, src: &[u8]) -> usize {
-        self.write(src, AF_INET as u8)
-    }
-
-    pub fn write6(&self, src: &[u8]) -> usize {
-        self.write(src, AF_INET6 as u8)
-    }
-
-    pub fn read<'a>(&self, dst: &'a mut [u8]) -> Result<&'a mut [u8]> {
-        let mut hdr = [0u8; 4];
-
-        let mut iov = [
-            iovec {
-                iov_base: hdr.as_mut_ptr() as _,
-                iov_len: hdr.len(),
-            },
-            iovec {
-                iov_base: dst.as_mut_ptr() as _,
-                iov_len: dst.len(),
-            },
-        ];
-
-        let mut msg_hdr = msghdr {
-            msg_name: std::ptr::null_mut(),
-            msg_namelen: 0,
-            msg_iov: &mut iov[0],
-            msg_iovlen: iov.len() as _,
-            msg_control: std::ptr::null_mut(),
-            msg_controllen: 0,
-            msg_flags: 0,
-        };
-
-        match unsafe { recvmsg(self.fd, &mut msg_hdr, 0) } {
-            -1 => Err(Error::IfaceRead(io::Error::last_os_error())),
-            0..=4 => Ok(&mut dst[..0]),
-            n => Ok(&mut dst[..(n - 4) as usize]),
-        }
-    }
-}
-
-// So, these functions take a mutable &self, this is not necessary in theory but it's correct!
-impl IfaceConfig {
     pub async fn add_route(
-        &mut self,
+        &self,
         route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
         callbacks.on_add_route(route)
     }
 
-    pub async fn up(&mut self) -> Result<()> {
-        tracing::debug!("`up` unimplemented");
+    pub async fn up(&self) -> Result<()> {
         Ok(())
     }
 }
 
 fn get_last_error() -> Error {
     Error::Io(io::Error::last_os_error())
+}
+
+fn set_non_blocking(fd: RawFd) -> Result<()> {
+    match unsafe { fcntl(fd, F_GETFL) } {
+        -1 => Err(get_last_error()),
+        flags => match unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) } {
+            -1 => Err(get_last_error()),
+            _ => Ok(()),
+        },
+    }
+}
+
+fn name(fd: RawFd) -> Result<String> {
+    let mut tunnel_name = [0u8; IF_NAMESIZE];
+    let mut tunnel_name_len = tunnel_name.len() as socklen_t;
+    if unsafe {
+        getsockopt(
+            fd,
+            SYSPROTO_CONTROL,
+            UTUN_OPT_IFNAME,
+            tunnel_name.as_mut_ptr() as _,
+            &mut tunnel_name_len,
+        )
+    } < 0
+        || tunnel_name_len == 0
+    {
+        return Err(get_last_error());
+    }
+
+    Ok(String::from_utf8_lossy(&tunnel_name[..(tunnel_name_len - 1) as usize]).to_string())
 }

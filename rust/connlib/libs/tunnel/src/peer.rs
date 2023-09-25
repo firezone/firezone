@@ -7,12 +7,12 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use libs_common::{
     messages::{Id, ResourceDescription},
-    Callbacks, Result,
+    Callbacks, Error, Result,
 };
 use parking_lot::{Mutex, RwLock};
 use webrtc::data::data_channel::DataChannel;
 
-use crate::resource_table::ResourceTable;
+use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable};
 
 use super::PeerConfig;
 
@@ -49,6 +49,14 @@ pub(crate) struct PeerStats {
     pub translated_resource_addresses: HashMap<IpAddr, Id>,
 }
 
+#[derive(Debug)]
+pub(crate) struct EncapsulatedPacket<'a> {
+    pub index: u32,
+    pub conn_id: Id,
+    pub channel: Arc<DataChannel>,
+    pub encapsulate_result: TunnResult<'a>,
+}
+
 impl Peer {
     pub(crate) fn stats(&self) -> PeerStats {
         let (network_resources, dns_resources) = self.resources.as_ref().map_or_else(
@@ -69,8 +77,10 @@ impl Peer {
             translated_resource_addresses,
         }
     }
-    pub(crate) async fn send_infallible<CB: Callbacks>(&self, data: &[u8], callbacks: &CB) {
-        if let Err(e) = self.channel.write(&Bytes::copy_from_slice(data)).await {
+
+    #[inline(always)]
+    pub(crate) async fn send_infallible<CB: Callbacks>(&self, data: Bytes, callbacks: &CB) {
+        if let Err(e) = self.channel.write(&Bytes::copy_from_slice(&data)).await {
             tracing::error!("Couldn't send packet to connected peer: {e}");
             let _ = callbacks.on_error(&e.into());
         }
@@ -180,5 +190,54 @@ impl Peer {
 
     pub(crate) fn update_translated_resource_address(&self, id: Id, addr: IpAddr) {
         self.translated_resource_addresses.write().insert(addr, id);
+    }
+
+    pub(crate) fn encapsulate<'a>(
+        &self,
+        src: &'a mut [u8],
+        dst: &'a mut [u8],
+    ) -> Result<EncapsulatedPacket<'a>> {
+        let Some(mut packet) = MutableIpPacket::new(src) else {
+            debug_assert!(false, "Got non-ip packet from the tunnel interface");
+            tracing::error!("Developer error: we should never see a packet through the tunnel wire that isn't ip");
+            return Err(Error::BadPacket);
+        };
+        if let Some(resource) = self.get_translation(packet.to_immutable().source()) {
+            let ResourceDescription::Dns(resource) = resource else {
+                tracing::error!(
+                    "Control protocol error: only dns resources should have a resource_address"
+                );
+                return Err(Error::ControlProtocolError);
+            };
+
+            match &mut packet {
+                MutableIpPacket::MutableIpv4Packet(ref mut p) => p.set_source(resource.ipv4),
+                MutableIpPacket::MutableIpv6Packet(ref mut p) => p.set_source(resource.ipv6),
+            }
+
+            packet.update_checksum();
+        }
+        Ok(EncapsulatedPacket {
+            index: self.index,
+            conn_id: self.conn_id,
+            channel: self.channel.clone(),
+            encapsulate_result: self.tunnel.lock().encapsulate(src, dst),
+        })
+    }
+
+    pub(crate) fn get_packet_resource(
+        &self,
+        packet: &mut [u8],
+    ) -> Option<(IpAddr, ResourceDescription)> {
+        let resources = self.resources.as_ref()?;
+
+        let dst = Tunn::dst_address(packet)?;
+
+        let Some(resource) = resources.read().get_by_ip(dst).map(|r| r.0.clone()) else {
+            tracing::warn!("client tried to hijack the tunnel for resource itsn't allowed.");
+            return None;
+        };
+
+        Some((dst, resource))
     }
 }
