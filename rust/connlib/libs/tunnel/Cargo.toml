@@ -11,7 +11,7 @@ rand_core = { version = "0.6", default-features = false, features = ["getrandom"
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
-tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
+tracing = { workspace = true }
 parking_lot = { version = "0.12", default-features = false }
 bytes = { version = "1.4", default-features = false, features = ["std"] }
 itertools = { version = "0.11", default-features = false, features = ["use_std"] }

@@ -148,6 +148,9 @@ public class Adapter {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
             self.controlPlaneURLString, self.token, self.getDeviceId(), self.logDir,
+            // TODO: make logging string depend on build config #2067
+            // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
+            "connlib_apple=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn",
             self.callbackHandler),
           onStarted: completionHandler
         )
@@ -285,6 +288,8 @@ extension Adapter {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
             controlPlaneURLString, token, self.getDeviceId(), logDir,
+            // TODO: make logging string depend on build config #2067
+            "connlib_apple=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn",
             self.callbackHandler),
           onStarted: { error in
             if let error = error {

@@ -10,7 +10,7 @@ tokio-tungstenite = { version = "0.19.0", features = ["rustls-tls-native-roots"]
 futures = "0.3.28"
 base64 = "0.21.4"
 serde = { version = "1.0.188", features = ["derive"] }
-tracing = "0.1.37"
+tracing = { workspace = true }
 rand_core = "0.6.4"
 url = "2.4.1"
 serde_json = "1.0.107"

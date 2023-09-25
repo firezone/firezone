@@ -81,9 +81,23 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: PathBuf) {
-    static LOGGING_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
+#[cfg(target_os = "android")]
+fn android_layer<S>() -> impl tracing_subscriber::Layer<S>
+where
+    S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
+{
+    tracing_android::layer("connlib").unwrap()
+}
 
+#[cfg(not(target_os = "android"))]
+fn android_layer<S>() -> impl tracing_subscriber::Layer<S>
+where
+    S: tracing::Subscriber,
+{
+    tracing_subscriber::layer::Identity::new()
+}
+
+fn init_logging(log_dir: PathBuf, log_filter: String) {
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to
@@ -92,11 +106,12 @@ fn init_logging(log_dir: PathBuf) {
     //
     // So we use a static variable to track whether the guard has been initialized and avoid
     // re-initialized it if so.
+    static LOGGING_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
     if LOGGING_GUARD.get().is_some() {
         return;
     }
 
-    let (file_layer, guard) = file_logger::layer(log_dir);
+    let (file_layer, guard) = file_logger::layer(log_dir, log_filter);
 
     LOGGING_GUARD
         .set(guard)
@@ -104,7 +119,7 @@ fn init_logging(log_dir: PathBuf) {
 
     let _ = tracing_subscriber::registry()
         .with(file_layer)
-        .with(tracing_android::layer("connlib").unwrap())
+        .with(android_layer())
         .try_init();
 }
 
@@ -304,48 +319,39 @@ enum ConnectError {
     ConnectFailed(#[from] Error),
 }
 
+macro_rules! string_from_jstring {
+    ($env:expr, $j:ident) => {
+        String::from(
+            ($env)
+                .get_string(&($j))
+                .map_err(|source| ConnectError::StringInvalid {
+                    name: stringify!($j),
+                    source,
+                })?,
+        )
+    };
+}
+
 fn connect(
     env: &mut JNIEnv,
     portal_url: JString,
     portal_token: JString,
     device_id: JString,
     log_dir: JString,
+    log_filter: JString,
     callback_handler: GlobalRef,
 ) -> Result<Session<CallbackHandler>, ConnectError> {
-    let portal_url = String::from(env.get_string(&portal_url).map_err(|source| {
-        ConnectError::StringInvalid {
-            name: "portal_url",
-            source,
-        }
-    })?);
-    let portal_token = String::from(env.get_string(&portal_token).map_err(|source| {
-        ConnectError::StringInvalid {
-            name: "portal_token",
-            source,
-        }
-    })?);
-    let device_id =
-        String::from(
-            env.get_string(&device_id)
-                .map_err(|source| ConnectError::StringInvalid {
-                    name: "device_id",
-                    source,
-                })?,
-        );
-    let log_dir =
-        String::from(
-            env.get_string(&log_dir)
-                .map_err(|source| ConnectError::StringInvalid {
-                    name: "log_dir",
-                    source,
-                })?,
-        );
+    let portal_url = string_from_jstring!(env, portal_url);
+    let portal_token = string_from_jstring!(env, portal_token);
+    let device_id = string_from_jstring!(env, device_id);
+    let log_dir = string_from_jstring!(env, log_dir);
+    let log_filter = string_from_jstring!(env, log_filter);
     let callback_handler = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
     };
 
-    init_logging(log_dir.into());
+    init_logging(log_dir.into(), log_filter.into());
 
     Session::connect(
         portal_url.as_str(),
@@ -368,6 +374,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
     portal_token: JString,
     device_id: JString,
     log_dir: JString,
+    log_filter: JString,
     callback_handler: JObject,
 ) -> *const Session<CallbackHandler> {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else {
@@ -381,6 +388,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
             portal_token,
             device_id,
             log_dir,
+            log_filter,
             callback_handler,
         )
     }) {
