@@ -13,7 +13,7 @@
 //! - Device serials
 //! - MAC addresses
 
-use std::path::PathBuf;
+use std::path::Path;
 use tracing::{level_filters::LevelFilter, Subscriber};
 use tracing_subscriber::Layer;
 
@@ -21,10 +21,11 @@ const LOG_FILE_BASE_NAME: &str = "connlib.log";
 
 /// Create a new file logger layer.
 pub fn layer<T>(
-    log_dir: &PathBuf,
+    log_dir: &Path,
 ) -> (
     Box<dyn Layer<T> + Send + Sync + 'static>,
     tracing_appender::non_blocking::WorkerGuard,
+    tracing_on_demand_rolling_appender::Handle,
 )
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
@@ -35,10 +36,12 @@ where
     #[cfg(not(debug_assertions))]
     let level = LevelFilter::WARN;
 
-    let (writer, guard) = tracing_appender::non_blocking(tracing_appender::rolling::hourly(
-        log_dir,
-        LOG_FILE_BASE_NAME,
-    ));
+    let (appender, handle) = tracing_on_demand_rolling_appender::new(
+        log_dir.to_path_buf(),
+        LOG_FILE_BASE_NAME.to_owned(),
+    );
+
+    let (writer, guard) = tracing_appender::non_blocking(appender);
 
     let layer = tracing_stackdriver::layer()
         .with_writer(writer)
@@ -48,5 +51,5 @@ where
     // Return the guard so that the caller maintains a handle to it. Otherwise,
     // we have to wait for tracing_appender to flush the logs before exiting.
     // See https://docs.rs/tracing-appender/latest/tracing_appender/non_blocking/struct.WorkerGuard.html
-    (layer, guard)
+    (layer, guard, handle)
 }

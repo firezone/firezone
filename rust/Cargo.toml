@@ -10,6 +10,7 @@ members = [
   "connlib/libs/gateway",
   "connlib/libs/common",
   "connlib/gateway",
+  "tracing-on-demand-rolling-appender"
 ]
 
 [workspace.dependencies]
@@ -17,6 +18,7 @@ boringtun = { git = "https://github.com/firezone/boringtun", branch = "master", 
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 swift-bridge = "0.1.52"
 backoff = { version = "0.4", features = ["tokio"] }
+tracing-on-demand-rolling-appender = { path = "./tracing-on-demand-rolling-appender" }
 
 # Patched to use https://github.com/rust-lang/cc-rs/pull/708
 # (the `patch` section can't be used for build deps...)

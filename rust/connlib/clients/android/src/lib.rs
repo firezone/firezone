@@ -10,6 +10,7 @@ use jni::{
     strings::JNIString,
     JNIEnv, JavaVM,
 };
+use std::path::Path;
 use std::sync::OnceLock;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -86,7 +87,7 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: &PathBuf) {
+fn init_logging(log_dir: &Path) {
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to
@@ -99,7 +100,7 @@ fn init_logging(log_dir: &PathBuf) {
         return;
     }
 
-    let (file_layer, guard) = file_logger::layer(log_dir);
+    let (file_layer, guard, _) = file_logger::layer(log_dir);
 
     LOGGING_GUARD
         .set(guard)

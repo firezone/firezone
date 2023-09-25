@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use ip_network::IpNetwork;
+use std::path::Path;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
@@ -17,7 +18,7 @@ use url::Url;
 
 #[derive(Clone)]
 pub struct CallbackHandler {
-    log_dir: PathBuf,
+    handle: tracing_on_demand_rolling_appender::Handle,
 }
 
 impl Callbacks for CallbackHandler {
@@ -66,7 +67,9 @@ impl Callbacks for CallbackHandler {
     }
 
     fn upload_logs(&self, _: Url) {
-        tracing::debug!("Uploading logs found in {}", self.log_dir.display());
+        let old_file = self.handle.roll_to_new_file();
+
+        tracing::debug!("Uploading log-file {}", old_file.display());
     }
 }
 
@@ -82,8 +85,8 @@ fn block_on_ctrl_c() {
     rx.recv().expect("Could not receive ctrl-c signal");
 }
 
-fn init_logging(log_dir: &PathBuf) -> WorkerGuard {
-    let (file_layer, guard) = file_logger::layer(log_dir);
+fn init_logging(log_dir: &Path) -> (WorkerGuard, tracing_on_demand_rolling_appender::Handle) {
+    let (file_layer, guard, handle) = file_logger::layer(log_dir);
 
     // Calling init twice causes a panic; instead use try_init which will fail
     // gracefully if this is called more than once.
@@ -92,7 +95,7 @@ fn init_logging(log_dir: &PathBuf) -> WorkerGuard {
         .with(file_layer)
         .try_init();
 
-    guard
+    (guard, handle)
 }
 
 fn main() -> Result<()> {
@@ -108,12 +111,14 @@ fn main() -> Result<()> {
     let device_id = get_device_id();
     let log_dir = parse_env_var::<PathBuf>(LOG_DIR_ENV_VAR).unwrap_or(DEFAULT_LOG_DIR.into());
 
+    let (guard, handle) = init_logging(&log_dir);
+
     let mut session = Session::connect(
         url,
         secret,
         device_id,
-        Some(init_logging(&log_dir)),
-        CallbackHandler { log_dir },
+        Some(guard),
+        CallbackHandler { handle },
     )
     .unwrap();
     tracing::info!("Started new session");

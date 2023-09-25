@@ -79,7 +79,7 @@ unsafe impl Sync for ffi::CallbackHandler {}
 // recount. Instead, we just wrap it in an `Arc`.
 pub struct CallbackHandler {
     inner: Arc<ffi::CallbackHandler>,
-    log_dir: PathBuf,
+    handle: tracing_on_demand_rolling_appender::Handle,
 }
 
 impl Callbacks for CallbackHandler {
@@ -139,12 +139,14 @@ impl Callbacks for CallbackHandler {
     }
 
     fn upload_logs(&self, url: url::Url) {
-        tracing::debug!("Uploading logs found in {}", self.log_dir.display());
+        let old_file = self.handle.roll_to_new_file();
+
+        tracing::debug!("Uploading log file {}", old_file.display());
     }
 }
 
-fn init_logging(log_dir: PathBuf) -> WorkerGuard {
-    let (file_layer, guard) = file_logger::layer(&log_dir);
+fn init_logging(log_dir: PathBuf) -> (WorkerGuard, tracing_on_demand_rolling_appender::Handle) {
+    let (file_layer, guard, handle) = file_logger::layer(&log_dir);
 
     let _ = tracing_subscriber::registry()
         .with(tracing_oslog::OsLogger::new(
@@ -154,7 +156,7 @@ fn init_logging(log_dir: PathBuf) -> WorkerGuard {
         .with(file_layer)
         .try_init();
 
-    guard
+    (guard, handle)
 }
 
 impl WrappedSession {
@@ -166,15 +168,16 @@ impl WrappedSession {
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
         let log_dir = PathBuf::from(log_dir);
+        let (guard, handle) = init_logging(&log_dir);
 
         Session::connect(
             portal_url.as_str(),
             token,
             device_id,
-            Some(init_logging(&log_dir)),
+            Some((guard, handle)),
             CallbackHandler {
                 inner: Arc::new(callback_handler),
-                log_dir: Default::default(),
+                handle,
             },
         )
         .map(|session| Self { session })
