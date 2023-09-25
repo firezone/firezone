@@ -375,7 +375,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
         return std::ptr::null();
     };
 
-    if let Some(result) = catch_and_throw(&mut env, |env| {
+    let connect = catch_and_throw(&mut env, |env| {
         connect(
             env,
             portal_url,
@@ -384,13 +384,18 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
             log_dir,
             callback_handler,
         )
-    }) {
-        match result {
-            Ok(session) => return Box::into_raw(Box::new(session)),
-            Err(err) => throw(&mut env, "java/lang/Exception", err.to_string()),
+    });
+
+    let session = match connect {
+        Some(Ok(session)) => session,
+        Some(Err(err)) => {
+            throw(&mut env, "java/lang/Exception", err.to_string());
+            return std::ptr::null();
         }
-    }
-    std::ptr::null()
+        None => return std::ptr::null(),
+    };
+
+    Box::into_raw(Box::new(session))
 }
 
 /// # Safety
