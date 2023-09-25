@@ -3,7 +3,7 @@ defmodule Web.NavigationComponents do
   use Web, :verified_routes
   import Web.CoreComponents
 
-  attr(:subject, :any, required: true)
+  attr :subject, :any, required: true
 
   def topbar(assigns) do
     ~H"""
@@ -50,7 +50,7 @@ defmodule Web.NavigationComponents do
     """
   end
 
-  attr(:subject, :any, required: true)
+  attr :subject, :any, required: true
 
   def subject_dropdown(assigns) do
     ~H"""
@@ -85,12 +85,11 @@ defmodule Web.NavigationComponents do
     """
   end
 
-  slot(:bottom, required: false)
+  slot :bottom, required: false
 
-  slot(:inner_block,
+  slot :inner_block,
     required: true,
     doc: "The items for the navigation bar should use `sidebar_item` component."
-  )
 
   def sidebar(assigns) do
     ~H"""
@@ -104,17 +103,17 @@ defmodule Web.NavigationComponents do
         dark:bg-gray-800 dark:border-gray-700]} aria-label="Sidenav" id="drawer-navigation">
       <div class="overflow-y-auto py-1 px-1 h-full bg-white dark:bg-gray-800">
         <ul>
-          <%= render_slot(@inner_block) %>
+          <%= render_slot @inner_block) %>
         </ul>
       </div>
-      <%= render_slot(@bottom) %>
+      <%= render_slot @bottom) %>
     </aside>
     """
   end
 
-  attr(:id, :string, required: true, doc: "ID of the nav group container")
-  slot(:button, required: true)
-  slot(:dropdown, required: true)
+  attr :id, :string, required: true, doc: "ID of the nav group container"
+  slot :button, required: true
+  slot :dropdown, required: true
 
   def dropdown(assigns) do
     ~H"""
@@ -128,7 +127,7 @@ defmodule Web.NavigationComponents do
       aria-expanded="false"
       data-dropdown-toggle={"#{@id}-dropdown"}
     >
-      <%= render_slot(@button) %>
+      <%= render_slot @button) %>
     </button>
     <div
       class={[
@@ -139,16 +138,16 @@ defmodule Web.NavigationComponents do
       ]}
       id={"#{@id}-dropdown"}
     >
-      <%= render_slot(@dropdown) %>
+      <%= render_slot @dropdown) %>
     </div>
     """
   end
 
-  attr(:icon, :string, required: true)
-  attr(:navigate, :string, required: true)
-  slot(:inner_block, required: true)
-  attr(:current_path, :string, required: true)
-  attr(:active_class, :string, required: false, default: "dark:bg-gray-700 bg-gray-100")
+  attr :icon, :string, required: true
+  attr :navigate, :string, required: true
+  slot :inner_block, required: true
+  attr :current_path, :string, required: true
+  attr :active_class, :string, required: false, default: "dark:bg-gray-700 bg-gray-100"
 
   def sidebar_item(assigns) do
     ~H"""
@@ -166,21 +165,21 @@ defmodule Web.NavigationComponents do
         transition duration-75
         group-hover:text-gray-900
         dark:text-gray-400 dark:group-hover:text-white]} />
-        <span class="ml-3"><%= render_slot(@inner_block) %></span>
+        <span class="ml-3"><%= render_slot @inner_block) %></span>
       </.link>
     </li>
     """
   end
 
-  attr(:id, :string, required: true, doc: "ID of the nav group container")
-  attr(:icon, :string, required: true)
-  attr(:current_path, :string, required: true)
-  attr(:active_class, :string, required: false, default: "dark:bg-gray-700 bg-gray-100")
+  attr :id, :string, required: true, doc: "ID of the nav group container"
+  attr :icon, :string, required: true
+  attr :current_path, :string, required: true
+  attr :active_class, :string, required: false, default: "dark:bg-gray-700 bg-gray-100"
 
-  slot(:name, required: true)
+  slot :name, required: true
 
   slot :item, required: true do
-    attr(:navigate, :string, required: true)
+    attr :navigate, :string, required: true
   end
 
   def sidebar_item_group(assigns) do
@@ -209,7 +208,7 @@ defmodule Web.NavigationComponents do
           transition duration-75
           group-hover:text-gray-900
           dark:text-gray-400 dark:group-hover:text-white]} />
-        <span class="flex-1 ml-3 text-left whitespace-nowrap"><%= render_slot(@name) %></span>
+        <span class="flex-1 ml-3 text-left whitespace-nowrap"><%= render_slot @name) %></span>
         <.icon name="hero-chevron-down-solid" class={~w[
           w-6 h-6 text-gray-500
           transition duration-75
@@ -224,7 +223,7 @@ defmodule Web.NavigationComponents do
               #{String.starts_with?(@current_path, item.navigate) && @active_class}
               transition duration-75
               hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700]}>
-            <%= render_slot(item) %>
+            <%= render_slot item) %>
           </.link>
         </li>
       </ul>
@@ -235,15 +234,14 @@ defmodule Web.NavigationComponents do
   @doc """
   Renders breadcrumbs section, for elements `<.breadcrumb />` component should be used.
   """
-  attr(:account, :any,
+  attr :account, :any,
     required: false,
     default: nil,
     doc: "Account assign which will be used to fetch the home path."
-  )
 
   # TODO: remove this attribute
-  attr(:home_path, :string, required: false, doc: "The path for to the home page for a user.")
-  slot(:inner_block, required: true, doc: "Breadcrumb entries")
+  attr :home_path, :string, required: false, doc: "The path for to the home page for a user."
+  slot :inner_block, required: true, doc: "Breadcrumb entries"
 
   def breadcrumbs(assigns) do
     ~H"""
@@ -257,7 +255,7 @@ defmodule Web.NavigationComponents do
             <.icon name="hero-home-solid" class="w-4 h-4 mr-2" /> Home
           </.link>
 
-          <%= render_slot(@inner_block) %>
+          <%= render_slot @inner_block) %>
         </li>
       </ol>
     </nav>
@@ -267,8 +265,8 @@ defmodule Web.NavigationComponents do
   @doc """
   Renders a single breadcrumb entry. should be wrapped in <.breadcrumbs> component.
   """
-  slot(:inner_block, required: true, doc: "The label for the breadcrumb entry.")
-  attr(:path, :string, required: true, doc: "The path for the breadcrumb entry.")
+  slot :inner_block, required: true, doc: "The label for the breadcrumb entry."
+  attr :path, :string, required: true, doc: "The path for the breadcrumb entry."
 
   def breadcrumb(assigns) do
     ~H"""
@@ -279,7 +277,7 @@ defmodule Web.NavigationComponents do
           navigate={@path}
           class="ml-1 text-sm font-medium text-gray-700 hover:text-gray-900 md:ml-2 dark:text-gray-300 dark:hover:text-white"
         >
-          <%= render_slot(@inner_block) %>
+          <%= render_slot @inner_block) %>
         </.link>
       </div>
     </li>
@@ -293,8 +291,8 @@ defmodule Web.NavigationComponents do
 
       <.back navigate={~p"/posts"}>Back to posts</.back>
   """
-  attr(:navigate, :any, required: true)
-  slot(:inner_block, required: true)
+  attr :navigate, :any, required: true
+  slot :inner_block, required: true
 
   def back(assigns) do
     ~H"""
@@ -304,7 +302,7 @@ defmodule Web.NavigationComponents do
         class="text-sm font-semibold leading-6 text-zinc-900 hover:text-zinc-700"
       >
         <.icon name="hero-arrow-left-solid" class="h-3 w-3" />
-        <%= render_slot(@inner_block) %>
+        <%= render_slot @inner_block) %>
       </.link>
     </div>
     """
