@@ -28,19 +28,17 @@ export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
 
 # Borrowed from https://github.com/signalapp/libsignal/commit/02899cac643a14b2ced7c058cc15a836a2165b6d
 # Thanks to @francesca64 for the fix
-# EDIT: This seems to be no longer necessary with XCode 15 and macOS SDK 14.0, but I'm leaving it here
-# for reference or in case it pops up again.
-# if [[ -n "${DEVELOPER_SDK_DIR:-}" ]]; then
-#   # Assume we're in Xcode, which means we're probably cross-compiling.
-#   # In this case, we need to add an extra library search path for build scripts and proc-macros,
-#   # which run on the host instead of the target.
-#   # (macOS Big Sur does not have linkable libraries in /usr/lib/.)
-#   if [[ "$PLATFORM_NAME" = "macosx" || "$PLATFORM_NAME" = "iphoneos" ]]; then
-#     export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${LIBRARY_PATH:-}"
-#   elif [[ "$PLATFORM_NAME" = "iphonesimulator" ]]; then
-#     export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/iPhoneSimulator.sdk/usr/lib:${LIBRARY_PATH:-}"
-#   fi
-# fi
+if [[ -n "${DEVELOPER_SDK_DIR:-}" ]]; then
+  # Assume we're in Xcode, which means we're probably cross-compiling.
+  # In this case, we need to add an extra library search path for build scripts and proc-macros,
+  # which run on the host instead of the target.
+  # (macOS Big Sur does not have linkable libraries in /usr/lib/.)
+  if [[ "$PLATFORM_NAME" = "macosx" || "$PLATFORM_NAME" = "iphoneos" ]]; then
+    export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${LIBRARY_PATH:-}"
+  elif [[ "$PLATFORM_NAME" = "iphonesimulator" ]]; then
+    export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/iPhoneSimulator.sdk/usr/lib:${LIBRARY_PATH:-}"
+  fi
+fi
 
 TARGETS=()
 if [[ "$PLATFORM_NAME" = "macosx" ]]; then
@@ -84,11 +82,6 @@ fi
 
 MESSAGE="Building Connlib"
 
-if [[ -n "$CONNLIB_MOCK" ]]; then
-  MESSAGE="${MESSAGE} (mock)"
-  FEATURE_ARGS="--features mock"
-fi
-
 if [[ $CONFIGURATION == "Release" ]]; then
   echo "${MESSAGE} for Release"
   CONFIGURATION_ARGS="--release"
@@ -105,6 +98,6 @@ fi
 for target in "${TARGETS[@]}"
 do
   set -x
-  cargo build --target=$target $FEATURE_ARGS $CONFIGURATION_ARGS
+  cargo build --target=$target $CONFIGURATION_ARGS
   set +x
 done
