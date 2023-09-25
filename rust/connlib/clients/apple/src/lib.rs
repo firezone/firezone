@@ -1,4 +1,3 @@
-#![cfg(any(target_os = "macos", target_os = "ios"))]
 // Swift bridge generated code triggers this below
 #![allow(improper_ctypes, non_camel_case_types)]
 
