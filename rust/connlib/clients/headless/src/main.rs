@@ -101,15 +101,9 @@ fn main() -> Result<()> {
     let secret = parse_env_var::<String>(SECRET_ENV_VAR)?;
     let device_id = get_device_id();
     let log_dir = parse_env_var::<PathBuf>(LOG_DIR_ENV_VAR).unwrap_or(DEFAULT_LOG_DIR.into());
+    let _guard = init_logging(log_dir);
 
-    let mut session = Session::connect(
-        url,
-        secret,
-        device_id,
-        Some(init_logging(log_dir)),
-        CallbackHandler,
-    )
-    .unwrap();
+    let mut session = Session::connect(url, secret, device_id, CallbackHandler).unwrap();
     tracing::info!("Started new session");
 
     block_on_ctrl_c();
