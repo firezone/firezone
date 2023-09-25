@@ -1,4 +1,4 @@
-// swift-tools-version: 5.7
+// swift-tools-version: 5.5
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -9,7 +9,7 @@ let package = Package(
   products: [
     // Products define the executables and libraries a package produces, and make them visible to
     // other packages.
-    .library(name: "FirezoneKit", targets: ["FirezoneKit"]),
+    .library(name: "FirezoneKit", targets: ["FirezoneKit"])
   ],
   dependencies: [
     // Dependencies declare other packages that this package depends on.
