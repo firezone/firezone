@@ -3,7 +3,7 @@ defmodule Web.NavigationComponents do
   use Web, :verified_routes
   import Web.CoreComponents
 
-  attr :subject, :any, required: true
+  attr(:subject, :any, required: true)
 
   def topbar(assigns) do
     ~H"""
@@ -50,7 +50,7 @@ defmodule Web.NavigationComponents do
     """
   end
 
-  attr :subject, :any, required: true
+  attr(:subject, :any, required: true)
 
   def subject_dropdown(assigns) do
     ~H"""
@@ -85,11 +85,12 @@ defmodule Web.NavigationComponents do
     """
   end
 
-  slot :bottom, required: false
+  slot(:bottom, required: false)
 
-  slot :inner_block,
+  slot(:inner_block,
     required: true,
     doc: "The items for the navigation bar should use `sidebar_item` component."
+  )
 
   def sidebar(assigns) do
     ~H"""
@@ -111,9 +112,9 @@ defmodule Web.NavigationComponents do
     """
   end
 
-  attr :id, :string, required: true, doc: "ID of the nav group container"
-  slot :button, required: true
-  slot :dropdown, required: true
+  attr(:id, :string, required: true, doc: "ID of the nav group container")
+  slot(:button, required: true)
+  slot(:dropdown, required: true)
 
   def dropdown(assigns) do
     ~H"""
@@ -143,11 +144,11 @@ defmodule Web.NavigationComponents do
     """
   end
 
-  attr :icon, :string, required: true
-  attr :navigate, :string, required: true
-  slot :inner_block, required: true
-  attr :active_path, :string, required: true
-  attr :active_class, :string, required: false, default: "dark:bg-gray-700 bg-gray-100"
+  attr(:icon, :string, required: true)
+  attr(:navigate, :string, required: true)
+  slot(:inner_block, required: true)
+  attr(:current_path, :string, required: true)
+  attr(:active_class, :string, required: false, default: "dark:bg-gray-700 bg-gray-100")
 
   def sidebar_item(assigns) do
     ~H"""
@@ -156,7 +157,7 @@ defmodule Web.NavigationComponents do
       flex items-center p-2
       text-base font-medium text-gray-900
       rounded-lg
-      #{if String.starts_with?(@active_path, @navigate), do: @active_class, else: ""}
+      #{String.starts_with?(@current_path, @navigate) && @active_class}
       hover:bg-gray-100
       dark:text-white dark:hover:bg-gray-700 group]}>
         <.icon name={@icon} class={~w[
@@ -171,21 +172,21 @@ defmodule Web.NavigationComponents do
     """
   end
 
-  attr :id, :string, required: true, doc: "ID of the nav group container"
-  attr :icon, :string, required: true
-  attr :active_path, :string, required: true
-  attr :active_class, :string, required: false, default: "dark:bg-gray-700 bg-gray-100"
+  attr(:id, :string, required: true, doc: "ID of the nav group container")
+  attr(:icon, :string, required: true)
+  attr(:current_path, :string, required: true)
+  attr(:active_class, :string, required: false, default: "dark:bg-gray-700 bg-gray-100")
 
-  slot :name, required: true
+  slot(:name, required: true)
 
   slot :item, required: true do
-    attr :navigate, :string, required: true
+    attr(:navigate, :string, required: true)
   end
 
   def sidebar_item_group(assigns) do
     dropdown_hidden =
       !Enum.any?(assigns.item, fn item ->
-        String.starts_with?(assigns.active_path, item.navigate)
+        String.starts_with?(assigns.current_path, item.navigate)
       end)
 
     assigns = assign(assigns, dropdown_hidden: dropdown_hidden)
@@ -220,7 +221,7 @@ defmodule Web.NavigationComponents do
           <.link navigate={item.navigate} class={~w[
               flex items-center p-2 pl-11 w-full group rounded-lg
               text-base font-medium text-gray-900
-              #{if String.starts_with?(@active_path, item.navigate), do: @active_class, else: ""}
+              #{String.starts_with?(@current_path, item.navigate) && @active_class}
               transition duration-75
               hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700]}>
             <%= render_slot(item) %>
@@ -234,14 +235,15 @@ defmodule Web.NavigationComponents do
   @doc """
   Renders breadcrumbs section, for elements `<.breadcrumb />` component should be used.
   """
-  attr :account, :any,
+  attr(:account, :any,
     required: false,
     default: nil,
     doc: "Account assign which will be used to fetch the home path."
+  )
 
   # TODO: remove this attribute
-  attr :home_path, :string, required: false, doc: "The path for to the home page for a user."
-  slot :inner_block, required: true, doc: "Breadcrumb entries"
+  attr(:home_path, :string, required: false, doc: "The path for to the home page for a user.")
+  slot(:inner_block, required: true, doc: "Breadcrumb entries")
 
   def breadcrumbs(assigns) do
     ~H"""
@@ -265,8 +267,8 @@ defmodule Web.NavigationComponents do
   @doc """
   Renders a single breadcrumb entry. should be wrapped in <.breadcrumbs> component.
   """
-  slot :inner_block, required: true, doc: "The label for the breadcrumb entry."
-  attr :path, :string, required: true, doc: "The path for the breadcrumb entry."
+  slot(:inner_block, required: true, doc: "The label for the breadcrumb entry.")
+  attr(:path, :string, required: true, doc: "The path for the breadcrumb entry.")
 
   def breadcrumb(assigns) do
     ~H"""
@@ -291,8 +293,8 @@ defmodule Web.NavigationComponents do
 
       <.back navigate={~p"/posts"}>Back to posts</.back>
   """
-  attr :navigate, :any, required: true
-  slot :inner_block, required: true
+  attr(:navigate, :any, required: true)
+  slot(:inner_block, required: true)
 
   def back(assigns) do
     ~H"""
