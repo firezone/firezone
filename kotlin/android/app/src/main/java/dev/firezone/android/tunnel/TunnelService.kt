@@ -144,9 +144,7 @@ class TunnelService: VpnService() {
                     token = config.token,
                     deviceId = deviceId(),
                     logDir = getLogDir(),
-                    // TODO: make logging string depend on build config #2067
-                    // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
-                    logFilter = "connlib_android=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn",
+                    logFilter = BuildConfig.CONNLIB_LOG_FILTER_STRING,
                     callback = callback
                 )
                 Log.d(TAG, "connlib session started! sessionPtr: $sessionPtr")
