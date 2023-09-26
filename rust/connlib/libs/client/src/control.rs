@@ -224,11 +224,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     ) {
         if matches!(reply_error.error, ErrorInfo::Offline) {
             match reference {
-                Some(reference) => match reference.parse::<ResourceId>() {
-                    Ok(resource_id) => {
-                        self.tunnel.cleanup_connection(ConnId::from(resource_id));
-                    }
-                    Err(_) => {
+                Some(reference) => {
+                    let Ok(resource_id) = reference.parse::<ResourceId>() else {
                         tracing::error!(
                             "An offline error came back with a reference to a non-valid resource id"
                         );
@@ -236,8 +233,11 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                             .tunnel
                             .callbacks()
                             .on_error(&Error::ControlProtocolError);
-                    }
-                },
+                        return;
+                    };
+                    // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
+                    self.tunnel.cleanup_connection(ConnId::from(resource_id));
+                }
                 None => {
                     tracing::error!(
                         "An offline portal error came without a reference that originated the error"
