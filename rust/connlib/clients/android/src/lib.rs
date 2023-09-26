@@ -19,6 +19,7 @@ use std::{
 use thiserror::Error;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
 
 pub struct CallbackHandler {
     vm: JavaVM,
@@ -111,14 +112,14 @@ fn init_logging(log_dir: PathBuf, log_filter: String) {
         return;
     }
 
-    let (file_layer, guard) = file_logger::layer(log_dir, log_filter);
+    let (file_layer, guard) = file_logger::layer(log_dir);
 
     LOGGING_GUARD
         .set(guard)
         .expect("Logging guard should never be initialized twice");
 
     let _ = tracing_subscriber::registry()
-        .with(file_layer)
+        .with(file_layer.with_filter(EnvFilter::new(log_filter)))
         .with(android_layer())
         .try_init();
 }
