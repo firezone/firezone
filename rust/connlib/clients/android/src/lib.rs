@@ -352,7 +352,7 @@ fn connect(
         callback_handler,
     };
 
-    init_logging(log_dir.into(), log_filter.into());
+    init_logging(log_dir.into(), log_filter);
 
     let session = Session::connect(
         portal_url.as_str(),
