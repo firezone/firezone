@@ -12,7 +12,7 @@ use libs_common::{
 use parking_lot::{Mutex, RwLock};
 use webrtc::data::data_channel::DataChannel;
 
-use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, PeerId};
+use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, ConnId};
 
 use super::PeerConfig;
 
@@ -23,7 +23,7 @@ pub(crate) struct Peer {
     pub index: u32,
     pub allowed_ips: RwLock<IpNetworkTable<()>>,
     pub channel: Arc<DataChannel>,
-    pub peer_id: PeerId,
+    pub conn_id: ConnId,
     pub resources: Option<RwLock<ResourceTable<ExpiryingResource>>>,
     // Here we store the address that we obtained for the resource that the peer corresponds to.
     // This can have the following problem:
@@ -43,7 +43,7 @@ pub(crate) struct Peer {
 pub(crate) struct PeerStats {
     pub index: u32,
     pub allowed_ips: Vec<IpNetwork>,
-    pub peer_id: PeerId,
+    pub conn_id: ConnId,
     pub dns_resources: HashMap<String, ExpiryingResource>,
     pub network_resources: HashMap<IpNetwork, ExpiryingResource>,
     pub translated_resource_addresses: HashMap<IpAddr, ResourceId>,
@@ -52,7 +52,7 @@ pub(crate) struct PeerStats {
 #[derive(Debug)]
 pub(crate) struct EncapsulatedPacket<'a> {
     pub index: u32,
-    pub peer_id: PeerId,
+    pub conn_id: ConnId,
     pub channel: Arc<DataChannel>,
     pub encapsulate_result: TunnResult<'a>,
 }
@@ -71,7 +71,7 @@ impl Peer {
         PeerStats {
             index: self.index,
             allowed_ips,
-            peer_id: self.peer_id,
+            conn_id: self.conn_id,
             dns_resources,
             network_resources,
             translated_resource_addresses,
@@ -91,7 +91,7 @@ impl Peer {
         index: u32,
         config: &PeerConfig,
         channel: Arc<DataChannel>,
-        peer_id: PeerId,
+        conn_id: ConnId,
         resource: Option<(ResourceDescription, DateTime<Utc>)>,
     ) -> Self {
         Self::new(
@@ -99,7 +99,7 @@ impl Peer {
             index,
             config.ips.clone(),
             channel,
-            peer_id,
+            conn_id,
             resource,
         )
     }
@@ -109,7 +109,7 @@ impl Peer {
         index: u32,
         ips: Vec<IpNetwork>,
         channel: Arc<DataChannel>,
-        peer_id: PeerId,
+        conn_id: ConnId,
         resource: Option<(ResourceDescription, DateTime<Utc>)>,
     ) -> Peer {
         let mut allowed_ips = IpNetworkTable::new();
@@ -127,7 +127,7 @@ impl Peer {
             index,
             allowed_ips,
             channel,
-            peer_id,
+            conn_id,
             resources,
             translated_resource_addresses: Default::default(),
         }
@@ -219,7 +219,7 @@ impl Peer {
         }
         Ok(EncapsulatedPacket {
             index: self.index,
-            peer_id: self.peer_id,
+            conn_id: self.conn_id,
             channel: self.channel.clone(),
             encapsulate_result: self.tunnel.lock().encapsulate(src, dst),
         })

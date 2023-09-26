@@ -84,25 +84,25 @@ const REFRESH_MTU_INTERVAL: Duration = Duration::from_secs(30);
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
-pub enum PeerId {
+pub enum ConnId {
     Gateway(GatewayId),
     Client(ClientId),
     Resource(ResourceId),
 }
 
-impl From<GatewayId> for PeerId {
+impl From<GatewayId> for ConnId {
     fn from(id: GatewayId) -> Self {
         Self::Gateway(id)
     }
 }
 
-impl From<ClientId> for PeerId {
+impl From<ClientId> for ConnId {
     fn from(id: ClientId) -> Self {
         Self::Client(id)
     }
 }
 
-impl From<ResourceId> for PeerId {
+impl From<ResourceId> for ConnId {
     fn from(id: ResourceId) -> Self {
         Self::Resource(id)
     }
@@ -164,8 +164,8 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     private_key: StaticSecret,
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
-    peer_connections: Mutex<HashMap<PeerId, Arc<RTCPeerConnection>>>,
-    awaiting_connection: Mutex<HashMap<PeerId, AwaitingConnectionDetails>>,
+    peer_connections: Mutex<HashMap<ConnId, Arc<RTCPeerConnection>>>,
+    awaiting_connection: Mutex<HashMap<ConnId, AwaitingConnectionDetails>>,
     gateway_awaiting_connection: Mutex<HashMap<GatewayId, Vec<IpNetwork>>>,
     resources_gateways: Mutex<HashMap<ResourceId, GatewayId>>,
     webrtc_api: API,
@@ -181,13 +181,13 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
 pub struct TunnelStats {
     public_key: String,
     peers_by_ip: HashMap<IpNetwork, PeerStats>,
-    peer_connections: Vec<PeerId>,
+    peer_connections: Vec<ConnId>,
     resource_gateways: HashMap<ResourceId, GatewayId>,
     dns_resources: HashMap<String, ResourceDescription>,
     network_resources: HashMap<IpNetwork, ResourceDescription>,
     gateway_public_keys: HashMap<GatewayId, String>,
 
-    awaiting_connection: HashMap<PeerId, AwaitingConnectionDetails>,
+    awaiting_connection: HashMap<ConnId, AwaitingConnectionDetails>,
     gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
 }
 
@@ -356,9 +356,9 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn stop_peer(&self, index: u32, peer_id: PeerId) {
+    async fn stop_peer(&self, index: u32, conn_id: ConnId) {
         self.peers_by_ip.write().retain(|_, p| p.index != index);
-        let conn = self.peer_connections.lock().remove(&peer_id);
+        let conn = self.peer_connections.lock().remove(&conn_id);
         if let Some(conn) = conn {
             if let Err(e) = conn.close().await {
                 tracing::warn!(error = ?e, "Can't close peer");
@@ -374,7 +374,7 @@ where
             TunnResult::Done => {}
             TunnResult::Err(WireGuardError::ConnectionExpired)
             | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-                self.stop_peer(peer.index, peer.peer_id).await;
+                self.stop_peer(peer.index, peer.conn_id).await;
                 let _ = peer.shutdown().await;
             }
             TunnResult::Err(e) => tracing::error!(error = ?e, "timer_error"),
@@ -406,7 +406,7 @@ where
             peer.expire_resources();
             if peer.is_emptied() {
                 tracing::trace!(index = peer.index, "peer_expired");
-                let conn = self.peer_connections.lock().remove(&peer.peer_id);
+                let conn = self.peer_connections.lock().remove(&peer.conn_id);
                 let p = peer.clone();
 
                 // We are holding a Mutex, particularly a write one, we don't want to make a blocking call
