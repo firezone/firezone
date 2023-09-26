@@ -76,9 +76,6 @@ where
     /// Given a resource id and a list of relay creates a [RequestConnection]
     /// and prepares the tunnel to handle the connection once initiated.
     ///
-    /// # Note
-    /// This function blocks until all ICE candidates are gathered so it might block for a long time.
-    ///
     /// # Parameters
     /// - `resource_id`: Id of the resource we are going to request the connection to.
     /// - `relays`: The list of relays used for that connection.

@@ -72,9 +72,8 @@ where
         expires_at: DateTime<Utc>,
         resource: ResourceDescription,
     ) -> Result<RTCSessionDescription> {
-        let peer_connection = self
-            .initialize_peer_request(relays, client_id.into())
-            .await?;
+        let peer_connection = self.initialize_peer_request(relays, client_id.into()).await?;
+        self.start_ice_candidate_handler(client_id.into())?;
 
         let index = self.next_index();
         let tunnel = Arc::clone(self);
