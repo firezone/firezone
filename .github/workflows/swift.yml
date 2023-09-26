@@ -39,6 +39,7 @@ jobs:
       run:
         working-directory: ./swift
     steps:
+      - run: ls -al /Applications/
       - uses: actions/checkout@v4
       - run: rustup show
       - uses: Swatinem/rust-cache@v2
