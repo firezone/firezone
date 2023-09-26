@@ -443,23 +443,20 @@ defmodule Domain.Config.Definitions do
   @doc """
   Comma-separated list of upstream DNS servers to use for clients.
 
-  It can be either an IP address or a FQDN if you intend to use a DNS-over-TLS server.
+  It can be one of the following:
+    - IP address
+    - FQDN if you intend to use a DNS-over-TLS server
+    - URI if you intent to use a DNS-over-HTTPS server
 
   Leave this blank to omit the `DNS` section from generated configs,
   which will make clients use default system-provided DNS even when VPN session is active.
   """
   defconfig(
     :clients_upstream_dns,
-    {:array, ",", {:one_of, [Types.IP, :string]}, validate_unique: true},
+    {:json_array, {:embed, Domain.Config.Configuration.ClientsUpstreamDNS},
+     validate_unique: true},
     default: [],
-    changeset: fn
-      Types.IP, changeset, _key ->
-        changeset
-
-      :string, changeset, key ->
-        changeset
-        |> Domain.Validator.trim_change(key)
-    end
+    changeset: {Domain.Config.Configuration.Changeset, :clients_upstream_dns_changeset, []}
   )
 
   ##############################################

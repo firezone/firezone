@@ -2,19 +2,39 @@ defmodule Domain.Config.Configuration.Changeset do
   use Domain, :changeset
   import Domain.Config, only: [config_changeset: 2]
 
-  @fields ~w[clients_upstream_dns]a
+  @fields ~w[clients_upstream_dns logo]a
 
   def changeset(configuration, attrs) do
     changeset =
       configuration
-      |> cast(attrs, @fields)
+      |> cast(attrs, [])
       |> cast_embed(:logo)
-      |> trim_change(:clients_upstream_dns)
+      |> cast_embed(
+        :clients_upstream_dns,
+        with: &clients_upstream_dns_changeset/2
+      )
 
     Enum.reduce(@fields, changeset, fn field, changeset ->
       config_changeset(changeset, field)
     end)
     |> ensure_no_overridden_changes(configuration.account_id)
+  end
+
+  def clients_upstream_dns_changeset(
+        dns_config \\ %Domain.Config.Configuration.ClientsUpstreamDNS{},
+        attrs
+      ) do
+    Ecto.Changeset.cast(
+      dns_config,
+      attrs,
+      [:address]
+    )
+    |> validate_required(:address)
+    |> trim_change(:address)
+    |> Domain.Validator.validate_one_of(:address, [
+      &Domain.Validator.validate_fqdn/2,
+      &Domain.Validator.validate_uri(&1, &2, schemes: ["https"])
+    ])
   end
 
   defp ensure_no_overridden_changes(changeset, account_id) do

@@ -34,7 +34,7 @@ defmodule Domain.Validator do
       case URI.new(value) do
         {:ok, %URI{} = uri} ->
           cond do
-            uri.host == nil ->
+            uri.host == nil or uri.host == "" ->
               [{field, "does not contain a scheme or a host"}]
 
             uri.scheme == nil ->
@@ -78,6 +78,25 @@ defmodule Domain.Validator do
     else
       value <> "/"
     end
+  end
+
+  def validate_one_of(changeset, field, validators) do
+    validate_change(changeset, field, fn current_field, _value ->
+      orig_errors = Enum.filter(changeset.errors, &(elem(&1, 0) == current_field))
+
+      Enum.reduce_while(validators, [], fn validator, errors ->
+        validated_cs = validator.(changeset, current_field)
+
+        new_errors =
+          Enum.filter(validated_cs.errors, &(elem(&1, 0) == current_field)) -- orig_errors
+
+        if Enum.empty?(new_errors) do
+          {:halt, new_errors}
+        else
+          {:cont, new_errors ++ errors}
+        end
+      end)
+    end)
   end
 
   def validate_no_duplicates(changeset, field) when is_atom(field) do

@@ -3,99 +3,111 @@ defmodule Web.Settings.DNS do
 
   alias Domain.Config
 
-  defp pretty_print_addrs([]), do: ""
-  defp pretty_print_addrs(addrs), do: Enum.join(addrs, ", ")
+  defp remove_errors(changeset, field, message) do
+    errors =
+      changeset.errors
+      |> Enum.filter(fn err ->
+        case err do
+          {^field, {msg, _}} ->
+            if msg == message, do: false, else: true
 
-  defp addrs_to_list(nil), do: []
+          {_, _} ->
+            true
+        end
+      end)
 
-  defp addrs_to_list(addrs_str) do
-    addrs_str
-    |> String.split(",", trim: true)
-    |> Enum.map(&String.trim/1)
-    |> Enum.uniq()
+    %{changeset | errors: errors}
   end
 
-  defp config_to_params(config) do
-    addrs_str = Enum.join(config.clients_upstream_dns, ", ")
-    resolver = if addrs_str == "", do: "system", else: "custom"
+  defp filter_errors(changeset) do
+    filtered_cs =
+      changeset
+      |> remove_errors(:clients_upstream_dns, "address can't be blank")
 
-    %{
-      "resolver" => resolver,
-      "clients_upstream_dns" => addrs_str
-    }
-  end
+    filtered_dns_cs =
+      filtered_cs.changes.clients_upstream_dns
+      |> Enum.map(fn changeset ->
+        case changeset.errors do
+          [] -> changeset
+          _ -> remove_errors(changeset, :address, "can't be blank")
+        end
+      end)
 
-  defp params_to_form(params, errors \\ []) do
-    addrs =
-      case params["resolver"] do
-        "system" -> []
-        "custom" -> addrs_to_list(params["clients_upstream_dns"])
-        _ -> []
-      end
-
-    to_form(
-      %{
-        "resolver" => params["resolver"],
-        "clients_upstream_dns" => addrs
-      },
-      errors: errors
-    )
+    %{filtered_cs | changes: %{clients_upstream_dns: filtered_dns_cs}}
   end
 
   def mount(_params, _session, socket) do
-    resolver_opts = %{"System Default" => "system", "Custom" => "custom"}
     {:ok, config} = Config.fetch_account_config(socket.assigns.subject)
-    form = config_to_params(config) |> params_to_form()
 
-    socket =
-      assign(socket,
-        config: config,
-        resolver_opts: resolver_opts,
-        form: form
-      )
+    form =
+      Config.change_account_config(config, %{})
+      |> add_new_server()
+      |> to_form()
+
+    socket = assign(socket, config: config, form: form)
 
     {:ok, socket}
   end
 
-  def handle_event("change", params, socket) do
-    form = params_to_form(params)
-    {:noreply, assign(socket, form: form)}
+  def handle_event("change", %{"configuration" => config_params}, socket) do
+    form =
+      Config.change_account_config(socket.assigns.config, config_params)
+      |> filter_errors()
+      |> Map.put(:action, :validate)
+      |> to_form()
+
+    socket = assign(socket, form: form)
+    {:noreply, socket}
   end
 
-  def handle_event("submit", params, socket) do
-    addrs =
-      case params["resolver"] do
-        "system" -> []
-        "custom" -> addrs_to_list(params["clients_upstream_dns"])
-        _ -> []
-      end
+  def handle_event("submit", %{"configuration" => config_params}, socket) do
+    attrs = remove_empty_servers(config_params)
 
-    case Config.update_config(
-           socket.assigns.config,
-           %{"clients_upstream_dns" => addrs},
-           socket.assigns.subject
-         ) do
-      {:ok, updated_config} ->
-        form = config_to_params(updated_config) |> params_to_form() |> dbg()
+    with {:ok, new_config} <-
+           Domain.Config.update_config(socket.assigns.config, attrs, socket.assigns.subject) do
+      form =
+        Config.change_account_config(new_config, %{})
+        |> add_new_server()
+        |> to_form()
 
-        socket =
-          socket
-          |> assign(form: form, config: updated_config)
-          |> put_flash(:success, "DNS settings have been updated!")
-
-        {:noreply, socket}
-
+      socket = assign(socket, config: new_config, form: form)
+      {:noreply, socket}
+    else
       {:error, changeset} ->
-        form =
-          params
-          |> Map.put("action", "validate")
-          |> params_to_form(changeset.errors)
-
-        {:noreply, assign(socket, form: form)}
+        form = to_form(changeset)
+        socket = assign(socket, form: form)
+        {:noreply, socket}
     end
   end
 
+  defp remove_empty_servers(config) do
+    servers =
+      config["clients_upstream_dns"]
+      |> Enum.reduce(%{}, fn {key, value}, acc ->
+        case value["address"] do
+          nil -> acc
+          "" -> acc
+          _ -> Map.put(acc, key, value)
+        end
+      end)
+
+    %{"clients_upstream_dns" => servers}
+  end
+
+  defp add_new_server(changeset) do
+    existing_servers = Ecto.Changeset.get_embed(changeset, :clients_upstream_dns)
+
+    Ecto.Changeset.put_embed(
+      changeset,
+      :clients_upstream_dns,
+      existing_servers ++ [%{address: ""}]
+    )
+  end
+
   def render(assigns) do
+    assigns =
+      assign(assigns, :errors, translate_errors(assigns.form.errors, :clients_upstream_dns))
+
     ~H"""
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/settings/dns"}>DNS Settings</.breadcrumb>
@@ -125,34 +137,26 @@ defmodule Web.Settings.DNS do
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
         <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
         <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Client DNS</h2>
-        <.form for={@form} phx-change={:change} phx-submit={:submit}>
+        <p class="mb-4 text-slate-500">
+          DNS servers will be used in the order they are listed below.
+        </p>
+
+        <.form for={@form} phx-submit={:submit} phx-change={:change}>
           <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
             <div>
-              <.input
-                label="Resolver"
-                type="select"
-                field={@form[:resolver]}
-                options={@resolver_opts}
-                required
-              />
+              <.inputs_for :let={dns} field={@form[:clients_upstream_dns]}>
+                <div class="mb-4">
+                  <.input label="Address" field={dns[:address]} placeholder="DNS Server Address" />
+                </div>
+              </.inputs_for>
             </div>
-
-            <div>
-              <.input
-                label="Address"
-                field={@form[:clients_upstream_dns]}
-                value={pretty_print_addrs(@form[:clients_upstream_dns].value)}
-                placeholder="DNS Server Address"
-                disabled={@form[:resolver].value == "system"}
-              />
-              <p id="address-explanation" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                IP addresses, FQDNs, and DNS-over-HTTPS (DoH) addresses are supported.
-              </p>
-            </div>
+            <.error :for={msg <- @errors} data-validation-error-for="clients_upstream_dns">
+              <%= msg %>
+            </.error>
+            <.button>
+              Save
+            </.button>
           </div>
-          <.submit_button>
-            Save
-          </.submit_button>
         </.form>
       </div>
     </section>

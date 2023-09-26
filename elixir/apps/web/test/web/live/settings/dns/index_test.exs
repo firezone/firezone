@@ -51,8 +51,8 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     form = lv |> form("form")
 
     assert find_inputs(form) == [
-             "clients_upstream_dns",
-             "resolver"
+             "configuration[clients_upstream_dns][0][_persistent_id]",
+             "configuration[clients_upstream_dns][0][address]"
            ]
   end
 
@@ -61,61 +61,36 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     identity: identity,
     conn: conn
   } do
-    attrs = %{
-      "resolver" => "custom",
-      "clients_upstream_dns" => "8.8.8.8"
-    }
+    attrs = %{configuration: %{clients_upstream_dns: %{"0" => %{address: "8.8.8.8"}}}}
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/dns")
-
-    lv
-    |> form("form", %{"resolver" => "custom"})
-    |> render_change()
-
-    assert lv
-           |> form("form", attrs)
-           |> render_submit() =~ "DNS settings have been updated!"
-  end
-
-  test "removes duplicate DNS addresses upon save", %{
-    account: account,
-    identity: identity,
-    conn: conn
-  } do
-    attrs = %{
-      "resolver" => "custom",
-      "clients_upstream_dns" => "8.8.8.8, 8.8.8.8"
-    }
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/settings/dns")
-
-    lv
-    |> form("form", %{"resolver" => "custom"})
-    |> render_change()
 
     lv
     |> form("form", attrs)
     |> render_submit()
 
     assert lv
-           |> element("input[name='clients_upstream_dns']")
-           |> render() =~ "value=\"8.8.8.8\""
+           |> form("form")
+           |> find_inputs() == [
+             "configuration[clients_upstream_dns][0][_persistent_id]",
+             "configuration[clients_upstream_dns][0][address]",
+             "configuration[clients_upstream_dns][1][_persistent_id]",
+             "configuration[clients_upstream_dns][1][address]"
+           ]
   end
 
-  test "disables address field when system resolver selected", %{
+  test "removes blank entries upon save", %{
     account: account,
     identity: identity,
     conn: conn
   } do
     attrs = %{
-      "resolver" => "custom",
-      "clients_upstream_dns" => "8.8.8.8"
+      configuration: %{
+        clients_upstream_dns: %{"0" => %{address: "8.8.8.8"}}
+      }
     }
 
     {:ok, lv, _html} =
@@ -124,17 +99,58 @@ defmodule Web.Live.Settings.DNS.IndexTest do
       |> live(~p"/#{account}/settings/dns")
 
     lv
-    |> form("form", %{"resolver" => "custom"})
-    |> render_change()
+    |> form("form", attrs)
+    |> render_submit()
 
     assert lv
-           |> form("form", attrs)
-           |> render_change() =~ "8.8.8.8"
+           |> form("form")
+           |> find_inputs() == [
+             "configuration[clients_upstream_dns][0][_persistent_id]",
+             "configuration[clients_upstream_dns][0][address]",
+             "configuration[clients_upstream_dns][1][_persistent_id]",
+             "configuration[clients_upstream_dns][1][address]"
+           ]
 
-    lv |> form("form", %{"resolver" => "system"}) |> render_change()
+    empty_attrs = %{
+      configuration: %{
+        clients_upstream_dns: %{"0" => %{address: ""}}
+      }
+    }
+
+    lv |> form("form", empty_attrs) |> render_submit()
 
     assert lv
-           |> element("input[name='clients_upstream_dns']")
-           |> render() =~ "disabled"
+           |> form("form")
+           |> find_inputs() == [
+             "configuration[clients_upstream_dns][0][_persistent_id]",
+             "configuration[clients_upstream_dns][0][address]"
+           ]
+  end
+
+  test "warns when duplicates found", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    addr = %{address: "8.8.8.8"}
+
+    attrs = %{
+      configuration: %{
+        clients_upstream_dns: %{"0" => addr}
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
+
+    lv
+    |> form("form", attrs)
+    |> render_submit()
+
+    assert lv
+           |> form("form", %{configuration: %{clients_upstream_dns: %{"1" => addr}}})
+           |> render_change() =~ "should not contain duplicates"
   end
 end
