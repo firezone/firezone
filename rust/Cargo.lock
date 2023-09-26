@@ -519,8 +519,9 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 
 [[package]]
 name = "boringtun"
-version = "0.5.2"
-source = "git+https://github.com/firezone/boringtun?branch=master#9e45acd768d88ce0eb74219641fbc2463d1f7b66"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "751787b019c674b9ac353f4eaa285e6711c21badb421cd8c199bf2c83b727f29"
 dependencies = [
  "aead 0.5.2",
  "base64 0.13.1",
