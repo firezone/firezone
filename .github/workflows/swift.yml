@@ -39,7 +39,6 @@ jobs:
       run:
         working-directory: ./swift
     steps:
-      - run: ls -al /Applications/
       - uses: actions/checkout@v4
       - run: rustup show
       - uses: Swatinem/rust-cache@v2
@@ -54,6 +53,8 @@ jobs:
           key: ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ matrix.target.platform }}-spm-
+      - run: |
+        sudo ls -al /Applications/
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
