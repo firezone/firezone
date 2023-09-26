@@ -57,10 +57,6 @@ impl Callbacks for HeadlessCallbackHandler {
         tracing::warn!(error = ?error);
         Ok(())
     }
-
-    fn roll_log_file(&self) -> Option<PathBuf> {
-        todo!()
-    }
 }
 
 pub fn block_on_ctrl_c() {
