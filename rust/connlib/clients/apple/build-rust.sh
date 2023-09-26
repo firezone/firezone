@@ -18,23 +18,23 @@ export PATH="$HOME/.cargo/bin:$PATH"
 
 # Borrowed from https://github.com/signalapp/libsignal/commit/02899cac643a14b2ced7c058cc15a836a2165b6d
 # Thanks to @francesca64 for the fix
-# EDIT: It appears we may not need this workaround with the new linker in Xcode 15.
-# if [[ -n "${DEVELOPER_SDK_DIR:-}" && "$XCODE_VERSION_MAJOR" -lt "1500" ]]; then
-#   # Assume we're in Xcode, which means we're probably cross-compiling.
-#   # In this case, we need to add an extra library search path for build scripts and proc-macros,
-#   # which run on the host instead of the target.
-#   # (macOS Big Sur does not have linkable libraries in /usr/lib/.)
-#   base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
-#
-#   # See https://github.com/briansmith/ring/issues/1332
-#   export INCLUDE_PATH="${base_dir}/usr/include"
-#   export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
-#   export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${base_dir}/usr/lib:${LIBRARY_PATH:-}"
-#
-#   # `-Qunused-arguments` stops clang from failing while building *ring*
-#   # (but the library search path is still necessary when building the framework!)
-#   export CFLAGS="-L ${LIBRARY_PATH} -I ${INCLUDE_PATH} -Qunused-arguments"
-# fi
+# It appears we may not need this workaround with the new linker in Xcode 15.
+if [[ -n "${DEVELOPER_SDK_DIR:-}" && "$XCODE_VERSION_MAJOR" -lt "1500" ]]; then
+  # Assume we're in Xcode, which means we're probably cross-compiling.
+  # In this case, we need to add an extra library search path for build scripts and proc-macros,
+  # which run on the host instead of the target.
+  # (macOS Big Sur does not have linkable libraries in /usr/lib/.)
+  base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
+
+  # See https://github.com/briansmith/ring/issues/1332
+  export INCLUDE_PATH="${base_dir}/usr/include"
+  export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
+  export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${base_dir}/usr/lib:${LIBRARY_PATH:-}"
+
+  # `-Qunused-arguments` stops clang from failing while building *ring*
+  # (but the library search path is still necessary when building the framework!)
+  export CFLAGS="-L ${LIBRARY_PATH} -I ${INCLUDE_PATH} -Qunused-arguments"
+fi
 
 TARGETS=()
 if [[ "$PLATFORM_NAME" = "macosx" ]]; then

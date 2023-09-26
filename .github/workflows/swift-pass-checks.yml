@@ -19,9 +19,9 @@ jobs:
       matrix:
         runs-on:
           - os: macos-12
-            xcode-ver: '14'
+            xcode-ver: '14.2.0'
           - os: macos-13
-            xcode-ver: '15'
+            xcode-ver: '15.0.0'
         target:
           - sdk: macosx
             platform: macOS
