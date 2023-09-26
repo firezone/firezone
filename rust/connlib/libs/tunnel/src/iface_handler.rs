@@ -8,7 +8,7 @@ use crate::{
     device_channel::{DeviceIo, IfaceConfig},
     dns,
     peer::EncapsulatedPacket,
-    ControlSignal, ConnId, Tunnel, MAX_UDP_SIZE,
+    ConnId, ControlSignal, Tunnel, MAX_UDP_SIZE,
 };
 
 const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);

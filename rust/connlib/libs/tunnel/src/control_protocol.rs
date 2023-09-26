@@ -24,7 +24,7 @@ use webrtc::{
     },
 };
 
-use crate::{peer::Peer, ControlSignal, PeerConfig, ConnId, Tunnel};
+use crate::{peer::Peer, ConnId, ControlSignal, PeerConfig, Tunnel};
 
 mod candidate_parser;
 

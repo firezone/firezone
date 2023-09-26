@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use boringtun::x25519::StaticSecret;
-use firezone_tunnel::{ControlSignal, ConnId, Tunnel};
+use firezone_tunnel::{ConnId, ControlSignal, Tunnel};
 use libs_common::{
     control::{MessageResult, PhoenixSenderWithTopic, Reference},
     messages::{GatewayId, ResourceDescription},
