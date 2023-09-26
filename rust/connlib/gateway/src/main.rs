@@ -1,9 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
-use firezone_gateway_connlib::{get_device_id, Session};
-use headless_utils::{
-    block_on_ctrl_c, setup_global_subscriber, CommonArgs, HeadlessCallbackHandler,
-};
+use firezone_gateway_connlib::{get_device_id, Callbacks, Session};
+use headless_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use tracing_subscriber::layer;
 
 fn main() -> Result<()> {
@@ -15,7 +13,7 @@ fn main() -> Result<()> {
         cli.common.url,
         cli.common.secret,
         device_id,
-        HeadlessCallbackHandler,
+        CallbackHandler,
     )
     .unwrap();
     tracing::info!("new_session");
@@ -24,6 +22,13 @@ fn main() -> Result<()> {
 
     session.disconnect(None);
     Ok(())
+}
+
+#[derive(Clone)]
+struct CallbackHandler;
+
+impl Callbacks for CallbackHandler {
+    type Error = std::convert::Infallible;
 }
 
 #[derive(Parser)]

@@ -1,9 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
-use firezone_client_connlib::{file_logger, get_device_id, Session};
-use headless_utils::{
-    block_on_ctrl_c, setup_global_subscriber, CommonArgs, HeadlessCallbackHandler,
-};
+use firezone_client_connlib::{file_logger, get_device_id, Callbacks, Session};
+use headless_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -19,7 +17,7 @@ fn main() -> Result<()> {
         cli.common.url,
         cli.common.secret,
         device_id,
-        HeadlessCallbackHandler,
+        CallbackHandler,
     )
     .unwrap();
     tracing::info!("new_session");
@@ -28,6 +26,13 @@ fn main() -> Result<()> {
 
     session.disconnect(None);
     Ok(())
+}
+
+#[derive(Clone)]
+struct CallbackHandler;
+
+impl Callbacks for CallbackHandler {
+    type Error = std::convert::Infallible;
 }
 
 #[derive(Parser)]

@@ -1,64 +1,8 @@
 use clap::Args;
-use ip_network::IpNetwork;
-use std::{
-    net::{Ipv4Addr, Ipv6Addr},
-    os::fd::RawFd,
-};
 use tracing_subscriber::{
     fmt, prelude::__tracing_subscriber_SubscriberExt, EnvFilter, Layer, Registry,
 };
-
-use firezone_client_connlib::{Callbacks, Error, ResourceDescription};
 use url::Url;
-
-#[derive(Clone)]
-pub struct HeadlessCallbackHandler;
-
-impl Callbacks for HeadlessCallbackHandler {
-    type Error = std::convert::Infallible;
-
-    fn on_set_interface_config(
-        &self,
-        _tunnel_address_v4: Ipv4Addr,
-        _tunnel_address_v6: Ipv6Addr,
-        _dns_address: Ipv4Addr,
-        _dns_fallback_strategy: String,
-    ) -> Result<RawFd, Self::Error> {
-        Ok(-1)
-    }
-
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        tracing::trace!("tunnel_connected");
-        Ok(())
-    }
-
-    fn on_add_route(&self, _route: IpNetwork) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn on_remove_route(&self, _route: IpNetwork) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn on_update_resources(
-        &self,
-        resource_list: Vec<ResourceDescription>,
-    ) -> Result<(), Self::Error> {
-        tracing::trace!(?resource_list, "resource_updated");
-        Ok(())
-    }
-
-    fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
-        tracing::trace!(error = ?error, "tunnel_disconnected");
-        // Note that we can't panic here, since we already hooked the panic to this function.
-        std::process::exit(0);
-    }
-
-    fn on_error(&self, error: &Error) -> Result<(), Self::Error> {
-        tracing::warn!(error = ?error);
-        Ok(())
-    }
-}
 
 pub fn block_on_ctrl_c() {
     let (tx, rx) = std::sync::mpsc::channel();
