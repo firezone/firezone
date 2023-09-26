@@ -21,7 +21,7 @@ jobs:
           - os: macos-12
             xcode-ver: '14.2.0'
           - os: macos-13
-            xcode-ver: '15.0.0'
+            xcode-ver: '15.0-beta'
         target:
           - sdk: macosx
             platform: macOS
