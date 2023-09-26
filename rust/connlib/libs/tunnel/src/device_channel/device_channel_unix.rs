@@ -7,7 +7,9 @@ use ip_network::IpNetwork;
 use libs_common::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
 use tokio::io::{unix::AsyncFd, Interest};
 
-use crate::tun::{IfaceDevice, IfaceStream};
+use tun::{IfaceDevice, IfaceStream};
+
+mod tun;
 
 pub(crate) struct IfaceConfig {
     mtu: AtomicUsize,
