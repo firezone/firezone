@@ -14,7 +14,7 @@ on:
 
 jobs:
   swift_build:
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: ${{ matrix.runs-on.os }}
     strategy:
       matrix:
         runs-on:
