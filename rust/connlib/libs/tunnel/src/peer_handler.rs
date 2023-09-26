@@ -145,6 +145,6 @@ where
 
         let peer_stats = peer.stats();
         tracing::debug!(peer = ?peer_stats, "peer_stopped");
-        self.stop_peer(peer.index, peer.conn_id).await;
+        self.stop_peer(peer.index, peer.peer_id).await;
     }
 }

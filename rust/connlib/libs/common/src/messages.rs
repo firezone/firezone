@@ -4,6 +4,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use uuid::Uuid;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
@@ -11,8 +12,36 @@ mod key;
 
 pub use key::Key;
 
-/// General type for handling portal's id (UUID v4)
-pub type Id = Uuid;
+#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+pub struct GatewayId(Uuid);
+#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+pub struct ResourceId(Uuid);
+#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+pub struct ClientId(Uuid);
+#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+pub struct ActorId(Uuid);
+
+impl FromStr for ResourceId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(ResourceId(Uuid::parse_str(s)?))
+    }
+}
+
+impl FromStr for GatewayId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(GatewayId(Uuid::parse_str(s)?))
+    }
+}
+
+impl ToString for ResourceId {
+    fn to_string(&self) -> String {
+        self.0.to_string()
+    }
+}
 
 /// Represents a wireguard peer.
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
@@ -36,9 +65,9 @@ pub struct Peer {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RequestConnection {
     /// Gateway id for the connection
-    pub gateway_id: Id,
+    pub gateway_id: GatewayId,
     /// Resource id the request is for.
-    pub resource_id: Id,
+    pub resource_id: ResourceId,
     /// The preshared key the client generated for the connection that it is trying to establish.
     pub client_preshared_key: Key,
     /// Client's local RTC Session Description that the client will use for this connection.
@@ -52,9 +81,9 @@ pub struct RequestConnection {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ReuseConnection {
     /// Resource id the request is for.
-    pub resource_id: Id,
+    pub resource_id: ResourceId,
     /// Id of the gateway we want to re-use
-    pub gateway_id: Id,
+    pub gateway_id: GatewayId,
 }
 
 // Custom implementation of partial eq to ignore client_rtc_sdp
@@ -78,7 +107,7 @@ pub enum ResourceDescription {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
-    pub id: Id,
+    pub id: ResourceId,
     /// Internal resource's domain name.
     pub address: String,
     /// Resource's ipv4 mapping.
@@ -126,7 +155,7 @@ impl ResourceDescription {
         }
     }
 
-    pub fn id(&self) -> Id {
+    pub fn id(&self) -> ResourceId {
         match self {
             ResourceDescription::Dns(r) => r.id,
             ResourceDescription::Cidr(r) => r.id,
@@ -145,7 +174,7 @@ impl ResourceDescription {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ResourceDescriptionCidr {
     /// Resource's id.
-    pub id: Id,
+    pub id: ResourceId,
     /// CIDR that this resource points to.
     pub address: IpNetwork,
     /// Name of the resource.

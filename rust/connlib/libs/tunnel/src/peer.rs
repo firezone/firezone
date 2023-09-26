@@ -6,13 +6,13 @@ use chrono::{DateTime, Utc};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use libs_common::{
-    messages::{Id, ResourceDescription},
+    messages::{ResourceDescription, ResourceId},
     Callbacks, Error, Result,
 };
 use parking_lot::{Mutex, RwLock};
 use webrtc::data::data_channel::DataChannel;
 
-use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable};
+use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, PeerId};
 
 use super::PeerConfig;
 
@@ -23,7 +23,7 @@ pub(crate) struct Peer {
     pub index: u32,
     pub allowed_ips: RwLock<IpNetworkTable<()>>,
     pub channel: Arc<DataChannel>,
-    pub conn_id: Id,
+    pub peer_id: PeerId,
     pub resources: Option<RwLock<ResourceTable<ExpiryingResource>>>,
     // Here we store the address that we obtained for the resource that the peer corresponds to.
     // This can have the following problem:
@@ -34,7 +34,7 @@ pub(crate) struct Peer {
     // so, TODO: store multiple ips and expire them.
     // Note that this case is quite an unlikely edge case so I wouldn't prioritize this fix
     // TODO: Also check if there's any case where we want to talk to ipv4 and ipv6 from the same peer.
-    pub translated_resource_addresses: RwLock<HashMap<IpAddr, Id>>,
+    pub translated_resource_addresses: RwLock<HashMap<IpAddr, ResourceId>>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -43,16 +43,16 @@ pub(crate) struct Peer {
 pub(crate) struct PeerStats {
     pub index: u32,
     pub allowed_ips: Vec<IpNetwork>,
-    pub conn_id: Id,
+    pub peer_id: PeerId,
     pub dns_resources: HashMap<String, ExpiryingResource>,
     pub network_resources: HashMap<IpNetwork, ExpiryingResource>,
-    pub translated_resource_addresses: HashMap<IpAddr, Id>,
+    pub translated_resource_addresses: HashMap<IpAddr, ResourceId>,
 }
 
 #[derive(Debug)]
 pub(crate) struct EncapsulatedPacket<'a> {
     pub index: u32,
-    pub conn_id: Id,
+    pub peer_id: PeerId,
     pub channel: Arc<DataChannel>,
     pub encapsulate_result: TunnResult<'a>,
 }
@@ -71,7 +71,7 @@ impl Peer {
         PeerStats {
             index: self.index,
             allowed_ips,
-            conn_id: self.conn_id,
+            peer_id: self.peer_id,
             dns_resources,
             network_resources,
             translated_resource_addresses,
@@ -91,7 +91,7 @@ impl Peer {
         index: u32,
         config: &PeerConfig,
         channel: Arc<DataChannel>,
-        gateway_id: Id,
+        peer_id: PeerId,
         resource: Option<(ResourceDescription, DateTime<Utc>)>,
     ) -> Self {
         Self::new(
@@ -99,7 +99,7 @@ impl Peer {
             index,
             config.ips.clone(),
             channel,
-            gateway_id,
+            peer_id,
             resource,
         )
     }
@@ -109,7 +109,7 @@ impl Peer {
         index: u32,
         ips: Vec<IpNetwork>,
         channel: Arc<DataChannel>,
-        gateway_id: Id,
+        peer_id: PeerId,
         resource: Option<(ResourceDescription, DateTime<Utc>)>,
     ) -> Peer {
         let mut allowed_ips = IpNetworkTable::new();
@@ -127,7 +127,7 @@ impl Peer {
             index,
             allowed_ips,
             channel,
-            conn_id: gateway_id,
+            peer_id,
             resources,
             translated_resource_addresses: Default::default(),
         }
@@ -188,7 +188,7 @@ impl Peer {
         self.allowed_ips.read().longest_match(addr).is_some()
     }
 
-    pub(crate) fn update_translated_resource_address(&self, id: Id, addr: IpAddr) {
+    pub(crate) fn update_translated_resource_address(&self, id: ResourceId, addr: IpAddr) {
         self.translated_resource_addresses.write().insert(addr, id);
     }
 
@@ -219,7 +219,7 @@ impl Peer {
         }
         Ok(EncapsulatedPacket {
             index: self.index,
-            conn_id: self.conn_id,
+            peer_id: self.peer_id,
             channel: self.channel.clone(),
             encapsulate_result: self.tunnel.lock().encapsulate(src, dst),
         })
