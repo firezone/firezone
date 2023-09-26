@@ -5,7 +5,7 @@ use ip_network::IpNetwork;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_core::OsRng;
 use ring::digest::{Context, SHA256};
-use secrecy::Secret;
+use secrecy::SecretString;
 use std::{
     error::Error as StdError,
     fmt::{Debug, Display},
@@ -35,7 +35,7 @@ struct StopRuntime;
 pub trait ControlSession<T, CB: Callbacks> {
     /// Start control-plane with the given private-key in the background.
     async fn start(
-        private_key: Secret<StaticSecret>,
+        private_key: StaticSecret,
         receiver: Receiver<(MessageResult<T>, Option<Reference>)>,
         control_signal: PhoenixSenderWithTopic,
         callbacks: CB,
@@ -240,7 +240,7 @@ where
     /// On a fatal error you should call `[Session::disconnect]` and start a new one.
     pub fn connect(
         portal_url: impl TryInto<Url>,
-        secret: Secret<String>,
+        secret: SecretString,
         device_id: String,
         callbacks: CB,
     ) -> Result<Self> {
@@ -298,19 +298,17 @@ where
         runtime: &Runtime,
         runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
         portal_url: Url,
-        secret: Secret<String>,
+        secret: SecretString,
         device_id: String,
         callbacks: CallbackErrorFacade<CB>,
     ) {
         runtime.spawn(async move {
-            use secrecy::ExposeSecret;
-
-            let private_key = Secret::new(StaticSecret::random_from_rng(OsRng));
+            let private_key = StaticSecret::random_from_rng(OsRng);
             let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
             let external_id = sha256(device_id);
 
             let connect_url = fatal_error!(
-                get_websocket_path(portal_url, secret, T::socket_path(), &Key(PublicKey::from(private_key.expose_secret()).to_bytes()), &external_id, &name_suffix),
+                get_websocket_path(portal_url, secret, T::socket_path(), &Key(PublicKey::from(&private_key).to_bytes()), &external_id, &name_suffix),
                 runtime_stopper,
                 &callbacks
             );
@@ -430,7 +428,7 @@ fn sha256(input: String) -> String {
 
 fn get_websocket_path(
     mut url: Url,
-    secret: Secret<String>,
+    secret: SecretString,
     mode: &str,
     public_key: &Key,
     external_id: &str,
@@ -450,7 +448,7 @@ fn get_websocket_path(
     {
         let mut query_pairs = url.query_pairs_mut();
         query_pairs.clear();
-        query_pairs.append_pair("token", &secret.expose_secret().to_string());
+        query_pairs.append_pair("token", secret.expose_secret().as_str());
         query_pairs.append_pair("public_key", &public_key.to_string());
         query_pairs.append_pair("external_id", external_id);
         query_pairs.append_pair("name_suffix", name_suffix);

@@ -72,7 +72,7 @@ where
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
     ///
-    /// NOTE: Avoid logging the URL as it contains the token and is not wrapped in a Secret!
+    /// NOTE: Avoid logging the URL as it contains the token and is not wrapped in a SecretString!
     pub async fn connect(url: Url, user_agent: String) -> Result<Self, Error> {
         tracing::trace!("Trying to connect to the portal...");
 

@@ -10,7 +10,7 @@ use jni::{
     strings::JNIString,
     JNIEnv, JavaVM,
 };
-use secrecy::Secret;
+use secrecy::SecretString;
 use std::sync::OnceLock;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -344,7 +344,7 @@ fn connect(
     callback_handler: GlobalRef,
 ) -> Result<Session<CallbackHandler>, ConnectError> {
     let portal_url = string_from_jstring!(env, portal_url);
-    let secret = Secret::new(string_from_jstring!(env, portal_token));
+    let secret = SecretString::new(string_from_jstring!(env, portal_token));
     let device_id = string_from_jstring!(env, device_id);
     let log_dir = string_from_jstring!(env, log_dir);
     let log_filter = string_from_jstring!(env, log_filter);

@@ -15,7 +15,7 @@ use core::fmt;
 use opentelemetry::metrics::{Counter, Unit, UpDownCounter};
 use opentelemetry::{Context, KeyValue};
 use rand::Rng;
-use secrecy::Secret;
+use secrecy::SecretString;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
@@ -67,7 +67,7 @@ pub struct Server<R> {
 
     rng: R,
 
-    auth_secret: Secret<String>,
+    auth_secret: SecretString,
 
     nonces: Nonces,
 
@@ -188,7 +188,7 @@ where
             channel_numbers_by_peer: Default::default(),
             pending_commands: Default::default(),
             next_allocation_id: AllocationId(1),
-            auth_secret: Secret::new(hex::encode(rng.gen::<[u8; 32]>())),
+            auth_secret: SecretString::new(hex::encode(rng.gen::<[u8; 32]>())),
             rng,
             time_events: TimeEvents::default(),
             nonces: Default::default(),
@@ -198,7 +198,7 @@ where
         }
     }
 
-    pub fn auth_secret(&self) -> &Secret<String> {
+    pub fn auth_secret(&self) -> &SecretString {
         &self.auth_secret
     }
 

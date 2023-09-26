@@ -12,7 +12,7 @@ use relay::{
     AddressFamily, Allocation, AllocationId, Command, IpStack, Server, Sleep, SocketAddrExt,
     UdpSocket,
 };
-use secrecy::Secret;
+use secrecy::SecretString;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -110,7 +110,7 @@ async fn main() -> Result<()> {
     let channel = if let Some(token) = args.portal_token.clone() {
         let url = args.portal_ws_url.clone();
         let stamp_secret = server.auth_secret();
-        let secret = Secret::new(token);
+        let secret = SecretString::new(token);
 
         let span = tracing::error_span!("connect_to_portal", config_url = %url);
 
@@ -244,9 +244,9 @@ fn env_filter() -> EnvFilter {
 
 async fn connect_to_portal(
     args: &Args,
-    secret: Secret<String>,
+    secret: SecretString,
     mut url: Url,
-    stamp_secret: &Secret<String>,
+    stamp_secret: &SecretString,
 ) -> Result<Option<PhoenixChannel<InboundPortalMessage, ()>>> {
     use secrecy::ExposeSecret;
 

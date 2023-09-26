@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use firezone_client_connlib::{file_logger, get_device_id, Callbacks, Session};
 use headless_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
-use secrecy::Secret;
+use secrecy::SecretString;
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -13,7 +13,7 @@ fn main() -> Result<()> {
     setup_global_subscriber(layer);
 
     let device_id = get_device_id();
-    let secret = Secret::new(cli.common.secret);
+    let secret = SecretString::new(cli.common.secret);
 
     let mut session = Session::connect(cli.common.url, secret, device_id, CallbackHandler).unwrap();
     tracing::info!("new_session");
