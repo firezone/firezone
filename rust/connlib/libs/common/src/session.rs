@@ -238,10 +238,9 @@ where
     /// The generic parameter `CB` should implement all the handlers and that's how errors will be surfaced.
     ///
     /// On a fatal error you should call `[Session::disconnect]` and start a new one.
-    // TODO: token should be something like SecretString but we need to think about FFI compatibility
     pub fn connect(
         portal_url: impl TryInto<Url>,
-        token: Secret<String>,
+        secret: Secret<String>,
         device_id: String,
         callbacks: CB,
     ) -> Result<Self> {
@@ -283,7 +282,7 @@ where
             &runtime,
             tx,
             portal_url.try_into().map_err(|_| Error::UriError)?,
-            token,
+            secret,
             device_id,
             this.callbacks.clone(),
         );
@@ -299,7 +298,7 @@ where
         runtime: &Runtime,
         runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
         portal_url: Url,
-        token: Secret<String>,
+        secret: Secret<String>,
         device_id: String,
         callbacks: CallbackErrorFacade<CB>,
     ) {
@@ -311,7 +310,7 @@ where
             let external_id = sha256(device_id);
 
             let connect_url = fatal_error!(
-                get_websocket_path(portal_url, token, T::socket_path(), &Key(PublicKey::from(private_key.expose_secret()).to_bytes()), &external_id, &name_suffix),
+                get_websocket_path(portal_url, secret, T::socket_path(), &Key(PublicKey::from(private_key.expose_secret()).to_bytes()), &external_id, &name_suffix),
                 runtime_stopper,
                 &callbacks
             );
