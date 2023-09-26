@@ -11,6 +11,7 @@ use std::{
     os::fd::{AsRawFd, RawFd},
     sync::Arc,
 };
+use tokio::io::unix::AsyncFd;
 
 mod wrapped_socket;
 // Android doesn't support Split DNS. So we intercept all requests and forward
@@ -45,53 +46,73 @@ pub struct ifreq {
 const TUNGETIFF: u64 = 0x800454d2;
 
 #[derive(Debug)]
-pub(crate) struct IfaceConfig(pub(crate) Arc<IfaceDevice>);
+pub(crate) struct IfaceDevice(Arc<AsyncFd<IfaceStream>>);
 
 #[derive(Debug)]
-pub(crate) struct IfaceDevice {
+pub(crate) struct IfaceStream {
     fd: RawFd,
 }
 
-impl AsRawFd for IfaceDevice {
+impl AsRawFd for IfaceStream {
     fn as_raw_fd(&self) -> RawFd {
         self.fd
     }
 }
 
-impl Drop for IfaceDevice {
+impl Drop for IfaceStream {
     fn drop(&mut self) {
         unsafe { close(self.fd) };
     }
 }
 
-impl IfaceDevice {
-    fn write(&self, buf: &[u8]) -> usize {
+impl IfaceStream {
+    fn write(&self, buf: &[u8]) -> std::io::Result<usize> {
         match unsafe { write(self.fd, buf.as_ptr() as _, buf.len() as _) } {
-            -1 => 0,
-            n => n as usize,
+            -1 => Err(io::Error::last_os_error()),
+            n => Ok(n as usize),
         }
     }
 
+    pub fn write4(&self, src: &[u8]) -> std::io::Result<usize> {
+        self.write(src)
+    }
+
+    pub fn write6(&self, src: &[u8]) -> std::io::Result<usize> {
+        self.write(src)
+    }
+
+    pub fn read<'a>(&self, dst: &'a mut [u8]) -> std::io::Result<usize> {
+        match unsafe { read(self.fd, dst.as_mut_ptr() as _, dst.len()) } {
+            -1 => Err(io::Error::last_os_error()),
+            n => Ok(n as usize),
+        }
+    }
+}
+
+impl IfaceDevice {
     pub async fn new(
         config: &InterfaceConfig,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<Self> {
+    ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
         let fd = callbacks.on_set_interface_config(
             config.ipv4,
             config.ipv6,
             DNS_SENTINEL,
             DNS_FALLBACK_STRATEGY.to_string(),
         )?;
-        Ok(Self { fd })
+        let iface_stream = Arc::new(AsyncFd::new(IfaceStream { fd: fd.into() })?);
+        let this = Self(Arc::clone(&iface_stream));
+
+        Ok((this, iface_stream))
     }
 
-    pub fn name(&self) -> Result<String> {
+    fn name(&self) -> Result<String> {
         let mut ifr = ifreq {
             ifr_name: [0; IFNAMSIZ],
             ifr_ifru: unsafe { std::mem::zeroed() },
         };
 
-        match unsafe { ioctl(self.fd, TUNGETIFF as _, &mut ifr) } {
+        match unsafe { ioctl(self.0.get_ref().fd, TUNGETIFF as _, &mut ifr) } {
             0 => {
                 let name_cstr = unsafe { std::ffi::CStr::from_ptr(ifr.ifr_name.as_ptr() as _) };
                 Ok(name_cstr.to_string_lossy().into_owned())
@@ -126,37 +147,19 @@ impl IfaceDevice {
         Ok(mtu as _)
     }
 
-    pub fn write4(&self, src: &[u8]) -> usize {
-        self.write(src)
-    }
-
-    pub fn write6(&self, src: &[u8]) -> usize {
-        self.write(src)
-    }
-
-    pub fn read<'a>(&self, dst: &'a mut [u8]) -> Result<&'a mut [u8]> {
-        match unsafe { read(self.fd, dst.as_mut_ptr() as _, dst.len()) } {
-            -1 => Err(Error::IfaceRead(io::Error::last_os_error())),
-            n => Ok(&mut dst[..n as usize]),
-        }
-    }
-}
-
-fn get_last_error() -> Error {
-    Error::Io(io::Error::last_os_error())
-}
-
-impl IfaceConfig {
     pub async fn add_route(
-        &mut self,
+        &self,
         route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
         callbacks.on_add_route(route)
     }
 
-    pub async fn up(&mut self) -> Result<()> {
-        tracing::debug!("`up` unimplemented");
+    pub async fn up(&self) -> Result<()> {
         Ok(())
     }
+}
+
+fn get_last_error() -> Error {
+    Error::Io(io::Error::last_os_error())
 }

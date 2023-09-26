@@ -58,8 +58,8 @@ pub enum ConnlibError {
     #[error("Tried to access an undefined resource")]
     UnknownResource,
     /// One of the stored resources isn't a valid CIDR/DNS.
-    #[error("Invalid resource {0}")]
-    InvalidResource(String),
+    #[error("Invalid resource")]
+    InvalidResource,
     /// Error regarding our own control protocol.
     #[error("Control plane protocol error. Unexpected messages or message order.")]
     ControlProtocolError,
@@ -108,6 +108,15 @@ pub enum ConnlibError {
     /// Invalid phoenix channel reference
     #[error("Invalid phoenix channel reply reference")]
     InvalidReference,
+    /// Invalid packet format
+    #[error("Received badly formatted packet")]
+    BadPacket,
+    /// Tunnel is under load
+    #[error("Under load")]
+    UnderLoad,
+    /// Invalid source address for peer
+    #[error("Invalid source address")]
+    InvalidSource,
 }
 
 #[cfg(target_os = "linux")]

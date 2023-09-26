@@ -9,7 +9,7 @@ fn main() {
 
     println!("Logging to {}", log_dir.canonicalize().unwrap().display());
 
-    let (file_layer, _guard, handle) = file_logger::layer(log_dir);
+    let (file_layer, _guard, handle) = file_logger::layer(log_dir, "info");
 
     tracing_subscriber::registry().with(file_layer).init();
 

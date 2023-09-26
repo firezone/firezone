@@ -18,14 +18,15 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::{fs, io};
 
 use time::OffsetDateTime;
-use tracing::{level_filters::LevelFilter, Subscriber};
-use tracing_subscriber::Layer;
+use tracing::Subscriber;
+use tracing_subscriber::{EnvFilter, Layer};
 
 const LOG_FILE_BASE_NAME: &str = "connlib.log";
 
 /// Create a new file logger layer.
 pub fn layer<T>(
     log_dir: &Path,
+    env_filter: impl Into<EnvFilter>,
 ) -> (
     Box<dyn Layer<T> + Send + Sync + 'static>,
     tracing_appender::non_blocking::WorkerGuard,
@@ -34,19 +35,13 @@ pub fn layer<T>(
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
-    #[cfg(debug_assertions)]
-    let level = LevelFilter::DEBUG;
-
-    #[cfg(not(debug_assertions))]
-    let level = LevelFilter::WARN;
-
     let (appender, handle) = new_appender(log_dir.to_path_buf());
 
     let (writer, guard) = tracing_appender::non_blocking(appender);
 
     let layer = tracing_stackdriver::layer()
         .with_writer(writer)
-        .with_filter(level)
+        .with_filter(env_filter.into())
         .boxed();
 
     // Return the guard so that the caller maintains a handle to it. Otherwise,

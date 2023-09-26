@@ -95,7 +95,8 @@ defmodule Web.Router do
         Web.Sandbox,
         {Web.Auth, :ensure_authenticated},
         {Web.Auth, :ensure_account_admin_user_actor},
-        {Web.Auth, :mount_account}
+        {Web.Auth, :mount_account},
+        {Web.Nav, :set_active_sidebar_item}
       ] do
       live "/dashboard", Dashboard
 

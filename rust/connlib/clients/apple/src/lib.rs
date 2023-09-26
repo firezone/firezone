@@ -1,4 +1,3 @@
-#![cfg(any(target_os = "macos", target_os = "ios"))]
 // Swift bridge generated code triggers this below
 #![allow(improper_ctypes, non_camel_case_types)]
 
@@ -24,6 +23,7 @@ mod ffi {
             token: String,
             device_id: String,
             log_dir: String,
+            log_filter: String,
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
@@ -65,6 +65,7 @@ mod ffi {
 /// This is used by the apple client to interact with our code.
 pub struct WrappedSession {
     session: Session<CallbackHandler>,
+    _guard: WorkerGuard,
 }
 
 // SAFETY: `CallbackHandler.swift` promises to be thread-safe.
@@ -154,8 +155,8 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf) -> (WorkerGuard, file_logger::Handle) {
-    let (file_layer, guard, handle) = file_logger::layer(&log_dir);
+fn init_logging(log_dir: PathBuf, log_filter: String) -> (WorkerGuard, file_logger::Handle) {
+    let (file_layer, guard, handle) = file_logger::layer(&log_dir, log_filter);
 
     let _ = tracing_subscriber::registry()
         .with(tracing_oslog::OsLogger::new(
@@ -174,23 +175,24 @@ impl WrappedSession {
         token: String,
         device_id: String,
         log_dir: String,
+        log_filter: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
         let log_dir = PathBuf::from(log_dir);
-        let (guard, handle) = init_logging(log_dir);
+        let (_guard, handle) = init_logging(log_dir, log_filter);
 
-        Session::connect(
+        let session = Session::connect(
             portal_url.as_str(),
             token,
             device_id,
-            Some(guard),
             CallbackHandler {
                 inner: Arc::new(callback_handler),
                 handle,
             },
         )
-        .map(|session| Self { session })
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+
+        Ok(Self { session, _guard })
     }
 
     fn disconnect(&mut self) {
