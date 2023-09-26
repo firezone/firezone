@@ -20,6 +20,7 @@ jobs:
           - ubuntu-22.04
           - macos-11
           - macos-12
+          - macos-13
           - windows-2019
           - windows-2022
     runs-on: ${{ matrix.runs-on }}
