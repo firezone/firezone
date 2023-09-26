@@ -10,7 +10,7 @@ use libs_common::{
 };
 
 use async_trait::async_trait;
-use firezone_tunnel::{ControlSignal, ConnId, Request, Tunnel};
+use firezone_tunnel::{ConnId, ControlSignal, Request, Tunnel};
 use tokio::sync::{mpsc::Receiver, Mutex};
 
 #[async_trait]
@@ -224,11 +224,20 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     ) {
         if matches!(reply_error.error, ErrorInfo::Offline) {
             match reference {
-                Some(reference) => {
-                    let resource_id: ResourceId = reference.parse().unwrap();
-                    // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
-                    self.tunnel.cleanup_connection(ConnId::from(resource_id));
-                }
+                Some(reference) => match reference.parse::<ResourceId>() {
+                    Ok(resource_id) => {
+                        self.tunnel.cleanup_connection(ConnId::from(resource_id));
+                    }
+                    Err(_) => {
+                        tracing::error!(
+                            "An offline error came back with a reference to a non-valid resource id"
+                        );
+                        let _ = self
+                            .tunnel
+                            .callbacks()
+                            .on_error(&Error::ControlProtocolError);
+                    }
+                },
                 None => {
                     tracing::error!(
                         "An offline portal error came without a reference that originated the error"
