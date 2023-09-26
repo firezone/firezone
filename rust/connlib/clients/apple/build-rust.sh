@@ -15,16 +15,14 @@ fi
 : "${PLATFORM_NAME:=macosx}"
 
 export PATH="$HOME/.cargo/bin:$PATH"
-
 base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
-
-# See https://github.com/briansmith/ring/issues/1332
-export LIBRARY_PATH="${base_dir}/usr/lib"
 export INCLUDE_PATH="${base_dir}/usr/include"
+export LIBRARY_PATH="${base_dir}/usr/lib:${LIBRARY_PATH:-}"
+export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
 # `-Qunused-arguments` stops clang from failing while building *ring*
 # (but the library search path is still necessary when building the framework!)
+# See https://github.com/briansmith/ring/issues/1332
 export CFLAGS="-L ${LIBRARY_PATH} -I ${INCLUDE_PATH} -Qunused-arguments"
-export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
 
 # Borrowed from https://github.com/signalapp/libsignal/commit/02899cac643a14b2ced7c058cc15a836a2165b6d
 # Thanks to @francesca64 for the fix
@@ -33,10 +31,10 @@ if [[ -n "${DEVELOPER_SDK_DIR:-}" ]]; then
   # In this case, we need to add an extra library search path for build scripts and proc-macros,
   # which run on the host instead of the target.
   # (macOS Big Sur does not have linkable libraries in /usr/lib/.)
-  if [[ "$PLATFORM_NAME" = "macosx" || "$PLATFORM_NAME" = "iphoneos" ]]; then
-    export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${LIBRARY_PATH:-}"
-  elif [[ "$PLATFORM_NAME" = "iphonesimulator" ]]; then
-    export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/iPhoneSimulator.sdk/usr/lib:${LIBRARY_PATH:-}"
+  if [[ "$XCODE_VERSION_MAJOR" -lt "1500" ]]; then
+    # It appears we may not need this workaround with the new linker in Xcode 15, but GitHub Actions
+    # currently has spotty support for Xcode 15 on its macOS 13 VMs, so we'll keep this workaround for now.
+    export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${LIBRARY_PATH}"
   fi
 fi
 
@@ -56,36 +54,15 @@ if [[ "$PLATFORM_NAME" = "macosx" ]]; then
       fi
     fi
 else
-  if [[ "$PLATFORM_NAME" = "iphonesimulator" ]]; then
-    if [[ $CONFIGURATION == "Release" ]] || [[ -z "$NATIVE_ARCH" ]]; then
-      TARGETS=("aarch64-apple-ios-sim" "x86_64-apple-ios")
-    else
-      if [[ $NATIVE_ARCH == "arm64" ]]; then
-        TARGETS=("aarch64-apple-ios-sim")
-      else
-        if [[ $NATIVE_ARCH == "x86_64" ]]; then
-          TARGETS=("x86_64-apple-ios")
-	else
-          echo "Unsupported native arch for $PLATFORM_NAME: $NATIVE_ARCH"
-        fi
-      fi
-    fi
+  if [[ "$PLATFORM_NAME" = "iphoneos" ]]; then
+    TARGETS="aarch64-apple-ios"
   else
-    if [[ "$PLATFORM_NAME" = "iphoneos" ]]; then
-      TARGETS="aarch64-apple-ios"
-    else
-      echo "Unsupported platform: $PLATFORM_NAME"
-      exit 1
-    fi
+    echo "Unsupported platform: $PLATFORM_NAME"
+    exit 1
   fi
 fi
 
 MESSAGE="Building Connlib"
-
-if [[ -n "$CONNLIB_MOCK" ]]; then
-  MESSAGE="${MESSAGE} (mock)"
-  FEATURE_ARGS="--features mock"
-fi
 
 if [[ $CONFIGURATION == "Release" ]]; then
   echo "${MESSAGE} for Release"
@@ -103,6 +80,6 @@ fi
 for target in "${TARGETS[@]}"
 do
   set -x
-  cargo build --target=$target $FEATURE_ARGS $CONFIGURATION_ARGS
+  cargo build --target=$target $CONFIGURATION_ARGS
   set +x
 done

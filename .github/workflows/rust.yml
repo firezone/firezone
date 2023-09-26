@@ -28,6 +28,7 @@ jobs:
           - ubuntu-22.04
           - macos-11
           - macos-12
+          - macos-13
           - windows-2019
           - windows-2022
         # TODO: https://github.com/rust-lang/cargo/issues/5220
@@ -39,6 +40,8 @@ jobs:
           - runs-on: macos-11
             packages: -p connlib-apple
           - runs-on: macos-12
+            packages: -p connlib-apple
+          - runs-on: macos-13
             packages: -p connlib-apple
           - runs-on: windows-2019
             packages: -p firezone-client-connlib

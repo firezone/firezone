@@ -17,8 +17,15 @@ concurrency:
 
 jobs:
   swift_build:
+    runs-on: ${{ matrix.runs-on.os }}
     strategy:
+      fail-fast: false
       matrix:
+        runs-on:
+          - os: macos-12
+            xcode-ver: '14.2'
+          - os: macos-13
+            xcode-ver: '14.3'
         target:
           - sdk: macosx
             platform: macOS
@@ -26,7 +33,6 @@ jobs:
           - sdk: iphoneos
             platform: iOS
             destination: generic/platform=iOS
-    runs-on: macos-latest
     permissions:
       contents: read
     defaults:
@@ -47,14 +53,14 @@ jobs:
           key: ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ matrix.target.platform }}-spm-
+      - run: |
+          sudo ls -al /Applications/
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
+        run: |
+          sudo xcode-select -s /Applications/Xcode_${{ matrix.runs-on.xcode-ver }}.app
       - name: Build app
         env:
           ONLY_ACTIVE_ARCH: no
-
         working-directory: ./swift/apple
         run: |
           cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig

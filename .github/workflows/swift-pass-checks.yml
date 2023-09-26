@@ -14,8 +14,14 @@ on:
 
 jobs:
   swift_build:
+    runs-on: ${{ matrix.runs-on.os }}
     strategy:
       matrix:
+        runs-on:
+          - os: macos-12
+            xcode-ver: '14.2'
+          - os: macos-13
+            xcode-ver: '14.3'
         target:
           - sdk: macosx
             platform: macOS
@@ -23,6 +29,5 @@ jobs:
           - sdk: iphoneos
             platform: iOS
             destination: generic/platform=iOS
-    runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
