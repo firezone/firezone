@@ -101,7 +101,6 @@ where
 }
 
 fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
-    static LOGGING_GUARD: OnceLock<(WorkerGuard, file_logger::Handle)> = OnceLock::new();
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to
@@ -110,6 +109,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
     //
     // So we use a static variable to track whether the guard has been initialized and avoid
     // re-initialized it if so.
+    static LOGGING_GUARD: OnceLock<(WorkerGuard, file_logger::Handle)> = OnceLock::new();
     if let Some((_, handle)) = LOGGING_GUARD.get() {
         return handle.clone();
     }
