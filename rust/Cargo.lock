@@ -763,6 +763,7 @@ dependencies = [
  "ip_network",
  "jni 0.21.1",
  "log",
+ "secrecy",
  "serde_json",
  "thiserror",
  "tracing",
@@ -780,6 +781,7 @@ dependencies = [
  "firezone-client-connlib",
  "ip_network",
  "libc",
+ "secrecy",
  "serde_json",
  "swift-bridge",
  "swift-bridge-build",
@@ -1188,6 +1190,7 @@ dependencies = [
  "chrono",
  "firezone-tunnel",
  "libs-common",
+ "secrecy",
  "serde",
  "serde_json",
  "tokio",
@@ -1208,6 +1211,7 @@ dependencies = [
  "chrono",
  "firezone-tunnel",
  "libs-common",
+ "secrecy",
  "serde",
  "serde_json",
  "tokio",
@@ -1237,6 +1241,7 @@ dependencies = [
  "pnet_packet",
  "rand_core",
  "rtnetlink",
+ "secrecy",
  "serde",
  "thiserror",
  "tokio",
@@ -1358,6 +1363,7 @@ dependencies = [
  "clap",
  "firezone-gateway-connlib",
  "headless-utils",
+ "secrecy",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1464,6 +1470,7 @@ dependencies = [
  "clap",
  "firezone-client-connlib",
  "headless-utils",
+ "secrecy",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1892,6 +1899,7 @@ dependencies = [
  "rand_core",
  "ring",
  "rtnetlink",
+ "secrecy",
  "serde",
  "serde_json",
  "smbios-lib",
@@ -2770,6 +2778,7 @@ dependencies = [
  "proptest",
  "rand",
  "redis",
+ "secrecy",
  "serde",
  "sha2",
  "socket2 0.5.4",
@@ -3052,6 +3061,15 @@ dependencies = [
  "generic-array",
  "pkcs8",
  "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "secrecy"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bd1c54ea06cfd2f6b63219704de0b9b4f72dcc2b8fdef820be6cd799780e91e"
+dependencies = [
  "zeroize",
 ]
 

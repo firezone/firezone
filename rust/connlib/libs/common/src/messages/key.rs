@@ -85,8 +85,10 @@ mod test {
 
     #[test]
     fn can_serialize_from_private_key_and_back() {
-        let private_key = StaticSecret::random_from_rng(OsRng);
-        let expected_public_key = PublicKey::from(&private_key);
+        use secrecy::{ExposeSecret, Secret};
+
+        let private_key = Secret::new(StaticSecret::random_from_rng(OsRng));
+        let expected_public_key = PublicKey::from(private_key.expose_secret());
         let public_key = Key(expected_public_key.to_bytes());
         let public_key_string = serde_json::to_string(&public_key).unwrap();
         let actual_key: Key = serde_json::from_str(&public_key_string).unwrap();

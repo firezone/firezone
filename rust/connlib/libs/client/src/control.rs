@@ -8,6 +8,7 @@ use libs_common::{
     messages::{Id, ResourceDescription},
     Callbacks, ControlSession, Error, Result,
 };
+use secrecy::Secret;
 
 use async_trait::async_trait;
 use firezone_tunnel::{ControlSignal, Request, Tunnel};
@@ -260,7 +261,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 impl<CB: Callbacks + 'static> ControlSession<Messages, CB> for ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     async fn start(
-        private_key: StaticSecret,
+        private_key: Secret<StaticSecret>,
         receiver: Receiver<(MessageResult<Messages>, Option<Reference>)>,
         control_signal: PhoenixSenderWithTopic,
         callbacks: CB,

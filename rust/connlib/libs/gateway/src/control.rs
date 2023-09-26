@@ -8,6 +8,7 @@ use libs_common::{
     messages::{Id, ResourceDescription},
     Callbacks, ControlSession, Result,
 };
+use secrecy::Secret;
 use tokio::sync::mpsc::Receiver;
 
 use crate::messages::AllowAccess;
@@ -147,7 +148,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 impl<CB: Callbacks + 'static> ControlSession<IngressMessages, CB> for ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     async fn start(
-        private_key: StaticSecret,
+        private_key: Secret<StaticSecret>,
         receiver: Receiver<(MessageResult<IngressMessages>, Option<Reference>)>,
         control_signal: PhoenixSenderWithTopic,
         callbacks: CB,

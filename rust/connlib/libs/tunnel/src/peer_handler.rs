@@ -16,9 +16,11 @@ where
 {
     #[inline(always)]
     fn is_wireguard_packet_ok(&self, parsed_packet: &Packet, peer: &Peer) -> bool {
+        use secrecy::ExposeSecret;
+
         match &parsed_packet {
             Packet::HandshakeInit(p) => {
-                parse_handshake_anon(&self.private_key, &self.public_key, p).is_ok()
+                parse_handshake_anon(self.private_key.expose_secret(), &self.public_key, p).is_ok()
             }
             Packet::HandshakeResponse(p) => check_packet_index(p.receiver_idx, peer.index),
             Packet::PacketCookieReply(p) => check_packet_index(p.receiver_idx, peer.index),

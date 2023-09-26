@@ -13,6 +13,7 @@ swift-bridge-build = "0.1.52"
 walkdir = "2.3.3"
 
 [dependencies]
+secrecy = { workspace = true }
 ip_network = "0.4"
 libc = "0.2"
 swift-bridge = { workspace = true }

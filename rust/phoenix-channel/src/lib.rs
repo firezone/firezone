@@ -18,6 +18,8 @@ use url::Url;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
+// TODO: Refactor this PhoenixChannel to be compatible with the needs of the client and gateway
+// See https://github.com/firezone/firezone/issues/2158
 pub struct PhoenixChannel<TInboundMsg, TOutboundRes> {
     stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
     pending_messages: Vec<Message>,
@@ -69,6 +71,8 @@ where
     ///
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
+    ///
+    /// NOTE: Avoid logging the URL as it contains the token and is not wrapped in a Secret!
     pub async fn connect(url: Url, user_agent: String) -> Result<Self, Error> {
         tracing::trace!("Trying to connect to the portal...");
 

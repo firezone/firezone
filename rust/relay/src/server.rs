@@ -15,6 +15,7 @@ use core::fmt;
 use opentelemetry::metrics::{Counter, Unit, UpDownCounter};
 use opentelemetry::{Context, KeyValue};
 use rand::Rng;
+use secrecy::Secret;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
@@ -66,7 +67,7 @@ pub struct Server<R> {
 
     rng: R,
 
-    auth_secret: String,
+    auth_secret: Secret<String>,
 
     nonces: Nonces,
 
@@ -187,7 +188,7 @@ where
             channel_numbers_by_peer: Default::default(),
             pending_commands: Default::default(),
             next_allocation_id: AllocationId(1),
-            auth_secret: hex::encode(rng.gen::<[u8; 32]>()),
+            auth_secret: Secret::new(hex::encode(rng.gen::<[u8; 32]>())),
             rng,
             time_events: TimeEvents::default(),
             nonces: Default::default(),
@@ -197,7 +198,7 @@ where
         }
     }
 
-    pub fn auth_secret(&self) -> &str {
+    pub fn auth_secret(&self) -> &Secret<String> {
         &self.auth_secret
     }
 
@@ -326,7 +327,7 @@ where
 
         let Some(channel) = self.channels_by_number.get(channel_number) else {
             debug_assert!(false, "unknown channel {}", channel_number);
-            return
+            return;
         };
 
         if !channel.bound {
@@ -735,6 +736,8 @@ where
         request: &(impl StunRequest + ProtectedRequest),
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
+        use secrecy::ExposeSecret;
+
         let message_integrity = request
             .message_integrity()
             .map_err(|e| error_response(e, request))?;
@@ -755,7 +758,7 @@ where
             .map_err(|_| error_response(StaleNonce, request))?;
 
         message_integrity
-            .verify(&self.auth_secret, username.name(), now)
+            .verify(self.auth_secret.expose_secret(), username.name(), now)
             .map_err(|_| error_response(Unauthorized, request))?;
 
         Ok(())

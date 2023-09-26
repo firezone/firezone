@@ -17,6 +17,7 @@ use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
 use resource_table::ResourceTable;
+use secrecy::Secret;
 use tokio::time::MissedTickBehavior;
 use webrtc::{
     api::{
@@ -133,7 +134,7 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     iface_config: RwLock<Option<Arc<IfaceConfig>>>,
     device_io: RwLock<Option<DeviceIo>>,
     rate_limiter: Arc<RateLimiter>,
-    private_key: StaticSecret,
+    private_key: Secret<StaticSecret>,
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<Id, Arc<RTCPeerConnection>>>,
@@ -216,11 +217,12 @@ where
     /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
     #[tracing::instrument(level = "trace", skip(private_key, control_signaler, callbacks))]
     pub async fn new(
-        private_key: StaticSecret,
+        private_key: Secret<StaticSecret>,
         control_signaler: C,
         callbacks: CB,
     ) -> Result<Self> {
-        let public_key = (&private_key).into();
+        use secrecy::ExposeSecret;
+        let public_key = private_key.expose_secret().into();
         let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
         let peers_by_ip = RwLock::new(IpNetworkTable::new());
         let next_index = Default::default();

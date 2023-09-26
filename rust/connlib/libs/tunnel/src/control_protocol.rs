@@ -46,13 +46,15 @@ where
         conn_id: Id,
         resources: Option<(ResourceDescription, DateTime<Utc>)>,
     ) -> Result<()> {
+        use secrecy::ExposeSecret;
+
         tracing::trace!(
             ?peer_config.ips,
             "data_channel_open",
         );
         let channel = data_channel.detach().await?;
         let tunn = Tunn::new(
-            self.private_key.clone(),
+            self.private_key.expose_secret().clone(),
             peer_config.public_key,
             Some(peer_config.preshared_key.to_bytes()),
             peer_config.persistent_keepalive,

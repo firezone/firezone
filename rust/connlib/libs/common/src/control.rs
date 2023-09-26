@@ -30,6 +30,8 @@ const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(35);
 
 pub type Reference = String;
 
+// TODO: Refactor this PhoenixChannel to use the top-level phoenix-channel crate instead.
+// See https://github.com/firezone/firezone/issues/2158
 /// Main struct to interact with the control-protocol channel.
 ///
 /// After creating a new `PhoenixChannel` using [PhoenixChannel::new] you need to
@@ -244,6 +246,8 @@ where
     /// - `handler`: The handle that will be called for each received message.
     ///
     /// For more info see [struct-level docs][PhoenixChannel].
+    ///
+    /// NOTE: Avoid logging the URL as it contains the token and is not wrapped in a Secret!
     pub fn new(uri: Url, handler: F) -> Self {
         let (sender, receiver) = channel(CHANNEL_SIZE);
 

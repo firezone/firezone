@@ -12,6 +12,7 @@ use relay::{
     AddressFamily, Allocation, AllocationId, Command, IpStack, Server, Sleep, SocketAddrExt,
     UdpSocket,
 };
+use secrecy::Secret;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -106,13 +107,14 @@ async fn main() -> Result<()> {
         args.highest_port,
     );
 
-    let channel = if let Some(token) = args.portal_token.as_ref() {
+    let channel = if let Some(token) = args.portal_token.clone() {
         let url = args.portal_ws_url.clone();
-        let stamp_secret = server.auth_secret().to_string();
+        let stamp_secret = server.auth_secret();
+        let secret = Secret::new(token);
 
         let span = tracing::error_span!("connect_to_portal", config_url = %url);
 
-        connect_to_portal(&args, token, url, stamp_secret)
+        connect_to_portal(&args, secret, url, stamp_secret)
             .instrument(span)
             .await?
     } else {
@@ -242,16 +244,20 @@ fn env_filter() -> EnvFilter {
 
 async fn connect_to_portal(
     args: &Args,
-    token: &str,
+    secret: Secret<String>,
     mut url: Url,
-    stamp_secret: String,
+    stamp_secret: &Secret<String>,
 ) -> Result<Option<PhoenixChannel<InboundPortalMessage, ()>>> {
+    use secrecy::ExposeSecret;
+
     if !url.path().is_empty() {
         tracing::warn!("Overwriting path component of portal URL with '/relay/websocket'");
     }
 
     url.set_path("relay/websocket");
-    url.query_pairs_mut().append_pair("token", token);
+
+    url.query_pairs_mut()
+        .append_pair("token", secret.expose_secret().as_str());
 
     if let Some(public_ip4_addr) = args.public_ip4_addr {
         url.query_pairs_mut()
@@ -271,7 +277,12 @@ async fn connect_to_portal(
 
     tracing::info!("Connected to portal, waiting for init message",);
 
-    channel.join("relay", JoinMessage { stamp_secret });
+    channel.join(
+        "relay",
+        JoinMessage {
+            stamp_secret: stamp_secret.expose_secret().to_string(),
+        },
+    );
 
     loop {
         match future::poll_fn(|cx| channel.poll(cx))
