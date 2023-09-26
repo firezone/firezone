@@ -3,9 +3,9 @@ defmodule Domain.Policies.Policy.Changeset do
   alias Domain.Auth
   alias Domain.Policies.Policy
 
-  @fields ~w[name actor_group_id resource_id]a
-  @update_fields ~w[name]a
-  @required_fields @fields
+  @fields ~w[description actor_group_id resource_id]a
+  @update_fields ~w[description]a
+  @required_fields ~w[actor_group_id resource_id]a
 
   def create(attrs, %Auth.Subject{} = subject) do
     %Policy{}
@@ -32,26 +32,22 @@ defmodule Domain.Policies.Policy.Changeset do
 
   defp changeset(changeset) do
     changeset
-    |> validate_length(:name, min: 1, max: 255)
-    |> unique_constraint([:account_id, :name],
-      message: "Policy Name already exists",
-      error_key: :name
-    )
+    |> validate_length(:description, min: 1, max: 1024)
     |> unique_constraint(
       :base,
-      name: :policies_account_id_resource_id_actor_group_id_index,
+      description: :policies_account_id_resource_id_actor_group_id_index,
       message: "Policy with Group and Resource already exists"
     )
     |> assoc_constraint(:resource)
     |> assoc_constraint(:actor_group)
     |> unique_constraint(
       :base,
-      name: :policies_actor_group_id_fkey,
+      description: :policies_actor_group_id_fkey,
       message: "Not allowed to create policies for groups outside of your account"
     )
     |> unique_constraint(
       :base,
-      name: :policies_resource_id_fkey,
+      description: :policies_resource_id_fkey,
       message: "Not allowed to create policies for resources outside of your account"
     )
   end

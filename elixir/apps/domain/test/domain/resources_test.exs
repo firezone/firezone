@@ -26,8 +26,32 @@ defmodule Domain.ResourcesTest do
       assert fetch_resource_by_id("foo", subject) == {:error, :not_found}
     end
 
-    test "returns resource when resource exists", %{account: account, subject: subject} do
+    test "returns resource for account admin", %{account: account, subject: subject} do
       resource = Fixtures.Resources.create_resource(account: account)
+
+      assert {:ok, fetched_resource} = fetch_resource_by_id(resource.id, subject)
+      assert fetched_resource.id == resource.id
+    end
+
+    test "returns authorized resource for account user", %{
+      account: account
+    } do
+      actor_group = Fixtures.Actors.create_group(account: account)
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      Fixtures.Actors.create_membership(actor: actor, group: actor_group)
+
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      assert fetch_resource_by_id(resource.id, subject) == {:error, :not_found}
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
 
       assert {:ok, fetched_resource} = fetch_resource_by_id(resource.id, subject)
       assert fetched_resource.id == resource.id
@@ -94,22 +118,42 @@ defmodule Domain.ResourcesTest do
       assert list_resources(subject) == {:ok, []}
     end
 
-    test "returns all resources for account admin subject", %{
+    test "returns all authorized resources for account user subject", %{
       account: account
     } do
       actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
 
-      Fixtures.Resources.create_resource(account: account)
-      Fixtures.Resources.create_resource(account: account)
+      resource1 = Fixtures.Resources.create_resource(account: account)
+      resource2 = Fixtures.Resources.create_resource(account: account)
       Fixtures.Resources.create_resource()
+
+      assert {:ok, []} = list_resources(subject)
+
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(actor: actor, group: actor_group)
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource1
+      )
+
+      assert {:ok, resources} = list_resources(subject)
+      assert length(resources) == 1
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource2
+      )
 
       assert {:ok, resources} = list_resources(subject)
       assert length(resources) == 2
     end
 
-    test "returns all resources for account user subject", %{
+    test "returns all resources for account admin subject", %{
       account: account,
       subject: subject
     } do

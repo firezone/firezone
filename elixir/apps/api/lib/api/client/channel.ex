@@ -219,7 +219,6 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "reuse_connection", attrs do
       with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject),
-           #  :ok = Resource.authorize(resource, socket.assigns.subject),
            {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
            true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
         opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
@@ -266,7 +265,6 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "request_connection", ctx_attrs do
       with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject),
-           #  :ok = Resource.authorize(resource, socket.assigns.subject),
            {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
            true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
         opentelemetry_ctx = OpenTelemetry.Ctx.get_current()

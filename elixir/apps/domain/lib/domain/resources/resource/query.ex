@@ -14,6 +14,15 @@ defmodule Domain.Resources.Resource.Query do
     where(queryable, [resources: resources], resources.account_id == ^account_id)
   end
 
+  def by_authorized_actor_id(queryable \\ all(), actor_id) do
+    subquery =
+      Domain.Policies.Policy.Query.by_actor_id(actor_id)
+      |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
+      |> select([], true)
+
+    where(queryable, [resources: resources], exists(subquery))
+  end
+
   def by_gateway_group_id(queryable \\ all(), gateway_group_id) do
     queryable
     |> with_joined_connections()

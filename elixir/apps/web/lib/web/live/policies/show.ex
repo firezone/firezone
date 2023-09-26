@@ -1,5 +1,6 @@
 defmodule Web.Policies.Show do
   use Web, :live_view
+  import Web.Policies.Components
   alias Domain.Policies
 
   def mount(%{"id" => id}, _session, socket) do
@@ -22,12 +23,12 @@ defmodule Web.Policies.Show do
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
       <.breadcrumb path={~p"/#{@account}/policies"}>Policies</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/policies/#{@policy}"}>
-        <%= @policy.name %>
+        <.policy_name policy={@policy} />
       </.breadcrumb>
     </.breadcrumbs>
     <.header>
       <:title>
-        Viewing Policy <code><%= @policy.name %></code>
+        Viewing Policy <code><%= @policy.id %></code>
       </:title>
       <:actions>
         <.edit_button navigate={~p"/#{@account}/policies/#{@policy}/edit"}>
@@ -40,10 +41,10 @@ defmodule Web.Policies.Show do
       <.vertical_table id="policy">
         <.vertical_table_row>
           <:label>
-            Name
+            ID
           </:label>
           <:value>
-            <%= @policy.name %>
+            <%= @policy.id %>
           </:value>
         </.vertical_table_row>
         <.vertical_table_row>
@@ -70,6 +71,14 @@ defmodule Web.Policies.Show do
             >
               <%= @policy.resource.name %>
             </.link>
+          </:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>
+            Description
+          </:label>
+          <:value>
+            <%= @policy.description %>
           </:value>
         </.vertical_table_row>
         <.vertical_table_row>

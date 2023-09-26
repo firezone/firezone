@@ -95,6 +95,23 @@ defmodule API.Gateway.Channel do
     end
   end
 
+  def handle_info({:reject_access, client_id, resource_id}, socket) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "reject_access", %{
+      client_id: client_id,
+      resource_id: resource_id
+    } do
+      push(socket, "reject_access", %{
+        client_id: client_id,
+        resource_id: resource_id
+      })
+
+      {:noreply, socket}
+    end
+  end
+
   def handle_info(
         {:request_connection, {channel_pid, socket_ref}, attrs,
          {opentelemetry_ctx, opentelemetry_span_ctx}},

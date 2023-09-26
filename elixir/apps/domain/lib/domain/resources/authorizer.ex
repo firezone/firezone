@@ -29,9 +29,9 @@ defmodule Domain.Resources.Authorizer do
       has_permission?(subject, manage_resources_permission()) ->
         Resource.Query.by_account_id(queryable, subject.account.id)
 
-      # TODO: for end users we must return only resources that user has access to (evaluate the policy)
       has_permission?(subject, view_available_resources_permission()) ->
         Resource.Query.by_account_id(queryable, subject.account.id)
+        |> Resource.Query.by_authorized_actor_id(subject.actor.id)
     end
   end
 end

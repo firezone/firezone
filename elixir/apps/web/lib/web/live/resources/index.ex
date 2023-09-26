@@ -5,7 +5,9 @@ defmodule Web.Resources.Index do
 
   def mount(_params, _session, socket) do
     {_, resources} =
-      Resources.list_resources(socket.assigns.subject, preload: :gateway_groups)
+      Resources.list_resources(socket.assigns.subject,
+        preload: [:gateway_groups, policies: [:actor_group]]
+      )
 
     {:ok, assign(socket, resources: resources)}
   end
@@ -53,14 +55,12 @@ defmodule Web.Resources.Index do
             </.badge>
           </.link>
         </:col>
-        <:col :let={_resource} label="AUTHORIZED GROUPS">
-          TODO
-          <.link navigate={~p"/#{@account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}>
-            <.badge>Engineering</.badge>
-          </.link>
-
-          <.link navigate={~p"/#{@account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}>
-            <.badge>IT</.badge>
+        <:col :let={resource} label="AUTHORIZED GROUPS">
+          <.link
+            :for={policy <- resource.policies}
+            navigate={~p"/#{@account}/groups/#{policy.actor_group}"}
+          >
+            <.badge><%= policy.actor_group.name %></.badge>
           </.link>
         </:col>
         <:action :let={resource}>

@@ -28,12 +28,12 @@ defmodule Web.Policies.Index do
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <.resource_filter />
       <.table id="policies" rows={@policies} row_id={&"policies-#{&1.id}"}>
-        <:col :let={policy} label="NAME">
+        <:col :let={policy} label="ID">
           <.link
             navigate={~p"/#{@account}/policies/#{policy}"}
             class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
           >
-            <%= policy.name %>
+            <%= policy.id %>
           </.link>
         </:col>
         <:col :let={policy} label="GROUP">

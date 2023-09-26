@@ -14,6 +14,10 @@ defmodule Domain.Policies.Policy.Query do
     where(queryable, [policies: policies], policies.account_id == ^account_id)
   end
 
+  def by_resource_id(queryable \\ all(), resource_id) do
+    where(queryable, [policies: policies], policies.resource_id == ^resource_id)
+  end
+
   def by_actor_id(queryable \\ all(), actor_id) do
     queryable
     |> join(:inner, [policies: policies], ag in assoc(policies, :actor_group), as: :actor_groups)
