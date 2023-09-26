@@ -16,7 +16,12 @@ fi
 
 export PATH="$HOME/.cargo/bin:$PATH"
 base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
+export INCLUDE_PATH="${base_dir}/usr/include"
+export LIBRARY_PATH="${base_dir}/usr/lib:${LIBRARY_PATH:-}"
 export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
+# `-Qunused-arguments` stops clang from failing while building *ring*
+# (but the library search path is still necessary when building the framework!)
+export CFLAGS="-L ${LIBRARY_PATH} -I ${INCLUDE_PATH} -Qunused-arguments"
 
 # Borrowed from https://github.com/signalapp/libsignal/commit/02899cac643a14b2ced7c058cc15a836a2165b6d
 # Thanks to @francesca64 for the fix
@@ -28,12 +33,7 @@ if [[ -n "${DEVELOPER_SDK_DIR:-}" && "$XCODE_VERSION_MAJOR" -lt "1500" ]]; then
   # (macOS Big Sur does not have linkable libraries in /usr/lib/.)
 
   # See https://github.com/briansmith/ring/issues/1332
-  export INCLUDE_PATH="${base_dir}/usr/include"
-  export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${base_dir}/usr/lib:${LIBRARY_PATH:-}"
-
-  # `-Qunused-arguments` stops clang from failing while building *ring*
-  # (but the library search path is still necessary when building the framework!)
-  export CFLAGS="-L ${LIBRARY_PATH} -I ${INCLUDE_PATH} -Qunused-arguments"
+  export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${LIBRARY_PATH}"
 fi
 
 TARGETS=()
