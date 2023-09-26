@@ -15,6 +15,8 @@ fi
 : "${PLATFORM_NAME:=macosx}"
 
 export PATH="$HOME/.cargo/bin:$PATH"
+base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
+export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
 
 # Borrowed from https://github.com/signalapp/libsignal/commit/02899cac643a14b2ced7c058cc15a836a2165b6d
 # Thanks to @francesca64 for the fix
@@ -24,11 +26,9 @@ if [[ -n "${DEVELOPER_SDK_DIR:-}" && "$XCODE_VERSION_MAJOR" -lt "1500" ]]; then
   # In this case, we need to add an extra library search path for build scripts and proc-macros,
   # which run on the host instead of the target.
   # (macOS Big Sur does not have linkable libraries in /usr/lib/.)
-  base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
 
   # See https://github.com/briansmith/ring/issues/1332
   export INCLUDE_PATH="${base_dir}/usr/include"
-  export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
   export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${base_dir}/usr/lib:${LIBRARY_PATH:-}"
 
   # `-Qunused-arguments` stops clang from failing while building *ring*
