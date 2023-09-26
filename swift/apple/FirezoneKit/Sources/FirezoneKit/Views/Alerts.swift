@@ -4,7 +4,7 @@
 //  LICENSE: Apache-2.0
 //
 
-import _SwiftUINavigationState
+import SwiftUINavigationCore
 
 #if os(iOS)
 extension AlertState where Action == WelcomeViewModel.UndefinedSettingsAlertAction {
