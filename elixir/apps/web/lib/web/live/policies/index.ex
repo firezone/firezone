@@ -26,7 +26,6 @@ defmodule Web.Policies.Index do
     </.header>
     <!-- Policies table -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.resource_filter />
       <.table id="policies" rows={@policies} row_id={&"policies-#{&1.id}"}>
         <:col :let={policy} label="ID">
           <.link
@@ -49,22 +48,7 @@ defmodule Web.Policies.Index do
             <%= policy.resource.name %>
           </.link>
         </:col>
-        <:action :let={policy}>
-          <.action_link navigate={~p"/#{@account}/policies/#{policy}/edit"}>
-            Edit
-          </.action_link>
-        </:action>
-        <:action :let={policy}>
-          <div
-            phx-click="delete"
-            phx-value-id={policy.id}
-            class="block py-2 px-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-          >
-            Delete
-          </div>
-        </:action>
       </.table>
-      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/gateway_groups"} />
     </div>
     """
   end

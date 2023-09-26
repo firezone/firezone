@@ -78,7 +78,7 @@ defmodule Web.Policies.Show do
             Description
           </:label>
           <:value>
-            <%= @policy.description %>
+            <span class="whitespace-pre" phx-no-format><%= @policy.description %></span>
           </:value>
         </.vertical_table_row>
         <.vertical_table_row>
@@ -100,7 +100,7 @@ defmodule Web.Policies.Show do
     <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
       <div class="col-span-full mb-4 xl:mb-2">
         <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
-          Logs
+          Authorizations
         </h1>
       </div>
     </div>
