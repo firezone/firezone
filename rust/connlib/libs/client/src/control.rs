@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::{sync::Arc, time::Duration};
 
 use crate::messages::{Connect, ConnectionDetails, EgressMessages, InitClient, Messages};
@@ -12,7 +13,6 @@ use libs_common::{
 use async_trait::async_trait;
 use firezone_tunnel::{ControlSignal, Request, Tunnel};
 use tokio::sync::{mpsc::Receiver, Mutex};
-use url::Url;
 
 #[async_trait]
 impl ControlSignal for ControlSignaler {
@@ -144,8 +144,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn upload_logs(&mut self, url: Url) {
-        self.tunnel.upload_logs(url)
+    fn roll_log_file(&mut self) -> Option<PathBuf> {
+        self.tunnel.roll_log_file()
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -220,7 +220,13 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Messages::ResourceAdded(resource) => self.add_resource(resource).await,
             Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
             Messages::ResourceUpdated(resource) => self.update_resource(resource),
-            Messages::SignedLogUrl(url) => self.upload_logs(url),
+            Messages::SignedLogUrl(_url) => {
+                let Some(_path) = self.roll_log_file() else {
+                    return Ok(())
+                };
+
+                // TODO: Upload `path` to `url`.
+            }
         }
         Ok(())
     }

@@ -27,8 +27,8 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
+use std::path::PathBuf;
 use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
-use url::Url;
 
 use libs_common::{
     messages::{Id, Interface as InterfaceConfig, ResourceDescription},
@@ -328,8 +328,8 @@ where
         Ok(())
     }
 
-    pub fn upload_logs(&self, url: Url) {
-        self.callbacks.upload_logs(url);
+    pub fn roll_log_file(&self) -> Option<PathBuf> {
+        self.callbacks.roll_log_file()
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

@@ -5,6 +5,7 @@ use ip_network::IpNetwork;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_core::OsRng;
 use ring::digest::{Context, SHA256};
+use std::path::PathBuf;
 use std::{
     error::Error as StdError,
     fmt::{Debug, Display},
@@ -90,8 +91,12 @@ pub trait Callbacks: Clone + Send + Sync {
     fn on_disconnect(&self, error: Option<&Error>) -> StdResult<(), Self::Error>;
     /// Called when there's a recoverable error.
     fn on_error(&self, error: &Error) -> StdResult<(), Self::Error>;
-    /// Called when we are given an log-upload URL by the portal.
-    fn upload_logs(&self, url: Url);
+    /// Called when the log file should be rolled.
+    ///
+    /// Should return the path to the old log, if present.
+    fn roll_log_file(&self) -> Option<PathBuf> {
+        None
+    }
 }
 
 #[derive(Clone)]
@@ -182,8 +187,8 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         Ok(())
     }
 
-    fn upload_logs(&self, url: Url) {
-        self.0.upload_logs(url)
+    fn roll_log_file(&self) -> Option<PathBuf> {
+        self.0.roll_log_file()
     }
 }
 

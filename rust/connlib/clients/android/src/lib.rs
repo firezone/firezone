@@ -20,7 +20,6 @@ use std::{
 use thiserror::Error;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::prelude::*;
-use url::Url;
 
 pub struct CallbackHandler {
     vm: JavaVM,
@@ -288,20 +287,12 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn upload_logs(&self, _: Url) {
-        let old_file = match self.handle.roll_to_new_file() {
-            Ok(Some(old_file)) => old_file,
-            Ok(None) => {
-                tracing::debug!("No log file yet, nothing to upload");
-                return;
-            }
-            Err(e) => {
-                tracing::debug!("Failed to roll over to new file: {e}");
-                return;
-            }
-        };
+    fn roll_log_file(&self) -> Option<PathBuf> {
+        self.handle.roll_to_new_file().unwrap_or_else(|e| {
+            tracing::debug!("Failed to roll over to new file: {e}");
 
-        tracing::debug!("Uploading log-file {}", old_file.display());
+            None
+        })
     }
 }
 

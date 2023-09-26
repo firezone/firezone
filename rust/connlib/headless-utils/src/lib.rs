@@ -58,7 +58,7 @@ impl Callbacks for HeadlessCallbackHandler {
         Ok(())
     }
 
-    fn upload_logs(&self, _: Url) {
+    fn roll_log_file(&self) -> Option<PathBuf> {
         todo!()
     }
 }
