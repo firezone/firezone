@@ -57,7 +57,7 @@ jobs:
           sudo ls -al /Applications/
       - name: Select Xcode
         run: |
-          sudo xcode-select -s /Applications/${{ matrix.runs-on.xcode-ver }}.app
+          sudo xcode-select -s /Applications/Xcode_${{ matrix.runs-on.xcode-ver }}.app
       - name: Build app
         env:
           ONLY_ACTIVE_ARCH: no
