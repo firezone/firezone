@@ -1359,6 +1359,7 @@ dependencies = [
  "firezone-gateway-connlib",
  "headless-utils",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1464,6 +1465,7 @@ dependencies = [
  "firezone-client-connlib",
  "headless-utils",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
