@@ -31,14 +31,10 @@ if [[ -n "${DEVELOPER_SDK_DIR:-}" ]]; then
   # In this case, we need to add an extra library search path for build scripts and proc-macros,
   # which run on the host instead of the target.
   # (macOS Big Sur does not have linkable libraries in /usr/lib/.)
-  if [[ "$XCODE_VERSION_MAJOR" -lt "1500"  ]]; then
-  # It appears we may not need this workaround with the new linker in Xcode 15, but only when
-  # building for macOS 🙃 
+  if [[ "$XCODE_VERSION_MAJOR" -lt "1500" ]]; then
+    # It appears we may not need this workaround with the new linker in Xcode 15, but GitHub Actions
+    # currently has spotty support for Xcode 15 on its macOS 13 VMs, so we'll keep this workaround for now.
     export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${LIBRARY_PATH}"
-  else
-    if [[ "$PLATFORM_NAME" = "iphoneos" ]]; then
-      export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/iPhoneOS.sdk/usr/lib:${LIBRARY_PATH}"
-    fi
   fi
 fi
 
