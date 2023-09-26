@@ -410,6 +410,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		6F3E23192A5D823500737CF1 /* Copy Connlib Headers and Swift Files */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -430,6 +431,7 @@
 		};
 		6F3E231A2A5D830D00737CF1 /* Copy Connlib Headers and Swift Files */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
