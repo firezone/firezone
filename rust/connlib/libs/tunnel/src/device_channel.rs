@@ -1,3 +1,5 @@
+#![allow(clippy::module_inception)]
+
 #[cfg(target_family = "unix")]
 #[path = "device_channel/device_channel_unix.rs"]
 mod device_channel;

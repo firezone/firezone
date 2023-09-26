@@ -1,3 +1,5 @@
+#![allow(clippy::module_inception)]
+
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 #[path = "tun/tun_darwin.rs"]
 mod tun;
