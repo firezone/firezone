@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::{sync::Arc, time::Duration};
+use std::{io, sync::Arc, time::Duration};
 
 use crate::messages::{Connect, ConnectionDetails, EgressMessages, InitClient, Messages};
 use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
@@ -13,6 +13,8 @@ use libs_common::{
 use async_trait::async_trait;
 use firezone_tunnel::{ControlSignal, Request, Tunnel};
 use tokio::sync::{mpsc::Receiver, Mutex};
+use tokio_util::codec::{BytesCodec, FramedRead};
+use url::Url;
 
 #[async_trait]
 impl ControlSignal for ControlSignaler {
@@ -144,11 +146,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn roll_log_file(&mut self) -> Option<PathBuf> {
-        self.tunnel.roll_log_file()
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
     fn connection_details(
         &self,
         ConnectionDetails {
@@ -220,12 +217,16 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Messages::ResourceAdded(resource) => self.add_resource(resource).await,
             Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
             Messages::ResourceUpdated(resource) => self.update_resource(resource),
-            Messages::SignedLogUrl(_url) => {
-                let Some(_path) = self.roll_log_file() else {
+            Messages::SignedLogUrl(url) => {
+                let Some(path) = self.tunnel.callbacks().roll_log_file() else {
                     return Ok(())
                 };
 
-                // TODO: Upload `path` to `url`.
+                tokio::spawn(async move {
+                    if let Err(e) = upload(path, url).await {
+                        tracing::warn!("Failed to upload log file: {e}")
+                    }
+                });
             }
         }
         Ok(())
@@ -306,6 +307,39 @@ fn upload_interval_from_env_or_default() -> Duration {
     );
 
     Duration::from_secs(interval)
+}
+
+async fn upload(path: PathBuf, url: Url) -> io::Result<()> {
+    tracing::info!(path = %path.display(), %url, "Uploading log file");
+
+    let file = tokio::fs::File::open(&path).await?;
+    let response = reqwest::Client::new()
+        .post(url)
+        .body(reqwest::Body::wrap_stream(FramedRead::new(
+            file,
+            BytesCodec::default(),
+        )))
+        .send()
+        .await
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+    let status_code = response.status();
+
+    if !status_code.is_success() {
+        let body = response
+            .text()
+            .await
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        tracing::warn!(%body, %status_code, "Failed to upload logs");
+
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "portal returned non-successful exit code",
+        ));
+    }
+
+    Ok(())
 }
 
 #[async_trait]

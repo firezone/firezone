@@ -27,7 +27,6 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
-use std::path::PathBuf;
 use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
 
 use libs_common::{
@@ -326,10 +325,6 @@ where
         tracing::debug!("background_loop_started");
 
         Ok(())
-    }
-
-    pub fn roll_log_file(&self) -> Option<PathBuf> {
-        self.callbacks.roll_log_file()
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

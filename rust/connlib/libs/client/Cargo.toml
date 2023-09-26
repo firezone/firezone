@@ -7,7 +7,8 @@ edition = "2021"
 mock = ["libs-common/mock"]
 
 [dependencies]
-tokio = { version = "1.32", default-features = false, features = ["sync"] }
+tokio = { version = "1.32", default-features = false, features = ["sync", "rt"] }
+tokio-util = "0.7.9"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tracing-appender = { version = "0.2.2" }
@@ -20,6 +21,7 @@ boringtun = { workspace = true }
 backoff = { workspace = true }
 url = { version = "2.4.1", features = ["serde"] }
 time = { version = "0.3.29", features = ["formatting"] }
+reqwest = { version = "0.11.20", features = ["stream"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 tracing = { workspace = true, features = ["std", "attributes"] }
