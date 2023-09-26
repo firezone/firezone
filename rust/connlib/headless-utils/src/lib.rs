@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::Args;
 use ip_network::IpNetwork;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -85,16 +85,13 @@ pub fn setup_global_subscriber(log_dir: Option<PathBuf>) -> Option<WorkerGuard> 
     guard
 }
 
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-pub struct Cli {
+/// Arguments common to all headless FZ apps.
+#[derive(Args, Clone)]
+pub struct CommonArgs {
     /// Portal's websocket url
     #[arg(short, long, env = "FZ_URL")]
     pub url: Url,
     /// Service token
     #[arg(short, long, env = "FZ_SECRET")]
     pub secret: String,
-    /// File logging directory optionally
-    #[arg(short, long, env = "FZ_LOG_DIR")]
-    pub log_dir: Option<PathBuf>,
 }
