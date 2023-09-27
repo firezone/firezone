@@ -1,7 +1,7 @@
 defmodule Domain.Flows do
   alias Domain.Repo
-  alias Domain.{Auth, Clients, Gateways, Resources, Policies}
-  alias Domain.Flows.{Authorizer, Flow}
+  alias Domain.{Auth, Accounts, Clients, Gateways, Resources, Policies}
+  alias Domain.Flows.{Authorizer, Flow, Activity}
   require Ecto.Query
 
   def authorize_flow(
@@ -53,36 +53,74 @@ defmodule Domain.Flows do
 
   def list_flows_for(%Policies.Policy{} = policy, %Auth.Subject{} = subject, opts) do
     Flow.Query.by_policy_id(policy.id)
-    |> list(subject, opts)
+    |> list_flows(subject, opts)
   end
 
   def list_flows_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject, opts) do
     Flow.Query.by_resource_id(resource.id)
-    |> list(subject, opts)
+    |> list_flows(subject, opts)
   end
 
   def list_flows_for(%Clients.Client{} = client, %Auth.Subject{} = subject, opts) do
     Flow.Query.by_client_id(client.id)
-    |> list(subject, opts)
+    |> list_flows(subject, opts)
   end
 
   def list_flows_for(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject, opts) do
     Flow.Query.by_gateway_id(gateway.id)
-    |> list(subject, opts)
+    |> list_flows(subject, opts)
   end
 
-  defp list(queryable, subject, opts) do
+  defp list_flows(queryable, subject, opts) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_flows_permission()) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
       {:ok, flows} =
         queryable
-        |> Authorizer.for_subject(subject)
+        |> Authorizer.for_subject(Flow, subject)
         |> Ecto.Query.order_by([flows: flows], desc: flows.inserted_at, desc: flows.id)
         |> Ecto.Query.limit(50)
         |> Repo.list()
 
       {:ok, Repo.preload(flows, preload)}
+    end
+  end
+
+  def upsert_activities(activities) do
+    {num, _} =
+      Repo.insert_all(Activity, activities, on_conflict: :nothing)
+
+    {:ok, num}
+  end
+
+  def list_flow_activities_for(
+        %Flow{} = flow,
+        ended_after,
+        started_before,
+        %Auth.Subject{} = subject
+      ) do
+    Activity.Query.by_flow_id(flow.id)
+    |> list_activities(ended_after, started_before, subject)
+  end
+
+  def list_flow_activities_for(
+        %Accounts.Account{} = account,
+        ended_after,
+        started_before,
+        %Auth.Subject{} = subject
+      ) do
+    Activity.Query.by_account_id(account.id)
+    |> list_activities(ended_after, started_before, subject)
+  end
+
+  defp list_activities(queryable, ended_after, started_before, subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_flows_permission()) do
+      queryable
+      |> Activity.Query.by_window_ended_at({:greater_than, ended_after})
+      |> Activity.Query.by_window_started_at({:less_than, started_before})
+      |> Authorizer.for_subject(Activity, subject)
+      |> Ecto.Query.order_by([activities: activities], asc: activities.window_started_at)
+      |> Repo.list()
     end
   end
 end
