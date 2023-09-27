@@ -44,6 +44,8 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           build-root-directory: ./kotlin/android
+      - name: Run linter
+        run: ./gradlew spotlessCheck
       - name: Execute Gradle build
         run: ./gradlew build
       - name: Run Test
