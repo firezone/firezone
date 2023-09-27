@@ -16,6 +16,7 @@ use messages::Messages;
 use messages::ReplyMessages;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::{runtime::Runtime, sync::Mutex};
 use url::Url;
 
@@ -137,7 +138,7 @@ where
             // This is kinda hacky, the buffer size is 1 so that we make sure that we
             // process one message at a time, blocking if a previous message haven't been processed
             // to force queue ordering.
-            let (control_plane_sender, control_plane_receiver) = tokio::sync::mpsc::channel(1);
+            let (control_plane_sender, mut control_plane_receiver) = tokio::sync::mpsc::channel(1);
 
             let mut connection = PhoenixChannel::<_, IngressMessages, ReplyMessages, Messages>::new(connect_url, move |msg, reference| {
                 let control_plane_sender = control_plane_sender.clone();
@@ -156,13 +157,28 @@ where
                 &callbacks
             );
 
-            let control_plane = ControlPlane {
+            let mut control_plane = ControlPlane {
                 tunnel: Arc::new(tunnel),
                 control_signaler,
                 tunnel_init: Mutex::new(false),
             };
 
-            tokio::spawn(async move { control_plane.start(control_plane_receiver).await });
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(10));
+                loop {
+                    tokio::select! {
+                        Some((msg, reference)) = control_plane_receiver.recv() => {
+                            match msg {
+                                Ok(msg) => control_plane.handle_message(msg, reference).await?,
+                                Err(err) => control_plane.handle_error(err, reference).await,
+                            }
+                        },
+                        _ = interval.tick() => control_plane.stats_event().await,
+                        else => break
+                    }
+                }
+                Result::Ok(())
+            });
 
             tokio::spawn(async move {
                 let mut exponential_backoff = ExponentialBackoffBuilder::default().build();

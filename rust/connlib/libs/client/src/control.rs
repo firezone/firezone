@@ -1,15 +1,15 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use crate::messages::{Connect, ConnectionDetails, EgressMessages, InitClient, Messages};
 use libs_common::{
-    control::{ErrorInfo, ErrorReply, MessageResult, PhoenixSenderWithTopic, Reference},
+    control::{ErrorInfo, ErrorReply, PhoenixSenderWithTopic, Reference},
     messages::{Id, ResourceDescription},
     Callbacks, Error, Result,
 };
 
 use async_trait::async_trait;
 use firezone_tunnel::{ControlSignal, Request, Tunnel};
-use tokio::sync::{mpsc::Receiver, Mutex};
+use tokio::sync::Mutex;
 
 #[async_trait]
 impl ControlSignal for ControlSignaler {
@@ -48,28 +48,7 @@ pub struct ControlSignaler {
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn start(
-        mut self,
-        mut receiver: Receiver<(MessageResult<Messages>, Option<Reference>)>,
-    ) -> Result<()> {
-        let mut interval = tokio::time::interval(Duration::from_secs(10));
-        loop {
-            tokio::select! {
-                Some((msg, reference)) = receiver.recv() => {
-                    match msg {
-                        Ok(msg) => self.handle_message(msg, reference).await?,
-                        Err(err) => self.handle_error(err, reference).await,
-                    }
-                },
-                _ = interval.tick() => self.stats_event().await,
-                else => break
-            }
-        }
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn init(
+    pub async fn init(
         &mut self,
         InitClient {
             interface,
@@ -98,7 +77,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn connect(
+    pub async fn connect(
         &mut self,
         Connect {
             gateway_rtc_session_description,
@@ -121,7 +100,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn add_resource(&self, resource_description: ResourceDescription) {
+    pub async fn add_resource(&self, resource_description: ResourceDescription) {
         if let Err(e) = self.tunnel.add_resource(resource_description).await {
             tracing::error!(message = "Can't add resource", error = ?e);
             let _ = self.tunnel.callbacks().on_error(&e);
@@ -196,7 +175,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn handle_message(
+    pub async fn handle_message(
         &mut self,
         msg: Messages,
         reference: Option<Reference>,
@@ -215,11 +194,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn handle_error(
-        &mut self,
-        reply_error: ErrorReply,
-        reference: Option<Reference>,
-    ) {
+    pub async fn handle_error(&mut self, reply_error: ErrorReply, reference: Option<Reference>) {
         if matches!(reply_error.error, ErrorInfo::Offline) {
             match reference {
                 Some(reference) => {
@@ -249,7 +224,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }
     }
 
-    pub(super) async fn stats_event(&mut self) {
+    pub async fn stats_event(&mut self) {
         tracing::debug!(target: "tunnel_state", stats = ?self.tunnel.stats());
     }
 }
