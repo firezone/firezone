@@ -11,7 +11,7 @@ tokio = { version = "1.32", default-features = false, features = ["sync"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tracing-appender = { version = "0.2.2" }
-tracing-stackdriver = { version = "0.7.2" }
+tracing-stackdriver = { version = "0.8.0" }
 async-trait = { version = "0.1", default-features = false }
 libs-common = { path = "../common" }
 firezone-tunnel = { path = "../tunnel" }
