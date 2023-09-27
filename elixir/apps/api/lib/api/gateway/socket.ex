@@ -14,7 +14,7 @@ defmodule API.Gateway.Socket do
   def connect(%{"token" => encrypted_secret} = attrs, socket, connect_info) do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
-    OpenTelemetry.Tracer.with_span "connect" do
+    OpenTelemetry.Tracer.with_span "connect_gateway" do
       %{
         user_agent: user_agent,
         x_headers: x_headers,
@@ -31,6 +31,11 @@ defmodule API.Gateway.Socket do
 
       with {:ok, token} <- Gateways.authorize_gateway(encrypted_secret),
            {:ok, gateway} <- Gateways.upsert_gateway(token, attrs) do
+        OpenTelemetry.Tracer.set_attributes(%{
+          gateway_id: gateway.id,
+          account_id: gateway.account_id
+        })
+
         socket =
           socket
           |> assign(:gateway, gateway)
