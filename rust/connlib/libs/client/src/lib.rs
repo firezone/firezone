@@ -1,23 +1,21 @@
 //! Main connlib library for clients.
+pub use libs_common::{get_device_id, messages::ResourceDescription};
 pub use libs_common::{Callbacks, Error};
+pub use tracing_appender::non_blocking::WorkerGuard;
 
-use async_trait::async_trait;
+use crate::control::ControlSignaler;
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use control::ControlPlane;
-use libs_common::{
-    control::{MessageResult, PhoenixChannel, PhoenixSenderWithTopic, Reference},
-    messages::Key,
-    CallbackErrorFacade, Result,
-};
-pub use libs_common::{get_device_id, messages::ResourceDescription};
+use firezone_tunnel::Tunnel;
+use libs_common::{control::PhoenixChannel, messages::Key, CallbackErrorFacade, Result};
 use messages::IngressMessages;
 use messages::Messages;
 use messages::ReplyMessages;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use ring::digest::{Context, SHA256};
-use tokio::{runtime::Runtime, sync::mpsc::Receiver};
-pub use tracing_appender::non_blocking::WorkerGuard;
+use std::sync::Arc;
+use tokio::{runtime::Runtime, sync::Mutex};
 use url::Url;
 
 mod control;
@@ -25,19 +23,6 @@ pub mod file_logger;
 mod messages;
 
 struct StopRuntime;
-
-// TODO: Not the most tidy trait for a control-plane.
-/// Trait that represents a control-plane.
-#[async_trait]
-pub trait ControlSession<T, CB: Callbacks> {
-    /// Start control-plane with the given private-key in the background.
-    async fn start(
-        private_key: StaticSecret,
-        receiver: Receiver<(MessageResult<T>, Option<Reference>)>,
-        control_signal: PhoenixSenderWithTopic,
-        callbacks: CB,
-    ) -> Result<()>;
-}
 
 pub struct Session<CB: Callbacks> {
     runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
@@ -160,13 +145,20 @@ where
                 }
             });
 
-            let internal_sender = connection.sender_with_topic("client".to_owned());
-
-            fatal_error!(
-                <ControlPlane<CB> as ControlSession<Messages, CB>>::start(private_key, control_plane_receiver, internal_sender, callbacks.0.clone()).await,
+            let control_signaler = ControlSignaler { control_signal: connection.sender_with_topic("client".to_owned()) };
+            let tunnel = fatal_error!(
+                Tunnel::new(private_key, control_signaler.clone(), callbacks.clone()).await,
                 runtime_stopper,
                 &callbacks
             );
+
+            let control_plane = ControlPlane {
+                tunnel: Arc::new(tunnel),
+                control_signaler,
+                tunnel_init: Mutex::new(false),
+            };
+
+            tokio::spawn(async move { control_plane.start(control_plane_receiver).await });
 
             tokio::spawn(async move {
                 let mut exponential_backoff = ExponentialBackoffBuilder::default().build();
