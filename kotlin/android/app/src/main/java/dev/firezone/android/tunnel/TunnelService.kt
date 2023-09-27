@@ -23,6 +23,7 @@ import dev.firezone.android.tunnel.data.TunnelRepository
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.Tunnel
 import dev.firezone.android.tunnel.model.TunnelConfig
+import dev.firezone.android.tunnel.util.DnsServersDetector
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.inject.Inject
