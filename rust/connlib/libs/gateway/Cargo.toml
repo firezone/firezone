@@ -13,6 +13,10 @@ serde = { version = "1.0", default-features = false, features = ["std", "derive"
 boringtun = { workspace = true }
 chrono = { workspace = true }
 backoff = { workspace = true }
+url = { version = "2.4.1", default-features = false }
+rand = { version = "0.8", default-features = false, features = ["std"] }
+ring = "0.16"
+tokio-tungstenite = { version = "0.19", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
 serde_json = { version = "1.0", default-features = false, features = ["std"] }

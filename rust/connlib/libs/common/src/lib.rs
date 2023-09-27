@@ -3,17 +3,19 @@
 //! This includes types provided by external crates, i.e. [boringtun] to make sure that
 //! we are using the same version across our own crates.
 
-pub mod error;
-
-mod session;
-
+mod callbacks;
+mod callbacks_error_facade;
 pub mod control;
+pub mod error;
 pub mod messages;
 
+pub use callbacks::Callbacks;
+pub use callbacks_error_facade::CallbackErrorFacade;
 pub use error::ConnlibError as Error;
 pub use error::Result;
+use std::net::Ipv4Addr;
 
-pub use session::{CallbackErrorFacade, Callbacks, ControlSession, Session, DNS_SENTINEL};
+pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";

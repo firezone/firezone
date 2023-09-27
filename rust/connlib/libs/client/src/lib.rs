@@ -1,25 +1,292 @@
 //! Main connlib library for clients.
+pub use libs_common::{Callbacks, Error};
+
+use async_trait::async_trait;
+use backoff::{backoff::Backoff, ExponentialBackoff, ExponentialBackoffBuilder};
+use boringtun::x25519::{PublicKey, StaticSecret};
 use control::ControlPlane;
-use messages::EgressMessages;
+use libs_common::{
+    control::{MessageResult, PhoenixChannel, PhoenixSenderWithTopic, Reference},
+    messages::Key,
+    CallbackErrorFacade, Result,
+};
+pub use libs_common::{get_device_id, messages::ResourceDescription};
 use messages::IngressMessages;
+use messages::Messages;
+use messages::ReplyMessages;
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use ring::digest::{Context, SHA256};
+use tokio::{runtime::Runtime, sync::mpsc::Receiver};
+pub use tracing_appender::non_blocking::WorkerGuard;
+use url::Url;
 
 mod control;
 pub mod file_logger;
 mod messages;
 
-/// Session type for clients.
-///
-/// For more information see libs_common docs on [Session][libs_common::Session].
-pub type Session<CB> = libs_common::Session<
-    ControlPlane<CB>,
-    IngressMessages,
-    EgressMessages,
-    ReplyMessages,
-    Messages,
-    CB,
->;
+struct StopRuntime;
 
-pub use libs_common::{get_device_id, messages::ResourceDescription, Callbacks, Error};
-use messages::Messages;
-use messages::ReplyMessages;
-pub use tracing_appender::non_blocking::WorkerGuard;
+// TODO: Not the most tidy trait for a control-plane.
+/// Trait that represents a control-plane.
+#[async_trait]
+pub trait ControlSession<T, CB: Callbacks> {
+    /// Start control-plane with the given private-key in the background.
+    async fn start(
+        private_key: StaticSecret,
+        receiver: Receiver<(MessageResult<T>, Option<Reference>)>,
+        control_signal: PhoenixSenderWithTopic,
+        callbacks: CB,
+    ) -> Result<()>;
+
+    /// Either "gateway" or "client" used to get the control-plane URL.
+    fn socket_path() -> &'static str;
+
+    /// Retry strategy in case of disconnection for the session.
+    fn retry_strategy() -> ExponentialBackoff;
+}
+
+pub struct Session<CB: Callbacks> {
+    runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
+    pub callbacks: CallbackErrorFacade<CB>,
+}
+
+macro_rules! fatal_error {
+    ($result:expr, $rt:expr, $cb:expr) => {
+        match $result {
+            Ok(res) => res,
+            Err(err) => {
+                Self::disconnect_inner($rt, $cb, Some(err));
+                return;
+            }
+        }
+    };
+}
+
+impl<CB> Session<CB>
+where
+    CB: Callbacks + 'static,
+{
+    /// Starts a session in the background.
+    ///
+    /// This will:
+    /// 1. Create and start a tokio runtime
+    /// 2. Connect to the control plane to the portal
+    /// 3. Start the tunnel in the background and forward control plane messages to it.
+    ///
+    /// The generic parameter `CB` should implement all the handlers and that's how errors will be surfaced.
+    ///
+    /// On a fatal error you should call `[Session::disconnect]` and start a new one.
+    // TODO: token should be something like SecretString but we need to think about FFI compatibility
+    pub fn connect(
+        portal_url: impl TryInto<Url>,
+        token: String,
+        device_id: String,
+        callbacks: CB,
+    ) -> Result<Self> {
+        // TODO: We could use tokio::runtime::current() to get the current runtime
+        // which could work with swift-rust that already runs a runtime. But IDK if that will work
+        // in all platforms, a couple of new threads shouldn't bother none.
+        // Big question here however is how do we get the result? We could block here await the result and spawn a new task.
+        // but then platforms should know that this function is blocking.
+
+        let callbacks = CallbackErrorFacade(callbacks);
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let this = Self {
+            runtime_stopper: tx.clone(),
+            callbacks,
+        };
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
+        {
+            let callbacks = this.callbacks.clone();
+            let default_panic_hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new({
+                let tx = tx.clone();
+                move |info| {
+                    let tx = tx.clone();
+                    let err = info
+                        .payload()
+                        .downcast_ref::<&str>()
+                        .map(|s| Error::Panic(s.to_string()))
+                        .unwrap_or(Error::PanicNonStringPayload);
+                    Self::disconnect_inner(tx, &callbacks, Some(err));
+                    default_panic_hook(info);
+                }
+            }));
+        }
+
+        Self::connect_inner(
+            &runtime,
+            tx,
+            portal_url.try_into().map_err(|_| Error::UriError)?,
+            token,
+            device_id,
+            this.callbacks.clone(),
+        );
+        std::thread::spawn(move || {
+            rx.blocking_recv();
+            runtime.shutdown_background();
+        });
+
+        Ok(this)
+    }
+
+    fn connect_inner(
+        runtime: &Runtime,
+        runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
+        portal_url: Url,
+        token: String,
+        device_id: String,
+        callbacks: CallbackErrorFacade<CB>,
+    ) {
+        runtime.spawn(async move {
+            let private_key = StaticSecret::random_from_rng(rand::rngs::OsRng);
+            let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
+            let external_id = sha256(device_id);
+
+            let connect_url = fatal_error!(
+                get_websocket_path(portal_url, token, "client", &Key(PublicKey::from(&private_key).to_bytes()), &external_id, &name_suffix),
+                runtime_stopper,
+                &callbacks
+            );
+
+            // This is kinda hacky, the buffer size is 1 so that we make sure that we
+            // process one message at a time, blocking if a previous message haven't been processed
+            // to force queue ordering.
+            let (control_plane_sender, control_plane_receiver) = tokio::sync::mpsc::channel(1);
+
+            let mut connection = PhoenixChannel::<_, IngressMessages, ReplyMessages, Messages>::new(connect_url, move |msg, reference| {
+                let control_plane_sender = control_plane_sender.clone();
+                async move {
+                    tracing::trace!("Received message: {msg:?}");
+                    if let Err(e) = control_plane_sender.send((msg, reference)).await {
+                        tracing::warn!("Received a message after handler already closed: {e}. Probably message received during session clean up.");
+                    }
+                }
+            });
+
+            let internal_sender = connection.sender_with_topic("client".to_owned());
+
+            fatal_error!(
+                <ControlPlane<CB> as ControlSession<Messages, CB>>::start(private_key, control_plane_receiver, internal_sender, callbacks.0.clone()).await,
+                runtime_stopper,
+                &callbacks
+            );
+
+            tokio::spawn(async move {
+                let mut exponential_backoff = ExponentialBackoffBuilder::default().build();
+                loop {
+                    // `connection.start` calls the callback only after connecting
+                    tracing::debug!("Attempting connection to portal...");
+                    let result = connection.start(vec!["client".to_owned()], || exponential_backoff.reset()).await;
+                    tracing::warn!("Disconnected from the portal");
+                    if let Err(e) = &result {
+                        tracing::warn!(error = ?e, "Portal connection error");
+                    }
+                    if let Some(t) = exponential_backoff.next_backoff() {
+                        tracing::warn!("Error connecting to portal, retrying in {} seconds", t.as_secs());
+                        let _ = callbacks.on_error(&result.err().unwrap_or(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed)));
+                        tokio::time::sleep(t).await;
+                    } else {
+                        tracing::error!("Connection to portal failed, giving up");
+                        fatal_error!(
+                            result.and(Err(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed))),
+                            runtime_stopper,
+                            &callbacks
+                        );
+                    }
+                }
+
+            });
+
+        });
+    }
+
+    fn disconnect_inner(
+        runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
+        callbacks: &CallbackErrorFacade<CB>,
+        error: Option<Error>,
+    ) {
+        // 1. Close the websocket connection
+        // 2. Free the device handle (Linux)
+        // 3. Close the file descriptor (Linux/Android)
+        // 4. Remove the mapping
+
+        // The way we cleanup the tasks is we drop the runtime
+        // this means we don't need to keep track of different tasks
+        // but if any of the tasks never yields this will block forever!
+        // So always yield and if you spawn a blocking tasks rewrite this.
+        // Furthermore, we will depend on Drop impls to do the list above so,
+        // implement them :)
+        // if there's no receiver the runtime is already stopped
+        // there's an edge case where this is called before the thread is listening for stop threads.
+        // but I believe in that case the channel will be in a signaled state achieving the same result
+
+        if let Err(err) = runtime_stopper.try_send(StopRuntime) {
+            tracing::error!("Couldn't stop runtime: {err}");
+        }
+
+        let _ = callbacks.on_disconnect(error.as_ref());
+    }
+
+    /// Cleanup a [Session].
+    ///
+    /// For now this just drops the runtime, which should drop all pending tasks.
+    /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
+    pub fn disconnect(&mut self, error: Option<Error>) {
+        Self::disconnect_inner(self.runtime_stopper.clone(), &self.callbacks, error)
+    }
+}
+
+fn set_ws_scheme(url: &mut Url) -> Result<()> {
+    let scheme = match url.scheme() {
+        "http" | "ws" => "ws",
+        "https" | "wss" => "wss",
+        _ => return Err(Error::UriScheme),
+    };
+    url.set_scheme(scheme)
+        .expect("Developer error: the match before this should make sure we can set this");
+    Ok(())
+}
+
+fn sha256(input: String) -> String {
+    let mut ctx = Context::new(&SHA256);
+    ctx.update(input.as_bytes());
+    let digest = ctx.finish();
+
+    digest
+        .as_ref()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect()
+}
+
+fn get_websocket_path(
+    mut url: Url,
+    secret: String,
+    mode: &str,
+    public_key: &Key,
+    external_id: &str,
+    name_suffix: &str,
+) -> Result<Url> {
+    set_ws_scheme(&mut url)?;
+
+    {
+        let mut paths = url.path_segments_mut().map_err(|_| Error::UriError)?;
+        paths.pop_if_empty();
+        paths.push(mode);
+        paths.push("websocket");
+    }
+
+    {
+        let mut query_pairs = url.query_pairs_mut();
+        query_pairs.clear();
+        query_pairs.append_pair("token", &secret);
+        query_pairs.append_pair("public_key", &public_key.to_string());
+        query_pairs.append_pair("external_id", external_id);
+        query_pairs.append_pair("name_suffix", name_suffix);
+    }
+
+    Ok(url)
+}

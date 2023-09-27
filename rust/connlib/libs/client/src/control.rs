@@ -6,9 +6,10 @@ use boringtun::x25519::StaticSecret;
 use libs_common::{
     control::{ErrorInfo, ErrorReply, MessageResult, PhoenixSenderWithTopic, Reference},
     messages::{Id, ResourceDescription},
-    Callbacks, ControlSession, Error, Result,
+    Callbacks, Error, Result,
 };
 
+use crate::ControlSession;
 use async_trait::async_trait;
 use firezone_tunnel::{ControlSignal, Request, Tunnel};
 use tokio::sync::{mpsc::Receiver, Mutex};
@@ -44,7 +45,7 @@ pub struct ControlPlane<CB: Callbacks> {
 }
 
 #[derive(Clone)]
-struct ControlSignaler {
+pub struct ControlSignaler {
     control_signal: PhoenixSenderWithTopic,
 }
 

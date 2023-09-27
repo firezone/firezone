@@ -10,7 +10,7 @@ use bytes::Bytes;
 
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::{messages::Key, Callbacks, Error, DNS_SENTINEL};
+use libs_common::{messages::Key, CallbackErrorFacade, Callbacks, Error, DNS_SENTINEL};
 
 use async_trait::async_trait;
 use itertools::Itertools;
@@ -31,7 +31,7 @@ use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
 
 use libs_common::{
     messages::{Id, Interface as InterfaceConfig, ResourceDescription},
-    CallbackErrorFacade, Result,
+    Result,
 };
 
 use device_channel::{create_iface, DeviceIo, IfaceConfig};

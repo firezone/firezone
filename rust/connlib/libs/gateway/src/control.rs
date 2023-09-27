@@ -1,22 +1,19 @@
-use std::{sync::Arc, time::Duration};
-
+use super::messages::{
+    ConnectionReady, EgressMessages, IngressMessages, InitGateway, RequestConnection,
+};
+use crate::messages::AllowAccess;
+use crate::ControlSession;
+use async_trait::async_trait;
 use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use boringtun::x25519::StaticSecret;
 use firezone_tunnel::{ControlSignal, Tunnel};
 use libs_common::{
     control::{MessageResult, PhoenixSenderWithTopic, Reference},
     messages::{Id, ResourceDescription},
-    Callbacks, ControlSession, Result,
+    Callbacks, Result,
 };
+use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::Receiver;
-
-use crate::messages::AllowAccess;
-
-use super::messages::{
-    ConnectionReady, EgressMessages, IngressMessages, InitGateway, RequestConnection,
-};
-
-use async_trait::async_trait;
 
 pub struct ControlPlane<CB: Callbacks> {
     tunnel: Arc<Tunnel<ControlSignaler, CB>>,
