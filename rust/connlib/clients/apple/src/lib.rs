@@ -9,7 +9,6 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
-use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
@@ -64,10 +63,7 @@ mod ffi {
 }
 
 /// This is used by the apple client to interact with our code.
-pub struct WrappedSession {
-    session: Session<CallbackHandler>,
-    _guard: WorkerGuard,
-}
+pub struct WrappedSession(Session<CallbackHandler>);
 
 // SAFETY: `CallbackHandler.swift` promises to be thread-safe.
 // TODO: Uphold that promise!
@@ -148,8 +144,8 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf, log_filter: String) -> (WorkerGuard, file_logger::Handle) {
-    let (file_layer, guard, handle) = file_logger::layer(&log_dir);
+fn init_logging(log_dir: PathBuf, log_filter: String) -> file_logger::Handle {
+    let (file_layer, handle) = file_logger::layer(&log_dir);
 
     let _ = tracing_subscriber::registry()
         .with(tracing_oslog::OsLogger::new(
@@ -159,7 +155,7 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> (WorkerGuard, file_logg
         .with(file_layer.with_filter(EnvFilter::new(log_filter)))
         .try_init();
 
-    (guard, handle)
+    handle
 }
 
 impl WrappedSession {
@@ -172,7 +168,6 @@ impl WrappedSession {
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
         let log_dir = PathBuf::from(log_dir);
-        let (_guard, handle) = init_logging(log_dir, log_filter);
 
         let session = Session::connect(
             portal_url.as_str(),
@@ -180,15 +175,15 @@ impl WrappedSession {
             device_id,
             CallbackHandler {
                 inner: Arc::new(callback_handler),
-                handle,
+                handle: init_logging(log_dir, log_filter),
             },
         )
         .map_err(|err| err.to_string())?;
 
-        Ok(Self { session, _guard })
+        Ok(Self(session))
     }
 
     fn disconnect(&mut self) {
-        self.session.disconnect(None)
+        self.0.disconnect(None)
     }
 }

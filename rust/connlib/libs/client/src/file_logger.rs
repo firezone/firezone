@@ -19,34 +19,26 @@ use std::{fs, io};
 
 use time::OffsetDateTime;
 use tracing::Subscriber;
+use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::Layer;
 
 const LOG_FILE_BASE_NAME: &str = "connlib.log";
 
 /// Create a new file logger layer.
-pub fn layer<T>(
-    log_dir: &Path,
-) -> (
-    Box<dyn Layer<T> + Send + Sync + 'static>,
-    tracing_appender::non_blocking::WorkerGuard,
-    Handle,
-)
+pub fn layer<T>(log_dir: &Path) -> (Box<dyn Layer<T> + Send + Sync + 'static>, Handle)
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
     let (appender, handle) = new_appender(log_dir.to_path_buf());
-
-    let (writer, guard) = tracing_appender::non_blocking(appender);
-
-    let layer = tracing_stackdriver::layer().with_writer(writer).boxed();
+    let layer = tracing_stackdriver::layer().with_writer(appender).boxed();
 
     // Return the guard so that the caller maintains a handle to it. Otherwise,
     // we have to wait for tracing_appender to flush the logs before exiting.
     // See https://docs.rs/tracing-appender/latest/tracing_appender/non_blocking/struct.WorkerGuard.html
-    (layer, guard, handle)
+    (layer, handle)
 }
 
-fn new_appender(directory: PathBuf) -> (Appender, Handle) {
+fn new_appender(directory: PathBuf) -> (NonBlocking, Handle) {
     let inner = Arc::new(Mutex::new(Inner {
         directory,
         current: None,
@@ -54,14 +46,24 @@ fn new_appender(directory: PathBuf) -> (Appender, Handle) {
     let appender = Appender {
         inner: inner.clone(),
     };
-    let handle = Handle { inner };
 
-    (appender, handle)
+    let (non_blocking, guard) = tracing_appender::non_blocking(appender);
+    let handle = Handle {
+        inner,
+        _guard: Arc::new(guard),
+    };
+
+    (non_blocking, handle)
 }
 
+/// A handle to our file-logger.
+///
+/// This handle allows to roll over logging to a new file via [`Handle::roll_to_new_file`]. It also houses the [`WorkerGuard`] of the underlying non-blocking appender.
+/// Thus, you MUST NOT drop this handle for as long as you want messages to arrive at the log file.
 #[derive(Clone, Debug)]
 pub struct Handle {
     inner: Arc<Mutex<Inner>>,
+    _guard: Arc<WorkerGuard>,
 }
 
 impl Handle {

@@ -18,7 +18,6 @@ use std::{
     path::PathBuf,
 };
 use thiserror::Error;
-use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
@@ -110,15 +109,15 @@ fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
     //
     // So we use a static variable to track whether the guard has been initialized and avoid
     // re-initialized it if so.
-    static LOGGING_GUARD: OnceLock<(WorkerGuard, file_logger::Handle)> = OnceLock::new();
-    if let Some((_, handle)) = LOGGING_GUARD.get() {
+    static LOGGING_HANDLE: OnceLock<file_logger::Handle> = OnceLock::new();
+    if let Some(handle) = LOGGING_HANDLE.get() {
         return handle.clone();
     }
 
-    let (file_layer, guard, handle) = file_logger::layer(log_dir);
+    let (file_layer, handle) = file_logger::layer(log_dir);
 
-    LOGGING_GUARD
-        .set((guard, handle.clone()))
+    LOGGING_HANDLE
+        .set(handle.clone())
         .expect("Logging guard should never be initialized twice");
 
     let _ = tracing_subscriber::registry()

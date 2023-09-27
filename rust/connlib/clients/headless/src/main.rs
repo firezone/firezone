@@ -7,14 +7,7 @@ use std::path::PathBuf;
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let (layer, _guard, _handle) = match cli.log_dir {
-        None => (None, None, None),
-        Some(dir) => {
-            let (layer, guard, handle) = file_logger::layer(&dir);
-            (Some(layer), Some(guard), Some(handle))
-        }
-    };
-
+    let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
     let device_id = get_device_id();
