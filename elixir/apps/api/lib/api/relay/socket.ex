@@ -14,7 +14,7 @@ defmodule API.Relay.Socket do
   def connect(%{"token" => encrypted_secret} = attrs, socket, connect_info) do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
-    OpenTelemetry.Tracer.with_span "relay:connect" do
+    OpenTelemetry.Tracer.with_span "relay.connect" do
       %{
         user_agent: user_agent,
         x_headers: x_headers,
