@@ -57,18 +57,25 @@ defmodule Domain.Resources do
     end
   end
 
+  def list_authorized_resources(%Auth.Subject{} = subject, opts \\ []) do
+    with :ok <-
+           Auth.ensure_has_permissions(subject, Authorizer.view_available_resources_permission()) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+      {:ok, resources} =
+        Resource.Query.all()
+        |> Resource.Query.by_account_id(subject.account.id)
+        |> Resource.Query.by_authorized_actor_id(subject.actor.id)
+        |> Repo.list()
+
+      {:ok, Repo.preload(resources, preload)}
+    end
+  end
+
   def list_resources(%Auth.Subject{} = subject, opts \\ []) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_resources_permission(),
-         Authorizer.view_available_resources_permission()
-       ]}
-
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      # TODO: maybe we need to also enrich the data and show if it's online or not
       {:ok, resources} =
         Resource.Query.all()
         |> Authorizer.for_subject(subject)

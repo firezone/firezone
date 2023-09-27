@@ -227,6 +227,129 @@ defmodule Domain.ResourcesTest do
     end
   end
 
+  describe "list_authorized_resources/1" do
+    test "returns empty list when there are no resources", %{subject: subject} do
+      assert list_authorized_resources(subject) == {:ok, []}
+    end
+
+    test "returns empty list when there are no authorized resources", %{
+      account: account,
+      subject: subject
+    } do
+      Fixtures.Resources.create_resource(account: account)
+      assert list_authorized_resources(subject) == {:ok, []}
+    end
+
+    test "does not list deleted resources", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      {:ok, _resource} = delete_resource(resource, subject)
+
+      assert list_authorized_resources(subject) == {:ok, []}
+    end
+
+    test "returns authorized resources for account user subject", %{
+      account: account
+    } do
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      resource1 = Fixtures.Resources.create_resource(account: account)
+      resource2 = Fixtures.Resources.create_resource(account: account)
+      Fixtures.Resources.create_resource()
+
+      assert {:ok, []} = list_authorized_resources(subject)
+
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource1
+        )
+
+      assert {:ok, resources} = list_authorized_resources(subject)
+      assert length(resources) == 1
+      assert hd(resources).authorized_by_policy.id == policy.id
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource2
+      )
+
+      assert {:ok, resources} = list_authorized_resources(subject)
+      assert length(resources) == 2
+    end
+
+    test "returns authorized resources for account admin subject", %{
+      account: account
+    } do
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      resource1 = Fixtures.Resources.create_resource(account: account)
+      resource2 = Fixtures.Resources.create_resource(account: account)
+      Fixtures.Resources.create_resource()
+
+      assert {:ok, []} = list_authorized_resources(subject)
+
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource1
+        )
+
+      assert {:ok, resources} = list_authorized_resources(subject)
+      assert length(resources) == 1
+      assert hd(resources).authorized_by_policy.id == policy.id
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource2
+      )
+
+      assert {:ok, resources} = list_authorized_resources(subject)
+      assert length(resources) == 2
+    end
+
+    test "returns error when subject has no permission to manage resources", %{
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert list_authorized_resources(subject) ==
+               {:error,
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     Resources.Authorizer.view_available_resources_permission()
+                   ]
+                 ]}}
+    end
+  end
+
   describe "list_resources/1" do
     test "returns empty list when there are no resources", %{subject: subject} do
       assert list_resources(subject) == {:ok, []}
@@ -247,43 +370,6 @@ defmodule Domain.ResourcesTest do
       |> delete_resource(subject)
 
       assert list_resources(subject) == {:ok, []}
-    end
-
-    test "returns all authorized resources for account user subject", %{
-      account: account
-    } do
-      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-
-      resource1 = Fixtures.Resources.create_resource(account: account)
-      resource2 = Fixtures.Resources.create_resource(account: account)
-      Fixtures.Resources.create_resource()
-
-      assert {:ok, []} = list_resources(subject)
-
-      actor_group = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
-
-      policy =
-        Fixtures.Policies.create_policy(
-          account: account,
-          actor_group: actor_group,
-          resource: resource1
-        )
-
-      assert {:ok, resources} = list_resources(subject)
-      assert length(resources) == 1
-      assert hd(resources).authorized_by_policy.id == policy.id
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource2
-      )
-
-      assert {:ok, resources} = list_resources(subject)
-      assert length(resources) == 2
     end
 
     test "returns all resources for account admin subject", %{
@@ -308,11 +394,7 @@ defmodule Domain.ResourcesTest do
                 {:unauthorized,
                  [
                    missing_permissions: [
-                     {:one_of,
-                      [
-                        Resources.Authorizer.manage_resources_permission(),
-                        Resources.Authorizer.view_available_resources_permission()
-                      ]}
+                     Resources.Authorizer.manage_resources_permission()
                    ]
                  ]}}
     end

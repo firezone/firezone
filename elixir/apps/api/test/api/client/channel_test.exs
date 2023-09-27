@@ -31,6 +31,12 @@ defmodule API.Client.ChannelTest do
         connections: [%{gateway_group_id: gateway_group.id}]
       )
 
+    unauthorized_resource =
+      Fixtures.Resources.create_resource(
+        account: account,
+        connections: [%{gateway_group_id: gateway_group.id}]
+      )
+
     Fixtures.Policies.create_policy(
       account: account,
       actor_group: actor_group,
@@ -66,6 +72,7 @@ defmodule API.Client.ChannelTest do
       gateway: gateway,
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
+      unauthorized_resource: unauthorized_resource,
       socket: socket
     }
   end
@@ -105,6 +112,7 @@ defmodule API.Client.ChannelTest do
       cidr_resource: cidr_resource
     } do
       assert_push "init", %{resources: resources, interface: interface}
+      assert length(resources) == 2
 
       assert %{
                id: dns_resource.id,
