@@ -14,7 +14,7 @@ defmodule API.Relay.Socket do
   def connect(%{"token" => encrypted_secret} = attrs, socket, connect_info) do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
-    OpenTelemetry.Tracer.with_span "connect" do
+    OpenTelemetry.Tracer.with_span "connect_relay" do
       %{
         user_agent: user_agent,
         x_headers: x_headers,
@@ -31,6 +31,11 @@ defmodule API.Relay.Socket do
 
       with {:ok, token} <- Relays.authorize_relay(encrypted_secret),
            {:ok, relay} <- Relays.upsert_relay(token, attrs) do
+        OpenTelemetry.Tracer.set_attributes(%{
+          gateway_id: relay.id,
+          account_id: relay.account_id
+        })
+
         socket =
           socket
           |> assign(:relay, relay)

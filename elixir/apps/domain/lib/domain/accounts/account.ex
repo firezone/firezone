@@ -18,6 +18,8 @@ defmodule Domain.Accounts.Account do
 
     has_many :policies, Domain.Policies.Policy, where: [deleted_at: nil]
 
+    has_many :flows, Domain.Flows.Flow, where: [deleted_at: nil]
+
     has_many :resources, Domain.Resources.Resource, where: [deleted_at: nil]
     has_many :resource_connections, Domain.Resources.Connection, where: [deleted_at: nil]
 

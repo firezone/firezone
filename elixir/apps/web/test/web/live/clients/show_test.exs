@@ -113,6 +113,41 @@ defmodule Web.Live.Clients.ShowTest do
            |> Map.fetch!("owner") =~ actor.name
   end
 
+  test "renders logs table", %{
+    account: account,
+    identity: identity,
+    client: client,
+    conn: conn
+  } do
+    flow =
+      Fixtures.Flows.create_flow(
+        account: account,
+        client: client
+      )
+
+    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/clients/#{client}")
+
+    [row] =
+      lv
+      |> element("#flows")
+      |> render()
+      |> table_to_map()
+
+    assert row["authorized at"]
+    assert row["expires at"]
+    assert row["remote ip"] == to_string(client.last_seen_remote_ip)
+    assert row["policy"] =~ flow.policy.actor_group.name
+    assert row["policy"] =~ flow.policy.resource.name
+
+    assert row["gateway (ip)"] ==
+             "#{flow.gateway.group.name_prefix}-#{flow.gateway.name_suffix} (189.172.73.153)"
+  end
+
   test "allows editing clients", %{
     account: account,
     client: client,

@@ -13,6 +13,8 @@ defmodule Domain.Actors.Group do
       where: [deleted_at: nil]
 
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
+    # TODO: where doesn't work on join tables so soft-deleted records will be preloaded,
+    # ref https://github.com/firezone/firezone/issues/2162
     has_many :actors, through: [:memberships, :actor]
 
     field :created_by, Ecto.Enum, values: ~w[identity provider]a

@@ -1,14 +1,18 @@
 defmodule Web.Resources.Show do
   use Web, :live_view
-
-  alias Domain.Resources
+  import Web.Policies.Components
+  alias Domain.{Resources, Flows}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, resource} <-
            Resources.fetch_resource_by_id(id, socket.assigns.subject,
              preload: [:gateway_groups, created_by_identity: [:actor]]
+           ),
+         {:ok, flows} <-
+           Flows.list_flows_for(resource, socket.assigns.subject,
+             preload: [:client, gateway: [:group], policy: [:resource, :actor_group]]
            ) do
-      {:ok, assign(socket, resource: resource)}
+      {:ok, assign(socket, resource: resource, flows: flows)}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -113,9 +117,47 @@ defmodule Web.Resources.Show do
             <%= gateway_group.name_prefix %>
           </.link>
         </:col>
+      </.table>
 
-        <:col :let={_gateway_group} label="status">
-          <.badge type="success">TODO: Online</.badge>
+      <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
+        <div class="col-span-full mb-4 xl:mb-2">
+          <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
+            Authorizations
+          </h1>
+        </div>
+      </div>
+      <.table id="flows" rows={@flows} row_id={&"flows-#{&1.id}"}>
+        <:col :let={flow} label="AUTHORIZED AT">
+          <.relative_datetime datetime={flow.inserted_at} />
+        </:col>
+        <:col :let={flow} label="EXPIRES AT">
+          <.relative_datetime datetime={flow.expires_at} />
+        </:col>
+        <:col :let={flow} label="POLICY">
+          <.link
+            navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
+            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+          >
+            <.policy_name policy={flow.policy} />
+          </.link>
+        </:col>
+        <:col :let={flow} label="CLIENT (IP)">
+          <.link
+            navigate={~p"/#{@account}/clients/#{flow.client_id}"}
+            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+          >
+            <%= flow.client.name %>
+          </.link>
+          (<%= flow.client_remote_ip %>)
+        </:col>
+        <:col :let={flow} label="GATEWAY (IP)">
+          <.link
+            navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
+            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+          >
+            <%= flow.gateway.group.name_prefix %>-<%= flow.gateway.name_suffix %>
+          </.link>
+          (<%= flow.gateway_remote_ip %>)
         </:col>
       </.table>
     </div>

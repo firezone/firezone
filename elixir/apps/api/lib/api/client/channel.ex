@@ -2,7 +2,7 @@ defmodule API.Client.Channel do
   use API, :channel
   alias API.Client.Views
   alias Domain.Instrumentation
-  alias Domain.{Clients, Resources, Gateways, Relays}
+  alias Domain.{Clients, Resources, Gateways, Relays, Flows}
   require Logger
   require OpenTelemetry.Tracer
 
@@ -82,7 +82,10 @@ defmodule API.Client.Channel do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "ice_candidates" do
+    OpenTelemetry.Tracer.with_span "ice_candidates", %{
+      gateway_id: gateway_id,
+      candidates_length: length(candidates)
+    } do
       push(socket, "ice_candidates", %{
         gateway_id: gateway_id,
         candidates: candidates
@@ -174,9 +177,8 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.with_span "prepare_connection", attrs do
       connected_gateway_ids = Map.get(attrs, "connected_gateway_ids", [])
 
-      with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject),
-           # TODO:
-           # :ok = Resource.authorize(resource, socket.assigns.subject),
+      with {:ok, resource} <-
+             Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject),
            {:ok, [_ | _] = gateways} <-
              Gateways.list_connected_gateways_for_resource(resource),
            {:ok, [_ | _] = relays} <- Relays.list_connected_relays_for_resource(resource) do
@@ -218,9 +220,14 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "reuse_connection", attrs do
-      with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject),
-           #  :ok = Resource.authorize(resource, socket.assigns.subject),
-           {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
+      with {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
+           {:ok, resource, _flow} <-
+             Flows.authorize_flow(
+               socket.assigns.client,
+               gateway,
+               resource_id,
+               socket.assigns.subject
+             ),
            true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
         opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
         opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
@@ -265,9 +272,14 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "request_connection", ctx_attrs do
-      with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject),
-           #  :ok = Resource.authorize(resource, socket.assigns.subject),
-           {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
+      with {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
+           {:ok, resource, _flow} <-
+             Flows.authorize_flow(
+               socket.assigns.client,
+               gateway,
+               resource_id,
+               socket.assigns.subject
+             ),
            true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
         opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
         opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()

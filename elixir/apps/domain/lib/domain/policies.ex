@@ -1,6 +1,6 @@
 defmodule Domain.Policies do
-  alias Domain.{Auth, Repo, Validator}
-  alias Domain.Policy
+  alias Domain.{Repo, Validator}
+  alias Domain.Auth
   alias Domain.Policies.{Authorizer, Policy}
 
   def fetch_policy_by_id(id, %Auth.Subject{} = subject, opts \\ []) do

@@ -5,16 +5,22 @@ defmodule API.Client.ChannelTest do
   setup do
     account = Fixtures.Accounts.create_account()
     Fixtures.Config.upsert_configuration(account: account, clients_upstream_dns: ["1.1.1.1"])
+
+    actor_group = Fixtures.Actors.create_group(account: account)
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
     identity = Fixtures.Auth.create_identity(actor: actor, account: account)
     subject = Fixtures.Auth.create_subject(identity: identity)
     client = Fixtures.Clients.create_client(subject: subject)
-    gateway = Fixtures.Gateways.create_gateway(account: account)
+
+    gateway_group = Fixtures.Gateways.create_group(account: account)
+    gateway = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
 
     dns_resource =
       Fixtures.Resources.create_resource(
         account: account,
-        connections: [%{gateway_group_id: gateway.group_id}]
+        connections: [%{gateway_group_id: gateway_group.id}]
       )
 
     cidr_resource =
@@ -22,8 +28,20 @@ defmodule API.Client.ChannelTest do
         type: :cidr,
         address: "192.168.1.1/28",
         account: account,
-        connections: [%{gateway_group_id: gateway.group_id}]
+        connections: [%{gateway_group_id: gateway_group.id}]
       )
+
+    Fixtures.Policies.create_policy(
+      account: account,
+      actor_group: actor_group,
+      resource: dns_resource
+    )
+
+    Fixtures.Policies.create_policy(
+      account: account,
+      actor_group: actor_group,
+      resource: cidr_resource
+    )
 
     expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
 
@@ -187,6 +205,23 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, :offline
     end
 
+    test "returns error when client has no policy allowing access to resource", %{
+      account: account,
+      socket: socket
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      attrs = %{
+        "resource_id" => resource.id
+      }
+
+      ref = push(socket, "prepare_connection", attrs)
+      assert_reply ref, :error, :not_found
+    end
+
     test "returns error when all gateways connected to the resource are offline", %{
       account: account,
       dns_resource: resource,
@@ -313,6 +348,24 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, :offline
     end
 
+    test "returns error when client has no policy allowing access to resource", %{
+      account: account,
+      socket: socket
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      attrs = %{
+        "resource_id" => resource.id,
+        "gateway_id" => gateway.id
+      }
+
+      ref = push(socket, "reuse_connection", attrs)
+      assert_reply ref, :error, :not_found
+    end
+
     test "returns error when gateway is offline", %{
       dns_resource: resource,
       gateway: gateway,
@@ -400,6 +453,26 @@ defmodule API.Client.ChannelTest do
 
       ref = push(socket, "request_connection", attrs)
       assert_reply ref, :error, :offline
+    end
+
+    test "returns error when client has no policy allowing access to resource", %{
+      account: account,
+      socket: socket
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      attrs = %{
+        "resource_id" => resource.id,
+        "gateway_id" => gateway.id,
+        "client_rtc_session_description" => "RTC_SD",
+        "client_preshared_key" => "PSK"
+      }
+
+      ref = push(socket, "request_connection", attrs)
+      assert_reply ref, :error, :not_found
     end
 
     test "returns error when gateway is offline", %{

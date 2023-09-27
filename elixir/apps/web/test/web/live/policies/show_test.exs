@@ -7,13 +7,24 @@ defmodule Web.Live.Policies.ShowTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
-    policy = Fixtures.Policies.create_policy(account: account, subject: subject)
+    resource = Fixtures.Resources.create_resource(account: account)
+
+    policy =
+      Fixtures.Policies.create_policy(
+        account: account,
+        subject: subject,
+        resource: resource,
+        description: "Test Policy"
+      )
+
+    policy = Repo.preload(policy, [:actor_group, :resource])
 
     %{
       account: account,
       actor: actor,
       identity: identity,
       subject: subject,
+      resource: resource,
       policy: policy
     }
   end
@@ -61,7 +72,8 @@ defmodule Web.Live.Policies.ShowTest do
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Policies"
-    assert breadcrumbs =~ policy.name
+    assert breadcrumbs =~ policy.actor_group.name
+    assert breadcrumbs =~ policy.resource.name
   end
 
   test "allows editing policy", %{
@@ -105,25 +117,46 @@ defmodule Web.Live.Policies.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["name"] =~ policy.name
     assert table["group"] =~ policy.actor_group.name
     assert table["resource"] =~ policy.resource.name
+    assert table["description"] =~ policy.description
     assert table["created"] =~ actor.name
   end
 
-  # TODO: Finish this test when logs are implemented
-  # test "renders logs table", %{
-  #  account: account,
-  #  actor: actor,
-  #  identity: identity,
-  #  policy: policy,
-  #  conn: conn
-  # } do
-  #  {:ok, lv, _html} =
-  #    conn
-  #    |> authorize_conn(identity)
-  #    |> live(~p"/#{account}/policies/#{policy}")
-  # end
+  test "renders logs table", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    policy: policy,
+    conn: conn
+  } do
+    flow =
+      Fixtures.Flows.create_flow(
+        account: account,
+        resource: resource,
+        policy: policy
+      )
+
+    flow = Repo.preload(flow, [:client, gateway: [:group]])
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/#{policy}")
+
+    [row] =
+      lv
+      |> element("#flows")
+      |> render()
+      |> table_to_map()
+
+    assert row["authorized at"]
+    assert row["expires at"]
+    assert row["client (ip)"] == "#{flow.client.name} (100.64.100.58)"
+
+    assert row["gateway (ip)"] ==
+             "#{flow.gateway.group.name_prefix}-#{flow.gateway.name_suffix} (189.172.73.153)"
+  end
 
   test "allows deleting policy", %{
     account: account,
