@@ -14,7 +14,7 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
-use super::InterfaceConfig;
+use crate::InterfaceConfig;
 
 const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 const SIOCGIFMTU: u64 = 0x0000_0000_c020_6933;

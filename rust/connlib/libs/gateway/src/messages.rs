@@ -6,6 +6,7 @@ use libs_common::messages::{
     ActorId, ClientId, Interface, Peer, Relay, ResourceDescription, ResourceId,
 };
 use serde::{Deserialize, Serialize};
+use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 // TODO: Should this have a resource?
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
@@ -91,6 +92,25 @@ pub enum IngressMessages {
     Init(InitGateway),
     RequestConnection(RequestConnection),
     AllowAccess(AllowAccess),
+    IceCandidates(ClientIceCandidates),
+}
+
+/// A client's ice candidate message.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct BroadcastClientIceCandidates {
+    /// Client's id the ice candidates are meant for
+    pub client_ids: Vec<ClientId>,
+    /// Actual RTC ice candidates
+    pub candidates: Vec<RTCIceCandidateInit>,
+}
+
+/// A client's ice candidate message.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct ClientIceCandidates {
+    /// Client's id the ice candidates came from
+    pub client_id: ClientId,
+    /// Actual RTC ice candidates
+    pub candidates: Vec<RTCIceCandidateInit>,
 }
 
 // These messages can be sent from a gateway
@@ -102,6 +122,7 @@ pub enum IngressMessages {
 pub enum EgressMessages {
     ConnectionReady(ConnectionReady),
     Metrics(Metrics),
+    BroadcastIceCandidates(BroadcastClientIceCandidates),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
