@@ -11,6 +11,7 @@ use std::{
 };
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -148,14 +149,14 @@ impl Callbacks for CallbackHandler {
 }
 
 fn init_logging(log_dir: PathBuf, log_filter: String) -> (WorkerGuard, file_logger::Handle) {
-    let (file_layer, guard, handle) = file_logger::layer(&log_dir, log_filter);
+    let (file_layer, guard, handle) = file_logger::layer(&log_dir);
 
     let _ = tracing_subscriber::registry()
         .with(tracing_oslog::OsLogger::new(
             "dev.firezone.firezone",
             "connlib",
         ))
-        .with(file_layer)
+        .with(file_layer.with_filter(EnvFilter::new(log_filter)))
         .try_init();
 
     (guard, handle)

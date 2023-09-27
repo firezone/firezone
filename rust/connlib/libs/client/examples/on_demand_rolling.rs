@@ -3,15 +3,18 @@ use std::path::Path;
 use std::time::Duration;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer};
 
 fn main() {
     let log_dir = Path::new("./target");
 
     println!("Logging to {}", log_dir.canonicalize().unwrap().display());
 
-    let (file_layer, _guard, handle) = file_logger::layer(log_dir, "info");
+    let (file_layer, _guard, handle) = file_logger::layer(log_dir);
 
-    tracing_subscriber::registry().with(file_layer).init();
+    tracing_subscriber::registry()
+        .with(file_layer.with_filter(EnvFilter::new("info")))
+        .init();
 
     tracing::info!("First log");
     tracing::info!("Second log");

@@ -68,29 +68,55 @@ pub trait Callbacks: Clone + Send + Sync {
     /// Called when the tunnel address is set.
     fn on_set_interface_config(
         &self,
-        tunnel_address_v4: Ipv4Addr,
-        tunnel_address_v6: Ipv6Addr,
-        dns_address: Ipv4Addr,
-        dns_fallback_strategy: String,
-    ) -> StdResult<RawFd, Self::Error>;
+        _: Ipv4Addr,
+        _: Ipv6Addr,
+        _: Ipv4Addr,
+        _: String,
+    ) -> StdResult<RawFd, Self::Error> {
+        Ok(-1)
+    }
+
     /// Called when the tunnel is connected.
-    fn on_tunnel_ready(&self) -> StdResult<(), Self::Error>;
+    fn on_tunnel_ready(&self) -> StdResult<(), Self::Error> {
+        tracing::trace!("tunnel_connected");
+        Ok(())
+    }
+
     /// Called when when a route is added.
-    fn on_add_route(&self, route: IpNetwork) -> StdResult<(), Self::Error>;
+    fn on_add_route(&self, _: IpNetwork) -> StdResult<(), Self::Error> {
+        Ok(())
+    }
+
     /// Called when when a route is removed.
-    fn on_remove_route(&self, route: IpNetwork) -> StdResult<(), Self::Error>;
+    fn on_remove_route(&self, _: IpNetwork) -> StdResult<(), Self::Error> {
+        Ok(())
+    }
+
     /// Called when the resource list changes.
     fn on_update_resources(
         &self,
         resource_list: Vec<ResourceDescription>,
-    ) -> StdResult<(), Self::Error>;
+    ) -> StdResult<(), Self::Error> {
+        tracing::trace!(?resource_list, "resource_updated");
+        Ok(())
+    }
+
     /// Called when the tunnel is disconnected.
     ///
     /// If the tunnel disconnected due to a fatal error, `error` is the error
     /// that caused the disconnect.
-    fn on_disconnect(&self, error: Option<&Error>) -> StdResult<(), Self::Error>;
+    fn on_disconnect(&self, error: Option<&Error>) -> StdResult<(), Self::Error> {
+        tracing::trace!(error = ?error, "tunnel_disconnected");
+        // Note that we can't panic here, since we already hooked the panic to this function.
+        std::process::exit(0);
+    }
+
     /// Called when there's a recoverable error.
-    fn on_error(&self, error: &Error) -> StdResult<(), Self::Error>;
+    fn on_error(&self, error: &Error) -> StdResult<(), Self::Error> {
+        tracing::warn!(error = ?error);
+        Ok(())
+    }
+
     /// Called when the log file should be rolled.
     ///
     /// Should return the path to the old log, if present.

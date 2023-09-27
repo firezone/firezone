@@ -19,14 +19,13 @@ use std::{fs, io};
 
 use time::OffsetDateTime;
 use tracing::Subscriber;
-use tracing_subscriber::{EnvFilter, Layer};
+use tracing_subscriber::Layer;
 
 const LOG_FILE_BASE_NAME: &str = "connlib.log";
 
 /// Create a new file logger layer.
 pub fn layer<T>(
     log_dir: &Path,
-    env_filter: impl Into<EnvFilter>,
 ) -> (
     Box<dyn Layer<T> + Send + Sync + 'static>,
     tracing_appender::non_blocking::WorkerGuard,
@@ -39,10 +38,7 @@ where
 
     let (writer, guard) = tracing_appender::non_blocking(appender);
 
-    let layer = tracing_stackdriver::layer()
-        .with_writer(writer)
-        .with_filter(env_filter.into())
-        .boxed();
+    let layer = tracing_stackdriver::layer().with_writer(writer).boxed();
 
     // Return the guard so that the caller maintains a handle to it. Otherwise,
     // we have to wait for tracing_appender to flush the logs before exiting.
