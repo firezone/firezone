@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
 import android.view.LayoutInflater
@@ -6,9 +7,8 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import dev.firezone.android.databinding.ListItemResourceBinding
 import dev.firezone.android.tunnel.model.Resource
-import javax.annotation.Nullable
 
-internal class ResourcesAdapter(private var clickListener: ((Resource) -> Unit)? = null): RecyclerView.Adapter<ResourcesAdapter.ViewHolder>() {
+internal class ResourcesAdapter(private var clickListener: ((Resource) -> Unit)? = null) : RecyclerView.Adapter<ResourcesAdapter.ViewHolder>() {
 
     private val resources: MutableList<Resource> = mutableListOf()
 
@@ -22,7 +22,7 @@ internal class ResourcesAdapter(private var clickListener: ((Resource) -> Unit)?
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         return ViewHolder(
-            ListItemResourceBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+            ListItemResourceBinding.inflate(LayoutInflater.from(parent.context), parent, false),
         )
     }
 

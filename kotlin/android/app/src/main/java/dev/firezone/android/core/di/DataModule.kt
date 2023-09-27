@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.core.di
 
 import android.content.SharedPreferences
@@ -17,12 +18,12 @@ class DataModule {
     @Provides
     internal fun provideAuthRepository(
         @IoDispatcher coroutineDispatcher: CoroutineDispatcher,
-        sharedPreferences: SharedPreferences
+        sharedPreferences: SharedPreferences,
     ): AuthRepository = AuthRepositoryImpl(coroutineDispatcher, sharedPreferences)
 
     @Provides
     internal fun providePreferenceRepository(
         @IoDispatcher coroutineDispatcher: CoroutineDispatcher,
-        sharedPreferences: SharedPreferences
+        sharedPreferences: SharedPreferences,
     ): PreferenceRepository = PreferenceRepositoryImpl(coroutineDispatcher, sharedPreferences)
 }

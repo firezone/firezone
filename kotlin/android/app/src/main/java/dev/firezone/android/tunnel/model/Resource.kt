@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.tunnel.model
 
 import android.os.Parcelable
@@ -11,4 +12,4 @@ data class Resource(
     val id: String,
     val address: String,
     val name: String,
-): Parcelable
+) : Parcelable

@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.core.di
 
 import android.app.Application
@@ -32,6 +33,6 @@ object AppModule {
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build(),
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )
 }

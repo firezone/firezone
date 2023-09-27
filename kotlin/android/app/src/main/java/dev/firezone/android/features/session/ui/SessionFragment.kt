@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
 import android.content.Intent
@@ -10,7 +11,6 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import dagger.hilt.android.AndroidEntryPoint
@@ -47,7 +47,7 @@ internal class SessionFragment : Fragment(R.layout.fragment_session) {
         val layoutManager = LinearLayoutManager(requireContext())
         val dividerItemDecoration = DividerItemDecoration(
             requireContext(),
-            layoutManager.orientation
+            layoutManager.orientation,
         )
         binding.resourcesList.addItemDecoration(dividerItemDecoration)
         binding.resourcesList.adapter = resourcesAdapter
@@ -60,7 +60,7 @@ internal class SessionFragment : Fragment(R.layout.fragment_session) {
                 SessionViewModel.ViewAction.NavigateToSignInFragment -> {
                     requireActivity().run {
                         startActivity(
-                            Intent(this, MainActivity::class.java)
+                            Intent(this, MainActivity::class.java),
                         )
                         finish()
                     }
@@ -85,7 +85,7 @@ internal class SessionFragment : Fragment(R.layout.fragment_session) {
             .setTitle(R.string.error_dialog_title)
             .setMessage(R.string.error_dialog_message)
             .setPositiveButton(
-                R.string.error_dialog_button_text
+                R.string.error_dialog_button_text,
             ) { dialog, _ ->
                 dialog.dismiss()
             }

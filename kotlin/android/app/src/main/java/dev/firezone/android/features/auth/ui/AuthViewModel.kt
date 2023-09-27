@@ -1,17 +1,18 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.auth.ui
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.domain.auth.GetCsrfTokenUseCase
-import javax.inject.Inject
+import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import java.lang.Exception
+import javax.inject.Inject
 
 @HiltViewModel
 internal class AuthViewModel @Inject constructor(
@@ -35,9 +36,9 @@ internal class AuthViewModel @Inject constructor(
                     ViewAction.NavigateToSignInFragment
                 } else {
                     ViewAction.LaunchAuthFlow(
-                        url = "$AUTH_URL${config.accountId}/sign_in?client_csrf_token=${csrfToken}&client_platform=android"
+                        url = "$AUTH_URL${config.accountId}/sign_in?client_csrf_token=$csrfToken&client_platform=android",
                     )
-                }
+                },
             )
         }
     } catch (e: Exception) {

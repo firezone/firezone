@@ -1,16 +1,17 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.core.data
 
 import android.content.SharedPreferences
 import dev.firezone.android.core.data.model.Config
-import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import javax.inject.Inject
 
 internal class PreferenceRepositoryImpl @Inject constructor(
     private val coroutineDispatcher: CoroutineDispatcher,
-    private val sharedPreferences: SharedPreferences
+    private val sharedPreferences: SharedPreferences,
 ) : PreferenceRepository {
 
     override fun getConfigSync(): Config = Config(
@@ -27,7 +28,7 @@ internal class PreferenceRepositoryImpl @Inject constructor(
             sharedPreferences
                 .edit()
                 .putString(ACCOUNT_ID_KEY, value)
-                .apply()
+                .apply(),
         )
     }.flowOn(coroutineDispatcher)
 
@@ -36,7 +37,7 @@ internal class PreferenceRepositoryImpl @Inject constructor(
             sharedPreferences
                 .edit()
                 .putString(TOKEN_KEY, value)
-                .apply()
+                .apply(),
         )
     }.flowOn(coroutineDispatcher)
 

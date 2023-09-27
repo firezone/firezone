@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.tunnel
 
 import android.content.Context
@@ -81,9 +82,9 @@ internal class TunnelManager @Inject constructor(
         private const val TAG: String = "TunnelManager"
 
         init {
-            Log.d(TAG,"Attempting to load library from main app...")
+            Log.d(TAG, "Attempting to load library from main app...")
             System.loadLibrary("connlib")
-            Log.d(TAG,"Library loaded from main app!")
+            Log.d(TAG, "Library loaded from main app!")
         }
     }
 }

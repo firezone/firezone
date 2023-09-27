@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.webview.ui
 
 import android.graphics.Bitmap
@@ -12,9 +13,9 @@ import android.webkit.WebViewClient
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.databinding.ActivityWebViewBinding
-import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 internal class WebViewActivity : AppCompatActivity(R.layout.activity_web_view) {
@@ -71,7 +72,7 @@ internal class WebViewActivity : AppCompatActivity(R.layout.activity_web_view) {
         override fun onReceivedSslError(
             view: WebView?,
             handler: SslErrorHandler?,
-            error: SslError?
+            error: SslError?,
         ) {
             super.onReceivedSslError(view, handler, error)
         }
@@ -79,14 +80,15 @@ internal class WebViewActivity : AppCompatActivity(R.layout.activity_web_view) {
         override fun onReceivedError(
             view: WebView?,
             request: WebResourceRequest?,
-            error: WebResourceError?
+            error: WebResourceError?,
         ) {
             showError()
             super.onReceivedError(view, request, error)
         }
 
         override fun shouldOverrideUrlLoading(
-            view: WebView?, request: WebResourceRequest?
+            view: WebView?,
+            request: WebResourceRequest?,
         ): Boolean {
             return super.shouldOverrideUrlLoading(view, request)
         }
@@ -97,7 +99,7 @@ internal class WebViewActivity : AppCompatActivity(R.layout.activity_web_view) {
             .setTitle(R.string.error_dialog_title)
             .setMessage(R.string.error_dialog_message)
             .setPositiveButton(
-                R.string.error_dialog_button_text
+                R.string.error_dialog_button_text,
             ) { _, _ ->
                 this@WebViewActivity.finish()
             }

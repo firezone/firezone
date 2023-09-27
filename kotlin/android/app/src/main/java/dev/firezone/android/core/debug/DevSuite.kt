@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.core.debug
 
 import android.content.Intent
@@ -9,7 +10,7 @@ import kotlinx.coroutines.flow.collect
 import javax.inject.Inject
 
 internal class DevSuite @Inject constructor(
-    private val repository: PreferenceRepository
+    private val repository: PreferenceRepository,
 ) {
 
     suspend fun signInWithDebugUser(activity: FragmentActivity) {
