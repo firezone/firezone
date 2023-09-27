@@ -2,8 +2,8 @@ defmodule Domain.Flows.Activity do
   use Domain, :schema
 
   schema "flow_activities" do
-    field :window_started_at, :utc_datetime_usec
-    field :window_ended_at, :utc_datetime_usec
+    field :window_started_at, :utc_datetime
+    field :window_ended_at, :utc_datetime
 
     field :destination, Domain.Types.IPPort
     field :rx_bytes, :integer

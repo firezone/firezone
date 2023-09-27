@@ -278,7 +278,7 @@ defmodule Domain.FlowsTest do
           gateway: gateway
         )
 
-      now = DateTime.utc_now()
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
 
       {:ok, destination} = Domain.Types.IPPort.cast("127.0.0.1:80")
 
@@ -387,7 +387,7 @@ defmodule Domain.FlowsTest do
       flow: flow,
       subject: subject
     } do
-      now = DateTime.utc_now()
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
       thirty_minutes_ago = DateTime.add(now, -30, :minute)
       five_minutes_ago = DateTime.add(now, -5, :minute)
       four_minutes_ago = DateTime.add(now, -4, :minute)

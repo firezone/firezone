@@ -221,7 +221,7 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "client.reuse_connection", attrs do
       with {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-           {:ok, resource, _flow} <-
+           {:ok, resource, flow} <-
              Flows.authorize_flow(
                socket.assigns.client,
                gateway,
@@ -239,6 +239,7 @@ defmodule API.Client.Channel do
              %{
                client_id: socket.assigns.client.id,
                resource_id: resource.id,
+               flow_id: flow.id,
                authorization_expires_at: socket.assigns.subject.expires_at
              }, {opentelemetry_ctx, opentelemetry_span_ctx}}
           )
@@ -273,7 +274,7 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "client.request_connection", ctx_attrs do
       with {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-           {:ok, resource, _flow} <-
+           {:ok, resource, flow} <-
              Flows.authorize_flow(
                socket.assigns.client,
                gateway,
@@ -291,6 +292,7 @@ defmodule API.Client.Channel do
              %{
                client_id: socket.assigns.client.id,
                resource_id: resource.id,
+               flow_id: flow.id,
                authorization_expires_at: socket.assigns.subject.expires_at,
                client_rtc_session_description: client_rtc_session_description,
                client_preshared_key: preshared_key

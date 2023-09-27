@@ -86,7 +86,7 @@ defmodule Domain.Fixtures.Flows do
   end
 
   def activity_attrs(attrs \\ %{}) do
-    now = DateTime.utc_now()
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
     unique_ipv4 = :inet.ntoa(unique_ipv4())
     {:ok, destination} = Domain.Types.IPPort.cast("#{unique_ipv4}:80")
 
