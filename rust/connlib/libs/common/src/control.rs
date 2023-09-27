@@ -297,14 +297,31 @@ impl<T, R> PhoenixMessage<T, R> {
         }
     }
 
-    pub fn new_reply(topic: impl Into<String>, payload: R) -> Self {
+    pub fn new_ok_reply(
+        topic: impl Into<String>,
+        payload: R,
+        reference: impl Into<Option<String>>,
+    ) -> Self {
         Self {
             topic: topic.into(),
             // There has to be a better way :\
             payload: Payload::Reply(ReplyMessage::PhxReply(PhxReply::Ok(OkReply::Message(
                 payload,
             )))),
-            reference: None,
+            reference: reference.into(),
+        }
+    }
+
+    pub fn new_err_reply(
+        topic: impl Into<String>,
+        error: ErrorInfo,
+        reference: impl Into<Option<String>>,
+    ) -> Self {
+        Self {
+            topic: topic.into(),
+            // There has to be a better way :\
+            payload: Payload::Reply(ReplyMessage::PhxReply(PhxReply::Error(error))),
+            reference: reference.into(),
         }
     }
 }
@@ -339,8 +356,10 @@ enum OkReply<T> {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorInfo {
-    Reason(String),
     Offline,
+    Disabled,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]

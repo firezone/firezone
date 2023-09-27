@@ -134,6 +134,7 @@ mod test {
     };
 
     use chrono::NaiveDateTime;
+    use libs_common::control::ErrorInfo;
 
     use crate::messages::{ConnectionDetails, EgressMessages, ReplyMessages};
 
@@ -250,7 +251,7 @@ mod test {
 
     #[test]
     fn connection_details_reply() {
-        let m = PhoenixMessage::<IngressMessages, ReplyMessages>::new_reply(
+        let m = PhoenixMessage::<IngressMessages, ReplyMessages>::new_ok_reply(
             "client",
             ReplyMessages::ConnectionDetails(ConnectionDetails {
                 gateway_id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
@@ -281,6 +282,7 @@ mod test {
                     }),
                 ],
             }),
+            None,
         );
         let message = r#"
             {
@@ -321,5 +323,35 @@ mod test {
             }"#;
         let reply_message = serde_json::from_str(message).unwrap();
         assert_eq!(m, reply_message);
+    }
+
+    #[test]
+    fn create_log_sink_error_response() {
+        let json = r#"{"event":"phx_reply","ref":"unique_log_sink_ref","topic":"client","payload":{"status":"error","response":"disabled"}}"#;
+
+        let actual =
+            serde_json::from_str::<PhoenixMessage<EgressMessages, ReplyMessages>>(json).unwrap();
+        let expected = PhoenixMessage::new_err_reply(
+            "client",
+            ErrorInfo::Disabled,
+            "unique_log_sink_ref".to_owned(),
+        );
+
+        assert_eq!(actual, expected)
+    }
+
+    #[test]
+    fn create_log_sink_ok_response() {
+        let json = r#"{"event":"phx_reply","ref":"unique_log_sink_ref","topic":"client","payload":{"status":"ok","response":"https://storage.googleapis.com/foo/bar"}}"#;
+
+        let actual =
+            serde_json::from_str::<PhoenixMessage<EgressMessages, ReplyMessages>>(json).unwrap();
+        let expected = PhoenixMessage::new_ok_reply(
+            "client",
+            ReplyMessages::SignedLogUrl("https://storage.googleapis.com/foo/bar".parse().unwrap()),
+            "unique_log_sink_ref".to_owned(),
+        );
+
+        assert_eq!(actual, expected)
     }
 }
