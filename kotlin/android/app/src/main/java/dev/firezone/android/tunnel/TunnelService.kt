@@ -149,7 +149,7 @@ class TunnelService : VpnService() {
                     deviceId = deviceId(),
                     logDir = getLogDir(),
                     logFilter = BuildConfig.CONNLIB_LOG_FILTER_STRING,
-                    callback = callback
+                    callback = callback,
                 )
                 Log.d(TAG, "connlib session started! sessionPtr: $sessionPtr")
 
