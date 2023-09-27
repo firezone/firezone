@@ -7,7 +7,7 @@ use std::path::PathBuf;
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
+    let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
     let device_id = get_device_id();
@@ -16,7 +16,7 @@ fn main() -> Result<()> {
         cli.common.url,
         cli.common.secret,
         device_id,
-        CallbackHandler,
+        CallbackHandler { handle },
     )
     .unwrap();
     tracing::info!("new_session");
@@ -28,10 +28,23 @@ fn main() -> Result<()> {
 }
 
 #[derive(Clone)]
-struct CallbackHandler;
+struct CallbackHandler {
+    handle: Option<file_logger::Handle>,
+}
 
 impl Callbacks for CallbackHandler {
     type Error = std::convert::Infallible;
+
+    fn roll_log_file(&self) -> Option<PathBuf> {
+        self.handle
+            .as_ref()?
+            .roll_to_new_file()
+            .unwrap_or_else(|e| {
+                tracing::debug!("Failed to roll over to new file: {e}");
+
+                None
+            })
+    }
 }
 
 #[derive(Parser)]
