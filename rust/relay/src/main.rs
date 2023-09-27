@@ -53,7 +53,7 @@ struct Args {
     ///
     /// If omitted, we won't connect to the portal on startup.
     #[arg(long, env)]
-    portal_token: Option<String>,
+    portal_token: Option<SecretString>,
     /// A seed to use for all randomness operations.
     ///
     /// Only available in debug builds.
@@ -107,14 +107,13 @@ async fn main() -> Result<()> {
         args.highest_port,
     );
 
-    let channel = if let Some(token) = args.portal_token.clone() {
-        let url = args.portal_ws_url.clone();
+    let channel = if args.portal_token.is_some() {
+        let base_url = args.portal_ws_url.clone();
         let stamp_secret = server.auth_secret();
-        let secret = SecretString::new(token);
 
-        let span = tracing::error_span!("connect_to_portal", config_url = %url);
+        let span = tracing::error_span!("connect_to_portal", config_url = %base_url);
 
-        connect_to_portal(&args, secret, url, stamp_secret)
+        connect_to_portal(&args, base_url, stamp_secret)
             .instrument(span)
             .await?
     } else {
@@ -244,7 +243,6 @@ fn env_filter() -> EnvFilter {
 
 async fn connect_to_portal(
     args: &Args,
-    secret: SecretString,
     mut url: Url,
     stamp_secret: &SecretString,
 ) -> Result<Option<PhoenixChannel<InboundPortalMessage, ()>>> {
@@ -256,8 +254,10 @@ async fn connect_to_portal(
 
     url.set_path("relay/websocket");
 
-    url.query_pairs_mut()
-        .append_pair("token", secret.expose_secret().as_str());
+    if let Some(secret) = args.portal_token.as_ref() {
+        url.query_pairs_mut()
+            .append_pair("token", secret.expose_secret().as_str());
+    }
 
     if let Some(public_ip4_addr) = args.public_ip4_addr {
         url.query_pairs_mut()
