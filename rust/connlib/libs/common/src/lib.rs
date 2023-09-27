@@ -13,7 +13,11 @@ pub use callbacks::Callbacks;
 pub use callbacks_error_facade::CallbackErrorFacade;
 pub use error::ConnlibError as Error;
 pub use error::Result;
+
+use messages::Key;
+use ring::digest::{Context, SHA256};
 use std::net::Ipv4Addr;
+use url::Url;
 
 pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 
@@ -48,4 +52,56 @@ pub fn get_device_id() -> String {
         tracing::debug!("smbios is not supported on iOS and Android, using random UUIDv4");
         uuid::Uuid::new_v4().to_string()
     }
+}
+
+pub fn set_ws_scheme(url: &mut Url) -> Result<()> {
+    let scheme = match url.scheme() {
+        "http" | "ws" => "ws",
+        "https" | "wss" => "wss",
+        _ => return Err(Error::UriScheme),
+    };
+    url.set_scheme(scheme)
+        .expect("Developer error: the match before this should make sure we can set this");
+    Ok(())
+}
+
+pub fn sha256(input: String) -> String {
+    let mut ctx = Context::new(&SHA256);
+    ctx.update(input.as_bytes());
+    let digest = ctx.finish();
+
+    digest
+        .as_ref()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect()
+}
+
+pub fn get_websocket_path(
+    mut url: Url,
+    secret: String,
+    mode: &str,
+    public_key: &Key,
+    external_id: &str,
+    name_suffix: &str,
+) -> Result<Url> {
+    set_ws_scheme(&mut url)?;
+
+    {
+        let mut paths = url.path_segments_mut().map_err(|_| Error::UriError)?;
+        paths.pop_if_empty();
+        paths.push(mode);
+        paths.push("websocket");
+    }
+
+    {
+        let mut query_pairs = url.query_pairs_mut();
+        query_pairs.clear();
+        query_pairs.append_pair("token", &secret);
+        query_pairs.append_pair("public_key", &public_key.to_string());
+        query_pairs.append_pair("external_id", external_id);
+        query_pairs.append_pair("name_suffix", name_suffix);
+    }
+
+    Ok(url)
 }

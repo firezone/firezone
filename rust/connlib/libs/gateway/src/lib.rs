@@ -6,10 +6,11 @@ use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use control::ControlPlane;
 use firezone_tunnel::Tunnel;
-use libs_common::{control::PhoenixChannel, messages::Key, CallbackErrorFacade, Result};
+use libs_common::{
+    control::PhoenixChannel, get_websocket_path, messages::Key, sha256, CallbackErrorFacade, Result,
+};
 use messages::IngressMessages;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use ring::digest::{Context, SHA256};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use url::Url;
@@ -227,56 +228,4 @@ where
     pub fn disconnect(&mut self, error: Option<Error>) {
         Self::disconnect_inner(self.runtime_stopper.clone(), &self.callbacks, error)
     }
-}
-
-fn set_ws_scheme(url: &mut Url) -> Result<()> {
-    let scheme = match url.scheme() {
-        "http" | "ws" => "ws",
-        "https" | "wss" => "wss",
-        _ => return Err(Error::UriScheme),
-    };
-    url.set_scheme(scheme)
-        .expect("Developer error: the match before this should make sure we can set this");
-    Ok(())
-}
-
-fn sha256(input: String) -> String {
-    let mut ctx = Context::new(&SHA256);
-    ctx.update(input.as_bytes());
-    let digest = ctx.finish();
-
-    digest
-        .as_ref()
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect()
-}
-
-fn get_websocket_path(
-    mut url: Url,
-    secret: String,
-    mode: &str,
-    public_key: &Key,
-    external_id: &str,
-    name_suffix: &str,
-) -> Result<Url> {
-    set_ws_scheme(&mut url)?;
-
-    {
-        let mut paths = url.path_segments_mut().map_err(|_| Error::UriError)?;
-        paths.pop_if_empty();
-        paths.push(mode);
-        paths.push("websocket");
-    }
-
-    {
-        let mut query_pairs = url.query_pairs_mut();
-        query_pairs.clear();
-        query_pairs.append_pair("token", &secret);
-        query_pairs.append_pair("public_key", &public_key.to_string());
-        query_pairs.append_pair("external_id", external_id);
-        query_pairs.append_pair("name_suffix", name_suffix);
-    }
-
-    Ok(url)
 }
