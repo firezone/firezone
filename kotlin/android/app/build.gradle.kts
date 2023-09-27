@@ -65,6 +65,10 @@ android {
             buildConfigField("String", "AUTH_SCHEME", "\"https\"")
             buildConfigField("Integer", "AUTH_PORT", "443")
             buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firez.one/\"")
+
+            // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
+            buildConfigField("String", "CONNLIB_LOG_FILTER_STRING", "\"connlib_android=debug,firezone_tunnel=trace,libs_common=debug,firezone_client_connlib=debug,warn\"")
+
             resValue("string", "app_name", "\"Firezone (Dev)\"")
         }
 
@@ -77,6 +81,10 @@ android {
             buildConfigField("String", "AUTH_SCHEME", "\"https\"")
             buildConfigField("Integer", "AUTH_PORT", "443")
             buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firezone.dev/\"")
+
+            // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
+            buildConfigField("String", "CONNLIB_LOG_FILTER_STRING", "\"connlib_android=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn\"")
+
             resValue("string", "app_name", "\"Firezone\"")
         }
     }
