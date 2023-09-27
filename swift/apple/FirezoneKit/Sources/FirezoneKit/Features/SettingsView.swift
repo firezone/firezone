@@ -60,6 +60,7 @@ public struct SettingsView: View {
   @Environment(\.dismiss) var dismiss
 
   let teamIdAllowedCharacterSet: CharacterSet
+  @State private var isExportingLogs = false
 
   public init(model: SettingsViewModel) {
     self.model = model
@@ -82,9 +83,13 @@ public struct SettingsView: View {
 
   #if os(iOS)
     private var ios: some View {
-      NavigationView {
-        VStack {
+      NavigationView() {
+        VStack(spacing: 10) {
           form
+          ExportLogsButton(isProcessing: $isExportingLogs) {
+            self.exportLogsButtonTapped()
+          }
+          Spacer()
         }
         .toolbar {
           ToolbarItem(placement: .navigationBarTrailing) {
@@ -120,6 +125,9 @@ public struct SettingsView: View {
             }
           )
           .disabled(!isTeamIdValid(model.settings.accountId))
+        }
+        ExportLogsButton(isProcessing: $isExportingLogs) {
+          self.exportLogsButtonTapped()
         }
       }
     }
@@ -158,6 +166,37 @@ public struct SettingsView: View {
   func cancelButtonTapped() {
     model.load()
     dismiss()
+  }
+
+  func exportLogsButtonTapped() {
+    self.isExportingLogs = true
+    Task {
+      try await Task.sleep(nanoseconds: 2_000_000_000)
+      self.isExportingLogs = false
+    }
+  }
+}
+
+struct ExportLogsButton: View {
+  @Binding var isProcessing: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Label(
+        title: { Text("Export Logs") },
+        icon: {
+          if isProcessing {
+            ProgressView().controlSize(.small)
+              .frame(minWidth: 12)
+          } else {
+            Image(systemName: "arrow.up.doc")
+              .frame(minWidth: 12)
+          }
+        })
+      .labelStyle(.titleAndIcon)
+    }
+    .disabled(isProcessing)
   }
 }
 
