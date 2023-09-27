@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.splash.ui
 
 import android.os.Bundle
@@ -5,9 +6,9 @@ import android.view.View
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
+import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.databinding.FragmentSplashBinding
-import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 internal class SplashFragment : Fragment(R.layout.fragment_splash) {
@@ -30,16 +31,16 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
         viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
             when (action) {
                 SplashViewModel.ViewAction.NavigateToVpnPermission -> findNavController().navigate(
-                    R.id.vpnPermissionActivity
+                    R.id.vpnPermissionActivity,
                 )
                 SplashViewModel.ViewAction.NavigateToSignInFragment -> findNavController().navigate(
-                    R.id.signInFragment
+                    R.id.signInFragment,
                 )
                 SplashViewModel.ViewAction.NavigateToSettingsFragment -> findNavController().navigate(
-                    R.id.settingsFragment
+                    R.id.settingsFragment,
                 )
                 SplashViewModel.ViewAction.NavigateToSessionFragment -> findNavController().navigate(
-                    R.id.sessionFragment
+                    R.id.sessionFragment,
                 )
             }
         }
