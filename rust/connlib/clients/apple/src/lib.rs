@@ -3,7 +3,7 @@
 
 use firezone_client_connlib::{file_logger, Callbacks, Error, ResourceDescription, Session};
 use ip_network::IpNetwork;
-use secrecy::Secret;
+use secrecy::SecretString;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
@@ -163,7 +163,7 @@ impl WrappedSession {
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
         let _guard = init_logging(log_dir.into(), log_filter);
-        let secret = Secret::new(token);
+        let secret = SecretString::from(token);
 
         let session = Session::connect(
             portal_url.as_str(),

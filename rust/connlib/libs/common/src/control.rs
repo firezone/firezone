@@ -31,8 +31,8 @@ const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(35);
 
 pub type Reference = String;
 
-// TODO: The SecureUrl implementation is duplicated from the phoenix-channel crate.
-// Combine them into a single implementation as part of
+// TODO: Refactor this PhoenixChannel to use the top-level phoenix-channel crate instead.
+// See https://github.com/firezone/firezone/issues/2158
 pub struct SecureUrl {
     inner: Url,
 }
@@ -47,9 +47,6 @@ impl secrecy::Zeroize for SecureUrl {
         let _ = std::mem::replace(&mut self.inner, placeholder);
     }
 }
-
-// TODO: Refactor this PhoenixChannel to use the top-level phoenix-channel crate instead.
-// See https://github.com/firezone/firezone/issues/2158
 /// Main struct to interact with the control-protocol channel.
 ///
 /// After creating a new `PhoenixChannel` using [PhoenixChannel::new] you need to

@@ -12,7 +12,7 @@ fn main() -> Result<()> {
     let device_id = get_device_id();
     let mut session = Session::connect(
         cli.common.url,
-        SecretString::new(cli.common.secret),
+        SecretString::from(cli.common.secret),
         device_id,
         CallbackHandler,
     )

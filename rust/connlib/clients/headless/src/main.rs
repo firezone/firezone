@@ -13,9 +13,14 @@ fn main() -> Result<()> {
     setup_global_subscriber(layer);
 
     let device_id = get_device_id();
-    let secret = SecretString::new(cli.common.secret);
 
-    let mut session = Session::connect(cli.common.url, secret, device_id, CallbackHandler).unwrap();
+    let mut session = Session::connect(
+        cli.common.url,
+        SecretString::from(cli.common.secret),
+        device_id,
+        CallbackHandler,
+    )
+    .unwrap();
     tracing::info!("new_session");
 
     block_on_ctrl_c();

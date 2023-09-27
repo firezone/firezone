@@ -188,7 +188,7 @@ where
             channel_numbers_by_peer: Default::default(),
             pending_commands: Default::default(),
             next_allocation_id: AllocationId(1),
-            auth_secret: SecretString::new(hex::encode(rng.gen::<[u8; 32]>())),
+            auth_secret: SecretString::from(hex::encode(rng.gen::<[u8; 32]>())),
             rng,
             time_events: TimeEvents::default(),
             nonces: Default::default(),
