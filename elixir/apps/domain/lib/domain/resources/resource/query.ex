@@ -26,7 +26,8 @@ defmodule Domain.Resources.Resource.Query do
       as: :authorized_by_policies
     )
     # Note: this will only write one of policies to a map, which means that
-    # when a client has access to multiple resources the policy used will be not deterministic
+    # when a client has access to a resource using multiple policies (eg. being a member in multiple groups),
+    # the policy used will be not deterministic
     |> select_merge([authorized_by_policies: policies], %{authorized_by_policy: policies})
   end
 
