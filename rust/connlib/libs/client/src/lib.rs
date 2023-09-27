@@ -2,7 +2,7 @@
 pub use libs_common::{Callbacks, Error};
 
 use async_trait::async_trait;
-use backoff::{backoff::Backoff, ExponentialBackoff, ExponentialBackoffBuilder};
+use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use control::ControlPlane;
 use libs_common::{
@@ -37,12 +37,6 @@ pub trait ControlSession<T, CB: Callbacks> {
         control_signal: PhoenixSenderWithTopic,
         callbacks: CB,
     ) -> Result<()>;
-
-    /// Either "gateway" or "client" used to get the control-plane URL.
-    fn socket_path() -> &'static str;
-
-    /// Retry strategy in case of disconnection for the session.
-    fn retry_strategy() -> ExponentialBackoff;
 }
 
 pub struct Session<CB: Callbacks> {

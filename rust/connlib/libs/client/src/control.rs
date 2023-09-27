@@ -1,7 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::messages::{Connect, ConnectionDetails, EgressMessages, InitClient, Messages};
-use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use boringtun::x25519::StaticSecret;
 use libs_common::{
     control::{ErrorInfo, ErrorReply, MessageResult, PhoenixSenderWithTopic, Reference},
@@ -278,13 +277,5 @@ impl<CB: Callbacks + 'static> ControlSession<Messages, CB> for ControlPlane<CB> 
         tokio::spawn(async move { control_plane.start(receiver).await });
 
         Ok(())
-    }
-
-    fn socket_path() -> &'static str {
-        "client"
-    }
-
-    fn retry_strategy() -> ExponentialBackoff {
-        ExponentialBackoffBuilder::default().build()
     }
 }

@@ -4,7 +4,6 @@ use super::messages::{
 use crate::messages::AllowAccess;
 use crate::ControlSession;
 use async_trait::async_trait;
-use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use boringtun::x25519::StaticSecret;
 use firezone_tunnel::{ControlSignal, Tunnel};
 use libs_common::{
@@ -160,15 +159,5 @@ impl<CB: Callbacks + 'static> ControlSession<IngressMessages, CB> for ControlPla
         tokio::spawn(async move { control_plane.start(receiver).await });
 
         Ok(())
-    }
-
-    fn socket_path() -> &'static str {
-        "gateway"
-    }
-
-    fn retry_strategy() -> ExponentialBackoff {
-        ExponentialBackoffBuilder::default()
-            .with_max_elapsed_time(None)
-            .build()
     }
 }
