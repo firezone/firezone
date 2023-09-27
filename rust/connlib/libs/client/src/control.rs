@@ -314,7 +314,7 @@ async fn upload(path: PathBuf, url: Url) -> io::Result<()> {
 
     let file = tokio::fs::File::open(&path).await?;
     let response = reqwest::Client::new()
-        .post(url)
+        .put(url)
         .body(reqwest::Body::wrap_stream(FramedRead::new(
             file,
             BytesCodec::default(),
