@@ -3,7 +3,9 @@ use ip_network::IpNetwork;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::os::fd::RawFd;
+
+// Avoids having to map types for Windows
+type RawFd = i32;
 
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
