@@ -1,8 +1,9 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.signin.ui
 
 import android.content.Intent
-import android.util.Log
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -44,14 +45,14 @@ internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
                 startActivity(
                     Intent(
                         requireContext(),
-                        AuthActivity::class.java
-                    )
+                        AuthActivity::class.java,
+                    ),
                 )
                 requireActivity().finish()
             }
             btSettings.setOnClickListener {
                 findNavController().navigate(
-                    SplashFragmentDirections.navigateToSettingsFragment()
+                    SplashFragmentDirections.navigateToSettingsFragment(),
                 )
             }
         }

@@ -18,7 +18,8 @@ defmodule Domain.Auth.Roles do
       Domain.Gateways.Authorizer,
       Domain.Policies.Authorizer,
       Domain.Relays.Authorizer,
-      Domain.Resources.Authorizer
+      Domain.Resources.Authorizer,
+      Domain.Flows.Authorizer
     ]
   end
 

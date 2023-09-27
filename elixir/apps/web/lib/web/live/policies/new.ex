@@ -37,14 +37,7 @@ defmodule Web.Policies.New do
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
         <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Policy details</h2>
         <.simple_form for={@form} phx-submit="submit" phx-change="validate">
-          <.input
-            field={@form[:name]}
-            type="text"
-            label="Policy Name"
-            placeholder="Enter a Policy Name here"
-            required
-            phx-debounce="300"
-          />
+          <.base_error form={@form} field={:base} />
           <.input
             field={@form[:actor_group_id]}
             label="Group"
@@ -61,7 +54,13 @@ defmodule Web.Policies.New do
             value={@form[:resource_id].value}
             required
           />
-          <.base_error form={@form} field={:base} />
+          <.input
+            field={@form[:description]}
+            type="textarea"
+            label="Description"
+            placeholder="Enter a reason for creating a policy here"
+            phx-debounce="300"
+          />
           <:actions>
             <.button phx-disable-with="Creating Policy..." class="w-full">
               Create Policy

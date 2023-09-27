@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.applink.ui
 
 import android.content.Intent
@@ -10,9 +11,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.domain.preference.SaveTokenUseCase
 import dev.firezone.android.core.domain.preference.ValidateCsrfTokenUseCase
 import kotlinx.coroutines.flow.collect
-import javax.inject.Inject
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @HiltViewModel
 internal class AppLinkViewModel @Inject constructor(

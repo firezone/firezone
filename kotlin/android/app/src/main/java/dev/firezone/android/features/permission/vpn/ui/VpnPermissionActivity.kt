@@ -1,9 +1,10 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.permission.vpn.ui
 
 import android.app.Activity
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import dev.firezone.android.databinding.ActivityVpnPermissionBinding
 
 class VpnPermissionActivity : AppCompatActivity() {

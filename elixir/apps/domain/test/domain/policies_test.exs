@@ -149,20 +149,19 @@ defmodule Domain.PoliciesTest do
       assert {:error, changeset} = create_policy(%{}, subject)
 
       assert errors_on(changeset) == %{
-               name: ["can't be blank"],
                actor_group_id: ["can't be blank"],
                resource_id: ["can't be blank"]
              }
     end
 
     test "returns changeset error on invalid params", %{subject: subject} do
-      assert {:error, changeset} =
-               create_policy(
-                 %{name: 1, actor_group_id: "foo", resource_id: "bar"},
-                 subject
-               )
+      attrs = %{description: 1, actor_group_id: "foo", resource_id: "bar"}
+      assert {:error, changeset} = create_policy(attrs, subject)
+      assert errors_on(changeset) == %{description: ["is invalid"]}
 
-      assert errors_on(changeset) == %{name: ["is invalid"]}
+      attrs = %{attrs | description: String.duplicate("a", 1025)}
+      assert {:error, changeset} = create_policy(attrs, subject)
+      assert "should be at most 1024 character(s)" in errors_on(changeset).description
     end
 
     test "returns error when subject has no permission to manage policies", %{subject: subject} do
@@ -190,7 +189,7 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{
         account_id: account.id,
-        name: "yikes",
+        description: "yikes",
         actor_group_id: other_actor_group.id,
         resource_id: resource.id
       }
@@ -211,7 +210,7 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{
         account_id: account.id,
-        name: "yikes",
+        description: "yikes",
         actor_group_id: actor_group.id,
         resource_id: other_resource.id
       }
@@ -241,21 +240,15 @@ defmodule Domain.PoliciesTest do
     test "returns changeset error on invalid params", %{account: account, subject: subject} do
       policy = Fixtures.Policies.create_policy(account: account, subject: subject)
 
-      assert {:error, changeset} =
-               update_policy(
-                 policy,
-                 %{name: 1, actor_group_id: "foo", resource_id: "bar"},
-                 subject
-               )
-
-      assert errors_on(changeset) == %{name: ["is invalid"]}
+      attrs = %{description: String.duplicate("a", 1025)}
+      assert {:error, changeset} = update_policy(policy, attrs, subject)
+      assert errors_on(changeset) == %{description: ["should be at most 1024 character(s)"]}
     end
 
-    test "allows update to name", %{policy: policy, subject: subject} do
-      assert {:ok, updated_policy} =
-               update_policy(policy, %{name: "updated policy name"}, subject)
-
-      assert updated_policy.name == "updated policy name"
+    test "allows update to description", %{policy: policy, subject: subject} do
+      attrs = %{description: "updated policy description"}
+      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
+      assert updated_policy.description == attrs.description
     end
 
     test "does not allow update to actor_group_id", %{
@@ -265,8 +258,8 @@ defmodule Domain.PoliciesTest do
     } do
       new_actor_group = Fixtures.Actors.create_group(account: account)
 
-      assert {:ok, updated_policy} =
-               update_policy(policy, %{actor_group_id: new_actor_group.id}, subject)
+      attrs = %{actor_group_id: new_actor_group.id}
+      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
 
       assert updated_policy.actor_group_id == policy.actor_group_id
     end
@@ -278,8 +271,8 @@ defmodule Domain.PoliciesTest do
     } do
       new_resource = Fixtures.Resources.create_resource(account: account)
 
-      assert {:ok, updated_policy} =
-               update_policy(policy, %{resource_id: new_resource.id}, subject)
+      attrs = %{resource_id: new_resource.id}
+      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
 
       assert updated_policy.resource_id == policy.resource_id
     end
@@ -289,8 +282,9 @@ defmodule Domain.PoliciesTest do
       subject: subject
     } do
       subject = Fixtures.Auth.remove_permissions(subject)
+      attrs = %{description: "Name Change Attempt"}
 
-      assert update_policy(policy, %{name: "Name Change Attempt"}, subject) ==
+      assert update_policy(policy, attrs, subject) ==
                {:error,
                 {:unauthorized,
                  [
@@ -309,8 +303,8 @@ defmodule Domain.PoliciesTest do
       other_identity = Fixtures.Auth.create_identity(account: other_account, actor: other_actor)
       other_subject = Fixtures.Auth.create_subject(identity: other_identity)
 
-      assert {:error, :unauthorized} =
-               update_policy(policy, %{name: "Should not be allowed"}, other_subject)
+      assert update_policy(policy, %{description: "Should not be allowed"}, other_subject) ==
+               {:error, :unauthorized}
     end
   end
 

@@ -1,10 +1,13 @@
 defmodule Web.Policies.Edit do
   use Web, :live_view
-
+  import Web.Policies.Components
   alias Domain.Policies
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, socket.assigns.subject) do
+    with {:ok, policy} <-
+           Policies.fetch_policy_by_id(id, socket.assigns.subject,
+             preload: [:actor_group, :resource]
+           ) do
       form = to_form(Policies.Policy.Changeset.update(policy, %{}))
       socket = assign(socket, policy: policy, form: form)
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -18,7 +21,7 @@ defmodule Web.Policies.Edit do
     <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
       <.breadcrumb path={~p"/#{@account}/policies"}>Policies</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/policies/#{@policy}"}>
-        <%= @policy.name %>
+        <.policy_name policy={@policy} />
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/policies/#{@policy}/edit"}>
         Edit
@@ -26,7 +29,7 @@ defmodule Web.Policies.Edit do
     </.breadcrumbs>
     <.header>
       <:title>
-        Edit Policy <code><%= @policy.name %></code>
+        Edit Policy <code><%= @policy.id %></code>
       </:title>
     </.header>
     <!-- Edit Policy -->
@@ -40,11 +43,10 @@ defmodule Web.Policies.Edit do
           phx-change="validate"
         >
           <.input
-            field={@form[:name]}
-            type="text"
+            field={@form[:description]}
+            type="textarea"
             label="Policy Name"
             placeholder="Enter a Policy Name here"
-            required
             phx-debounce="300"
           />
           <:actions>

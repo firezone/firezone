@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.tunnel
 
 import android.app.Notification
@@ -28,7 +29,7 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 @OptIn(ExperimentalStdlibApi::class)
-class TunnelService: VpnService() {
+class TunnelService : VpnService() {
 
     @Inject
     internal lateinit var getConfigUseCase: GetConfigUseCase
@@ -44,7 +45,7 @@ class TunnelService: VpnService() {
     private val activeTunnel: Tunnel?
         get() = tunnelRepository.get()
 
-    private val callback: ConnlibCallback = object: ConnlibCallback {
+    private val callback: ConnlibCallback = object : ConnlibCallback {
         override fun onUpdateResources(resourceListJSON: String) {
             Log.d(TAG, "onUpdateResources: $resourceListJSON")
             moshi.adapter<List<Resource>>().fromJson(resourceListJSON)?.let { resources ->
@@ -56,14 +57,17 @@ class TunnelService: VpnService() {
             tunnelAddressIPv4: String,
             tunnelAddressIPv6: String,
             dnsAddress: String,
-            dnsFallbackStrategy: String
+            dnsFallbackStrategy: String,
         ): Int {
             Log.d(TAG, "onSetInterfaceConfig: [IPv4:$tunnelAddressIPv4] [IPv6:$tunnelAddressIPv6] [dns:$dnsAddress] [dnsFallbackStrategy:$dnsFallbackStrategy]")
 
             tunnelRepository.setConfig(
                 TunnelConfig(
-                    tunnelAddressIPv4, tunnelAddressIPv6, dnsAddress, dnsFallbackStrategy
-                )
+                    tunnelAddressIPv4,
+                    tunnelAddressIPv6,
+                    dnsAddress,
+                    dnsFallbackStrategy,
+                ),
             )
 
             // TODO: throw error if failed to establish VpnService
@@ -144,10 +148,8 @@ class TunnelService: VpnService() {
                     token = config.token,
                     deviceId = deviceId(),
                     logDir = getLogDir(),
-                    // TODO: make logging string depend on build config #2067
-                    // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
-                    logFilter = "connlib_android=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn",
-                    callback = callback
+                    logFilter = BuildConfig.CONNLIB_LOG_FILTER_STRING,
+                    callback = callback,
                 )
                 Log.d(TAG, "connlib session started! sessionPtr: $sessionPtr")
 
@@ -190,8 +192,10 @@ class TunnelService: VpnService() {
 
     private fun configIntent(): PendingIntent? {
         return PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }
 
@@ -199,7 +203,7 @@ class TunnelService: VpnService() {
         TunnelService().Builder().apply {
             activeTunnel?.let { tunnel ->
                 allowFamily(OsConstants.AF_INET)
-                allowFamily(OsConstants.AF_INET6);
+                allowFamily(OsConstants.AF_INET6)
                 setMetered(false); // Inherit the metered status from the underlying networks.
                 setUnderlyingNetworks(null); // Use all available networks.
 
@@ -232,7 +236,7 @@ class TunnelService: VpnService() {
         val chan = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
             NOTIFICATION_CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_DEFAULT
+            NotificationManager.IMPORTANCE_DEFAULT,
         )
         chan.description = "firezone connection status"
 
@@ -250,7 +254,6 @@ class TunnelService: VpnService() {
 
         startForeground(STATUS_NOTIFICATION_ID, notification)
     }
-
 
     companion object {
         const val ACTION_CONNECT = "dev.firezone.android.tunnel.CONNECT"
