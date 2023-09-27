@@ -14,7 +14,7 @@ defmodule Domain.Repo.Migrations.AddFlows do
 
       add(:source_remote_ip, :inet, null: false)
       add(:source_user_agent, :string, null: false)
-      add(:destination_remote_ip, :inet, null: false)
+      add(:gateway_remote_ip, :inet, null: false)
 
       add(:account_id, references(:accounts, type: :binary_id, on_delete: :delete_all),
         null: false

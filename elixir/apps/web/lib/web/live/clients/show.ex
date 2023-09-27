@@ -127,7 +127,7 @@ defmodule Web.Clients.Show do
           >
             <%= flow.gateway.group.name_prefix %>-<%= flow.gateway.name_suffix %>
           </.link>
-          (<%= flow.destination_remote_ip %>)
+          (<%= flow.gateway_remote_ip %>)
         </:col>
       </.table>
     </div>

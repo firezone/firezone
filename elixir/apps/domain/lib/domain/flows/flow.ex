@@ -12,7 +12,7 @@ defmodule Domain.Flows.Flow do
     field :source_remote_ip, Domain.Types.IP
     field :source_user_agent, :string
 
-    field :destination_remote_ip, Domain.Types.IP
+    field :gateway_remote_ip, Domain.Types.IP
 
     field :expires_at, :utc_datetime_usec
     timestamps(updated_at: false)

@@ -13,7 +13,7 @@ defmodule Domain.Flows do
         },
         %Gateways.Gateway{
           id: gateway_id,
-          last_seen_remote_ip: destination_remote_ip,
+          last_seen_remote_ip: gateway_remote_ip,
           account_id: account_id
         },
         id,
@@ -40,7 +40,7 @@ defmodule Domain.Flows do
           account_id: account_id,
           source_remote_ip: source_remote_ip,
           source_user_agent: source_user_agent,
-          destination_remote_ip: destination_remote_ip,
+          gateway_remote_ip: gateway_remote_ip,
           expires_at: expires_at
         })
         |> Repo.insert!()

@@ -96,7 +96,7 @@ defmodule Domain.FlowsTest do
       assert flow.account_id == account.id
       assert flow.source_remote_ip.address == subject.context.remote_ip
       assert flow.source_user_agent == subject.context.user_agent
-      assert flow.destination_remote_ip == gateway.last_seen_remote_ip
+      assert flow.gateway_remote_ip == gateway.last_seen_remote_ip
       assert flow.expires_at == subject.expires_at
     end
 

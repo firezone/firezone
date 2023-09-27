@@ -158,7 +158,7 @@ defmodule Web.Gateways.Show do
           <.relative_datetime datetime={flow.expires_at} />
         </:col>
         <:col :let={flow} label="REMOTE IP">
-          <%= flow.destination_remote_ip %>
+          <%= flow.gateway_remote_ip %>
         </:col>
         <:col :let={flow} label="POLICY">
           <.link
