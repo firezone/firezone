@@ -769,7 +769,6 @@ dependencies = [
  "tracing-android",
  "tracing-appender",
  "tracing-subscriber",
- "url",
 ]
 
 [[package]]
@@ -788,7 +787,6 @@ dependencies = [
  "tracing-appender",
  "tracing-oslog",
  "tracing-subscriber",
- "url",
  "walkdir",
 ]
 
@@ -1257,7 +1255,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-android",
- "url",
  "webrtc",
  "wintun",
 ]
