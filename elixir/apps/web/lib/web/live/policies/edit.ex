@@ -47,7 +47,6 @@ defmodule Web.Policies.Edit do
             type="textarea"
             label="Policy Name"
             placeholder="Enter a Policy Name here"
-            required
             phx-debounce="300"
           />
           <:actions>

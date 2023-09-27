@@ -59,7 +59,6 @@ defmodule Web.Policies.New do
             type="textarea"
             label="Description"
             placeholder="Enter a reason for creating a policy here"
-            required
             phx-debounce="300"
           />
           <:actions>
