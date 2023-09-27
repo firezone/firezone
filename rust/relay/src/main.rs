@@ -5,14 +5,14 @@ use futures::{future, FutureExt, SinkExt, StreamExt};
 use opentelemetry::sdk::export::metrics;
 use opentelemetry::{sdk, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
-use phoenix_channel::{Error, Event, PhoenixChannel};
+use phoenix_channel::{Error, Event, PhoenixChannel, SecureUrl};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use relay::{
     AddressFamily, Allocation, AllocationId, Command, IpStack, Server, Sleep, SocketAddrExt,
     UdpSocket,
 };
-use secrecy::SecretString;
+use secrecy::{Secret, SecretString};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -269,7 +269,7 @@ async fn connect_to_portal(
     }
 
     let mut channel = PhoenixChannel::<InboundPortalMessage, ()>::connect(
-        url,
+        Secret::from(SecureUrl::from_url(url)),
         format!("relay/{}", env!("CARGO_PKG_VERSION")),
     )
     .await

@@ -2435,6 +2435,7 @@ dependencies = [
  "base64 0.21.4",
  "futures",
  "rand_core",
+ "secrecy",
  "serde",
  "serde_json",
  "thiserror",

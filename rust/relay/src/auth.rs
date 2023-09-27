@@ -1,6 +1,7 @@
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use base64::Engine;
 use once_cell::sync::Lazy;
+use secrecy::SecretString;
 use sha2::digest::FixedOutput;
 use sha2::Sha256;
 use std::borrow::ToOwned;
@@ -14,11 +15,23 @@ use uuid::Uuid;
 pub static FIREZONE: Lazy<Realm> = Lazy::new(|| Realm::new("firezone".to_owned()).unwrap());
 
 pub trait MessageIntegrityExt {
-    fn verify(&self, relay_secret: &str, username: &str, now: SystemTime) -> Result<(), Error>;
+    fn verify(
+        &self,
+        relay_secret: &SecretString,
+        username: &str,
+        now: SystemTime,
+    ) -> Result<(), Error>;
 }
 
 impl MessageIntegrityExt for MessageIntegrity {
-    fn verify(&self, relay_secret: &str, username: &str, now: SystemTime) -> Result<(), Error> {
+    fn verify(
+        &self,
+        relay_secret: &SecretString,
+        username: &str,
+        now: SystemTime,
+    ) -> Result<(), Error> {
+        use secrecy::ExposeSecret;
+
         let (expiry_unix_timestamp, salt) = split_username(username)?;
         let expired = systemtime_from_unix(expiry_unix_timestamp);
 
@@ -26,7 +39,7 @@ impl MessageIntegrityExt for MessageIntegrity {
             return Err(Error::Expired);
         }
 
-        let password = generate_password(relay_secret, expired, salt);
+        let password = generate_password(relay_secret.expose_secret(), expired, salt);
 
         self.check_long_term_credential(
             &Username::new(format!("{}:{}", expiry_unix_timestamp, salt))
@@ -138,15 +151,21 @@ mod tests {
     use stun_codec::rfc5389::methods::BINDING;
     use stun_codec::{Message, MessageClass, TransactionId};
 
-    const RELAY_SECRET_1: &str = "4c98bf59c99b3e467ecd7cf9d6b3e5279645fca59be67bc5bb4af3cf653761ab";
-    const RELAY_SECRET_2: &str = "7e35e34801e766a6a29ecb9e22810ea4e3476c2b37bf75882edf94a68b1d9607";
+    const RELAY_SECRET_1: SecretString = SecretString::from(
+        "4c98bf59c99b3e467ecd7cf9d6b3e5279645fca59be67bc5bb4af3cf653761ab".to_string(),
+    );
+    const RELAY_SECRET_2: SecretString = SecretString::from(
+        "7e35e34801e766a6a29ecb9e22810ea4e3476c2b37bf75882edf94a68b1d9607".to_string(),
+    );
     const SAMPLE_USERNAME: &str = "n23JJ2wKKtt30oXi";
 
     #[test]
     fn generate_password_test_vector() {
+        use secrecy::ExposeSecret;
+
         let expiry = systemtime_from_unix(60 * 60 * 24 * 365 * 60);
 
-        let password = generate_password(RELAY_SECRET_1, expiry, SAMPLE_USERNAME);
+        let password = generate_password(RELAY_SECRET_1.expose_secret(), expiry, SAMPLE_USERNAME);
 
         assert_eq!(password, "00hqldgk5xLeKKOB+xls9mHMVtgqzie9DulfgQwMv68")
     }
@@ -164,10 +183,16 @@ mod tests {
 
     #[test]
     fn smoke() {
-        let message_integrity = message_integrity(RELAY_SECRET_1, 1685200000, "n23JJ2wKKtt30oXi");
+        use secrecy::ExposeSecret;
+
+        let message_integrity = message_integrity(
+            RELAY_SECRET_1.expose_secret(),
+            1685200000,
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
-            RELAY_SECRET_1,
+            &RELAY_SECRET_1,
             "1685200000:n23JJ2wKKtt30oXi",
             systemtime_from_unix(1685200000 - 1000),
         );
@@ -177,11 +202,16 @@ mod tests {
 
     #[test]
     fn expired_is_not_valid() {
-        let message_integrity =
-            message_integrity(RELAY_SECRET_1, 1685200000 - 1000, "n23JJ2wKKtt30oXi");
+        use secrecy::ExposeSecret;
+
+        let message_integrity = message_integrity(
+            RELAY_SECRET_1.expose_secret(),
+            1685200000 - 1000,
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
-            RELAY_SECRET_1,
+            &RELAY_SECRET_1,
             "1685199000:n23JJ2wKKtt30oXi",
             systemtime_from_unix(1685200000),
         );
@@ -191,10 +221,16 @@ mod tests {
 
     #[test]
     fn different_relay_secret_makes_password_invalid() {
-        let message_integrity = message_integrity(RELAY_SECRET_2, 1685200000, "n23JJ2wKKtt30oXi");
+        use secrecy::ExposeSecret;
+
+        let message_integrity = message_integrity(
+            RELAY_SECRET_2.expose_secret(),
+            1685200000,
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
-            RELAY_SECRET_1,
+            &RELAY_SECRET_1,
             "1685200000:n23JJ2wKKtt30oXi",
             systemtime_from_unix(168520000 + 1000),
         );
@@ -204,10 +240,16 @@ mod tests {
 
     #[test]
     fn invalid_username_format_fails() {
-        let message_integrity = message_integrity(RELAY_SECRET_2, 1685200000, "n23JJ2wKKtt30oXi");
+        use secrecy::ExposeSecret;
+
+        let message_integrity = message_integrity(
+            RELAY_SECRET_2.expose_secret(),
+            1685200000,
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
-            RELAY_SECRET_1,
+            &RELAY_SECRET_1,
             "foobar",
             systemtime_from_unix(168520000 + 1000),
         );

@@ -5,7 +5,7 @@ use ip_network::IpNetwork;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_core::OsRng;
 use ring::digest::{Context, SHA256};
-use secrecy::SecretString;
+use secrecy::{Secret, SecretString};
 use std::{
     error::Error as StdError,
     fmt::{Debug, Display},
@@ -17,7 +17,7 @@ use tokio::{runtime::Runtime, sync::mpsc::Receiver};
 use url::Url;
 
 use crate::{
-    control::{MessageResult, PhoenixChannel, PhoenixSenderWithTopic, Reference},
+    control::{MessageResult, PhoenixChannel, PhoenixSenderWithTopic, Reference, SecureUrl},
     messages::{Key, ResourceDescription},
     Error, Result,
 };
@@ -319,7 +319,7 @@ where
             // to force queue ordering.
             let (control_plane_sender, control_plane_receiver) = tokio::sync::mpsc::channel(1);
 
-            let mut connection = PhoenixChannel::<_, U, R, M>::new(connect_url, move |msg, reference| {
+            let mut connection = PhoenixChannel::<_, U, R, M>::new(Secret::from(SecureUrl::from_url(connect_url)), move |msg, reference| {
                 let control_plane_sender = control_plane_sender.clone();
                 async move {
                     tracing::trace!("Received message: {msg:?}");

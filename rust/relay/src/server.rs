@@ -736,8 +736,6 @@ where
         request: &(impl StunRequest + ProtectedRequest),
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        use secrecy::ExposeSecret;
-
         let message_integrity = request
             .message_integrity()
             .map_err(|e| error_response(e, request))?;
@@ -758,7 +756,7 @@ where
             .map_err(|_| error_response(StaleNonce, request))?;
 
         message_integrity
-            .verify(self.auth_secret.expose_secret(), username.name(), now)
+            .verify(&self.auth_secret, username.name(), now)
             .map_err(|_| error_response(Unauthorized, request))?;
 
         Ok(())
