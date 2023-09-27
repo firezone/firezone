@@ -9,8 +9,8 @@ defmodule Domain.Flows.Flow do
 
     belongs_to :account, Domain.Accounts.Account
 
-    field :source_remote_ip, Domain.Types.IP
-    field :source_user_agent, :string
+    field :client_remote_ip, Domain.Types.IP
+    field :client_user_agent, :string
 
     field :gateway_remote_ip, Domain.Types.IP
 

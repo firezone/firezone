@@ -23,8 +23,8 @@ defmodule Domain.Flows do
           identity: %{id: identity_id},
           expires_at: expires_at,
           context: %Auth.Context{
-            remote_ip: source_remote_ip,
-            user_agent: source_user_agent
+            remote_ip: client_remote_ip,
+            user_agent: client_user_agent
           }
         } = subject,
         opts \\ []
@@ -38,8 +38,8 @@ defmodule Domain.Flows do
           gateway_id: gateway_id,
           resource_id: resource.id,
           account_id: account_id,
-          source_remote_ip: source_remote_ip,
-          source_user_agent: source_user_agent,
+          client_remote_ip: client_remote_ip,
+          client_user_agent: client_user_agent,
           gateway_remote_ip: gateway_remote_ip,
           expires_at: expires_at
         })

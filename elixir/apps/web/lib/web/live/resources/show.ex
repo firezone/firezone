@@ -148,7 +148,7 @@ defmodule Web.Resources.Show do
           >
             <%= flow.client.name %>
           </.link>
-          (<%= flow.source_remote_ip %>)
+          (<%= flow.client_remote_ip %>)
         </:col>
         <:col :let={flow} label="GATEWAY (IP)">
           <.link

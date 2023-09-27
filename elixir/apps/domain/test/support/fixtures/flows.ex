@@ -77,8 +77,8 @@ defmodule Domain.Fixtures.Flows do
       gateway_id: gateway.id,
       resource_id: resource_id,
       account_id: account.id,
-      source_remote_ip: client.last_seen_remote_ip,
-      source_user_agent: client.last_seen_user_agent,
+      client_remote_ip: client.last_seen_remote_ip,
+      client_user_agent: client.last_seen_user_agent,
       gateway_remote_ip: gateway.last_seen_remote_ip,
       expires_at: subject.expires_at
     })

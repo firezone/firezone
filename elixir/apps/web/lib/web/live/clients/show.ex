@@ -110,7 +110,7 @@ defmodule Web.Clients.Show do
           <.relative_datetime datetime={flow.expires_at} />
         </:col>
         <:col :let={flow} label="REMOTE IP">
-          <%= flow.source_remote_ip %>
+          <%= flow.client_remote_ip %>
         </:col>
         <:col :let={flow} label="POLICY">
           <.link
