@@ -1,10 +1,11 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.webview.ui
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
-import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import javax.inject.Inject
 
 @HiltViewModel
@@ -18,5 +19,4 @@ internal class WebViewViewModel @Inject constructor(
     internal sealed class ViewAction {
         object ShowError : ViewAction()
     }
-
 }

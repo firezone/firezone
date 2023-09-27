@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.signin.ui
 
 import androidx.lifecycle.LiveData
@@ -9,8 +10,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 internal class SignInViewModel @Inject constructor(
-    private val useCase: GetConfigUseCase
-): ViewModel() {
+    private val useCase: GetConfigUseCase,
+) : ViewModel() {
 
     private val actionMutableLiveData = MutableLiveData<SignInViewAction>()
     val actionLiveData: LiveData<SignInViewAction> = actionMutableLiveData

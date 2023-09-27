@@ -1,19 +1,20 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.core.di
 
 import android.content.SharedPreferences
-import dev.firezone.android.core.BaseUrlInterceptor
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import java.util.concurrent.TimeUnit
-import javax.inject.Singleton
+import dev.firezone.android.core.BaseUrlInterceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import java.util.concurrent.TimeUnit
+import javax.inject.Singleton
 
 private const val NETWORK_TIMEOUT = 30L
 
@@ -24,7 +25,7 @@ internal object NetworkModule {
     @Provides
     @Singleton
     fun provideBaseUrlInterceptor(
-        sharedPreferences: SharedPreferences
+        sharedPreferences: SharedPreferences,
     ): BaseUrlInterceptor = BaseUrlInterceptor(sharedPreferences)
 
     @Singleton
@@ -37,7 +38,7 @@ internal object NetworkModule {
     @Provides
     fun provideOkHttpClient(
         baseUrlInterceptor: BaseUrlInterceptor,
-        loggingInterceptor: HttpLoggingInterceptor
+        loggingInterceptor: HttpLoggingInterceptor,
     ) = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)

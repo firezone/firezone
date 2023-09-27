@@ -1,11 +1,12 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.applink.ui
 
 import android.content.Intent
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.presentation.MainActivity
@@ -49,7 +50,7 @@ class AppLinkHandlerActivity : AppCompatActivity(R.layout.activity_app_link_hand
             .setTitle(R.string.error_dialog_title)
             .setMessage(R.string.error_dialog_message)
             .setPositiveButton(
-                R.string.error_dialog_button_text
+                R.string.error_dialog_button_text,
             ) { _, _ ->
                 this@AppLinkHandlerActivity.finish()
             }
