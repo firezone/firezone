@@ -139,7 +139,7 @@ defmodule Web.Acceptance.Auth.UserPassTest do
   defp password_login_flow(session, account, username, password) do
     session
     |> visit(~p"/#{account}")
-    |> assert_el(Query.text("Sign in to the #{account} admin portal"))
+    |> assert_el(Query.text("Sign in to the #{account.name} admin portal"))
     |> assert_el(Query.text("Sign in with username and password"))
     |> fill_form(%{
       "userpass[provider_identifier]" => username,
