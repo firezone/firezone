@@ -10,7 +10,7 @@ use libs_common::{
 };
 
 use async_trait::async_trait;
-use firezone_tunnel::{ConnId, ControlSignal, Request, Tunnel};
+use firezone_tunnel::{ControlSignal, Request, Tunnel};
 use tokio::sync::{mpsc::Receiver, Mutex};
 
 #[async_trait]
@@ -191,7 +191,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 Err(err) => err,
             };
 
-            tunnel.cleanup_connection(ConnId::from(resource_id));
+            tunnel.cleanup_connection(resource_id.into());
             tracing::error!("Error request connection details: {err}");
             let _ = tunnel.callbacks().on_error(&err);
         });
@@ -236,7 +236,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         return;
                     };
                     // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
-                    self.tunnel.cleanup_connection(ConnId::from(resource_id));
+                    self.tunnel.cleanup_connection(resource_id.into());
                 }
                 None => {
                     tracing::error!(

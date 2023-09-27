@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use boringtun::x25519::StaticSecret;
-use firezone_tunnel::{ConnId, ControlSignal, Tunnel};
+use firezone_tunnel::{ControlSignal, Tunnel};
 use libs_common::{
     control::{MessageResult, PhoenixSenderWithTopic, Reference},
     messages::{GatewayId, ResourceDescription},
@@ -100,12 +100,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         }))
                         .await
                     {
-                        tunnel.cleanup_connection(ConnId::from(connection_request.client.id));
+                        tunnel.cleanup_connection(connection_request.client.id.into());
                         let _ = tunnel.callbacks().on_error(&err);
                     }
                 }
                 Err(err) => {
-                    tunnel.cleanup_connection(ConnId::from(connection_request.client.id));
+                    tunnel.cleanup_connection(connection_request.client.id.into());
                     let _ = tunnel.callbacks().on_error(&err);
                 }
             }

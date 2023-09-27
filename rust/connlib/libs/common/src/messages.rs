@@ -4,7 +4,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 use uuid::Uuid;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
@@ -37,9 +37,9 @@ impl FromStr for GatewayId {
     }
 }
 
-impl ToString for ResourceId {
-    fn to_string(&self) -> String {
-        self.0.to_string()
+impl fmt::Display for ResourceId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
