@@ -82,7 +82,10 @@ defmodule API.Client.Channel do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "ice_candidates" do
+    OpenTelemetry.Tracer.with_span "ice_candidates", %{
+      gateway_id: gateway_id,
+      candidates_length: length(candidates)
+    } do
       push(socket, "ice_candidates", %{
         gateway_id: gateway_id,
         candidates: candidates
