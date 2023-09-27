@@ -5,7 +5,7 @@ use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use boringtun::x25519::StaticSecret;
 use libs_common::{
     control::{ErrorInfo, ErrorReply, MessageResult, PhoenixSenderWithTopic, Reference},
-    messages::{Id, ResourceDescription},
+    messages::{GatewayId, ResourceDescription, ResourceId},
     Callbacks, ControlSession, Error, Result,
 };
 
@@ -18,7 +18,7 @@ impl ControlSignal for ControlSignaler {
     async fn signal_connection_to(
         &self,
         resource: &ResourceDescription,
-        connected_gateway_ids: &[Id],
+        connected_gateway_ids: &[GatewayId],
         reference: usize,
     ) -> Result<()> {
         self.control_signal
@@ -131,7 +131,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn remove_resource(&self, id: Id) {
+    fn remove_resource(&self, id: ResourceId) {
         todo!()
     }
 
@@ -191,7 +191,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 Err(err) => err,
             };
 
-            tunnel.cleanup_connection(resource_id);
+            tunnel.cleanup_connection(resource_id.into());
             tracing::error!("Error request connection details: {err}");
             let _ = tunnel.callbacks().on_error(&err);
         });
@@ -225,7 +225,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         if matches!(reply_error.error, ErrorInfo::Offline) {
             match reference {
                 Some(reference) => {
-                    let Ok(id) = reference.parse() else {
+                    let Ok(resource_id) = reference.parse::<ResourceId>() else {
                         tracing::error!(
                             "An offline error came back with a reference to a non-valid resource id"
                         );
@@ -236,7 +236,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         return;
                     };
                     // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
-                    self.tunnel.cleanup_connection(id);
+                    self.tunnel.cleanup_connection(resource_id.into());
                 }
                 None => {
                     tracing::error!(

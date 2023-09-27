@@ -8,7 +8,7 @@ use crate::{
     device_channel::{DeviceIo, IfaceConfig},
     dns,
     peer::EncapsulatedPacket,
-    ControlSignal, Tunnel, MAX_UDP_SIZE,
+    ConnId, ControlSignal, Tunnel, MAX_UDP_SIZE,
 };
 
 const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
@@ -26,14 +26,14 @@ where
             // create_peer_connection hasn't added the thing to peer_connections
             // and we are finding another packet to the same address (otherwise we would just use peer_connections here)
             let mut awaiting_connection = self.awaiting_connection.lock();
-            let id = resource.id();
-            if awaiting_connection.get(&id).is_none() {
+            let conn_id = ConnId::from(resource.id());
+            if awaiting_connection.get(&conn_id).is_none() {
                 tracing::trace!(
                     resource_ip = %dst_addr,
                     "resource_connection_intent",
                 );
 
-                awaiting_connection.insert(id, Default::default());
+                awaiting_connection.insert(conn_id, Default::default());
                 let dev = Arc::clone(self);
 
                 let mut connected_gateway_ids: Vec<_> = dev
@@ -55,7 +55,7 @@ where
                         let reference = {
                             let mut awaiting_connections = dev.awaiting_connection.lock();
                             let Some(awaiting_connection) =
-                                awaiting_connections.get_mut(&resource.id())
+                                awaiting_connections.get_mut(&ConnId::from(resource.id()))
                             else {
                                 break;
                             };
@@ -71,7 +71,7 @@ where
                             .await
                         {
                             // Not a deadlock because this is a different task
-                            dev.awaiting_connection.lock().remove(&id);
+                            dev.awaiting_connection.lock().remove(&conn_id);
                             tracing::error!(error = ?e, "start_resource_connection");
                             let _ = dev.callbacks.on_error(&e);
                         }
