@@ -38,8 +38,8 @@ defmodule Web.Auth.SignIn do
 
         <div class="w-full col-span-6 mx-auto bg-white rounded-lg shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-xl font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl dark:text-white">
-              Welcome back
+            <h1 class="text-xl text-center font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl dark:text-white">
+              <%= @account.name %> Admin Portal
             </h1>
 
             <.flash flash={@flash} kind={:error} />
@@ -89,7 +89,7 @@ defmodule Web.Auth.SignIn do
             </.intersperse_blocks>
           </div>
         </div>
-        <div class="w-full p-6 sm:p-8">
+        <div class="mx-auto p-6 sm:p-8">
           <p class="py-2">
             Don't have an account?
             <a href={~p"/sign_up"} class="font-medium text-blue-600 hover:text-blue-500">
@@ -97,7 +97,7 @@ defmodule Web.Auth.SignIn do
             </a>
           </p>
           <p class="py-2">
-            <%= # TODO: Add link to client instructions docs %> Signing in from a client?
+            <%= # TODO: Add link to client instructions docs %> Meant to sign in from a client instead?
             <a href="https://firezone.dev/docs" class="font-medium text-blue-600 hover:text-blue-500">
               Read the docs.
             </a>
@@ -215,7 +215,7 @@ defmodule Web.Auth.SignIn do
           focus:z-10 focus:ring-4 focus:ring-gray-200
           dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400
           dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700]}>
-      Log in with <%= @provider.name %>
+      Sign in with <%= @provider.name %>
     </a>
     """
   end

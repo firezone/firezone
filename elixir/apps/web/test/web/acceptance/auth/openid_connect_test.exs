@@ -13,10 +13,10 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
 
     session
     |> visit(~p"/#{account}")
-    |> assert_el(Query.text("Welcome back"))
-    |> click(Query.link("Log in with Vault"))
+    |> assert_el(Query.text("Sign in to the #{account} admin portal"))
+    |> click(Query.link("Sign in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
-    |> assert_el(Query.text("Welcome back"))
+    |> assert_el(Query.text("Sign in to the #{account} admin portal"))
     |> assert_path(~p"/#{account}")
     |> assert_el(Query.text("You can not authenticate to this account."))
   end
@@ -41,8 +41,8 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
 
     session
     |> visit(~p"/#{account}")
-    |> assert_el(Query.text("Welcome back"))
-    |> click(Query.link("Log in with Vault"))
+    |> assert_el(Query.text("Sign in to the #{account} admin portal"))
+    |> click(Query.link("Sign in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
     |> assert_el(Query.css("#user-menu-button"))
     |> Auth.assert_authenticated(identity)
