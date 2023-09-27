@@ -25,6 +25,9 @@ mod messages;
 
 struct StopRuntime;
 
+/// A session is the entry-point for connlib, maintains the runtime and the tunnel.
+///
+/// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session<CB: Callbacks> {
     runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
     pub callbacks: CallbackErrorFacade<CB>,

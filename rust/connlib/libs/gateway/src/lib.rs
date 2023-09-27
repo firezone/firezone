@@ -20,9 +20,6 @@ mod messages;
 
 struct StopRuntime;
 
-// TODO: Currently I'm using Session for both gateway and clients
-// however, gateway could use the runtime directly and could make things easier
-// so revisit this.
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
