@@ -189,7 +189,7 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{
         account_id: account.id,
-        name: "yikes",
+        description: "yikes",
         actor_group_id: other_actor_group.id,
         resource_id: resource.id
       }
@@ -210,7 +210,7 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{
         account_id: account.id,
-        name: "yikes",
+        description: "yikes",
         actor_group_id: actor_group.id,
         resource_id: other_resource.id
       }
@@ -282,7 +282,7 @@ defmodule Domain.PoliciesTest do
       subject: subject
     } do
       subject = Fixtures.Auth.remove_permissions(subject)
-      attrs = %{name: "Name Change Attempt"}
+      attrs = %{description: "Name Change Attempt"}
 
       assert update_policy(policy, attrs, subject) ==
                {:error,
@@ -303,7 +303,7 @@ defmodule Domain.PoliciesTest do
       other_identity = Fixtures.Auth.create_identity(account: other_account, actor: other_actor)
       other_subject = Fixtures.Auth.create_subject(identity: other_identity)
 
-      assert update_policy(policy, %{name: "Should not be allowed"}, other_subject) ==
+      assert update_policy(policy, %{description: "Should not be allowed"}, other_subject) ==
                {:error, :unauthorized}
     end
   end
