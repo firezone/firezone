@@ -98,23 +98,7 @@ public class Adapter {
       "connlib_apple=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn"
   #endif
 
-  private var logDir: String {
-    guard
-      let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
-        .first
-    else { return "" }
-
-    let logDirectory = cachesDirectory.appendingPathComponent("log")
-    do {
-      try FileManager.default.createDirectory(
-        at: logDirectory, withIntermediateDirectories: true, attributes: nil)
-    } catch {
-      logger.warning("Unable to create log directory \(logDirectory)")
-      return ""
-    }
-
-    return logDirectory.path
-  }
+  private let connlibLogFolderPath: String
 
   public init(
     controlPlaneURLString: String, token: String, packetTunnelProvider: NEPacketTunnelProvider
@@ -124,6 +108,7 @@ public class Adapter {
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler()
     self.state = .stoppedTunnel
+    self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
   }
 
   deinit {
@@ -153,11 +138,15 @@ public class Adapter {
 
       self.callbackHandler.delegate = self
 
+      if self.connlibLogFolderPath.isEmpty {
+        self.logger.error("Cannot get shared log folder for connlib")
+      }
+
       self.logger.debug("Adapter.start: Starting connlib")
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            self.controlPlaneURLString, self.token, self.getDeviceId(), self.logDir,
+            self.controlPlaneURLString, self.token, self.getDeviceId(), self.connlibLogFolderPath,
             self.logFilterString, self.callbackHandler),
           onStarted: completionHandler
         )
@@ -294,7 +283,7 @@ extension Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            controlPlaneURLString, token, self.getDeviceId(), logDir, logFilterString,
+            controlPlaneURLString, token, self.getDeviceId(), self.connlibLogFolderPath, logFilterString,
             self.callbackHandler),
           onStarted: { error in
             if let error = error {
