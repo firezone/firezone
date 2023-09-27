@@ -1161,6 +1161,7 @@ dependencies = [
  "tracing-appender",
  "tracing-stackdriver",
  "tracing-subscriber",
+ "webrtc",
 ]
 
 [[package]]
@@ -1177,6 +1178,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "webrtc",
 ]
 
 [[package]]

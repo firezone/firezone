@@ -18,6 +18,7 @@ firezone-tunnel = { path = "../tunnel" }
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
 boringtun = { workspace = true }
 backoff = { workspace = true }
+webrtc = "0.8"
 
 [target.'cfg(target_os = "android")'.dependencies]
 tracing = { workspace = true, features = ["std", "attributes"] }

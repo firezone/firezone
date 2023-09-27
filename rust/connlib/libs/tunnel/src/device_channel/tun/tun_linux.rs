@@ -15,7 +15,7 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
-use super::InterfaceConfig;
+use crate::InterfaceConfig;
 
 const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: u64 = 0x4004_54ca;

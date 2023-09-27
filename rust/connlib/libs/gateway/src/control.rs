@@ -2,15 +2,18 @@ use std::{sync::Arc, time::Duration};
 
 use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use boringtun::x25519::StaticSecret;
-use firezone_tunnel::{ControlSignal, Tunnel};
+use firezone_tunnel::{ConnId, ControlSignal, Tunnel};
 use libs_common::{
     control::{MessageResult, PhoenixSenderWithTopic, Reference},
     messages::{GatewayId, ResourceDescription},
-    Callbacks, ControlSession, Result,
+    Callbacks, ControlSession,
+    Error::ControlProtocolError,
+    Result,
 };
 use tokio::sync::mpsc::Receiver;
+use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
-use crate::messages::AllowAccess;
+use crate::messages::{AllowAccess, BroadcastClientIceCandidates, ClientIceCandidates};
 
 use super::messages::{
     ConnectionReady, EgressMessages, IngressMessages, InitGateway, RequestConnection,
@@ -38,6 +41,31 @@ impl ControlSignal for ControlSignaler {
     ) -> Result<()> {
         tracing::warn!("A message to network resource: {resource:?} was discarded, gateways aren't meant to be used as clients.");
         Ok(())
+    }
+
+    async fn signal_ice_candidate(
+        &self,
+        ice_candidate: RTCIceCandidate,
+        conn_id: ConnId,
+    ) -> Result<()> {
+        // TODO: We probably want to have different signal_ice_candidate
+        // functions for gateway/client but ultimately we just want
+        // separate control_plane modules
+        if let ConnId::Client(id) = conn_id {
+            self.control_signal
+                .clone()
+                .send(EgressMessages::BroadcastIceCandidates(
+                    BroadcastClientIceCandidates {
+                        client_ids: vec![id],
+                        candidates: vec![ice_candidate.to_json()?],
+                    },
+                ))
+                .await?;
+
+            Ok(())
+        } else {
+            Err(ControlProtocolError)
+        }
     }
 }
 
@@ -124,6 +152,25 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         self.tunnel.allow_access(resource, client_id, expires_at)
     }
 
+    async fn add_ice_candidate(
+        &self,
+        ClientIceCandidates {
+            client_id,
+            candidates,
+        }: ClientIceCandidates,
+    ) {
+        for candidate in candidates {
+            if let Err(e) = self
+                .tunnel
+                .add_ice_candidate(client_id.into(), candidate)
+                .await
+            {
+                tracing::error!(err = ?e,"add_ice_candidate");
+                let _ = self.tunnel.callbacks().on_error(&e);
+            }
+        }
+    }
+
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn handle_message(&mut self, msg: IngressMessages) -> Result<()> {
         match msg {
@@ -134,12 +181,16 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             IngressMessages::AllowAccess(allow_access) => {
                 self.allow_access(allow_access);
             }
+
+            IngressMessages::IceCandidates(ice_candidate) => {
+                self.add_ice_candidate(ice_candidate).await
+            }
         }
         Ok(())
     }
 
     pub(super) async fn stats_event(&mut self) {
-        tracing::debug!(target: "tunnel_state", "{:#?}", self.tunnel.stats());
+        tracing::debug!(target: "tunnel_state", stats = ?self.tunnel.stats());
     }
 }
 
