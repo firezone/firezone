@@ -2,9 +2,7 @@ use super::messages::{
     ConnectionReady, EgressMessages, IngressMessages, InitGateway, RequestConnection,
 };
 use crate::messages::AllowAccess;
-use crate::ControlSession;
 use async_trait::async_trait;
-use boringtun::x25519::StaticSecret;
 use firezone_tunnel::{ControlSignal, Tunnel};
 use libs_common::{
     control::{MessageResult, PhoenixSenderWithTopic, Reference},
@@ -15,13 +13,13 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::Receiver;
 
 pub struct ControlPlane<CB: Callbacks> {
-    tunnel: Arc<Tunnel<ControlSignaler, CB>>,
-    control_signaler: ControlSignaler,
+    pub tunnel: Arc<Tunnel<ControlSignaler, CB>>,
+    pub control_signaler: ControlSignaler,
 }
 
 #[derive(Clone)]
-struct ControlSignaler {
-    control_signal: PhoenixSenderWithTopic,
+pub struct ControlSignaler {
+    pub control_signal: PhoenixSenderWithTopic,
 }
 
 #[async_trait]
@@ -39,7 +37,7 @@ impl ControlSignal for ControlSignaler {
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn start(
+    pub async fn start(
         mut self,
         mut receiver: Receiver<(MessageResult<IngressMessages>, Option<Reference>)>,
     ) -> Result<()> {
@@ -136,28 +134,5 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 
     pub(super) async fn stats_event(&mut self) {
         tracing::debug!(target: "tunnel_state", "{:#?}", self.tunnel.stats());
-    }
-}
-
-#[async_trait]
-impl<CB: Callbacks + 'static> ControlSession<IngressMessages, CB> for ControlPlane<CB> {
-    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
-    async fn start(
-        private_key: StaticSecret,
-        receiver: Receiver<(MessageResult<IngressMessages>, Option<Reference>)>,
-        control_signal: PhoenixSenderWithTopic,
-        callbacks: CB,
-    ) -> Result<()> {
-        let control_signaler = ControlSignaler { control_signal };
-        let tunnel = Arc::new(Tunnel::new(private_key, control_signaler.clone(), callbacks).await?);
-
-        let control_plane = ControlPlane {
-            tunnel,
-            control_signaler,
-        };
-
-        tokio::spawn(async move { control_plane.start(receiver).await });
-
-        Ok(())
     }
 }
