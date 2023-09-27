@@ -9,6 +9,9 @@ import "phoenix_html"
 // Flowbite's Phoenix LiveView integration
 import "flowbite/dist/flowbite.phoenix.js"
 
+// ApexCharts for Flowbyte
+import "apexcharts/dist/apexcharts.js"
+
 // Establish Phoenix Socket and LiveView configuration.
 import { Socket } from "phoenix"
 import { LiveSocket } from "phoenix_live_view"

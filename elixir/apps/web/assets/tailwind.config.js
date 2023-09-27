@@ -6,7 +6,6 @@ const fs = require("fs")
 const path = require("path")
 const defaultTheme = require("tailwindcss/defaultTheme")
 
-
 const firezoneColors = {
   // See our brand palette in Figma.
   // These have been reversed to match Tailwind's default order.
@@ -70,7 +69,7 @@ module.exports = {
     extend: {
       colors: {
         brand: "#FD4F00",
-		primary: firezoneColors["heat-wave"],
+        primary: firezoneColors["heat-wave"],
         accent: firezoneColors["electric-violet"],
         neutral: firezoneColors["night-rider"]
         //primary: {
@@ -89,7 +88,9 @@ module.exports = {
     },
   },
   plugins: [
-    require("flowbite/plugin"),
+    require('flowbite/plugin')({
+      charts: true,
+    }),
     require("@tailwindcss/forms"),
     plugin(({ addVariant }) => addVariant("phx-no-feedback", [".phx-no-feedback&", ".phx-no-feedback &"])),
     plugin(({ addVariant }) => addVariant("phx-click-loading", [".phx-click-loading&", ".phx-click-loading &"])),
