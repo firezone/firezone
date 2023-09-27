@@ -1,12 +1,17 @@
 defmodule Web.Gateways.Show do
   use Web, :live_view
-  alias Domain.Gateways
+  import Web.Policies.Components
+  alias Domain.{Gateways, Flows}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, gateway} <-
-           Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: :group) do
+           Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: :group),
+         {:ok, flows} <-
+           Flows.list_flows_for(gateway, socket.assigns.subject,
+             preload: [:client, policy: [:resource, :actor_group]]
+           ) do
       :ok = Gateways.subscribe_for_gateways_presence_in_group(gateway.group)
-      {:ok, assign(socket, gateway: gateway)}
+      {:ok, assign(socket, gateway: gateway, flows: flows)}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -112,10 +117,12 @@ defmodule Web.Gateways.Show do
             <code><%= @gateway.ipv6 %></code>
           </:value>
         </.vertical_table_row>
+        <!--
         <.vertical_table_row>
           <:label>Transfer</:label>
           <:value>TODO: 4.43 GB up, 1.23 GB down</:value>
         </.vertical_table_row>
+        -->
         <.vertical_table_row>
           <:label>Version</:label>
           <:value>
@@ -128,11 +135,49 @@ defmodule Web.Gateways.Show do
             <%= @gateway.last_seen_user_agent %>
           </:value>
         </.vertical_table_row>
+        <!--
         <.vertical_table_row>
           <:label>Deployment Method</:label>
           <:value>TODO: Docker</:value>
         </.vertical_table_row>
+        -->
       </.vertical_table>
+
+      <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
+        <div class="col-span-full mb-4 xl:mb-2">
+          <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
+            Authorizations
+          </h1>
+        </div>
+      </div>
+      <.table id="flows" rows={@flows} row_id={&"flows-#{&1.id}"}>
+        <:col :let={flow} label="AUTHORIZED AT">
+          <.relative_datetime datetime={flow.inserted_at} />
+        </:col>
+        <:col :let={flow} label="EXPIRES AT">
+          <.relative_datetime datetime={flow.expires_at} />
+        </:col>
+        <:col :let={flow} label="REMOTE IP">
+          <%= flow.destination_remote_ip %>
+        </:col>
+        <:col :let={flow} label="POLICY">
+          <.link
+            navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
+            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+          >
+            <.policy_name policy={flow.policy} />
+          </.link>
+        </:col>
+        <:col :let={flow} label="CLIENT (IP)">
+          <.link
+            navigate={~p"/#{@account}/clients/#{flow.client_id}"}
+            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+          >
+            <%= flow.client.name %>
+          </.link>
+          (<%= flow.source_remote_ip %>)
+        </:col>
+      </.table>
     </div>
 
     <.header>

@@ -1,14 +1,18 @@
 defmodule Web.Policies.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.Policies
+  alias Domain.{Policies, Flows}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
              preload: [:actor_group, :resource, [created_by_identity: :actor]]
+           ),
+         {:ok, flows} <-
+           Flows.list_flows_for(policy, socket.assigns.subject,
+             preload: [:client, gateway: [:group]]
            ) do
-      {:ok, assign(socket, policy: policy)}
+      {:ok, assign(socket, policy: policy, flows: flows)}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end
@@ -97,6 +101,7 @@ defmodule Web.Policies.Show do
         </.vertical_table_row>
       </.vertical_table>
     </div>
+
     <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
       <div class="col-span-full mb-4 xl:mb-2">
         <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
@@ -104,49 +109,32 @@ defmodule Web.Policies.Show do
         </h1>
       </div>
     </div>
-    <div class="relative overflow-x-auto">
-      <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-        <thead class="text-xs text-gray-900 uppercase dark:text-gray-400">
-          <tr>
-            <th scope="col" class="px-6 py-3">
-              Authorized at
-            </th>
-            <th scope="col" class="px-6 py-3">
-              Client
-            </th>
-            <th scope="col" class="px-6 py-3">
-              User
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr class="bg-white dark:bg-gray-800">
-            <th
-              scope="row"
-              class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white"
-            >
-              May 1, 2023 8:45p
-            </th>
-            <td class="px-6 py-4">
-              <.link
-                class="text-blue-600 dark:text-blue-500 hover:underline"
-                navigate={~p"/#{@account}/clients/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
-              >
-                2425BD07A38D
-              </.link>
-            </td>
-            <td class="px-6 py-4">
-              <.link
-                class="text-blue-600 dark:text-blue-500 hover:underline"
-                navigate={~p"/#{@account}/actors/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
-              >
-                <%= "Thomas Eizinger <thomas@eizinger.io>" %>
-              </.link>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <.table id="flows" rows={@flows} row_id={&"flows-#{&1.id}"}>
+      <:col :let={flow} label="AUTHORIZED AT">
+        <.relative_datetime datetime={flow.inserted_at} />
+      </:col>
+      <:col :let={flow} label="EXPIRES AT">
+        <.relative_datetime datetime={flow.expires_at} />
+      </:col>
+      <:col :let={flow} label="CLIENT (IP)">
+        <.link
+          navigate={~p"/#{@account}/clients/#{flow.client_id}"}
+          class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+        >
+          <%= flow.client.name %>
+        </.link>
+        (<%= flow.source_remote_ip %>)
+      </:col>
+      <:col :let={flow} label="GATEWAY (IP)">
+        <.link
+          navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
+          class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+        >
+          <%= flow.gateway.group.name_prefix %>-<%= flow.gateway.name_suffix %>
+        </.link>
+        (<%= flow.destination_remote_ip %>)
+      </:col>
+    </.table>
 
     <.header>
       <:title>

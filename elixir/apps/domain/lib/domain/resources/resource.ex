@@ -17,9 +17,12 @@ defmodule Domain.Resources.Resource do
 
     belongs_to :account, Domain.Accounts.Account
     has_many :connections, Domain.Resources.Connection, on_replace: :delete
-    has_many :gateway_groups, through: [:connections, :gateway_group], where: [deleted_at: nil]
+    # TODO: where doesn't work on join tables so soft-deleted records will be preloaded,
+    # ref https://github.com/firezone/firezone/issues/2162
+    has_many :gateway_groups, through: [:connections, :gateway_group]
 
-    has_many :policies, Domain.Policies.Policy
+    has_many :policies, Domain.Policies.Policy, where: [deleted_at: nil]
+    field :authorized_by_policy, :map, virtual: true
 
     field :created_by, Ecto.Enum, values: ~w[identity]a
     belongs_to :created_by_identity, Domain.Auth.Identity
