@@ -53,7 +53,7 @@ defmodule API.Client.Channel do
       :ok = API.Endpoint.subscribe("client:#{socket.assigns.client.id}")
       :ok = Clients.connect_client(socket.assigns.client)
 
-      {:ok, resources} = Domain.Resources.list_resources(socket.assigns.subject)
+      {:ok, resources} = Domain.Resources.list_authorized_resources(socket.assigns.subject)
 
       :ok =
         push(socket, "init", %{
