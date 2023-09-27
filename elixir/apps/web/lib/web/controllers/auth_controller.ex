@@ -119,9 +119,7 @@ defmodule Web.AuthController do
     |> maybe_put_resent_flash(params)
     |> put_session(:client_platform, params["client_platform"])
     |> put_session(:client_csrf_token, params["client_csrf_token"])
-    |> redirect(
-      to: ~p"/#{account_id_or_slug}/providers/email/#{provider_id}?#{redirect_params}"
-    )
+    |> redirect(to: ~p"/#{account_id_or_slug}/providers/email/#{provider_id}?#{redirect_params}")
   end
 
   defp maybe_put_resent_flash(conn, %{"resend" => "true"}),

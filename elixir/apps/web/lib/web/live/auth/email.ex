@@ -64,9 +64,7 @@ defmodule Web.Auth.Email do
               </p>
 
               <form
-                action={
-                  ~p"/#{@account_id_or_slug}/providers/#{@provider_id}/verify_sign_in_token"
-                }
+                action={~p"/#{@account_id_or_slug}/providers/#{@provider_id}/verify_sign_in_token"}
                 method="get"
                 class="my-4 flex"
               >
@@ -128,9 +126,7 @@ defmodule Web.Auth.Email do
       for={%{}}
       as={:email}
       class="inline"
-      action={
-        ~p"/#{@account_id_or_slug}/providers/#{@provider_id}/request_magic_link?resend=true"
-      }
+      action={~p"/#{@account_id_or_slug}/providers/#{@provider_id}/request_magic_link?resend=true"}
       method="post"
     >
       <.input type="hidden" name="email[provider_identifier]" value={@provider_identifier} />

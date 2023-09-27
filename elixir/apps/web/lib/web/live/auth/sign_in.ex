@@ -89,6 +89,20 @@ defmodule Web.Auth.SignIn do
             </.intersperse_blocks>
           </div>
         </div>
+        <div class="w-full p-6 sm:p-8">
+          <p class="py-2">
+            Don't have an account?
+            <a href={~p"/sign_up"} class="font-medium text-blue-600 hover:text-blue-500">
+              Sign up here.
+            </a>
+          </p>
+          <p class="py-2">
+            <%= # TODO: Add link to client instructions docs %> Signing in from a client?
+            <a href="https://firezone.dev/docs" class="font-medium text-blue-600 hover:text-blue-500">
+              Read the docs.
+            </a>
+          </p>
+        </div>
       </div>
     </section>
     """
