@@ -25,6 +25,11 @@ defmodule API.Client.Socket do
 
       with {:ok, subject} <- Auth.sign_in(token, user_agent, real_ip),
            {:ok, client} <- Clients.upsert_client(attrs, subject) do
+        OpenTelemetry.Tracer.set_attributes(%{
+          client_id: client.id,
+          account_id: subject.account_id
+        })
+
         socket =
           socket
           |> assign(:subject, subject)

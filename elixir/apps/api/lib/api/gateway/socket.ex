@@ -31,6 +31,11 @@ defmodule API.Gateway.Socket do
 
       with {:ok, token} <- Gateways.authorize_gateway(encrypted_secret),
            {:ok, gateway} <- Gateways.upsert_gateway(token, attrs) do
+        OpenTelemetry.Tracer.set_attributes(%{
+          gateway_id: gateway.id,
+          account_id: gateway.account_id
+        })
+
         socket =
           socket
           |> assign(:gateway, gateway)

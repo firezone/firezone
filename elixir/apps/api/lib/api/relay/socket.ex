@@ -31,6 +31,11 @@ defmodule API.Relay.Socket do
 
       with {:ok, token} <- Relays.authorize_relay(encrypted_secret),
            {:ok, relay} <- Relays.upsert_relay(token, attrs) do
+        OpenTelemetry.Tracer.set_attributes(%{
+          gateway_id: relay.id,
+          account_id: relay.account_id
+        })
+
         socket =
           socket
           |> assign(:relay, relay)
