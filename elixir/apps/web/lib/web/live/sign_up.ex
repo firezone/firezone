@@ -122,9 +122,9 @@ defmodule Web.SignUp do
         <div>
           <.link
             class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-            navigate={~p"/#{@account.slug}/sign_in"}
+            navigate={~p"/#{@account.slug}"}
           >
-            <%= "#{Web.Endpoint.url()}/#{@account.slug}/sign_in" %>
+            <%= "#{Web.Endpoint.url()}/#{@account.slug}" %>
           </.link>
         </div>
       </div>

@@ -65,7 +65,7 @@ defmodule Web.Auth.Email do
 
               <form
                 action={
-                  ~p"/#{@account_id_or_slug}/sign_in/providers/#{@provider_id}/verify_sign_in_token"
+                  ~p"/#{@account_id_or_slug}/providers/#{@provider_id}/verify_sign_in_token"
                 }
                 method="get"
                 class="my-4 flex"
@@ -129,7 +129,7 @@ defmodule Web.Auth.Email do
       as={:email}
       class="inline"
       action={
-        ~p"/#{@account_id_or_slug}/sign_in/providers/#{@provider_id}/request_magic_link?resend=true"
+        ~p"/#{@account_id_or_slug}/providers/#{@provider_id}/request_magic_link?resend=true"
       }
       method="post"
     >

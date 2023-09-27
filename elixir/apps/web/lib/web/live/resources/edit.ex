@@ -21,7 +21,7 @@ defmodule Web.Resources.Edit do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs home_path={~p"/#{@account}/actors"}>
       <.breadcrumb path={~p"/#{@account}/resources"}>Resources</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/resources/#{@resource.id}"}>
         <%= @resource.name %>

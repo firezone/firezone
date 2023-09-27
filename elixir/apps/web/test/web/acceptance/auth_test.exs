@@ -14,7 +14,7 @@ defmodule Web.Acceptance.AuthTest do
       Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
     session
-    |> visit(~p"/#{account}/sign_in")
+    |> visit(~p"/#{account}")
     |> assert_el(Query.text("Welcome back"))
     |> assert_el(Query.link("Log in with #{openid_connect_provider.name}"))
     |> assert_el(Query.text("Sign in with username and password"))
@@ -38,13 +38,13 @@ defmodule Web.Acceptance.AuthTest do
       session
       |> visit(~p"/#{account}")
       |> Auth.authenticate(identity)
-      |> visit(~p"/#{account}/dashboard")
+      |> visit(~p"/#{account}/actors")
       |> assert_el(Query.css("#user-menu-button"))
       |> click(Query.css("#user-menu-button"))
       |> click(Query.link("Sign out"))
       |> assert_el(Query.text("Sign in with username and password"))
       |> Auth.assert_unauthenticated()
-      |> assert_path(~p"/#{account}/sign_in")
+      |> assert_path(~p"/#{account}")
     end
 
     feature "signs out unprivileged user", %{session: session} do
@@ -66,7 +66,7 @@ defmodule Web.Acceptance.AuthTest do
       |> visit(~p"/#{account}/sign_out")
       |> assert_el(Query.text("Sign in with username and password"))
       |> Auth.assert_unauthenticated()
-      |> assert_path(~p"/#{account}/sign_in")
+      |> assert_path(~p"/#{account}")
     end
   end
 
@@ -87,10 +87,10 @@ defmodule Web.Acceptance.AuthTest do
       session
       |> visit(~p"/#{account}")
       |> Auth.authenticate(identity)
-      |> visit(~p"/#{account}/dashboard")
+      |> visit(~p"/#{account}/actors")
 
     assert text(session) == "Not Found"
 
-    assert_path(session, ~p"/#{account}/dashboard")
+    assert_path(session, ~p"/#{account}/actors")
   end
 end

@@ -23,7 +23,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.NewTest do
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}/sign_in",
+                 to: ~p"/#{account}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end

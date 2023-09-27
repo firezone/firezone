@@ -21,7 +21,7 @@ defmodule Web.Mailer.AuthEmail do
 
     sign_in_link =
       url(
-        ~p"/#{identity.account}/sign_in/providers/#{identity.provider_id}/verify_sign_in_token?#{params}"
+        ~p"/#{identity.account}/providers/#{identity.provider_id}/verify_sign_in_token?#{params}"
       )
 
     default_email()

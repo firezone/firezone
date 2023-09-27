@@ -13,7 +13,7 @@ defmodule Web.Policies.Index do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs home_path={~p"/#{@account}/actors"}>
       <.breadcrumb path={~p"/#{@account}/policies"}>Policies</.breadcrumb>
     </.breadcrumbs>
     <.header>

@@ -12,14 +12,14 @@ defmodule Web.AuthControllerTest do
       provider_id = Ecto.UUID.generate()
 
       conn =
-        post(conn, ~p"/#{account_id}/sign_in/providers/#{provider_id}/verify_credentials", %{
+        post(conn, ~p"/#{account_id}/providers/#{provider_id}/verify_credentials", %{
           "userpass" => %{
             "provider_identifier" => "foo",
             "secret" => "bar"
           }
         })
 
-      assert redirected_to(conn) == "/#{account_id}/sign_in"
+      assert redirected_to(conn) == "/#{account_id}"
       assert flash(conn, :error) == "You can not use this method to sign in."
     end
 
@@ -29,7 +29,7 @@ defmodule Web.AuthControllerTest do
       conn =
         post(
           conn,
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
+          ~p"/#{provider.account_id}/providers/#{provider.id}/verify_credentials",
           %{
             "userpass" => %{
               "provider_identifier" => "foo",
@@ -38,7 +38,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == "/#{provider.account_id}/sign_in"
+      assert redirected_to(conn) == "/#{provider.account_id}"
       assert flash(conn, :error) == "Invalid username or password."
       assert flash(conn, :userpass_provider_identifier) == "foo"
     end
@@ -60,7 +60,7 @@ defmodule Web.AuthControllerTest do
       conn =
         post(
           conn,
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
+          ~p"/#{provider.account_id}/providers/#{provider.id}/verify_credentials",
           %{
             "userpass" => %{
               "provider_identifier" => identity.provider_identifier,
@@ -69,7 +69,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in"
+      assert redirected_to(conn) == "/#{account.id}"
       assert flash(conn, :error) == "Invalid username or password."
       assert flash(conn, :userpass_provider_identifier) == identity.provider_identifier
     end
@@ -81,7 +81,7 @@ defmodule Web.AuthControllerTest do
       conn =
         post(
           conn,
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
+          ~p"/#{provider.account_id}/providers/#{provider.id}/verify_credentials",
           %{
             "userpass" => %{
               "provider_identifier" => provider_identifier,
@@ -90,7 +90,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == "/#{provider.account_id}/sign_in"
+      assert redirected_to(conn) == "/#{provider.account_id}"
       assert flash(conn, :error) == "Invalid username or password."
 
       assert flash(conn, :userpass_provider_identifier) ==
@@ -121,7 +121,7 @@ defmodule Web.AuthControllerTest do
         conn
         |> put_session(:user_return_to, "/foo/bar")
         |> post(
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
+          ~p"/#{provider.account_id}/providers/#{provider.id}/verify_credentials",
           %{
             "userpass" => %{
               "provider_identifier" => identity.provider_identifier,
@@ -135,7 +135,7 @@ defmodule Web.AuthControllerTest do
       assert is_nil(get_session(conn, :user_return_to))
     end
 
-    test "redirects to the dashboard when credentials are valid and return path is empty", %{
+    test "redirects to the actors index when credentials are valid and return path is empty", %{
       conn: conn
     } do
       account = Fixtures.Accounts.create_account()
@@ -153,7 +153,7 @@ defmodule Web.AuthControllerTest do
       conn =
         conn
         |> post(
-          ~p"/#{account}/sign_in/providers/#{provider.id}/verify_credentials",
+          ~p"/#{account}/providers/#{provider.id}/verify_credentials",
           %{
             "userpass" => %{
               "provider_identifier" => identity.provider_identifier,
@@ -162,7 +162,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == ~p"/#{account.slug}/dashboard"
+      assert redirected_to(conn) == ~p"/#{account.slug}/actors"
     end
 
     test "renews the session when credentials are valid", %{conn: conn} do
@@ -191,7 +191,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:session_token, "foo")
         |> put_session(:preferred_locale, "en_US")
         |> post(
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
+          ~p"/#{provider.account_id}/providers/#{provider.id}/verify_credentials",
           %{
             "userpass" => %{
               "provider_identifier" => identity.provider_identifier,
@@ -241,7 +241,7 @@ defmodule Web.AuthControllerTest do
       conn =
         conn
         |> post(
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
+          ~p"/#{provider.account_id}/providers/#{provider.id}/verify_credentials",
           %{
             "userpass" => %{
               "provider_identifier" => identity.provider_identifier,
@@ -293,7 +293,7 @@ defmodule Web.AuthControllerTest do
       conn =
         conn
         |> post(
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
+          ~p"/#{provider.account_id}/providers/#{provider.id}/verify_credentials",
           %{
             "userpass" => %{
               "provider_identifier" => identity.provider_identifier,
@@ -307,7 +307,7 @@ defmodule Web.AuthControllerTest do
                "info" => "Please use a client application to access Firezone."
              }
 
-      assert redirected_to(conn) == ~p"/#{account.id}/"
+      assert redirected_to(conn) == ~p"/#{account.id}"
       assert is_nil(get_session(conn, :user_return_to))
     end
 
@@ -336,7 +336,7 @@ defmodule Web.AuthControllerTest do
       conn =
         conn
         |> post(
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
+          ~p"/#{provider.account_id}/providers/#{provider.id}/verify_credentials",
           %{
             "userpass" => %{
               "provider_identifier" => identity.provider_identifier,
@@ -360,7 +360,7 @@ defmodule Web.AuthControllerTest do
       conn =
         post(
           conn,
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/request_magic_link",
+          ~p"/#{provider.account_id}/providers/#{provider.id}/request_magic_link",
           %{
             "email" => %{
               "provider_identifier" => identity.provider_identifier
@@ -372,7 +372,7 @@ defmodule Web.AuthControllerTest do
         assert email.subject == "Firezone Sign In Link"
 
         verify_sign_in_token_path =
-          ~p"/#{account.id}/sign_in/providers/#{provider.id}/verify_sign_in_token"
+          ~p"/#{account.id}/providers/#{provider.id}/verify_sign_in_token"
 
         assert email.text_body =~ "#{verify_sign_in_token_path}"
         assert email.text_body =~ "identity_id=#{identity.id}"
@@ -380,7 +380,7 @@ defmodule Web.AuthControllerTest do
       end)
 
       assert redirected_to(conn) ==
-               "/#{account.id}/sign_in/providers/email/#{provider.id}?" <>
+               "/#{account.id}/providers/email/#{provider.id}?" <>
                  "provider_identifier=#{URI.encode_www_form(identity.provider_identifier)}"
     end
 
@@ -392,7 +392,7 @@ defmodule Web.AuthControllerTest do
       conn =
         post(
           conn,
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/request_magic_link",
+          ~p"/#{provider.account_id}/providers/#{provider.id}/request_magic_link",
           %{
             "email" => %{
               "provider_identifier" => identity.provider_identifier
@@ -408,7 +408,7 @@ defmodule Web.AuthControllerTest do
 
       assert url = redirected_to(conn)
       uri = URI.parse(url)
-      assert uri.path == "/#{account.id}/sign_in/providers/email/#{provider.id}"
+      assert uri.path == "/#{account.id}/providers/email/#{provider.id}"
 
       assert URI.decode_query(uri.query) == %{
                "client_platform" => "platform",
@@ -425,12 +425,12 @@ defmodule Web.AuthControllerTest do
       conn =
         post(
           conn,
-          ~p"/#{account.id}/sign_in/providers/#{provider_id}/request_magic_link",
+          ~p"/#{account.id}/providers/#{provider_id}/request_magic_link",
           %{"email" => %{"provider_identifier" => "foo"}}
         )
 
       assert redirected_to(conn) ==
-               "/#{account.id}/sign_in/providers/email/#{provider_id}?" <>
+               "/#{account.id}/providers/email/#{provider_id}?" <>
                  "provider_identifier=foo"
     end
 
@@ -441,12 +441,12 @@ defmodule Web.AuthControllerTest do
       conn =
         post(
           conn,
-          ~p"/#{account.id}/sign_in/providers/#{provider.id}/request_magic_link",
+          ~p"/#{account.id}/providers/#{provider.id}/request_magic_link",
           %{"email" => %{"provider_identifier" => "foo"}}
         )
 
       assert redirected_to(conn) ==
-               "/#{account.id}/sign_in/providers/email/#{provider.id}?provider_identifier=foo"
+               "/#{account.id}/providers/email/#{provider.id}?provider_identifier=foo"
     end
   end
 
@@ -456,12 +456,12 @@ defmodule Web.AuthControllerTest do
       provider_id = Ecto.UUID.generate()
 
       conn =
-        get(conn, ~p"/#{account_id}/sign_in/providers/#{provider_id}/verify_sign_in_token", %{
+        get(conn, ~p"/#{account_id}/providers/#{provider_id}/verify_sign_in_token", %{
           "identity_id" => Ecto.UUID.generate(),
           "secret" => "foo"
         })
 
-      assert redirected_to(conn) == "/#{account_id}/sign_in"
+      assert redirected_to(conn) == "/#{account_id}"
       assert flash(conn, :error) == "You can not use this method to sign in."
     end
 
@@ -471,14 +471,14 @@ defmodule Web.AuthControllerTest do
       conn =
         get(
           conn,
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider}/verify_sign_in_token",
+          ~p"/#{provider.account_id}/providers/#{provider}/verify_sign_in_token",
           %{
             "identity_id" => Ecto.UUID.generate(),
             "secret" => "foo"
           }
         )
 
-      assert redirected_to(conn) == "/#{provider.account_id}/sign_in"
+      assert redirected_to(conn) == "/#{provider.account_id}"
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
@@ -488,12 +488,12 @@ defmodule Web.AuthControllerTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
       conn =
-        get(conn, ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+        get(conn, ~p"/#{account}/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => "bar"
         })
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}"
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
@@ -517,14 +517,14 @@ defmodule Web.AuthControllerTest do
         |> put_session(:sign_in_nonce, "foo")
         |> put_session(:user_return_to, "/foo/bar")
         |> get(
-          ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
+          ~p"/#{account}/providers/#{provider}/verify_sign_in_token",
           %{
             "identity_id" => identity.id,
             "secret" => email_token
           }
         )
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}"
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
@@ -547,14 +547,14 @@ defmodule Web.AuthControllerTest do
         conn
         |> put_session(:user_return_to, "/foo/bar")
         |> get(
-          ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
+          ~p"/#{account}/providers/#{provider}/verify_sign_in_token",
           %{
             "identity_id" => identity.id,
             "secret" => email_token
           }
         )
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}"
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
@@ -578,7 +578,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:sign_in_nonce, sign_in_nonce)
         |> put_session(:user_return_to, "/foo/bar")
         |> get(
-          ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
+          ~p"/#{account}/providers/#{provider}/verify_sign_in_token",
           %{
             "identity_id" => identity.id,
             "secret" => email_token
@@ -610,7 +610,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:sign_in_nonce, sign_in_nonce)
         |> put_session(:user_return_to, "/foo/bar")
         |> get(
-          ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
+          ~p"/#{account}/providers/#{provider}/verify_sign_in_token",
           %{
             "identity_id" => identity.id,
             "secret" => String.upcase(email_token)
@@ -622,7 +622,7 @@ defmodule Web.AuthControllerTest do
       assert is_nil(get_session(conn, :user_return_to))
     end
 
-    test "redirects to the dashboard when credentials are valid and return path is empty", %{
+    test "redirects to the actors index when credentials are valid and return path is empty", %{
       conn: conn
     } do
       account = Fixtures.Accounts.create_account()
@@ -640,12 +640,12 @@ defmodule Web.AuthControllerTest do
       conn =
         conn
         |> put_session(:sign_in_nonce, sign_in_nonce)
-        |> get(~p"/#{account.id}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+        |> get(~p"/#{account.id}/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => email_token
         })
 
-      assert redirected_to(conn) == ~p"/#{account.slug}/dashboard"
+      assert redirected_to(conn) == ~p"/#{account.slug}/actors"
     end
 
     test "redirects to the platform link when credentials are valid for account users", %{
@@ -667,7 +667,7 @@ defmodule Web.AuthControllerTest do
         conn
         |> put_session(:sign_in_nonce, sign_in_nonce)
         |> put_session(:client_platform, "apple")
-        |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+        |> get(~p"/#{account}/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => email_token
         })
@@ -703,7 +703,7 @@ defmodule Web.AuthControllerTest do
       conn =
         conn
         |> put_session(:sign_in_nonce, sign_in_nonce)
-        |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+        |> get(~p"/#{account}/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => email_token,
           "client_platform" => "apple"
@@ -744,7 +744,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> put_session(:sign_in_nonce, sign_in_nonce)
         |> get(
-          ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
+          ~p"/#{account}/providers/#{provider}/verify_sign_in_token",
           %{
             "identity_id" => identity.id,
             "secret" => email_token
@@ -783,7 +783,7 @@ defmodule Web.AuthControllerTest do
       conn =
         conn
         |> put_session(:sign_in_nonce, sign_in_nonce)
-        |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+        |> get(~p"/#{account}/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => email_token
         })
@@ -798,9 +798,9 @@ defmodule Web.AuthControllerTest do
       account_id = Ecto.UUID.generate()
       provider_id = Ecto.UUID.generate()
 
-      conn = get(conn, ~p"/#{account_id}/sign_in/providers/#{provider_id}/redirect")
+      conn = get(conn, ~p"/#{account_id}/providers/#{provider_id}/redirect")
 
-      assert redirected_to(conn) == "/#{account_id}/sign_in"
+      assert redirected_to(conn) == "/#{account_id}"
       assert flash(conn, :error) == "You can not use this method to sign in."
     end
 
@@ -810,14 +810,14 @@ defmodule Web.AuthControllerTest do
       {provider, _bypass} =
         Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
-      conn = get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", %{})
+      conn = get(conn, ~p"/#{account.id}/providers/#{provider.id}/redirect", %{})
 
       assert to = redirected_to(conn)
       uri = URI.parse(to)
       assert uri.host == "localhost"
       assert uri.path == "/authorize"
 
-      callback_url = url(~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback")
+      callback_url = url(~p"/#{account.id}/providers/#{provider.id}/handle_callback")
       {state, verifier} = conn.cookies["fz_auth_state_#{provider.id}"] |> :erlang.binary_to_term()
       code_challenge = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_challenge(verifier)
 
@@ -840,7 +840,7 @@ defmodule Web.AuthControllerTest do
         Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
       conn =
-        get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", %{
+        get(conn, ~p"/#{account.id}/providers/#{provider.id}/redirect", %{
           "client_platform" => "platform"
         })
 
@@ -855,7 +855,7 @@ defmodule Web.AuthControllerTest do
       {provider, bypass} =
         Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
-      conn = get(context.conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", %{})
+      conn = get(context.conn, ~p"/#{account.id}/providers/#{provider.id}/redirect", %{})
 
       %{
         account: account,
@@ -871,12 +871,12 @@ defmodule Web.AuthControllerTest do
 
       conn =
         conn
-        |> get(~p"/#{account_id}/sign_in/providers/#{provider_id}/handle_callback", %{
+        |> get(~p"/#{account_id}/providers/#{provider_id}/handle_callback", %{
           "state" => "foo",
           "code" => "bar"
         })
 
-      assert redirected_to(conn) == "/#{account_id}/sign_in"
+      assert redirected_to(conn) == "/#{account_id}"
       assert flash(conn, :error) == "Your session has expired, please try again."
     end
 
@@ -894,12 +894,12 @@ defmodule Web.AuthControllerTest do
       conn =
         conn
         |> put_req_cookie(cookie_key, signed_state)
-        |> get(~p"/#{account}/sign_in/providers/#{Ecto.UUID.generate()}/handle_callback", %{
+        |> get(~p"/#{account}/providers/#{Ecto.UUID.generate()}/handle_callback", %{
           "state" => state,
           "code" => "bar"
         })
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}"
       assert flash(conn, :error) == "Your session has expired, please try again."
     end
 
@@ -928,16 +928,16 @@ defmodule Web.AuthControllerTest do
       conn =
         conn
         |> put_req_cookie(cookie_key, signed_state)
-        |> get(~p"/#{account}/sign_in/providers/#{provider}/handle_callback", %{
+        |> get(~p"/#{account}/providers/#{provider}/handle_callback", %{
           "state" => state,
           "code" => "bar"
         })
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}"
       assert flash(conn, :error) == "You can not use this method to sign in."
     end
 
-    test "redirects to the dashboard when credentials are valid and return path is empty", %{
+    test "redirects to the actors index when credentials are valid and return path is empty", %{
       account: account,
       provider: provider,
       bypass: bypass,
@@ -965,12 +965,12 @@ defmodule Web.AuthControllerTest do
         |> put_req_cookie(cookie_key, signed_state)
         |> put_session(:foo, "bar")
         |> put_session(:preferred_locale, "en_US")
-        |> get(~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback", %{
+        |> get(~p"/#{account.id}/providers/#{provider.id}/handle_callback", %{
           "state" => state,
           "code" => "MyFakeCode"
         })
 
-      assert redirected_to(conn) == ~p"/#{account.slug}/dashboard"
+      assert redirected_to(conn) == ~p"/#{account.slug}/actors"
 
       assert %{
                "live_socket_id" => "actors_sessions:" <> socket_id,
@@ -1015,7 +1015,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:foo, "bar")
         |> put_session(:preferred_locale, "en_US")
         |> put_session(:client_platform, "apple")
-        |> get(~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback", %{
+        |> get(~p"/#{account.id}/providers/#{provider.id}/handle_callback", %{
           "state" => state,
           "code" => "MyFakeCode"
         })
@@ -1061,7 +1061,7 @@ defmodule Web.AuthControllerTest do
         |> put_req_cookie(cookie_key, signed_state)
         |> put_session(:foo, "bar")
         |> put_session(:preferred_locale, "en_US")
-        |> get(~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback", %{
+        |> get(~p"/#{account.id}/providers/#{provider.id}/handle_callback", %{
           "state" => state,
           "code" => "MyFakeCode"
         })
@@ -1085,7 +1085,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == url(~p"/#{account}/sign_in")
+      assert redirected_to(conn) == url(~p"/#{account}")
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
 
       assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
@@ -1105,7 +1105,7 @@ defmodule Web.AuthControllerTest do
         |> authorize_conn(identity)
         |> get(~p"/#{account}/sign_out")
 
-      post_redirect_url = URI.encode_www_form(url(~p"/#{account}/sign_in"))
+      post_redirect_url = URI.encode_www_form(url(~p"/#{account}"))
 
       assert redirect_url = redirected_to(conn)
       assert redirect_url =~ "https://example.com"
@@ -1129,7 +1129,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:live_socket_id, live_socket_id)
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}"
 
       assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^live_socket_id}
     end
@@ -1152,7 +1152,7 @@ defmodule Web.AuthControllerTest do
       authorized_conn =
         conn
         |> put_session(:sign_in_nonce, sign_in_nonce)
-        |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+        |> get(~p"/#{account}/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
           "secret" => email_token
         })
@@ -1172,7 +1172,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == url(~p"/#{account}/sign_in")
+      assert redirected_to(conn) == url(~p"/#{account}")
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
 
       assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
@@ -1187,7 +1187,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}"
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
 
       refute Map.has_key?(conn.cookies, "fz_recent_account_ids")
@@ -1214,7 +1214,7 @@ defmodule Web.AuthControllerTest do
         authorized_conn =
           conn
           |> put_session(:sign_in_nonce, sign_in_nonce)
-          |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+          |> get(~p"/#{account}/providers/#{provider}/verify_sign_in_token", %{
             "identity_id" => identity.id,
             "secret" => email_token
           })

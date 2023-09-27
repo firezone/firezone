@@ -52,7 +52,7 @@ defmodule Web.GatewayGroups.New do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs home_path={~p"/#{@account}/actors"}>
       <.breadcrumb path={~p"/#{@account}/gateway_groups"}>Gateway Instance Groups</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/gateway_groups/new"}>Add</.breadcrumb>
     </.breadcrumbs>

@@ -61,13 +61,13 @@ defmodule Web.AuthController do
         conn
         |> put_flash(:userpass_provider_identifier, String.slice(provider_identifier, 0, 160))
         |> put_flash(:error, "You can not use this method to sign in.")
-        |> redirect(to: "/#{account_id_or_slug}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}")
 
       {:error, _reason} ->
         conn
         |> put_flash(:userpass_provider_identifier, String.slice(provider_identifier, 0, 160))
         |> put_flash(:error, "Invalid username or password.")
-        |> redirect(to: "/#{account_id_or_slug}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}")
     end
   end
 
@@ -120,7 +120,7 @@ defmodule Web.AuthController do
     |> put_session(:client_platform, params["client_platform"])
     |> put_session(:client_csrf_token, params["client_csrf_token"])
     |> redirect(
-      to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}?#{redirect_params}"
+      to: ~p"/#{account_id_or_slug}/providers/email/#{provider_id}?#{redirect_params}"
     )
   end
 
@@ -166,12 +166,12 @@ defmodule Web.AuthController do
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "You can not use this method to sign in.")
-        |> redirect(to: "/#{account_id_or_slug}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}")
 
       {:error, _reason} ->
         conn
         |> put_flash(:error, "The sign in link is invalid or expired.")
-        |> redirect(to: "/#{account_id_or_slug}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}")
     end
   end
 
@@ -191,14 +191,14 @@ defmodule Web.AuthController do
       conn = put_session(conn, :client_csrf_token, params["client_csrf_token"])
 
       redirect_url =
-        url(~p"/#{account_id_or_slug}/sign_in/providers/#{provider.id}/handle_callback")
+        url(~p"/#{account_id_or_slug}/providers/#{provider.id}/handle_callback")
 
       redirect_to_idp(conn, redirect_url, provider)
     else
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "You can not use this method to sign in.")
-        |> redirect(to: "/#{account_id_or_slug}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}")
     end
   end
 
@@ -225,7 +225,7 @@ defmodule Web.AuthController do
       }) do
     with {:ok, code_verifier, conn} <- verify_state_and_fetch_verifier(conn, provider_id, state) do
       payload = {
-        url(~p"/#{account_id_or_slug}/sign_in/providers/#{provider_id}/handle_callback"),
+        url(~p"/#{account_id_or_slug}/providers/#{provider_id}/handle_callback"),
         code_verifier,
         code
       }
@@ -246,18 +246,18 @@ defmodule Web.AuthController do
         {:error, :not_found} ->
           conn
           |> put_flash(:error, "You can not use this method to sign in.")
-          |> redirect(to: "/#{account_id_or_slug}/sign_in")
+          |> redirect(to: "/#{account_id_or_slug}")
 
         {:error, _reason} ->
           conn
           |> put_flash(:error, "You can not authenticate to this account.")
-          |> redirect(to: "/#{account_id_or_slug}/sign_in")
+          |> redirect(to: "/#{account_id_or_slug}")
       end
     else
       {:error, :invalid_state, conn} ->
         conn
         |> put_flash(:error, "Your session has expired, please try again.")
-        |> redirect(to: "/#{account_id_or_slug}/sign_in")
+        |> redirect(to: "/#{account_id_or_slug}")
     end
   end
 
@@ -282,7 +282,7 @@ defmodule Web.AuthController do
         "account_id_or_slug" => account_id_or_slug
       }) do
     {:ok, _identity, redirect_url} =
-      Domain.Auth.sign_out(subject.identity, url(~p"/#{account_id_or_slug}/sign_in"))
+      Domain.Auth.sign_out(subject.identity, url(~p"/#{account_id_or_slug}"))
 
     conn
     |> delete_recent_account()
@@ -293,7 +293,7 @@ defmodule Web.AuthController do
   def sign_out(conn, %{"account_id_or_slug" => account_id_or_slug}) do
     conn
     |> Auth.sign_out()
-    |> redirect(to: ~p"/#{account_id_or_slug}/sign_in")
+    |> redirect(to: ~p"/#{account_id_or_slug}")
   end
 
   defp delete_recent_account(%{assigns: %{subject: subject}} = conn) do

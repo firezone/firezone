@@ -60,7 +60,7 @@ defmodule Web.Actors.ServiceAccounts.New do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs home_path={~p"/#{@account}/actors"}>
       <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/new"}>Add</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/service_accounts/new"}>Service Account</.breadcrumb>

@@ -12,12 +12,12 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     {:ok, _entity_id} = Vault.upsert_user(oidc_login, email, oidc_password)
 
     session
-    |> visit(~p"/#{account}/sign_in")
+    |> visit(~p"/#{account}")
     |> assert_el(Query.text("Welcome back"))
     |> click(Query.link("Log in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
     |> assert_el(Query.text("Welcome back"))
-    |> assert_path(~p"/#{account}/sign_in")
+    |> assert_path(~p"/#{account}")
     |> assert_el(Query.text("You can not authenticate to this account."))
   end
 
@@ -40,12 +40,12 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
       )
 
     session
-    |> visit(~p"/#{account}/sign_in")
+    |> visit(~p"/#{account}")
     |> assert_el(Query.text("Welcome back"))
     |> click(Query.link("Log in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
     |> assert_el(Query.css("#user-menu-button"))
     |> Auth.assert_authenticated(identity)
-    |> assert_path(~p"/#{account.slug}/dashboard")
+    |> assert_path(~p"/#{account.slug}/actors")
   end
 end

@@ -3,7 +3,7 @@ defmodule Web.Auth do
   alias Domain.Auth
 
   def signed_in_path(%Auth.Subject{actor: %{type: :account_admin_user}} = subject) do
-    ~p"/#{subject.account.slug || subject.account}/dashboard"
+    ~p"/#{subject.account.slug || subject.account}/actors"
   end
 
   def put_subject_in_session(conn, %Auth.Subject{} = subject) do
@@ -18,7 +18,7 @@ defmodule Web.Auth do
   @doc """
   Redirects the signed in user depending on the actor type.
 
-  The account admin users are sent to dashboard or a return path if it's stored in session.
+  The account admin users are sent to authenticated home or a return path if it's stored in session.
 
   The account users are only expected to authenticate using client apps.
   If the platform is known, we direct them to the application through a deep link or an app link;
@@ -56,7 +56,7 @@ defmodule Web.Auth do
         :info,
         "Please use a client application to access Firezone."
       )
-      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}/")
+      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}")
     end
   end
 
@@ -81,7 +81,7 @@ defmodule Web.Auth do
       :info,
       "Please use a client application to access Firezone."
     )
-    |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}/")
+    |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}")
   end
 
   @doc """
@@ -173,7 +173,7 @@ defmodule Web.Auth do
       conn
       |> Phoenix.Controller.put_flash(:error, "You must log in to access this page.")
       |> maybe_store_return_to()
-      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}/sign_in")
+      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}")
       |> Plug.Conn.halt()
     end
   end
@@ -260,7 +260,7 @@ defmodule Web.Auth do
       socket =
         socket
         |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
-        |> Phoenix.LiveView.redirect(to: ~p"/#{params["account_id_or_slug"]}/sign_in")
+        |> Phoenix.LiveView.redirect(to: ~p"/#{params["account_id_or_slug"]}")
 
       {:halt, socket}
     end

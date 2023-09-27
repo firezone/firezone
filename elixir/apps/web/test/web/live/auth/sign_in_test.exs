@@ -8,21 +8,21 @@ defmodule Web.Auth.SignInTest do
 
     email_provider = Fixtures.Auth.create_email_provider(account: account)
 
-    {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
+    {:ok, _lv, html} = live(conn, ~p"/#{account}")
 
     assert html =~ "Sign in with a magic link"
     refute html =~ "Sign in with username and password"
 
     userpass_provider = Fixtures.Auth.create_userpass_provider(account: account)
 
-    {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
+    {:ok, _lv, html} = live(conn, ~p"/#{account}")
 
     assert html =~ "Sign in with username and password"
     refute html =~ "Vault"
 
     Fixtures.Auth.start_and_create_openid_connect_provider(name: "Vault", account: account)
 
-    {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
+    {:ok, _lv, html} = live(conn, ~p"/#{account}")
 
     assert html =~ "Vault"
 
@@ -36,11 +36,11 @@ defmodule Web.Auth.SignInTest do
     subject = Fixtures.Auth.create_subject(identity: identity)
 
     {:ok, _provider} = Domain.Auth.disable_provider(userpass_provider, subject)
-    {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
+    {:ok, _lv, html} = live(conn, ~p"/#{account}")
     refute html =~ "Sign in with username and password"
 
     {:ok, _provider} = Domain.Auth.delete_provider(email_provider, subject)
-    {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
+    {:ok, _lv, html} = live(conn, ~p"/#{account}")
     refute html =~ "Sign in with a magic link"
 
     assert html =~ "Vault"

@@ -125,7 +125,7 @@ defmodule Web.Auth.SignIn do
     ~H"""
     <.simple_form
       for={@userpass_form}
-      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/verify_credentials"}
+      action={~p"/#{@account}/providers/#{@provider.id}/verify_credentials"}
       class="space-y-4 lg:space-y-6"
       id="userpass_form"
       phx-update="ignore"
@@ -165,7 +165,7 @@ defmodule Web.Auth.SignIn do
     ~H"""
     <.simple_form
       for={@email_form}
-      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/request_magic_link"}
+      action={~p"/#{@account}/providers/#{@provider.id}/request_magic_link"}
       class="space-y-4 lg:space-y-6"
       id="email_form"
       phx-update="ignore"
@@ -191,7 +191,7 @@ defmodule Web.Auth.SignIn do
 
   def openid_connect_button(assigns) do
     ~H"""
-    <a href={~p"/#{@account}/sign_in/providers/#{@provider}/redirect?#{@params}"} class={~w[
+    <a href={~p"/#{@account}/providers/#{@provider}/redirect?#{@params}"} class={~w[
           w-full inline-flex items-center justify-center py-2.5 px-5
           bg-white rounded-lg
           text-sm font-medium text-gray-900
