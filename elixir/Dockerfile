@@ -29,7 +29,7 @@ COPY config/ config/
 
 ARG MIX_ENV="prod"
 RUN mix deps.get --only ${MIX_ENV}
-RUN mix deps.compile --skip-umbrella-children
+RUN --mount=type=cache,target=./_build mix deps.compile --skip-umbrella-children
 
 COPY priv priv
 COPY apps apps
@@ -37,17 +37,18 @@ COPY apps apps
 ARG APPLICATION_VERSION=0.0.0-dev.docker
 
 # Install pipeline and compile assets for Web app
-RUN cd apps/web \
+RUN --mount=type=cache,target=./_build cd apps/web \
     && mix assets.setup \
     && mix assets.deploy
 
 # Compile the release
-RUN mix compile
+RUN --mount=type=cache,target=./_build mix compile
 
 COPY rel rel
 
 ARG APPLICATION_NAME
-RUN mix release ${APPLICATION_NAME}
+RUN --mount=type=cache,target=./_build mix release ${APPLICATION_NAME}
+RUN --mount=type=cache,target=./_build cp -r /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} /app/${APPLICATION_NAME}
 
 # start a new build stage so that the final image will only contain
 # the compiled release and other runtime necessities
@@ -57,8 +58,6 @@ RUN apk add -u --no-cache libstdc++ ncurses-libs openssl curl
 
 WORKDIR /app
 
-ARG MIX_ENV="prod"
-
 ARG APPLICATION_NAME
 ARG APPLICATION_VERSION=0.0.0-dev.docker
 
@@ -66,7 +65,7 @@ ENV APPLICATION_NAME=$APPLICATION_NAME
 ENV APPLICATION_VERSION=$APPLICATION_VERSION
 
 # Only copy the final release from the build stage
-COPY --from=builder /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./
+COPY --from=builder /app/${APPLICATION_NAME} ./
 
 # Change user to "default" to limit runtime privileges
 # USER default
