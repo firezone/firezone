@@ -2,7 +2,9 @@ use std::net::IpAddr;
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use firezone_tunnel::RTCSessionDescription;
-use libs_common::messages::{Id, Interface, Peer, Relay, ResourceDescription};
+use libs_common::messages::{
+    ActorId, ClientId, Interface, Peer, Relay, ResourceDescription, ResourceId,
+};
 use serde::{Deserialize, Serialize};
 
 // TODO: Should this have a resource?
@@ -15,12 +17,12 @@ pub struct InitGateway {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Actor {
-    pub id: Id,
+    pub id: ActorId,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Client {
-    pub id: Id,
+    pub id: ClientId,
     pub rtc_session_description: RTCSessionDescription,
     pub peer: Peer,
 }
@@ -60,20 +62,20 @@ pub struct Metrics {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Metric {
-    pub client_id: Id,
-    pub resource_id: Id,
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
     pub rx_bytes: u32,
     pub tx_bytes: u32,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct RemoveResource {
-    pub id: Id,
+    pub id: ResourceId,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct AllowAccess {
-    pub client_id: Id,
+    pub client_id: ClientId,
     pub resource: ResourceDescription,
     #[serde(with = "ts_seconds")]
     pub expires_at: DateTime<Utc>,

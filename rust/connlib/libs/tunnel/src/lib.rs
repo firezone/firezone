@@ -11,6 +11,7 @@ use bytes::Bytes;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use libs_common::{messages::Key, Callbacks, Error, DNS_SENTINEL};
+use serde::{Deserialize, Serialize};
 
 use async_trait::async_trait;
 use itertools::Itertools;
@@ -30,7 +31,9 @@ use webrtc::{
 use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
 
 use libs_common::{
-    messages::{Id, Interface as InterfaceConfig, ResourceDescription},
+    messages::{
+        ClientId, GatewayId, Interface as InterfaceConfig, ResourceDescription, ResourceId,
+    },
     CallbackErrorFacade, Result,
 };
 
@@ -80,6 +83,31 @@ const REFRESH_MTU_INTERVAL: Duration = Duration::from_secs(30);
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
+#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+pub enum ConnId {
+    Gateway(GatewayId),
+    Client(ClientId),
+    Resource(ResourceId),
+}
+
+impl From<GatewayId> for ConnId {
+    fn from(id: GatewayId) -> Self {
+        Self::Gateway(id)
+    }
+}
+
+impl From<ClientId> for ConnId {
+    fn from(id: ClientId) -> Self {
+        Self::Client(id)
+    }
+}
+
+impl From<ResourceId> for ConnId {
+    fn from(id: ResourceId) -> Self {
+        Self::Resource(id)
+    }
+}
+
 /// Represent's the tunnel actual peer's config
 /// Obtained from libs_common's Peer
 #[derive(Clone)]
@@ -112,7 +140,7 @@ pub trait ControlSignal {
     async fn signal_connection_to(
         &self,
         resource: &ResourceDescription,
-        connected_gateway_ids: &[Id],
+        connected_gateway_ids: &[GatewayId],
         reference: usize,
     ) -> Result<()>;
 }
@@ -136,14 +164,14 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     private_key: StaticSecret,
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
-    peer_connections: Mutex<HashMap<Id, Arc<RTCPeerConnection>>>,
-    awaiting_connection: Mutex<HashMap<Id, AwaitingConnectionDetails>>,
-    gateway_awaiting_connection: Mutex<HashMap<Id, Vec<IpNetwork>>>,
-    resources_gateways: Mutex<HashMap<Id, Id>>,
+    peer_connections: Mutex<HashMap<ConnId, Arc<RTCPeerConnection>>>,
+    awaiting_connection: Mutex<HashMap<ConnId, AwaitingConnectionDetails>>,
+    gateway_awaiting_connection: Mutex<HashMap<GatewayId, Vec<IpNetwork>>>,
+    resources_gateways: Mutex<HashMap<ResourceId, GatewayId>>,
     webrtc_api: API,
     resources: RwLock<ResourceTable<ResourceDescription>>,
     control_signaler: C,
-    gateway_public_keys: Mutex<HashMap<Id, PublicKey>>,
+    gateway_public_keys: Mutex<HashMap<GatewayId, PublicKey>>,
     callbacks: CallbackErrorFacade<CB>,
 }
 
@@ -153,14 +181,14 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
 pub struct TunnelStats {
     public_key: String,
     peers_by_ip: HashMap<IpNetwork, PeerStats>,
-    peer_connections: Vec<Id>,
-    resource_gateways: HashMap<Id, Id>,
+    peer_connections: Vec<ConnId>,
+    resource_gateways: HashMap<ResourceId, GatewayId>,
     dns_resources: HashMap<String, ResourceDescription>,
     network_resources: HashMap<IpNetwork, ResourceDescription>,
-    gateway_public_keys: HashMap<Id, String>,
+    gateway_public_keys: HashMap<GatewayId, String>,
 
-    awaiting_connection: HashMap<Id, AwaitingConnectionDetails>,
-    gateway_awaiting_connection: HashMap<Id, Vec<IpNetwork>>,
+    awaiting_connection: HashMap<ConnId, AwaitingConnectionDetails>,
+    gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
 }
 
 impl<C, CB> Tunnel<C, CB>
@@ -328,7 +356,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn stop_peer(&self, index: u32, conn_id: Id) {
+    async fn stop_peer(&self, index: u32, conn_id: ConnId) {
         self.peers_by_ip.write().retain(|_, p| p.index != index);
         let conn = self.peer_connections.lock().remove(&conn_id);
         if let Some(conn) = conn {

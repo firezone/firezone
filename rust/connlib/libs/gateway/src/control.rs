@@ -5,7 +5,7 @@ use boringtun::x25519::StaticSecret;
 use firezone_tunnel::{ControlSignal, Tunnel};
 use libs_common::{
     control::{MessageResult, PhoenixSenderWithTopic, Reference},
-    messages::{Id, ResourceDescription},
+    messages::{GatewayId, ResourceDescription},
     Callbacks, ControlSession, Result,
 };
 use tokio::sync::mpsc::Receiver;
@@ -33,7 +33,7 @@ impl ControlSignal for ControlSignaler {
     async fn signal_connection_to(
         &self,
         resource: &ResourceDescription,
-        _connected_gateway_ids: &[Id],
+        _connected_gateway_ids: &[GatewayId],
         _: usize,
     ) -> Result<()> {
         tracing::warn!("A message to network resource: {resource:?} was discarded, gateways aren't meant to be used as clients.");
@@ -100,12 +100,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         }))
                         .await
                     {
-                        tunnel.cleanup_connection(connection_request.client.id);
+                        tunnel.cleanup_connection(connection_request.client.id.into());
                         let _ = tunnel.callbacks().on_error(&err);
                     }
                 }
                 Err(err) => {
-                    tunnel.cleanup_connection(connection_request.client.id);
+                    tunnel.cleanup_connection(connection_request.client.id.into());
                     let _ = tunnel.callbacks().on_error(&err);
                 }
             }
