@@ -26,8 +26,17 @@ defmodule Domain.Repo.Migrations.AddFlows do
 
     execute("""
     CREATE INDEX flows_account_id_policy_id_index ON flows USING BTREE (account_id, policy_id, inserted_at DESC, id DESC);
+    """)
+
+    execute("""
     CREATE INDEX flows_account_id_resource_id_index ON flows USING BTREE (account_id, resource_id, inserted_at DESC, id DESC);
+    """)
+
+    execute("""
     CREATE INDEX flows_account_id_client_id_index ON flows USING BTREE (account_id, client_id, inserted_at DESC, id DESC);
+    """)
+
+    execute("""
     CREATE INDEX flows_account_id_gateway_id_index ON flows USING BTREE (account_id, gateway_id, inserted_at DESC, id DESC);
     """)
   end
