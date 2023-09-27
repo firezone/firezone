@@ -10,7 +10,7 @@ defmodule Web.Resources.Show do
            ),
          {:ok, flows} <-
            Flows.list_flows_for(resource, socket.assigns.subject,
-             preload: [:client, :gateway, policy: [:resource, :actor_group]]
+             preload: [:client, gateway: [:group], policy: [:resource, :actor_group]]
            ) do
       {:ok, assign(socket, resource: resource, flows: flows)}
     else
@@ -149,6 +149,15 @@ defmodule Web.Resources.Show do
             <%= flow.client.name %>
           </.link>
           (<%= flow.source_remote_ip %>)
+        </:col>
+        <:col :let={flow} label="GATEWAY (IP)">
+          <.link
+            navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
+            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+          >
+            <%= flow.gateway.group.name_prefix %>-<%= flow.gateway.name_suffix %>
+          </.link>
+          (<%= flow.destination_remote_ip %>)
         </:col>
       </.table>
     </div>

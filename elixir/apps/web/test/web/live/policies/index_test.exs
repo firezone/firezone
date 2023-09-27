@@ -56,7 +56,7 @@ defmodule Web.Live.Policies.IndexTest do
     conn: conn
   } do
     policy =
-      Fixtures.Policies.create_policy(account: account)
+      Fixtures.Policies.create_policy(account: account, description: "foo bar")
       |> Domain.Repo.preload(:actor_group)
       |> Domain.Repo.preload(:resource)
 
@@ -71,7 +71,7 @@ defmodule Web.Live.Policies.IndexTest do
       |> render()
       |> table_to_map()
 
-    assert rendered_policy["name"] =~ policy.name
+    assert rendered_policy["id"] =~ policy.id
     assert rendered_policy["group"] =~ policy.actor_group.name
     assert rendered_policy["resource"] =~ policy.resource.name
   end

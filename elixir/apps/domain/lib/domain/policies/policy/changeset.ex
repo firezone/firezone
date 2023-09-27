@@ -35,19 +35,19 @@ defmodule Domain.Policies.Policy.Changeset do
     |> validate_length(:description, min: 1, max: 1024)
     |> unique_constraint(
       :base,
-      description: :policies_account_id_resource_id_actor_group_id_index,
+      name: :policies_account_id_resource_id_actor_group_id_index,
       message: "Policy with Group and Resource already exists"
     )
     |> assoc_constraint(:resource)
     |> assoc_constraint(:actor_group)
     |> unique_constraint(
       :base,
-      description: :policies_actor_group_id_fkey,
+      name: :policies_actor_group_id_fkey,
       message: "Not allowed to create policies for groups outside of your account"
     )
     |> unique_constraint(
       :base,
-      description: :policies_resource_id_fkey,
+      name: :policies_resource_id_fkey,
       message: "Not allowed to create policies for resources outside of your account"
     )
   end
