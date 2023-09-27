@@ -213,7 +213,7 @@ where
         tokio::spawn(async move {
             while let Some(ice_candidate) = ice_candidate_rx.recv().await.flatten() {
                 if let Err(e) = control_signaler
-                    .signal_ice_candidate(ice_candidate, conn_id.into())
+                    .signal_ice_candidate(ice_candidate, conn_id)
                     .await
                 {
                     tracing::error!(err = ?e, "add_ice_candidate");
