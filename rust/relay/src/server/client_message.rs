@@ -3,6 +3,7 @@ use crate::server::channel_data::ChannelData;
 use crate::server::UDP_TRANSPORT;
 use crate::Attribute;
 use bytecodec::DecodeExt;
+use secrecy::SecretString;
 use std::io;
 use std::time::Duration;
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Username};
@@ -146,7 +147,7 @@ impl Allocate {
         transaction_id: TransactionId,
         lifetime: Option<Lifetime>,
         username: Username,
-        relay_secret: &str,
+        relay_secret: &SecretString,
         nonce: Uuid,
     ) -> Self {
         let (requested_transport, nonce, message_integrity) = Self::make_attributes(
@@ -174,7 +175,7 @@ impl Allocate {
         transaction_id: TransactionId,
         lifetime: Option<Lifetime>,
         username: Username,
-        relay_secret: &str,
+        relay_secret: &SecretString,
         nonce: Uuid,
     ) -> Self {
         let requested_address_family = RequestedAddressFamily::new(AddressFamily::V6);
@@ -230,7 +231,7 @@ impl Allocate {
         transaction_id: TransactionId,
         lifetime: &Option<Lifetime>,
         username: &Username,
-        relay_secret: &str,
+        relay_secret: &SecretString,
         nonce: Uuid,
         requested_address_family: Option<RequestedAddressFamily>,
     ) -> (RequestedTransport, Nonce, MessageIntegrity) {
@@ -333,7 +334,7 @@ impl Refresh {
         transaction_id: TransactionId,
         lifetime: Option<Lifetime>,
         username: Username,
-        relay_secret: &str,
+        relay_secret: &SecretString,
         nonce: Uuid,
     ) -> Self {
         let nonce = Nonce::new(nonce.as_hyphenated().to_string()).expect("len(uuid) < 128");
@@ -416,7 +417,7 @@ impl ChannelBind {
         channel_number: ChannelNumber,
         xor_peer_address: XorPeerAddress,
         username: Username,
-        relay_secret: &str,
+        relay_secret: &SecretString,
         nonce: Uuid,
     ) -> Self {
         let nonce = Nonce::new(nonce.as_hyphenated().to_string()).expect("len(uuid) < 128");

@@ -4,6 +4,7 @@ use std::{fmt, marker::PhantomData, time::Duration};
 use base64::Engine;
 use futures::{FutureExt, SinkExt, StreamExt};
 use rand_core::{OsRng, RngCore};
+use secrecy::Secret;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -18,6 +19,8 @@ use url::Url;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
+// TODO: Refactor this PhoenixChannel to be compatible with the needs of the client and gateway
+// See https://github.com/firezone/firezone/issues/2158
 pub struct PhoenixChannel<TInboundMsg, TOutboundRes> {
     stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
     pending_messages: Vec<Message>,
@@ -60,6 +63,23 @@ impl fmt::Display for InboundRequestId {
     }
 }
 
+pub struct SecureUrl {
+    inner: Url,
+}
+
+impl SecureUrl {
+    pub fn from_url(url: Url) -> Self {
+        Self { inner: url }
+    }
+}
+
+impl secrecy::Zeroize for SecureUrl {
+    fn zeroize(&mut self) {
+        let placeholder = Url::parse("http://a.com").expect("placeholder URL to be valid");
+        let _ = std::mem::replace(&mut self.inner, placeholder);
+    }
+}
+
 impl<TInboundMsg, TOutboundRes> PhoenixChannel<TInboundMsg, TOutboundRes>
 where
     TInboundMsg: DeserializeOwned,
@@ -69,10 +89,10 @@ where
     ///
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
-    pub async fn connect(url: Url, user_agent: String) -> Result<Self, Error> {
+    pub async fn connect(secret_url: Secret<SecureUrl>, user_agent: String) -> Result<Self, Error> {
         tracing::trace!("Trying to connect to the portal...");
 
-        let (stream, _) = connect_async(make_request(&url, user_agent)?).await?;
+        let (stream, _) = connect_async(make_request(secret_url, user_agent)?).await?;
 
         tracing::trace!("Successfully connected to portal");
 
@@ -299,9 +319,15 @@ impl<T, R> PhoenixMessage<T, R> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(uri: &Url, user_agent: String) -> Result<Request, Error> {
-    let host = uri.host().ok_or(Error::MissingHost)?;
-    let host = if let Some(port) = uri.port() {
+fn make_request(secret_url: Secret<SecureUrl>, user_agent: String) -> Result<Request, Error> {
+    use secrecy::ExposeSecret;
+
+    let host = secret_url
+        .expose_secret()
+        .inner
+        .host()
+        .ok_or(Error::MissingHost)?;
+    let host = if let Some(port) = secret_url.expose_secret().inner.port() {
         format!("{host}:{port}")
     } else {
         host.to_string()
@@ -319,7 +345,7 @@ fn make_request(uri: &Url, user_agent: String) -> Result<Request, Error> {
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
         .header("User-Agent", user_agent)
-        .uri(uri.as_str())
+        .uri(secret_url.expose_secret().inner.as_str())
         .body(())
         .expect("building static request always works");
 

@@ -16,6 +16,7 @@ pub use error::Result;
 
 use messages::Key;
 use ring::digest::{Context, SHA256};
+use secrecy::{ExposeSecret, SecretString};
 use std::net::Ipv4Addr;
 use url::Url;
 
@@ -79,7 +80,7 @@ pub fn sha256(input: String) -> String {
 
 pub fn get_websocket_path(
     mut url: Url,
-    secret: String,
+    secret: SecretString,
     mode: &str,
     public_key: &Key,
     external_id: &str,
@@ -97,7 +98,7 @@ pub fn get_websocket_path(
     {
         let mut query_pairs = url.query_pairs_mut();
         query_pairs.clear();
-        query_pairs.append_pair("token", &secret);
+        query_pairs.append_pair("token", secret.expose_secret());
         query_pairs.append_pair("public_key", &public_key.to_string());
         query_pairs.append_pair("external_id", external_id);
         query_pairs.append_pair("name_suffix", name_suffix);

@@ -44,6 +44,7 @@ pub use control_protocol::Request;
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 use index::IndexLfsr;
+use libs_common::messages::SecretKey;
 
 mod control_protocol;
 mod device_channel;
@@ -96,7 +97,7 @@ pub struct PeerConfig {
     pub(crate) persistent_keepalive: Option<u16>,
     pub(crate) public_key: PublicKey,
     pub(crate) ips: Vec<IpNetwork>,
-    pub(crate) preshared_key: StaticSecret,
+    pub(crate) preshared_key: SecretKey,
 }
 
 impl From<libs_common::messages::Peer> for PeerConfig {
@@ -105,7 +106,7 @@ impl From<libs_common::messages::Peer> for PeerConfig {
             persistent_keepalive: value.persistent_keepalive,
             public_key: value.public_key.0.into(),
             ips: vec![value.ipv4.into(), value.ipv6.into()],
-            preshared_key: value.preshared_key.0.into(),
+            preshared_key: value.preshared_key,
         }
     }
 }
