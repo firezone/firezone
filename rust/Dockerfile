@@ -1,4 +1,4 @@
-FROM rust:1.70-slim as BUILDER
+FROM rust:1.72-slim as BUILDER
 ARG PACKAGE
 WORKDIR /build/
 COPY . ./
@@ -10,7 +10,7 @@ RUN --mount=type=cache,target=./target \
 RUN --mount=type=cache,target=./target \
     mv ./target/release/$PACKAGE /usr/local/bin/$PACKAGE
 
-FROM debian:11.7-slim
+FROM debian:12-slim
 ARG PACKAGE
 WORKDIR /app/
 COPY --from=BUILDER /usr/local/bin/$PACKAGE .

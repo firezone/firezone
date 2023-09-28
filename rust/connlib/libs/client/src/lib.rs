@@ -259,7 +259,7 @@ fn upload_interval_from_env_or_default() -> Duration {
     let Some(interval) = option_env!("CONNLIB_LOG_UPLOAD_INTERVAL_SECS") else {
         tracing::warn!(interval = ?DEFAULT, "Env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS` was not set during compile-time, falling back to default");
 
-        return DEFAULT
+        return DEFAULT;
     };
 
     let interval = match interval.parse() {
