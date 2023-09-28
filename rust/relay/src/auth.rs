@@ -1,7 +1,7 @@
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use base64::Engine;
 use once_cell::sync::Lazy;
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use sha2::digest::FixedOutput;
 use sha2::Sha256;
 use std::borrow::ToOwned;
@@ -30,8 +30,6 @@ impl MessageIntegrityExt for MessageIntegrity {
         username: &str,
         now: SystemTime,
     ) -> Result<(), Error> {
-        use secrecy::ExposeSecret;
-
         let (expiry_unix_timestamp, salt) = split_username(username)?;
         let expired = systemtime_from_unix(expiry_unix_timestamp);
 
@@ -39,7 +37,7 @@ impl MessageIntegrityExt for MessageIntegrity {
             return Err(Error::Expired);
         }
 
-        let password = generate_password(relay_secret.expose_secret(), expired, salt);
+        let password = generate_password(relay_secret, expired, salt);
 
         self.check_long_term_credential(
             &Username::new(format!("{}:{}", expiry_unix_timestamp, salt))
@@ -115,7 +113,7 @@ pub(crate) fn split_username(username: &str) -> Result<(u64, &str), Error> {
 }
 
 pub(crate) fn generate_password(
-    relay_secret: &str,
+    relay_secret: &SecretString,
     expiry: SystemTime,
     username_salt: &str,
 ) -> String {
@@ -130,7 +128,7 @@ pub(crate) fn generate_password(
 
     hasher.update(format!("{expiry_secs}"));
     hasher.update(":");
-    hasher.update(relay_secret);
+    hasher.update(relay_secret.expose_secret().as_str());
     hasher.update(":");
     hasher.update(username_salt);
 
@@ -159,7 +157,7 @@ mod tests {
     fn generate_password_test_vector() {
         let expiry = systemtime_from_unix(60 * 60 * 24 * 365 * 60);
 
-        let password = generate_password(RELAY_SECRET_1, expiry, SAMPLE_USERNAME);
+        let password = generate_password(&RELAY_SECRET_1.parse().unwrap(), expiry, SAMPLE_USERNAME);
 
         assert_eq!(password, "00hqldgk5xLeKKOB+xls9mHMVtgqzie9DulfgQwMv68")
     }
@@ -168,7 +166,7 @@ mod tests {
     fn generate_password_test_vector_elixir() {
         let expiry = systemtime_from_unix(1685984278);
         let password = generate_password(
-            "1cab293a-4032-46f4-862a-40e5d174b0d2",
+            &"1cab293a-4032-46f4-862a-40e5d174b0d2".parse().unwrap(),
             expiry,
             "uvdgKvS9GXYZ_vmv",
         );
@@ -177,7 +175,11 @@ mod tests {
 
     #[test]
     fn smoke() {
-        let message_integrity = message_integrity(RELAY_SECRET_1, 1685200000, "n23JJ2wKKtt30oXi");
+        let message_integrity = message_integrity(
+            &RELAY_SECRET_1.parse().unwrap(),
+            1685200000,
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1.parse().unwrap(),
@@ -190,8 +192,11 @@ mod tests {
 
     #[test]
     fn expired_is_not_valid() {
-        let message_integrity =
-            message_integrity(RELAY_SECRET_1, 1685200000 - 1000, "n23JJ2wKKtt30oXi");
+        let message_integrity = message_integrity(
+            &RELAY_SECRET_1.parse().unwrap(),
+            1685200000 - 1000,
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1.parse().unwrap(),
@@ -204,7 +209,11 @@ mod tests {
 
     #[test]
     fn different_relay_secret_makes_password_invalid() {
-        let message_integrity = message_integrity(RELAY_SECRET_2, 1685200000, "n23JJ2wKKtt30oXi");
+        let message_integrity = message_integrity(
+            &RELAY_SECRET_2.parse().unwrap(),
+            1685200000,
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1.parse().unwrap(),
@@ -217,7 +226,11 @@ mod tests {
 
     #[test]
     fn invalid_username_format_fails() {
-        let message_integrity = message_integrity(RELAY_SECRET_2, 1685200000, "n23JJ2wKKtt30oXi");
+        let message_integrity = message_integrity(
+            &RELAY_SECRET_2.parse().unwrap(),
+            1685200000,
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1.parse().unwrap(),
@@ -257,7 +270,7 @@ mod tests {
     }
 
     fn message_integrity(
-        relay_secret: &str,
+        relay_secret: &SecretString,
         username_expiry: u64,
         username_salt: &str,
     ) -> MessageIntegrity {

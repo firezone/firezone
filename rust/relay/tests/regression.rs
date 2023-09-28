@@ -4,6 +4,7 @@ use relay::{
     AddressFamily, Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData,
     ClientMessage, Command, IpStack, Refresh, Server,
 };
+use secrecy::SecretString;
 use std::collections::HashMap;
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
@@ -437,7 +438,7 @@ impl TestServer {
         self
     }
 
-    fn auth_secret(&self) -> &str {
+    fn auth_secret(&self) -> &SecretString {
         self.server.auth_secret()
     }
 
