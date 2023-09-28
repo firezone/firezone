@@ -44,7 +44,7 @@ impl fmt::Display for ResourceId {
 }
 
 /// Represents a wireguard peer.
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Peer {
     /// Keepalive: How often to send a keep alive message.
     pub persistent_keepalive: Option<u16>,
@@ -56,6 +56,15 @@ pub struct Peer {
     pub ipv6: Ipv6Addr,
     /// Preshared key for the given peer.
     pub preshared_key: SecretKey,
+}
+
+impl PartialEq for Peer {
+    fn eq(&self, other: &Self) -> bool {
+        self.persistent_keepalive.eq(&other.persistent_keepalive)
+            && self.public_key.eq(&other.public_key)
+            && self.ipv4.eq(&other.ipv4)
+            && self.ipv6.eq(&other.ipv6)
+    }
 }
 
 /// Represent a connection request from a client to a given resource.

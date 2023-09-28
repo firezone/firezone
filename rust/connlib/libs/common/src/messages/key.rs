@@ -1,6 +1,6 @@
 use base64::{display::Base64Display, engine::general_purpose::STANDARD, Engine};
 use boringtun::x25519::PublicKey;
-use secrecy::{CloneableSecret, Secret, SerializableSecret, Zeroize};
+use secrecy::{CloneableSecret, DebugSecret, Secret, SerializableSecret, Zeroize};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
 use std::{fmt, str::FromStr};
@@ -14,6 +14,8 @@ const KEY_SIZE: usize = 32;
 /// into an encoded string.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Key(pub [u8; KEY_SIZE]);
+
+impl DebugSecret for Key {}
 
 impl FromStr for Key {
     type Err = Error;
@@ -97,10 +99,8 @@ mod test {
 
     #[test]
     fn can_serialize_from_private_key_and_back() {
-        use secrecy::ExposeSecret;
-
         let private_key = StaticSecret::random_from_rng(OsRng);
-        let expected_public_key = PublicKey::from(private_key.expose_secret());
+        let expected_public_key = PublicKey::from(private_key.to_bytes());
         let public_key = Key(expected_public_key.to_bytes());
         let public_key_string = serde_json::to_string(&public_key).unwrap();
         let actual_key: Key = serde_json::from_str(&public_key_string).unwrap();
