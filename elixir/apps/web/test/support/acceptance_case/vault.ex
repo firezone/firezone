@@ -89,7 +89,8 @@ defmodule Web.AcceptanceCase.Vault do
 
     :ok =
       request(:put, "identity/oidc/client/firezone", %{
-        redirect_uris: "#{endpoint_url}/#{account.id}/sign_in/providers/#{provider.id}/handle_callback"
+        redirect_uris:
+          "#{endpoint_url}/#{account.id}/sign_in/providers/#{provider.id}/handle_callback"
       })
 
     provider
