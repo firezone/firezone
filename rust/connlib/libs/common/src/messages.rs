@@ -9,7 +9,7 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 mod key;
 
-pub use key::Key;
+pub use key::{Key, SecretKey};
 
 /// General type for handling portal's id (UUID v4)
 pub type Id = Uuid;
@@ -26,7 +26,7 @@ pub struct Peer {
     /// Peer's Ipv6 (only 1 ipv6 per peer for now and mandatory).
     pub ipv6: Ipv6Addr,
     /// Preshared key for the given peer.
-    pub preshared_key: Key,
+    pub preshared_key: SecretKey,
 }
 
 /// Represent a connection request from a client to a given resource.
@@ -40,7 +40,7 @@ pub struct RequestConnection {
     /// Resource id the request is for.
     pub resource_id: Id,
     /// The preshared key the client generated for the connection that it is trying to establish.
-    pub client_preshared_key: Key,
+    pub client_preshared_key: SecretKey,
     /// Client's local RTC Session Description that the client will use for this connection.
     pub client_rtc_session_description: RTCSessionDescription,
 }
@@ -60,8 +60,11 @@ pub struct ReuseConnection {
 // Custom implementation of partial eq to ignore client_rtc_sdp
 impl PartialEq for RequestConnection {
     fn eq(&self, other: &Self) -> bool {
+        use secrecy::ExposeSecret;
+
         self.resource_id == other.resource_id
-            && self.client_preshared_key == other.client_preshared_key
+            && self.client_preshared_key.expose_secret()
+                == other.client_preshared_key.expose_secret()
     }
 }
 
