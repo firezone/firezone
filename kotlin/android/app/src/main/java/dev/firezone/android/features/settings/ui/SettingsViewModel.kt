@@ -1,15 +1,16 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.settings.ui
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.core.domain.preference.SaveAccountIdUseCase
 import dev.firezone.android.BuildConfig
-import javax.inject.Inject
+import dev.firezone.android.core.domain.preference.GetConfigUseCase
+import dev.firezone.android.core.domain.preference.SaveAccountIdUseCase
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @HiltViewModel
 internal class SettingsViewModel @Inject constructor(
@@ -29,7 +30,7 @@ internal class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             getConfigUseCase().collect {
                 actionMutableLiveData.postValue(
-                    ViewAction.FillAccountId(it.accountId.orEmpty())
+                    ViewAction.FillAccountId(it.accountId.orEmpty()),
                 )
             }
         }
@@ -47,8 +48,8 @@ internal class SettingsViewModel @Inject constructor(
         this.input = input
         stateMutableLiveData.postValue(
             ViewState().copy(
-                isButtonEnabled = input.isEmpty().not()
-            )
+                isButtonEnabled = input.isEmpty().not(),
+            ),
         )
     }
 

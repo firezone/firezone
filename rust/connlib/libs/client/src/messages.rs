@@ -4,8 +4,10 @@ use firezone_tunnel::RTCSessionDescription;
 use serde::{Deserialize, Serialize};
 
 use libs_common::messages::{
-    Id, Interface, Key, Relay, RequestConnection, ResourceDescription, ReuseConnection,
+    GatewayId, Interface, Key, Relay, RequestConnection, ResourceDescription, ResourceId,
+    ReuseConnection,
 };
+use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct InitClient {
@@ -16,21 +18,21 @@ pub struct InitClient {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct RemoveResource {
-    pub id: Id,
+    pub id: ResourceId,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ConnectionDetails {
     pub relays: Vec<Relay>,
-    pub resource_id: Id,
-    pub gateway_id: Id,
+    pub resource_id: ResourceId,
+    pub gateway_id: GatewayId,
     pub gateway_remote_ip: IpAddr,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Connect {
     pub gateway_rtc_session_description: RTCSessionDescription,
-    pub resource_id: Id,
+    pub resource_id: ResourceId,
     pub gateway_public_key: Key,
     pub persistent_keepalive: u64,
 }
@@ -57,6 +59,26 @@ pub enum IngressMessages {
     ResourceAdded(ResourceDescription),
     ResourceRemoved(RemoveResource),
     ResourceUpdated(ResourceDescription),
+
+    IceCandidates(GatewayIceCandidates),
+}
+
+/// A gateway's ice candidate message.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct BroadcastGatewayIceCandidates {
+    /// Gateway's id the ice candidates are meant for
+    pub gateway_ids: Vec<GatewayId>,
+    /// Actual RTC ice candidates
+    pub candidates: Vec<RTCIceCandidateInit>,
+}
+
+/// A gateway's ice candidate message.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct GatewayIceCandidates {
+    /// Gateway's id the ice candidates are from
+    pub gateway_id: GatewayId,
+    /// Actual RTC ice candidates
+    pub candidates: Vec<RTCIceCandidateInit>,
 }
 
 /// The replies that can arrive from the channel by a client
@@ -80,6 +102,8 @@ pub enum Messages {
     ResourceAdded(ResourceDescription),
     ResourceRemoved(RemoveResource),
     ResourceUpdated(ResourceDescription),
+
+    IceCandidates(GatewayIceCandidates),
 }
 
 impl From<IngressMessages> for Messages {
@@ -89,6 +113,7 @@ impl From<IngressMessages> for Messages {
             IngressMessages::ResourceAdded(m) => Self::ResourceAdded(m),
             IngressMessages::ResourceRemoved(m) => Self::ResourceRemoved(m),
             IngressMessages::ResourceUpdated(m) => Self::ResourceUpdated(m),
+            IngressMessages::IceCandidates(m) => Self::IceCandidates(m),
         }
     }
 }
@@ -110,11 +135,12 @@ impl From<ReplyMessages> for Messages {
 #[allow(clippy::large_enum_variant, clippy::enum_variant_names)]
 pub enum EgressMessages {
     PrepareConnection {
-        resource_id: Id,
-        connected_gateway_ids: Vec<Id>,
+        resource_id: ResourceId,
+        connected_gateway_ids: Vec<GatewayId>,
     },
     RequestConnection(RequestConnection),
     ReuseConnection(ReuseConnection),
+    BroadcastIceCandidates(BroadcastGatewayIceCandidates),
 }
 
 #[cfg(test)]

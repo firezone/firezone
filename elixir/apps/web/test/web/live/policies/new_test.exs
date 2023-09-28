@@ -56,7 +56,7 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
-             "policy[name]",
+             "policy[description]",
              "policy[resource_id]"
            ]
   end
@@ -82,14 +82,9 @@ defmodule Web.Live.Policies.NewTest do
 
     lv
     |> form("form", policy: attrs)
-    |> validate_change(%{policy: %{name: String.duplicate("a", 256)}}, fn form, _html ->
+    |> validate_change(%{policy: %{description: String.duplicate("a", 1025)}}, fn form, _html ->
       assert form_validation_errors(form) == %{
-               "policy[name]" => ["should be at most 255 character(s)"]
-             }
-    end)
-    |> validate_change(%{policy: %{name: ""}}, fn form, _html ->
-      assert form_validation_errors(form) == %{
-               "policy[name]" => ["can't be blank"]
+               "policy[description]" => ["should be at most 1024 character(s)"]
              }
     end)
   end
@@ -100,7 +95,7 @@ defmodule Web.Live.Policies.NewTest do
     conn: conn
   } do
     other_policy = Fixtures.Policies.create_policy(account: account)
-    attrs = %{name: other_policy.name}
+    attrs = %{description: String.duplicate("a", 1025)}
 
     {:ok, lv, _html} =
       conn
@@ -111,11 +106,11 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
            |> form_validation_errors() == %{
-             "policy[name]" => ["Policy Name already exists"]
+             "policy[description]" => ["should be at most 1024 character(s)"]
            }
 
     attrs = %{
-      name: "unique",
+      description: "",
       actor_group_id: other_policy.actor_group_id,
       resource_id: other_policy.resource_id
     }

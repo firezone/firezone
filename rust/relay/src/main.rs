@@ -2,7 +2,6 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
-use opentelemetry::sdk::export::metrics;
 use opentelemetry::{sdk, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use phoenix_channel::{Error, Event, PhoenixChannel, SecureUrl};
@@ -177,11 +176,7 @@ async fn setup_tracing(args: &Args) -> Result<()> {
                 .with_endpoint(grpc_endpoint);
 
             opentelemetry_otlp::new_pipeline()
-                .metrics(
-                    sdk::metrics::selectors::simple::inexpensive(),
-                    metrics::aggregation::cumulative_temporality_selector(),
-                    opentelemetry::runtime::Tokio,
-                )
+                .metrics(opentelemetry::runtime::Tokio)
                 .with_exporter(exporter)
                 .build()
                 .context("Failed to create OTLP metrics pipeline")?;

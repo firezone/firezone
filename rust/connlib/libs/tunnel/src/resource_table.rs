@@ -4,7 +4,7 @@ use std::{collections::HashMap, net::IpAddr, rc::Rc};
 use chrono::{DateTime, Utc};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::messages::{Id, ResourceDescription};
+use libs_common::messages::{ResourceDescription, ResourceId};
 
 pub(crate) trait Resource {
     fn description(&self) -> &ResourceDescription;
@@ -26,7 +26,7 @@ impl Resource for (ResourceDescription, DateTime<Utc>) {
 ///
 /// This is specifically crafted for our use case, so the API is particularly made for us and not generic
 pub(crate) struct ResourceTable<T> {
-    id_table: HashMap<Id, Rc<T>>,
+    id_table: HashMap<ResourceId, Rc<T>>,
     network_table: IpNetworkTable<Rc<T>>,
     dns_name: HashMap<String, Rc<T>>,
 }
@@ -88,7 +88,7 @@ where
     }
 
     /// Gets the resource by id
-    pub fn get_by_id(&self, id: &Id) -> Option<&T> {
+    pub fn get_by_id(&self, id: &ResourceId) -> Option<&T> {
         self.id_table.get(id).map(AsRef::as_ref)
     }
 

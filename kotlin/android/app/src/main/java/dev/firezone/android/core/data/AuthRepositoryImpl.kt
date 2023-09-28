@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.core.data
 
 import android.content.SharedPreferences
@@ -5,13 +6,13 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import java.security.SecureRandom
 import java.util.Base64
 import javax.inject.Inject
-import java.security.SecureRandom
 
 internal class AuthRepositoryImpl @Inject constructor(
     private val coroutineDispatcher: CoroutineDispatcher,
-    private val sharedPreferences: SharedPreferences
+    private val sharedPreferences: SharedPreferences,
 ) : AuthRepository {
 
     override fun generateCsrfToken(): Flow<String> = flow {

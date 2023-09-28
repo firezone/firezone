@@ -19,7 +19,7 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "join" do
+    OpenTelemetry.Tracer.with_span "gateway.join" do
       opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
       opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
       send(self(), {:after_join, {opentelemetry_ctx, opentelemetry_span_ctx}})
@@ -40,7 +40,7 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "after_join" do
+    OpenTelemetry.Tracer.with_span "gateway.after_join" do
       :ok = Gateways.connect_gateway(socket.assigns.gateway)
       :ok = API.Endpoint.subscribe("gateway:#{socket.assigns.gateway.id}")
 
@@ -62,7 +62,10 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "ice_candidates" do
+    OpenTelemetry.Tracer.with_span "gateway.ice_candidates", %{
+      client_id: client_id,
+      candidates_length: length(candidates)
+    } do
       push(socket, "ice_candidates", %{
         client_id: client_id,
         candidates: candidates
@@ -76,7 +79,7 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "allow_access" do
+    OpenTelemetry.Tracer.with_span "gateway.allow_access" do
       %{
         client_id: client_id,
         resource_id: resource_id,
@@ -95,6 +98,23 @@ defmodule API.Gateway.Channel do
     end
   end
 
+  def handle_info({:reject_access, client_id, resource_id}, socket) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "gateway.reject_access", %{
+      client_id: client_id,
+      resource_id: resource_id
+    } do
+      push(socket, "reject_access", %{
+        client_id: client_id,
+        resource_id: resource_id
+      })
+
+      {:noreply, socket}
+    end
+  end
+
   def handle_info(
         {:request_connection, {channel_pid, socket_ref}, attrs,
          {opentelemetry_ctx, opentelemetry_span_ctx}},
@@ -103,7 +123,7 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "allow_access" do
+    OpenTelemetry.Tracer.with_span "gateway.request_connection" do
       opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
       opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
@@ -169,7 +189,7 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "connection_ready" do
+    OpenTelemetry.Tracer.with_span "gateway.connection_ready" do
       opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
       opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
@@ -199,7 +219,7 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "broadcast_ice_candidates" do
+    OpenTelemetry.Tracer.with_span "gateway.broadcast_ice_candidates" do
       opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
       opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 

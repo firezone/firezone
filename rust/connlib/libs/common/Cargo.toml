@@ -6,34 +6,31 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
 mock = []
-jni-bindings = ["boringtun/jni-bindings"]
 
 [dependencies]
 secrecy = { workspace = true, features = ["serde", "bytes"] }
 base64 = { version = "0.21", default-features = false, features = ["std"] }
-serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
+boringtun = { workspace = true }
+chrono = { workspace = true }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
-tokio-tungstenite = { version = "0.19", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
-webrtc = { version = "0.8" }
-uuid = { version = "1.4", default-features = false, features = ["std", "v4", "serde"] }
-thiserror = { version = "1.0", default-features = false }
-tracing = { workspace = true }
-serde_json = { version = "1.0", default-features = false, features = ["std"] }
-tokio = { version = "1.32", default-features = false, features = ["rt", "rt-multi-thread"]}
-url = { version = "2.4.1", default-features = false }
-rand_core = { version = "0.6.4", default-features = false, features = ["std"] }
-async-trait = { version = "0.1", default-features = false }
-backoff = { workspace = true }
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
-boringtun = { workspace = true }
 os_info = { version = "3", default-features = false }
-rand = { version = "0.8", default-features = false, features = ["std"] }
-chrono = { workspace = true }
 parking_lot = "0.12"
-ring = "0.16"
+rand = { version = "0.8", default-features = false, features = ["std"] }
+rand_core = { version = "0.6.4", default-features = false, features = ["std"] }
+serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+thiserror = { version = "1.0", default-features = false }
+tokio = { version = "1.32", default-features = false, features = ["rt", "rt-multi-thread"]}
 tokio-stream = { version = "0.1", features = ["time"] }
+tokio-tungstenite = { version = "0.19", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+tracing = { workspace = true }
 tracing-appender = "0.2"
+url = { version = "2.4.1", default-features = false }
+uuid = { version = "1.4", default-features = false, features = ["std", "v4", "serde"] }
+webrtc = { version = "0.8" }
+ring = "0.16"
 
 # Needed for Android logging until tracing is working
 log = "0.4"

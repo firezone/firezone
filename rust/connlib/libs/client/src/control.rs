@@ -1,24 +1,28 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
-use crate::messages::{Connect, ConnectionDetails, EgressMessages, InitClient, Messages};
-use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
-use boringtun::x25519::StaticSecret;
-use libs_common::{
-    control::{ErrorInfo, ErrorReply, MessageResult, PhoenixSenderWithTopic, Reference},
-    messages::{Id, ResourceDescription},
-    Callbacks, ControlSession, Error, Result,
+use crate::messages::{
+    BroadcastGatewayIceCandidates, Connect, ConnectionDetails, EgressMessages,
+    GatewayIceCandidates, InitClient, Messages,
 };
+use libs_common::{
+    control::{ErrorInfo, ErrorReply, PhoenixSenderWithTopic, Reference},
+    messages::{GatewayId, ResourceDescription, ResourceId},
+    Callbacks,
+    Error::{self, ControlProtocolError},
+    Result,
+};
+use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 use async_trait::async_trait;
-use firezone_tunnel::{ControlSignal, Request, Tunnel};
-use tokio::sync::{mpsc::Receiver, Mutex};
+use firezone_tunnel::{ConnId, ControlSignal, Request, Tunnel};
+use tokio::sync::Mutex;
 
 #[async_trait]
 impl ControlSignal for ControlSignaler {
     async fn signal_connection_to(
         &self,
         resource: &ResourceDescription,
-        connected_gateway_ids: &[Id],
+        connected_gateway_ids: &[GatewayId],
         reference: usize,
     ) -> Result<()> {
         self.control_signal
@@ -34,44 +38,47 @@ impl ControlSignal for ControlSignaler {
             .await?;
         Ok(())
     }
+
+    async fn signal_ice_candidate(
+        &self,
+        ice_candidate: RTCIceCandidate,
+        conn_id: ConnId,
+    ) -> Result<()> {
+        // TODO: We probably want to have different signal_ice_candidate
+        // functions for gateway/client but ultimately we just want
+        // separate control_plane modules
+        if let ConnId::Gateway(id) = conn_id {
+            self.control_signal
+                .clone()
+                .send(EgressMessages::BroadcastIceCandidates(
+                    BroadcastGatewayIceCandidates {
+                        gateway_ids: vec![id],
+                        candidates: vec![ice_candidate.to_json()?],
+                    },
+                ))
+                .await?;
+
+            Ok(())
+        } else {
+            Err(ControlProtocolError)
+        }
+    }
 }
 
-/// Implementation of [ControlSession] for clients.
 pub struct ControlPlane<CB: Callbacks> {
-    tunnel: Arc<Tunnel<ControlSignaler, CB>>,
-    control_signaler: ControlSignaler,
-    tunnel_init: Mutex<bool>,
+    pub tunnel: Arc<Tunnel<ControlSignaler, CB>>,
+    pub control_signaler: ControlSignaler,
+    pub tunnel_init: Mutex<bool>,
 }
 
 #[derive(Clone)]
-struct ControlSignaler {
-    control_signal: PhoenixSenderWithTopic,
+pub struct ControlSignaler {
+    pub control_signal: PhoenixSenderWithTopic,
 }
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn start(
-        mut self,
-        mut receiver: Receiver<(MessageResult<Messages>, Option<Reference>)>,
-    ) -> Result<()> {
-        let mut interval = tokio::time::interval(Duration::from_secs(10));
-        loop {
-            tokio::select! {
-                Some((msg, reference)) = receiver.recv() => {
-                    match msg {
-                        Ok(msg) => self.handle_message(msg, reference).await?,
-                        Err(err) => self.handle_error(err, reference).await,
-                    }
-                },
-                _ = interval.tick() => self.stats_event().await,
-                else => break
-            }
-        }
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn init(
+    pub async fn init(
         &mut self,
         InitClient {
             interface,
@@ -100,7 +107,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn connect(
+    pub async fn connect(
         &mut self,
         Connect {
             gateway_rtc_session_description,
@@ -123,7 +130,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn add_resource(&self, resource_description: ResourceDescription) {
+    pub async fn add_resource(&self, resource_description: ResourceDescription) {
         if let Err(e) = self.tunnel.add_resource(resource_description).await {
             tracing::error!(message = "Can't add resource", error = ?e);
             let _ = self.tunnel.callbacks().on_error(&e);
@@ -131,7 +138,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn remove_resource(&self, id: Id) {
+    fn remove_resource(&self, id: ResourceId) {
         todo!()
     }
 
@@ -191,14 +198,33 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 Err(err) => err,
             };
 
-            tunnel.cleanup_connection(resource_id);
+            tunnel.cleanup_connection(resource_id.into());
             tracing::error!("Error request connection details: {err}");
             let _ = tunnel.callbacks().on_error(&err);
         });
     }
 
+    async fn add_ice_candidate(
+        &self,
+        GatewayIceCandidates {
+            gateway_id,
+            candidates,
+        }: GatewayIceCandidates,
+    ) {
+        for candidate in candidates {
+            if let Err(e) = self
+                .tunnel
+                .add_ice_candidate(gateway_id.into(), candidate)
+                .await
+            {
+                tracing::error!(err = ?e,"add_ice_candidate");
+                let _ = self.tunnel.callbacks().on_error(&e);
+            }
+        }
+    }
+
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn handle_message(
+    pub async fn handle_message(
         &mut self,
         msg: Messages,
         reference: Option<Reference>,
@@ -212,20 +238,17 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Messages::ResourceAdded(resource) => self.add_resource(resource).await,
             Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
             Messages::ResourceUpdated(resource) => self.update_resource(resource),
+            Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate).await,
         }
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn handle_error(
-        &mut self,
-        reply_error: ErrorReply,
-        reference: Option<Reference>,
-    ) {
+    pub async fn handle_error(&mut self, reply_error: ErrorReply, reference: Option<Reference>) {
         if matches!(reply_error.error, ErrorInfo::Offline) {
             match reference {
                 Some(reference) => {
-                    let Ok(id) = reference.parse() else {
+                    let Ok(resource_id) = reference.parse::<ResourceId>() else {
                         tracing::error!(
                             "An offline error came back with a reference to a non-valid resource id"
                         );
@@ -236,7 +259,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         return;
                     };
                     // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
-                    self.tunnel.cleanup_connection(id);
+                    self.tunnel.cleanup_connection(resource_id.into());
                 }
                 None => {
                     tracing::error!(
@@ -251,39 +274,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }
     }
 
-    pub(super) async fn stats_event(&mut self) {
+    pub async fn stats_event(&mut self) {
         tracing::debug!(target: "tunnel_state", stats = ?self.tunnel.stats());
-    }
-}
-
-#[async_trait]
-impl<CB: Callbacks + 'static> ControlSession<Messages, CB> for ControlPlane<CB> {
-    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
-    async fn start(
-        private_key: StaticSecret,
-        receiver: Receiver<(MessageResult<Messages>, Option<Reference>)>,
-        control_signal: PhoenixSenderWithTopic,
-        callbacks: CB,
-    ) -> Result<()> {
-        let control_signaler = ControlSignaler { control_signal };
-        let tunnel = Arc::new(Tunnel::new(private_key, control_signaler.clone(), callbacks).await?);
-
-        let control_plane = ControlPlane {
-            tunnel,
-            control_signaler,
-            tunnel_init: Mutex::new(false),
-        };
-
-        tokio::spawn(async move { control_plane.start(receiver).await });
-
-        Ok(())
-    }
-
-    fn socket_path() -> &'static str {
-        "client"
-    }
-
-    fn retry_strategy() -> ExponentialBackoff {
-        ExponentialBackoffBuilder::default().build()
     }
 }

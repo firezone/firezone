@@ -10,7 +10,8 @@ use bytes::Bytes;
 
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::{messages::Key, Callbacks, Error, DNS_SENTINEL};
+use libs_common::{messages::Key, CallbackErrorFacade, Callbacks, Error, DNS_SENTINEL};
+use serde::{Deserialize, Serialize};
 
 use async_trait::async_trait;
 use itertools::Itertools;
@@ -23,6 +24,7 @@ use webrtc::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
         setting_engine::SettingEngine, APIBuilder, API,
     },
+    ice_transport::ice_candidate::RTCIceCandidate,
     interceptor::registry::Registry,
     peer_connection::RTCPeerConnection,
 };
@@ -30,8 +32,10 @@ use webrtc::{
 use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
 
 use libs_common::{
-    messages::{Id, Interface as InterfaceConfig, ResourceDescription},
-    CallbackErrorFacade, Result,
+    messages::{
+        ClientId, GatewayId, Interface as InterfaceConfig, ResourceDescription, ResourceId,
+    },
+    Result,
 };
 
 use device_channel::{create_iface, DeviceIo, IfaceConfig};
@@ -42,6 +46,7 @@ pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription
 use index::IndexLfsr;
 
 mod control_protocol;
+mod device_channel;
 mod dns;
 mod iface_handler;
 mod index;
@@ -51,27 +56,6 @@ mod peer_handler;
 mod resource_sender;
 mod resource_table;
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-#[path = "tun_darwin.rs"]
-mod tun;
-
-#[cfg(target_os = "linux")]
-#[path = "tun_linux.rs"]
-mod tun;
-
-// TODO: Android and linux are nearly identical; use a common tunnel module?
-#[cfg(target_os = "android")]
-#[path = "tun_android.rs"]
-mod tun;
-
-#[cfg(target_family = "unix")]
-#[path = "device_channel_unix.rs"]
-mod device_channel;
-
-#[cfg(target_family = "windows")]
-#[path = "device_channel_win.rs"]
-mod device_channel;
-
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const RESET_PACKET_COUNT_INTERVAL: Duration = Duration::from_secs(1);
 const REFRESH_PEERS_TIMERS_INTERVAL: Duration = Duration::from_secs(1);
@@ -79,6 +63,31 @@ const REFRESH_MTU_INTERVAL: Duration = Duration::from_secs(30);
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
+
+#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+pub enum ConnId {
+    Gateway(GatewayId),
+    Client(ClientId),
+    Resource(ResourceId),
+}
+
+impl From<GatewayId> for ConnId {
+    fn from(id: GatewayId) -> Self {
+        Self::Gateway(id)
+    }
+}
+
+impl From<ClientId> for ConnId {
+    fn from(id: ClientId) -> Self {
+        Self::Client(id)
+    }
+}
+
+impl From<ResourceId> for ConnId {
+    fn from(id: ResourceId) -> Self {
+        Self::Resource(id)
+    }
+}
 
 /// Represent's the tunnel actual peer's config
 /// Obtained from libs_common's Peer
@@ -112,8 +121,15 @@ pub trait ControlSignal {
     async fn signal_connection_to(
         &self,
         resource: &ResourceDescription,
-        connected_gateway_ids: &[Id],
+        connected_gateway_ids: &[GatewayId],
         reference: usize,
+    ) -> Result<()>;
+
+    /// Signals a new candidate to the control plane
+    async fn signal_ice_candidate(
+        &self,
+        ice_candidate: RTCIceCandidate,
+        conn_id: ConnId,
     ) -> Result<()>;
 }
 
@@ -136,14 +152,16 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     private_key: StaticSecret,
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
-    peer_connections: Mutex<HashMap<Id, Arc<RTCPeerConnection>>>,
-    awaiting_connection: Mutex<HashMap<Id, AwaitingConnectionDetails>>,
-    gateway_awaiting_connection: Mutex<HashMap<Id, Vec<IpNetwork>>>,
-    resources_gateways: Mutex<HashMap<Id, Id>>,
+    peer_connections: Mutex<HashMap<ConnId, Arc<RTCPeerConnection>>>,
+    ice_candidate_queue:
+        Mutex<HashMap<ConnId, tokio::sync::mpsc::Receiver<Option<RTCIceCandidate>>>>,
+    awaiting_connection: Mutex<HashMap<ConnId, AwaitingConnectionDetails>>,
+    gateway_awaiting_connection: Mutex<HashMap<GatewayId, Vec<IpNetwork>>>,
+    resources_gateways: Mutex<HashMap<ResourceId, GatewayId>>,
     webrtc_api: API,
-    resources: RwLock<ResourceTable<ResourceDescription>>,
+    resources: Arc<RwLock<ResourceTable<ResourceDescription>>>,
     control_signaler: C,
-    gateway_public_keys: Mutex<HashMap<Id, PublicKey>>,
+    gateway_public_keys: Mutex<HashMap<GatewayId, PublicKey>>,
     callbacks: CallbackErrorFacade<CB>,
 }
 
@@ -153,14 +171,14 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
 pub struct TunnelStats {
     public_key: String,
     peers_by_ip: HashMap<IpNetwork, PeerStats>,
-    peer_connections: Vec<Id>,
-    resource_gateways: HashMap<Id, Id>,
+    peer_connections: Vec<ConnId>,
+    resource_gateways: HashMap<ResourceId, GatewayId>,
     dns_resources: HashMap<String, ResourceDescription>,
     network_resources: HashMap<IpNetwork, ResourceDescription>,
-    gateway_public_keys: HashMap<Id, String>,
+    gateway_public_keys: HashMap<GatewayId, String>,
 
-    awaiting_connection: HashMap<Id, AwaitingConnectionDetails>,
-    gateway_awaiting_connection: HashMap<Id, Vec<IpNetwork>>,
+    awaiting_connection: HashMap<ConnId, AwaitingConnectionDetails>,
+    gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
 }
 
 impl<C, CB> Tunnel<C, CB>
@@ -225,13 +243,14 @@ where
         let peers_by_ip = RwLock::new(IpNetworkTable::new());
         let next_index = Default::default();
         let peer_connections = Default::default();
-        let resources = Default::default();
+        let resources: Arc<RwLock<ResourceTable<ResourceDescription>>> = Default::default();
         let awaiting_connection = Default::default();
         let gateway_public_keys = Default::default();
         let resources_gateways = Default::default();
         let gateway_awaiting_connection = Default::default();
         let iface_config = Default::default();
         let device_io = Default::default();
+        let ice_candidate_queue = Default::default();
 
         // ICE
         let mut media_engine = MediaEngine::default();
@@ -242,7 +261,14 @@ where
         registry = register_default_interceptors(registry, &mut media_engine)?;
         let mut setting_engine = SettingEngine::default();
         setting_engine.detach_data_channels();
-        // TODO: Enable UDPMultiplex (had some problems before)
+        setting_engine.set_ip_filter(Box::new({
+            let resources = Arc::clone(&resources);
+            move |ip| !resources.read().values().any(|res_ip| res_ip.contains(ip))
+        }));
+
+        setting_engine.set_interface_filter(Box::new({
+            |name| !name.contains("utun") && name != "tun-firezone"
+        }));
 
         let webrtc_api = APIBuilder::new()
             .with_media_engine(media_engine)
@@ -266,6 +292,7 @@ where
             gateway_awaiting_connection,
             control_signaler,
             resources_gateways,
+            ice_candidate_queue,
             callbacks: CallbackErrorFacade(callbacks),
         })
     }
@@ -328,7 +355,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn stop_peer(&self, index: u32, conn_id: Id) {
+    async fn stop_peer(&self, index: u32, conn_id: ConnId) {
         self.peers_by_ip.write().retain(|_, p| p.index != index);
         let conn = self.peer_connections.lock().remove(&conn_id);
         if let Some(conn) = conn {
