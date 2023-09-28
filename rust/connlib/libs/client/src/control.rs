@@ -65,7 +65,6 @@ impl ControlSignal for ControlSignaler {
     }
 }
 
-/// Implementation of [ControlSession] for clients.
 pub struct ControlPlane<CB: Callbacks> {
     pub tunnel: Arc<Tunnel<ControlSignaler, CB>>,
     pub control_signaler: ControlSignaler,
