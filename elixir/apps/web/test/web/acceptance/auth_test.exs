@@ -15,7 +15,7 @@ defmodule Web.Acceptance.AuthTest do
 
     session
     |> visit(~p"/#{account}")
-    |> assert_el(Query.text("Sign in to the #{account.name} admin portal"))
+    |> assert_el(Query.text("#{account.name} Admin Portal"))
     |> assert_el(Query.link("Sign in with #{openid_connect_provider.name}"))
     |> assert_el(Query.text("Sign in with username and password"))
     |> assert_el(Query.text("Sign in with a magic link"))

@@ -45,7 +45,7 @@ defmodule Web.Actors.Edit do
          put_flash(socket, :error, "You don't have permissions to perform this action.")}
 
       {:error, :cant_remove_admin_type} ->
-        {:noreply, put_flash(socket, :error, "You can not demote the last admin.")}
+        {:noreply, put_flash(socket, :error, "You may not demote the last admin.")}
 
       {:error, {:unauthorized, _context}} ->
         {:noreply,

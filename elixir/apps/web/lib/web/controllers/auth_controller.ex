@@ -60,7 +60,7 @@ defmodule Web.AuthController do
       {:error, :not_found} ->
         conn
         |> put_flash(:userpass_provider_identifier, String.slice(provider_identifier, 0, 160))
-        |> put_flash(:error, "You can not use this method to sign in.")
+        |> put_flash(:error, "You may not use this method to sign in.")
         |> redirect(to: "/#{account_id_or_slug}")
 
       {:error, _reason} ->
@@ -163,7 +163,7 @@ defmodule Web.AuthController do
     else
       {:error, :not_found} ->
         conn
-        |> put_flash(:error, "You can not use this method to sign in.")
+        |> put_flash(:error, "You may not use this method to sign in.")
         |> redirect(to: "/#{account_id_or_slug}")
 
       {:error, _reason} ->
@@ -195,7 +195,7 @@ defmodule Web.AuthController do
     else
       {:error, :not_found} ->
         conn
-        |> put_flash(:error, "You can not use this method to sign in.")
+        |> put_flash(:error, "You may not use this method to sign in.")
         |> redirect(to: "/#{account_id_or_slug}")
     end
   end
@@ -243,12 +243,12 @@ defmodule Web.AuthController do
       else
         {:error, :not_found} ->
           conn
-          |> put_flash(:error, "You can not use this method to sign in.")
+          |> put_flash(:error, "You may not use this method to sign in.")
           |> redirect(to: "/#{account_id_or_slug}")
 
         {:error, _reason} ->
           conn
-          |> put_flash(:error, "You can not authenticate to this account.")
+          |> put_flash(:error, "You may not authenticate to this account.")
           |> redirect(to: "/#{account_id_or_slug}")
       end
     else

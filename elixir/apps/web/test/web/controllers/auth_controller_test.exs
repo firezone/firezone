@@ -20,7 +20,7 @@ defmodule Web.AuthControllerTest do
         })
 
       assert redirected_to(conn) == "/#{account_id}"
-      assert flash(conn, :error) == "You can not use this method to sign in."
+      assert flash(conn, :error) == "You may not use this method to sign in."
     end
 
     test "redirects back to the form when identity does not exist", %{conn: conn} do
@@ -462,7 +462,7 @@ defmodule Web.AuthControllerTest do
         })
 
       assert redirected_to(conn) == "/#{account_id}"
-      assert flash(conn, :error) == "You can not use this method to sign in."
+      assert flash(conn, :error) == "You may not use this method to sign in."
     end
 
     test "redirects back to the form when identity does not exist", %{conn: conn} do
@@ -801,7 +801,7 @@ defmodule Web.AuthControllerTest do
       conn = get(conn, ~p"/#{account_id}/providers/#{provider_id}/redirect")
 
       assert redirected_to(conn) == "/#{account_id}"
-      assert flash(conn, :error) == "You can not use this method to sign in."
+      assert flash(conn, :error) == "You may not use this method to sign in."
     end
 
     test "redirects to IdP when provider exists", %{conn: conn} do
@@ -934,7 +934,7 @@ defmodule Web.AuthControllerTest do
         })
 
       assert redirected_to(conn) == ~p"/#{account}"
-      assert flash(conn, :error) == "You can not use this method to sign in."
+      assert flash(conn, :error) == "You may not use this method to sign in."
     end
 
     test "redirects to the actors index when credentials are valid and return path is empty", %{
