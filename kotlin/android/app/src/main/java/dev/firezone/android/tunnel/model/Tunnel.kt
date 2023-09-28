@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.tunnel.model
 
 import android.os.Parcelable
@@ -11,9 +12,9 @@ data class Tunnel(
     var state: State = State.Down,
     val routes: List<String> = emptyList(),
     val resources: List<Resource> = emptyList(),
-): Parcelable {
+) : Parcelable {
 
     enum class State {
-        Up, Connecting, Down;
+        Up, Connecting, Down
     }
 }

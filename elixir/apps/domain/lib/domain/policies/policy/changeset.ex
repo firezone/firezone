@@ -3,9 +3,9 @@ defmodule Domain.Policies.Policy.Changeset do
   alias Domain.Auth
   alias Domain.Policies.Policy
 
-  @fields ~w[name actor_group_id resource_id]a
-  @update_fields ~w[name]a
-  @required_fields @fields
+  @fields ~w[description actor_group_id resource_id]a
+  @update_fields ~w[description]a
+  @required_fields ~w[actor_group_id resource_id]a
 
   def create(attrs, %Auth.Subject{} = subject) do
     %Policy{}
@@ -32,11 +32,7 @@ defmodule Domain.Policies.Policy.Changeset do
 
   defp changeset(changeset) do
     changeset
-    |> validate_length(:name, min: 1, max: 255)
-    |> unique_constraint([:account_id, :name],
-      message: "Policy Name already exists",
-      error_key: :name
-    )
+    |> validate_length(:description, min: 1, max: 1024)
     |> unique_constraint(
       :base,
       name: :policies_account_id_resource_id_actor_group_id_index,

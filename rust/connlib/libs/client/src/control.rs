@@ -1,17 +1,23 @@
 use std::path::PathBuf;
 use std::{io, sync::Arc, time::Duration};
 
-use crate::messages::{Connect, ConnectionDetails, EgressMessages, InitClient, Messages};
+use crate::messages::{
+    BroadcastGatewayIceCandidates, Connect, ConnectionDetails, EgressMessages,
+    GatewayIceCandidates, InitClient, Messages,
+};
 use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use boringtun::x25519::StaticSecret;
 use libs_common::{
     control::{ErrorInfo, ErrorReply, MessageResult, PhoenixSenderWithTopic, Reference},
-    messages::{Id, ResourceDescription},
-    Callbacks, ControlSession, Error, Result,
+    messages::{GatewayId, ResourceDescription, ResourceId},
+    Callbacks, ControlSession,
+    Error::{self, ControlProtocolError},
+    Result,
 };
+use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 use async_trait::async_trait;
-use firezone_tunnel::{ControlSignal, Request, Tunnel};
+use firezone_tunnel::{ConnId, ControlSignal, Request, Tunnel};
 use tokio::sync::{mpsc::Receiver, Mutex};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
@@ -21,7 +27,7 @@ impl ControlSignal for ControlSignaler {
     async fn signal_connection_to(
         &self,
         resource: &ResourceDescription,
-        connected_gateway_ids: &[Id],
+        connected_gateway_ids: &[GatewayId],
         reference: usize,
     ) -> Result<()> {
         self.control_signal
@@ -36,6 +42,31 @@ impl ControlSignal for ControlSignaler {
             )
             .await?;
         Ok(())
+    }
+
+    async fn signal_ice_candidate(
+        &self,
+        ice_candidate: RTCIceCandidate,
+        conn_id: ConnId,
+    ) -> Result<()> {
+        // TODO: We probably want to have different signal_ice_candidate
+        // functions for gateway/client but ultimately we just want
+        // separate control_plane modules
+        if let ConnId::Gateway(id) = conn_id {
+            self.control_signal
+                .clone()
+                .send(EgressMessages::BroadcastIceCandidates(
+                    BroadcastGatewayIceCandidates {
+                        gateway_ids: vec![id],
+                        candidates: vec![ice_candidate.to_json()?],
+                    },
+                ))
+                .await?;
+
+            Ok(())
+        } else {
+            Err(ControlProtocolError)
+        }
     }
 }
 
@@ -136,7 +167,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn remove_resource(&self, id: Id) {
+    fn remove_resource(&self, id: ResourceId) {
         todo!()
     }
 
@@ -196,10 +227,29 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 Err(err) => err,
             };
 
-            tunnel.cleanup_connection(resource_id);
+            tunnel.cleanup_connection(resource_id.into());
             tracing::error!("Error request connection details: {err}");
             let _ = tunnel.callbacks().on_error(&err);
         });
+    }
+
+    async fn add_ice_candidate(
+        &self,
+        GatewayIceCandidates {
+            gateway_id,
+            candidates,
+        }: GatewayIceCandidates,
+    ) {
+        for candidate in candidates {
+            if let Err(e) = self
+                .tunnel
+                .add_ice_candidate(gateway_id.into(), candidate)
+                .await
+            {
+                tracing::error!(err = ?e,"add_ice_candidate");
+                let _ = self.tunnel.callbacks().on_error(&e);
+            }
+        }
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -217,6 +267,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Messages::ResourceAdded(resource) => self.add_resource(resource).await,
             Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
             Messages::ResourceUpdated(resource) => self.update_resource(resource),
+            Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate).await,
             Messages::SignedLogUrl(url) => {
                 let Some(path) = self.tunnel.callbacks().roll_log_file() else {
                     return Ok(())
@@ -241,7 +292,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         if matches!(reply_error.error, ErrorInfo::Offline) {
             match reference {
                 Some(reference) => {
-                    let Ok(id) = reference.parse() else {
+                    let Ok(resource_id) = reference.parse::<ResourceId>() else {
                         tracing::error!(
                             "An offline error came back with a reference to a non-valid resource id"
                         );
@@ -252,7 +303,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         return;
                     };
                     // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
-                    self.tunnel.cleanup_connection(id);
+                    self.tunnel.cleanup_connection(resource_id.into());
                 }
                 None => {
                     tracing::error!(

@@ -26,11 +26,37 @@ defmodule Domain.ResourcesTest do
       assert fetch_resource_by_id("foo", subject) == {:error, :not_found}
     end
 
-    test "returns resource when resource exists", %{account: account, subject: subject} do
+    test "returns resource for account admin", %{account: account, subject: subject} do
       resource = Fixtures.Resources.create_resource(account: account)
 
       assert {:ok, fetched_resource} = fetch_resource_by_id(resource.id, subject)
       assert fetched_resource.id == resource.id
+      assert is_nil(fetched_resource.authorized_by_policy)
+    end
+
+    test "returns authorized resource for account user", %{
+      account: account
+    } do
+      actor_group = Fixtures.Actors.create_group(account: account)
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      assert fetch_resource_by_id(resource.id, subject) == {:error, :not_found}
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      assert {:ok, fetched_resource} = fetch_resource_by_id(resource.id, subject)
+      assert fetched_resource.id == resource.id
+      refute is_nil(fetched_resource.authorized_by_policy)
     end
 
     test "does not return deleted resources", %{account: account, subject: subject} do
@@ -63,12 +89,264 @@ defmodule Domain.ResourcesTest do
                  ]}}
     end
 
-    # TODO: add a test that soft-deleted assocs are not preloaded
     test "associations are preloaded when opts given", %{account: account, subject: subject} do
+      gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      assert {:ok, resource} = fetch_resource_by_id(resource.id, subject, preload: :connections)
+      assert Ecto.assoc_loaded?(resource.connections) == true
+      assert length(resource.connections) == 1
+    end
+  end
+
+  describe "fetch_and_authorize_resource_by_id/2" do
+    test "returns error when resource does not exist", %{subject: subject} do
+      assert fetch_and_authorize_resource_by_id(Ecto.UUID.generate(), subject) ==
+               {:error, :not_found}
+    end
+
+    test "returns error when UUID is invalid", %{subject: subject} do
+      assert fetch_and_authorize_resource_by_id("foo", subject) == {:error, :not_found}
+    end
+
+    test "returns authorized resource for account admin", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
       resource = Fixtures.Resources.create_resource(account: account)
-      {:ok, resource} = fetch_resource_by_id(resource.id, subject, preload: :connections)
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource
+        )
+
+      assert {:ok, fetched_resource} = fetch_and_authorize_resource_by_id(resource.id, subject)
+      assert fetched_resource.id == resource.id
+      assert fetched_resource.authorized_by_policy.id == policy.id
+    end
+
+    test "returns authorized resource for account user", %{
+      account: account
+    } do
+      actor_group = Fixtures.Actors.create_group(account: account)
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      assert {:ok, fetched_resource} = fetch_and_authorize_resource_by_id(resource.id, subject)
+      assert fetched_resource.id == resource.id
+      refute is_nil(fetched_resource.authorized_by_policy)
+    end
+
+    test "does not return deleted resources", %{account: account, actor: actor, subject: subject} do
+      {:ok, resource} =
+        Fixtures.Resources.create_resource(account: account)
+        |> delete_resource(subject)
+
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
+    end
+
+    test "does not return resources in other accounts", %{subject: subject} do
+      resource = Fixtures.Resources.create_resource()
+      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
+    end
+
+    test "returns error when subject has no permission to view resources", %{subject: subject} do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert fetch_and_authorize_resource_by_id(Ecto.UUID.generate(), subject) ==
+               {:error,
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     Resources.Authorizer.view_available_resources_permission()
+                   ]
+                 ]}}
+    end
+
+    test "associations are preloaded when opts given", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      assert {:ok, resource} =
+               fetch_and_authorize_resource_by_id(resource.id, subject, preload: :connections)
 
       assert Ecto.assoc_loaded?(resource.connections) == true
+      assert length(resource.connections) == 1
+    end
+  end
+
+  describe "list_authorized_resources/1" do
+    test "returns empty list when there are no resources", %{subject: subject} do
+      assert list_authorized_resources(subject) == {:ok, []}
+    end
+
+    test "returns empty list when there are no authorized resources", %{
+      account: account,
+      subject: subject
+    } do
+      Fixtures.Resources.create_resource(account: account)
+      assert list_authorized_resources(subject) == {:ok, []}
+    end
+
+    test "does not list deleted resources", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      {:ok, _resource} = delete_resource(resource, subject)
+
+      assert list_authorized_resources(subject) == {:ok, []}
+    end
+
+    test "returns authorized resources for account user subject", %{
+      account: account
+    } do
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      resource1 = Fixtures.Resources.create_resource(account: account)
+      resource2 = Fixtures.Resources.create_resource(account: account)
+      Fixtures.Resources.create_resource()
+
+      assert {:ok, []} = list_authorized_resources(subject)
+
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource1
+        )
+
+      assert {:ok, resources} = list_authorized_resources(subject)
+      assert length(resources) == 1
+      assert hd(resources).authorized_by_policy.id == policy.id
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource2
+      )
+
+      assert {:ok, resources} = list_authorized_resources(subject)
+      assert length(resources) == 2
+    end
+
+    test "returns authorized resources for account admin subject", %{
+      account: account
+    } do
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      resource1 = Fixtures.Resources.create_resource(account: account)
+      resource2 = Fixtures.Resources.create_resource(account: account)
+      Fixtures.Resources.create_resource()
+
+      assert {:ok, []} = list_authorized_resources(subject)
+
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource1
+        )
+
+      assert {:ok, resources} = list_authorized_resources(subject)
+      assert length(resources) == 1
+      assert hd(resources).authorized_by_policy.id == policy.id
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource2
+      )
+
+      assert {:ok, resources} = list_authorized_resources(subject)
+      assert length(resources) == 2
+    end
+
+    test "returns error when subject has no permission to manage resources", %{
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert list_authorized_resources(subject) ==
+               {:error,
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     Resources.Authorizer.view_available_resources_permission()
+                   ]
+                 ]}}
     end
   end
 
@@ -95,21 +373,6 @@ defmodule Domain.ResourcesTest do
     end
 
     test "returns all resources for account admin subject", %{
-      account: account
-    } do
-      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-
-      Fixtures.Resources.create_resource(account: account)
-      Fixtures.Resources.create_resource(account: account)
-      Fixtures.Resources.create_resource()
-
-      assert {:ok, resources} = list_resources(subject)
-      assert length(resources) == 2
-    end
-
-    test "returns all resources for account user subject", %{
       account: account,
       subject: subject
     } do
@@ -131,11 +394,7 @@ defmodule Domain.ResourcesTest do
                 {:unauthorized,
                  [
                    missing_permissions: [
-                     {:one_of,
-                      [
-                        Resources.Authorizer.manage_resources_permission(),
-                        Resources.Authorizer.view_available_resources_permission()
-                      ]}
+                     Resources.Authorizer.manage_resources_permission()
                    ]
                  ]}}
     end

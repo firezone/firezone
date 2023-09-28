@@ -12,13 +12,14 @@ tokio-util = "0.7.9"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tracing-appender = { version = "0.2.2" }
-tracing-stackdriver = { version = "0.7.2" }
+tracing-stackdriver = { version = "0.8.0" }
 async-trait = { version = "0.1", default-features = false }
 libs-common = { path = "../common" }
 firezone-tunnel = { path = "../tunnel" }
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
 boringtun = { workspace = true }
 backoff = { workspace = true }
+webrtc = "0.8"
 url = { version = "2.4.1", features = ["serde"] }
 time = { version = "0.3.29", features = ["formatting"] }
 reqwest = { version = "0.11.20", default-features = false, features = ["stream", "rustls-tls"] }

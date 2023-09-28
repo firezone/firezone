@@ -8,7 +8,7 @@ defmodule API.Relay.Channel do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span socket.assigns.opentelemetry_ctx, "join", %{} do
+    OpenTelemetry.Tracer.with_span "relay.join" do
       opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
       opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
       send(self(), {:after_join, stamp_secret, {opentelemetry_ctx, opentelemetry_span_ctx}})
@@ -31,7 +31,7 @@ defmodule API.Relay.Channel do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "after_join" do
+    OpenTelemetry.Tracer.with_span "relay.after_join" do
       API.Endpoint.subscribe("relay:#{socket.assigns.relay.id}")
       push(socket, "init", %{})
       :ok = Relays.connect_relay(socket.assigns.relay, stamp_secret)
