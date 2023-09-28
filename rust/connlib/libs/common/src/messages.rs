@@ -10,7 +10,7 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 mod key;
 
-pub use key::Key;
+pub use key::{Key, SecretKey};
 
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct GatewayId(Uuid);
@@ -44,7 +44,7 @@ impl fmt::Display for ResourceId {
 }
 
 /// Represents a wireguard peer.
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Peer {
     /// Keepalive: How often to send a keep alive message.
     pub persistent_keepalive: Option<u16>,
@@ -55,13 +55,22 @@ pub struct Peer {
     /// Peer's Ipv6 (only 1 ipv6 per peer for now and mandatory).
     pub ipv6: Ipv6Addr,
     /// Preshared key for the given peer.
-    pub preshared_key: Key,
+    pub preshared_key: SecretKey,
+}
+
+impl PartialEq for Peer {
+    fn eq(&self, other: &Self) -> bool {
+        self.persistent_keepalive.eq(&other.persistent_keepalive)
+            && self.public_key.eq(&other.public_key)
+            && self.ipv4.eq(&other.ipv4)
+            && self.ipv6.eq(&other.ipv6)
+    }
 }
 
 /// Represent a connection request from a client to a given resource.
 ///
 /// While this is a client-only message it's hosted in common since the tunnel
-/// make use of this message type.
+/// makes use of this message type.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RequestConnection {
     /// Gateway id for the connection
@@ -69,7 +78,7 @@ pub struct RequestConnection {
     /// Resource id the request is for.
     pub resource_id: ResourceId,
     /// The preshared key the client generated for the connection that it is trying to establish.
-    pub client_preshared_key: Key,
+    pub client_preshared_key: SecretKey,
     /// Client's local RTC Session Description that the client will use for this connection.
     pub client_rtc_session_description: RTCSessionDescription,
 }
@@ -90,7 +99,6 @@ pub struct ReuseConnection {
 impl PartialEq for RequestConnection {
     fn eq(&self, other: &Self) -> bool {
         self.resource_id == other.resource_id
-            && self.client_preshared_key == other.client_preshared_key
     }
 }
 

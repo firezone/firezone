@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use firezone_gateway_connlib::{get_device_id, Callbacks, Session};
 use headless_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
+use secrecy::SecretString;
 use tracing_subscriber::layer;
 
 fn main() -> Result<()> {
@@ -11,7 +12,7 @@ fn main() -> Result<()> {
     let device_id = get_device_id();
     let mut session = Session::connect(
         cli.common.url,
-        cli.common.secret,
+        SecretString::from(cli.common.secret),
         device_id,
         CallbackHandler,
     )

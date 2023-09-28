@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use firezone_client_connlib::{file_logger, get_device_id, Callbacks, Session};
 use headless_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
+use secrecy::SecretString;
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -15,7 +16,7 @@ fn main() -> Result<()> {
 
     let mut session = Session::connect(
         cli.common.url,
-        cli.common.secret,
+        SecretString::from(cli.common.secret),
         device_id,
         CallbackHandler,
     )

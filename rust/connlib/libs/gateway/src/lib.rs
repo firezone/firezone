@@ -6,11 +6,13 @@ use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use control::ControlPlane;
 use firezone_tunnel::Tunnel;
+use libs_common::control::SecureUrl;
 use libs_common::{
     control::PhoenixChannel, get_websocket_path, messages::Key, sha256, CallbackErrorFacade, Result,
 };
 use messages::IngressMessages;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use secrecy::{Secret, SecretString};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -58,7 +60,7 @@ where
     // TODO: token should be something like SecretString but we need to think about FFI compatibility
     pub fn connect(
         portal_url: impl TryInto<Url>,
-        token: String,
+        token: SecretString,
         device_id: String,
         callbacks: CB,
     ) -> Result<Self> {
@@ -115,7 +117,7 @@ where
         runtime: &Runtime,
         runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
         portal_url: Url,
-        token: String,
+        token: SecretString,
         device_id: String,
         callbacks: CallbackErrorFacade<CB>,
     ) {
@@ -136,7 +138,7 @@ where
             // to force queue ordering.
             let (control_plane_sender, mut control_plane_receiver) = tokio::sync::mpsc::channel(1);
 
-            let mut connection = PhoenixChannel::<_, IngressMessages, IngressMessages, IngressMessages>::new(connect_url, move |msg, reference| {
+            let mut connection = PhoenixChannel::<_, IngressMessages, IngressMessages, IngressMessages>::new(Secret::new(SecureUrl::from_url(connect_url)), move |msg, reference| {
                 let control_plane_sender = control_plane_sender.clone();
                 async move {
                     tracing::trace!("Received message: {msg:?}");

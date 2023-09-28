@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+secrecy = { workspace = true }
 libs-common = { path = "../common" }
 async-trait = { version = "0.1", default-features = false }
 firezone-tunnel = { path = "../tunnel" }

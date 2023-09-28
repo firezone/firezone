@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use boringtun::x25519::{PublicKey, StaticSecret};
 use chrono::{DateTime, Utc};
+use libs_common::messages::SecretKey;
 use libs_common::{
     control::Reference,
     messages::{
@@ -11,6 +12,7 @@ use libs_common::{
     Callbacks,
 };
 use rand_core::OsRng;
+use secrecy::Secret;
 use webrtc::{
     data_channel::data_channel_init::RTCDataChannelInit,
     peer_connection::{
@@ -209,7 +211,7 @@ where
                     persistent_keepalive: None,
                     public_key: gateway_public_key,
                     ips: resource_description.ips(),
-                    preshared_key: p_key,
+                    preshared_key: SecretKey::new(Key(p_key.to_bytes())),
                 };
 
                 if let Err(e) = tunnel
@@ -237,7 +239,7 @@ where
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
             gateway_id,
-            client_preshared_key: Key(preshared_key.to_bytes()),
+            client_preshared_key: Secret::new(Key(preshared_key.to_bytes())),
             client_rtc_session_description: offer,
         }))
     }
