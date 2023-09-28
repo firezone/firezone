@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use firezone_client_connlib::{file_logger, get_device_id, Callbacks, Session};
+use firezone_client_connlib::{file_logger, get_device_id, Callbacks, Error, Session};
 use headless_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use std::path::PathBuf;
 
@@ -41,6 +41,7 @@ impl Callbacks for CallbackHandler {
             .roll_to_new_file()
             .unwrap_or_else(|e| {
                 tracing::debug!("Failed to roll over to new file: {e}");
+                let _ = self.on_error(&Error::LogFileRollError(e));
 
                 None
             })

@@ -290,6 +290,7 @@ impl Callbacks for CallbackHandler {
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.handle.roll_to_new_file().unwrap_or_else(|e| {
             tracing::debug!("Failed to roll over to new file: {e}");
+            let _ = self.on_error(&Error::LogFileRollError(e));
 
             None
         })
