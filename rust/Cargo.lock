@@ -1166,26 +1166,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-gateway-connlib"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "backoff",
- "boringtun",
- "chrono",
- "firezone-tunnel",
- "libs-common",
- "rand",
- "serde",
- "serde_json",
- "tokio",
- "tokio-tungstenite",
- "tracing",
- "url",
- "webrtc",
-]
-
-[[package]]
 name = "firezone-tunnel"
 version = "0.1.0"
 dependencies = [
@@ -1326,11 +1306,23 @@ name = "gateway"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "backoff",
+ "boringtun",
+ "chrono",
  "clap",
- "firezone-gateway-connlib",
+ "firezone-tunnel",
  "headless-utils",
+ "libs-common",
+ "rand",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
+ "url",
+ "webrtc",
 ]
 
 [[package]]

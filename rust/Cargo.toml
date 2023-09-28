@@ -8,7 +8,6 @@ members = [
   "connlib/clients/headless",
   "connlib/libs/tunnel",
   "connlib/libs/client",
-  "connlib/libs/gateway",
   "connlib/libs/common",
   "connlib/gateway",
 ]

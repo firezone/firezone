@@ -6,9 +6,21 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-firezone-gateway-connlib = { path = "../libs/gateway" }
-headless-utils = { path = "../headless-utils" }
 anyhow = { version = "1.0" }
-tracing = { workspace = true }
+async-trait = { version = "0.1", default-features = false }
+backoff = { workspace = true }
+boringtun = { workspace = true }
+chrono = { workspace = true }
 clap = { version = "4.3", features = ["derive",  "env"] }
+firezone-tunnel = { path = "../libs/tunnel" }
+headless-utils = { path = "../headless-utils" }
+libs-common = { path = "../libs/common" }
+rand = { version = "0.8", default-features = false, features = ["std"] }
+serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+tokio = { version = "1.32.0", features = ["macros"] }
+tokio-tungstenite = { version = "0.19", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+tracing = { workspace = true }
 tracing-subscriber = "0.3.17"
+url = { version = "2.4.1", default-features = false }
+webrtc = "0.8"
+serde_json = "1.0.107"
