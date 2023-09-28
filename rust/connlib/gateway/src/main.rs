@@ -114,20 +114,7 @@ async fn main() -> Result<()> {
                 "Error connecting to portal, retrying in {} seconds",
                 t.as_secs()
             );
-            // let _ = callbacks.on_error(&result.err().unwrap_or(Error::PortalConnectionError(
-            //     tokio_tungstenite::tungstenite::Error::ConnectionClosed,
-            // )));
             tokio::time::sleep(t).await;
-            // else {
-            //     tracing::error!("Connection to portal failed, giving up");
-            //     fatal_error!(
-            //         result.and(Err(Error::PortalConnectionError(
-            //             tokio_tungstenite::tungstenite::Error::ConnectionClosed
-            //         ))),
-            //         runtime_stopper,
-            //         &callbacks
-            //     );
-            // }
         }
     });
 
