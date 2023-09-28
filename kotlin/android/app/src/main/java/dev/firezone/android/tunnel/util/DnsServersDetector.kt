@@ -28,7 +28,7 @@ import java.net.InetAddress
  * Minidns https://github.com/MiniDNS/minidns
  * https://stackoverflow.com/a/48973823/1275497
  *
- * Unfortunately both libraries are not aware of Orero changes so new method was added to fix this.
+ * Unfortunately both libraries are not aware of Oreo changes so new method was added to fix this.
  *
  * Created by Madalin Grigore-Enescu on 2/24/18.
  */
