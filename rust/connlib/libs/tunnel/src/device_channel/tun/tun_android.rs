@@ -1,4 +1,4 @@
-use super::InterfaceConfig;
+use crate::InterfaceConfig;
 use ip_network::IpNetwork;
 use libc::{
     close, ioctl, read, sockaddr, sockaddr_in, write, AF_INET, IFNAMSIZ, IPPROTO_IP, SIOCGIFMTU,

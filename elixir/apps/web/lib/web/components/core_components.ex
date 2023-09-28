@@ -65,7 +65,7 @@ defmodule Web.CoreComponents do
       bg-gray-800
       relative
     ], @class]}>
-      <code class="block whitespace-nowrap overflow-x-scroll rounded-b-lg" data-copy>
+      <code class="block w-full no-scrollbar whitespace-nowrap overflow-x-auto rounded-b-lg" data-copy>
         <%= render_slot(@inner_block) %>
       </code>
       <.icon name="hero-clipboard-document" data-icon class={~w[

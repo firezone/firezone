@@ -1,4 +1,4 @@
-alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources, Policies}
+alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources, Policies, Flows}
 
 # Seeds can be run both with MIX_ENV=prod and MIX_ENV=test, for test env we don't have
 # an adapter configured and creation of email provider will fail, so we will override it here.
@@ -221,7 +221,7 @@ IO.puts(
 
 IO.puts("")
 
-_user_iphone =
+{:ok, user_iphone} =
   Domain.Clients.upsert_client(
     %{
       name: "FZ User iPhone",
@@ -232,7 +232,7 @@ _user_iphone =
     unprivileged_subject
   )
 
-_admin_iphone =
+{:ok, _admin_iphone} =
   Domain.Clients.upsert_client(
     %{
       name: "FZ Admin iPhone",
@@ -456,3 +456,10 @@ IO.puts("")
 IO.puts("Created client tokens:")
 IO.puts("  #{unprivileged_actor_email} token: #{unprivileged_subject_client_token}")
 IO.puts("")
+
+Flows.authorize_flow(
+  user_iphone,
+  gateway1,
+  cidr_resource.id,
+  unprivileged_subject
+)

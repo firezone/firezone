@@ -2,8 +2,11 @@ use std::net::IpAddr;
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use firezone_tunnel::RTCSessionDescription;
-use libs_common::messages::{Id, Interface, Peer, Relay, ResourceDescription};
+use libs_common::messages::{
+    ActorId, ClientId, Interface, Peer, Relay, ResourceDescription, ResourceId,
+};
 use serde::{Deserialize, Serialize};
+use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 // TODO: Should this have a resource?
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
@@ -15,12 +18,12 @@ pub struct InitGateway {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Actor {
-    pub id: Id,
+    pub id: ActorId,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Client {
-    pub id: Id,
+    pub id: ClientId,
     pub rtc_session_description: RTCSessionDescription,
     pub peer: Peer,
 }
@@ -60,20 +63,20 @@ pub struct Metrics {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Metric {
-    pub client_id: Id,
-    pub resource_id: Id,
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
     pub rx_bytes: u32,
     pub tx_bytes: u32,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct RemoveResource {
-    pub id: Id,
+    pub id: ResourceId,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct AllowAccess {
-    pub client_id: Id,
+    pub client_id: ClientId,
     pub resource: ResourceDescription,
     #[serde(with = "ts_seconds")]
     pub expires_at: DateTime<Utc>,
@@ -89,6 +92,25 @@ pub enum IngressMessages {
     Init(InitGateway),
     RequestConnection(RequestConnection),
     AllowAccess(AllowAccess),
+    IceCandidates(ClientIceCandidates),
+}
+
+/// A client's ice candidate message.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct BroadcastClientIceCandidates {
+    /// Client's id the ice candidates are meant for
+    pub client_ids: Vec<ClientId>,
+    /// Actual RTC ice candidates
+    pub candidates: Vec<RTCIceCandidateInit>,
+}
+
+/// A client's ice candidate message.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct ClientIceCandidates {
+    /// Client's id the ice candidates came from
+    pub client_id: ClientId,
+    /// Actual RTC ice candidates
+    pub candidates: Vec<RTCIceCandidateInit>,
 }
 
 // These messages can be sent from a gateway
@@ -100,6 +122,7 @@ pub enum IngressMessages {
 pub enum EgressMessages {
     ConnectionReady(ConnectionReady),
     Metrics(Metrics),
+    BroadcastIceCandidates(BroadcastClientIceCandidates),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

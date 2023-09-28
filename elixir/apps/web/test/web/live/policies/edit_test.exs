@@ -6,12 +6,22 @@ defmodule Web.Live.Policies.EditTest do
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
 
-    policy = Fixtures.Policies.create_policy(account: account)
+    resource = Fixtures.Resources.create_resource(account: account)
+
+    policy =
+      Fixtures.Policies.create_policy(
+        account: account,
+        resource: resource,
+        description: "Test Policy"
+      )
+
+    policy = Repo.preload(policy, [:actor_group, :resource])
 
     %{
       account: account,
       actor: actor,
       identity: identity,
+      resource: resource,
       policy: policy
     }
   end
@@ -59,7 +69,8 @@ defmodule Web.Live.Policies.EditTest do
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Policies"
-    assert breadcrumbs =~ policy.name
+    assert breadcrumbs =~ policy.actor_group.name
+    assert breadcrumbs =~ policy.resource.name
     assert breadcrumbs =~ "Edit"
   end
 
@@ -76,7 +87,7 @@ defmodule Web.Live.Policies.EditTest do
 
     form = form(lv, "form")
 
-    assert find_inputs(form) == ["policy[name]"]
+    assert find_inputs(form) == ["policy[description]"]
   end
 
   test "renders changeset errors on input change", %{
@@ -85,7 +96,7 @@ defmodule Web.Live.Policies.EditTest do
     policy: policy,
     conn: conn
   } do
-    attrs = Fixtures.Policies.policy_attrs() |> Map.take([:name])
+    attrs = Fixtures.Policies.policy_attrs() |> Map.take([:description])
 
     {:ok, lv, _html} =
       conn
@@ -94,13 +105,10 @@ defmodule Web.Live.Policies.EditTest do
 
     lv
     |> form("form", policy: attrs)
-    |> validate_change(%{policy: %{name: String.duplicate("a", 256)}}, fn form, _html ->
+    |> validate_change(%{policy: %{description: String.duplicate("a", 1025)}}, fn form, _html ->
       assert form_validation_errors(form) == %{
-               "policy[name]" => ["should be at most 255 character(s)"]
+               "policy[description]" => ["should be at most 1024 character(s)"]
              }
-    end)
-    |> validate_change(%{policy: %{name: ""}}, fn form, _html ->
-      assert form_validation_errors(form) == %{"policy[name]" => ["can't be blank"]}
     end)
   end
 
@@ -110,8 +118,7 @@ defmodule Web.Live.Policies.EditTest do
     policy: policy,
     conn: conn
   } do
-    other_policy = Fixtures.Policies.create_policy(account: account)
-    attrs = %{name: other_policy.name}
+    attrs = %{description: String.duplicate("a", 1025)}
 
     {:ok, lv, _html} =
       conn
@@ -121,7 +128,9 @@ defmodule Web.Live.Policies.EditTest do
     assert lv
            |> form("form", policy: attrs)
            |> render_submit()
-           |> form_validation_errors() == %{"policy[name]" => ["Policy Name already exists"]}
+           |> form_validation_errors() == %{
+             "policy[description]" => ["should be at most 1024 character(s)"]
+           }
   end
 
   test "updates a policy on valid attrs", %{
@@ -130,7 +139,7 @@ defmodule Web.Live.Policies.EditTest do
     policy: policy,
     conn: conn
   } do
-    attrs = Fixtures.Policies.policy_attrs() |> Map.take([:name])
+    attrs = Fixtures.Policies.policy_attrs() |> Map.take([:description])
 
     {:ok, lv, _html} =
       conn
@@ -143,6 +152,6 @@ defmodule Web.Live.Policies.EditTest do
              {:error, {:redirect, %{to: ~p"/#{account}/policies/#{policy}"}}}
 
     assert policy = Repo.get_by(Domain.Policies.Policy, id: policy.id)
-    assert policy.name == attrs.name
+    assert policy.description == attrs.description
   end
 end

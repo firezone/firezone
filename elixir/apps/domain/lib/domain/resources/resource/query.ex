@@ -14,6 +14,23 @@ defmodule Domain.Resources.Resource.Query do
     where(queryable, [resources: resources], resources.account_id == ^account_id)
   end
 
+  def by_authorized_actor_id(queryable \\ all(), actor_id) do
+    subquery = Domain.Policies.Policy.Query.by_actor_id(actor_id)
+
+    queryable
+    |> join(
+      :inner,
+      [resources: resources],
+      policies in subquery(subquery),
+      on: policies.resource_id == resources.id,
+      as: :authorized_by_policies
+    )
+    # Note: this will only write one of policies to a map, which means that
+    # when a client has access to a resource using multiple policies (eg. being a member in multiple groups),
+    # the policy used will be not deterministic
+    |> select_merge([authorized_by_policies: policies], %{authorized_by_policy: policies})
+  end
+
   def by_gateway_group_id(queryable \\ all(), gateway_group_id) do
     queryable
     |> with_joined_connections()

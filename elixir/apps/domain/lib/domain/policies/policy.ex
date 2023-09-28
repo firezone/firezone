@@ -2,7 +2,7 @@ defmodule Domain.Policies.Policy do
   use Domain, :schema
 
   schema "policies" do
-    field :name, :string
+    field :description, :string
 
     belongs_to :actor_group, Domain.Actors.Group
     belongs_to :resource, Domain.Resources.Resource

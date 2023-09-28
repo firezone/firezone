@@ -4,7 +4,7 @@ defmodule Domain.Fixtures.Policies do
 
   def policy_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
-      name: "policy-#{unique_integer()}"
+      description: "because of #{unique_integer()}"
     })
   end
 

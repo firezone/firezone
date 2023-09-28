@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.core.utils
 
 import android.content.ClipData
@@ -14,7 +15,8 @@ object ClipboardUtils {
         val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboardManager.setPrimaryClip(ClipData.newPlainText(label, text))
 
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2)
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
             Toast.makeText(context, COPIED, Toast.LENGTH_SHORT).show()
+        }
     }
 }
