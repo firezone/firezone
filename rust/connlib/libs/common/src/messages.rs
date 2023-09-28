@@ -70,7 +70,7 @@ impl PartialEq for Peer {
 /// Represent a connection request from a client to a given resource.
 ///
 /// While this is a client-only message it's hosted in common since the tunnel
-/// make use of this message type.
+/// makes use of this message type.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RequestConnection {
     /// Gateway id for the connection
@@ -98,11 +98,7 @@ pub struct ReuseConnection {
 // Custom implementation of partial eq to ignore client_rtc_sdp
 impl PartialEq for RequestConnection {
     fn eq(&self, other: &Self) -> bool {
-        use secrecy::ExposeSecret;
-
         self.resource_id == other.resource_id
-            && self.client_preshared_key.expose_secret()
-                == other.client_preshared_key.expose_secret()
     }
 }
 
