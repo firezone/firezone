@@ -509,14 +509,12 @@ dependencies = [
  "hmac",
  "ip_network",
  "ip_network_table",
- "jni 0.19.0",
  "libc",
  "nix 0.25.1",
  "parking_lot",
  "rand_core",
  "ring",
  "tracing",
- "tracing-subscriber",
  "untrusted 0.9.0",
  "x25519-dalek",
 ]
@@ -739,7 +737,7 @@ version = "0.1.6"
 dependencies = [
  "firezone-client-connlib",
  "ip_network",
- "jni 0.21.1",
+ "jni",
  "log",
  "serde_json",
  "thiserror",
@@ -1153,14 +1151,17 @@ dependencies = [
  "chrono",
  "firezone-tunnel",
  "libs-common",
+ "rand",
  "serde",
  "serde_json",
  "tokio",
+ "tokio-tungstenite",
  "tracing",
  "tracing-android",
  "tracing-appender",
  "tracing-stackdriver",
  "tracing-subscriber",
+ "url",
  "webrtc",
 ]
 
@@ -1174,10 +1175,13 @@ dependencies = [
  "chrono",
  "firezone-tunnel",
  "libs-common",
+ "rand",
  "serde",
  "serde_json",
  "tokio",
+ "tokio-tungstenite",
  "tracing",
+ "url",
  "webrtc",
 ]
 
@@ -1745,20 +1749,6 @@ dependencies = [
 
 [[package]]
 name = "jni"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6df18c2e3db7e453d3c6ac5b3e9d5182664d28788126d39b91f2d1e22b017ec"
-dependencies = [
- "cesu8",
- "combine",
- "jni-sys",
- "log",
- "thiserror",
- "walkdir",
-]
-
-[[package]]
-name = "jni"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a87aa2bb7d2af34197c04845522473242e1aa17c12f4935d5856491a7fb8c97"
@@ -1838,8 +1828,6 @@ checksum = "f7012b1bbb0719e1097c47611d3898568c546d597c2e74d66f6087edd5233ff4"
 name = "libs-common"
 version = "0.1.0"
 dependencies = [
- "async-trait",
- "backoff",
  "base64 0.21.4",
  "boringtun",
  "chrono",
