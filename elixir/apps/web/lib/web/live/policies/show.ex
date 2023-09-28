@@ -134,6 +134,14 @@ defmodule Web.Policies.Show do
         </.link>
         (<%= flow.gateway_remote_ip %>)
       </:col>
+      <:col :let={flow} label="ACTIVITY">
+        <.link
+          navigate={~p"/#{@account}/flows/#{flow.id}"}
+          class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+        >
+          Show
+        </.link>
+      </:col>
     </.table>
 
     <.header>

@@ -169,6 +169,10 @@ defmodule Web.Router do
         live "/:id", Show
       end
 
+      scope "/flows", Flows do
+        live "/:id", Show
+      end
+
       scope "/settings", Settings do
         live "/account", Account
 

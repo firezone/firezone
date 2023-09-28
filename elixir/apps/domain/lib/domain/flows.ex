@@ -1,5 +1,5 @@
 defmodule Domain.Flows do
-  alias Domain.Repo
+  alias Domain.{Repo, Validator}
   alias Domain.{Auth, Accounts, Clients, Gateways, Resources, Policies}
   alias Domain.Flows.{Authorizer, Flow, Activity}
   require Ecto.Query
@@ -46,6 +46,24 @@ defmodule Domain.Flows do
         |> Repo.insert!()
 
       {:ok, resource, flow}
+    end
+  end
+
+  def fetch_flow_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_flows_permission()),
+         true <- Validator.valid_uuid?(id) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+      Flow.Query.by_id(id)
+      |> Authorizer.for_subject(Flow, subject)
+      |> Repo.fetch()
+      |> case do
+        {:ok, resource} -> {:ok, Repo.preload(resource, preload)}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      false -> {:error, :not_found}
+      other -> other
     end
   end
 

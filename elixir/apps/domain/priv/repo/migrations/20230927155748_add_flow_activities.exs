@@ -11,8 +11,8 @@ defmodule Domain.Repo.Migrations.AddFlowActivities do
       add(:window_ended_at, :utc_datetime_usec, null: false)
 
       add(:destination, :string, null: false)
-      add(:rx_bytes, :integer, null: false)
-      add(:tx_bytes, :integer, null: false)
+      add(:rx_bytes, :bigint, null: false)
+      add(:tx_bytes, :bigint, null: false)
 
       add(:flow_id, references(:flows, @assoc_opts), null: false)
       add(:account_id, references(:accounts, @assoc_opts), null: false)

@@ -50,9 +50,10 @@ defmodule Web.MixProject do
       {:gettext, "~> 0.20"},
       {:remote_ip, "~> 1.0"},
 
-      # CLDR
+      # CLDR and unit conversions
       {:ex_cldr_dates_times, "~> 2.13"},
       {:ex_cldr_numbers, "~> 2.31"},
+      {:sizeable, "~> 1.0"},
 
       # Asset pipeline deps
       {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},

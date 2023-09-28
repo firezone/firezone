@@ -99,7 +99,7 @@ defmodule Domain.ResourcesTest do
         )
 
       assert {:ok, resource} = fetch_resource_by_id(resource.id, subject, preload: :connections)
-      assert Ecto.assoc_loaded?(resource.connections) == true
+      assert Ecto.assoc_loaded?(resource.connections)
       assert length(resource.connections) == 1
     end
   end
@@ -222,7 +222,7 @@ defmodule Domain.ResourcesTest do
       assert {:ok, resource} =
                fetch_and_authorize_resource_by_id(resource.id, subject, preload: :connections)
 
-      assert Ecto.assoc_loaded?(resource.connections) == true
+      assert Ecto.assoc_loaded?(resource.connections)
       assert length(resource.connections) == 1
     end
   end

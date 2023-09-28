@@ -2,6 +2,7 @@ defmodule Domain.FlowsTest do
   use Domain.DataCase, async: true
   import Domain.Flows
   alias Domain.Flows
+  alias Domain.Flows.Authorizer
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -181,8 +182,92 @@ defmodule Domain.FlowsTest do
       assert {:ok, resource, _flow} =
                authorize_flow(client, gateway, resource.id, subject, preload: :connections)
 
-      assert Ecto.assoc_loaded?(resource.connections) == true
+      assert Ecto.assoc_loaded?(resource.connections)
+      assert Ecto.assoc_loaded?(resource.connections)
+      assert Ecto.assoc_loaded?(resource.connections)
+      assert Ecto.assoc_loaded?(resource.connections)
       assert length(resource.connections) == 1
+    end
+  end
+
+  describe "fetch_flow_by_id/2" do
+    test "returns error when flow does not exist", %{subject: subject} do
+      assert fetch_flow_by_id(Ecto.UUID.generate(), subject) == {:error, :not_found}
+    end
+
+    test "returns error when UUID is invalid", %{subject: subject} do
+      assert fetch_flow_by_id("foo", subject) == {:error, :not_found}
+    end
+
+    test "returns flow", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      assert {:ok, fetched_flow} = fetch_flow_by_id(flow.id, subject)
+      assert fetched_flow.id == flow.id
+    end
+
+    test "does not return flows in other accounts", %{subject: subject} do
+      flow = Fixtures.Flows.create_flow()
+      assert fetch_flow_by_id(flow.id, subject) == {:error, :not_found}
+    end
+
+    test "returns error when subject has no permission to view flows", %{subject: subject} do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert fetch_flow_by_id(Ecto.UUID.generate(), subject) ==
+               {:error,
+                {:unauthorized, [missing_permissions: [Authorizer.view_flows_permission()]]}}
+    end
+
+    test "associations are preloaded when opts given", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      assert {:ok, flow} =
+               fetch_flow_by_id(flow.id, subject,
+                 preload: [
+                   :policy,
+                   :client,
+                   :gateway,
+                   :resource,
+                   :account
+                 ]
+               )
+
+      assert Ecto.assoc_loaded?(flow.policy)
+      assert Ecto.assoc_loaded?(flow.client)
+      assert Ecto.assoc_loaded?(flow.gateway)
+      assert Ecto.assoc_loaded?(flow.resource)
+      assert Ecto.assoc_loaded?(flow.account)
     end
   end
 
