@@ -1,5 +1,6 @@
 use boringtun::noise::Tunn;
 use chrono::{DateTime, Utc};
+use secrecy::ExposeSecret;
 use std::sync::Arc;
 use tracing::instrument;
 
@@ -92,7 +93,7 @@ where
         let tunn = Tunn::new(
             self.private_key.clone(),
             peer_config.public_key,
-            Some(peer_config.preshared_key.to_bytes()),
+            Some(peer_config.preshared_key.expose_secret().0),
             peer_config.persistent_keepalive,
             index,
             None,

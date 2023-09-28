@@ -9,6 +9,7 @@ mock = ["libs-common/mock"]
 [dependencies]
 tokio = { version = "1.32", default-features = false, features = ["sync", "rt"] }
 tokio-util = "0.7.9"
+secrecy = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tracing-appender = { version = "0.2.2" }

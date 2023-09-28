@@ -8,6 +8,7 @@ edition = "2021"
 mock = []
 
 [dependencies]
+secrecy = { workspace = true, features = ["serde", "bytes"] }
 base64 = { version = "0.21", default-features = false, features = ["std"] }
 boringtun = { workspace = true }
 chrono = { workspace = true }

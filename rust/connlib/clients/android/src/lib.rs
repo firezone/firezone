@@ -10,6 +10,7 @@ use jni::{
     strings::JNIString,
     JNIEnv, JavaVM,
 };
+use secrecy::SecretString;
 use std::path::Path;
 use std::sync::OnceLock;
 use std::{
@@ -356,7 +357,7 @@ fn connect(
     callback_handler: GlobalRef,
 ) -> Result<Session<CallbackHandler>, ConnectError> {
     let portal_url = string_from_jstring!(env, portal_url);
-    let portal_token = string_from_jstring!(env, portal_token);
+    let secret = SecretString::from(string_from_jstring!(env, portal_token));
     let device_id = string_from_jstring!(env, device_id);
     let log_dir = string_from_jstring!(env, log_dir);
     let log_filter = string_from_jstring!(env, log_filter);
@@ -369,12 +370,9 @@ fn connect(
         handle,
     };
 
-    let session = Session::connect(
-        portal_url.as_str(),
-        portal_token,
-        device_id,
-        callback_handler,
-    )?;
+    init_logging(log_dir.into(), log_filter);
+
+    let session = Session::connect(portal_url.as_str(), secret, device_id, callback_handler)?;
 
     Ok(session)
 }

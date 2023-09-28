@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+secrecy = { workspace = true }
 tokio-tungstenite = { version = "0.19.0", features = ["rustls-tls-native-roots"] }
 futures = "0.3.28"
 base64 = "0.21.4"

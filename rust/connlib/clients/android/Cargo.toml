@@ -12,6 +12,7 @@ doc = false
 mock = ["firezone-client-connlib/mock"]
 
 [dependencies]
+secrecy = { workspace = true }
 tracing-android = "0.2"
 tracing = { workspace = true, features = ["std", "attributes"] }
 tracing-subscriber = { workspace = true }
