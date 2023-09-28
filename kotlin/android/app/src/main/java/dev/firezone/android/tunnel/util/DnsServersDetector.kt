@@ -20,7 +20,7 @@ import java.net.InetAddress
  * on any network change.
  *
  * It is always better to use a new instance of the detector when you need
- * current DNS servers otherwise you may get into troubles because of invalid/changed
+ * current DNS servers otherwise you may get into trouble because of invalid/changed
  * DNS servers.
  *
  * This class combines various methods and solutions from:
