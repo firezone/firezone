@@ -370,8 +370,6 @@ fn connect(
         handle,
     };
 
-    init_logging(log_dir.into(), log_filter);
-
     let session = Session::connect(portal_url.as_str(), secret, device_id, callback_handler)?;
 
     Ok(session)

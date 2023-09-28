@@ -169,7 +169,6 @@ impl WrappedSession {
         log_filter: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
-        let _guard = init_logging(log_dir.into(), log_filter);
         let secret = SecretString::from(token);
 
         let session = Session::connect(
@@ -178,7 +177,7 @@ impl WrappedSession {
             device_id,
             CallbackHandler {
                 inner: Arc::new(callback_handler),
-                handle: init_logging(log_dir, log_filter),
+                handle: init_logging(log_dir.into(), log_filter),
             },
         )
         .map_err(|err| err.to_string())?;
