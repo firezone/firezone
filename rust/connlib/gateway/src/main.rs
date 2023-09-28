@@ -1,23 +1,26 @@
-mod control;
-mod messages;
-
-use crate::control::{ControlPlane, ControlSignaler};
+use crate::control::ControlSignaler;
+use crate::eventloop::Eventloop;
 use crate::messages::IngressMessages;
-use anyhow::Result;
-use backoff::backoff::Backoff;
+use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use boringtun::x25519::{PublicKey, StaticSecret};
 use clap::Parser;
 use firezone_tunnel::Tunnel;
+use futures::{future, TryFutureExt};
 use headless_utils::{setup_global_subscriber, CommonArgs};
-use libs_common::control::PhoenixChannel;
 use libs_common::messages::Key;
 use libs_common::{get_device_id, get_websocket_path, sha256, Callbacks};
 use rand::distributions::Alphanumeric;
 use rand::Rng;
+use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing_subscriber::layer;
+use url::Url;
+
+mod control;
+mod eventloop;
+mod messages;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -32,7 +35,7 @@ async fn main() -> Result<()> {
         .take(8)
         .map(char::from)
         .collect();
-    let external_id = sha256(device_id);
+    let external_id = sha256(device_id.clone());
 
     let connect_url = get_websocket_path(
         cli.common.url,
@@ -43,86 +46,69 @@ async fn main() -> Result<()> {
         &name_suffix,
     )?;
 
-    // This is kinda hacky, the buffer size is 1 so that we make sure that we
-    // process one message at a time, blocking if a previous message haven't been processed
-    // to force queue ordering.
-    let (control_plane_sender, mut control_plane_receiver) = tokio::sync::mpsc::channel(1);
-
-    let mut connection =
-        PhoenixChannel::<_, IngressMessages, IngressMessages, IngressMessages>::new(
-            connect_url,
-            move |msg, reference| {
-                let control_plane_sender = control_plane_sender.clone();
-                async move {
-                    tracing::trace!("Received message: {msg:?}");
-                    if let Err(e) = control_plane_sender.send((msg, reference)).await {
-                        tracing::warn!("Received a message after handler already closed: {e}. Probably message received during session clean up.");
-                    }
-                }
-            },
-        );
-
-    // Used to send internal messages
-    let control_signaler = ControlSignaler {
-        control_signal: connection.sender_with_topic("gateway".to_owned()),
-    };
-    let tunnel = Tunnel::new(private_key, control_signaler.clone(), CallbackHandler).await?;
-
-    let mut control_plane = ControlPlane {
-        tunnel: Arc::new(tunnel),
-        control_signaler,
-    };
-
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(10));
-        loop {
-            tokio::select! {
-                Some((msg, _)) = control_plane_receiver.recv() => {
-                    match msg {
-                        Ok(msg) => control_plane.handle_message(msg).await?,
-                        Err(_msg_reply) => todo!(),
-                    }
-                },
-                _ = interval.tick() => control_plane.stats_event().await,
-                else => break
-            }
-        }
-
-        anyhow::Ok(())
-    });
-
-    tokio::spawn(async move {
-        let mut exponential_backoff = ExponentialBackoffBuilder::default()
+    tokio::spawn(backoff::future::retry_notify(
+        ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(None)
-            .build();
-        loop {
-            // `connection.start` calls the callback only after connecting
-            tracing::debug!("Attempting connection to portal...");
-            let result = connection
-                .start(vec!["gateway".to_owned()], || exponential_backoff.reset())
-                .await;
-            tracing::warn!("Disconnected from the portal");
-            if let Err(e) = &result {
-                tracing::warn!(error = ?e, "Portal connection error");
-            }
-
-            let t = exponential_backoff
-                .next_backoff()
-                .expect("gateway backoff never ends");
-
-            tracing::warn!(
-                "Error connecting to portal, retrying in {} seconds",
-                t.as_secs()
-            );
-            tokio::time::sleep(t).await;
-        }
-    });
-
-    tracing::info!("new_session");
+            .build(),
+        move || {
+            connect(device_id.clone(), private_key.clone(), connect_url.clone())
+                .map_err(backoff::Error::transient)
+        },
+        |error, t: Duration| {
+            tracing::warn!(retry_in = ?t, "Error connecting to portal: {error}");
+        },
+    ));
 
     tokio::signal::ctrl_c().await?;
 
     Ok(())
+}
+
+async fn connect(
+    device_id: String,
+    private_key: StaticSecret,
+    connect_url: Url,
+) -> Result<Infallible> {
+    // Note: This is only needed because [`Tunnel`] does not (yet) have a synchronous, poll-like interface. If it would have, ICE candidates would be emitted as events and we could just hand them to the phoenix channel.
+    let (control_tx, control_rx) = tokio::sync::mpsc::channel(1);
+    let signaler = ControlSignaler::new(control_tx);
+    let tunnel = Arc::new(Tunnel::new(private_key, signaler, CallbackHandler).await?);
+
+    tracing::debug!("Attempting connection to portal...");
+
+    let mut channel = phoenix_channel::PhoenixChannel::connect(connect_url, device_id).await?;
+    channel.join("gateway", ());
+
+    let channel = loop {
+        match future::poll_fn(|cx| channel.poll(cx))
+            .await
+            .context("portal connection failed")?
+        {
+            phoenix_channel::Event::JoinedRoom { topic } if topic == "relay" => {
+                tracing::info!("Joined gatway room on portal")
+            }
+            phoenix_channel::Event::InboundMessage {
+                topic,
+                msg: IngressMessages::Init(init),
+            } => {
+                tracing::info!("Received init message from portal on topic {topic}");
+
+                tunnel
+                    .set_interface(&init.interface)
+                    .await
+                    .context("Failed to set interface")?;
+
+                break channel;
+            }
+            other => {
+                tracing::debug!("Unhandled message from portal: {other:?}");
+            }
+        }
+    };
+
+    let mut eventloop = Eventloop::new(tunnel, control_rx, channel);
+
+    future::poll_fn(|cx| eventloop.poll(cx)).await
 }
 
 #[derive(Clone)]

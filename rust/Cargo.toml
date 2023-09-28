@@ -19,6 +19,7 @@ swift-bridge = "0.1.52"
 backoff = { version = "0.4", features = ["tokio"] }
 tracing = { version = "0.1.37" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
+phoenix-channel = { path = "phoenix-channel" }
 
 # Patched to use https://github.com/rust-lang/cc-rs/pull/708
 # (the `patch` section can't be used for build deps...)
