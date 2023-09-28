@@ -9,7 +9,7 @@ mock = []
 jni-bindings = ["boringtun/jni-bindings"]
 
 [dependencies]
-secrecy = { workspace = true }
+secrecy = { workspace = true, features = ["serde", "bytes"] }
 base64 = { version = "0.21", default-features = false, features = ["std"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
