@@ -119,7 +119,7 @@ defmodule Web.AuthController do
     |> maybe_put_resent_flash(params)
     |> put_session(:client_platform, params["client_platform"])
     |> put_session(:client_csrf_token, params["client_csrf_token"])
-    |> redirect(to: ~p"/#{account_id_or_slug}/providers/email/#{provider_id}?#{redirect_params}")
+    |> redirect(to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}?#{redirect_params}")
   end
 
   defp maybe_put_resent_flash(conn, %{"resend" => "true"}),
@@ -189,7 +189,7 @@ defmodule Web.AuthController do
       conn = put_session(conn, :client_csrf_token, params["client_csrf_token"])
 
       redirect_url =
-        url(~p"/#{account_id_or_slug}/providers/#{provider.id}/handle_callback")
+        url(~p"/#{account_id_or_slug}/sign_in/providers/#{provider.id}/handle_callback")
 
       redirect_to_idp(conn, redirect_url, provider)
     else
@@ -223,7 +223,7 @@ defmodule Web.AuthController do
       }) do
     with {:ok, code_verifier, conn} <- verify_state_and_fetch_verifier(conn, provider_id, state) do
       payload = {
-        url(~p"/#{account_id_or_slug}/providers/#{provider_id}/handle_callback"),
+        url(~p"/#{account_id_or_slug}/sign_in/providers/#{provider_id}/handle_callback"),
         code_verifier,
         code
       }

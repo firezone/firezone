@@ -64,10 +64,10 @@ defmodule Web.Router do
 
       # Adapter-specific routes
       ## Email
-      live "/providers/email/:provider_id", Auth.Email
+      live "/sign_in/providers/email/:provider_id", Auth.Email
     end
 
-    scope "/providers/:provider_id" do
+    scope "/sign_in/providers/:provider_id" do
       # UserPass
       post "/verify_credentials", AuthController, :verify_credentials
 

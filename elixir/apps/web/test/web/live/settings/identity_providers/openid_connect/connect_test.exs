@@ -103,7 +103,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.Connect do
 
       conn =
         conn
-        |> get(~p"/#{account_id}/providers/#{provider_id}/handle_callback", %{
+        |> get(~p"/#{account_id}/sign_in/providers/#{provider_id}/handle_callback", %{
           "state" => "foo",
           "code" => "bar"
         })
