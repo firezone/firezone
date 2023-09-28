@@ -107,13 +107,13 @@ async fn main() -> Result<()> {
         args.highest_port,
     );
 
-    let channel = if args.portal_token.is_some() {
+    let channel = if let Some(token) = args.portal_token.as_ref() {
         let base_url = args.portal_ws_url.clone();
         let stamp_secret = server.auth_secret();
 
         let span = tracing::error_span!("connect_to_portal", config_url = %base_url);
 
-        connect_to_portal(&args, base_url, stamp_secret)
+        connect_to_portal(&args, token, base_url, stamp_secret)
             .instrument(span)
             .await?
     } else {
@@ -243,6 +243,7 @@ fn env_filter() -> EnvFilter {
 
 async fn connect_to_portal(
     args: &Args,
+    token: &SecretString,
     mut url: Url,
     stamp_secret: &SecretString,
 ) -> Result<Option<PhoenixChannel<InboundPortalMessage, ()>>> {
@@ -253,11 +254,8 @@ async fn connect_to_portal(
     }
 
     url.set_path("relay/websocket");
-
-    if let Some(secret) = args.portal_token.as_ref() {
-        url.query_pairs_mut()
-            .append_pair("token", secret.expose_secret().as_str());
-    }
+    url.query_pairs_mut()
+        .append_pair("token", token.expose_secret().as_str());
 
     if let Some(public_ip4_addr) = args.public_ip4_addr {
         url.query_pairs_mut()
