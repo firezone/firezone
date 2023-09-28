@@ -171,6 +171,7 @@ defmodule Web.Router do
 
       scope "/flows", Flows do
         live "/:id", Show
+        get "/:id/activities.csv", DownloadActivities, :download
       end
 
       scope "/settings", Settings do

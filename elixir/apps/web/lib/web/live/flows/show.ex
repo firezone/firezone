@@ -66,167 +66,175 @@ defmodule Web.Flows.Show do
         <%= @flow.client.name %> flow
       </.breadcrumb>
     </.breadcrumbs>
-    <.header>
+
+    <.page>
       <:title>
         Flow for: <code><%= @flow.client.name %></code>
       </:title>
-    </.header>
 
-    <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table id="flow">
-        <.vertical_table_row>
-          <:label>Authorized At</:label>
-          <:value>
-            <.relative_datetime datetime={@flow.inserted_at} />
-          </:value>
-        </.vertical_table_row>
-        <.vertical_table_row>
-          <:label>Expires At</:label>
-          <:value>
-            <.relative_datetime datetime={@flow.expires_at} />
-          </:value>
-        </.vertical_table_row>
-        <.vertical_table_row>
-          <:label>Policy</:label>
-          <:value>
-            <.link
-              navigate={~p"/#{@account}/policies/#{@flow.policy_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-            >
-              <.policy_name policy={@flow.policy} />
-            </.link>
-          </:value>
-        </.vertical_table_row>
-        <.vertical_table_row>
-          <:label>Client</:label>
-          <:value>
-            <.link
-              navigate={~p"/#{@account}/clients/#{@flow.client_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-            >
-              <%= @flow.client.name %>
-            </.link>
-            <div>Remote IP: <%= @flow.client_remote_ip %></div>
-            <div>User Agent: <%= @flow.client_user_agent %></div>
-          </:value>
-        </.vertical_table_row>
-        <.vertical_table_row>
-          <:label>Gateway</:label>
-          <:value>
-            <.link
-              navigate={~p"/#{@account}/gateways/#{@flow.gateway_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-            >
-              <%= @flow.gateway.group.name_prefix %>-<%= @flow.gateway.name_suffix %>
-            </.link>
-            <div>
-              Remote IP: <%= @flow.gateway_remote_ip %>
-            </div>
-          </:value>
-        </.vertical_table_row>
-        <.vertical_table_row>
-          <:label>Resource</:label>
-          <:value>
-            <.link
-              navigate={~p"/#{@account}/resources/#{@flow.resource_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-            >
-              <%= @flow.resource.name %>
-            </.link>
-          </:value>
-        </.vertical_table_row>
-      </.vertical_table>
-
-      <div
-        :for={{destination, activities} <- @activities_by_destination}
-        class="w-full bg-white rounded-lg shadow dark:bg-gray-800 p-4 md:p-6"
+      <:action
+        navigate={~p"/#{@account}/flows/#{@flow}/activities.csv"}
+        icon="hero-arrow-down-on-square"
       >
-        <div class="flex flex-row justify-between mb-5">
-          <!--
+        Export to CSV
+      </:action>
+
+      <:content flash={@flash}>
+        <.vertical_table id="flow">
+          <.vertical_table_row>
+            <:label>Authorized At</:label>
+            <:value>
+              <.relative_datetime datetime={@flow.inserted_at} />
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Expires At</:label>
+            <:value>
+              <.relative_datetime datetime={@flow.expires_at} />
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Policy</:label>
+            <:value>
+              <.link
+                navigate={~p"/#{@account}/policies/#{@flow.policy_id}"}
+                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              >
+                <.policy_name policy={@flow.policy} />
+              </.link>
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Client</:label>
+            <:value>
+              <.link
+                navigate={~p"/#{@account}/clients/#{@flow.client_id}"}
+                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              >
+                <%= @flow.client.name %>
+              </.link>
+              <div>Remote IP: <%= @flow.client_remote_ip %></div>
+              <div>User Agent: <%= @flow.client_user_agent %></div>
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Gateway</:label>
+            <:value>
+              <.link
+                navigate={~p"/#{@account}/gateways/#{@flow.gateway_id}"}
+                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              >
+                <%= @flow.gateway.group.name_prefix %>-<%= @flow.gateway.name_suffix %>
+              </.link>
+              <div>
+                Remote IP: <%= @flow.gateway_remote_ip %>
+              </div>
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Resource</:label>
+            <:value>
+              <.link
+                navigate={~p"/#{@account}/resources/#{@flow.resource_id}"}
+                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              >
+                <%= @flow.resource.name %>
+              </.link>
+            </:value>
+          </.vertical_table_row>
+        </.vertical_table>
+
+        <div
+          :for={{destination, activities} <- @activities_by_destination}
+          class="w-full bg-white rounded-lg shadow dark:bg-gray-800 p-4 md:p-6"
+        >
+          <div class="flex flex-row justify-between mb-5">
+            <!--
           <div>
-            <.date_range id={"activity-chart-#{Domain.Crypto.hash(:md5, to_string(destination))}"} />
+          <.date_range id={"activity-chart-#{Domain.Crypto.hash(:md5, to_string(destination))}"} />
           </div>
           -->
-          <div class="text-2xl">
-            Traffic to
-            <span class="font-bold">
-              <%= destination %>
-            </span>
-            in MB
+            <div class="text-l">
+              Traffic to
+              <span class="font-bold">
+                <%= destination %>
+              </span>
+              in MB
+            </div>
           </div>
-        </div>
-        <.chart
-          id={"activity-chart-#{Domain.Crypto.hash(:md5, to_string(destination))}"}
-          options={
-            %{
-              chart: %{
-                height: "100%",
-                maxWidth: "100%",
-                type: "heatmap",
-                fontFamily: "Inter, sans-serif",
-                dropShadow: %{
+          <.chart
+            id={"activity-chart-#{Domain.Crypto.hash(:md5, to_string(destination))}"}
+            options={
+              %{
+                chart: %{
+                  height: "100px",
+                  maxWidth: "100%",
+                  type: "heatmap",
+                  fontFamily: "Inter, sans-serif",
+                  dropShadow: %{
+                    enabled: false
+                  },
+                  toolbar: %{
+                    show: false
+                  }
+                },
+                tooltip: %{
+                  enabled: true,
+                  x: %{
+                    show: false
+                  }
+                },
+                dataLabels: %{
                   enabled: false
                 },
-                toolbar: %{
-                  show: false
-                }
-              },
-              tooltip: %{
-                enabled: true,
-                x: %{
-                  show: false
-                }
-              },
-              dataLabels: %{
-                enabled: false
-              },
-              stroke: %{
-                width: 1,
-                curve: "smooth"
-              },
-              grid: %{
-                show: true,
-                strokeDashArray: 4,
-                padding: %{
-                  left: 2,
-                  right: 2,
-                  top: -26
-                }
-              },
-              series: chart_series(activities),
-              legend: %{
-                show: true
-              },
-              yaxis: %{
-                title: "MB"
-              },
-              xaxis: %{
-                type: "datetime",
-                title: "Date and Time",
-                tooltip: %{
-                  enabled: true
+                stroke: %{
+                  width: 1,
+                  curve: "smooth"
                 },
-                labels: %{
+                grid: %{
                   show: true,
-                  rotate: 45,
-                  style: %{
-                    fontFamily: "Inter, sans-serif",
-                    cssClass: "text-xs font-normal fill-gray-500 dark:fill-gray-400"
+                  strokeDashArray: 4,
+                  padding: %{
+                    left: 2,
+                    right: 2,
+                    top: -26
+                  }
+                },
+                series: chart_series(activities),
+                legend: %{
+                  show: true
+                },
+                yaxis: %{
+                  title: "MB"
+                },
+                xaxis: %{
+                  type: "datetime",
+                  title: "Date and Time",
+                  tooltip: %{
+                    enabled: true
                   },
-                  format: "dd/MM HH:mm"
-                },
-                axisBorder: %{
-                  show: false
-                },
-                axisTicks: %{
-                  show: false
+                  labels: %{
+                    show: true,
+                    rotate: 45,
+                    style: %{
+                      fontFamily: "Inter, sans-serif",
+                      cssClass: "text-xs font-normal fill-gray-500 dark:fill-gray-400"
+                    },
+                    format: "dd/MM HH:mm"
+                  },
+                  axisBorder: %{
+                    show: false
+                  },
+                  axisTicks: %{
+                    show: false
+                  }
                 }
               }
             }
-          }
-        />
-      </div>
-    </div>
+          />
+        </div>
+      </:content>
+    </.page>
     """
   end
 
