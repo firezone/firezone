@@ -22,7 +22,7 @@ defmodule Web.Clients.Show do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/actors"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/clients"}>Clients</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/clients/#{@client.id}"}>
         <%= @client.name %>

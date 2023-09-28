@@ -32,7 +32,7 @@ defmodule Web.RelayGroups.Edit do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/actors"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/relay_groups"}>Relay Instance Groups</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/relay_groups/#{@group}"}>
         <%= @group.name %>

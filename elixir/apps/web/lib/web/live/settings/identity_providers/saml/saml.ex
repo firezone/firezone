@@ -36,7 +36,7 @@ defmodule Web.Settings.IdentityProviders.SAML.New do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/actors"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/settings/identity_providers"}>
         Identity Providers Settings
       </.breadcrumb>

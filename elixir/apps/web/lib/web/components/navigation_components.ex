@@ -239,8 +239,6 @@ defmodule Web.NavigationComponents do
     default: nil,
     doc: "Account assign which will be used to fetch the home path."
 
-  # TODO: remove this attribute
-  attr :home_path, :string, required: false, doc: "The path for to the home page for a user."
   slot :inner_block, required: true, doc: "Breadcrumb entries"
 
   def breadcrumbs(assigns) do

@@ -14,7 +14,7 @@ defmodule Web.Resources.Index do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/actors"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/resources"}>Resources</.breadcrumb>
     </.breadcrumbs>
     <.header>

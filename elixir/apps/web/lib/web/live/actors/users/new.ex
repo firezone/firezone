@@ -58,7 +58,7 @@ defmodule Web.Actors.Users.New do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/actors"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/new"}>Add</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/users/new"}>User</.breadcrumb>

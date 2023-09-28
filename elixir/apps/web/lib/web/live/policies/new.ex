@@ -23,7 +23,7 @@ defmodule Web.Policies.New do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/actors"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/policies"}>Policies</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/policies/new"}>Add Policy</.breadcrumb>
     </.breadcrumbs>

@@ -28,7 +28,7 @@ defmodule Web.Groups.New do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/actors"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/groups"}>Actor Groups</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/groups/new"}>Add</.breadcrumb>
     </.breadcrumbs>

@@ -3,7 +3,7 @@ defmodule Web.Settings.DNS do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/actors"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/settings/dns"}>DNS Settings</.breadcrumb>
     </.breadcrumbs>
     <.header>
