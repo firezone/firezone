@@ -2,7 +2,9 @@ use crate::messages::ResourceDescription;
 use crate::{Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::os::fd::RawFd;
+
+// Avoids having to map types for Windows
+type RawFd = i32;
 
 #[derive(Clone)]
 pub struct CallbackErrorFacade<CB>(pub CB);
