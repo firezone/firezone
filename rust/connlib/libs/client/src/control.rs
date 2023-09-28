@@ -1,16 +1,14 @@
 use std::path::PathBuf;
-use std::{io, sync::Arc, time::Duration};
+use std::{io, sync::Arc};
 
 use crate::messages::{
     BroadcastGatewayIceCandidates, Connect, ConnectionDetails, EgressMessages,
     GatewayIceCandidates, InitClient, Messages,
 };
-use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
-use boringtun::x25519::StaticSecret;
 use libs_common::{
-    control::{ErrorInfo, ErrorReply, MessageResult, PhoenixSenderWithTopic, Reference},
+    control::{ErrorInfo, ErrorReply, PhoenixSenderWithTopic, Reference},
     messages::{GatewayId, ResourceDescription, ResourceId},
-    Callbacks, ControlSession,
+    Callbacks,
     Error::{self, ControlProtocolError},
     Result,
 };
@@ -18,7 +16,7 @@ use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 use async_trait::async_trait;
 use firezone_tunnel::{ConnId, ControlSignal, Request, Tunnel};
-use tokio::sync::{mpsc::Receiver, Mutex};
+use tokio::sync::Mutex;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
@@ -70,42 +68,18 @@ impl ControlSignal for ControlSignaler {
     }
 }
 
-/// Implementation of [ControlSession] for clients.
 pub struct ControlPlane<CB: Callbacks> {
-    tunnel: Arc<Tunnel<ControlSignaler, CB>>,
-    control_signaler: ControlSignaler,
-    tunnel_init: Mutex<bool>,
+    pub tunnel: Arc<Tunnel<ControlSignaler, CB>>,
+    pub control_signaler: ControlSignaler,
+    pub tunnel_init: Mutex<bool>,
 }
 
 #[derive(Clone)]
-struct ControlSignaler {
-    control_signal: PhoenixSenderWithTopic,
+pub struct ControlSignaler {
+    pub control_signal: PhoenixSenderWithTopic,
 }
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn start(
-        mut self,
-        mut receiver: Receiver<(MessageResult<Messages>, Option<Reference>)>,
-    ) -> Result<()> {
-        let mut log_stats_interval = tokio::time::interval(Duration::from_secs(10));
-        let mut upload_logs_interval = tokio::time::interval(upload_interval_from_env_or_default());
-        loop {
-            tokio::select! {
-                Some((msg, reference)) = receiver.recv() => {
-                    match msg {
-                        Ok(msg) => self.handle_message(msg, reference).await?,
-                        Err(err) => self.handle_error(err, reference).await,
-                    }
-                },
-                _ = log_stats_interval.tick() => self.stats_event().await,
-                _ = upload_logs_interval.tick() => self.request_log_upload_url().await,
-                else => break
-            }
-        }
-        Ok(())
-    }
-
     #[tracing::instrument(level = "trace", skip(self))]
     async fn init(
         &mut self,
@@ -136,7 +110,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn connect(
+    pub async fn connect(
         &mut self,
         Connect {
             gateway_rtc_session_description,
@@ -159,7 +133,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn add_resource(&self, resource_description: ResourceDescription) {
+    pub async fn add_resource(&self, resource_description: ResourceDescription) {
         if let Err(e) = self.tunnel.add_resource(resource_description).await {
             tracing::error!(message = "Can't add resource", error = ?e);
             let _ = self.tunnel.callbacks().on_error(&e);
@@ -253,7 +227,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn handle_message(
+    pub async fn handle_message(
         &mut self,
         msg: Messages,
         reference: Option<Reference>,
@@ -284,11 +258,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn handle_error(
-        &mut self,
-        reply_error: ErrorReply,
-        reference: Option<Reference>,
-    ) {
+    pub async fn handle_error(&mut self, reply_error: ErrorReply, reference: Option<Reference>) {
         if matches!(reply_error.error, ErrorInfo::Offline) {
             match reference {
                 Some(reference) => {
@@ -318,10 +288,11 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }
     }
 
-    pub(super) async fn stats_event(&mut self) {
+    pub async fn stats_event(&mut self) {
         tracing::debug!(target: "tunnel_state", stats = ?self.tunnel.stats());
     }
-    async fn request_log_upload_url(&mut self) {
+
+    pub async fn request_log_upload_url(&mut self) {
         tracing::info!("Requesting log upload URL from portal");
 
         let _ = self
@@ -330,34 +301,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             .send(EgressMessages::CreateLogSink {})
             .await;
     }
-}
-
-/// Parses an interval from the _compile-time_ env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS`.
-///
-/// If not present or parsing as u64 fails, we fall back to a default interval of 1 hour.
-fn upload_interval_from_env_or_default() -> Duration {
-    const DEFAULT: Duration = Duration::from_secs(60 * 60);
-
-    let Some(interval) = option_env!("CONNLIB_LOG_UPLOAD_INTERVAL_SECS") else {
-        tracing::warn!(interval = ?DEFAULT, "Env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS` was not set during compile-time, falling back to default");
-
-        return DEFAULT
-    };
-
-    let interval = match interval.parse() {
-        Ok(i) => i,
-        Err(e) => {
-            tracing::warn!(interval = ?DEFAULT, "Failed to parse `CONNLIB_LOG_UPLOAD_INTERVAL_SECS` as u64: {e}");
-            return DEFAULT;
-        }
-    };
-
-    tracing::info!(
-        ?interval,
-        "Using upload interval specified at compile-time via `CONNLIB_LOG_UPLOAD_INTERVAL_SECS`"
-    );
-
-    Duration::from_secs(interval)
 }
 
 async fn upload(path: PathBuf, url: Url) -> io::Result<()> {
@@ -391,36 +334,4 @@ async fn upload(path: PathBuf, url: Url) -> io::Result<()> {
     }
 
     Ok(())
-}
-
-#[async_trait]
-impl<CB: Callbacks + 'static> ControlSession<Messages, CB> for ControlPlane<CB> {
-    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
-    async fn start(
-        private_key: StaticSecret,
-        receiver: Receiver<(MessageResult<Messages>, Option<Reference>)>,
-        control_signal: PhoenixSenderWithTopic,
-        callbacks: CB,
-    ) -> Result<()> {
-        let control_signaler = ControlSignaler { control_signal };
-        let tunnel = Arc::new(Tunnel::new(private_key, control_signaler.clone(), callbacks).await?);
-
-        let control_plane = ControlPlane {
-            tunnel,
-            control_signaler,
-            tunnel_init: Mutex::new(false),
-        };
-
-        tokio::spawn(async move { control_plane.start(receiver).await });
-
-        Ok(())
-    }
-
-    fn socket_path() -> &'static str {
-        "client"
-    }
-
-    fn retry_strategy() -> ExponentialBackoff {
-        ExponentialBackoffBuilder::default().build()
-    }
 }
