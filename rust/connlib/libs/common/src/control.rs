@@ -356,10 +356,9 @@ enum OkReply<T> {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorInfo {
+    Reason(String),
     Offline,
     Disabled,
-    #[serde(other)]
-    Unknown,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
