@@ -10,7 +10,7 @@ use bytes::Bytes;
 
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::{messages::Key, Callbacks, Error, DNS_SENTINEL};
+use libs_common::{messages::Key, CallbackErrorFacade, Callbacks, Error, DNS_SENTINEL};
 use serde::{Deserialize, Serialize};
 
 use async_trait::async_trait;
@@ -35,7 +35,7 @@ use libs_common::{
     messages::{
         ClientId, GatewayId, Interface as InterfaceConfig, ResourceDescription, ResourceId,
     },
-    CallbackErrorFacade, Result,
+    Result,
 };
 
 use device_channel::{create_iface, DeviceIo, IfaceConfig};

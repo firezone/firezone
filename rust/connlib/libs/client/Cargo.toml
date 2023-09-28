@@ -19,6 +19,9 @@ serde = { version = "1.0", default-features = false, features = ["std", "derive"
 boringtun = { workspace = true }
 backoff = { workspace = true }
 webrtc = "0.8"
+url = { version = "2.4.1", default-features = false }
+rand = { version = "0.8", default-features = false, features = ["std"] }
+tokio-tungstenite = { version = "0.19", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 tracing = { workspace = true, features = ["std", "attributes"] }

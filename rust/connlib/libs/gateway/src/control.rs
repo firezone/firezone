@@ -1,34 +1,26 @@
-use std::{sync::Arc, time::Duration};
-
-use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
-use boringtun::x25519::StaticSecret;
-use firezone_tunnel::{ConnId, ControlSignal, Tunnel};
-use libs_common::{
-    control::{MessageResult, PhoenixSenderWithTopic, Reference},
-    messages::{GatewayId, ResourceDescription},
-    Callbacks, ControlSession,
-    Error::ControlProtocolError,
-    Result,
-};
-use tokio::sync::mpsc::Receiver;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
-
-use crate::messages::{AllowAccess, BroadcastClientIceCandidates, ClientIceCandidates};
-
 use super::messages::{
     ConnectionReady, EgressMessages, IngressMessages, InitGateway, RequestConnection,
 };
-
+use crate::messages::{AllowAccess, BroadcastClientIceCandidates, ClientIceCandidates};
 use async_trait::async_trait;
+use firezone_tunnel::{ConnId, ControlSignal, Tunnel};
+use libs_common::Error::ControlProtocolError;
+use libs_common::{
+    control::PhoenixSenderWithTopic,
+    messages::{GatewayId, ResourceDescription},
+    Callbacks, Result,
+};
+use std::sync::Arc;
+use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 pub struct ControlPlane<CB: Callbacks> {
-    tunnel: Arc<Tunnel<ControlSignaler, CB>>,
-    control_signaler: ControlSignaler,
+    pub tunnel: Arc<Tunnel<ControlSignaler, CB>>,
+    pub control_signaler: ControlSignaler,
 }
 
 #[derive(Clone)]
-struct ControlSignaler {
-    control_signal: PhoenixSenderWithTopic,
+pub struct ControlSignaler {
+    pub control_signal: PhoenixSenderWithTopic,
 }
 
 #[async_trait]
@@ -71,28 +63,7 @@ impl ControlSignal for ControlSignaler {
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn start(
-        mut self,
-        mut receiver: Receiver<(MessageResult<IngressMessages>, Option<Reference>)>,
-    ) -> Result<()> {
-        let mut interval = tokio::time::interval(Duration::from_secs(10));
-        loop {
-            tokio::select! {
-                Some((msg, _)) = receiver.recv() => {
-                    match msg {
-                        Ok(msg) => self.handle_message(msg).await?,
-                        Err(_msg_reply) => todo!(),
-                    }
-                },
-                _ = interval.tick() => self.stats_event().await,
-                else => break
-            }
-        }
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn init(&mut self, init: InitGateway) -> Result<()> {
+    pub async fn init(&mut self, init: InitGateway) -> Result<()> {
         if let Err(e) = self.tunnel.set_interface(&init.interface).await {
             tracing::error!("Couldn't initialize interface: {e}");
             Err(e)
@@ -104,7 +75,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn connection_request(&self, connection_request: RequestConnection) {
+    pub fn connection_request(&self, connection_request: RequestConnection) {
         let tunnel = Arc::clone(&self.tunnel);
         let mut control_signaler = self.control_signaler.clone();
         tokio::spawn(async move {
@@ -141,7 +112,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn allow_access(
+    pub fn allow_access(
         &self,
         AllowAccess {
             client_id,
@@ -172,7 +143,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn handle_message(&mut self, msg: IngressMessages) -> Result<()> {
+    pub async fn handle_message(&mut self, msg: IngressMessages) -> Result<()> {
         match msg {
             IngressMessages::Init(init) => self.init(init).await?,
             IngressMessages::RequestConnection(connection_request) => {
@@ -189,40 +160,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         Ok(())
     }
 
-    pub(super) async fn stats_event(&mut self) {
+    pub async fn stats_event(&mut self) {
         tracing::debug!(target: "tunnel_state", stats = ?self.tunnel.stats());
-    }
-}
-
-#[async_trait]
-impl<CB: Callbacks + 'static> ControlSession<IngressMessages, CB> for ControlPlane<CB> {
-    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
-    async fn start(
-        private_key: StaticSecret,
-        receiver: Receiver<(MessageResult<IngressMessages>, Option<Reference>)>,
-        control_signal: PhoenixSenderWithTopic,
-        callbacks: CB,
-    ) -> Result<()> {
-        let control_signaler = ControlSignaler { control_signal };
-        let tunnel = Arc::new(Tunnel::new(private_key, control_signaler.clone(), callbacks).await?);
-
-        let control_plane = ControlPlane {
-            tunnel,
-            control_signaler,
-        };
-
-        tokio::spawn(async move { control_plane.start(receiver).await });
-
-        Ok(())
-    }
-
-    fn socket_path() -> &'static str {
-        "gateway"
-    }
-
-    fn retry_strategy() -> ExponentialBackoff {
-        ExponentialBackoffBuilder::default()
-            .with_max_elapsed_time(None)
-            .build()
     }
 }
