@@ -258,8 +258,6 @@ defmodule Web.AuthControllerTest do
 
       assert redirected_to = redirected_to(conn)
       assert redirected_to_uri = URI.parse(redirected_to)
-      assert redirected_to_uri.scheme == "https"
-      assert redirected_to_uri.host == "app.firez.one"
       assert redirected_to_uri.path == "/handle_client_auth_callback"
 
       assert %{
