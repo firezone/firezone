@@ -102,6 +102,10 @@ class TunnelService : VpnService() {
             tunnelRepository.removeRoute(cidrAddress)
         }
 
+        override fun getSystemDefaultResolvers(): String {
+            return moshi.adapter<Array<String>>().toJson(DnsServersDetector(this@TunnelService).servers)
+        }
+
         override fun onDisconnect(error: String?): Boolean {
             Log.d(TAG, "onDisconnect $error")
 

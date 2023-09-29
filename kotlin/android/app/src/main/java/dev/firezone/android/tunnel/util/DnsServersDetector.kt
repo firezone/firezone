@@ -1,6 +1,6 @@
+/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.tunnel.util
 
-import android.annotation.TargetApi
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.LinkProperties
@@ -36,10 +36,10 @@ class DnsServersDetector(
     /**
      * Holds context this was created under
      */
-    private val context: Context
+    private val context: Context,
 ) {
     //region - public //////////////////////////////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // //////////////////////////////////////////////////////////////////////////////////////////////
     val servers: Array<String>
         /**
          * Returns android DNS servers used for current connected network
@@ -68,7 +68,7 @@ class DnsServersDetector(
 
     //endregion
     //region - private /////////////////////////////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // //////////////////////////////////////////////////////////////////////////////////////////////
     private val serversMethodConnectivityManager: Array<String>?
         /**
          * Detect android DNS servers by using connectivity manager
@@ -128,7 +128,7 @@ class DnsServersDetector(
                     Log.d(
                         TAG,
                         "Exception detecting DNS servers using ConnectivityManager method",
-                        ex
+                        ex,
                     )
                 }
             }
@@ -183,7 +183,6 @@ class DnsServersDetector(
             val valueStart = split + METHOD_EXEC_PROP_DELIM.length
             val valueEnd = line.length - 1
             if (valueEnd < valueStart) {
-
                 // This can happen if a newline sneaks in as the first character of the property value. For example
                 // "[propName]: [\n…]".
                 Log.d(TAG, "Malformed property detected: \"$line\"")
@@ -228,7 +227,7 @@ class DnsServersDetector(
          */
         private val FACTORY_DNS_SERVERS = arrayOf(
             "8.8.8.8",
-            "8.8.4.4"
+            "8.8.4.4",
         )
 
         /**
