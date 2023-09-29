@@ -90,14 +90,6 @@ defmodule Web.Gateways.Show do
           </:value>
         </.vertical_table_row>
         <.vertical_table_row>
-          <:label>Location</:label>
-          <:value>
-            <code>
-              <%= @gateway.last_seen_remote_ip %>
-            </code>
-          </:value>
-        </.vertical_table_row>
-        <.vertical_table_row>
           <:label>
             Last seen
           </:label>
@@ -106,15 +98,9 @@ defmodule Web.Gateways.Show do
           </:value>
         </.vertical_table_row>
         <.vertical_table_row>
-          <:label>Remote IPv4</:label>
+          <:label>Last Seen Remote IP</:label>
           <:value>
-            <code><%= @gateway.ipv4 %></code>
-          </:value>
-        </.vertical_table_row>
-        <.vertical_table_row>
-          <:label>Remote IPv6</:label>
-          <:value>
-            <code><%= @gateway.ipv6 %></code>
+            <code><%= @gateway.last_seen_remote_ip %></code>
           </:value>
         </.vertical_table_row>
         <!--

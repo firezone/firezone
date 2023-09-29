@@ -87,8 +87,7 @@ defmodule Web.Live.Clients.ShowTest do
     assert table["owner"] =~ actor.name
     assert table["created"]
     assert table["last seen"]
-    assert table["remote ipv4"] =~ to_string(client.ipv4)
-    assert table["remote ipv6"] =~ to_string(client.ipv6)
+    assert table["last seen remote ip"] =~ to_string(client.last_seen_remote_ip)
     assert table["client version"] =~ client.last_seen_version
     assert table["user agent"] =~ client.last_seen_user_agent
   end
