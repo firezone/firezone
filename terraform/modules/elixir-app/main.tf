@@ -132,11 +132,7 @@ resource "google_project_iam_member" "cloudtrace" {
   member = "serviceAccount:${google_service_account.application.email}"
 }
 
-# Deploy the app
-data "template_file" "clout-init" {
-  template = file("${path.module}/templates/cloud-init.yaml")
-}
-
+# Deploy app
 resource "google_compute_instance_template" "application" {
   project = var.project_id
 
@@ -213,7 +209,7 @@ resource "google_compute_instance_template" "application" {
       }
     })
 
-    user-data = data.template_file.clout-init.rendered
+    user-data = templatefile("${path.module}/templates/cloud-init.yaml", {})
 
     google-logging-enabled = "true"
     # Enable FluentBit agent for logging, which will be default one from COS 109
