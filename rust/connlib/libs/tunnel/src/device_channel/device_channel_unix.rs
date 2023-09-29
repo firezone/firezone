@@ -1,6 +1,9 @@
-use std::sync::{
-    atomic::{AtomicUsize, Ordering::Relaxed},
-    Arc,
+use std::{
+    os::fd::{AsRawFd, RawFd},
+    sync::{
+        atomic::{AtomicUsize, Ordering::Relaxed},
+        Arc,
+    },
 };
 
 use ip_network::IpNetwork;
@@ -24,6 +27,10 @@ impl DeviceIo {
         self.0
             .async_io(Interest::READABLE, |inner| inner.read(out))
             .await
+    }
+
+    pub fn fd(&self) -> RawFd {
+        self.0.get_ref().as_raw_fd()
     }
 
     // Note: write is synchronous because it's non-blocking

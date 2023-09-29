@@ -93,6 +93,8 @@ cargo {
     module = "../"
     libname = "connlib"
     targets = listOf("arm", "arm64", "x86", "x86_64")
+    rustcCommand = "/home/conectado/.cargo/bin/rustc"
+    cargoCommand = "/home/conectado/.cargo/bin/cargo"
 }
 
 tasks.register("copyJniSharedObjectsDebug") {

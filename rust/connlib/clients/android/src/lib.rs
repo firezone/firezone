@@ -122,8 +122,8 @@ fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
         .expect("Logging guard should never be initialized twice");
 
     let _ = tracing_subscriber::registry()
-        .with(file_layer.with_filter(EnvFilter::new(log_filter)))
-        .with(android_layer())
+        .with(file_layer.with_filter(EnvFilter::new(log_filter.clone())))
+        .with(android_layer().with_filter(EnvFilter::new(log_filter.clone())))
         .try_init();
 
     handle

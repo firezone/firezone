@@ -136,31 +136,32 @@ where
         src: &mut [u8],
         dst: &mut [u8],
     ) -> Result<()> {
-        if let Some(r) = self.check_for_dns(src) {
-            match r {
-                dns::SendPacket::Ipv4(r) => device_writer.write4(&r[..])?,
-                dns::SendPacket::Ipv6(r) => device_writer.write4(&r[..])?,
-            };
-            return Ok(());
-        }
+        // if let Some(r) = self.check_for_dns(src) {
+        //     match r {
+        //         dns::SendPacket::Ipv4(r) => device_writer.write4(&r[..])?,
+        //         dns::SendPacket::Ipv6(r) => device_writer.write6(&r[..])?,
+        //     };
+        //     return Ok(());
+        // }
 
-        let dst_addr = match Tunn::dst_address(src) {
-            Some(addr) => addr,
-            None => return Err(Error::BadPacket),
-        };
+        // let dst_addr = match Tunn::dst_address(src) {
+        //     Some(addr) => addr,
+        //     None => return Err(Error::BadPacket),
+        // };
 
-        let encapsulated_packet = {
-            match self.peers_by_ip.read().longest_match(dst_addr).map(|p| p.1) {
-                Some(peer) => peer.encapsulate(src, dst)?,
-                None => {
-                    self.connection_intent(src, &dst_addr);
-                    return Ok(());
-                }
-            }
-        };
+        // let encapsulated_packet = {
+        //     match self.peers_by_ip.read().longest_match(dst_addr).map(|p| p.1) {
+        //         Some(peer) => peer.encapsulate(src, dst)?,
+        //         None => {
+        //             self.connection_intent(src, &dst_addr);
+        //             return Ok(());
+        //         }
+        //     }
+        // };
 
-        self.handle_encapsulated_packet(encapsulated_packet, &dst_addr)
-            .await
+        Ok(())
+        // self.handle_encapsulated_packet(encapsulated_packet, &dst_addr)
+        //     .await
     }
 
     #[tracing::instrument(level = "trace", skip(self, iface_config, device_io))]
@@ -169,46 +170,31 @@ where
         iface_config: Arc<IfaceConfig>,
         device_io: DeviceIo,
     ) -> std::io::Result<()> {
-        let device_writer = device_io.clone();
-        loop {
-            let mut src = [0u8; MAX_UDP_SIZE];
-            let mut dst = [0u8; MAX_UDP_SIZE];
-            let res = device_io.read(&mut src[..iface_config.mtu()]).await?;
-
-            tracing::trace!(target: "wire", action = "read", bytes = res, from = "iface");
-            if let Err(Error::Io(e)) = self
-                .handle_iface_packet(&device_writer, &mut src[..res], &mut dst)
-                .await
-            {
-                return Err(e);
-            }
-        }
+        let mut src = [0u8; MAX_UDP_SIZE];
+        let mut dst = [0u8; MAX_UDP_SIZE];
+        device_io.read(&mut src).await;
+        // unsafe {
+        //     libc::read(device_io.fd(), dst.as_mut_ptr() as _, dst.len());
+        // }
+        tracing::trace!(?dst);
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub(crate) async fn start_iface_handler(self: &Arc<Self>) {
-        loop {
-            let Some(device_io) = self.device_io.read().clone() else {
-                let err = Error::NoIface;
-                tracing::error!(?err);
-                let _ = self.callbacks().on_disconnect(Some(&err));
-                break;
-            };
-            let Some(iface_config) = self.iface_config.read().clone() else {
-                let err = Error::NoIface;
-                tracing::error!(?err);
-                let _ = self.callbacks().on_disconnect(Some(&err));
-                break;
-            };
-            if let Err(err) = self.iface_handler(iface_config, device_io).await {
-                if err.raw_os_error() != Some(9) {
-                    tracing::error!(?err);
-                    let _ = self.callbacks().on_error(&err.into());
-                    break;
-                } else {
-                    tracing::warn!("bad_file_descriptor");
-                }
-            }
-        }
+        let Some(device_io) = self.device_io.read().clone() else {
+            let err = Error::NoIface;
+            tracing::error!(?err);
+            let _ = self.callbacks().on_disconnect(Some(&err));
+            return;
+        };
+        let Some(iface_config) = self.iface_config.read().clone() else {
+            let err = Error::NoIface;
+            tracing::error!(?err);
+            let _ = self.callbacks().on_disconnect(Some(&err));
+            return;
+        };
+        let device_writer = device_io.clone();
+        self.iface_handler(iface_config, device_io).await;
     }
 }

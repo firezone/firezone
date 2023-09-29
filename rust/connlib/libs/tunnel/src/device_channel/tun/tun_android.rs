@@ -81,7 +81,7 @@ impl IfaceStream {
         self.write(src)
     }
 
-    pub fn read<'a>(&self, dst: &'a mut [u8]) -> std::io::Result<usize> {
+    pub fn read(&self, dst: &mut [u8]) -> std::io::Result<usize> {
         match unsafe { read(self.fd, dst.as_mut_ptr() as _, dst.len()) } {
             -1 => Err(io::Error::last_os_error()),
             n => Ok(n as usize),

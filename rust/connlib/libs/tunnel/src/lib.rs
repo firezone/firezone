@@ -351,6 +351,7 @@ where
         self.callbacks.on_tunnel_ready()?;
 
         tracing::debug!("background_loop_started");
+        tracing::trace!("delete_me_too");
 
         Ok(())
     }
