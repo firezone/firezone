@@ -6,9 +6,6 @@ import "../tmp/tailwind/app.css"
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html"
 
-// Charts
-import ApexCharts from "apexcharts"
-
 // Flowbite's Phoenix LiveView integration
 import "flowbite/dist/flowbite.phoenix.js"
 
@@ -32,23 +29,6 @@ let liveSocket = new LiveSocket("/live", Socket, {
     locale: Intl.NumberFormat().resolvedOptions().locale,
   },
 })
-
-
-window.addEventListener("phx:page-loading-stop", function (event) {
-  if (event.detail.kind == "initial") {
-    console.log(event.detail)
-
-    let charts = document.getElementsByClassName("apexchart");
-    console.log("Found " + charts.length + " chart(s) on the page.")
-
-    for (let i = 0; i < charts.length; i++) {
-      let chart_element = charts.item(i);
-      let options = JSON.parse(chart_element.dataset.options);
-      const chart = new ApexCharts(chart_element, options);
-      chart.render();
-    }
-  }
-});
 
 // Show progress bar on live navigation and form submits
 topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" })

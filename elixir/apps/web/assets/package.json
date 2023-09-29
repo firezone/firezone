@@ -1,7 +1,6 @@
 {
   "dependencies": {
     "@fontsource/source-sans-pro": "^4.5.11",
-    "apexcharts": "^3.42.0",
     "flowbite": "^1.8.1"
   }
 }

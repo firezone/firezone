@@ -140,7 +140,6 @@ defmodule Web do
       import Web.FormComponents
       import Web.TableComponents
       import Web.PageComponents
-      import Web.ChartComponents
       import Web.Gettext
     end
   end
