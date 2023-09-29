@@ -7,8 +7,9 @@ edition = "2021"
 mock = ["libs-common/mock"]
 
 [dependencies]
+tokio = { version = "1.32", default-features = false, features = ["sync", "rt"] }
+tokio-util = "0.7.9"
 secrecy = { workspace = true }
-tokio = { version = "1.32", default-features = false, features = ["sync"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tracing-appender = { version = "0.2.2" }
@@ -20,7 +21,9 @@ serde = { version = "1.0", default-features = false, features = ["std", "derive"
 boringtun = { workspace = true }
 backoff = { workspace = true }
 webrtc = "0.8"
-url = { version = "2.4.1", default-features = false }
+url = { version = "2.4.1", features = ["serde"] }
+time = { version = "0.3.29", features = ["formatting"] }
+reqwest = { version = "0.11.20", default-features = false, features = ["stream", "rustls-tls"] }
 rand = { version = "0.8", default-features = false, features = ["std"] }
 tokio-tungstenite = { version = "0.19", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 

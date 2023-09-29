@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::{io, sync::Arc};
 
 use crate::messages::{
     BroadcastGatewayIceCandidates, Connect, ConnectionDetails, EgressMessages,
@@ -16,6 +17,8 @@ use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 use async_trait::async_trait;
 use firezone_tunnel::{ConnId, ControlSignal, Request, Tunnel};
 use tokio::sync::Mutex;
+use tokio_util::codec::{BytesCodec, FramedRead};
+use url::Url;
 
 #[async_trait]
 impl ControlSignal for ControlSignaler {
@@ -78,7 +81,7 @@ pub struct ControlSignaler {
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn init(
+    async fn init(
         &mut self,
         InitClient {
             interface,
@@ -239,6 +242,17 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
             Messages::ResourceUpdated(resource) => self.update_resource(resource),
             Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate).await,
+            Messages::SignedLogUrl(url) => {
+                let Some(path) = self.tunnel.callbacks().roll_log_file() else {
+                    return Ok(())
+                };
+
+                tokio::spawn(async move {
+                    if let Err(e) = upload(path, url).await {
+                        tracing::warn!("Failed to upload log file: {e}")
+                    }
+                });
+            }
         }
         Ok(())
     }
@@ -277,4 +291,47 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     pub async fn stats_event(&mut self) {
         tracing::debug!(target: "tunnel_state", stats = ?self.tunnel.stats());
     }
+
+    pub async fn request_log_upload_url(&mut self) {
+        tracing::info!("Requesting log upload URL from portal");
+
+        let _ = self
+            .control_signaler
+            .control_signal
+            .send(EgressMessages::CreateLogSink {})
+            .await;
+    }
+}
+
+async fn upload(path: PathBuf, url: Url) -> io::Result<()> {
+    tracing::info!(path = %path.display(), %url, "Uploading log file");
+
+    let file = tokio::fs::File::open(&path).await?;
+    let response = reqwest::Client::new()
+        .put(url)
+        .body(reqwest::Body::wrap_stream(FramedRead::new(
+            file,
+            BytesCodec::default(),
+        )))
+        .send()
+        .await
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+    let status_code = response.status();
+
+    if !status_code.is_success() {
+        let body = response
+            .text()
+            .await
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        tracing::warn!(%body, %status_code, "Failed to upload logs");
+
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "portal returned non-successful exit code",
+        ));
+    }
+
+    Ok(())
 }

@@ -3,6 +3,7 @@ use ip_network::IpNetwork;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::path::PathBuf;
 
 // Avoids having to map types for Windows
 type RawFd = i32;
@@ -62,5 +63,9 @@ pub trait Callbacks: Clone + Send + Sync {
     fn on_error(&self, error: &crate::Error) -> Result<(), Self::Error> {
         tracing::warn!(error = ?error);
         Ok(())
+    }
+
+    fn roll_log_file(&self) -> Option<PathBuf> {
+        None
     }
 }

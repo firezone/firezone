@@ -11,6 +11,7 @@ use jni::{
     JNIEnv, JavaVM,
 };
 use secrecy::SecretString;
+use std::path::Path;
 use std::sync::OnceLock;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -18,13 +19,13 @@ use std::{
     path::PathBuf,
 };
 use thiserror::Error;
-use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
 pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
+    handle: file_logger::Handle,
 }
 
 impl Clone for CallbackHandler {
@@ -37,6 +38,7 @@ impl Clone for CallbackHandler {
         Self {
             vm: unsafe { std::ptr::read(&self.vm) },
             callback_handler: self.callback_handler.clone(),
+            handle: self.handle.clone(),
         }
     }
 }
@@ -99,7 +101,7 @@ where
     tracing_subscriber::layer::Identity::new()
 }
 
-fn init_logging(log_dir: PathBuf, log_filter: String) {
+fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to
@@ -108,21 +110,23 @@ fn init_logging(log_dir: PathBuf, log_filter: String) {
     //
     // So we use a static variable to track whether the guard has been initialized and avoid
     // re-initialized it if so.
-    static LOGGING_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
-    if LOGGING_GUARD.get().is_some() {
-        return;
+    static LOGGING_HANDLE: OnceLock<file_logger::Handle> = OnceLock::new();
+    if let Some(handle) = LOGGING_HANDLE.get() {
+        return handle.clone();
     }
 
-    let (file_layer, guard) = file_logger::layer(log_dir);
+    let (file_layer, handle) = file_logger::layer(log_dir);
 
-    LOGGING_GUARD
-        .set(guard)
+    LOGGING_HANDLE
+        .set(handle.clone())
         .expect("Logging guard should never be initialized twice");
 
     let _ = tracing_subscriber::registry()
         .with(file_layer.with_filter(EnvFilter::new(log_filter)))
         .with(android_layer())
         .try_init();
+
+    handle
 }
 
 impl Callbacks for CallbackHandler {
@@ -283,6 +287,15 @@ impl Callbacks for CallbackHandler {
             )
         })
     }
+
+    fn roll_log_file(&self) -> Option<PathBuf> {
+        self.handle.roll_to_new_file().unwrap_or_else(|e| {
+            tracing::debug!("Failed to roll over to new file: {e}");
+            let _ = self.on_error(&Error::LogFileRollError(e));
+
+            None
+        })
+    }
 }
 
 fn throw(env: &mut JNIEnv, class: &str, msg: impl Into<JNIString>) {
@@ -348,12 +361,14 @@ fn connect(
     let device_id = string_from_jstring!(env, device_id);
     let log_dir = string_from_jstring!(env, log_dir);
     let log_filter = string_from_jstring!(env, log_filter);
+
+    let handle = init_logging(&PathBuf::from(log_dir), log_filter);
+
     let callback_handler = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
+        handle,
     };
-
-    init_logging(log_dir.into(), log_filter);
 
     let session = Session::connect(portal_url.as_str(), secret, device_id, callback_handler)?;
 
