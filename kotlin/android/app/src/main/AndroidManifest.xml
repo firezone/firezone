@@ -52,14 +52,15 @@
             android:exported="true"
             android:launchMode="singleTop">
 
-            <intent-filter
-                android:label="@string/app_name"
-                android:autoVerify="true">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
+
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="https" android:host="${hostName}" android:path="/handle_client_auth_callback" />
+                <data android:scheme="${appLinkScheme" />
+                <data android:host="${appLinkHostName}" android:port="${appLinkPort" />
+                <data android:pathPattern="/handle_client_auth_callback" />
             </intent-filter>
         </activity>
 

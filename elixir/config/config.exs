@@ -109,9 +109,9 @@ config :web,
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
 config :web, Web.Auth,
-  platform_redirect_urls: %{
-    "apple" => "firezone://handle_client_auth_callback",
-    "android" => "https://app.firez.one/handle_client_auth_callback"
+  platform_redirects: %{
+    "apple" => [method: :external, dest: "firezone://handle_client_auth_callback"],
+    "android" => [method: :to, dest: "/handle_client_auth_callback"]
   }
 
 config :web, Web.Plugs.SecureHeaders,

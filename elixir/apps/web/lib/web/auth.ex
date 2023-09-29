@@ -31,11 +31,11 @@ defmodule Web.Auth do
         client_csrf_token
       )
       when not is_nil(client_platform) do
-    platform_redirect_urls =
+    platform_redirects =
       Domain.Config.fetch_env!(:web, __MODULE__)
-      |> Keyword.fetch!(:platform_redirect_urls)
+      |> Keyword.fetch!(:platform_redirects)
 
-    if redirect_to = Map.get(platform_redirect_urls, client_platform) do
+    if redirects = Map.get(platform_redirects, client_platform) do
       {:ok, client_token} = Auth.create_client_token_from_subject(subject)
 
       query =
@@ -48,8 +48,11 @@ defmodule Web.Auth do
         |> Enum.reject(&is_nil(elem(&1, 1)))
         |> URI.encode_query()
 
+      redirect_method = Keyword.fetch!(redirects, :method)
+      redirect_dest = "#{Keyword.fetch!(redirects, :dest)}?#{query}"
+
       conn
-      |> Phoenix.Controller.redirect(external: "#{redirect_to}?#{query}")
+      |> Phoenix.Controller.redirect([{redirect_method, redirect_dest}])
     else
       conn
       |> Phoenix.Controller.put_flash(

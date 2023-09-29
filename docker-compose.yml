@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # Dependencies
   postgres:
-    image: postgres:15
+    image: postgres:16
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
