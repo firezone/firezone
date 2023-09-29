@@ -32,7 +32,7 @@ defmodule Web.Clients.Edit do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/clients"}>Clients</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/clients/#{@client}"}>
         <%= @client.name %>

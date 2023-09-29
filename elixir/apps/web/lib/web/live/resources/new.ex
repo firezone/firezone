@@ -20,7 +20,7 @@ defmodule Web.Resources.New do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/resources"}>Resources</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/resources/new"}>Add Resource</.breadcrumb>
     </.breadcrumbs>

@@ -23,7 +23,7 @@ defmodule Web.Live.Actors.EditTest do
                {:error,
                 {:redirect,
                  %{
-                   to: ~p"/#{account}/sign_in",
+                   to: ~p"/#{account}",
                    flash: %{"error" => "You must log in to access this page."}
                  }}}
     end
@@ -173,7 +173,7 @@ defmodule Web.Live.Actors.EditTest do
 
       assert lv
              |> form("form", actor: attrs)
-             |> render_submit() =~ "You can not demote the last admin."
+             |> render_submit() =~ "You may not demote the last admin."
     end
 
     test "updates an actor on valid attrs", %{
@@ -236,7 +236,7 @@ defmodule Web.Live.Actors.EditTest do
                {:error,
                 {:redirect,
                  %{
-                   to: ~p"/#{account}/sign_in",
+                   to: ~p"/#{account}",
                    flash: %{"error" => "You must log in to access this page."}
                  }}}
     end

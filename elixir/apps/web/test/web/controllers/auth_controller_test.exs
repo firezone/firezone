@@ -19,8 +19,8 @@ defmodule Web.AuthControllerTest do
           }
         })
 
-      assert redirected_to(conn) == "/#{account_id}/sign_in"
-      assert flash(conn, :error) == "You can not use this method to sign in."
+      assert redirected_to(conn) == "/#{account_id}"
+      assert flash(conn, :error) == "You may not use this method to sign in."
     end
 
     test "redirects back to the form when identity does not exist", %{conn: conn} do
@@ -38,7 +38,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == "/#{provider.account_id}/sign_in"
+      assert redirected_to(conn) == "/#{provider.account_id}"
       assert flash(conn, :error) == "Invalid username or password."
       assert flash(conn, :userpass_provider_identifier) == "foo"
     end
@@ -69,7 +69,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in"
+      assert redirected_to(conn) == "/#{account.id}"
       assert flash(conn, :error) == "Invalid username or password."
       assert flash(conn, :userpass_provider_identifier) == identity.provider_identifier
     end
@@ -90,7 +90,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == "/#{provider.account_id}/sign_in"
+      assert redirected_to(conn) == "/#{provider.account_id}"
       assert flash(conn, :error) == "Invalid username or password."
 
       assert flash(conn, :userpass_provider_identifier) ==
@@ -135,7 +135,7 @@ defmodule Web.AuthControllerTest do
       assert is_nil(get_session(conn, :user_return_to))
     end
 
-    test "redirects to the dashboard when credentials are valid and return path is empty", %{
+    test "redirects to the actors index when credentials are valid and return path is empty", %{
       conn: conn
     } do
       account = Fixtures.Accounts.create_account()
@@ -162,7 +162,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == ~p"/#{account.slug}/dashboard"
+      assert redirected_to(conn) == ~p"/#{account.slug}/actors"
     end
 
     test "renews the session when credentials are valid", %{conn: conn} do
@@ -307,7 +307,7 @@ defmodule Web.AuthControllerTest do
                "info" => "Please use a client application to access Firezone."
              }
 
-      assert redirected_to(conn) == ~p"/#{account.id}/"
+      assert redirected_to(conn) == ~p"/#{account.id}"
       assert is_nil(get_session(conn, :user_return_to))
     end
 
@@ -461,8 +461,8 @@ defmodule Web.AuthControllerTest do
           "secret" => "foo"
         })
 
-      assert redirected_to(conn) == "/#{account_id}/sign_in"
-      assert flash(conn, :error) == "You can not use this method to sign in."
+      assert redirected_to(conn) == "/#{account_id}"
+      assert flash(conn, :error) == "You may not use this method to sign in."
     end
 
     test "redirects back to the form when identity does not exist", %{conn: conn} do
@@ -478,7 +478,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == "/#{provider.account_id}/sign_in"
+      assert redirected_to(conn) == "/#{provider.account_id}"
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
@@ -493,7 +493,7 @@ defmodule Web.AuthControllerTest do
           "secret" => "bar"
         })
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}"
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
@@ -524,7 +524,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}"
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
@@ -554,7 +554,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}"
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
@@ -622,7 +622,7 @@ defmodule Web.AuthControllerTest do
       assert is_nil(get_session(conn, :user_return_to))
     end
 
-    test "redirects to the dashboard when credentials are valid and return path is empty", %{
+    test "redirects to the actors index when credentials are valid and return path is empty", %{
       conn: conn
     } do
       account = Fixtures.Accounts.create_account()
@@ -645,7 +645,7 @@ defmodule Web.AuthControllerTest do
           "secret" => email_token
         })
 
-      assert redirected_to(conn) == ~p"/#{account.slug}/dashboard"
+      assert redirected_to(conn) == ~p"/#{account.slug}/actors"
     end
 
     test "redirects to the platform link when credentials are valid for account users", %{
@@ -800,8 +800,8 @@ defmodule Web.AuthControllerTest do
 
       conn = get(conn, ~p"/#{account_id}/sign_in/providers/#{provider_id}/redirect")
 
-      assert redirected_to(conn) == "/#{account_id}/sign_in"
-      assert flash(conn, :error) == "You can not use this method to sign in."
+      assert redirected_to(conn) == "/#{account_id}"
+      assert flash(conn, :error) == "You may not use this method to sign in."
     end
 
     test "redirects to IdP when provider exists", %{conn: conn} do
@@ -876,7 +876,7 @@ defmodule Web.AuthControllerTest do
           "code" => "bar"
         })
 
-      assert redirected_to(conn) == "/#{account_id}/sign_in"
+      assert redirected_to(conn) == "/#{account_id}"
       assert flash(conn, :error) == "Your session has expired, please try again."
     end
 
@@ -899,7 +899,7 @@ defmodule Web.AuthControllerTest do
           "code" => "bar"
         })
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}"
       assert flash(conn, :error) == "Your session has expired, please try again."
     end
 
@@ -933,11 +933,11 @@ defmodule Web.AuthControllerTest do
           "code" => "bar"
         })
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
-      assert flash(conn, :error) == "You can not use this method to sign in."
+      assert redirected_to(conn) == ~p"/#{account}"
+      assert flash(conn, :error) == "You may not use this method to sign in."
     end
 
-    test "redirects to the dashboard when credentials are valid and return path is empty", %{
+    test "redirects to the actors index when credentials are valid and return path is empty", %{
       account: account,
       provider: provider,
       bypass: bypass,
@@ -970,7 +970,7 @@ defmodule Web.AuthControllerTest do
           "code" => "MyFakeCode"
         })
 
-      assert redirected_to(conn) == ~p"/#{account.slug}/dashboard"
+      assert redirected_to(conn) == ~p"/#{account.slug}/actors"
 
       assert %{
                "live_socket_id" => "actors_sessions:" <> socket_id,
@@ -1085,7 +1085,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == url(~p"/#{account}/sign_in")
+      assert redirected_to(conn) == url(~p"/#{account}")
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
 
       assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
@@ -1105,7 +1105,7 @@ defmodule Web.AuthControllerTest do
         |> authorize_conn(identity)
         |> get(~p"/#{account}/sign_out")
 
-      post_redirect_url = URI.encode_www_form(url(~p"/#{account}/sign_in"))
+      post_redirect_url = URI.encode_www_form(url(~p"/#{account}"))
 
       assert redirect_url = redirected_to(conn)
       assert redirect_url =~ "https://example.com"
@@ -1129,7 +1129,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:live_socket_id, live_socket_id)
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}"
 
       assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^live_socket_id}
     end
@@ -1172,7 +1172,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == url(~p"/#{account}/sign_in")
+      assert redirected_to(conn) == url(~p"/#{account}")
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
 
       assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
@@ -1187,7 +1187,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}"
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
 
       refute Map.has_key?(conn.cookies, "fz_recent_account_ids")

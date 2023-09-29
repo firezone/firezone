@@ -52,7 +52,7 @@ defmodule Web.Router do
     live "/", SignUp
   end
 
-  scope "/:account_id_or_slug/sign_in", Web do
+  scope "/:account_id_or_slug", Web do
     pipe_through [:browser, :redirect_if_user_is_authenticated]
 
     live_session :redirect_if_user_is_authenticated,
@@ -64,10 +64,10 @@ defmodule Web.Router do
 
       # Adapter-specific routes
       ## Email
-      live "/providers/email/:provider_id", Auth.Email
+      live "/sign_in/providers/email/:provider_id", Auth.Email
     end
 
-    scope "/providers/:provider_id" do
+    scope "/sign_in/providers/:provider_id" do
       # UserPass
       post "/verify_credentials", AuthController, :verify_credentials
 
@@ -98,8 +98,6 @@ defmodule Web.Router do
         {Web.Auth, :mount_account},
         {Web.Nav, :set_active_sidebar_item}
       ] do
-      live "/dashboard", Dashboard
-
       scope "/actors", Actors do
         live "/", Index
         live "/new", New
@@ -210,16 +208,6 @@ defmodule Web.Router do
 
         live "/dns", DNS
       end
-    end
-  end
-
-  scope "/", Web do
-    pipe_through [:browser]
-
-    live_session :landing,
-      on_mount: [Web.Sandbox] do
-      live "/:account_id_or_slug/", Landing
-      live "/", Landing
     end
   end
 end

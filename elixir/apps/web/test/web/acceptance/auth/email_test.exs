@@ -8,7 +8,7 @@ defmodule Web.Acceptance.Auth.EmailTest do
     Fixtures.Auth.create_email_provider(account: account)
 
     session
-    |> visit(~p"/#{account}/sign_in")
+    |> visit(~p"/#{account}")
     |> assert_el(Query.text("Sign in with a magic link"))
     |> fill_form(%{
       "email[provider_identifier]" => "foo@bar.com"
@@ -33,13 +33,13 @@ defmodule Web.Acceptance.Auth.EmailTest do
     session
     |> email_login_flow(account, identity.provider_identifier)
     |> assert_el(Query.css("#user-menu-button"))
-    |> assert_path(~p"/#{account.slug}/dashboard")
+    |> assert_path(~p"/#{account.slug}/actors")
     |> Auth.assert_authenticated(identity)
   end
 
   defp email_login_flow(session, account, email) do
     session
-    |> visit(~p"/#{account}/sign_in")
+    |> visit(~p"/#{account}")
     |> assert_el(Query.text("Sign in with a magic link"))
     |> fill_form(%{
       "email[provider_identifier]" => email

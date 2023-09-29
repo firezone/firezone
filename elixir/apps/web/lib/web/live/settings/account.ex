@@ -3,7 +3,7 @@ defmodule Web.Settings.Account do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/settings/account"}>Account Settings</.breadcrumb>
     </.breadcrumbs>
     <!-- Account Settings -->

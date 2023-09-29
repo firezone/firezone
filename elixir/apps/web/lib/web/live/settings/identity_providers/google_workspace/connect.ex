@@ -96,7 +96,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
 
         {:error, _reason} ->
           conn
-          |> put_flash(:error, "You can not authenticate to this account.")
+          |> put_flash(:error, "You may not authenticate to this account.")
           |> redirect(
             to: ~p"/#{account}/settings/identity_providers/google_workspace/#{provider_id}"
           )

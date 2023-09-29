@@ -34,7 +34,7 @@ defmodule Web.Groups.Edit do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/groups"}>Groups</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/groups/#{@group}"}>
         <%= @group.name %>

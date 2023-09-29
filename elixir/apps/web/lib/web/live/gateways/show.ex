@@ -47,7 +47,7 @@ defmodule Web.Gateways.Show do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/gateway_groups"}>Gateway Instance Groups</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/gateway_groups/#{@gateway.group}"}>
         <%= @gateway.group.name_prefix %>
