@@ -138,9 +138,9 @@ where
     ) -> Result<()> {
         if let Some(r) = self.check_for_dns(src) {
             match r {
-                dns::SendPacket::Ipv4(r) => self.write4_device_infallible(device_writer, &r[..]),
-                dns::SendPacket::Ipv6(r) => self.write6_device_infallible(device_writer, &r[..]),
-            }
+                dns::SendPacket::Ipv4(r) => device_writer.write4(&r[..])?,
+                dns::SendPacket::Ipv6(r) => device_writer.write4(&r[..])?,
+            };
             return Ok(());
         }
 
@@ -164,35 +164,51 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self, iface_config, device_io))]
-    pub(crate) async fn iface_handler(
+    async fn iface_handler(
         self: &Arc<Self>,
         iface_config: Arc<IfaceConfig>,
         device_io: DeviceIo,
-    ) {
+    ) -> std::io::Result<()> {
         let device_writer = device_io.clone();
         loop {
             let mut src = [0u8; MAX_UDP_SIZE];
             let mut dst = [0u8; MAX_UDP_SIZE];
-            let res = {
-                // TODO: We should check here if what we read is a whole packet
-                // there's no docs on tun device on when a whole packet is read, is it \n or another thing?
-                // found some comments saying that a single read syscall represents a single packet but no docs on that
-                // See https://stackoverflow.com/questions/18461365/how-to-read-packet-by-packet-from-linux-tun-tap
-                match device_io.read(&mut src[..iface_config.mtu()]).await {
-                    Ok(res) => res,
-                    Err(e) => {
-                        tracing::error!(error = ?e, from = "iface", action = "read");
-                        let _ = self.callbacks.on_error(&e.into());
-                        continue;
-                    }
-                }
-            };
+            let res = device_io.read(&mut src[..iface_config.mtu()]).await?;
 
             tracing::trace!(target: "wire", action = "read", bytes = res, from = "iface");
-            // TODO
-            let _ = self
+            if let Err(Error::Io(e)) = self
                 .handle_iface_packet(&device_writer, &mut src[..res], &mut dst)
-                .await;
+                .await
+            {
+                return Err(e);
+            }
+        }
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub(crate) async fn start_iface_handler(self: &Arc<Self>) {
+        loop {
+            let Some(device_io) = self.device_io.read().clone() else {
+                let err = Error::NoIface;
+                tracing::error!(?err);
+                let _ = self.callbacks().on_disconnect(Some(&err));
+                break;
+            };
+            let Some(iface_config) = self.iface_config.read().clone() else {
+                let err = Error::NoIface;
+                tracing::error!(?err);
+                let _ = self.callbacks().on_disconnect(Some(&err));
+                break;
+            };
+            if let Err(err) = self.iface_handler(iface_config, device_io).await {
+                if err.raw_os_error() != Some(9) {
+                    tracing::error!(?err);
+                    let _ = self.callbacks().on_error(&err.into());
+                    break;
+                } else {
+                    tracing::warn!("bad_file_descriptor");
+                }
+            }
         }
     }
 }
