@@ -25,7 +25,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     services:
       postgres:
-        image: postgres:15
+        image: postgres:16
         ports:
           - 5432:5432
         env:
@@ -187,7 +187,7 @@ jobs:
       MAIN_BRANCH: main
     services:
       postgres:
-        image: postgres:15
+        image: postgres:16
         ports:
           - 5432:5432
         env:
@@ -286,7 +286,7 @@ jobs:
         MIX_TEST_PARTITION: [1, 2, 3, 4]
     services:
       postgres:
-        image: postgres:15
+        image: postgres:16
         ports:
           - 5432:5432
         env:

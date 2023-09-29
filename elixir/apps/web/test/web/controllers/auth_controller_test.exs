@@ -214,7 +214,61 @@ defmodule Web.AuthControllerTest do
       assert subject.identity.last_seen_at
     end
 
-    test "redirects to the platform link when credentials are valid for account users", %{
+    test "redirects to the apple platform URI when credentials are valid for account users", %{
+      conn: conn
+    } do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      password = "Firezone1234"
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_user,
+          account: account,
+          provider: provider
+        )
+
+      identity =
+        Fixtures.Auth.create_identity(
+          actor: actor,
+          account: account,
+          provider: provider,
+          provider_virtual_state: %{"password" => password, "password_confirmation" => password}
+        )
+
+      conn =
+        conn
+        |> post(
+          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
+          %{
+            "userpass" => %{
+              "provider_identifier" => identity.provider_identifier,
+              "secret" => password
+            },
+            "client_platform" => "apple"
+          }
+        )
+
+      assert conn.assigns.flash == %{}
+
+      assert is_nil(get_session(conn, :user_return_to))
+
+      assert redirected_to = redirected_to(conn)
+      assert redirected_to_uri = URI.parse(redirected_to)
+      assert "firezone" = redirected_to_uri.scheme
+      assert "handle_client_auth_callback" = redirected_to_uri.host
+
+      assert %{
+               "identity_provider_identifier" => identity_provider_identifier,
+               "actor_name" => actor_name,
+               "client_auth_token" => _token
+             } = URI.decode_query(redirected_to_uri.query)
+
+      assert actor.name == actor_name
+      assert identity.provider_identifier == identity_provider_identifier
+    end
+
+    test "redirects to the android platform path when credentials are valid for account users", %{
       conn: conn
     } do
       account = Fixtures.Accounts.create_account()
@@ -258,14 +312,17 @@ defmodule Web.AuthControllerTest do
 
       assert redirected_to = redirected_to(conn)
       assert redirected_to_uri = URI.parse(redirected_to)
-      assert redirected_to_uri.scheme == "https"
-      assert redirected_to_uri.host == "app.firez.one"
       assert redirected_to_uri.path == "/handle_client_auth_callback"
 
       assert %{
                "client_auth_token" => _token,
-               "client_csrf_token" => ^csrf_token
+               "client_csrf_token" => ^csrf_token,
+               "identity_provider_identifier" => identity_provider_identifier,
+               "actor_name" => actor_name
              } = URI.decode_query(redirected_to_uri.query)
+
+      assert actor.name == actor_name
+      assert identity.provider_identifier == identity_provider_identifier
     end
 
     test "redirects account users to app install page when mobile platform is invalid", %{
