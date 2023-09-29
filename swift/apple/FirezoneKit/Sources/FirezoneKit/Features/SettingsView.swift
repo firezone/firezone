@@ -8,6 +8,12 @@ import Combine
 import Dependencies
 import SwiftUI
 import XCTestDynamicOverlay
+import OSLog
+import ZIPFoundation
+
+enum SettingsViewError: Error {
+  case logFolderIsUnavailable
+}
 
 public final class SettingsViewModel: ObservableObject {
   @Dependency(\.authStore) private var authStore
@@ -56,6 +62,8 @@ public final class SettingsViewModel: ObservableObject {
 }
 
 public struct SettingsView: View {
+  private let logger = Logger.make(for: SettingsView.self)
+
   @ObservedObject var model: SettingsViewModel
   @Environment(\.dismiss) var dismiss
 
@@ -168,12 +176,72 @@ public struct SettingsView: View {
     dismiss()
   }
 
+#if os(macOS)
+  func exportLogsButtonTapped() {
+    self.isExportingLogs = true
+
+    let savePanel = NSSavePanel()
+    savePanel.prompt = "Save"
+    savePanel.nameFieldLabel = "Save log zip bundle to:"
+    savePanel.nameFieldStringValue = "firezone-logs.zip"
+
+    guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false }) else {
+      self.isExportingLogs = false
+      logger.log("Settings window not found. Can't show save panel.")
+      return
+    }
+
+    savePanel.beginSheetModal(for: window) { response in
+      guard response == .OK else {
+        self.isExportingLogs = false
+        return
+      }
+      guard let destinationURL = savePanel.url else {
+        self.isExportingLogs = false
+        return
+      }
+
+      Task {
+        do {
+          try await createLogZipBundle(destinationURL: destinationURL)
+          self.isExportingLogs = false
+          await MainActor.run {
+            window.contentViewController?.presentingViewController?.dismiss(self)
+          }
+        } catch {
+          self.isExportingLogs = false
+          await MainActor.run {
+            // Show alert
+          }
+        }
+      }
+    }
+  }
+#elseif os(iOS)
   func exportLogsButtonTapped() {
     self.isExportingLogs = true
     Task {
       try await Task.sleep(nanoseconds: 2_000_000_000)
       self.isExportingLogs = false
     }
+  }
+#endif
+
+  @discardableResult
+  private func createLogZipBundle(destinationURL: URL?) async throws -> URL {
+    let fileManager = FileManager.default
+    guard let logFilesFolderURL = SharedAccess.logFolderURL else {
+      throw SettingsViewError.logFolderIsUnavailable
+    }
+    let zipFileURL = destinationURL ?? fileManager.temporaryDirectory.appendingPathComponent("firezone_logs.zip")
+    if fileManager.fileExists(atPath: zipFileURL.path) {
+      try fileManager.removeItem(at: zipFileURL)
+    }
+    let task = Task.detached(priority: .userInitiated) { () -> URL in
+      try FileManager.default.zipItem(at: logFilesFolderURL, to: zipFileURL)
+      return zipFileURL
+    }
+    return try await task.value
   }
 }
 
