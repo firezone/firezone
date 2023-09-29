@@ -60,6 +60,10 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
+                <!-- These must match the resulting URL from the Portal exactly.
+                     Don't use variables here otherwise this can break when testing in the emulator.
+                     For this to work in the emulator, you must use a host/IP that *both* the emulator and the
+                     host can access. E.g. 10.0.2.2 will not work. -->
                 <data android:scheme="https" />
                 <data android:host="app.firez.one" />
                 <data android:pathPrefix="/handle_client_auth_callback" />
