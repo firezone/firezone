@@ -82,6 +82,10 @@ if config_env() == :prod do
       path: external_url_path
     ],
     secret_key_base: compile_config!(:secret_key_base),
+    check_origin: [
+      "#{external_url_scheme}://#{external_url_host}",
+      "#{external_url_scheme}://*.#{external_url_host}"
+    ],
     live_view: [
       signing_salt: compile_config!(:live_view_signing_salt)
     ]
