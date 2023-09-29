@@ -74,16 +74,12 @@ defmodule Web.Clients.Show do
           </:value>
         </.vertical_table_row>
         <.vertical_table_row>
-          <:label>Remote IPv4</:label>
-          <:value><code><%= @client.ipv4 %></code></:value>
-        </.vertical_table_row>
-        <.vertical_table_row>
-          <:label>Remote IPv6</:label>
-          <:value><code><%= @client.ipv6 %></code></:value>
-        </.vertical_table_row>
-        <.vertical_table_row>
           <:label>Transfer</:label>
           <:value>TODO</:value>
+        </.vertical_table_row>
+        <.vertical_table_row>
+          <:label>Last Seen Remote IP</:label>
+          <:value><code><%= @client.last_seen_remote_ip %></code></:value>
         </.vertical_table_row>
         <.vertical_table_row>
           <:label>Client Version</:label>
