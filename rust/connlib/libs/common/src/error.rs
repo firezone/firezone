@@ -12,6 +12,9 @@ pub enum ConnlibError {
     /// Standard IO error.
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    /// Standard IO error.
+    #[error("Failed to roll over log file: {0}")]
+    LogFileRollError(std::io::Error),
     /// Error while decoding a base64 value.
     #[error("There was an error while decoding a base64 value: {0}")]
     Base64DecodeError(#[from] DecodeError),

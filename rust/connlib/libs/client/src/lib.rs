@@ -166,7 +166,8 @@ where
             };
 
             tokio::spawn(async move {
-                let mut interval = tokio::time::interval(Duration::from_secs(10));
+                let mut log_stats_interval = tokio::time::interval(Duration::from_secs(10));
+                let mut upload_logs_interval = tokio::time::interval(upload_interval_from_env_or_default());
                 loop {
                     tokio::select! {
                         Some((msg, reference)) = control_plane_receiver.recv() => {
@@ -175,10 +176,12 @@ where
                                 Err(err) => control_plane.handle_error(err, reference).await,
                             }
                         },
-                        _ = interval.tick() => control_plane.stats_event().await,
+                        _ = log_stats_interval.tick() => control_plane.stats_event().await,
+                        _ = upload_logs_interval.tick() => control_plane.request_log_upload_url().await,
                         else => break
                     }
                 }
+
                 Result::Ok(())
             });
 
@@ -245,4 +248,32 @@ where
     pub fn disconnect(&mut self, error: Option<Error>) {
         Self::disconnect_inner(self.runtime_stopper.clone(), &self.callbacks, error)
     }
+}
+
+/// Parses an interval from the _compile-time_ env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS`.
+///
+/// If not present or parsing as u64 fails, we fall back to a default interval of 1 hour.
+fn upload_interval_from_env_or_default() -> Duration {
+    const DEFAULT: Duration = Duration::from_secs(60 * 60);
+
+    let Some(interval) = option_env!("CONNLIB_LOG_UPLOAD_INTERVAL_SECS") else {
+        tracing::warn!(interval = ?DEFAULT, "Env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS` was not set during compile-time, falling back to default");
+
+        return DEFAULT
+    };
+
+    let interval = match interval.parse() {
+        Ok(i) => i,
+        Err(e) => {
+            tracing::warn!(interval = ?DEFAULT, "Failed to parse `CONNLIB_LOG_UPLOAD_INTERVAL_SECS` as u64: {e}");
+            return DEFAULT;
+        }
+    };
+
+    tracing::info!(
+        ?interval,
+        "Using upload interval specified at compile-time via `CONNLIB_LOG_UPLOAD_INTERVAL_SECS`"
+    );
+
+    Duration::from_secs(interval)
 }
