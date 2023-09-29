@@ -60,13 +60,10 @@ android {
             val localProperties = Properties()
             localProperties.load(FileInputStream(rootProject.file("local.properties")))
             buildConfigField("String", "TOKEN", "\"${localProperties.getProperty("token")}\"")
-            manifestPlaceholders["appLinkHostName"] = "10.0.2.2"
-            manifestPlaceholders["appLinkScheme"] = "http"
-            manifestPlaceholders["appLinkPort"] = "13000"
-            buildConfigField("String", "AUTH_HOST", "\"10.0.2.2\"")
-            buildConfigField("String", "AUTH_SCHEME", "\"http\"")
-            buildConfigField("Integer", "AUTH_PORT", "13000")
-            buildConfigField("String", "CONTROL_PLANE_URL", "\"ws://10.0.2.2:13001/\"")
+            buildConfigField("String", "AUTH_HOST", "\"app.firez.one\"")
+            buildConfigField("String", "AUTH_SCHEME", "\"https\"")
+            buildConfigField("Integer", "AUTH_PORT", "443")
+            buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firez.one/\"")
 
             // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
             buildConfigField("String", "CONNLIB_LOG_FILTER_STRING", "\"connlib_android=debug,firezone_tunnel=trace,libs_common=debug,firezone_client_connlib=debug,warn\"")
@@ -78,9 +75,6 @@ android {
         getByName("release") {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             buildConfigField("String", "TOKEN", "null")
-            manifestPlaceholders["appLinkHostName"] = "app.firez.one"
-            manifestPlaceholders["appLinkScheme"] = "https"
-            manifestPlaceholders["appLinkPort"] = "443"
             buildConfigField("String", "AUTH_HOST", "\"app.firezone.dev\"")
             buildConfigField("String", "AUTH_SCHEME", "\"https\"")
             buildConfigField("Integer", "AUTH_PORT", "443")

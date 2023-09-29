@@ -52,15 +52,17 @@
             android:exported="true"
             android:launchMode="singleTop">
 
-            <intent-filter>
+            <intent-filter
+                android:label="@string/app_name"
+                android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="${appLinkScheme" />
-                <data android:host="${appLinkHostName}" android:port="${appLinkPort" />
-                <data android:pathPattern="/handle_client_auth_callback" />
+                <data android:scheme="https" />
+                <data android:host="app.firez.one" />
+                <data android:pathPrefix="/handle_client_auth_callback" />
             </intent-filter>
         </activity>
 
