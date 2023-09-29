@@ -13,7 +13,7 @@ defmodule Web.Clients.Index do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/clients"}>Clients</.breadcrumb>
     </.breadcrumbs>
     <.header>

@@ -44,9 +44,7 @@ private final class WebAuthenticationSession: NSObject,
     try await withCheckedThrowingContinuation { continuation in
       let callbackURLScheme = "firezone"
       let session = ASWebAuthenticationSession(
-        url: host.appendingPathComponent("sign_in")
-
-          .appendingQueryItem(URLQueryItem(name: "client_platform", value: "apple")),
+        url: host.appendingQueryItem(URLQueryItem(name: "client_platform", value: "apple")),
         callbackURLScheme: callbackURLScheme
       ) { callbackURL, error in
         if let error {

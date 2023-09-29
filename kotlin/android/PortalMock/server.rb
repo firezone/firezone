@@ -7,7 +7,7 @@ require 'sinatra'
 set :bind, '0.0.0.0'
 set :port, 4568
 
-get '/:slug/sign_in' do
+get '/:slug' do
   csrfToken = params['client_csrf_token']
   ERB.new("<h1>Auth page</h1><a href=\"/redirect?client_csrf_token=#{csrfToken}\">Proceed</a>")
      .result(binding)

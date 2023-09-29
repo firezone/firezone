@@ -32,7 +32,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.Connect do
           ~p"/#{account_id}/settings/identity_providers/openid_connect/#{provider_id}/redirect"
         )
 
-      assert redirected_to(conn) == "/#{account_id}/sign_in"
+      assert redirected_to(conn) == "/#{account_id}"
       assert flash(conn, :error) == "You must log in to access this page."
     end
 
@@ -108,7 +108,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.Connect do
           "code" => "bar"
         })
 
-      assert redirected_to(conn) == "/#{account_id}/sign_in"
+      assert redirected_to(conn) == "/#{account_id}"
       assert flash(conn, :error) == "Your session has expired, please try again."
     end
 
@@ -140,7 +140,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.Connect do
       assert flash(conn, :error) == "Your session has expired, please try again."
     end
 
-    test "redirects to the dashboard when credentials are valid and return path is empty", %{
+    test "redirects to the actors index when credentials are valid and return path is empty", %{
       account: account,
       conn: conn
     } do

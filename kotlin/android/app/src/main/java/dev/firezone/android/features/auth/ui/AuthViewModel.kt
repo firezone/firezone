@@ -36,7 +36,7 @@ internal class AuthViewModel @Inject constructor(
                     ViewAction.NavigateToSignInFragment
                 } else {
                     ViewAction.LaunchAuthFlow(
-                        url = "$AUTH_URL${config.accountId}/sign_in?client_csrf_token=$csrfToken&client_platform=android",
+                        url = "$AUTH_URL${config.accountId}?client_csrf_token=$csrfToken&client_platform=android",
                     )
                 },
             )

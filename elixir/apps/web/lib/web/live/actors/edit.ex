@@ -45,7 +45,7 @@ defmodule Web.Actors.Edit do
          put_flash(socket, :error, "You don't have permissions to perform this action.")}
 
       {:error, :cant_remove_admin_type} ->
-        {:noreply, put_flash(socket, :error, "You can not demote the last admin.")}
+        {:noreply, put_flash(socket, :error, "You may not demote the last admin.")}
 
       {:error, {:unauthorized, _context}} ->
         {:noreply,
@@ -58,7 +58,7 @@ defmodule Web.Actors.Edit do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
         <%= @actor.name %>

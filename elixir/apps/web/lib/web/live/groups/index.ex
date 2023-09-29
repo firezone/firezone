@@ -22,7 +22,7 @@ defmodule Web.Groups.Index do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/groups"}><%= @page_title %></.breadcrumb>
     </.breadcrumbs>
 

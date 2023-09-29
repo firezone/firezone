@@ -25,8 +25,8 @@ defmodule Web.AuthTest do
   end
 
   describe "signed_in_path/1" do
-    test "redirects to dashboard after sign in as account admin", %{admin_subject: subject} do
-      assert signed_in_path(subject) == ~p"/#{subject.account.slug}/dashboard"
+    test "redirects to actors index after sign in as account admin", %{admin_subject: subject} do
+      assert signed_in_path(subject) == ~p"/#{subject.account.slug}/actors"
     end
   end
 
@@ -179,7 +179,7 @@ defmodule Web.AuthTest do
         |> ensure_authenticated([])
 
       assert conn.halted
-      assert redirected_to(conn) == ~p"/#{account.slug}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account.slug}"
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
                "You must log in to access this page."
@@ -349,7 +349,7 @@ defmodule Web.AuthTest do
 
       assert is_nil(updated_socket.assigns.subject)
 
-      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account.slug}/sign_in"}}
+      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account.slug}"}}
     end
 
     test "redirects to login page if there isn't a session_token", %{
@@ -365,7 +365,7 @@ defmodule Web.AuthTest do
 
       assert is_nil(updated_socket.assigns.subject)
 
-      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account.slug}/sign_in"}}
+      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{subject.account.slug}"}}
     end
   end
 
@@ -404,7 +404,7 @@ defmodule Web.AuthTest do
                on_mount(:redirect_if_user_is_authenticated, params, session, socket)
 
       assert updated_socket.redirected ==
-               {:redirect, %{to: ~p"/#{subject.account.slug}/dashboard"}}
+               {:redirect, %{to: ~p"/#{subject.account.slug}/actors"}}
     end
 
     test "doesn't redirect if there is no authenticated user", %{

@@ -94,7 +94,7 @@ defmodule Web.Acceptance.Auth.UserPassTest do
     |> assert_error_flash("Invalid username or password.")
   end
 
-  feature "redirects to dashboard after successful log in as account_admin_user", %{
+  feature "redirects to actors index after successful log in as account_admin_user", %{
     session: session
   } do
     account = Fixtures.Accounts.create_account()
@@ -112,11 +112,11 @@ defmodule Web.Acceptance.Auth.UserPassTest do
     session
     |> password_login_flow(account, identity.provider_identifier, password)
     |> assert_el(Query.css("#user-menu-button"))
-    |> assert_path(~p"/#{account.slug}/dashboard")
+    |> assert_path(~p"/#{account.slug}/actors")
     |> Auth.assert_authenticated(identity)
   end
 
-  feature "redirects to landing page after successful log in as account_user", %{
+  feature "redirects back to sign_in page after successful log in as account_user", %{
     session: session
   } do
     account = Fixtures.Accounts.create_account()
@@ -133,13 +133,13 @@ defmodule Web.Acceptance.Auth.UserPassTest do
 
     session
     |> password_login_flow(account, identity.provider_identifier, password)
-    |> assert_path(~p"/#{account}/")
+    |> assert_path(~p"/#{account}")
   end
 
   defp password_login_flow(session, account, username, password) do
     session
-    |> visit(~p"/#{account}/sign_in")
-    |> assert_el(Query.text("Welcome back"))
+    |> visit(~p"/#{account}")
+    |> assert_el(Query.text("#{account.name} Admin Portal"))
     |> assert_el(Query.text("Sign in with username and password"))
     |> fill_form(%{
       "userpass[provider_identifier]" => username,

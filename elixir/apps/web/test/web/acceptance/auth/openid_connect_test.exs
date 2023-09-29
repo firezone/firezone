@@ -12,13 +12,13 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     {:ok, _entity_id} = Vault.upsert_user(oidc_login, email, oidc_password)
 
     session
-    |> visit(~p"/#{account}/sign_in")
-    |> assert_el(Query.text("Welcome back"))
-    |> click(Query.link("Log in with Vault"))
+    |> visit(~p"/#{account}")
+    |> assert_el(Query.text("#{account.name} Admin Portal"))
+    |> click(Query.link("Sign in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
-    |> assert_el(Query.text("Welcome back"))
-    |> assert_path(~p"/#{account}/sign_in")
-    |> assert_el(Query.text("You can not authenticate to this account."))
+    |> assert_el(Query.text("#{account.name} Admin Portal"))
+    |> assert_path(~p"/#{account}")
+    |> assert_el(Query.text("You may not authenticate to this account."))
   end
 
   feature "authenticates existing user", %{session: session} do
@@ -40,12 +40,12 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
       )
 
     session
-    |> visit(~p"/#{account}/sign_in")
-    |> assert_el(Query.text("Welcome back"))
-    |> click(Query.link("Log in with Vault"))
+    |> visit(~p"/#{account}")
+    |> assert_el(Query.text("#{account.name} Admin Portal"))
+    |> click(Query.link("Sign in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
     |> assert_el(Query.css("#user-menu-button"))
     |> Auth.assert_authenticated(identity)
-    |> assert_path(~p"/#{account.slug}/dashboard")
+    |> assert_path(~p"/#{account.slug}/actors")
   end
 end

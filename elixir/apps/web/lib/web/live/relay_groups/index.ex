@@ -22,7 +22,7 @@ defmodule Web.RelayGroups.Index do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/relay_groups"}>Relay Instance Groups</.breadcrumb>
     </.breadcrumbs>
     <.header>

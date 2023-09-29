@@ -6,7 +6,7 @@ require 'erb'
 set :bind, '0.0.0.0'
 set :port, 4568
 
-get '/:slug/sign_in' do
+get '/:slug' do
   ERB.new("<h1>Auth page</h1><a href=\"/redirect\">Proceed</a>")
      .result(binding)
 end
