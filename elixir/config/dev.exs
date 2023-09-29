@@ -18,10 +18,15 @@ config :domain, Domain.Repo,
 config :web, dev_routes: true
 
 config :web, Web.Endpoint,
-  http: [port: 13000],
+  http: [port: 13_000],
   code_reloader: true,
   debug_errors: true,
-  check_origin: ["//127.0.0.1", "//localhost"],
+  check_origin: [
+    # Android emulator
+    "//10.0.2.2",
+    "//127.0.0.1",
+    "//localhost"
+  ],
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:web, ~w(--sourcemap=inline --watch)]},
     tailwind: {Tailwind, :install_and_run, [:web, ~w(--watch)]}
@@ -66,10 +71,10 @@ config :web, Web.Plugs.SecureHeaders,
 config :api, dev_routes: true
 
 config :api, API.Endpoint,
-  http: [port: 13001],
+  http: [port: 13_001],
   debug_errors: true,
   code_reloader: true,
-  check_origin: ["//127.0.0.1", "//localhost"],
+  check_origin: ["//10.0.2.2", "//127.0.0.1", "//localhost"],
   watchers: [],
   server: true
 
