@@ -3,7 +3,7 @@
 nodejs 18.16.0
 elixir 1.15.2-otp-26
 erlang 26.0.2
-terraform 1.5.6
+terraform 1.5.7
 
 # Used for static analysis
 python 3.9.13
