@@ -134,6 +134,8 @@ services:
     devices:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
+      httpbin:
+        condition: 'service_healthy'
       api:
         condition: 'service_healthy'
     networks:
@@ -172,6 +174,12 @@ services:
 
   httpbin:
     image: kennethreitz/httpbin
+    healthcheck:
+      test: [ "CMD-SHELL", "ps -C gunicorn" ]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
     networks:
       resources:
         ipv4_address: 172.20.0.100
