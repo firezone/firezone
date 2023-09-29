@@ -39,7 +39,9 @@ defmodule Web.Endpoint do
 
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [
+      check_origin: :conn,
       connect_info: [
+        :trace_context_headers,
         :user_agent,
         :peer_data,
         :x_headers,

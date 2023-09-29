@@ -36,6 +36,7 @@ defmodule Web.Router do
   scope "/", Web do
     pipe_through :public
 
+    get "/", RedirectController, :home
     get "/healthz", HealthController, :healthz
   end
 

@@ -250,7 +250,7 @@ web-51wd  us-east1-d  n1-standard-1               10.128.0.21               RUNN
 web-6k3n  us-east1-d  n1-standard-1               10.128.0.20               RUNNING
 ```
 
-SSH into the VM and enter remote Elixir shell:
+SSH into the host VM:
 
 ```bash
 ❯ gcloud compute ssh api-b02t --tunnel-through-iap
@@ -262,14 +262,21 @@ No zone specified. Using zone [us-east1-d] for instance: [api-b02t].
   #  To access your containers use 'docker attach' command  #
   ###########################################################
 
-andrew@api-b02t ~ $ docker ps --format json | jq '"\(.ID) \(.Image)"'
-"1ab7d7c6878c - us-east1-docker.pkg.dev/firezone-staging/firezone/api:branch-andrew_deployment"
 
-andrew@api-b02t ~ $ docker exec -it 1ab7d7c6878c bin/api remote
+andrew@api-b02t ~ $ $(docker ps | grep klt- | head -n 1 | awk '{split($NF, arr, "-"); print "docker exec -it "$NF" bin/"arr[2]" remote";}')
 Erlang/OTP 25 [erts-13.1.4] [source] [64-bit] [smp:1:1] [ds:1:1:10] [async-threads:1] [jit]
 
 Interactive Elixir (1.14.3) - press Ctrl+C to exit (type h() ENTER for help)
 iex(api@api-b02t.us-east1-d.c.firezone-staging.internal)1>
+```
+
+One-liner to connect to a running application container:
+
+```bash
+❯ gcloud compute ssh web-w2f6 --tunnel-through-iap -- '$(docker ps | grep klt- | head -n 1 | awk '\''{split($NF, arr, "-"); print "docker exec -it " $NF " bin/" arr[2] " remote";}'\'')'
+
+Interactive Elixir (1.15.2) - press Ctrl+C to exit (type h() ENTER for help)
+iex(web@web-w2f6.us-east1-d.c.firezone-staging.internal)1>
 ```
 
 ### Creating an account on staging instance using CLI
