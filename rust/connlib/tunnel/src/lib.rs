@@ -346,7 +346,7 @@ where
         *self.iface_config.write() = Some(Arc::clone(&iface_config));
         self.start_timers()?;
         let dev = Arc::clone(self);
-        tokio::spawn(async move { dev.iface_handler(iface_config, device_io).await });
+        tokio::spawn(async move { dev.start_iface_handler().await });
 
         self.callbacks.on_tunnel_ready()?;
 
@@ -478,22 +478,6 @@ where
         self.start_rate_limiter_refresh_timer();
         self.start_peers_refresh_timer();
         Ok(())
-    }
-
-    #[inline(always)]
-    fn write4_device_infallible(&self, device_io: &DeviceIo, packet: &[u8]) {
-        if let Err(e) = device_io.write4(packet) {
-            tracing::error!(?e, "iface_write");
-            let _ = self.callbacks().on_error(&e.into());
-        }
-    }
-
-    #[inline(always)]
-    fn write6_device_infallible(&self, device_io: &DeviceIo, packet: &[u8]) {
-        if let Err(e) = device_io.write6(packet) {
-            tracing::error!(?e, "iface_write");
-            let _ = self.callbacks().on_error(&e.into());
-        }
     }
 
     fn get_resource(&self, buff: &[u8]) -> Option<ResourceDescription> {
