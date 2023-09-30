@@ -7,7 +7,7 @@ defmodule Web.Auth.Email do
           "provider_id" => provider_id,
           "provider_identifier" => provider_identifier
         } = params,
-        _session,
+        session,
         socket
       ) do
     form = to_form(%{"secret" => nil})
@@ -19,7 +19,8 @@ defmodule Web.Auth.Email do
        account_id_or_slug: account_id_or_slug,
        provider_id: provider_id,
        resent: params["resent"],
-       client_platform: params["client_platform"]
+       client_platform: session["client_platform"] || params["client_platform"],
+       client_csrf_token: session["client_csrf_token"] || params["client_csrf_token"]
      ]}
   end
 
@@ -50,6 +51,7 @@ defmodule Web.Auth.Email do
                 provider_id={@provider_id}
                 provider_identifier={@provider_identifier}
                 client_platform={@client_platform}
+                client_csrf_token={@client_csrf_token}
               />
               <div class="flex">
                 <.dev_email_provider_link url="https://mail.google.com/mail/" name="Gmail" />
@@ -64,6 +66,7 @@ defmodule Web.Auth.Email do
               </p>
 
               <form
+                id="verify-sign-in-token"
                 action={
                   ~p"/#{@account_id_or_slug}/sign_in/providers/#{@provider_id}/verify_sign_in_token"
                 }
@@ -103,6 +106,7 @@ defmodule Web.Auth.Email do
                 provider_id={@provider_id}
                 provider_identifier={@provider_identifier}
                 client_platform={@client_platform}
+                client_csrf_token={@client_csrf_token}
               />
             </div>
           </div>
@@ -126,6 +130,7 @@ defmodule Web.Auth.Email do
     ~H"""
     <.form
       for={%{}}
+      id="resend-email"
       as={:email}
       class="inline"
       action={
@@ -137,15 +142,24 @@ defmodule Web.Auth.Email do
       <.input
         :if={not is_nil(@client_platform)}
         type="hidden"
-        name="email[client_platform]"
+        name="client_platform"
         value={@client_platform}
-      /> Did not receive it?
-      <button
-        type="submit"
-        class="inline font-medium text-blue-600 dark:text-blue-500 hover:underline"
-      >
-        Resend email
-      </button>
+      />
+      <.input
+        :if={not is_nil(@client_csrf_token)}
+        type="hidden"
+        name="client_csrf_token"
+        value={@client_csrf_token}
+      />
+      <span>
+        Did not receive it?
+        <button
+          type="submit"
+          class="inline font-medium text-blue-600 dark:text-blue-500 hover:underline"
+        >
+          Resend email
+        </button>
+      </span>
     </.form>
     """
   end
