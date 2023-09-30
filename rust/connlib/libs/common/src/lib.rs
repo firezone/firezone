@@ -52,7 +52,7 @@ pub fn get_device_id() -> String {
     }
 
     tracing::warn!("get_device_id() couldn't find a SMBios Serial. Using random UUIDv4 instead.");
-    return uuid::Uuid::new_v4().to_string();
+    uuid::Uuid::new_v4().to_string()
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
