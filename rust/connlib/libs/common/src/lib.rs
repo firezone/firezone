@@ -35,24 +35,33 @@ pub fn get_user_agent() -> String {
 }
 
 /// Returns the SMBios Serial of the device or a random UUIDv4 if the SMBios is not available.
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 pub fn get_device_id() -> String {
-    // smbios fails to build on mobile, but it works for other platforms.
-    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     match smbioslib::table_load_from_device() {
         Ok(data) => {
-            match data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| sys_info.uuid()) {
-                Some(uuid) => uuid.to_string(),
-                None => uuid::Uuid::new_v4().to_string(),
+            if let Some(uuid) =
+                data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| sys_info.uuid())
+            {
+                tracing::debug!("get_device_id() found SMBios Serial: {}", uuid);
+                return uuid.to_string();
             }
         }
-        Err(_err) => uuid::Uuid::new_v4().to_string(),
+        Err(e) => {
+            tracing::warn!("get_device_id() couldn't load SMBios. Error: {}", e);
+        }
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
-    {
-        tracing::debug!("smbios is not supported on iOS and Android, using random UUIDv4");
-        uuid::Uuid::new_v4().to_string()
-    }
+    tracing::warn!("get_device_id() couldn't find a SMBios Serial. Using random UUIDv4 instead.");
+    uuid::Uuid::new_v4().to_string()
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+pub fn get_device_id() -> String {
+    tracing::warn!(
+        "get_device_id() is not implemented for this platform. Using random UUIDv4 instead."
+    );
+
+    uuid::Uuid::new_v4().to_string()
 }
 
 pub fn set_ws_scheme(url: &mut Url) -> Result<()> {
