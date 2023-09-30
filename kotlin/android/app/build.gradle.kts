@@ -59,7 +59,6 @@ android {
 
             val localProperties = Properties()
             localProperties.load(FileInputStream(rootProject.file("local.properties")))
-            buildConfigField("String", "TOKEN", "\"${localProperties.getProperty("token")}\"")
             buildConfigField("String", "AUTH_HOST", "\"app.firez.one\"")
             buildConfigField("String", "AUTH_SCHEME", "\"https\"")
             buildConfigField("Integer", "AUTH_PORT", "443")
@@ -74,7 +73,6 @@ android {
         // Release Config
         getByName("release") {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            buildConfigField("String", "TOKEN", "null")
             buildConfigField("String", "AUTH_HOST", "\"app.firezone.dev\"")
             buildConfigField("String", "AUTH_SCHEME", "\"https\"")
             buildConfigField("Integer", "AUTH_PORT", "443")
