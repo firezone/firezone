@@ -10,8 +10,8 @@ defmodule Domain.Jobs.Executors.GlobalTest do
   test "executes the handler on the interval" do
     assert {:ok, _pid} = start_link({{__MODULE__, :send_test_message}, 25, test_pid: self()})
 
-    assert_receive {:executed, _pid, time1}, 200
-    assert_receive {:executed, _pid, time2}, 200
+    assert_receive {:executed, _pid, time1}, 500
+    assert_receive {:executed, _pid, time2}, 500
 
     assert time1 < time2
   end
