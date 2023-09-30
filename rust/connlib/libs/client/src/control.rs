@@ -244,7 +244,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate).await,
             Messages::SignedLogUrl(url) => {
                 let Some(path) = self.tunnel.callbacks().roll_log_file() else {
-                    return Ok(())
+                    return Ok(());
                 };
 
                 tokio::spawn(async move {

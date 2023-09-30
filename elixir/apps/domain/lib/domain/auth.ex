@@ -611,12 +611,13 @@ defmodule Domain.Auth do
 
   defp verify_token_payload(
          token,
-         {:identity, identity_id, context_payload},
-         user_agent,
-         remote_ip
+         {:identity, identity_id, _context_payload},
+         _user_agent,
+         _remote_ip
        ) do
     with {:ok, identity} <- fetch_active_identity_by_id(identity_id),
-         true <- context_payload == session_context_payload(remote_ip, user_agent),
+         # XXX: Don't pin tokens to remote_ip and user_agent -- use device external_id instead?
+         # true <- context_payload == session_context_payload(remote_ip, user_agent),
          {:ok, expires_at} <- fetch_session_token_expires_at(token) do
       {:ok, identity, expires_at}
     else

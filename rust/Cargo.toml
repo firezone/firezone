@@ -13,6 +13,8 @@ members = [
   "connlib/gateway",
 ]
 
+resolver = "2"
+
 [workspace.dependencies]
 boringtun = { version = "0.6", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }

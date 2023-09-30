@@ -106,7 +106,8 @@ where
             .map_err(|_| Error::InvalidReference)?;
         {
             let mut awaiting_connections = self.awaiting_connection.lock();
-            let Some(awaiting_connection) = awaiting_connections.get_mut(&resource_id.into()) else {
+            let Some(awaiting_connection) = awaiting_connections.get_mut(&resource_id.into())
+            else {
                 return Err(Error::UnexpectedConnectionDetails);
             };
             awaiting_connection.response_received = true;
@@ -196,7 +197,10 @@ where
                 let Some(gateway_public_key) =
                     tunnel.gateway_public_keys.lock().remove(&gateway_id)
                 else {
-                    tunnel.awaiting_connection.lock().remove(&resource_id.into());
+                    tunnel
+                        .awaiting_connection
+                        .lock()
+                        .remove(&resource_id.into());
                     tunnel.peer_connections.lock().remove(&gateway_id.into());
                     tunnel
                         .gateway_awaiting_connection

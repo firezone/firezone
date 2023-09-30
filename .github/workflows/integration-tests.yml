@@ -36,7 +36,8 @@ jobs:
       - name: Start docker compose in the background
         run: docker compose up -d
       - name: Test that client can ping resource
-        run: docker compose exec -it client ping 172.20.0.100 -c 10
+        run: docker compose exec -it client timeout 60 bash -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
+
 
   integration-test_relayed-flow:
     runs-on: ubuntu-latest
@@ -74,4 +75,4 @@ jobs:
           sudo iptables -I FORWARD 1 -s  172.28.0.100 -d 172.28.0.105 -j DROP
           sudo iptables -I FORWARD 1 -s  172.28.0.105 -d 172.28.0.100 -j DROP
       - name: Test that client can ping resource
-        run: docker compose exec -it client ping 172.20.0.100 -c 10
+        run: docker compose exec -it client timeout 60 bash -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'

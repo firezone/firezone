@@ -75,7 +75,7 @@ impl Handle {
         let mut inner = try_unlock(&self.inner);
         let new_writer = inner.create_new_writer()?;
         let Some((_, name)) = inner.current.replace(new_writer) else {
-            return Ok(None)
+            return Ok(None);
         };
 
         Ok(Some(inner.directory.join(name)))

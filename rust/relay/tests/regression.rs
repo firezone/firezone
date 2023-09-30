@@ -459,12 +459,20 @@ impl TestServer {
         for expected_output in output {
             let Some(actual_output) = self.server.next_command() else {
                 let msg = match expected_output {
-                    Output::SendMessage((recipient, msg)) => format!("to send message {:?} to {recipient}", msg),
+                    Output::SendMessage((recipient, msg)) => {
+                        format!("to send message {:?} to {recipient}", msg)
+                    }
                     Wake(time) => format!("to be woken at {time:?}"),
-                    CreateAllocation(port, family) => format!("to create allocation on port {port} for address family {family}"),
-                    FreeAllocation(port, family) => format!("to free allocation on port {port} for address family {family}"),
-                    Output::SendChannelData((peer, _)) => format!("to send channel data from {peer} to client"),
-                    Output::Forward((peer, _, _)) => format!("to forward data to peer {peer}")
+                    CreateAllocation(port, family) => {
+                        format!("to create allocation on port {port} for address family {family}")
+                    }
+                    FreeAllocation(port, family) => {
+                        format!("to free allocation on port {port} for address family {family}")
+                    }
+                    Output::SendChannelData((peer, _)) => {
+                        format!("to send channel data from {peer} to client")
+                    }
+                    Output::Forward((peer, _, _)) => format!("to forward data to peer {peer}"),
                 };
 
                 panic!("No commands produced but expected {msg}");

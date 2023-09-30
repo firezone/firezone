@@ -31,7 +31,15 @@ impl Allocation {
         let (client_to_peer_sender, client_to_peer_receiver) = mpsc::channel(MAX_BUFFERED_ITEMS);
 
         let task = tokio::spawn(async move {
-            let Err(e) = forward_incoming_relay_data(relay_data_sender, client_to_peer_receiver, id, family, port).await else {
+            let Err(e) = forward_incoming_relay_data(
+                relay_data_sender,
+                client_to_peer_receiver,
+                id,
+                family,
+                port,
+            )
+            .await
+            else {
                 unreachable!()
             };
 

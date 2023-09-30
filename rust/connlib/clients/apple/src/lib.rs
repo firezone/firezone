@@ -1,5 +1,5 @@
 // Swift bridge generated code triggers this below
-#![allow(improper_ctypes, non_camel_case_types)]
+#![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
 
 use firezone_client_connlib::{file_logger, Callbacks, Error, ResourceDescription, Session};
 use ip_network::IpNetwork;
