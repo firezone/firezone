@@ -21,7 +21,7 @@ defmodule Web.Flows.Show do
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs home_path={~p"/#{@account}/dashboard"}>
+    <.breadcrumbs account={@account}>
       <.breadcrumb>Flows</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/flows/#{@flow.id}"}>
         <%= @flow.client.name %> flow
