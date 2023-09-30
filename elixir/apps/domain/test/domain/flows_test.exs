@@ -2,6 +2,7 @@ defmodule Domain.FlowsTest do
   use Domain.DataCase, async: true
   import Domain.Flows
   alias Domain.Flows
+  alias Domain.Flows.Authorizer
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -181,8 +182,92 @@ defmodule Domain.FlowsTest do
       assert {:ok, resource, _flow} =
                authorize_flow(client, gateway, resource.id, subject, preload: :connections)
 
-      assert Ecto.assoc_loaded?(resource.connections) == true
+      assert Ecto.assoc_loaded?(resource.connections)
+      assert Ecto.assoc_loaded?(resource.connections)
+      assert Ecto.assoc_loaded?(resource.connections)
+      assert Ecto.assoc_loaded?(resource.connections)
       assert length(resource.connections) == 1
+    end
+  end
+
+  describe "fetch_flow_by_id/2" do
+    test "returns error when flow does not exist", %{subject: subject} do
+      assert fetch_flow_by_id(Ecto.UUID.generate(), subject) == {:error, :not_found}
+    end
+
+    test "returns error when UUID is invalid", %{subject: subject} do
+      assert fetch_flow_by_id("foo", subject) == {:error, :not_found}
+    end
+
+    test "returns flow", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      assert {:ok, fetched_flow} = fetch_flow_by_id(flow.id, subject)
+      assert fetched_flow.id == flow.id
+    end
+
+    test "does not return flows in other accounts", %{subject: subject} do
+      flow = Fixtures.Flows.create_flow()
+      assert fetch_flow_by_id(flow.id, subject) == {:error, :not_found}
+    end
+
+    test "returns error when subject has no permission to view flows", %{subject: subject} do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert fetch_flow_by_id(Ecto.UUID.generate(), subject) ==
+               {:error,
+                {:unauthorized, [missing_permissions: [Authorizer.view_flows_permission()]]}}
+    end
+
+    test "associations are preloaded when opts given", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      assert {:ok, flow} =
+               fetch_flow_by_id(flow.id, subject,
+                 preload: [
+                   :policy,
+                   :client,
+                   :gateway,
+                   :resource,
+                   :account
+                 ]
+               )
+
+      assert Ecto.assoc_loaded?(flow.policy)
+      assert Ecto.assoc_loaded?(flow.client)
+      assert Ecto.assoc_loaded?(flow.gateway)
+      assert Ecto.assoc_loaded?(flow.resource)
+      assert Ecto.assoc_loaded?(flow.account)
     end
   end
 
@@ -215,7 +300,7 @@ defmodule Domain.FlowsTest do
       assert list_flows_for(gateway, subject) == {:ok, []}
     end
 
-    test "returns all authorized resources for account user subject", %{
+    test "returns all authorized flows", %{
       account: account,
       client: client,
       gateway: gateway,
@@ -256,6 +341,234 @@ defmodule Domain.FlowsTest do
       assert list_flows_for(resource, subject) == expected_error
       assert list_flows_for(client, subject) == expected_error
       assert list_flows_for(gateway, subject) == expected_error
+    end
+  end
+
+  describe "upsert_activities/1" do
+    test "inserts new activities", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      {:ok, destination} = Domain.Types.IPPort.cast("127.0.0.1:80")
+
+      activity =
+        %{
+          window_started_at: DateTime.add(now, -1, :minute),
+          window_ended_at: now,
+          destination: destination,
+          rx_bytes: 100,
+          tx_bytes: 200,
+          flow_id: flow.id,
+          account_id: account.id
+        }
+
+      assert upsert_activities([activity]) == {:ok, 1}
+
+      assert upserted_activity = Repo.one(Flows.Activity)
+      assert upserted_activity.window_started_at == activity.window_started_at
+      assert upserted_activity.window_ended_at == activity.window_ended_at
+      assert upserted_activity.destination == destination
+      assert upserted_activity.rx_bytes == activity.rx_bytes
+      assert upserted_activity.tx_bytes == activity.tx_bytes
+      assert upserted_activity.flow_id == flow.id
+      assert upserted_activity.account_id == account.id
+    end
+
+    test "ignores upsert conflicts", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      activity = Fixtures.Flows.activity_attrs(flow_id: flow.id, account_id: account.id)
+
+      assert upsert_activities([activity]) == {:ok, 1}
+      assert upsert_activities([activity]) == {:ok, 0}
+
+      assert Repo.one(Flows.Activity)
+    end
+  end
+
+  describe "list_flow_activities_for/4" do
+    setup %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      %{flow: flow}
+    end
+
+    test "returns empty list when there are no flow activities", %{
+      account: account,
+      flow: flow,
+      subject: subject
+    } do
+      now = DateTime.utc_now()
+      ended_after = DateTime.add(now, -30, :minute)
+      started_before = DateTime.add(now, 30, :minute)
+
+      assert list_flow_activities_for(account, ended_after, started_before, subject) == {:ok, []}
+      assert list_flow_activities_for(flow, ended_after, started_before, subject) == {:ok, []}
+    end
+
+    test "does not list flow activities from other accounts", %{
+      account: account,
+      subject: subject
+    } do
+      flow = Fixtures.Flows.create_flow()
+      Fixtures.Flows.create_activity(flow: flow)
+
+      now = DateTime.utc_now()
+      ended_after = DateTime.add(now, -30, :minute)
+      started_before = DateTime.add(now, 30, :minute)
+
+      assert list_flow_activities_for(account, ended_after, started_before, subject) == {:ok, []}
+      assert list_flow_activities_for(flow, ended_after, started_before, subject) == {:ok, []}
+    end
+
+    test "returns ordered by window start time flow activities within a time window", %{
+      account: account,
+      flow: flow,
+      subject: subject
+    } do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      thirty_minutes_ago = DateTime.add(now, -30, :minute)
+      five_minutes_ago = DateTime.add(now, -5, :minute)
+      four_minutes_ago = DateTime.add(now, -4, :minute)
+      three_minutes_ago = DateTime.add(now, -4, :minute)
+      thirty_minutes_in_future = DateTime.add(now, 30, :minute)
+      sixty_minutes_in_future = DateTime.add(now, 60, :minute)
+
+      activity1 =
+        Fixtures.Flows.create_activity(
+          flow: flow,
+          window_started_at: four_minutes_ago,
+          window_ended_at: three_minutes_ago
+        )
+
+      assert list_flow_activities_for(
+               account,
+               thirty_minutes_in_future,
+               sixty_minutes_in_future,
+               subject
+             ) == {:ok, []}
+
+      assert list_flow_activities_for(
+               flow,
+               thirty_minutes_in_future,
+               sixty_minutes_in_future,
+               subject
+             ) == {:ok, []}
+
+      assert list_flow_activities_for(
+               account,
+               thirty_minutes_ago,
+               five_minutes_ago,
+               subject
+             ) == {:ok, []}
+
+      assert list_flow_activities_for(
+               flow,
+               thirty_minutes_ago,
+               five_minutes_ago,
+               subject
+             ) == {:ok, []}
+
+      assert list_flow_activities_for(
+               account,
+               five_minutes_ago,
+               now,
+               subject
+             ) == {:ok, [activity1]}
+
+      assert list_flow_activities_for(
+               flow,
+               five_minutes_ago,
+               now,
+               subject
+             ) == {:ok, [activity1]}
+
+      activity2 =
+        Fixtures.Flows.create_activity(
+          flow: flow,
+          window_started_at: five_minutes_ago,
+          window_ended_at: four_minutes_ago
+        )
+
+      assert list_flow_activities_for(
+               account,
+               thirty_minutes_ago,
+               now,
+               subject
+             ) == {:ok, [activity2, activity1]}
+
+      assert list_flow_activities_for(
+               flow,
+               thirty_minutes_ago,
+               now,
+               subject
+             ) == {:ok, [activity2, activity1]}
+    end
+
+    test "returns error when subject has no permission to view flows", %{
+      account: account,
+      flow: flow,
+      subject: subject
+    } do
+      now = DateTime.utc_now()
+      ended_after = DateTime.add(now, -30, :minute)
+      started_before = DateTime.add(now, 30, :minute)
+
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert list_flow_activities_for(account, ended_after, started_before, subject) ==
+               {:error,
+                {:unauthorized, [missing_permissions: [Flows.Authorizer.view_flows_permission()]]}}
+
+      assert list_flow_activities_for(flow, ended_after, started_before, subject) ==
+               {:error,
+                {:unauthorized, [missing_permissions: [Flows.Authorizer.view_flows_permission()]]}}
     end
   end
 end

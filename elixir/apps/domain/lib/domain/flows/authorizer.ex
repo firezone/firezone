@@ -1,6 +1,6 @@
 defmodule Domain.Flows.Authorizer do
   use Domain.Auth.Authorizer
-  alias Domain.Flows.Flow
+  alias Domain.Flows.{Flow, Activity}
 
   def view_flows_permission, do: build(Flow, :view)
   def create_flows_permission, do: build(Flow, :create)
@@ -23,11 +23,17 @@ defmodule Domain.Flows.Authorizer do
     []
   end
 
-  @impl Domain.Auth.Authorizer
-  def for_subject(queryable, %Subject{} = subject) do
+  def for_subject(queryable, Flow, %Subject{} = subject) do
     cond do
       has_permission?(subject, view_flows_permission()) ->
         Flow.Query.by_account_id(queryable, subject.account.id)
+    end
+  end
+
+  def for_subject(queryable, Activity, %Subject{} = subject) do
+    cond do
+      has_permission?(subject, view_flows_permission()) ->
+        Activity.Query.by_account_id(queryable, subject.account.id)
     end
   end
 end
