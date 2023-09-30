@@ -264,7 +264,7 @@ defmodule Web.NavigationComponents do
   Renders a single breadcrumb entry. should be wrapped in <.breadcrumbs> component.
   """
   slot :inner_block, required: true, doc: "The label for the breadcrumb entry."
-  attr :path, :string, required: true, doc: "The path for the breadcrumb entry."
+  attr :path, :string, default: nil, doc: "The path for the breadcrumb entry."
 
   def breadcrumb(assigns) do
     ~H"""
@@ -272,11 +272,19 @@ defmodule Web.NavigationComponents do
       <div class="flex items-center text-gray-700 dark:text-gray-300">
         <.icon name="hero-chevron-right-solid" class="w-6 h-6" />
         <.link
+          :if={not is_nil(@path)}
           navigate={@path}
           class="ml-1 text-sm font-medium text-gray-700 hover:text-gray-900 md:ml-2 dark:text-gray-300 dark:hover:text-white"
         >
           <%= render_slot(@inner_block) %>
         </.link>
+
+        <span
+          :if={is_nil(@path)}
+          class="ml-1 text-sm font-medium text-gray-700 hover:text-gray-900 md:ml-2 dark:text-gray-300 dark:hover:text-white"
+        >
+          <%= render_slot(@inner_block) %>
+        </span>
       </div>
     </li>
     """

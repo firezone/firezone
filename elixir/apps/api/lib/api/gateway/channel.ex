@@ -1,7 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Clients, Resources, Relays, Gateways}
+  alias Domain.{Clients, Resources, Relays, Gateways, Flows}
   require Logger
   require OpenTelemetry.Tracer
 
@@ -83,6 +83,7 @@ defmodule API.Gateway.Channel do
       %{
         client_id: client_id,
         resource_id: resource_id,
+        flow_id: flow_id,
         authorization_expires_at: authorization_expires_at
       } = attrs
 
@@ -90,6 +91,7 @@ defmodule API.Gateway.Channel do
 
       push(socket, "allow_access", %{
         client_id: client_id,
+        flow_id: flow_id,
         resource: Views.Resource.render(resource),
         expires_at: DateTime.to_unix(authorization_expires_at, :second)
       })
@@ -130,6 +132,7 @@ defmodule API.Gateway.Channel do
       %{
         client_id: client_id,
         resource_id: resource_id,
+        flow_id: flow_id,
         authorization_expires_at: authorization_expires_at,
         client_rtc_session_description: rtc_session_description,
         client_preshared_key: preshared_key
@@ -148,6 +151,7 @@ defmodule API.Gateway.Channel do
 
       push(socket, "request_connection", %{
         ref: ref,
+        flow_id: flow_id,
         actor: Views.Actor.render(client.actor),
         relays: Views.Relay.render_many(relays, authorization_expires_at),
         resource: Views.Resource.render(resource),
@@ -158,6 +162,7 @@ defmodule API.Gateway.Channel do
       Logger.debug("Awaiting gateway connection_ready message",
         client_id: client_id,
         resource_id: resource_id,
+        flow_id: flow_id,
         ref: ref
       )
 
@@ -236,21 +241,45 @@ defmodule API.Gateway.Channel do
     end
   end
 
-  # def handle_in("metrics", params, socket) do
-  #   %{
-  #     "started_at" => started_at,
-  #     "ended_at" => ended_at,
-  #     "metrics" => [
-  #       %{
-  #         "client_id" => client_id,
-  #         "resource_id" => resource_id,
-  #         "rx_bytes" => 0,
-  #         "tx_packets" => 0
-  #       }
-  #     ]
-  #   }
+  def handle_in(
+        "metrics",
+        %{
+          "started_at" => started_at,
+          "ended_at" => ended_at,
+          "metrics" => metrics
+        },
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
-  #   :ok = Gateways.update_metrics(socket.assigns.relay, metrics)
-  #   {:noreply, socket}
-  # end
+    OpenTelemetry.Tracer.with_span "gateway.metrics" do
+      window_started_at = DateTime.from_unix!(started_at, :second)
+      window_ended_at = DateTime.from_unix!(ended_at, :second)
+
+      activities =
+        Enum.map(metrics, fn metric ->
+          %{
+            "flow_id" => flow_id,
+            "destination" => destination,
+            "rx_bytes" => rx_bytes,
+            "tx_bytes" => tx_bytes
+          } = metric
+
+          %{
+            window_started_at: window_started_at,
+            window_ended_at: window_ended_at,
+            destination: destination,
+            rx_bytes: rx_bytes,
+            tx_bytes: tx_bytes,
+            flow_id: flow_id,
+            account_id: socket.assigns.gateway.account_id
+          }
+        end)
+
+      {:ok, _num} = Flows.upsert_activities(activities)
+
+      {:reply, :ok, socket}
+    end
+  end
 end

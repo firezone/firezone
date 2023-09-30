@@ -1222,7 +1222,7 @@ defmodule Domain.ActorsTest do
 
       {:ok, actor} = fetch_actor_by_id(actor.id, subject, preload: :identities)
 
-      assert Ecto.assoc_loaded?(actor.identities) == true
+      assert Ecto.assoc_loaded?(actor.identities)
     end
   end
 
@@ -1317,7 +1317,7 @@ defmodule Domain.ActorsTest do
       {:ok, actors} = list_actors(subject, preload: :identities)
       assert length(actors) == 2
 
-      assert Enum.all?(actors, fn a -> Ecto.assoc_loaded?(a.identities) end) == true
+      assert Enum.all?(actors, fn a -> Ecto.assoc_loaded?(a.identities) end)
     end
   end
 

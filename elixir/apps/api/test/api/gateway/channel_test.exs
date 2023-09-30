@@ -72,6 +72,7 @@ defmodule API.Gateway.ChannelTest do
     } do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+      flow_id = Ecto.UUID.generate()
 
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
@@ -82,6 +83,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client_id: client.id,
            resource_id: resource.id,
+           flow_id: flow_id,
            authorization_expires_at: expires_at
          }, otel_ctx}
       )
@@ -102,6 +104,7 @@ defmodule API.Gateway.ChannelTest do
                ]
              }
 
+      assert payload.flow_id == flow_id
       assert payload.client_id == client.id
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
     end
@@ -142,6 +145,7 @@ defmodule API.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
       rtc_session_description = "RTC_SD"
+      flow_id = Ecto.UUID.generate()
 
       otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
 
@@ -154,6 +158,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client_id: client.id,
            resource_id: resource.id,
+           flow_id: flow_id,
            authorization_expires_at: expires_at,
            client_rtc_session_description: rtc_session_description,
            client_preshared_key: preshared_key
@@ -163,6 +168,7 @@ defmodule API.Gateway.ChannelTest do
       assert_push "request_connection", payload
 
       assert is_binary(payload.ref)
+      assert payload.flow_id == flow_id
       assert payload.actor == %{id: client.actor_id}
 
       ipv4_stun_uri = "stun:#{relay.ipv4}:#{relay.port}"
@@ -246,6 +252,7 @@ defmodule API.Gateway.ChannelTest do
       preshared_key = "PSK"
       gateway_public_key = gateway.public_key
       rtc_session_description = "RTC_SD"
+      flow_id = Ecto.UUID.generate()
 
       otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
 
@@ -259,12 +266,13 @@ defmodule API.Gateway.ChannelTest do
            client_id: client.id,
            resource_id: resource.id,
            authorization_expires_at: expires_at,
+           flow_id: flow_id,
            client_rtc_session_description: rtc_session_description,
            client_preshared_key: preshared_key
          }, otel_ctx}
       )
 
-      assert_push "request_connection", %{ref: ref}
+      assert_push "request_connection", %{ref: ref, flow_id: ^flow_id}
 
       push_ref =
         push(socket, "connection_ready", %{
@@ -315,6 +323,57 @@ defmodule API.Gateway.ChannelTest do
 
       assert_receive {:ice_candidates, gateway_id, ^candidates, _opentelemetry_ctx}, 200
       assert gateway.id == gateway_id
+    end
+  end
+
+  describe "handle_in/3 metrics" do
+    test "inserts activities", %{
+      account: account,
+      subject: subject,
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      socket: socket
+    } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          resource: resource,
+          gateway: gateway
+        )
+
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      one_minute_ago = DateTime.add(now, -1, :minute)
+
+      {:ok, destination} = Domain.Types.IPPort.cast("127.0.0.1:80")
+
+      attrs =
+        %{
+          "started_at" => DateTime.to_unix(one_minute_ago),
+          "ended_at" => DateTime.to_unix(now),
+          "metrics" => [
+            %{
+              "flow_id" => flow.id,
+              "destination" => destination,
+              "rx_bytes" => 100,
+              "tx_bytes" => 200
+            }
+          ]
+        }
+
+      push_ref = push(socket, "metrics", attrs)
+      assert_reply push_ref, :ok
+
+      assert upserted_activity = Repo.one(Domain.Flows.Activity)
+      assert upserted_activity.window_started_at == one_minute_ago
+      assert upserted_activity.window_ended_at == now
+      assert upserted_activity.destination == destination
+      assert upserted_activity.rx_bytes == 100
+      assert upserted_activity.tx_bytes == 200
+      assert upserted_activity.flow_id == flow.id
+      assert upserted_activity.account_id == account.id
     end
   end
 end

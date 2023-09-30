@@ -1,30 +1,28 @@
 @layer utilities {
-    @variants responsive {
-        .no-scrollbar::-webkit-scrollbar {
-            display: block;
-            height: 0px;
-            background-color: initial;
-            border-radius: 10px;
-            transition: all 2s linear;
-        }
+  .no-scrollbar::-webkit-scrollbar {
+    display: block;
+    height: 0px;
+    background-color: initial;
+    border-radius: 10px;
+    transition: all 2s linear;
+  }
 
-        .no-scrollbar:hover::-webkit-scrollbar {
-            height: .5rem;
-        }
+  .no-scrollbar:hover::-webkit-scrollbar {
+    height: .5rem;
+  }
 
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 
-        .no-scrollbar::-webkit-scrollbar-thumb {
-            background-color: rgb(228 228 231/var(--tw-bg-opacity));
-            border-radius: 10px;
-        }
+  .no-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgb(228 228 231/var(--tw-bg-opacity));
+    border-radius: 10px;
+  }
 
-        .no-scrollbar::-webkit-scrollbar-track {
-            background-color: rgb(249 250 251);
-            border-radius: 5px;
-        }
-    }
+  .no-scrollbar::-webkit-scrollbar-track {
+    background-color: rgb(249 250 251);
+    border-radius: 5px;
+  }
 }

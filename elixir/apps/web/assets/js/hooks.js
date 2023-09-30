@@ -22,6 +22,7 @@ Hooks.Copy = {
   },
 }
 
+
 // Update status indicator when sidebar is mounted or updated
 let statusIndicatorClassNames = {
   none: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",

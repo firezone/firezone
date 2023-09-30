@@ -65,8 +65,12 @@ defmodule Domain.Types.IPPort do
 
   def dump(_), do: :error
 
-  def load(%__MODULE__{} = ip) do
-    {:ok, ip}
+  def load(binary) when is_binary(binary) do
+    cast(binary)
+  end
+
+  def load(%__MODULE__{} = struct) do
+    {:ok, struct}
   end
 
   def load(_), do: :error

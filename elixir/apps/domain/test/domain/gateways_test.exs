@@ -418,8 +418,8 @@ defmodule Domain.GatewaysTest do
       gateway = Fixtures.Gateways.create_gateway(account: account)
       {:ok, gateway} = fetch_gateway_by_id(gateway.id, subject, preload: [:group, :account])
 
-      assert Ecto.assoc_loaded?(gateway.group) == true
-      assert Ecto.assoc_loaded?(gateway.account) == true
+      assert Ecto.assoc_loaded?(gateway.group)
+      assert Ecto.assoc_loaded?(gateway.account)
     end
   end
 

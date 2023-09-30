@@ -457,9 +457,45 @@ IO.puts("Created client tokens:")
 IO.puts("  #{unprivileged_actor_email} token: #{unprivileged_subject_client_token}")
 IO.puts("")
 
-Flows.authorize_flow(
-  user_iphone,
-  gateway1,
-  cidr_resource.id,
-  unprivileged_subject
-)
+{:ok, _resource, flow} =
+  Flows.authorize_flow(
+    user_iphone,
+    gateway1,
+    cidr_resource.id,
+    unprivileged_subject
+  )
+
+started_at =
+  DateTime.utc_now()
+  |> DateTime.truncate(:second)
+  |> DateTime.add(5, :minute)
+
+{:ok, destination1} = Domain.Types.IPPort.cast("142.250.217.142:443")
+{:ok, destination2} = Domain.Types.IPPort.cast("142.250.217.142:80")
+
+random_integer = fn ->
+  :math.pow(10, 10)
+  |> round()
+  |> :rand.uniform()
+  |> floor()
+  |> Kernel.-(1)
+end
+
+activities =
+  for i <- 1..200 do
+    offset = i * 15
+    started_at = DateTime.add(started_at, offset, :minute)
+    ended_at = DateTime.add(started_at, 15, :minute)
+
+    %{
+      window_started_at: started_at,
+      window_ended_at: ended_at,
+      destination: Enum.random([destination1, destination2]),
+      rx_bytes: random_integer.(),
+      tx_bytes: random_integer.(),
+      flow_id: flow.id,
+      account_id: account.id
+    }
+  end
+
+{:ok, 200} = Flows.upsert_activities(activities)
