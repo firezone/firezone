@@ -1292,9 +1292,9 @@ defmodule Web.AuthControllerTest do
   end
 
   defp split_token(identity, size \\ 5) do
-    <<email_secret::binary-size(size), browser_secret::binary>> =
+    <<email_secret::binary-size(size), sign_in_nonce::binary>> =
       identity.provider_virtual_state.sign_in_token
 
-    {email_secret, browser_secret}
+    {email_secret, sign_in_nonce}
   end
 end
