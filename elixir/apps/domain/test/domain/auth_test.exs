@@ -2447,22 +2447,24 @@ defmodule Domain.AuthTest do
       assert updated_identity.last_seen_user_agent != identity.last_seen_user_agent
     end
 
-    test "returns error when session token is created with a different remote ip", %{
-      subject: subject,
-      user_agent: user_agent
-    } do
-      {:ok, token} = create_session_token_from_subject(subject)
-      assert sign_in(token, user_agent, {127, 0, 0, 1}) == {:error, :unauthorized}
-    end
-
-    test "returns error when session token is created with a different user agent", %{
-      subject: subject,
-      remote_ip: remote_ip
-    } do
-      user_agent = "iOS/12.6 (iPhone) connlib/0.7.412"
-      {:ok, token} = create_session_token_from_subject(subject)
-      assert sign_in(token, user_agent, remote_ip) == {:error, :unauthorized}
-    end
+    # XXX: Use different params to pin the session token on as these are likely to change
+    # over the lifetime of the session token.
+    # test "returns error when session token is created with a different remote ip", %{
+    #   subject: subject,
+    #   user_agent: user_agent
+    # } do
+    #   {:ok, token} = create_session_token_from_subject(subject)
+    #   assert sign_in(token, user_agent, {127, 0, 0, 1}) == {:error, :unauthorized}
+    # end
+    #
+    # test "returns error when session token is created with a different user agent", %{
+    #   subject: subject,
+    #   remote_ip: remote_ip
+    # } do
+    #   user_agent = "iOS/12.6 (iPhone) connlib/0.7.412"
+    #   {:ok, token} = create_session_token_from_subject(subject)
+    #   assert sign_in(token, user_agent, remote_ip) == {:error, :unauthorized}
+    # end
 
     test "returns error when token is created for a deleted identity", %{
       identity: identity,
