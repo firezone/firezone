@@ -46,15 +46,6 @@
         app:layout_constraintTop_toBottomOf="@+id/llContainer" />
 
     <com.google.android.material.button.MaterialButton
-        android:id="@+id/btDebugUser"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/sign_in_debug_user"
-        app:layout_constraintBottom_toTopOf="@+id/btSignIn"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
-
-    <com.google.android.material.button.MaterialButton
         android:id="@+id/btSignIn"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
