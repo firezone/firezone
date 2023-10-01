@@ -14,7 +14,6 @@
 		05CF1D16290B1FE700CF4755 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */; };
 		05CF1D17290B1FE700CF4755 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */; };
 		05D3BB2128FDE9C000BC3727 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */; };
-		6F68E44C2A588522003C7D08 /* AllConfigs.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 6F68E44B2A588522003C7D08 /* AllConfigs.xcconfig */; };
 		6FA39A042A6A7248000F0157 /* NetworkResource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FA39A032A6A7248000F0157 /* NetworkResource.swift */; };
 		6FA39A052A6A7248000F0157 /* NetworkResource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FA39A032A6A7248000F0157 /* NetworkResource.swift */; };
 		6FE454F62A5BFB93006549B1 /* Adapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FE454EA2A5BFABA006549B1 /* Adapter.swift */; };
@@ -338,7 +337,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1400;
-				LastUpgradeCheck = 1420;
+				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					05CF1CEF290B1CEE00CF4755 = {
 						CreatedOnToolsVersion = 14.0.1;
@@ -401,7 +400,6 @@
 			files = (
 				8DCC022A28D512AE007E12D2 /* Preview Assets.xcassets in Resources */,
 				8DCC022628D512AE007E12D2 /* Assets.xcassets in Resources */,
-				6F68E44C2A588522003C7D08 /* AllConfigs.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
