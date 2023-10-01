@@ -16,17 +16,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  swift_lint: ${{ matrix.runs-on.os }}
-    runs-on: macos-13
-    permissions:
-      contents: read
-    defaults:
-      run:
-        working-directory: ./swift
-    steps:
-      - uses: actions/checkout@v4
-      - run: swiftlint
-
   swift_build:
     depends_on: swift_lint
     runs-on: ${{ matrix.runs-on.os }}
