@@ -8,48 +8,48 @@ import NetworkExtension
 import SwiftUI
 
 struct ConnectionSwitch: View {
-  let status: NEVPNStatus
-  var connect: () async -> Void
-  var disconnect: () async -> Void
+    let status: NEVPNStatus
+    var connect: () async -> Void
+    var disconnect: () async -> Void
 
-  @State private var isInFlight = false
+    @State private var isInFlight = false
 
-  var body: some View {
-    HStack {
-      ZStack {
-        Toggle(
-          "", isOn: .init(
-            get: { status == .connected },
-            set: { isOn in
-              Task {
-                isInFlight = true
-                defer { isInFlight = false }
+    var body: some View {
+        HStack {
+            ZStack {
+                Toggle(
+                    "", isOn: .init(
+                        get: { status == .connected },
+                        set: { isOn in
+                            Task {
+                                isInFlight = true
+                                defer { isInFlight = false }
 
-                if isOn {
-                  await connect()
-                } else {
-                  await disconnect()
+                                if isOn {
+                                    await connect()
+                                } else {
+                                    await disconnect()
+                                }
+                            }
+                        }
+                    )
+                )
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .opacity(isInFlight ? 0 : 1)
+
+                if isInFlight {
+                    ProgressView()
                 }
-              }
             }
-          )
-        )
-        .labelsHidden()
-        .toggleStyle(.switch)
-        .opacity(isInFlight ? 0 : 1)
 
-        if isInFlight {
-          ProgressView()
+            Text(status.description).frame(maxWidth: .infinity, alignment: .leading)
         }
-      }
-
-      Text(status.description).frame(maxWidth: .infinity, alignment: .leading)
     }
-  }
 }
 
 struct ConnectionSwitch_Previews: PreviewProvider {
-  static var previews: some View {
-    ConnectionSwitch(status: .connected, connect: {}, disconnect: {})
-  }
+    static var previews: some View {
+        ConnectionSwitch(status: .connected, connect: {}, disconnect: {})
+    }
 }

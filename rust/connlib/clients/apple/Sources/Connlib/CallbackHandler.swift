@@ -21,7 +21,7 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onAddRoute(_: String)
   func onRemoveRoute(_: String)
   func onUpdateResources(resourceList: String)
-  func onDisconnect(error: Optional<String>)
+  func onDisconnect(error: String?)
   func onError(error: String)
 }
 

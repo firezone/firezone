@@ -8,31 +8,31 @@ import Foundation
 import FirezoneKit
 
 public struct NetworkResource: Decodable {
-  enum ResourceLocation {
-    case dns(domain: String, ipv4: String, ipv6: String)
-    case cidr(cidrAddress: String)
+    enum ResourceLocation {
+        case dns(domain: String, ipv4: String, ipv6: String)
+        case cidr(cidrAddress: String)
 
-    func toString() -> String {
-      switch self {
-        case .dns(let domain, ipv4: _, ipv6: _): return domain
-        case .cidr(let cidrAddress): return cidrAddress
-      }
+        func toString() -> String {
+            switch self {
+            case .dns(let domain, ipv4: _, ipv6: _): return domain
+            case .cidr(let cidrAddress): return cidrAddress
+            }
+        }
+
+        var domain: String? {
+            switch self {
+            case .dns(let domain, ipv4: _, ipv6: _): return domain
+            case .cidr: return nil
+            }
+        }
     }
 
-    var domain: String? {
-      switch self {
-        case .dns(let domain, ipv4: _, ipv6: _): return domain
-        case .cidr: return nil
-      }
+    let name: String
+    let resourceLocation: ResourceLocation
+
+    var displayableResource: DisplayableResources.Resource {
+        DisplayableResources.Resource(name: name, location: resourceLocation.toString())
     }
-  }
-
-  let name: String
-  let resourceLocation: ResourceLocation
-
-  var displayableResource: DisplayableResources.Resource {
-    DisplayableResources.Resource(name: name, location: resourceLocation.toString())
-  }
 }
 
 // A DNS resource example:
@@ -52,36 +52,36 @@ public struct NetworkResource: Decodable {
 //   }
 
 extension NetworkResource {
-  enum ResourceKeys: String, CodingKey {
-    case type
-    case address
-    case name
-    case ipv4
-    case ipv6
-  }
+    enum ResourceKeys: String, CodingKey {
+        case type
+        case address
+        case name
+        case ipv4
+        case ipv6
+    }
 
-  enum DecodeError: Error {
-    case invalidType(String)
-  }
+    enum DecodeError: Error {
+        case invalidType(String)
+    }
 
-  public init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: ResourceKeys.self)
-    let name = try container.decode(String.self, forKey: .name)
-    let type = try container.decode(String.self, forKey: .type)
-    let resourceLocation: ResourceLocation = try {
-      switch type {
-        case "dns":
-          let domain = try container.decode(String.self, forKey: .address)
-          let ipv4 = try container.decode(String.self, forKey: .ipv4)
-          let ipv6 = try container.decode(String.self, forKey: .ipv6)
-          return .dns(domain: domain, ipv4: ipv4, ipv6: ipv6)
-        case "cidr":
-          let address = try container.decode(String.self, forKey: .address)
-          return .cidr(cidrAddress: address)
-        default:
-          throw DecodeError.invalidType(type)
-      }
-    }()
-    self.init(name: name, resourceLocation: resourceLocation)
-  }
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: ResourceKeys.self)
+        let name = try container.decode(String.self, forKey: .name)
+        let type = try container.decode(String.self, forKey: .type)
+        let resourceLocation: ResourceLocation = try {
+            switch type {
+            case "dns":
+                let domain = try container.decode(String.self, forKey: .address)
+                let ipv4 = try container.decode(String.self, forKey: .ipv4)
+                let ipv6 = try container.decode(String.self, forKey: .ipv6)
+                return .dns(domain: domain, ipv4: ipv4, ipv6: ipv6)
+            case "cidr":
+                let address = try container.decode(String.self, forKey: .address)
+                return .cidr(cidrAddress: address)
+            default:
+                throw DecodeError.invalidType(type)
+            }
+        }()
+        self.init(name: name, resourceLocation: resourceLocation)
+    }
 }
