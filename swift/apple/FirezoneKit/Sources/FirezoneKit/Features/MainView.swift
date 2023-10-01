@@ -11,8 +11,8 @@ import OSLog
 import SwiftUI
 
 #if os(iOS)
-@MainActor
-final class MainViewModel: ObservableObject {
+  @MainActor
+  final class MainViewModel: ObservableObject {
     private let logger = Logger.make(for: MainViewModel.self)
     private var cancellables: Set<AnyCancellable> = []
 
@@ -24,156 +24,156 @@ final class MainViewModel: ObservableObject {
     @Published var orderedResources: [DisplayableResources.Resource] = []
 
     init(appStore: AppStore) {
-        self.appStore = appStore
-        setupObservers()
+      self.appStore = appStore
+      setupObservers()
     }
 
     private func setupObservers() {
-        appStore.auth.$loginStatus
-            .receive(on: mainQueue)
-            .sink { [weak self] loginStatus in
-                self?.loginStatus = loginStatus
-            }
-            .store(in: &cancellables)
+      appStore.auth.$loginStatus
+        .receive(on: mainQueue)
+        .sink { [weak self] loginStatus in
+          self?.loginStatus = loginStatus
+        }
+        .store(in: &cancellables)
 
-        appStore.tunnel.$status
-            .receive(on: mainQueue)
-            .sink { [weak self] status in
-                self?.tunnelStatus = status
-                if status == .connected {
-                    self?.appStore.tunnel.beginUpdatingResources()
-                } else {
-                    self?.appStore.tunnel.endUpdatingResources()
-                }
-            }
-            .store(in: &cancellables)
+      appStore.tunnel.$status
+        .receive(on: mainQueue)
+        .sink { [weak self] status in
+          self?.tunnelStatus = status
+          if status == .connected {
+            self?.appStore.tunnel.beginUpdatingResources()
+          } else {
+            self?.appStore.tunnel.endUpdatingResources()
+          }
+        }
+        .store(in: &cancellables)
 
-        appStore.tunnel.$resources
-            .receive(on: mainQueue)
-            .sink { [weak self] resources in
-                guard let self = self else { return }
-                self.orderedResources = resources.orderedResources.map {
-                    DisplayableResources.Resource(name: $0.name, location: $0.location)
-                }
-            }
-            .store(in: &cancellables)
+      appStore.tunnel.$resources
+        .receive(on: mainQueue)
+        .sink { [weak self] resources in
+          guard let self = self else { return }
+          self.orderedResources = resources.orderedResources.map {
+            DisplayableResources.Resource(name: $0.name, location: $0.location)
+          }
+        }
+        .store(in: &cancellables)
     }
 
     func signOutButtonTapped() {
-        Task {
-            do {
-                try await appStore.auth.signOut()
-            } catch {
-                logger.error("Error signing out: \(String(describing: error))")
-            }
+      Task {
+        do {
+          try await appStore.auth.signOut()
+        } catch {
+          logger.error("Error signing out: \(String(describing: error))")
         }
+      }
     }
 
     func startTunnel() async {
-        do {
-            if case .signedIn = self.loginStatus {
-                try await appStore.tunnel.start()
-            }
-        } catch {
-            logger.error("Error starting tunnel: \(String(describing: error))")
+      do {
+        if case .signedIn = self.loginStatus {
+          try await appStore.tunnel.start()
         }
+      } catch {
+        logger.error("Error starting tunnel: \(String(describing: error))")
+      }
     }
 
     func stopTunnel() {
-        appStore.tunnel.stop()
+      appStore.tunnel.stop()
     }
-}
+  }
 
-struct MainView: View {
+  struct MainView: View {
     @ObservedObject var model: MainViewModel
 
     var body: some View {
-        List {
-            Section(header: Text("Authentication")) {
-                Group {
-                    switch self.model.loginStatus {
-                    case .signedIn(_, let actorName):
-                        HStack {
-                            Text(actorName.isEmpty ? "Signed in" : "Signed in as")
-                            Spacer()
-                            Text(actorName)
-                                .foregroundColor(.secondary)
-                        }
-                        HStack {
-                            Spacer()
-                            Button("Sign Out") {
-                                self.model.signOutButtonTapped()
-                            }
-                            Spacer()
-                        }
-                    case .signedOut:
-                        Text("Signed Out")
-                    case .uninitialized:
-                        Text("Initializing…")
-                    }
+      List {
+        Section(header: Text("Authentication")) {
+          Group {
+            switch self.model.loginStatus {
+            case .signedIn(_, let actorName):
+              HStack {
+                Text(actorName.isEmpty ? "Signed in" : "Signed in as")
+                Spacer()
+                Text(actorName)
+                  .foregroundColor(.secondary)
+              }
+              HStack {
+                Spacer()
+                Button("Sign Out") {
+                  self.model.signOutButtonTapped()
                 }
+                Spacer()
+              }
+            case .signedOut:
+              Text("Signed Out")
+            case .uninitialized:
+              Text("Initializing…")
             }
-            if case .signedIn = self.model.loginStatus {
-                Section(header: Text("Connection")) {
-                    Text(self.model.tunnelStatus.description)
-                    if self.model.tunnelStatus == .disconnected || self.model.tunnelStatus == .invalid {
-                        HStack {
-                            Spacer()
-                            Button("Reconnect") {
-                                Task {
-                                    await self.model.startTunnel()
-                                }
-                            }
-                            Spacer()
-                        }
-                    }
-                }
-            }
-            if case .signedIn = self.model.loginStatus, self.model.tunnelStatus == .connected {
-                Section(header: Text("Resources")) {
-                    if self.model.orderedResources.isEmpty {
-                        Text("No resources")
-                    } else {
-                        ForEach(self.model.orderedResources) { resource in
-                            HStack {
-                                Text(resource.name)
-                                Spacer()
-                                Text(resource.location)
-                                    .foregroundColor(.secondary)
-                                Button(
-                                    role: .none,
-                                    action: { self.copyResourceTapped(resource) },
-                                    label: {
-                                        Label("", systemImage: "doc.on.doc")
-                                            .symbolRenderingMode(.monochrome)
-                                            .foregroundColor(.secondary)
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+          }
         }
-        .listStyle(GroupedListStyle())
-        .navigationTitle("firezone")
+        if case .signedIn = self.model.loginStatus {
+          Section(header: Text("Connection")) {
+            Text(self.model.tunnelStatus.description)
+            if self.model.tunnelStatus == .disconnected || self.model.tunnelStatus == .invalid {
+              HStack {
+                Spacer()
+                Button("Reconnect") {
+                  Task {
+                    await self.model.startTunnel()
+                  }
+                }
+                Spacer()
+              }
+            }
+          }
+        }
+        if case .signedIn = self.model.loginStatus, self.model.tunnelStatus == .connected {
+          Section(header: Text("Resources")) {
+            if self.model.orderedResources.isEmpty {
+              Text("No resources")
+            } else {
+              ForEach(self.model.orderedResources) { resource in
+                HStack {
+                  Text(resource.name)
+                  Spacer()
+                  Text(resource.location)
+                    .foregroundColor(.secondary)
+                  Button(
+                    role: .none,
+                    action: { self.copyResourceTapped(resource) },
+                    label: {
+                      Label("", systemImage: "doc.on.doc")
+                        .symbolRenderingMode(.monochrome)
+                        .foregroundColor(.secondary)
+                    }
+                  )
+                }
+              }
+            }
+          }
+        }
+      }
+      .listStyle(GroupedListStyle())
+      .navigationTitle("firezone")
     }
 
     private func copyResourceTapped(_ resource: DisplayableResources.Resource) {
-        let pasteboard = UIPasteboard.general
-        pasteboard.string = resource.location
+      let pasteboard = UIPasteboard.general
+      pasteboard.string = resource.location
     }
-}
+  }
 
-struct MainView_Previews: PreviewProvider {
+  struct MainView_Previews: PreviewProvider {
     static var previews: some View {
-        MainView(
-            model: MainViewModel(
-                appStore: AppStore(
-                    tunnelStore: TunnelStore.shared
-                )
-            )
+      MainView(
+        model: MainViewModel(
+          appStore: AppStore(
+            tunnelStore: TunnelStore.shared
+          )
         )
+      )
     }
-}
+  }
 #endif

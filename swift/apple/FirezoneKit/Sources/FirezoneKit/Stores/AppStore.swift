@@ -10,56 +10,56 @@ import OSLog
 
 @MainActor
 final class AppStore: ObservableObject {
-    private let logger = Logger.make(for: AppStore.self)
+  private let logger = Logger.make(for: AppStore.self)
 
-    @Dependency(\.authStore) var auth
-    @Dependency(\.mainQueue) var mainQueue
+  @Dependency(\.authStore) var auth
+  @Dependency(\.mainQueue) var mainQueue
 
-    let tunnel: TunnelStore
-    private var cancellables: Set<AnyCancellable> = []
+  let tunnel: TunnelStore
+  private var cancellables: Set<AnyCancellable> = []
 
-    init(tunnelStore: TunnelStore) {
-        tunnel = tunnelStore
+  init(tunnelStore: TunnelStore) {
+    tunnel = tunnelStore
 
-        Publishers.Merge(
-            auth.objectWillChange,
-            tunnel.objectWillChange
-        )
-        .receive(on: mainQueue)
-        .sink { [weak self] in
-            self?.objectWillChange.send()
-        }
-        .store(in: &cancellables)
-
-        auth.$loginStatus
-            .receive(on: mainQueue)
-            .sink { [weak self] loginStatus in
-                Task { [weak self] in
-                    await self?.handleLoginStatusChanged(loginStatus)
-                }
-            }
-            .store(in: &cancellables)
+    Publishers.Merge(
+      auth.objectWillChange,
+      tunnel.objectWillChange
+    )
+    .receive(on: mainQueue)
+    .sink { [weak self] in
+      self?.objectWillChange.send()
     }
+    .store(in: &cancellables)
 
-    private func handleLoginStatusChanged(_ loginStatus: AuthStore.LoginStatus) async {
-        switch loginStatus {
-        case .signedIn:
-            do {
-                try await tunnel.start()
-            } catch {
-                logger.error("Error starting tunnel: \(String(describing: error))")
-            }
-        case .signedOut:
-            tunnel.stop()
-        case .uninitialized:
-            break
+    auth.$loginStatus
+      .receive(on: mainQueue)
+      .sink { [weak self] loginStatus in
+        Task { [weak self] in
+          await self?.handleLoginStatusChanged(loginStatus)
         }
-    }
+      }
+      .store(in: &cancellables)
+  }
 
-    private func signOutAndStopTunnel() {
-        tunnel.stop()
-        Task {
-            try? await auth.signOut()
-        }
+  private func handleLoginStatusChanged(_ loginStatus: AuthStore.LoginStatus) async {
+    switch loginStatus {
+    case .signedIn:
+      do {
+        try await tunnel.start()
+      } catch {
+        logger.error("Error starting tunnel: \(String(describing: error))")
+      }
+    case .signedOut:
+      tunnel.stop()
+    case .uninitialized:
+      break
     }
+  }
+
+  private func signOutAndStopTunnel() {
+    tunnel.stop()
+    Task {
+      try? await auth.signOut()
+    }
+  }
 }

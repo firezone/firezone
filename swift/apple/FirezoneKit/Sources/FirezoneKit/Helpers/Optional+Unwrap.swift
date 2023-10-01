@@ -7,13 +7,13 @@
 import Foundation
 
 extension Optional {
-    /// Unwraps `self` or throws error if `none`.
-    /// - Parameter error: Error to thrown in case of nil value.
-    /// - Returns: The wrapped optional value.
-    func unwrap(throwing error: @autoclosure () -> Error) throws -> Wrapped {
-        guard let self else {
-            throw error()
-        }
-        return self
+  /// Unwraps `self` or throws error if `none`.
+  /// - Parameter error: Error to thrown in case of nil value.
+  /// - Returns: The wrapped optional value.
+  func unwrap(throwing error: @autoclosure () -> Error) throws -> Wrapped {
+    guard let self else {
+      throw error()
     }
+    return self
+  }
 }

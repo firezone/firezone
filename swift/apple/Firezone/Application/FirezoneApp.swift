@@ -9,42 +9,42 @@ import SwiftUI
 
 @main
 struct FirezoneApp: App {
-    #if os(macOS)
+  #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    #endif
+  #endif
 
-    #if os(iOS)
+  #if os(iOS)
     @StateObject var model = AppViewModel()
-    #endif
+  #endif
 
-    var body: some Scene {
-        #if os(iOS)
-        WindowGroup {
-            AppView(model: model)
-        }
-        #else
-        WindowGroup("Settings") {
-            SettingsView(model: appDelegate.settingsViewModel)
-        }
-        .handlesExternalEvents(matching: ["settings"])
-        #endif
-    }
+  var body: some Scene {
+    #if os(iOS)
+      WindowGroup {
+        AppView(model: model)
+      }
+    #else
+      WindowGroup("Settings") {
+        SettingsView(model: appDelegate.settingsViewModel)
+      }
+      .handlesExternalEvents(matching: ["settings"])
+    #endif
+  }
 }
 
 #if os(macOS)
-@MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+  @MainActor
+  final class AppDelegate: NSObject, NSApplicationDelegate {
     let settingsViewModel = SettingsViewModel()
     private var menuBar: MenuBar!
 
     func applicationDidFinishLaunching(_: Notification) {
-        menuBar = MenuBar(settingsViewModel: settingsViewModel)
+      menuBar = MenuBar(settingsViewModel: settingsViewModel)
 
-        // SwiftUI will show the first window group, so close it on launch
-        let window = NSApp.windows[0]
-        window.close()
+      // SwiftUI will show the first window group, so close it on launch
+      let window = NSApp.windows[0]
+      window.close()
     }
 
     func applicationWillTerminate(_: Notification) {}
-}
+  }
 #endif
