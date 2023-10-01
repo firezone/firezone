@@ -44,7 +44,7 @@ extension KeychainStorage: DependencyKey {
       loadAttributes: { ref in
         storage.value[ref]?.1
       },
-      searchByAuthURL: { authURL in
+      searchByAuthURL: { _ in
         nil
       }
     )

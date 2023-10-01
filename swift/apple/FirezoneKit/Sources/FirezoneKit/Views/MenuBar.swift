@@ -37,7 +37,7 @@ public final class MenuBar: NSObject {
     private lazy var connectingAnimationImages = [
       NSImage(named: "MenuBarIconConnecting1"),
       NSImage(named: "MenuBarIconConnecting2"),
-      NSImage(named: "MenuBarIconConnecting3"),
+      NSImage(named: "MenuBarIconConnecting3")
     ]
     private var connectingAnimationImageIndex: Int = 0
     private var connectingAnimationTimer: Timer?
@@ -45,7 +45,6 @@ public final class MenuBar: NSObject {
     let settingsViewModel: SettingsViewModel
     private var loginStatus: AuthStore.LoginStatus = .signedOut(accountId: nil)
     private var tunnelStatus: NEVPNStatus = .invalid
-
 
     public init(settingsViewModel: SettingsViewModel) {
       self.settingsViewModel = settingsViewModel
@@ -379,7 +378,7 @@ public final class MenuBar: NSObject {
     }
 
     private func setOrderedResources(_ newOrderedResources: [DisplayableResources.Resource]) {
-      if (resourcesTitleMenuItem.isHidden && resourcesSeparatorMenuItem.isHidden) {
+      if resourcesTitleMenuItem.isHidden && resourcesSeparatorMenuItem.isHidden {
         guard newOrderedResources.isEmpty else {
           return
         }

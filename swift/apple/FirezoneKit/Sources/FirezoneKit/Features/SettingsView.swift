@@ -82,8 +82,8 @@ public struct SettingsView: View {
 
   #if os(iOS)
     private var ios: some View {
-      NavigationView() {
-        VStack() {
+      NavigationView {
+        VStack {
           form
         }
         .toolbar {

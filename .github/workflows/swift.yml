@@ -25,7 +25,7 @@ jobs:
         working-directory: ./swift
     steps:
       - uses: actions/checkout@v4
-      - run: swift-format ./**/*.swift
+      - run: swiftlint
 
   swift_build:
     depends_on: swift_lint

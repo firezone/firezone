@@ -22,7 +22,7 @@ public struct NetworkResource: Decodable {
     var domain: String? {
       switch self {
         case .dns(let domain, ipv4: _, ipv6: _): return domain
-        case .cidr(cidrAddress: _): return nil
+        case .cidr: return nil
       }
     }
   }

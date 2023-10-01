@@ -39,8 +39,7 @@ public class PrimaryMacAddress {
         candidate,
         "IOBuiltin" as CFString,
         kCFAllocatorDefault,
-        0)
-      {
+        0) {
         let isBuiltIn = cftype.takeRetainedValue() as! CFBoolean
         if wantBuiltIn == CFBooleanGetValue(isBuiltIn) {
           return candidate
@@ -70,8 +69,7 @@ public class PrimaryMacAddress {
       kIOServicePlane,
       "IOMACAddress" as CFString,
       kCFAllocatorDefault,
-      IOOptionBits(kIORegistryIterateRecursively | kIORegistryIterateParents))
-    {
+      IOOptionBits(kIORegistryIterateRecursively | kIORegistryIterateParents)) {
       return (cftype as! CFData)
     }
 

@@ -213,7 +213,7 @@ public actor Keychain {
       self?.workQueue.async {
         let query = [kSecValuePersistentRef: persistentRef] as [CFString: Any]
         let ret = SecStatus(SecItemDelete(query as CFDictionary))
-        guard (ret.isSuccess || ret == .status(.itemNotFound)) else {
+        guard ret.isSuccess || ret == .status(.itemNotFound) else {
           continuation.resume(throwing: KeychainError.appleSecError(call: "SecItemDelete", status: ret))
           return
         }
@@ -229,7 +229,7 @@ public actor Keychain {
           kSecClass: kSecClassGenericPassword,
           kSecAttrDescription: "Firezone access token",
           kSecAttrService: authURLString,
-          kSecReturnPersistentRef: true,
+          kSecReturnPersistentRef: true
         ] as [CFString: Any]
         var result: CFTypeRef?
         let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))

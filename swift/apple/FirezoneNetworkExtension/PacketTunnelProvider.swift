@@ -48,7 +48,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       let adapter = Adapter(controlPlaneURLString: controlPlaneURLString, token: token, packetTunnelProvider: self)
       self.adapter = adapter
       do {
-        try adapter.start() { error in
+        try adapter.start { error in
           if let error {
             Self.logger.error("Error in adapter.start: \(error)")
           }
