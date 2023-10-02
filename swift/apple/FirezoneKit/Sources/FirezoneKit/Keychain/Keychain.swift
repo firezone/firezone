@@ -63,7 +63,7 @@ public actor Keychain {
           kSecReturnPersistentRef: true,
           kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
           // Specific to iOS:
-          kSecAttrAccessGroup: AppInfoPlistConstants.appGroupId as CFString as Any
+          kSecAttrAccessGroup: AppInfoPlistConstants.appGroupId as CFString as Any,
         ] as [CFString: Any]
     #elseif os(macOS)
       let query =
@@ -79,7 +79,7 @@ public actor Keychain {
           kSecReturnPersistentRef: true,
           kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
           // Specific to macOS:
-          kSecAttrAccess: try secAccessForAppAndNetworkExtension()
+          kSecAttrAccess: try secAccessForAppAndNetworkExtension(),
         ] as [CFString: Any]
     #endif
     return try await withCheckedThrowingContinuation { [weak self] continuation in
@@ -102,7 +102,7 @@ public actor Keychain {
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: tokenAttributes.authURLString,
             kSecMatchLimit: kSecMatchLimitAll,
-            kSecReturnPersistentRef: true
+            kSecReturnPersistentRef: true,
           ] as [CFString: Any]
         let checkRet =
           SecStatus(
@@ -155,7 +155,7 @@ public actor Keychain {
         .path
       let trustedApps = [
         try secTrustedApplicationForPath(nil),
-        try secTrustedApplicationForPath(extensionPath)
+        try secTrustedApplicationForPath(extensionPath),
       ]
       var access: SecAccess?
       let ret = SecStatus(
@@ -178,13 +178,14 @@ public actor Keychain {
         let query =
           [
             kSecValuePersistentRef: persistentRef,
-            kSecReturnData: true
+            kSecReturnData: true,
           ] as [CFString: Any]
         var result: CFTypeRef?
         let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))
         if ret.isSuccess,
           let resultData = result as? Data,
-          let resultString = String(data: resultData, encoding: .utf8) {
+          let resultString = String(data: resultData, encoding: .utf8)
+        {
           continuation.resume(returning: resultString)
         } else {
           continuation.resume(returning: nil)
@@ -199,19 +200,17 @@ public actor Keychain {
         let query =
           [
             kSecValuePersistentRef: persistentRef,
-            kSecReturnAttributes: true
+            kSecReturnAttributes: true,
           ] as [CFString: Any]
         var result: CFTypeRef?
         let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))
         if ret.isSuccess, let result = result {
           if CFGetTypeID(result) == CFDictionaryGetTypeID() {
-            // Cast will always succeed
-            // swiftlint:disable force_cast
             let cfDict = result as! CFDictionary
-            // swiftlint:enable force_cast
             let dict = cfDict as NSDictionary
             if let service = dict[kSecAttrService] as? String,
-              let account = dict[kSecAttrAccount] as? String {
+              let account = dict[kSecAttrAccount] as? String
+            {
               let actorName = String(
                 account[
                   account
@@ -253,7 +252,7 @@ public actor Keychain {
             kSecClass: kSecClassGenericPassword,
             kSecAttrDescription: "Firezone access token",
             kSecAttrService: authURLString,
-            kSecReturnPersistentRef: true
+            kSecReturnPersistentRef: true,
           ] as [CFString: Any]
         var result: CFTypeRef?
         let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))

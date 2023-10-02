@@ -89,7 +89,7 @@ import SwiftUINavigationCore
 
     private func bindDestination() {
       switch destination {
-      case let .settings(model):
+      case .settings(model):
         model.onSettingsSaved = { [weak self] in
           self?.destination = nil
           self?.state = .unauthenticated(AuthViewModel())
@@ -102,7 +102,7 @@ import SwiftUINavigationCore
 
     private func bindState() {
       switch state {
-      case let .unauthenticated(model):
+      case .unauthenticated(model):
         model.settingsUndefined = { [weak self] in
           self?.destination = .undefinedSettingsAlert(.undefinedSettings)
         }
@@ -120,9 +120,9 @@ import SwiftUINavigationCore
       NavigationView {
         Group {
           switch model.state {
-          case let .unauthenticated(model):
+          case .unauthenticated(model):
             AuthView(model: model)
-          case let .authenticated(model):
+          case .authenticated(model):
             MainView(model: model)
           case .none:
             ProgressView()

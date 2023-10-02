@@ -9,10 +9,13 @@ import os.log
 
 class NetworkSettings {
 
+  // How to handle DNS requests for domains not handled by Firezone
   enum DNSFallbackStrategy: String {
-    // How to handle DNS requests for domains not handled by Firezone
-    case systemResolver = "system_resolver"  // Have the OS handle it using split-DNS
-    case upstreamResolver = "upstream_resolver"  // Have connlib pass it on to a user-specified DNS server
+    // Have the OS handle it using split-DNS
+    case systemResolver = "system_resolver"
+
+    // Have connlib pass it on to a user-specified DNS server
+    case upstreamResolver = "upstream_resolver"
 
     init(_ string: String) {
       if string == "upstream_resolver" {
@@ -119,8 +122,10 @@ class NetworkSettings {
             fromString: networkPrefixLengthString, maximumValue: 32)
           let ipv4SubnetMask = Self.ipv4SubnetMask(networkPrefixLength: validNetworkPrefixLength)
           logger.debug(
-            "NetworkSettings.apply: Adding IPv4 route: \(address, privacy: .public) (subnet mask: \(ipv4SubnetMask, privacy: .public))"
-          )
+            """
+            NetworkSettings.apply:
+              Adding IPv4 route: \(address, privacy: .public) (subnet mask: \(ipv4SubnetMask, privacy: .public)
+            """)
           tunnelIPv4Routes.append(
             NEIPv4Route(destinationAddress: address, subnetMask: ipv4SubnetMask))
         }
@@ -133,8 +138,11 @@ class NetworkSettings {
           let validNetworkPrefixLength = Self.validNetworkPrefixLength(
             fromString: networkPrefixLengthString, maximumValue: 128)
           logger.debug(
-            "NetworkSettings.apply: Adding IPv6 route: \(address, privacy: .public) (prefix length: \(validNetworkPrefixLength, privacy: .public))"
-          )
+            """
+            NetworkSettings.apply:
+              Adding IPv6 route: \(address, privacy: .public) (prefix length: \(validNetworkPrefixLength, privacy: .public)
+            """)
+
           tunnelIPv6Routes.append(
             NEIPv6Route(
               destinationAddress: address,
@@ -182,8 +190,10 @@ class NetworkSettings {
         guard !self.hasUnappliedChanges else {
           // Changes were made while the packetTunnelProvider was setting the network settings
           logger.debug(
-            "NetworkSettings.apply: Applying changes made to network settings while we were applying the network settings"
-          )
+            """
+            NetworkSettings.apply:
+              Applying changes made to network settings while we were applying the network settings
+            """)
           self.apply(on: packetTunnelProvider, logger: logger, completionHandler: completionHandler)
           return
         }
@@ -195,7 +205,8 @@ class NetworkSettings {
 }
 
 extension NetworkSettings {
-  private static func validNetworkPrefixLength(fromString string: String, maximumValue: Int) -> Int {
+  private static func validNetworkPrefixLength(fromString string: String, maximumValue: Int) -> Int
+  {
     guard let networkPrefixLength = Int(string) else { return 0 }
     if networkPrefixLength < 0 { return 0 }
     if networkPrefixLength > maximumValue { return maximumValue }

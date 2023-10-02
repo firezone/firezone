@@ -59,8 +59,8 @@ jobs:
       - name: Select Xcode
         run: |
           sudo xcode-select -s /Applications/Xcode_${{ matrix.runs-on.xcode-ver }}.app
-      - name: Install swiftlint
-        run: brew install swiftlint
+      - name: Install swift-format
+        run: brew install swift-format
       - name: Build app
         env:
           ONLY_ACTIVE_ARCH: no

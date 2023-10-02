@@ -143,7 +143,8 @@ final class TunnelStore: ObservableObject {
 
   func beginUpdatingResources() {
     self.updateResources()
-    let timer = Timer(timeInterval: 1 /*second*/, repeats: true) { [weak self] _ in
+    let intervalInSeconds: TimeInterval = 1
+    let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
       guard let self = self else { return }
       guard self.status == .connected else { return }
       self.updateResources()
@@ -200,7 +201,7 @@ final class TunnelStore: ObservableObject {
   private func setupTunnelObservers() {
     TunnelStore.logger.trace("\(#function)")
 
-    tunnelObservingTasks.forEach { $0.cancel() }
+    for task in tunnelObservingTasks { task.cancel() }
     tunnelObservingTasks.removeAll()
 
     tunnelObservingTasks.append(
@@ -296,12 +297,12 @@ enum TunnelAuthStatus {
     case .signedOut(let authBaseURL, let accountId):
       protocolConfiguration.providerConfiguration = [
         TunnelStore.keyAuthBaseURLString: authBaseURL.absoluteString,
-        TunnelStore.keyAccountId: accountId
+        TunnelStore.keyAccountId: accountId,
       ]
     case .signedIn(let authBaseURL, let accountId, let tokenReference):
       protocolConfiguration.providerConfiguration = [
         TunnelStore.keyAuthBaseURLString: authBaseURL.absoluteString,
-        TunnelStore.keyAccountId: accountId
+        TunnelStore.keyAccountId: accountId,
       ]
       protocolConfiguration.passwordReference = tokenReference
     }

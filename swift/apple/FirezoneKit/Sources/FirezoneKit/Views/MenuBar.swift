@@ -4,8 +4,6 @@
 //  LICENSE: Apache-2.0
 //
 
-// swiftlint:disable file_length
-
 #if os(macOS)
   import Combine
   import Dependencies
@@ -14,7 +12,6 @@
   import NetworkExtension
 
   @MainActor
-  // swiftlint:disable type_body_length
   public final class MenuBar: NSObject {
     let logger = Logger.make(for: MenuBar.self)
     @Dependency(\.mainQueue) private var mainQueue
@@ -38,7 +35,7 @@
     private lazy var connectingAnimationImages = [
       NSImage(named: "MenuBarIconConnecting1"),
       NSImage(named: "MenuBarIconConnecting2"),
-      NSImage(named: "MenuBarIconConnecting3")
+      NSImage(named: "MenuBarIconConnecting3"),
     ]
     private var connectingAnimationImageIndex: Int = 0
     private var connectingAnimationTimer: Timer?
@@ -433,7 +430,6 @@
       pasteBoard.writeObjects([string as NSString])
     }
   }
-  // swiftlint:enable type_body_length
 
   extension MenuBar: NSMenuDelegate {
     public func menuNeedsUpdate(_ menu: NSMenu) {

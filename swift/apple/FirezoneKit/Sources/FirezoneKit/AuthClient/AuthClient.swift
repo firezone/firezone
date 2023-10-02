@@ -37,7 +37,8 @@ extension DependencyValues {
 }
 
 private final class WebAuthenticationSession: NSObject,
-  ASWebAuthenticationPresentationContextProviding {
+  ASWebAuthenticationPresentationContextProviding
+{
   @MainActor
   func signIn(_ host: URL) async throws -> AuthResponse {
     try await withCheckedThrowingContinuation { continuation in
