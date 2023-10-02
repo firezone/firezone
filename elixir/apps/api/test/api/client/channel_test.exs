@@ -4,7 +4,11 @@ defmodule API.Client.ChannelTest do
 
   setup do
     account = Fixtures.Accounts.create_account()
-    Fixtures.Config.upsert_configuration(account: account, clients_upstream_dns: ["1.1.1.1"])
+
+    Fixtures.Config.upsert_configuration(
+      account: account,
+      clients_upstream_dns: [%{address: "1.1.1.1"}]
+    )
 
     actor_group = Fixtures.Actors.create_group(account: account)
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
@@ -134,7 +138,7 @@ defmodule API.Client.ChannelTest do
                ipv4: client.ipv4,
                ipv6: client.ipv6,
                upstream_dns: [
-                 %Postgrex.INET{address: {1, 1, 1, 1}}
+                 %Domain.Config.Configuration.ClientsUpstreamDNS{address: "1.1.1.1"}
                ]
              }
     end

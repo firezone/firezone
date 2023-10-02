@@ -291,7 +291,7 @@ defmodule Web.CoreComponents do
   attr :id, :string, default: "flash", doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
-  attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
+  attr :kind, :atom, values: [:success, :info, :error], doc: "used for styling and flash lookup"
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
   attr :style, :string, default: "pill"
 
@@ -304,6 +304,7 @@ defmodule Web.CoreComponents do
       id={@id}
       class={[
         "p-4 text-sm flash-#{@kind}",
+        @kind == :success && "text-green-800 bg-green-50 dark:bg-gray-800 dark:text-green-400",
         @kind == :info && "text-yellow-800 bg-yellow-50 dark:bg-gray-800 dark:text-yellow-300",
         @kind == :error && "text-red-800 bg-red-50 dark:bg-gray-800 dark:text-red-400",
         @style != "wide" && "mb-4 rounded-lg"

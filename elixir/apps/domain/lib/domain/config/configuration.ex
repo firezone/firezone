@@ -3,7 +3,9 @@ defmodule Domain.Config.Configuration do
   alias Domain.Config.Logo
 
   schema "configurations" do
-    field :clients_upstream_dns, {:array, :string}, default: []
+    embeds_many :clients_upstream_dns, ClientsUpstreamDNS, on_replace: :delete, primary_key: false do
+      field :address, :string
+    end
 
     embeds_one :logo, Logo, on_replace: :delete
 
