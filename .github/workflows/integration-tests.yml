@@ -37,6 +37,21 @@ jobs:
         run: docker compose up -d
       - name: Test that client can ping resource
         run: docker compose exec -it client timeout 60 bash -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
+      - name: Show Client logs
+        if: '!cancelled()'
+        run: docker compose logs client
+      - name: Show Relay logs
+        if: '!cancelled()'
+        run: docker compose logs relay
+      - name: Show Gateway logs
+        if: '!cancelled()'
+        run: docker compose logs gateway
+      - name: Show API logs
+        if: '!cancelled()'
+        run: docker compose logs api
+      - name: Show httpbin logs
+        if: '!cancelled()'
+        run: docker compose logs httpbin
 
 
   integration-test_relayed-flow:
@@ -76,3 +91,18 @@ jobs:
           sudo iptables -I FORWARD 1 -s  172.28.0.105 -d 172.28.0.100 -j DROP
       - name: Test that client can ping resource
         run: docker compose exec -it client timeout 60 bash -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
+      - name: Show Client logs
+        if: '!cancelled()'
+        run: docker compose logs client
+      - name: Show Relay logs
+        if: '!cancelled()'
+        run: docker compose logs relay
+      - name: Show Gateway logs
+        if: '!cancelled()'
+        run: docker compose logs gateway
+      - name: Show API logs
+        if: '!cancelled()'
+        run: docker compose logs api
+      - name: Show httpbin logs
+        if: '!cancelled()'
+        run: docker compose logs httpbin
