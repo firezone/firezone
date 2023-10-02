@@ -46,8 +46,9 @@ android {
         applicationId = "dev.firezone.android"
         minSdk = 29
         targetSdk = 33
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
+        // mark:automatic-version
+        versionName = "1.20231001.0"
         multiDexEnabled = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
