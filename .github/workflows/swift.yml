@@ -17,7 +17,6 @@ concurrency:
 
 jobs:
   swift_build:
-    depends_on: swift_lint
     runs-on: ${{ matrix.runs-on.os }}
     strategy:
       fail-fast: false

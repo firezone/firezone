@@ -309,8 +309,8 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8DCC024328D512AE007E12D2 /* Build configuration list for PBXNativeTarget "Firezone" */;
 			buildPhases = (
-				8DCC021528D512AC007E12D2 /* Sources */,
 				8DE721892ACA295200E395D5 /* swift-format */,
+				8DCC021528D512AC007E12D2 /* Sources */,
 				8DCC021628D512AC007E12D2 /* Frameworks */,
 				8DCC021728D512AC007E12D2 /* Resources */,
 				0556189428EF883500DF9E3C /* Embed Foundation Extensions */,
@@ -464,7 +464,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [[ \"$(uname -m)\" == arm64 ]]; then\n    export PATH=\"/opt/homebrew/bin:$PATH\"\nfi\n\nif which swift-format > /dev/null; then\n  find . -name \"*.swift\" -not -path \"./FirezoneNetworkExtension/Connlib/Generated/*\" | xargs swift-format lint\nelse\n  echo \"warning: swift-format not installed, install with `brew install swift-format`\"\nfi\n";
+			shellScript = "./lint.sh\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
