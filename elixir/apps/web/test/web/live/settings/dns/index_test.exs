@@ -153,4 +153,29 @@ defmodule Web.Live.Settings.DNS.IndexTest do
            |> form("form", %{configuration: %{clients_upstream_dns: %{"1" => addr}}})
            |> render_change() =~ "should not contain duplicates"
   end
+
+  test "does not display 'cannot be empty' error message", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    attrs = %{
+      configuration: %{
+        clients_upstream_dns: %{"0" => %{address: "8.8.8.8"}}
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
+
+    lv
+    |> form("form", attrs)
+    |> render_submit()
+
+    refute lv
+           |> form("form", %{configuration: %{clients_upstream_dns: %{"0" => %{address: ""}}}})
+           |> render_change() =~ "can&#39;t be blank"
+  end
 end

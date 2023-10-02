@@ -1,40 +1,6 @@
 defmodule Web.Settings.DNS do
   use Web, :live_view
-
   alias Domain.Config
-
-  defp remove_errors(changeset, field, message) do
-    errors =
-      changeset.errors
-      |> Enum.filter(fn err ->
-        case err do
-          {^field, {msg, _}} ->
-            if msg == message, do: false, else: true
-
-          {_, _} ->
-            true
-        end
-      end)
-
-    %{changeset | errors: errors}
-  end
-
-  defp filter_errors(changeset) do
-    filtered_cs =
-      changeset
-      |> remove_errors(:clients_upstream_dns, "address can't be blank")
-
-    filtered_dns_cs =
-      filtered_cs.changes.clients_upstream_dns
-      |> Enum.map(fn changeset ->
-        case changeset.errors do
-          [] -> changeset
-          _ -> remove_errors(changeset, :address, "can't be blank")
-        end
-      end)
-
-    %{filtered_cs | changes: %{clients_upstream_dns: filtered_dns_cs}}
-  end
 
   def mount(_params, _session, socket) do
     {:ok, config} = Config.fetch_account_config(socket.assigns.subject)
@@ -47,61 +13,6 @@ defmodule Web.Settings.DNS do
     socket = assign(socket, config: config, form: form)
 
     {:ok, socket}
-  end
-
-  def handle_event("change", %{"configuration" => config_params}, socket) do
-    form =
-      Config.change_account_config(socket.assigns.config, config_params)
-      |> filter_errors()
-      |> Map.put(:action, :validate)
-      |> to_form()
-
-    socket = assign(socket, form: form)
-    {:noreply, socket}
-  end
-
-  def handle_event("submit", %{"configuration" => config_params}, socket) do
-    attrs = remove_empty_servers(config_params)
-
-    with {:ok, new_config} <-
-           Domain.Config.update_config(socket.assigns.config, attrs, socket.assigns.subject) do
-      form =
-        Config.change_account_config(new_config, %{})
-        |> add_new_server()
-        |> to_form()
-
-      socket = assign(socket, config: new_config, form: form)
-      {:noreply, socket}
-    else
-      {:error, changeset} ->
-        form = to_form(changeset)
-        socket = assign(socket, form: form)
-        {:noreply, socket}
-    end
-  end
-
-  defp remove_empty_servers(config) do
-    servers =
-      config["clients_upstream_dns"]
-      |> Enum.reduce(%{}, fn {key, value}, acc ->
-        case value["address"] do
-          nil -> acc
-          "" -> acc
-          _ -> Map.put(acc, key, value)
-        end
-      end)
-
-    %{"clients_upstream_dns" => servers}
-  end
-
-  defp add_new_server(changeset) do
-    existing_servers = Ecto.Changeset.get_embed(changeset, :clients_upstream_dns)
-
-    Ecto.Changeset.put_embed(
-      changeset,
-      :clients_upstream_dns,
-      existing_servers ++ [%{address: ""}]
-    )
   end
 
   def render(assigns) do
@@ -161,5 +72,88 @@ defmodule Web.Settings.DNS do
       </div>
     </section>
     """
+  end
+
+  def handle_event("change", %{"configuration" => config_params}, socket) do
+    form =
+      Config.change_account_config(socket.assigns.config, config_params)
+      |> filter_errors()
+      |> Map.put(:action, :validate)
+      |> to_form()
+
+    socket = assign(socket, form: form)
+    {:noreply, socket}
+  end
+
+  def handle_event("submit", %{"configuration" => config_params}, socket) do
+    attrs = remove_empty_servers(config_params)
+
+    with {:ok, new_config} <-
+           Domain.Config.update_config(socket.assigns.config, attrs, socket.assigns.subject) do
+      form =
+        Config.change_account_config(new_config, %{})
+        |> add_new_server()
+        |> to_form()
+
+      socket = assign(socket, config: new_config, form: form)
+      {:noreply, socket}
+    else
+      {:error, changeset} ->
+        form = to_form(changeset)
+        socket = assign(socket, form: form)
+        {:noreply, socket}
+    end
+  end
+
+  defp remove_errors(changeset, field, message) do
+    errors =
+      Enum.filter(changeset.errors, fn
+        {^field, {^message, _}} -> false
+        {_, _} -> true
+      end)
+
+    %{changeset | errors: errors}
+  end
+
+  defp filter_errors(%{changes: %{clients_upstream_dns: clients_upstream_dns}} = changeset) do
+    filtered_cs =
+      changeset
+      |> remove_errors(:clients_upstream_dns, "address can't be blank")
+
+    filtered_dns_cs =
+      clients_upstream_dns
+      |> Enum.map(fn changeset ->
+        remove_errors(changeset, :address, "can't be blank")
+      end)
+
+    %{filtered_cs | changes: %{clients_upstream_dns: filtered_dns_cs}}
+  end
+
+  defp filter_errors(changeset) do
+    changeset
+  end
+
+  defp remove_empty_servers(config) do
+    servers =
+      config["clients_upstream_dns"]
+      |> Enum.reduce(%{}, fn {key, value}, acc ->
+        case value["address"] do
+          nil -> acc
+          "" -> acc
+          _ -> Map.put(acc, key, value)
+        end
+      end)
+
+    %{"clients_upstream_dns" => servers}
+  end
+
+  defp add_new_server(changeset) do
+    existing_servers = Ecto.Changeset.get_embed(changeset, :clients_upstream_dns)
+
+    Ecto.Changeset.put_embed(
+      changeset,
+      :clients_upstream_dns,
+      existing_servers ++ [%{address: ""}]
+    )
   end
 end
