@@ -362,6 +362,7 @@ services:
 
 networks:
   resources:
+    enable_ipv6: false
     ipam:
       config:
         - subnet: 172.20.0.0/16
