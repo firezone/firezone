@@ -1,3 +1,8 @@
+# Format:
+# MAJOR: This is "1" for now. Don't change it.
+# MINOR: This is the current version of the portal API in YYYYMMDD format. Consumers (connlib, REST) will request
+#        this API from the portal with the X-Firezone-API-Version request header.
+# PATCH: Increment this each time you want to publish a new Firezone version.
 version = 1.20231001.0
 
 version:
