@@ -244,7 +244,12 @@
     }
 
     private func openSettingsWindow() {
-      NSWorkspace.shared.open(URL(string: "firezone://settings")!)
+      if let settingsWindow = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false }) {
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow.makeKeyAndOrderFront(self)
+      } else {
+        NSWorkspace.shared.open(URL(string: "firezone://settings")!)
+      }
     }
 
     private func updateStatusItemIcon() {
