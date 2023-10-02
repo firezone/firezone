@@ -11,8 +11,7 @@ permissions:
 
 env:
   # Don't change this directly. Instead, use `make version` from the repo root.
-  MAJOR_VERSION: 1
-  MINOR_VERSION: 20231001
+  MAJOR_VERSION: 20231001
 
 jobs:
   update_release_draft:
@@ -28,4 +27,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          version: ${{ env.MAJOR_VERSION }}.${{ env.MINOR_VERSION }}.${{ github.run_number }}
+          version: ${{ env.MAJOR_VERSION }}.${{ github.run_number }}
