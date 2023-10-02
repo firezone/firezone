@@ -1,7 +1,24 @@
 defmodule Web.Settings.DNS do
   use Web, :live_view
+  alias Domain.Config
+
+  def mount(_params, _session, socket) do
+    {:ok, config} = Config.fetch_account_config(socket.assigns.subject)
+
+    form =
+      Config.change_account_config(config, %{})
+      |> add_new_server()
+      |> to_form()
+
+    socket = assign(socket, config: config, form: form)
+
+    {:ok, socket}
+  end
 
   def render(assigns) do
+    assigns =
+      assign(assigns, :errors, translate_errors(assigns.form.errors, :clients_upstream_dns))
+
     ~H"""
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/settings/dns"}>DNS Settings</.breadcrumb>
@@ -29,52 +46,114 @@ defmodule Web.Settings.DNS do
     </p>
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+        <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
         <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Client DNS</h2>
-        <form action="#">
+        <p class="mb-4 text-slate-500">
+          DNS servers will be used in the order they are listed below.
+        </p>
+
+        <.form for={@form} phx-submit={:submit} phx-change={:change}>
           <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
             <div>
-              <label
-                for="resolver"
-                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
-              >
-                Resolver
-              </label>
-              <select
-                id="resolver"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-              >
-                <option>System default</option>
-                <option selected>Custom</option>
-              </select>
+              <.inputs_for :let={dns} field={@form[:clients_upstream_dns]}>
+                <div class="mb-4">
+                  <.input label="Address" field={dns[:address]} placeholder="DNS Server Address" />
+                </div>
+              </.inputs_for>
             </div>
-            <div>
-              <.label for="resolver-address">
-                Address
-              </.label>
-              <input
-                type="text"
-                name="address"
-                id="resolver-address"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                value="https://doh.familyshield.opendns.com/dns-query"
-                required
-              />
-              <p id="address-explanation" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                IP addresses, FQDNs, and DNS-over-HTTPS (DoH) addresses are supported.
-              </p>
-            </div>
-          </div>
-          <div class="flex items-center space-x-4">
-            <button
-              type="submit"
-              class="text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:outline-none focus:ring-primary-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800"
-            >
+            <.error :for={msg <- @errors} data-validation-error-for="clients_upstream_dns">
+              <%= msg %>
+            </.error>
+            <.button>
               Save
-            </button>
+            </.button>
           </div>
-        </form>
+        </.form>
       </div>
     </section>
     """
+  end
+
+  def handle_event("change", %{"configuration" => config_params}, socket) do
+    form =
+      Config.change_account_config(socket.assigns.config, config_params)
+      |> filter_errors()
+      |> Map.put(:action, :validate)
+      |> to_form()
+
+    socket = assign(socket, form: form)
+    {:noreply, socket}
+  end
+
+  def handle_event("submit", %{"configuration" => config_params}, socket) do
+    attrs = remove_empty_servers(config_params)
+
+    with {:ok, new_config} <-
+           Domain.Config.update_config(socket.assigns.config, attrs, socket.assigns.subject) do
+      form =
+        Config.change_account_config(new_config, %{})
+        |> add_new_server()
+        |> to_form()
+
+      socket = assign(socket, config: new_config, form: form)
+      {:noreply, socket}
+    else
+      {:error, changeset} ->
+        form = to_form(changeset)
+        socket = assign(socket, form: form)
+        {:noreply, socket}
+    end
+  end
+
+  defp remove_errors(changeset, field, message) do
+    errors =
+      Enum.filter(changeset.errors, fn
+        {^field, {^message, _}} -> false
+        {_, _} -> true
+      end)
+
+    %{changeset | errors: errors}
+  end
+
+  defp filter_errors(%{changes: %{clients_upstream_dns: clients_upstream_dns}} = changeset) do
+    filtered_cs =
+      changeset
+      |> remove_errors(:clients_upstream_dns, "address can't be blank")
+
+    filtered_dns_cs =
+      clients_upstream_dns
+      |> Enum.map(fn changeset ->
+        remove_errors(changeset, :address, "can't be blank")
+      end)
+
+    %{filtered_cs | changes: %{clients_upstream_dns: filtered_dns_cs}}
+  end
+
+  defp filter_errors(changeset) do
+    changeset
+  end
+
+  defp remove_empty_servers(config) do
+    servers =
+      config["clients_upstream_dns"]
+      |> Enum.reduce(%{}, fn {key, value}, acc ->
+        case value["address"] do
+          nil -> acc
+          "" -> acc
+          _ -> Map.put(acc, key, value)
+        end
+      end)
+
+    %{"clients_upstream_dns" => servers}
+  end
+
+  defp add_new_server(changeset) do
+    existing_servers = Ecto.Changeset.get_embed(changeset, :clients_upstream_dns)
+
+    Ecto.Changeset.put_embed(
+      changeset,
+      :clients_upstream_dns,
+      existing_servers ++ [%{address: ""}]
+    )
   end
 end
