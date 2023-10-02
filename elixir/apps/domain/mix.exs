@@ -4,7 +4,8 @@ defmodule Domain.MixProject do
   def project do
     [
       app: :domain,
-      version: version(),
+      # mark:automatic-version
+      version: "1.20231001.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
@@ -22,11 +23,6 @@ defmodule Domain.MixProject do
       aliases: aliases(),
       deps: deps()
     ]
-  end
-
-  def version do
-    # Use dummy version for dev and test
-    System.get_env("APPLICATION_VERSION", "0.0.0+git.0.deadbeef")
   end
 
   def application do
