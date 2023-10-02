@@ -70,6 +70,11 @@ public struct SettingsView: View {
   let teamIdAllowedCharacterSet: CharacterSet
   @State private var isExportingLogs = false
 
+  #if os(iOS)
+  @State private var logTempZipFileURL: URL?
+  @State private var isPresentingExportLogShareSheet = false
+  #endif
+
   public init(model: SettingsViewModel) {
     self.model = model
     self.teamIdAllowedCharacterSet = {
@@ -95,7 +100,20 @@ public struct SettingsView: View {
         VStack(spacing: 10) {
           form
           ExportLogsButton(isProcessing: $isExportingLogs) {
-            self.exportLogsButtonTapped()
+            self.isExportingLogs = true
+            Task {
+              self.logTempZipFileURL = try await createLogZipBundle()
+              self.isPresentingExportLogShareSheet = true
+            }
+          }
+          .sheet(isPresented: $isPresentingExportLogShareSheet) {
+            if let logfileURL = self.logTempZipFileURL {
+              ShareSheetView(localFileURL: logfileURL, completionHandler: {
+                self.isPresentingExportLogShareSheet = false
+                self.isExportingLogs = false
+                self.logTempZipFileURL = nil
+              })
+            }
           }
           Spacer()
         }
@@ -221,14 +239,14 @@ public struct SettingsView: View {
   func exportLogsButtonTapped() {
     self.isExportingLogs = true
     Task {
-      try await Task.sleep(nanoseconds: 2_000_000_000)
-      self.isExportingLogs = false
+      let logsTempZipFileURL = try await createLogZipBundle()
+      self.isPresentingExportLogShareSheet = true
     }
   }
 #endif
 
   @discardableResult
-  private func createLogZipBundle(destinationURL: URL?) async throws -> URL {
+  private func createLogZipBundle(destinationURL: URL? = nil) async throws -> URL {
     let fileManager = FileManager.default
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
       throw SettingsViewError.logFolderIsUnavailable
@@ -304,6 +322,27 @@ struct FormTextField: View {
     #endif
   }
 }
+
+#if os(iOS)
+struct ShareSheetView: UIViewControllerRepresentable {
+  let localFileURL: URL
+  let completionHandler: () -> Void
+
+  func makeUIViewController(context: Context) -> UIActivityViewController {
+    let controller = UIActivityViewController(
+      activityItems: [self.localFileURL],
+      applicationActivities: [])
+    controller.completionWithItemsHandler = { _, _, _, _ in
+      self.completionHandler()
+    }
+    return controller
+  }
+
+  func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
+    // Nothing to do
+  }
+}
+#endif
 
 struct SettingsView_Previews: PreviewProvider {
   static var previews: some View {
