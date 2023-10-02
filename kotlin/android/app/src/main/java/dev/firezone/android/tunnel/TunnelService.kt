@@ -23,6 +23,7 @@ import dev.firezone.android.tunnel.data.TunnelRepository
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.Tunnel
 import dev.firezone.android.tunnel.model.TunnelConfig
+import dev.firezone.android.tunnel.util.DnsServersDetector
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.inject.Inject
@@ -99,6 +100,10 @@ class TunnelService : VpnService() {
             Log.d(TAG, "onRemoveRoute: $cidrAddress")
 
             tunnelRepository.removeRoute(cidrAddress)
+        }
+
+        override fun getSystemDefaultResolvers(): String {
+            return moshi.adapter<Array<String>>().toJson(DnsServersDetector(this@TunnelService).servers)
         }
 
         override fun onDisconnect(error: String?): Boolean {
