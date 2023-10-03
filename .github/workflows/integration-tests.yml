@@ -12,8 +12,9 @@ jobs:
       SCCACHE_GHA_ENABLED: true
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Update toolchain
+        run: rustup show
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.3
       - name: Set up Docker Buildx
@@ -70,8 +71,7 @@ jobs:
       SCCACHE_GHA_ENABLED: true
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
       - name: Set up Docker Buildx

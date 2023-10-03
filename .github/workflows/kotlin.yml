@@ -18,17 +18,17 @@ concurrency:
 jobs:
   # See rust.yml how we build, package and release connlib as an example
   kotlin_build:
+    env:
+      RUSTC_CACHE: sccache
+      SCCACHE_GHA_ENABLED: true
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./kotlin/android
     steps:
       - uses: actions/checkout@v4
-      - run: rustup show
-      # XXX: sccache can be used in Dockerfiles and on developer machines, so it's preferred over rust-cache
-      # - uses: Swatinem/rust-cache@v2
-      #   with:
-      #     workspaces: ./rust
+      - name: Update toolchain
+        run: rustup show
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
       - uses: actions/setup-java@v3

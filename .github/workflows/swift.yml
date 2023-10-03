@@ -17,6 +17,9 @@ concurrency:
 
 jobs:
   swift_build:
+    env:
+      RUSTC_CACHE: sccache
+      SCCACHE_GHA_ENABLED: true
     runs-on: ${{ matrix.runs-on.os }}
     strategy:
       fail-fast: false
@@ -40,12 +43,6 @@ jobs:
         working-directory: ./swift
     steps:
       - uses: actions/checkout@v4
-      - run: rustup show
-      # XXX: sccache can be used in Dockerfiles and on developer machines, so it's preferred over rust-cache
-      # - uses: Swatinem/rust-cache@v2
-      #   with:
-      #     workspaces: ./rust
-      #     save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Update toolchain
         run: rustup show
       - name: Run sccache-cache

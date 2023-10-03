@@ -20,6 +20,9 @@ defaults:
 
 jobs:
   rust_test:
+    env:
+      RUSTC_CACHE: sccache
+      SCCACHE_GHA_ENABLED: true
     strategy:
       fail-fast: false
       matrix:
@@ -50,6 +53,8 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
+      - name: Update toolchain
+        run: rustup show
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
 
@@ -79,12 +84,17 @@ jobs:
       - run: cargo test --all-features ${{ matrix.packages }}
 
   rust_smoke-test-relay:
+    env:
+      RUSTC_CACHE: sccache
+      SCCACHE_GHA_ENABLED: true
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./rust/relay
     steps:
       - uses: actions/checkout@v4
+      - name: Update toolchain
+        run: rustup show
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
       - run: ./run_smoke_test.sh
@@ -109,7 +119,8 @@ jobs:
       SCCACHE_GHA_ENABLED: true
     steps:
       - uses: actions/checkout@v4
-      - run: rustup show
+      - name: Update toolchain
+        run: rustup show
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
       - name: Set up QEMU
@@ -177,7 +188,8 @@ jobs:
       SCCACHE_GHA_ENABLED: true
     steps:
       - uses: actions/checkout@v4
-      - run: rustup show
+      - name: Update toolchain
+        run: rustup show
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
       - name: Set up QEMU
