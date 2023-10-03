@@ -8,8 +8,6 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- XXX: Set usesCleartextTraffic to false for added security when APIMock is removed or served over https -->
-
     <queries>
         <intent>
             <action android:name="android.support.customtabs.action.CustomTabsService" />
