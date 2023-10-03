@@ -2,13 +2,17 @@ FROM rust:1.72-slim as BUILDER
 ARG PACKAGE
 WORKDIR /build/
 COPY . ./
-RUN --mount=type=cache,target=./target \
-    --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/usr/local/rustup,sharing=locked \
-    cargo build -p $PACKAGE --release
 
-RUN --mount=type=cache,target=./target \
-    mv ./target/release/$PACKAGE /usr/local/bin/$PACKAGE
+# This prevents cache hits in GitHub Actions at the moment.
+# See https://github.com/docker/build-push-action/issues/743
+# RUN --mount=type=cache,target=./target \
+#     --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+#     --mount=type=cache,target=/usr/local/rustup,sharing=locked \
+#     cargo build -p $PACKAGE --release
+# RUN --mount=type=cache,target=./target \
+#     mv ./target/release/$PACKAGE /usr/local/bin/$PACKAGE
+RUN cargo build -p $PACKAGE --release
+RUN mv ./target/release/$PACKAGE /usr/local/bin/$PACKAGE
 
 FROM debian:12-slim
 ARG PACKAGE
