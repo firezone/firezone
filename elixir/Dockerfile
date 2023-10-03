@@ -30,6 +30,7 @@ WORKDIR /app
 COPY --from=compiler /app /app
 COPY rel rel
 ARG APPLICATION_NAME
+ARG MIX_ENV="prod"
 RUN mix release ${APPLICATION_NAME}
 
 # start a new build stage so that the final image will only contain
