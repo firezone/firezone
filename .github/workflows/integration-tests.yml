@@ -17,18 +17,18 @@ jobs:
         uses: docker/bake-action@v4.0.0
         with:
           set: |
-            elixir.cache-from=scope=elixir,type=gha
-            elixir.cache-to=scope=elixir,type=gha,mode=max
-            api.cache-from=scope=elixir,type=gha
-            api.cache-to=scope=elixir,type=gha,mode=max
-            web.cache-from=scope=elixir,type=gha
-            web.cache-to=scope=elixir,type=gha,mode=max
-            client.cache-from=scope=rust,type=gha
-            client.cache-to=scope=rust,type=gha,mode=max
-            gateway.cache-from=scope=rust,type=gha
-            gateway.cache-to=scope=rust,type=gha,mode=max
-            relay.cache-from=scope=rust,type=gha
-            relay.cache-to=scope=rust,type=gha,mode=max
+            elixir.cache-from=type=gha
+            elixir.cache-to=type=gha,mode=max
+            api.cache-from=type=gha
+            api.cache-to=type=gha,mode=max
+            web.cache-from=type=gha
+            web.cache-to=type=gha,mode=max
+            client.cache-from=type=gha
+            client.cache-to=type=gha,mode=max
+            gateway.cache-from=type=gha
+            gateway.cache-to=type=gha,mode=max
+            relay.cache-from=type=gha
+            relay.cache-to=type=gha,mode=max
           files: docker-compose.yml
           push: false
       - name: Seed database
@@ -65,18 +65,18 @@ jobs:
         uses: docker/bake-action@v4.0.0
         with:
           set: |
-            elixir.cache-from=scope=elixir,type=gha
-            elixir.cache-to=scope=elixir,type=gha,mode=max
-            api.cache-from=scope=elixir,type=gha
-            api.cache-to=scope=elixir,type=gha,mode=max
-            web.cache-from=scope=elixir,type=gha
-            web.cache-to=scope=elixir,type=gha,mode=max
-            client.cache-from=scope=rust,type=gha
-            client.cache-to=scope=rust,type=gha,mode=max
-            gateway.cache-from=scope=rust,type=gha
-            gateway.cache-to=scope=rust,type=gha,mode=max
-            relay.cache-from=scope=rust,type=gha
-            relay.cache-to=scope=rust,type=gha,mode=max
+            elixir.cache-from=type=gha
+            elixir.cache-to=type=gha,mode=max
+            api.cache-from=type=gha
+            api.cache-to=type=gha,mode=max
+            web.cache-from=type=gha
+            web.cache-to=type=gha,mode=max
+            client.cache-from=type=gha
+            client.cache-to=type=gha,mode=max
+            gateway.cache-from=type=gha
+            gateway.cache-to=type=gha,mode=max
+            relay.cache-from=type=gha
+            relay.cache-to=type=gha,mode=max
           files: docker-compose.yml
           push: false
       - name: Seed database
