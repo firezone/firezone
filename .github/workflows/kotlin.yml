@@ -18,12 +18,24 @@ concurrency:
 jobs:
   # See rust.yml how we build, package and release connlib as an example
   kotlin_build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        runs-on:
+          - ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
         working-directory: ./kotlin/android
     steps:
       - uses: actions/checkout@v4
+      - name: Update toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
+          key: v2
+          prefix-key: rust-${{ matrix.runs-on }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-java@v3
         with:
           distribution: temurin
@@ -52,4 +64,4 @@ jobs:
         run: ./gradlew testReleaseUnitTest
       - name: Android Test Report
         uses: asadmansr/android-test-report-action@v1.2.0
-        if: ${{ always() }} # IMPORTANT: run Android Test Report regardless
+        if: '!cancelled()'

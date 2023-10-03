@@ -50,36 +50,14 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
-
-      # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
-      # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
-      - run: rustup show
-
+      - name: Update toolchain
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
           key: v2
           prefix-key: rust-${{ matrix.runs-on }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      # TODO: Building *ring* from git requires us to install additional tools;
-      # once we're not using a forked *ring* these 2 steps can be removed.
-      - if: ${{ contains(matrix.runs-on, 'windows') }}
-        name: Install *ring* build tools
-        run: |
-          git clone `
-            --branch windows `
-            --depth 1 `
-            https://github.com/briansmith/ring-toolchain `
-            target/tools/windows
-      # The repo above is for a newer version of the *ring* build script which
-      # expects different paths; instead of going through the trouble of
-      # copying the older installation script let's just move the exe.
-      - if: ${{ contains(matrix.runs-on, 'windows') }}
-        name: Move *ring* build tools
-        run: |
-          mv target/tools/windows/nasm/nasm.exe target/tools/nasm.exe
-
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
         env:
@@ -88,19 +66,26 @@ jobs:
       - run: cargo test --all-features ${{ matrix.packages }}
 
   rust_smoke-test-relay:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on:
+          - ubuntu-20.04
+          - ubuntu-22.04
+    runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
         working-directory: ./rust/relay
     steps:
       - uses: actions/checkout@v4
-
-      # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
-      # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
-      - run: rustup show
+      - name: Update toolchain
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
+          key: v2
+          prefix-key: rust-${{ matrix.runs-on }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ./run_smoke_test.sh
 
   rust_relay-container-build:
