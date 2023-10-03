@@ -283,7 +283,8 @@ extension Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            controlPlaneURLString, token, self.getDeviceId(), self.connlibLogFolderPath, logFilterString,
+            controlPlaneURLString, token, self.getDeviceId(), self.connlibLogFolderPath,
+            logFilterString,
             self.callbackHandler),
           onStarted: { error in
             if let error = error {

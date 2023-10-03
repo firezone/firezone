@@ -6,9 +6,9 @@
 
 import Combine
 import Dependencies
+import OSLog
 import SwiftUI
 import XCTestDynamicOverlay
-import OSLog
 import ZIPFoundation
 
 enum SettingsViewError: Error {
@@ -71,8 +71,8 @@ public struct SettingsView: View {
   @State private var isExportingLogs = false
 
   #if os(iOS)
-  @State private var logTempZipFileURL: URL?
-  @State private var isPresentingExportLogShareSheet = false
+    @State private var logTempZipFileURL: URL?
+    @State private var isPresentingExportLogShareSheet = false
   #endif
 
   public init(model: SettingsViewModel) {
@@ -96,7 +96,7 @@ public struct SettingsView: View {
 
   #if os(iOS)
     private var ios: some View {
-      NavigationView() {
+      NavigationView {
         VStack(spacing: 10) {
           form
           ExportLogsButton(isProcessing: $isExportingLogs) {
@@ -108,11 +108,13 @@ public struct SettingsView: View {
           }
           .sheet(isPresented: $isPresentingExportLogShareSheet) {
             if let logfileURL = self.logTempZipFileURL {
-              ShareSheetView(localFileURL: logfileURL, completionHandler: {
-                self.isPresentingExportLogShareSheet = false
-                self.isExportingLogs = false
-                self.logTempZipFileURL = nil
-              })
+              ShareSheetView(
+                localFileURL: logfileURL,
+                completionHandler: {
+                  self.isPresentingExportLogShareSheet = false
+                  self.isExportingLogs = false
+                  self.logTempZipFileURL = nil
+                })
             }
           }
           Spacer()
@@ -194,56 +196,60 @@ public struct SettingsView: View {
     dismiss()
   }
 
-#if os(macOS)
-  func exportLogsButtonTapped() {
-    self.isExportingLogs = true
+  #if os(macOS)
+    func exportLogsButtonTapped() {
+      self.isExportingLogs = true
 
-    let savePanel = NSSavePanel()
-    savePanel.prompt = "Save"
-    savePanel.nameFieldLabel = "Save log zip bundle to:"
-    savePanel.nameFieldStringValue = "firezone-logs.zip"
+      let savePanel = NSSavePanel()
+      savePanel.prompt = "Save"
+      savePanel.nameFieldLabel = "Save log zip bundle to:"
+      savePanel.nameFieldStringValue = "firezone-logs.zip"
 
-    guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false }) else {
-      self.isExportingLogs = false
-      logger.log("Settings window not found. Can't show save panel.")
-      return
-    }
-
-    savePanel.beginSheetModal(for: window) { response in
-      guard response == .OK else {
+      guard
+        let window = NSApp.windows.first(where: {
+          $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false
+        })
+      else {
         self.isExportingLogs = false
-        return
-      }
-      guard let destinationURL = savePanel.url else {
-        self.isExportingLogs = false
+        logger.log("Settings window not found. Can't show save panel.")
         return
       }
 
-      Task {
-        do {
-          try await createLogZipBundle(destinationURL: destinationURL)
+      savePanel.beginSheetModal(for: window) { response in
+        guard response == .OK else {
           self.isExportingLogs = false
-          await MainActor.run {
-            window.contentViewController?.presentingViewController?.dismiss(self)
-          }
-        } catch {
+          return
+        }
+        guard let destinationURL = savePanel.url else {
           self.isExportingLogs = false
-          await MainActor.run {
-            // Show alert
+          return
+        }
+
+        Task {
+          do {
+            try await createLogZipBundle(destinationURL: destinationURL)
+            self.isExportingLogs = false
+            await MainActor.run {
+              window.contentViewController?.presentingViewController?.dismiss(self)
+            }
+          } catch {
+            self.isExportingLogs = false
+            await MainActor.run {
+              // Show alert
+            }
           }
         }
       }
     }
-  }
-#elseif os(iOS)
-  func exportLogsButtonTapped() {
-    self.isExportingLogs = true
-    Task {
-      let logsTempZipFileURL = try await createLogZipBundle()
-      self.isPresentingExportLogShareSheet = true
+  #elseif os(iOS)
+    func exportLogsButtonTapped() {
+      self.isExportingLogs = true
+      Task {
+        let logsTempZipFileURL = try await createLogZipBundle()
+        self.isPresentingExportLogShareSheet = true
+      }
     }
-  }
-#endif
+  #endif
 
   @discardableResult
   private func createLogZipBundle(destinationURL: URL? = nil) async throws -> URL {
@@ -251,7 +257,8 @@ public struct SettingsView: View {
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
       throw SettingsViewError.logFolderIsUnavailable
     }
-    let zipFileURL = destinationURL ?? fileManager.temporaryDirectory.appendingPathComponent("firezone_logs.zip")
+    let zipFileURL =
+      destinationURL ?? fileManager.temporaryDirectory.appendingPathComponent("firezone_logs.zip")
     if fileManager.fileExists(atPath: zipFileURL.path) {
       try fileManager.removeItem(at: zipFileURL)
     }
@@ -279,7 +286,8 @@ struct ExportLogsButton: View {
             Image(systemName: "arrow.up.doc")
               .frame(minWidth: 12)
           }
-        })
+        }
+      )
       .labelStyle(.titleAndIcon)
     }
     .disabled(isProcessing)
@@ -324,24 +332,24 @@ struct FormTextField: View {
 }
 
 #if os(iOS)
-struct ShareSheetView: UIViewControllerRepresentable {
-  let localFileURL: URL
-  let completionHandler: () -> Void
+  struct ShareSheetView: UIViewControllerRepresentable {
+    let localFileURL: URL
+    let completionHandler: () -> Void
 
-  func makeUIViewController(context: Context) -> UIActivityViewController {
-    let controller = UIActivityViewController(
-      activityItems: [self.localFileURL],
-      applicationActivities: [])
-    controller.completionWithItemsHandler = { _, _, _, _ in
-      self.completionHandler()
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+      let controller = UIActivityViewController(
+        activityItems: [self.localFileURL],
+        applicationActivities: [])
+      controller.completionWithItemsHandler = { _, _, _, _ in
+        self.completionHandler()
+      }
+      return controller
     }
-    return controller
-  }
 
-  func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
-    // Nothing to do
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
+      // Nothing to do
+    }
   }
-}
 #endif
 
 struct SettingsView_Previews: PreviewProvider {

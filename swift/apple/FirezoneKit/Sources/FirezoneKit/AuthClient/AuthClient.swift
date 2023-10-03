@@ -89,7 +89,7 @@ private final class WebAuthenticationSession: NSObject,
       session.prefersEphemeralWebBrowserSession = false
 
       #if os(macOS)
-      NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate(ignoringOtherApps: true)
       #endif
       session.start()
     }

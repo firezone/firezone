@@ -244,7 +244,9 @@
     }
 
     private func openSettingsWindow() {
-      if let settingsWindow = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false }) {
+      if let settingsWindow = NSApp.windows.first(where: {
+        $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false
+      }) {
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow.makeKeyAndOrderFront(self)
       } else {

@@ -19,14 +19,14 @@ struct FirezoneApp: App {
 
   var body: some Scene {
     #if os(iOS)
-    WindowGroup {
-      AppView(model: model)
-    }
+      WindowGroup {
+        AppView(model: model)
+      }
     #else
-    WindowGroup("Settings", id: "firezone-settings") {
-      SettingsView(model: appDelegate.settingsViewModel)
-    }
-    .handlesExternalEvents(matching: ["settings"])
+      WindowGroup("Settings", id: "firezone-settings") {
+        SettingsView(model: appDelegate.settingsViewModel)
+      }
+      .handlesExternalEvents(matching: ["settings"])
     #endif
   }
 }

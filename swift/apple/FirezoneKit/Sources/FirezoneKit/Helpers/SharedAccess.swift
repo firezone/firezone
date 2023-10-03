@@ -8,7 +8,10 @@ import Foundation
 
 public struct SharedAccess {
   public static var baseFolderURL: URL {
-    guard let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppInfoPlistConstants.appGroupId) else {
+    guard
+      let url = FileManager.default.containerURL(
+        forSecurityApplicationGroupIdentifier: AppInfoPlistConstants.appGroupId)
+    else {
       fatalError("Shared folder unavailable")
     }
     return url
