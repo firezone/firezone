@@ -232,6 +232,11 @@ where
                 return Poll::Ready(Ok(Event::HeartbeatSent));
             }
 
+            // Priority 4: Flush out.
+            if self.stream.poll_flush_unpin(cx)?.is_ready() {
+                tracing::trace!("Flushed websocket")
+            }
+
             return Poll::Pending;
         }
     }
