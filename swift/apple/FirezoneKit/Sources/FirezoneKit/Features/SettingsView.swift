@@ -155,7 +155,7 @@ public struct SettingsView: View {
           .disabled(!isTeamIdValid(model.settings.accountId))
         }
         ExportLogsButton(isProcessing: $isExportingLogs) {
-          self.exportLogsButtonTapped()
+          self.exportLogsWithSavePanelOnMac()
         }
       }
     }
@@ -197,7 +197,7 @@ public struct SettingsView: View {
   }
 
   #if os(macOS)
-    func exportLogsButtonTapped() {
+    func exportLogsWithSavePanelOnMac() {
       self.isExportingLogs = true
 
       let savePanel = NSSavePanel()
@@ -241,14 +241,6 @@ public struct SettingsView: View {
         }
       }
     }
-  #elseif os(iOS)
-    func exportLogsButtonTapped() {
-      self.isExportingLogs = true
-      Task {
-        let logsTempZipFileURL = try await createLogZipBundle()
-        self.isPresentingExportLogShareSheet = true
-      }
-    }
   #endif
 
   private func logZipBundleFilename() -> String {
@@ -265,7 +257,8 @@ public struct SettingsView: View {
       throw SettingsViewError.logFolderIsUnavailable
     }
     let zipFileURL =
-      destinationURL ?? fileManager.temporaryDirectory.appendingPathComponent(logZipBundleFilename())
+      destinationURL
+      ?? fileManager.temporaryDirectory.appendingPathComponent(logZipBundleFilename())
     if fileManager.fileExists(atPath: zipFileURL.path) {
       try fileManager.removeItem(at: zipFileURL)
     }
