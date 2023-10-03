@@ -11,7 +11,15 @@ COPY . ./
 #     cargo build -p $PACKAGE --release
 # RUN --mount=type=cache,target=./target \
 #     mv ./target/release/$PACKAGE /usr/local/bin/$PACKAGE
-RUN cargo build -p $PACKAGE --release
+ARG RUSTC_CACHE
+ARG SCCACHE_GHA_ENABLED
+ARG ACTIONS_CACHE_URL
+ARG ACTIONS_RUNTIME_TOKEN
+RUN RUSTC_CACHE=${RUSTC_CACHE} \
+    SCCACHE_GHA_ENABLED=${SCCACHE_GHA_ENABLED} \
+    ACTIONS_CACHE_URL=${ACTIONS_CACHE_URL} \
+    ACTIONS_CACHE_RUNTIME_TOKEN=${ACTIONS_CACHE_RUNTIME_TOKEN} \
+    cargo build -p $PACKAGE --release
 RUN mv ./target/release/$PACKAGE /usr/local/bin/$PACKAGE
 
 FROM debian:12-slim

@@ -50,18 +50,6 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
-
-      # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
-      # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
-      - run: rustup show
-
-      # XXX: sccache can be used in Dockerfiles and on developer machines, so it's preferred over rust-cache
-      # - uses: Swatinem/rust-cache@v2
-      #   with:
-      #     workspaces: ./rust
-      #     key: v2
-      #     prefix-key: rust-${{ matrix.runs-on }}
-      #     save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
 
@@ -97,14 +85,6 @@ jobs:
         working-directory: ./rust/relay
     steps:
       - uses: actions/checkout@v4
-
-      # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
-      # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
-      - run: rustup show
-      # XXX: sccache can be used in Dockerfiles and on developer machines, so it's preferred over rust-cache
-      # - uses: Swatinem/rust-cache@v2
-      #   with:
-      #     workspaces: ./rust
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
       - run: ./run_smoke_test.sh
@@ -126,15 +106,14 @@ jobs:
       CLOUDSDK_CORE_PROJECT: firezone-staging
       GCP_PROJECT: firezone-staging
     steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
       - uses: actions/checkout@v4
       - run: rustup show
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
-
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - id: auth
         uses: google-github-actions/auth@v1
         with:
@@ -163,6 +142,10 @@ jobs:
           platforms: linux/amd64
           build-args: |
             PACKAGE=${{ env.PACKAGE }}
+            RUSTC_CACHE=${{ env.RUSTC_CACHE }}
+            SCCACHE_GHA_ENABLED=${{ env.SCCACHE_GHA_ENABLED }}
+            ACTIONS_CACHE_URL=${{ env.ACTIONS_CACHE_URL }}
+            ACTIONS_RUNTIME_TOKEN={{ env.ACTIONS_RUNTIME_TOKEN }}
           context: rust/
           cache-from: type=gha,scope=${{ env.PACKAGE }}-${{ github.sha }}
           cache-to: type=gha,mode=max,scope=${{ env.PACKAGE }}-${{ github.sha }}
@@ -189,14 +172,14 @@ jobs:
       CLOUDSDK_CORE_PROJECT: firezone-staging
       GCP_PROJECT: firezone-staging
     steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
       - uses: actions/checkout@v4
       - run: rustup show
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - id: auth
         uses: google-github-actions/auth@v1
         with:
@@ -225,6 +208,10 @@ jobs:
           platforms: linux/amd64
           build-args: |
             PACKAGE=${{ env.PACKAGE }}
+            RUSTC_CACHE=${{ env.RUSTC_CACHE }}
+            SCCACHE_GHA_ENABLED=${{ env.SCCACHE_GHA_ENABLED }}
+            ACTIONS_CACHE_URL=${{ env.ACTIONS_CACHE_URL }}
+            ACTIONS_RUNTIME_TOKEN={{ env.ACTIONS_RUNTIME_TOKEN }}
           context: rust/
           cache-from: type=gha,scope=${{ env.PACKAGE }}-${{ github.sha }}
           cache-to: type=gha,mode=max,scope=${{ env.PACKAGE }}-${{ github.sha }}
