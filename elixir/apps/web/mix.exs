@@ -4,7 +4,8 @@ defmodule Web.MixProject do
   def project do
     [
       app: :web,
-      version: version(),
+      # mark:automatic-version
+      version: "1.20231001.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
@@ -15,10 +16,6 @@ defmodule Web.MixProject do
       aliases: aliases(),
       deps: deps()
     ]
-  end
-
-  def version do
-    System.get_env("APPLICATION_VERSION", "0.0.0+git.0.deadbeef")
   end
 
   def application do

@@ -1,6 +1,7 @@
 [package]
 name = "relay"
-version = "0.1.0"
+# mark:automatic-version
+version = "1.20231001.0"
 edition = "2021"
 
 [dependencies]
