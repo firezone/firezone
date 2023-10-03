@@ -49,14 +49,14 @@ jobs:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: elixir/_build
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Dependencies
@@ -100,14 +100,14 @@ jobs:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: elixir/_build
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Dependencies
@@ -122,9 +122,9 @@ jobs:
         env:
           cache-name: cache-erlang-plt-${{ env.MIX_ENV }}
         with:
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-plt
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-plt
           restore-keys: |
-            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-plt
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-plt
           path: elixir/priv/plts
       - name: Create PLTs
         if: steps.plt_cache.outputs.cache-hit != 'true'
@@ -152,14 +152,14 @@ jobs:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: elixir/_build
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Dependencies
@@ -219,14 +219,14 @@ jobs:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: elixir/_build
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile
@@ -328,14 +328,14 @@ jobs:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: elixir/_build
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache@v3
         name: pnpm Deps Cache
         env:
