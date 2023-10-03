@@ -448,10 +448,9 @@ jobs:
           platforms: linux/amd64
           build-args: |
             APPLICATION_NAME=${{ env.APPLICATION_NAME }}
-            APPLICATION_VERSION=0.0.0-sha.${{ github.sha }}
           context: elixir/
-          cache-from: type=gha,scope=${{ env.APPLICATION_NAME }}-${{ github.sha }}
-          cache-to: type=gha,mode=max,scope=${{ env.APPLICATION_NAME }}-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           file: elixir/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}
@@ -508,10 +507,9 @@ jobs:
           platforms: linux/amd64
           build-args: |
             APPLICATION_NAME=${{ env.APPLICATION_NAME }}
-            APPLICATION_VERSION=0.0.0-sha.${{ github.sha }}
           context: elixir/
-          cache-from: type=gha,scope=${{ env.APPLICATION_NAME }}-${{ github.sha }}
-          cache-to: type=gha,mode=max,scope=${{ env.APPLICATION_NAME }}-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           file: elixir/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}

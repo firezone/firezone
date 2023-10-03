@@ -19,10 +19,10 @@ jobs:
           set: |
             elixir.cache-from=scope=elixir,type=gha
             elixir.cache-to=scope=elixir,type=gha,mode=max
-            api.cache-from=scope=api,type=gha
-            api.cache-to=scope=api,type=gha,mode=max
-            web.cache-from=scope=web,type=gha
-            web.cache-to=scope=web,type=gha,mode=max
+            api.cache-from=scope=elixir,type=gha
+            api.cache-to=scope=elixir,type=gha,mode=max
+            web.cache-from=scope=elixir,type=gha
+            web.cache-to=scope=elixir,type=gha,mode=max
             client.cache-from=scope=rust,type=gha
             client.cache-to=scope=rust,type=gha,mode=max
             gateway.cache-from=scope=rust,type=gha
@@ -67,10 +67,10 @@ jobs:
           set: |
             elixir.cache-from=scope=elixir,type=gha
             elixir.cache-to=scope=elixir,type=gha,mode=max
-            api.cache-from=scope=api,type=gha
-            api.cache-to=scope=api,type=gha,mode=max
-            web.cache-from=scope=web,type=gha
-            web.cache-to=scope=web,type=gha,mode=max
+            api.cache-from=scope=elixir,type=gha
+            api.cache-to=scope=elixir,type=gha,mode=max
+            web.cache-from=scope=elixir,type=gha
+            web.cache-to=scope=elixir,type=gha,mode=max
             client.cache-from=scope=rust,type=gha
             client.cache-to=scope=rust,type=gha,mode=max
             gateway.cache-from=scope=rust,type=gha

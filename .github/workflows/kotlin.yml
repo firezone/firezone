@@ -35,7 +35,7 @@ jobs:
           workspaces: ./rust
           key: v2
           prefix-key: rust-${{ matrix.runs-on }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-java@v3
         with:
           distribution: temurin
