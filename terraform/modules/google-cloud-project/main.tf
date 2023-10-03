@@ -34,3 +34,10 @@ resource "google_project_service" "serviceusage" {
 
   disable_on_destroy = false
 }
+
+resource "google_project_service" "cloudbuild" {
+  project = google_project.project.project_id
+  service = "cloudbuild.googleapis.com"
+
+  disable_on_destroy = false
+}
