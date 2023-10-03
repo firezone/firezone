@@ -105,6 +105,8 @@ jobs:
       CLOUDSDK_PROJECT: firezone-staging
       CLOUDSDK_CORE_PROJECT: firezone-staging
       GCP_PROJECT: firezone-staging
+      RUSTC_CACHE: sccache
+      SCCACHE_GHA_ENABLED: true
     steps:
       - uses: actions/checkout@v4
       - run: rustup show
@@ -145,7 +147,7 @@ jobs:
             RUSTC_CACHE=${{ env.RUSTC_CACHE }}
             SCCACHE_GHA_ENABLED=${{ env.SCCACHE_GHA_ENABLED }}
             ACTIONS_CACHE_URL=${{ env.ACTIONS_CACHE_URL }}
-            ACTIONS_RUNTIME_TOKEN={{ env.ACTIONS_RUNTIME_TOKEN }}
+            ACTIONS_RUNTIME_TOKEN=${{ env.ACTIONS_RUNTIME_TOKEN }}
           context: rust/
           cache-from: type=gha,scope=${{ env.PACKAGE }}-${{ github.sha }}
           cache-to: type=gha,mode=max,scope=${{ env.PACKAGE }}-${{ github.sha }}
@@ -171,6 +173,8 @@ jobs:
       CLOUDSDK_PROJECT: firezone-staging
       CLOUDSDK_CORE_PROJECT: firezone-staging
       GCP_PROJECT: firezone-staging
+      RUSTC_CACHE: sccache
+      SCCACHE_GHA_ENABLED: true
     steps:
       - uses: actions/checkout@v4
       - run: rustup show
@@ -211,7 +215,7 @@ jobs:
             RUSTC_CACHE=${{ env.RUSTC_CACHE }}
             SCCACHE_GHA_ENABLED=${{ env.SCCACHE_GHA_ENABLED }}
             ACTIONS_CACHE_URL=${{ env.ACTIONS_CACHE_URL }}
-            ACTIONS_RUNTIME_TOKEN={{ env.ACTIONS_RUNTIME_TOKEN }}
+            ACTIONS_RUNTIME_TOKEN=${{ env.ACTIONS_RUNTIME_TOKEN }}
           context: rust/
           cache-from: type=gha,scope=${{ env.PACKAGE }}-${{ github.sha }}
           cache-to: type=gha,mode=max,scope=${{ env.PACKAGE }}-${{ github.sha }}

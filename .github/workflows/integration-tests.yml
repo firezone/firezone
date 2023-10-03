@@ -7,6 +7,9 @@ on:
 
 jobs:
   integration-test_basic-flow:
+    env:
+      RUSTC_CACHE: sccache
+      SCCACHE_GHA_ENABLED: true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -22,7 +25,7 @@ jobs:
             RUSTC_CACHE=${{ env.RUSTC_CACHE }}
             SCCACHE_GHA_ENABLED=${{ env.SCCACHE_GHA_ENABLED }}
             ACTIONS_CACHE_URL=${{ env.ACTIONS_CACHE_URL }}
-            ACTIONS_RUNTIME_TOKEN={{ env.ACTIONS_RUNTIME_TOKEN }}
+            ACTIONS_RUNTIME_TOKEN=${{ env.ACTIONS_RUNTIME_TOKEN }}
           set: |
             elixir.cache-from=scope=elixir,type=gha
             elixir.cache-to=scope=elixir,type=gha,mode=max
@@ -62,6 +65,9 @@ jobs:
 
 
   integration-test_relayed-flow:
+    env:
+      RUSTC_CACHE: sccache
+      SCCACHE_GHA_ENABLED: true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -77,7 +83,7 @@ jobs:
             RUSTC_CACHE=${{ env.RUSTC_CACHE }}
             SCCACHE_GHA_ENABLED=${{ env.SCCACHE_GHA_ENABLED }}
             ACTIONS_CACHE_URL=${{ env.ACTIONS_CACHE_URL }}
-            ACTIONS_RUNTIME_TOKEN={{ env.ACTIONS_RUNTIME_TOKEN }}
+            ACTIONS_RUNTIME_TOKEN=${{ env.ACTIONS_RUNTIME_TOKEN }}
           set: |
             elixir.cache-from=scope=elixir,type=gha
             elixir.cache-to=scope=elixir,type=gha,mode=max
