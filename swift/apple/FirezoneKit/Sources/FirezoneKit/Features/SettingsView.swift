@@ -203,7 +203,7 @@ public struct SettingsView: View {
       let savePanel = NSSavePanel()
       savePanel.prompt = "Save"
       savePanel.nameFieldLabel = "Save log zip bundle to:"
-      savePanel.nameFieldStringValue = "firezone-logs.zip"
+      savePanel.nameFieldStringValue = logZipBundleFilename()
 
       guard
         let window = NSApp.windows.first(where: {
@@ -251,6 +251,13 @@ public struct SettingsView: View {
     }
   #endif
 
+  private func logZipBundleFilename() -> String {
+    let dateFormatter = ISO8601DateFormatter()
+    dateFormatter.formatOptions = [.withFullDate, .withTime, .withTimeZone]
+    let timeStampString = dateFormatter.string(from: Date())
+    return "firezone_logs_\(timeStampString).zip"
+  }
+
   @discardableResult
   private func createLogZipBundle(destinationURL: URL? = nil) async throws -> URL {
     let fileManager = FileManager.default
@@ -258,7 +265,7 @@ public struct SettingsView: View {
       throw SettingsViewError.logFolderIsUnavailable
     }
     let zipFileURL =
-      destinationURL ?? fileManager.temporaryDirectory.appendingPathComponent("firezone_logs.zip")
+      destinationURL ?? fileManager.temporaryDirectory.appendingPathComponent(logZipBundleFilename())
     if fileManager.fileExists(atPath: zipFileURL.path) {
       try fileManager.removeItem(at: zipFileURL)
     }
