@@ -6,8 +6,14 @@
 
 import Combine
 import Dependencies
+import OSLog
 import SwiftUI
 import XCTestDynamicOverlay
+import ZIPFoundation
+
+enum SettingsViewError: Error {
+  case logFolderIsUnavailable
+}
 
 public final class SettingsViewModel: ObservableObject {
   @Dependency(\.authStore) private var authStore
@@ -56,10 +62,18 @@ public final class SettingsViewModel: ObservableObject {
 }
 
 public struct SettingsView: View {
+  private let logger = Logger.make(for: SettingsView.self)
+
   @ObservedObject var model: SettingsViewModel
   @Environment(\.dismiss) var dismiss
 
   let teamIdAllowedCharacterSet: CharacterSet
+  @State private var isExportingLogs = false
+
+  #if os(iOS)
+    @State private var logTempZipFileURL: URL?
+    @State private var isPresentingExportLogShareSheet = false
+  #endif
 
   public init(model: SettingsViewModel) {
     self.model = model
@@ -83,8 +97,27 @@ public struct SettingsView: View {
   #if os(iOS)
     private var ios: some View {
       NavigationView {
-        VStack {
+        VStack(spacing: 10) {
           form
+          ExportLogsButton(isProcessing: $isExportingLogs) {
+            self.isExportingLogs = true
+            Task {
+              self.logTempZipFileURL = try await createLogZipBundle()
+              self.isPresentingExportLogShareSheet = true
+            }
+          }
+          .sheet(isPresented: $isPresentingExportLogShareSheet) {
+            if let logfileURL = self.logTempZipFileURL {
+              ShareSheetView(
+                localFileURL: logfileURL,
+                completionHandler: {
+                  self.isPresentingExportLogShareSheet = false
+                  self.isExportingLogs = false
+                  self.logTempZipFileURL = nil
+                })
+            }
+          }
+          Spacer()
         }
         .toolbar {
           ToolbarItem(placement: .navigationBarTrailing) {
@@ -120,6 +153,9 @@ public struct SettingsView: View {
             }
           )
           .disabled(!isTeamIdValid(model.settings.accountId))
+        }
+        ExportLogsButton(isProcessing: $isExportingLogs) {
+          self.exportLogsWithSavePanelOnMac()
         }
       }
     }
@@ -159,6 +195,103 @@ public struct SettingsView: View {
     model.load()
     dismiss()
   }
+
+  #if os(macOS)
+    func exportLogsWithSavePanelOnMac() {
+      self.isExportingLogs = true
+
+      let savePanel = NSSavePanel()
+      savePanel.prompt = "Save"
+      savePanel.nameFieldLabel = "Save log zip bundle to:"
+      savePanel.nameFieldStringValue = logZipBundleFilename()
+
+      guard
+        let window = NSApp.windows.first(where: {
+          $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false
+        })
+      else {
+        self.isExportingLogs = false
+        logger.log("Settings window not found. Can't show save panel.")
+        return
+      }
+
+      savePanel.beginSheetModal(for: window) { response in
+        guard response == .OK else {
+          self.isExportingLogs = false
+          return
+        }
+        guard let destinationURL = savePanel.url else {
+          self.isExportingLogs = false
+          return
+        }
+
+        Task {
+          do {
+            try await createLogZipBundle(destinationURL: destinationURL)
+            self.isExportingLogs = false
+            await MainActor.run {
+              window.contentViewController?.presentingViewController?.dismiss(self)
+            }
+          } catch {
+            self.isExportingLogs = false
+            await MainActor.run {
+              // Show alert
+            }
+          }
+        }
+      }
+    }
+  #endif
+
+  private func logZipBundleFilename() -> String {
+    let dateFormatter = ISO8601DateFormatter()
+    dateFormatter.formatOptions = [.withFullDate, .withTime, .withTimeZone]
+    let timeStampString = dateFormatter.string(from: Date())
+    return "firezone_logs_\(timeStampString).zip"
+  }
+
+  @discardableResult
+  private func createLogZipBundle(destinationURL: URL? = nil) async throws -> URL {
+    let fileManager = FileManager.default
+    guard let logFilesFolderURL = SharedAccess.logFolderURL else {
+      throw SettingsViewError.logFolderIsUnavailable
+    }
+    let zipFileURL =
+      destinationURL
+      ?? fileManager.temporaryDirectory.appendingPathComponent(logZipBundleFilename())
+    if fileManager.fileExists(atPath: zipFileURL.path) {
+      try fileManager.removeItem(at: zipFileURL)
+    }
+    let task = Task.detached(priority: .userInitiated) { () -> URL in
+      try FileManager.default.zipItem(at: logFilesFolderURL, to: zipFileURL)
+      return zipFileURL
+    }
+    return try await task.value
+  }
+}
+
+struct ExportLogsButton: View {
+  @Binding var isProcessing: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Label(
+        title: { Text("Export Logs") },
+        icon: {
+          if isProcessing {
+            ProgressView().controlSize(.small)
+              .frame(minWidth: 12)
+          } else {
+            Image(systemName: "arrow.up.doc")
+              .frame(minWidth: 12)
+          }
+        }
+      )
+      .labelStyle(.titleAndIcon)
+    }
+    .disabled(isProcessing)
+  }
 }
 
 struct FormTextField: View {
@@ -197,6 +330,27 @@ struct FormTextField: View {
     #endif
   }
 }
+
+#if os(iOS)
+  struct ShareSheetView: UIViewControllerRepresentable {
+    let localFileURL: URL
+    let completionHandler: () -> Void
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+      let controller = UIActivityViewController(
+        activityItems: [self.localFileURL],
+        applicationActivities: [])
+      controller.completionWithItemsHandler = { _, _, _, _ in
+        self.completionHandler()
+      }
+      return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
+      // Nothing to do
+    }
+  }
+#endif
 
 struct SettingsView_Previews: PreviewProvider {
   static var previews: some View {

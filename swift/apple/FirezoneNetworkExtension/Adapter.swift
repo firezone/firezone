@@ -78,7 +78,7 @@ public class Adapter {
   /// Adapter state.
   private var state: AdapterState {
     didSet {
-      logger.debug("Adapter state changed to: \(self.state, privacy: .public)")
+      logger.log("Adapter state changed to: \(self.state, privacy: .public)")
     }
   }
 
@@ -98,23 +98,7 @@ public class Adapter {
       "connlib_apple=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn"
   #endif
 
-  private var logDir: String {
-    guard
-      let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
-        .first
-    else { return "" }
-
-    let logDirectory = cachesDirectory.appendingPathComponent("log")
-    do {
-      try FileManager.default.createDirectory(
-        at: logDirectory, withIntermediateDirectories: true, attributes: nil)
-    } catch {
-      logger.warning("Unable to create log directory \(logDirectory)")
-      return ""
-    }
-
-    return logDirectory.path
-  }
+  private let connlibLogFolderPath: String
 
   public init(
     controlPlaneURLString: String, token: String, packetTunnelProvider: NEPacketTunnelProvider
@@ -124,16 +108,17 @@ public class Adapter {
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler()
     self.state = .stoppedTunnel
+    self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
   }
 
   deinit {
-    self.logger.debug("Adapter.deinit")
+    self.logger.log("Adapter.deinit")
     // Cancel network monitor
     networkMonitor?.cancel()
 
     // Shutdown the tunnel
     if case .tunnelReady(let session) = self.state {
-      logger.debug("Adapter.deinit: Shutting down connlib")
+      logger.log("Adapter.deinit: Shutting down connlib")
       session.disconnect()
     }
   }
@@ -145,7 +130,7 @@ public class Adapter {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.debug("Adapter.start")
+      self.logger.log("Adapter.start")
       guard case .stoppedTunnel = self.state else {
         completionHandler(.invalidState)
         return
@@ -153,11 +138,15 @@ public class Adapter {
 
       self.callbackHandler.delegate = self
 
-      self.logger.debug("Adapter.start: Starting connlib")
+      if self.connlibLogFolderPath.isEmpty {
+        self.logger.error("Cannot get shared log folder for connlib")
+      }
+
+      self.logger.log("Adapter.start: Starting connlib")
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            self.controlPlaneURLString, self.token, self.getDeviceId(), self.logDir,
+            self.controlPlaneURLString, self.token, self.getDeviceId(), self.connlibLogFolderPath,
             self.logFilterString, self.callbackHandler),
           onStarted: completionHandler
         )
@@ -175,17 +164,17 @@ public class Adapter {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.debug("Adapter.stop")
+      self.logger.log("Adapter.stop")
 
       switch self.state {
       case .stoppedTunnel, .stoppingTunnel:
         break
       case .tunnelReady(let session):
-        self.logger.debug("Adapter.stop: Shutting down connlib")
+        self.logger.log("Adapter.stop: Shutting down connlib")
         self.state = .stoppingTunnel(session: session, onStopped: completionHandler)
         session.disconnect()
       case .startingTunnel(let session, let onStarted):
-        self.logger.debug("Adapter.stop: Shutting down connlib before tunnel ready")
+        self.logger.log("Adapter.stop: Shutting down connlib before tunnel ready")
         self.state = .stoppingTunnel(
           session: session,
           onStopped: {
@@ -254,7 +243,7 @@ extension Adapter {
 
 extension Adapter {
   private func beginPathMonitoring() {
-    self.logger.debug("Beginning path monitoring")
+    self.logger.log("Beginning path monitoring")
     let networkMonitor = NWPathMonitor()
     networkMonitor.pathUpdateHandler = { [weak self] path in
       self?.didReceivePathUpdate(path: path)
@@ -268,7 +257,7 @@ extension Adapter {
 
     case .startingTunnel(let session, let onStarted):
       if path.status != .satisfied {
-        self.logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
+        self.logger.log("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
         onStarted?(nil)
         self.packetTunnelProvider?.reasserting = true
         self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
@@ -277,7 +266,7 @@ extension Adapter {
 
     case .tunnelReady(let session):
       if path.status != .satisfied {
-        self.logger.debug("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
+        self.logger.log("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
         self.packetTunnelProvider?.reasserting = true
         self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
         session.disconnect()
@@ -289,12 +278,13 @@ extension Adapter {
     case .stoppedTunnelTemporarily:
       guard path.status == .satisfied else { return }
 
-      self.logger.debug("Adapter.didReceivePathUpdate: Back online. Starting connlib.")
+      self.logger.log("Adapter.didReceivePathUpdate: Back online. Starting connlib.")
 
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            controlPlaneURLString, token, self.getDeviceId(), logDir, logFilterString,
+            controlPlaneURLString, token, self.getDeviceId(), self.connlibLogFolderPath,
+            logFilterString,
             self.callbackHandler),
           onStarted: { error in
             if let error = error {
@@ -330,7 +320,7 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.debug("Adapter.onSetInterfaceConfig")
+      self.logger.log("Adapter.onSetInterfaceConfig")
 
       switch self.state {
       case .startingTunnel:
@@ -359,7 +349,7 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.debug("Adapter.onTunnelReady")
+      self.logger.log("Adapter.onTunnelReady")
       guard case .startingTunnel(let session, let onStarted) = self.state else {
         self.logger.error(
           "Adapter.onTunnelReady: Unexpected state: \(self.state, privacy: .public)")
@@ -390,7 +380,7 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.debug("Adapter.onAddRoute(\(route, privacy: .public))")
+      self.logger.log("Adapter.onAddRoute(\(route, privacy: .public))")
       guard let networkSettings = self.networkSettings else {
         self.logger.error("Adapter.onAddRoute: No network settings")
         return
@@ -411,7 +401,7 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.debug("Adapter.onRemoveRoute(\(route, privacy: .public))")
+      self.logger.log("Adapter.onRemoveRoute(\(route, privacy: .public))")
       guard let networkSettings = self.networkSettings else {
         self.logger.error("Adapter.onRemoveRoute: No network settings")
         return
@@ -431,7 +421,7 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.debug("Adapter.onUpdateResources")
+      self.logger.log("Adapter.onUpdateResources")
       let jsonString = resourceList
       guard let jsonData = jsonString.data(using: .utf8) else {
         return
@@ -465,7 +455,7 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.debug("Adapter.onDisconnect")
+      self.logger.log("Adapter.onDisconnect")
       if let errorMessage = error {
         self.logger.error(
           "Connlib disconnected with unrecoverable error: \(errorMessage, privacy: .public)")
@@ -487,7 +477,7 @@ extension Adapter: CallbackHandlerDelegate {
           self.state = .stoppedTunnel
         }
       } else {
-        self.logger.debug("Connlib disconnected")
+        self.logger.log("Connlib disconnected")
         switch self.state {
         case .stoppingTunnel(session: _, let onStopped):
           onStopped?()

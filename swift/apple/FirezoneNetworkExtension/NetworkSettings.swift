@@ -98,7 +98,7 @@ class NetworkSettings {
       return
     }
 
-    logger.debug("NetworkSettings.apply: Applying network settings")
+    logger.log("NetworkSettings.apply: Applying network settings")
 
     var tunnelIPv4Routes: [NEIPv4Route] = []
     var tunnelIPv6Routes: [NEIPv6Route] = []
@@ -121,7 +121,7 @@ class NetworkSettings {
           let validNetworkPrefixLength = Self.validNetworkPrefixLength(
             fromString: networkPrefixLengthString, maximumValue: 32)
           let ipv4SubnetMask = Self.ipv4SubnetMask(networkPrefixLength: validNetworkPrefixLength)
-          logger.debug(
+          logger.log(
             """
             NetworkSettings.apply:
               Adding IPv4 route: \(address, privacy: .public) (subnet mask: \(ipv4SubnetMask, privacy: .public)
@@ -137,7 +137,7 @@ class NetworkSettings {
           }
           let validNetworkPrefixLength = Self.validNetworkPrefixLength(
             fromString: networkPrefixLengthString, maximumValue: 128)
-          logger.debug(
+          logger.log(
             """
             NetworkSettings.apply:
               Adding IPv6 route: \(address, privacy: .public) (prefix length: \(validNetworkPrefixLength, privacy: .public)
@@ -182,14 +182,14 @@ class NetworkSettings {
     tunnelNetworkSettings.tunnelOverheadBytes = tunnelOverheadBytes
 
     self.hasUnappliedChanges = false
-    logger.debug("Attempting to set network settings")
+    logger.log("Attempting to set network settings")
     packetTunnelProvider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
       if let error = error {
         logger.error("NetworkSettings.apply: Error: \(error, privacy: .public)")
       } else {
         guard !self.hasUnappliedChanges else {
           // Changes were made while the packetTunnelProvider was setting the network settings
-          logger.debug(
+          logger.log(
             """
             NetworkSettings.apply:
               Applying changes made to network settings while we were applying the network settings
@@ -197,7 +197,7 @@ class NetworkSettings {
           self.apply(on: packetTunnelProvider, logger: logger, completionHandler: completionHandler)
           return
         }
-        logger.debug("NetworkSettings.apply: Applied successfully")
+        logger.log("NetworkSettings.apply: Applied successfully")
       }
       completionHandler?(error)
     }
