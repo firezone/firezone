@@ -1,0 +1,101 @@
+tags: ["firezone"]
+
+options:
+  machineType: "N1_HIGHCPU_32"
+  env:
+    - "DOCKER_CLI_EXPERIMENTAL=enabled"
+
+substitutions:
+  _BRANCH_NAME: "main"
+  _DOCKER_CONTROL_PLANE_PLATFORMS: "linux/amd64"
+  # _DOCKER_DATA_PLANE_PLATFORMS: "linux/amd64,linux/arm64"
+
+steps:
+  - id: "initialize-qemu"
+    name: "gcr.io/cloud-builders/docker:latest"
+    args: ["run", "--privileged", "linuxkit/binfmt:v0.7"]
+  - id: "create-builder"
+    name: "gcr.io/cloud-builders/docker:latest"
+    args: ["buildx", "create", "--use", "--bootstrap"]
+    waitFor:
+      - "initialize-qemu"
+
+  # Elixir
+  - id: "Build and compile Elixir deps"
+    name: "gcr.io/cloud-builders/docker:latest"
+    args:
+      - buildx
+      - build
+      - --platform=${_DOCKER_CONTROL_PLANE_PLATFORMS}
+      - --target=compiler
+      - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:${_BRANCH_NAME}-compile
+      - --cache-to=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:${_BRANCH_NAME}-compile,mode=max
+      - ./elixir
+    waitFor:
+      - "initialize-qemu"
+  - id: "Build web"
+    name: "gcr.io/cloud-builders/docker:latest"
+    args:
+      - buildx
+      - build
+      - --platform=${_DOCKER_CONTROL_PLANE_PLATFORMS}
+      - --build-arg=APPLICATION_NAME=web
+      - --build-arg=APPLICATION_VERSION=${_WEB_TAG}
+      - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:${_BRANCH_NAME}-compile
+      - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:${_BRANCH_NAME}
+      - --cache-to=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:${_BRANCH_NAME},mode=max
+      - --pull
+      - --tag=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/web:${_WEB_TAG}
+      - --push
+      - ./elixir
+    waitFor:
+      - "Build and compile Elixir deps"
+  - id: "Build api"
+    name: "gcr.io/cloud-builders/docker:latest"
+    args:
+      - buildx
+      - build
+      - --platform=${_DOCKER_CONTROL_PLANE_PLATFORMS}
+      - --build-arg=APPLICATION_NAME=api
+      - --build-arg=APPLICATION_VERSION=${_API_TAG}
+      - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:${_BRANCH_NAME}
+      - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:${_BRANCH_NAME}
+      - --cache-to=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:${_BRANCH_NAME},mode=max
+      - --pull
+      - --tag=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/api:${_API_TAG}
+      - --push
+      - ./elixir
+    waitFor:
+      - "Build and compile Elixir deps"
+
+  # # Rust
+  # - id: "Build relay"
+  #   name: "gcr.io/cloud-builders/docker:latest"
+  #   args:
+  #     - buildx
+  #     - build
+  #     - --platform=${_DOCKER_DATA_PLANE_PLATFORMS}
+  #     - --build-arg=PACKAGE=relay
+  #     - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/rust:relay-${_BRANCH_NAME}
+  #     - --cache-to=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/rust:relay-${_BRANCH_NAME},mode=max
+  #     - --pull
+  #     - --tag=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/relay:${_RELAY_TAG}
+  #     - --push
+  #     - ./rust
+  #   waitFor:
+  #     - "initialize-qemu"
+  # - id: "Build gateway"
+  #   name: "gcr.io/cloud-builders/docker:latest"
+  #   args:
+  #     - buildx
+  #     - build
+  #     - --platform=${_DOCKER_DATA_PLANE_PLATFORMS}
+  #     - --build-arg=PACKAGE=gateway
+  #     - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/rust:gateway-${_BRANCH_NAME}
+  #     - --cache-to=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/rust:gateway-${_BRANCH_NAME},mode=max
+  #     - --pull
+  #     - --tag=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/gateway:${_GATEWAY_TAG}
+  #     - --push
+  #     - ./rust
+  #   waitFor:
+  #     - "initialize-qemu"

@@ -1,24 +1,14 @@
-ARG ALPINE_VERSION=3.18.2
-ARG OTP_VERSION=26.0.2
-ARG ELIXIR_VERSION=1.15.2
+ARG ALPINE_VERSION=3.18.4
+ARG OTP_VERSION=26.1.1
+ARG ELIXIR_VERSION=1.15.6
 
 ARG BUILDER_IMAGE="firezone/elixir:${ELIXIR_VERSION}-otp-${OTP_VERSION}"
 ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
 
-FROM ${BUILDER_IMAGE} as builder
-
-# install build dependencies
-RUN apk add nodejs npm build-base git python3
-
-# Add pnpm
-RUN npm i -g pnpm
+FROM ${BUILDER_IMAGE} as compiler
 
 # prepare build dir
 WORKDIR /app
-
-# install hex + rebar
-RUN mix local.hex --force && \
-    mix local.rebar --force
 
 # install mix dependencies
 COPY mix.exs mix.lock ./
@@ -34,8 +24,6 @@ RUN mix deps.compile --skip-umbrella-children
 COPY priv priv
 COPY apps apps
 
-ARG APPLICATION_VERSION=0.0.0-dev.docker
-
 # Install pipeline and compile assets for Web app
 RUN cd apps/web \
     && mix assets.setup \
@@ -44,8 +32,16 @@ RUN cd apps/web \
 # Compile the release
 RUN mix compile
 
+FROM ${BUILDER_IMAGE} as builder
+
+# prepare build dir
+WORKDIR /app
+
+COPY --from=compiler /app /app
+
 COPY rel rel
 
+ARG MIX_ENV="prod"
 ARG APPLICATION_NAME
 RUN mix release ${APPLICATION_NAME}
 
@@ -58,12 +54,8 @@ RUN apk add -u --no-cache libstdc++ ncurses-libs openssl curl
 WORKDIR /app
 
 ARG MIX_ENV="prod"
-
 ARG APPLICATION_NAME
-ARG APPLICATION_VERSION=0.0.0-dev.docker
-
 ENV APPLICATION_NAME=$APPLICATION_NAME
-ENV APPLICATION_VERSION=$APPLICATION_VERSION
 
 # Only copy the final release from the build stage
 COPY --from=builder /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./

@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+.gitmodules
+.github
+.git-crypt
+
+# Elixir
+_build
+apps/*/test
+**/*/tmp
+deps/
+apps/*/cover
+bench/
+apps/*/bench
+**/erl_crash.dump
+**/node_modules
+.formatter.exs
+**/.formatter.exs
+
+# Rust
+rust/target/
+
+# Website and docs
+website
+
+# IDE files
+.elixir_ls
+.vscode
+.tags
+
+# Terraform
+terraform/
+
+# Ignore client apps
+kotlin/
+swift/
+
+# MacOS-specific garbage
+**/.DS_Store
+**/.tags*
+
+# Never send this
+*.pem
