@@ -20,7 +20,8 @@ final class AuthViewModel: ObservableObject {
 
   func signInButtonTapped() async {
     guard let accountId = authStore.tunnelStore.tunnelAuthStatus.accountId(),
-          !accountId.isEmpty else {
+      !accountId.isEmpty
+    else {
       settingsUndefined()
       return
     }

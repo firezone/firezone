@@ -238,7 +238,7 @@ extension Adapter {
       }
 
     #elseif os(macOS)
-      guard let extId = PrimaryMacAddress.copy_mac_address() as? String else {
+      guard let extId = PrimaryMacAddress.copyMACAddress() as? String else {
         // Send a blank string, letting either connlib or the portal handle this
         return ""
       }

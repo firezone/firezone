@@ -10,7 +10,7 @@ import NetworkExtension
 import OSLog
 
 enum TunnelStoreError: Error {
-    case tunnelCouldNotBeStarted
+  case tunnelCouldNotBeStarted
 }
 
 final class TunnelStore: ObservableObject {
@@ -22,7 +22,8 @@ final class TunnelStore: ObservableObject {
   static let keyAccountId = "accountId"
 
   @Published private var tunnel: NETunnelProviderManager?
-  @Published private(set) var tunnelAuthStatus: TunnelAuthStatus = TunnelAuthStatus(protocolConfiguration: nil)
+  @Published private(set) var tunnelAuthStatus: TunnelAuthStatus = TunnelAuthStatus(
+    protocolConfiguration: nil)
 
   @Published private(set) var status: NEVPNStatus {
     didSet { TunnelStore.logger.info("status changed: \(self.status.description)") }
@@ -55,7 +56,8 @@ final class TunnelStore: ObservableObject {
       if let tunnel = managers.first {
         Self.logger.log("\(#function): Tunnel already exists")
         self.tunnel = tunnel
-        self.tunnelAuthStatus = TunnelAuthStatus(protocolConfiguration: tunnel.protocolConfiguration as? NETunnelProviderProtocol)
+        self.tunnelAuthStatus = TunnelAuthStatus(
+          protocolConfiguration: tunnel.protocolConfiguration as? NETunnelProviderProtocol)
       } else {
         let tunnel = NETunnelProviderManager()
         tunnel.localizedDescription = "Firezone"
@@ -77,7 +79,8 @@ final class TunnelStore: ObservableObject {
       fatalError("Tunnel not initialized yet")
     }
 
-    let wasConnected = (tunnel.connection.status == .connected || tunnel.connection.status == .connecting)
+    let wasConnected =
+      (tunnel.connection.status == .connected || tunnel.connection.status == .connecting)
     if wasConnected {
       stop()
     }
@@ -102,7 +105,7 @@ final class TunnelStore: ObservableObject {
     try await tunnel.saveToPreferences()
     try await tunnel.loadFromPreferences()
 
-    let session = tunnel.connection as! NETunnelProviderSession
+    let session = castToSession(tunnel.connection)
     try session.startTunnel()
     try await withCheckedThrowingContinuation { continuation in
       self.startTunnelContinuation = continuation
@@ -116,7 +119,7 @@ final class TunnelStore: ObservableObject {
     }
 
     TunnelStore.logger.trace("\(#function)")
-    let session = tunnel.connection as! NETunnelProviderSession
+    let session = castToSession(tunnel.connection)
     session.stopTunnel()
   }
 
@@ -127,7 +130,7 @@ final class TunnelStore: ObservableObject {
     }
 
     TunnelStore.logger.trace("\(#function)")
-    let session = tunnel.connection as! NETunnelProviderSession
+    let session = castToSession(tunnel.connection)
     session.stopTunnel()
 
     if case .signedIn(let authBaseURL, let accountId, let tokenReference) = self.tunnelAuthStatus {
@@ -140,7 +143,8 @@ final class TunnelStore: ObservableObject {
 
   func beginUpdatingResources() {
     self.updateResources()
-    let timer = Timer(timeInterval: 1 /*second*/, repeats: true) { [weak self] _ in
+    let intervalInSeconds: TimeInterval = 1
+    let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
       guard let self = self else { return }
       guard self.status == .connected else { return }
       self.updateResources()
@@ -153,13 +157,20 @@ final class TunnelStore: ObservableObject {
     self.resourcesTimer = nil
   }
 
+  private func castToSession(_ connection: NEVPNConnection) -> NETunnelProviderSession {
+    guard let session = connection as? NETunnelProviderSession else {
+      fatalError("Could not cast tunnel connection to NETunnelProviderSession!")
+    }
+    return session
+  }
+
   private func updateResources() {
     guard let tunnel = tunnel else {
       Self.logger.log("\(#function): TunnelStore is not initialized")
       return
     }
 
-    let session = tunnel.connection as! NETunnelProviderSession
+    let session = castToSession(tunnel.connection)
     guard session.status == .connected else {
       self.resources = DisplayableResources()
       return
@@ -167,7 +178,7 @@ final class TunnelStore: ObservableObject {
     let resourcesQuery = resources.versionStringToData()
     do {
       try session.sendProviderMessage(resourcesQuery) { [weak self] reply in
-        if let reply = reply { // If reply is nil, then the resources have not changed
+        if let reply = reply {  // If reply is nil, then the resources have not changed
           if let updatedResources = DisplayableResources(from: reply) {
             self?.resources = updatedResources
           }
@@ -190,7 +201,7 @@ final class TunnelStore: ObservableObject {
   private func setupTunnelObservers() {
     TunnelStore.logger.trace("\(#function)")
 
-    tunnelObservingTasks.forEach { $0.cancel() }
+    for task in tunnelObservingTasks { task.cancel() }
     tunnelObservingTasks.removeAll()
 
     tunnelObservingTasks.append(
@@ -206,14 +217,14 @@ final class TunnelStore: ObservableObject {
           self.status = status
           if let startTunnelContinuation = self.startTunnelContinuation {
             switch status {
-              case .connected:
-                startTunnelContinuation.resume(returning: ())
-                self.startTunnelContinuation = nil
-              case .disconnected:
-                startTunnelContinuation.resume(throwing: TunnelStoreError.tunnelCouldNotBeStarted)
-                self.startTunnelContinuation = nil
-              default:
-                break
+            case .connected:
+              startTunnelContinuation.resume(returning: ())
+              self.startTunnelContinuation = nil
+            case .disconnected:
+              startTunnelContinuation.resume(throwing: TunnelStoreError.tunnelCouldNotBeStarted)
+              self.startTunnelContinuation = nil
+            default:
+              break
             }
           }
           if status != .connected {
@@ -243,8 +254,8 @@ enum TunnelAuthStatus {
 
   var isInitialized: Bool {
     switch self {
-      case .tunnelUninitialized: return false
-      default: return true
+    case .tunnelUninitialized: return false
+    default: return true
     }
   }
 
@@ -252,7 +263,9 @@ enum TunnelAuthStatus {
     if let protocolConfiguration = protocolConfiguration {
       let providerConfig = protocolConfiguration.providerConfiguration
       let authBaseURL: URL? = {
-        guard let urlString = providerConfig?[TunnelStore.keyAuthBaseURLString] as? String else { return nil }
+        guard let urlString = providerConfig?[TunnelStore.keyAuthBaseURLString] as? String else {
+          return nil
+        }
         return URL(string: urlString)
       }()
       let accountId = providerConfig?[TunnelStore.keyAccountId] as? String
@@ -279,19 +292,19 @@ enum TunnelAuthStatus {
     protocolConfiguration.serverAddress = AppInfoPlistConstants.controlPlaneURL.absoluteString
 
     switch self {
-      case .tunnelUninitialized, .accountNotSetup:
-        break
-      case .signedOut(let authBaseURL, let accountId):
-        protocolConfiguration.providerConfiguration = [
-          TunnelStore.keyAuthBaseURLString: authBaseURL.absoluteString,
-          TunnelStore.keyAccountId: accountId
-        ]
-      case .signedIn(let authBaseURL, let accountId, let tokenReference):
-        protocolConfiguration.providerConfiguration = [
-          TunnelStore.keyAuthBaseURLString: authBaseURL.absoluteString,
-          TunnelStore.keyAccountId: accountId
-        ]
-        protocolConfiguration.passwordReference = tokenReference
+    case .tunnelUninitialized, .accountNotSetup:
+      break
+    case .signedOut(let authBaseURL, let accountId):
+      protocolConfiguration.providerConfiguration = [
+        TunnelStore.keyAuthBaseURLString: authBaseURL.absoluteString,
+        TunnelStore.keyAccountId: accountId,
+      ]
+    case .signedIn(let authBaseURL, let accountId, let tokenReference):
+      protocolConfiguration.providerConfiguration = [
+        TunnelStore.keyAuthBaseURLString: authBaseURL.absoluteString,
+        TunnelStore.keyAccountId: accountId,
+      ]
+      protocolConfiguration.passwordReference = tokenReference
     }
 
     return protocolConfiguration
@@ -299,12 +312,12 @@ enum TunnelAuthStatus {
 
   func accountId() -> String? {
     switch self {
-      case .tunnelUninitialized, .accountNotSetup:
-        return nil
-      case .signedOut(_, let accountId):
-        return accountId
-      case .signedIn(_, let accountId, _):
-        return accountId
+    case .tunnelUninitialized, .accountNotSetup:
+      return nil
+    case .signedOut(_, let accountId):
+      return accountId
+    case .signedIn(_, let accountId, _):
+      return accountId
     }
   }
 }

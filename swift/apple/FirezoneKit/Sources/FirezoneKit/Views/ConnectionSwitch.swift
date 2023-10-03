@@ -18,7 +18,8 @@ struct ConnectionSwitch: View {
     HStack {
       ZStack {
         Toggle(
-          "", isOn: .init(
+          "",
+          isOn: .init(
             get: { status == .connected },
             set: { isOn in
               Task {

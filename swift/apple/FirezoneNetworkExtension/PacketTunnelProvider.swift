@@ -5,9 +5,9 @@
 //
 
 import Dependencies
+import FirezoneKit
 import NetworkExtension
 import os
-import FirezoneKit
 
 enum PacketTunnelProviderError: Error {
   case savedProtocolConfigurationIsInvalid(String)
@@ -28,13 +28,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     guard let controlPlaneURLString = protocolConfiguration.serverAddress else {
       Self.logger.error("serverAddress is missing")
-      completionHandler(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
+      completionHandler(
+        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
       return
     }
 
     guard let tokenRef = protocolConfiguration.passwordReference else {
       Self.logger.error("passwordReference is missing")
-      completionHandler(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("passwordReference"))
+      completionHandler(
+        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("passwordReference"))
       return
     }
 
@@ -45,10 +47,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         return
       }
 
-      let adapter = Adapter(controlPlaneURLString: controlPlaneURLString, token: token, packetTunnelProvider: self)
+      let adapter = Adapter(
+        controlPlaneURLString: controlPlaneURLString, token: token, packetTunnelProvider: self)
       self.adapter = adapter
       do {
-        try adapter.start() { error in
+        try adapter.start { error in
           if let error {
             Self.logger.error("Error in adapter.start: \(error)")
           }
@@ -72,7 +75,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   override func handleAppMessage(_ messageData: Data, completionHandler: ((Data?) -> Void)? = nil) {
     let query = String(data: messageData, encoding: .utf8) ?? ""
-    adapter?.getDisplayableResourcesIfVersionDifferentFrom(referenceVersionString: query) { displayableResources in
+    adapter?.getDisplayableResourcesIfVersionDifferentFrom(referenceVersionString: query) {
+      displayableResources in
       completionHandler?(displayableResources?.toData())
     }
   }

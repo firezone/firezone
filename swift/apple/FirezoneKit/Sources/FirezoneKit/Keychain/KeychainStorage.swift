@@ -8,7 +8,8 @@ import Dependencies
 import Foundation
 
 struct KeychainStorage: Sendable {
-  var store: @Sendable (Keychain.Token, Keychain.TokenAttributes) async throws -> Keychain.PersistentRef
+  var store:
+    @Sendable (Keychain.Token, Keychain.TokenAttributes) async throws -> Keychain.PersistentRef
   var delete: @Sendable (Keychain.PersistentRef) async throws -> Void
   var loadAttributes: @Sendable (Keychain.PersistentRef) async -> Keychain.TokenAttributes?
   var searchByAuthURL: @Sendable (URL) async -> Keychain.PersistentRef?
@@ -44,7 +45,7 @@ extension KeychainStorage: DependencyKey {
       loadAttributes: { ref in
         storage.value[ref]?.1
       },
-      searchByAuthURL: { authURL in
+      searchByAuthURL: { _ in
         nil
       }
     )

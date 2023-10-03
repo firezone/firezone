@@ -4,10 +4,10 @@
 //  LICENSE: Apache-2.0
 //
 
+import Combine
 import Dependencies
 import SwiftUI
 import XCTestDynamicOverlay
-import Combine
 
 public final class SettingsViewModel: ObservableObject {
   @Dependency(\.authStore) private var authStore
@@ -82,8 +82,8 @@ public struct SettingsView: View {
 
   #if os(iOS)
     private var ios: some View {
-      NavigationView() {
-        VStack() {
+      NavigationView {
+        VStack {
           form
         }
         .toolbar {
@@ -108,12 +108,17 @@ public struct SettingsView: View {
       VStack(spacing: 50) {
         form
         HStack(spacing: 30) {
-          Button("Cancel", action: {
-            self.cancelButtonTapped()
-          })
-          Button("Save", action: {
-            self.saveButtonTapped()
-          })
+          Button(
+            "Cancel",
+            action: {
+              self.cancelButtonTapped()
+            })
+          Button(
+            "Save",
+            action: {
+              self.saveButtonTapped()
+            }
+          )
           .disabled(!isTeamIdValid(model.settings.accountId))
         }
       }
