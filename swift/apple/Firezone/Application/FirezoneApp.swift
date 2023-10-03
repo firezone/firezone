@@ -23,7 +23,7 @@ struct FirezoneApp: App {
         AppView(model: model)
       }
     #else
-      WindowGroup("Settings") {
+      WindowGroup("Settings", id: "firezone-settings") {
         SettingsView(model: appDelegate.settingsViewModel)
       }
       .handlesExternalEvents(matching: ["settings"])

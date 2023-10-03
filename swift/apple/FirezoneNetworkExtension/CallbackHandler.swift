@@ -40,7 +40,7 @@ public class CallbackHandler {
     dnsAddress: RustString,
     dnsFallbackStrategy: RustString
   ) {
-    logger.debug(
+    logger.log(
       """
         CallbackHandler.onSetInterfaceConfig:
           IPv4: \(tunnelAddressIPv4.toString(), privacy: .public)
@@ -57,27 +57,27 @@ public class CallbackHandler {
   }
 
   func onTunnelReady() {
-    logger.debug("CallbackHandler.onTunnelReady")
+    logger.log("CallbackHandler.onTunnelReady")
     delegate?.onTunnelReady()
   }
 
   func onAddRoute(route: RustString) {
-    logger.debug("CallbackHandler.onAddRoute: \(route.toString(), privacy: .public)")
+    logger.log("CallbackHandler.onAddRoute: \(route.toString(), privacy: .public)")
     delegate?.onAddRoute(route.toString())
   }
 
   func onRemoveRoute(route: RustString) {
-    logger.debug("CallbackHandler.onRemoveRoute: \(route.toString(), privacy: .public)")
+    logger.log("CallbackHandler.onRemoveRoute: \(route.toString(), privacy: .public)")
     delegate?.onRemoveRoute(route.toString())
   }
 
   func onUpdateResources(resourceList: RustString) {
-    logger.debug("CallbackHandler.onUpdateResources: \(resourceList.toString(), privacy: .public)")
+    logger.log("CallbackHandler.onUpdateResources: \(resourceList.toString(), privacy: .public)")
     delegate?.onUpdateResources(resourceList: resourceList.toString())
   }
 
   func onDisconnect(error: RustString) {
-    logger.debug("CallbackHandler.onDisconnect: \(error.toString(), privacy: .public)")
+    logger.log("CallbackHandler.onDisconnect: \(error.toString(), privacy: .public)")
     let error = error.toString()
     var optionalError = Optional.some(error)
     if error.isEmpty {
@@ -87,7 +87,7 @@ public class CallbackHandler {
   }
 
   func onError(error: RustString) {
-    logger.debug("CallbackHandler.onError: \(error.toString(), privacy: .public)")
+    logger.log("CallbackHandler.onError: \(error.toString(), privacy: .public)")
     delegate?.onError(error: error.toString())
   }
 }

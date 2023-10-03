@@ -110,7 +110,7 @@ final class AuthStore: ObservableObject {
     guard case .signedOut(let accountId) = self.loginStatus, let accountId = accountId,
       !accountId.isEmpty
     else {
-      logger.debug("No account-id found in tunnel")
+      logger.log("No account-id found in tunnel")
       throw FirezoneError.missingTeamId
     }
 
