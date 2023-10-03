@@ -83,6 +83,7 @@ where
             callbacks,
         };
         let runtime = tokio::runtime::Builder::new_multi_thread()
+            .thread_stack_size(10 * 1024 * 1024)
             .enable_all()
             .build()?;
         {
