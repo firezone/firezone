@@ -45,8 +45,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          key: v2
-          prefix-key: rust-${{ matrix.runs-on.os }}
           # save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Update toolchain
         run: rustup show

@@ -38,9 +38,10 @@ jobs:
           --health-retries 5
     steps:
       - uses: erlef/setup-beam@v1
+        id: setup-beam
         with:
-          otp-version: "26.0.2"
-          elixir-version: "1.15.2"
+          otp-version: "26.1.1"
+          elixir-version: "1.15.6"
       - uses: actions/checkout@v4
       - uses: actions/cache@v3
         name: Elixir Deps Cache
@@ -90,8 +91,8 @@ jobs:
       - uses: erlef/setup-beam@v1
         id: setup-beam
         with:
-          otp-version: "26.0.2"
-          elixir-version: "1.15.2"
+          otp-version: "26.1.1"
+          elixir-version: "1.15.6"
       - uses: actions/checkout@v4
       - uses: actions/cache@v3
         name: Elixir Deps Cache
@@ -140,9 +141,10 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: erlef/setup-beam@v1
+        id: setup-beam
         with:
-          otp-version: "26.0.2"
-          elixir-version: "1.15.2"
+          otp-version: "26.1.1"
+          elixir-version: "1.15.6"
       - uses: actions/checkout@v4
       - uses: actions/cache@v3
         name: Elixir Deps Cache
@@ -207,9 +209,10 @@ jobs:
           sudo apt update
           sudo apt-get install -q -y postgresql-client
       - uses: erlef/setup-beam@v1
+        id: setup-beam
         with:
-          otp-version: "26.0.2"
-          elixir-version: "1.15.2"
+          otp-version: "26.1.1"
+          elixir-version: "1.15.6"
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
@@ -308,9 +311,10 @@ jobs:
     steps:
       - uses: nanasess/setup-chromedriver@v2
       - uses: erlef/setup-beam@v1
+        id: setup-beam
         with:
-          otp-version: "26.0.2"
-          elixir-version: "1.15.2"
+          otp-version: "26.1.1"
+          elixir-version: "1.15.6"
       - uses: actions/setup-node@v3
         with:
           node-version: 18
