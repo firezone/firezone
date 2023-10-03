@@ -4,8 +4,6 @@
 //  LICENSE: Apache-2.0
 //
 
-// swiftlint:disable function_parameter_count
-
 #if os(macOS)
   import Combine
   import Dependencies
@@ -14,7 +12,7 @@
   import NetworkExtension
 
   @MainActor
-public final class MenuBar: NSObject {
+  public final class MenuBar: NSObject {
     let logger = Logger.make(for: MenuBar.self)
     @Dependency(\.mainQueue) private var mainQueue
 
@@ -45,7 +43,6 @@ public final class MenuBar: NSObject {
     let settingsViewModel: SettingsViewModel
     private var loginStatus: AuthStore.LoginStatus = .signedOut(accountId: nil)
     private var tunnelStatus: NEVPNStatus = .invalid
-
 
     public init(settingsViewModel: SettingsViewModel) {
       self.settingsViewModel = settingsViewModel
@@ -253,19 +250,19 @@ public final class MenuBar: NSObject {
     private func updateStatusItemIcon() {
       self.statusItem.button?.image = {
         switch self.loginStatus {
-          case .signedOut, .uninitialized:
-            return self.signedOutIcon
-          case .signedIn:
-            switch self.tunnelStatus {
-              case .invalid, .disconnected, .reasserting:
-                return self.signedInNotConnectedIcon
-              case .connected:
-                return self.signedInConnectedIcon
-              case .connecting, .disconnecting:
-                return self.connectingAnimationImages.last!
-              @unknown default:
-                return nil
-            }
+        case .signedOut, .uninitialized:
+          return self.signedOutIcon
+        case .signedIn:
+          switch self.tunnelStatus {
+          case .invalid, .disconnected, .reasserting:
+            return self.signedInNotConnectedIcon
+          case .connected:
+            return self.signedInConnectedIcon
+          case .connecting, .disconnecting:
+            return self.connectingAnimationImages.last!
+          @unknown default:
+            return nil
+          }
         }
       }()
       if self.tunnelStatus == .connecting || self.tunnelStatus == .disconnecting {
@@ -295,76 +292,78 @@ public final class MenuBar: NSObject {
     }
 
     private func connectingAnimationShowNextFrame() async {
-      self.statusItem.button?.image = self.connectingAnimationImages[self.connectingAnimationImageIndex]
-      self.connectingAnimationImageIndex = (self.connectingAnimationImageIndex + 1) % self.connectingAnimationImages.count
+      self.statusItem.button?.image =
+        self.connectingAnimationImages[self.connectingAnimationImageIndex]
+      self.connectingAnimationImageIndex =
+        (self.connectingAnimationImageIndex + 1) % self.connectingAnimationImages.count
     }
 
     private func handleLoginOrTunnelStatusChanged() {
       // Update "Sign In" / "Sign Out" menu items
       switch self.loginStatus {
-        case .uninitialized:
-          signInMenuItem.title = "Initializing"
-          signInMenuItem.target = nil
-          signOutMenuItem.isHidden = true
-        case .signedOut:
-          signInMenuItem.title = "Sign In"
-          signInMenuItem.target = self
-          signOutMenuItem.isHidden = true
-        case .signedIn(_, let actorName):
-          signInMenuItem.title = actorName.isEmpty ? "Signed in" : "Signed in as \(actorName)"
-          signInMenuItem.target = nil
-          signOutMenuItem.isHidden = false
+      case .uninitialized:
+        signInMenuItem.title = "Initializing"
+        signInMenuItem.target = nil
+        signOutMenuItem.isHidden = true
+      case .signedOut:
+        signInMenuItem.title = "Sign In"
+        signInMenuItem.target = self
+        signOutMenuItem.isHidden = true
+      case .signedIn(_, let actorName):
+        signInMenuItem.title = actorName.isEmpty ? "Signed in" : "Signed in as \(actorName)"
+        signInMenuItem.target = nil
+        signOutMenuItem.isHidden = false
       }
       // Update resources "header" menu items
       switch (self.loginStatus, self.tunnelStatus) {
-        case (.uninitialized, _):
-          resourcesTitleMenuItem.isHidden = true
-          resourcesUnavailableMenuItem.isHidden = true
-          resourcesUnavailableReasonMenuItem.isHidden = true
-          resourcesSeparatorMenuItem.isHidden = true
-        case (.signedOut, _):
-          resourcesTitleMenuItem.isHidden = true
-          resourcesUnavailableMenuItem.isHidden = true
-          resourcesUnavailableReasonMenuItem.isHidden = true
-          resourcesSeparatorMenuItem.isHidden = true
-        case (.signedIn, .connecting):
-          resourcesTitleMenuItem.isHidden = true
-          resourcesUnavailableMenuItem.isHidden = false
-          resourcesUnavailableReasonMenuItem.isHidden = false
-          resourcesUnavailableReasonMenuItem.target = nil
-          resourcesUnavailableReasonMenuItem.title = "Connecting…"
-          resourcesSeparatorMenuItem.isHidden = false
-        case (.signedIn, .connected):
-          resourcesTitleMenuItem.isHidden = false
-          resourcesUnavailableMenuItem.isHidden = true
-          resourcesUnavailableReasonMenuItem.isHidden = true
-          resourcesTitleMenuItem.title = "Resources"
-          resourcesSeparatorMenuItem.isHidden = false
-        case (.signedIn, .reasserting):
-          resourcesTitleMenuItem.isHidden = true
-          resourcesUnavailableMenuItem.isHidden = false
-          resourcesUnavailableReasonMenuItem.isHidden = false
-          resourcesUnavailableReasonMenuItem.target = nil
-          resourcesUnavailableReasonMenuItem.title = "No network connectivity"
-          resourcesSeparatorMenuItem.isHidden = false
-        case (.signedIn, .disconnecting):
-          resourcesTitleMenuItem.isHidden = true
-          resourcesUnavailableMenuItem.isHidden = false
-          resourcesUnavailableReasonMenuItem.isHidden = false
-          resourcesUnavailableReasonMenuItem.target = nil
-          resourcesUnavailableReasonMenuItem.title = "Disconnecting…"
-          resourcesSeparatorMenuItem.isHidden = false
-        case (.signedIn, _):
-          // Ideally, this shouldn't happen, but it's better
-          // we handle this case, so that in case connlib errors out,
-          // the user is able to try to reconnect.
-          resourcesTitleMenuItem.isHidden = true
-          resourcesUnavailableMenuItem.isHidden = false
-          resourcesUnavailableReasonMenuItem.isHidden = false
-          resourcesUnavailableReasonMenuItem.target = self
-          resourcesUnavailableReasonMenuItem.isEnabled = true
-          resourcesUnavailableReasonMenuItem.title = "Reconnect"
-          resourcesSeparatorMenuItem.isHidden = false
+      case (.uninitialized, _):
+        resourcesTitleMenuItem.isHidden = true
+        resourcesUnavailableMenuItem.isHidden = true
+        resourcesUnavailableReasonMenuItem.isHidden = true
+        resourcesSeparatorMenuItem.isHidden = true
+      case (.signedOut, _):
+        resourcesTitleMenuItem.isHidden = true
+        resourcesUnavailableMenuItem.isHidden = true
+        resourcesUnavailableReasonMenuItem.isHidden = true
+        resourcesSeparatorMenuItem.isHidden = true
+      case (.signedIn, .connecting):
+        resourcesTitleMenuItem.isHidden = true
+        resourcesUnavailableMenuItem.isHidden = false
+        resourcesUnavailableReasonMenuItem.isHidden = false
+        resourcesUnavailableReasonMenuItem.target = nil
+        resourcesUnavailableReasonMenuItem.title = "Connecting…"
+        resourcesSeparatorMenuItem.isHidden = false
+      case (.signedIn, .connected):
+        resourcesTitleMenuItem.isHidden = false
+        resourcesUnavailableMenuItem.isHidden = true
+        resourcesUnavailableReasonMenuItem.isHidden = true
+        resourcesTitleMenuItem.title = "Resources"
+        resourcesSeparatorMenuItem.isHidden = false
+      case (.signedIn, .reasserting):
+        resourcesTitleMenuItem.isHidden = true
+        resourcesUnavailableMenuItem.isHidden = false
+        resourcesUnavailableReasonMenuItem.isHidden = false
+        resourcesUnavailableReasonMenuItem.target = nil
+        resourcesUnavailableReasonMenuItem.title = "No network connectivity"
+        resourcesSeparatorMenuItem.isHidden = false
+      case (.signedIn, .disconnecting):
+        resourcesTitleMenuItem.isHidden = true
+        resourcesUnavailableMenuItem.isHidden = false
+        resourcesUnavailableReasonMenuItem.isHidden = false
+        resourcesUnavailableReasonMenuItem.target = nil
+        resourcesUnavailableReasonMenuItem.title = "Disconnecting…"
+        resourcesSeparatorMenuItem.isHidden = false
+      case (.signedIn, _):
+        // Ideally, this shouldn't happen, but it's better
+        // we handle this case, so that in case connlib errors out,
+        // the user is able to try to reconnect.
+        resourcesTitleMenuItem.isHidden = true
+        resourcesUnavailableMenuItem.isHidden = false
+        resourcesUnavailableReasonMenuItem.isHidden = false
+        resourcesUnavailableReasonMenuItem.target = self
+        resourcesUnavailableReasonMenuItem.isEnabled = true
+        resourcesUnavailableReasonMenuItem.title = "Reconnect"
+        resourcesSeparatorMenuItem.isHidden = false
       }
     }
 
@@ -379,7 +378,7 @@ public final class MenuBar: NSObject {
     }
 
     private func setOrderedResources(_ newOrderedResources: [DisplayableResources.Resource]) {
-      if (resourcesTitleMenuItem.isHidden && resourcesSeparatorMenuItem.isHidden) {
+      if resourcesTitleMenuItem.isHidden && resourcesSeparatorMenuItem.isHidden {
         guard newOrderedResources.isEmpty else {
           return
         }
@@ -391,13 +390,13 @@ public final class MenuBar: NSObject {
       let baseIndex = menu.index(of: resourcesTitleMenuItem) + 1
       for change in diff {
         switch change {
-          case .insert(offset: let offset, element: let element, associatedWith: _):
-            let menuItem = createResourceMenuItem(title: element.name, submenuTitle: element.location)
-            menu.insertItem(menuItem, at: baseIndex + offset)
-            orderedResources.insert(element, at: offset)
-          case .remove(offset: let offset, element: _, associatedWith: _):
-            menu.removeItem(at: baseIndex + offset)
-            orderedResources.remove(at: offset)
+        case .insert(let offset, let element, associatedWith: _):
+          let menuItem = createResourceMenuItem(title: element.name, submenuTitle: element.location)
+          menu.insertItem(menuItem, at: baseIndex + offset)
+          orderedResources.insert(element, at: offset)
+        case .remove(let offset, element: _, associatedWith: _):
+          menu.removeItem(at: baseIndex + offset)
+          orderedResources.remove(at: offset)
         }
       }
       resourcesTitleMenuItem.title = orderedResources.isEmpty ? "No Resources" : "Resources"
@@ -407,7 +406,8 @@ public final class MenuBar: NSObject {
       let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
 
       let subMenu = NSMenu()
-      let subMenuItem = NSMenuItem(title: submenuTitle, action: #selector(resourceValueTapped(_:)), keyEquivalent: "")
+      let subMenuItem = NSMenuItem(
+        title: submenuTitle, action: #selector(resourceValueTapped(_:)), keyEquivalent: "")
       subMenuItem.isEnabled = true
       subMenuItem.target = self
       subMenu.addItem(subMenuItem)

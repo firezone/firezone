@@ -9,10 +9,13 @@ import os.log
 
 class NetworkSettings {
 
+  // How to handle DNS requests for domains not handled by Firezone
   enum DNSFallbackStrategy: String {
-    // How to handle DNS requests for domains not handled by Firezone
-    case systemResolver = "system_resolver" // Have the OS handle it using split-DNS
-    case upstreamResolver = "upstream_resolver" // Have connlib pass it on to a user-specified DNS server
+    // Have the OS handle it using split-DNS
+    case systemResolver = "system_resolver"
+
+    // Have connlib pass it on to a user-specified DNS server
+    case upstreamResolver = "upstream_resolver"
 
     init(_ string: String) {
       if string == "upstream_resolver" {
@@ -42,7 +45,10 @@ class NetworkSettings {
   // To keep track of modifications
   private(set) var hasUnappliedChanges: Bool
 
-  init(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String, dnsFallbackStrategy: DNSFallbackStrategy) {
+  init(
+    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String,
+    dnsFallbackStrategy: DNSFallbackStrategy
+  ) {
     self.tunnelAddressIPv4 = tunnelAddressIPv4
     self.tunnelAddressIPv6 = tunnelAddressIPv6
     self.dnsAddress = dnsAddress
@@ -81,7 +87,10 @@ class NetworkSettings {
     }
   }
 
-  func apply(on packetTunnelProvider: NEPacketTunnelProvider, logger: Logger, completionHandler: ((Error?) -> Void)?) {
+  func apply(
+    on packetTunnelProvider: NEPacketTunnelProvider, logger: Logger,
+    completionHandler: ((Error?) -> Void)?
+  ) {
 
     guard self.hasUnappliedChanges else {
       logger.error("NetworkSettings.apply: No changes to apply")
@@ -102,25 +111,42 @@ class NetworkSettings {
       }
       let address = String(components[0])
       let networkPrefixLengthString = String(components[1])
-      if let groupSeparator = address.first(where: { $0 == "." || $0 == ":"}) {
-        if groupSeparator == "." { // IPv4 address
+      if let groupSeparator = address.first(where: { $0 == "." || $0 == ":" }) {
+        if groupSeparator == "." {  // IPv4 address
           if IPv4Address(address) == nil {
-            logger.error("NetworkSettings.apply: Ignoring invalid IPv4 address '\(address, privacy: .public)'")
+            logger.error(
+              "NetworkSettings.apply: Ignoring invalid IPv4 address '\(address, privacy: .public)'")
             continue
           }
-          let validNetworkPrefixLength = Self.validNetworkPrefixLength(fromString: networkPrefixLengthString, maximumValue: 32)
+          let validNetworkPrefixLength = Self.validNetworkPrefixLength(
+            fromString: networkPrefixLengthString, maximumValue: 32)
           let ipv4SubnetMask = Self.ipv4SubnetMask(networkPrefixLength: validNetworkPrefixLength)
-          logger.debug("NetworkSettings.apply: Adding IPv4 route: \(address, privacy: .public) (subnet mask: \(ipv4SubnetMask, privacy: .public))")
-          tunnelIPv4Routes.append(NEIPv4Route(destinationAddress: address, subnetMask: ipv4SubnetMask))
+          logger.debug(
+            """
+            NetworkSettings.apply:
+              Adding IPv4 route: \(address, privacy: .public) (subnet mask: \(ipv4SubnetMask, privacy: .public)
+            """)
+          tunnelIPv4Routes.append(
+            NEIPv4Route(destinationAddress: address, subnetMask: ipv4SubnetMask))
         }
-        if groupSeparator == ":" { // IPv6 address
+        if groupSeparator == ":" {  // IPv6 address
           if IPv6Address(address) == nil {
-            logger.error("NetworkSettings.apply: Ignoring invalid IPv6 address '\(address, privacy: .public)'")
+            logger.error(
+              "NetworkSettings.apply: Ignoring invalid IPv6 address '\(address, privacy: .public)'")
             continue
           }
-          let validNetworkPrefixLength = Self.validNetworkPrefixLength(fromString: networkPrefixLengthString, maximumValue: 128)
-          logger.debug("NetworkSettings.apply: Adding IPv6 route: \(address, privacy: .public) (prefix length: \(validNetworkPrefixLength, privacy: .public))")
-          tunnelIPv6Routes.append(NEIPv6Route(destinationAddress: address, networkPrefixLength: NSNumber(integerLiteral: validNetworkPrefixLength)))
+          let validNetworkPrefixLength = Self.validNetworkPrefixLength(
+            fromString: networkPrefixLengthString, maximumValue: 128)
+          logger.debug(
+            """
+            NetworkSettings.apply:
+              Adding IPv6 route: \(address, privacy: .public) (prefix length: \(validNetworkPrefixLength, privacy: .public)
+            """)
+
+          tunnelIPv6Routes.append(
+            NEIPv6Route(
+              destinationAddress: address,
+              networkPrefixLength: NSNumber(integerLiteral: validNetworkPrefixLength)))
         }
       } else {
         logger.error("NetworkSettings.apply: Ignoring invalid route '\(route, privacy: .public)'")
@@ -134,7 +160,8 @@ class NetworkSettings {
 
     let tunnelNetworkSettings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
 
-    let ipv4Settings = NEIPv4Settings(addresses: [tunnelAddressIPv4], subnetMasks: ["255.255.255.255"])
+    let ipv4Settings = NEIPv4Settings(
+      addresses: [tunnelAddressIPv4], subnetMasks: ["255.255.255.255"])
     ipv4Settings.includedRoutes = tunnelIPv4Routes
     tunnelNetworkSettings.ipv4Settings = ipv4Settings
 
@@ -144,12 +171,12 @@ class NetworkSettings {
 
     let dnsSettings = NEDNSSettings(servers: [dnsAddress])
     switch dnsFallbackStrategy {
-      case .systemResolver:
-        // Enable split-DNS. Only those domains matching the resources will be sent to the tunnel's DNS.
-        dnsSettings.matchDomains = resourceDomains
-      case .upstreamResolver:
-        // All DNS queries go to the tunnel's DNS.
-        dnsSettings.matchDomains = [""]
+    case .systemResolver:
+      // Enable split-DNS. Only those domains matching the resources will be sent to the tunnel's DNS.
+      dnsSettings.matchDomains = resourceDomains
+    case .upstreamResolver:
+      // All DNS queries go to the tunnel's DNS.
+      dnsSettings.matchDomains = [""]
     }
     tunnelNetworkSettings.dnsSettings = dnsSettings
     tunnelNetworkSettings.tunnelOverheadBytes = tunnelOverheadBytes
@@ -162,7 +189,11 @@ class NetworkSettings {
       } else {
         guard !self.hasUnappliedChanges else {
           // Changes were made while the packetTunnelProvider was setting the network settings
-          logger.debug("NetworkSettings.apply: Applying changes made to network settings while we were applying the network settings")
+          logger.debug(
+            """
+            NetworkSettings.apply:
+              Applying changes made to network settings while we were applying the network settings
+            """)
           self.apply(on: packetTunnelProvider, logger: logger, completionHandler: completionHandler)
           return
         }
@@ -173,8 +204,9 @@ class NetworkSettings {
   }
 }
 
-private extension NetworkSettings {
-  private static func validNetworkPrefixLength(fromString string: String, maximumValue: Int) -> Int {
+extension NetworkSettings {
+  private static func validNetworkPrefixLength(fromString string: String, maximumValue: Int) -> Int
+  {
     guard let networkPrefixLength = Int(string) else { return 0 }
     if networkPrefixLength < 0 { return 0 }
     if networkPrefixLength > maximumValue { return maximumValue }
@@ -183,14 +215,14 @@ private extension NetworkSettings {
 
   private static func ipv4SubnetMask(networkPrefixLength: Int) -> String {
     precondition(networkPrefixLength >= 0 && networkPrefixLength <= 32)
-    let mask: UInt32 = 0xFFFFFFFF
+    let mask: UInt32 = 0xFFFF_FFFF
     let maxPrefixLength = 32
     let octets = 4
 
     let subnetMask = mask & (mask << (maxPrefixLength - networkPrefixLength))
     var parts: [String] = []
     for idx in 0...(octets - 1) {
-      let part = String(UInt32(0x000000FF) & (subnetMask >> ((octets - 1 - idx) * 8)), radix: 10)
+      let part = String(UInt32(0x0000_00FF) & (subnetMask >> ((octets - 1 - idx) * 8)), radix: 10)
       parts.append(part)
     }
 

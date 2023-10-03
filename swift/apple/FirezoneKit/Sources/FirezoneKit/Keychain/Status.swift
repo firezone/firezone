@@ -4,10 +4,6 @@
 //  LICENSE: Apache-2.0
 //
 
-// swiftlint:disable type_body_length
-// swiftlint:disable file_length
-// swiftlint:disable identifier_name
-
 // Copyright (c) 2014 kishikawa katsumi
 // The MIT License (MIT)
 // https://github.com/kishikawakatsumi/KeychainAccess

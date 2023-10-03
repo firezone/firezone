@@ -33,9 +33,9 @@ final class AuthStore: ObservableObject {
 
     var accountId: String? {
       switch self {
-        case .uninitialized: return nil
-        case .signedOut(let accountId): return accountId
-        case .signedIn(let accountId, _): return accountId
+      case .uninitialized: return nil
+      case .signedOut(let accountId): return accountId
+      case .signedIn(let accountId, _): return accountId
       }
     }
   }
@@ -67,26 +67,27 @@ final class AuthStore: ObservableObject {
 
   private func getLoginStatus(from tunnelAuthStatus: TunnelAuthStatus) async -> LoginStatus {
     switch tunnelAuthStatus {
-      case .tunnelUninitialized:
-        return .uninitialized
-      case .accountNotSetup:
+    case .tunnelUninitialized:
+      return .uninitialized
+    case .accountNotSetup:
+      return .signedOut(accountId: nil)
+    case .signedOut(let tunnelAuthBaseURL, let tunnelAccountId):
+      if self.authBaseURL == tunnelAuthBaseURL {
+        return .signedOut(accountId: tunnelAccountId)
+      } else {
         return .signedOut(accountId: nil)
-      case .signedOut(let tunnelAuthBaseURL, let tunnelAccountId):
-        if self.authBaseURL == tunnelAuthBaseURL {
-          return .signedOut(accountId: tunnelAccountId)
-        } else {
-          return .signedOut(accountId: nil)
-        }
-      case .signedIn(let tunnelAuthBaseURL, let tunnelAccountId, let tokenReference):
-        guard self.authBaseURL == tunnelAuthBaseURL else {
-          return .signedOut(accountId: nil)
-        }
-        let tunnelPortalURLString = self.authURL(accountId: tunnelAccountId).absoluteString
-        guard let tokenAttributes = await keychain.loadAttributes(tokenReference),
-              tunnelPortalURLString == tokenAttributes.authURLString else {
-          return .signedOut(accountId: tunnelAccountId)
-        }
-        return .signedIn(accountId: tunnelAccountId, actorName: tokenAttributes.actorName)
+      }
+    case .signedIn(let tunnelAuthBaseURL, let tunnelAccountId, let tokenReference):
+      guard self.authBaseURL == tunnelAuthBaseURL else {
+        return .signedOut(accountId: nil)
+      }
+      let tunnelPortalURLString = self.authURL(accountId: tunnelAccountId).absoluteString
+      guard let tokenAttributes = await keychain.loadAttributes(tokenReference),
+        tunnelPortalURLString == tokenAttributes.authURLString
+      else {
+        return .signedOut(accountId: tunnelAccountId)
+      }
+      return .signedIn(accountId: tunnelAccountId, actorName: tokenAttributes.actorName)
     }
   }
 
@@ -95,16 +96,20 @@ final class AuthStore: ObservableObject {
 
     let portalURL = authURL(accountId: accountId)
     let authResponse = try await auth.signIn(portalURL)
-    let attributes = Keychain.TokenAttributes(authURLString: portalURL.absoluteString, actorName: authResponse.actorName ?? "")
+    let attributes = Keychain.TokenAttributes(
+      authURLString: portalURL.absoluteString, actorName: authResponse.actorName ?? "")
     let tokenRef = try await keychain.store(authResponse.token, attributes)
 
-    try await tunnelStore.setAuthStatus(.signedIn(authBaseURL: self.authBaseURL, accountId: accountId, tokenReference: tokenRef))
+    try await tunnelStore.setAuthStatus(
+      .signedIn(authBaseURL: self.authBaseURL, accountId: accountId, tokenReference: tokenRef))
   }
 
   func signIn() async throws {
     logger.trace("\(#function)")
 
-    guard case .signedOut(let accountId) = self.loginStatus, let accountId = accountId, !accountId.isEmpty else {
+    guard case .signedOut(let accountId) = self.loginStatus, let accountId = accountId,
+      !accountId.isEmpty
+    else {
       logger.debug("No account-id found in tunnel")
       throw FirezoneError.missingTeamId
     }

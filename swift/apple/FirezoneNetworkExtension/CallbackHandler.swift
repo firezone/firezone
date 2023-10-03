@@ -16,12 +16,17 @@ extension RustString: @unchecked Sendable {}
 extension RustString: Error {}
 
 public protocol CallbackHandlerDelegate: AnyObject {
-  func onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String, dnsFallbackStrategy: String)
+  func onSetInterfaceConfig(
+    tunnelAddressIPv4: String,
+    tunnelAddressIPv6: String,
+    dnsAddress: String,
+    dnsFallbackStrategy: String
+  )
   func onTunnelReady()
   func onAddRoute(_: String)
   func onRemoveRoute(_: String)
   func onUpdateResources(resourceList: String)
-  func onDisconnect(error: Optional<String>)
+  func onDisconnect(error: String?)
   func onError(error: String)
 }
 
@@ -29,8 +34,20 @@ public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
   private let logger = Logger.make(for: CallbackHandler.self)
 
-  func onSetInterfaceConfig(tunnelAddressIPv4: RustString, tunnelAddressIPv6: RustString, dnsAddress: RustString, dnsFallbackStrategy: RustString) {
-    logger.debug("CallbackHandler.onSetInterfaceConfig: IPv4: \(tunnelAddressIPv4.toString(), privacy: .public), IPv6: \(tunnelAddressIPv6.toString(), privacy: .public), DNS: \(dnsAddress.toString(), privacy: .public)")
+  func onSetInterfaceConfig(
+    tunnelAddressIPv4: RustString,
+    tunnelAddressIPv6: RustString,
+    dnsAddress: RustString,
+    dnsFallbackStrategy: RustString
+  ) {
+    logger.debug(
+      """
+        CallbackHandler.onSetInterfaceConfig:
+          IPv4: \(tunnelAddressIPv4.toString(), privacy: .public)
+          IPv6: \(tunnelAddressIPv6.toString(), privacy: .public)
+          DNS: \(dnsAddress.toString(), privacy: .public)
+          dnsFallbackStrategy: \(dnsFallbackStrategy.toString(), privacy: .public)
+      """)
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),
       tunnelAddressIPv6: tunnelAddressIPv6.toString(),

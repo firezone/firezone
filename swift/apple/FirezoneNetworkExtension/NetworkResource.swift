@@ -4,8 +4,8 @@
 //  LICENSE: Apache-2.0
 //
 
-import Foundation
 import FirezoneKit
+import Foundation
 
 public struct NetworkResource: Decodable {
   enum ResourceLocation {
@@ -14,15 +14,15 @@ public struct NetworkResource: Decodable {
 
     func toString() -> String {
       switch self {
-        case .dns(let domain, ipv4: _, ipv6: _): return domain
-        case .cidr(let cidrAddress): return cidrAddress
+      case .dns(let domain, ipv4: _, ipv6: _): return domain
+      case .cidr(let cidrAddress): return cidrAddress
       }
     }
 
     var domain: String? {
       switch self {
-        case .dns(let domain, ipv4: _, ipv6: _): return domain
-        case .cidr(cidrAddress: _): return nil
+      case .dns(let domain, ipv4: _, ipv6: _): return domain
+      case .cidr: return nil
       }
     }
   }
@@ -70,16 +70,16 @@ extension NetworkResource {
     let type = try container.decode(String.self, forKey: .type)
     let resourceLocation: ResourceLocation = try {
       switch type {
-        case "dns":
-          let domain = try container.decode(String.self, forKey: .address)
-          let ipv4 = try container.decode(String.self, forKey: .ipv4)
-          let ipv6 = try container.decode(String.self, forKey: .ipv6)
-          return .dns(domain: domain, ipv4: ipv4, ipv6: ipv6)
-        case "cidr":
-          let address = try container.decode(String.self, forKey: .address)
-          return .cidr(cidrAddress: address)
-        default:
-          throw DecodeError.invalidType(type)
+      case "dns":
+        let domain = try container.decode(String.self, forKey: .address)
+        let ipv4 = try container.decode(String.self, forKey: .ipv4)
+        let ipv6 = try container.decode(String.self, forKey: .ipv6)
+        return .dns(domain: domain, ipv4: ipv4, ipv6: ipv6)
+      case "cidr":
+        let address = try container.decode(String.self, forKey: .address)
+        return .cidr(cidrAddress: address)
+      default:
+        throw DecodeError.invalidType(type)
       }
     }()
     self.init(name: name, resourceLocation: resourceLocation)

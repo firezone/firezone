@@ -36,7 +36,7 @@ public class DisplayableResources {
   }
 
   public func update(resources: [Resource]) {
-    self.version = self.version &+ 1 // Overflow is ok
+    self.version = self.version &+ 1  // Overflow is ok
     self.versionString = "\(version)"
     self.orderedResources = resources.sorted { $0.name < $1.name }
   }
@@ -44,12 +44,10 @@ public class DisplayableResources {
 
 extension DisplayableResources {
   public func toData() -> Data? {
-    (
-      "\(versionString)," +
-      (orderedResources.flatMap { [$0.name, $0.location] })
-        .map { $0.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) }.compactMap { $0 }
-        .joined(separator: ",")
-    ).data(using: .utf8)
+    ("\(versionString),"
+      + (orderedResources.flatMap { [$0.name, $0.location] })
+      .map { $0.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) }.compactMap { $0 }
+      .joined(separator: ",")).data(using: .utf8)
   }
 
   public convenience init?(from data: Data) {
@@ -62,7 +60,8 @@ extension DisplayableResources {
     var resources: [Resource] = []
     for index in stride(from: 2, to: components.count, by: 2) {
       guard let name = components[index - 1].removingPercentEncoding,
-            let location = components[index].removingPercentEncoding else {
+        let location = components[index].removingPercentEncoding
+      else {
         continue
       }
       resources.append(Resource(name: name, location: location))
