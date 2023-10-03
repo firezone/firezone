@@ -41,12 +41,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: rustup show
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ./rust
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # XXX: sccache can be used in Dockerfiles and on developer machines, so it's preferred over rust-cache
+      # - uses: Swatinem/rust-cache@v2
+      #   with:
+      #     workspaces: ./rust
+      #     save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Update toolchain
         run: rustup show
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
       - uses: actions/cache@v3
         with:
           path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts

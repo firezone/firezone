@@ -55,12 +55,15 @@ jobs:
       # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
       - run: rustup show
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ./rust
-          key: v2
-          prefix-key: rust-${{ matrix.runs-on }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # XXX: sccache can be used in Dockerfiles and on developer machines, so it's preferred over rust-cache
+      # - uses: Swatinem/rust-cache@v2
+      #   with:
+      #     workspaces: ./rust
+      #     key: v2
+      #     prefix-key: rust-${{ matrix.runs-on }}
+      #     save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
 
       # TODO: Building *ring* from git requires us to install additional tools;
       # once we're not using a forked *ring* these 2 steps can be removed.
@@ -98,9 +101,12 @@ jobs:
       # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
       # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
       - run: rustup show
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ./rust
+      # XXX: sccache can be used in Dockerfiles and on developer machines, so it's preferred over rust-cache
+      # - uses: Swatinem/rust-cache@v2
+      #   with:
+      #     workspaces: ./rust
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
       - run: ./run_smoke_test.sh
 
   rust_relay-container-build:

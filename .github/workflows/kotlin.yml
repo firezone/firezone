@@ -24,6 +24,13 @@ jobs:
         working-directory: ./kotlin/android
     steps:
       - uses: actions/checkout@v4
+      - run: rustup show
+      # XXX: sccache can be used in Dockerfiles and on developer machines, so it's preferred over rust-cache
+      # - uses: Swatinem/rust-cache@v2
+      #   with:
+      #     workspaces: ./rust
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
       - uses: actions/setup-java@v3
         with:
           distribution: temurin
