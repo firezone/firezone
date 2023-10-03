@@ -19,7 +19,8 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use secrecy::{Secret, SecretString};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::{runtime::Runtime, sync::Mutex};
+use tokio::time::{Interval, MissedTickBehavior};
+use tokio::{runtime::Runtime, sync::Mutex, time::Instant};
 use url::Url;
 
 mod control;
@@ -167,7 +168,7 @@ where
 
             tokio::spawn(async move {
                 let mut log_stats_interval = tokio::time::interval(Duration::from_secs(10));
-                let mut upload_logs_interval = tokio::time::interval(upload_interval_from_env_or_default());
+                let mut upload_logs_interval = upload_interval();
                 loop {
                     tokio::select! {
                         Some((msg, reference)) = control_plane_receiver.recv() => {
@@ -250,10 +251,18 @@ where
     }
 }
 
+fn upload_interval() -> Interval {
+    let duration = upload_interval_duration_from_env_or_default();
+    let mut interval = tokio::time::interval_at(Instant::now() + duration, duration);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+    interval
+}
+
 /// Parses an interval from the _compile-time_ env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS`.
 ///
 /// If not present or parsing as u64 fails, we fall back to a default interval of 1 hour.
-fn upload_interval_from_env_or_default() -> Duration {
+fn upload_interval_duration_from_env_or_default() -> Duration {
     const DEFAULT: Duration = Duration::from_secs(60 * 60);
 
     let Some(interval) = option_env!("CONNLIB_LOG_UPLOAD_INTERVAL_SECS") else {
