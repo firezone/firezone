@@ -5,6 +5,8 @@
 # PATCH: Increment this each time you want to publish a new Firezone version.
 version = 1.20231001.0
 
+.PHONY: version
+
 version:
 	@find elixir/ -name "mix.exs" -exec sed -i '' -e '/mark:automatic-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(version)/;}' {} \;
 	@find rust/ -name "Cargo.toml" -exec sed -i '' -e '/mark:automatic-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(version)/;}' {} \;
