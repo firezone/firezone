@@ -19,7 +19,7 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use secrecy::{Secret, SecretString};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::time::Interval;
+use tokio::time::{Interval, MissedTickBehavior};
 use tokio::{runtime::Runtime, sync::Mutex, time::Instant};
 use url::Url;
 
@@ -253,8 +253,10 @@ where
 
 fn upload_interval() -> Interval {
     let duration = upload_interval_duration_from_env_or_default();
+    let mut interval = tokio::time::interval_at(Instant::now() + duration, duration);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    tokio::time::interval_at(Instant::now() + duration, duration)
+    interval
 }
 
 /// Parses an interval from the _compile-time_ env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS`.
