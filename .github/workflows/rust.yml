@@ -131,6 +131,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - uses: actions/checkout@v4
+      - run: rustup show
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
+
       - id: auth
         uses: google-github-actions/auth@v1
         with:
@@ -190,6 +194,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - uses: actions/checkout@v4
+      - run: rustup show
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
       - id: auth
         uses: google-github-actions/auth@v1
         with:
