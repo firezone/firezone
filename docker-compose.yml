@@ -156,7 +156,7 @@ services:
       context: rust
       dockerfile: Dockerfile
       args:
-        PACKAGE: gateway
+        PACKAGE: firezone-gateway
     image: firezone-gateway
     cap_add:
       - NET_ADMIN
