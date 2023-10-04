@@ -15,7 +15,6 @@ jobs:
         uses: docker/setup-buildx-action@v3
       # Read cache on PRs, write cache on main. Keeps our cache smaller and more stable.
       - name: Build and cache images
-        if: ${{ github.ref == 'refs/heads/main' }}
         uses: docker/bake-action@v4.0.0
         with:
           set: |
@@ -67,7 +66,6 @@ jobs:
         uses: docker/setup-buildx-action@v3
       # Read cache on PRs, write cache on main. Keeps our cache smaller and more stable.
       - name: Build and cache images
-        if: ${{ github.ref == 'refs/heads/main' }}
         uses: docker/bake-action@v4.0.0
         with:
           set: |
