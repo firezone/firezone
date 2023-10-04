@@ -56,7 +56,7 @@ jobs:
         with:
           workspaces: ./rust
           shared-key: ${{ runner.os }}
-          # save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
         env:
@@ -77,7 +77,7 @@ jobs:
         with:
           workspaces: ./rust
           shared-key: ${{ runner.os }}
-          # save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ./run_smoke_test.sh
 
   rust_relay-container-build:
@@ -131,8 +131,8 @@ jobs:
           build-args: |
             PACKAGE=${{ env.PACKAGE }}
           context: rust/
-          cache-from: type=gha,scope=${{ env.PACKAGE }}-${{ github.sha }}
-          cache-to: type=gha,mode=max,scope=${{ env.PACKAGE }}-${{ github.sha }}
+          cache-from: type=gha,scope=rust
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=rust' }}
           file: rust/Dockerfile
           push: true
           tags:
@@ -190,8 +190,8 @@ jobs:
           build-args: |
             PACKAGE=${{ env.PACKAGE }}
           context: rust/
-          cache-from: type=gha,scope=${{ env.PACKAGE }}-${{ github.sha }}
-          cache-to: type=gha,mode=max,scope=${{ env.PACKAGE }}-${{ github.sha }}
+          cache-from: type=gha,scope=rust
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=rust' }}
           file: rust/Dockerfile
           push: true
           tags:

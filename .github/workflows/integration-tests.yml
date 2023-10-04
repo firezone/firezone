@@ -13,22 +13,26 @@ jobs:
         uses: actions/checkout@v4
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Build images
+      # Read cache on PRs, write cache on main. Keeps our cache smaller and more stable.
+      - name: Build and cache images
+        if: ${{ github.ref == 'refs/heads/main' }}
         uses: docker/bake-action@v4.0.0
         with:
           set: |
-            elixir.cache-from=type=gha
-            elixir.cache-to=type=gha,mode=max
-            api.cache-from=type=gha
-            api.cache-to=type=gha,mode=max
-            web.cache-from=type=gha
-            web.cache-to=type=gha,mode=max
-            client.cache-from=type=gha
-            client.cache-to=type=gha,mode=max
-            gateway.cache-from=type=gha
-            gateway.cache-to=type=gha,mode=max
-            relay.cache-from=type=gha
-            relay.cache-to=type=gha,mode=max
+            elixir.cache-from=type=gha,scope=elixir
+            api.cache-from=type=gha,scope=elixir
+            web.cache-from=type=gha,scope=elixir
+            client.cache-from=type=gha,scope=rust
+            gateway.cache-from=type=gha,scope=rust
+            relay.cache-from=type=gha,scope=rust
+            ${{ github.ref == 'refs/heads/main' && '
+            elixir.cache-to=type=gha,mode=max,scope=elixir
+            api.cache-to=type=gha,mode=max,scope=elixir
+            web.cache-to=type=gha,mode=max,scope=elixir
+            client.cache-to=type=gha,mode=max,scope=rust
+            gateway.cache-to=type=gha,mode=max,scope=rust
+            relay.cache-to=type=gha,mode=max,scope=rust
+            ' }}
           files: docker-compose.yml
           push: false
       - name: Seed database
@@ -61,22 +65,26 @@ jobs:
         uses: actions/checkout@v4
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Build images
+      # Read cache on PRs, write cache on main. Keeps our cache smaller and more stable.
+      - name: Build and cache images
+        if: ${{ github.ref == 'refs/heads/main' }}
         uses: docker/bake-action@v4.0.0
         with:
           set: |
-            elixir.cache-from=type=gha
-            elixir.cache-to=type=gha,mode=max
-            api.cache-from=type=gha
-            api.cache-to=type=gha,mode=max
-            web.cache-from=type=gha
-            web.cache-to=type=gha,mode=max
-            client.cache-from=type=gha
-            client.cache-to=type=gha,mode=max
-            gateway.cache-from=type=gha
-            gateway.cache-to=type=gha,mode=max
-            relay.cache-from=type=gha
-            relay.cache-to=type=gha,mode=max
+            elixir.cache-from=type=gha,scope=elixir
+            api.cache-from=type=gha,scope=elixir
+            web.cache-from=type=gha,scope=elixir
+            client.cache-from=type=gha,scope=rust
+            gateway.cache-from=type=gha,scope=rust
+            relay.cache-from=type=gha,scope=rust
+            ${{ github.ref == 'refs/heads/main' && '
+            elixir.cache-to=type=gha,mode=max,scope=elixir
+            api.cache-to=type=gha,mode=max,scope=elixir
+            web.cache-to=type=gha,mode=max,scope=elixir
+            client.cache-to=type=gha,mode=max,scope=rust
+            gateway.cache-to=type=gha,mode=max,scope=rust
+            relay.cache-to=type=gha,mode=max,scope=rust
+            ' }}
           files: docker-compose.yml
           push: false
       - name: Seed database
