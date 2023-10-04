@@ -55,7 +55,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          shared-key: ${{ matrix.runs-on }}
+          shared-key: ${{ runner.os }}
           # save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
@@ -80,7 +80,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          shared-key: ${{ matrix.runs-on }}
+          shared-key: ${{ runner.os }}
           # save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ./run_smoke_test.sh
 

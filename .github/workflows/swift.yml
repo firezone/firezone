@@ -45,7 +45,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          shared-key: ${{ matrix.runs-on.os }}
+          shared-key: ${{ runner.os }}
           # save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Update toolchain
         run: rustup show
