@@ -135,7 +135,9 @@ jobs:
         run: |
           for image in /tmp/*.tar; do
             docker load --input $image
-            docker tag $image firezone/$image
+            file_name=$(basename $image)
+            image_name=${file_name%.tar}
+            docker tag $image_name firezone/${image_name}:latest
           done
           docker image ls -a
       - name: Seed database
