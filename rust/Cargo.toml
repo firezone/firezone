@@ -1,16 +1,16 @@
 [workspace]
 members = [
-  "relay",
-  "phoenix-channel",
-  "connlib/headless-utils",
   "connlib/clients/android",
   "connlib/clients/apple",
-  "connlib/clients/headless",
-  "connlib/libs/tunnel",
-  "connlib/libs/client",
-  "connlib/libs/gateway",
-  "connlib/libs/common",
-  "connlib/gateway",
+  "connlib/clients/shared",
+  "connlib/gateway-shared",
+  "connlib/shared",
+  "connlib/tunnel",
+  "gateway",
+  "headless-client",
+  "headless-utils",
+  "phoenix-channel",
+  "relay",
 ]
 
 resolver = "2"
@@ -23,6 +23,16 @@ backoff = { version = "0.4", features = ["tokio"] }
 tracing = { version = "0.1.37" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
+
+connlib-client-android = { path = "connlib/clients/android"}
+connlib-client-apple = { path = "connlib/clients/apple"}
+connlib-client-shared = { path = "connlib/clients/shared"}
+connlib-gateway-shared = { path = "connlib/gateway-shared"}
+firezone-gateway = { path = "gateway"}
+firezone-headless-client = { path = "headless-client"}
+headless-utils = { path = "headless-utils"}
+connlib-shared = { path = "connlib/shared"}
+firezone-tunnel = { path = "connlib/tunnel"}
 
 # Patched to use https://github.com/rust-lang/cc-rs/pull/708
 # (the `patch` section can't be used for build deps...)

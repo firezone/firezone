@@ -1,0 +1,47 @@
+[package]
+name = "firezone-tunnel"
+# mark:automatic-version
+version = "1.20231001.0"
+edition = "2021"
+
+[dependencies]
+secrecy = { workspace = true }
+async-trait = { version = "0.1", default-features = false }
+tokio = { version = "1.32", default-features = false, features = ["rt", "rt-multi-thread", "sync"] }
+thiserror = { version = "1.0", default-features = false }
+rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
+serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
+futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
+futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
+tracing = { workspace = true }
+parking_lot = { version = "0.12", default-features = false }
+bytes = { version = "1.4", default-features = false, features = ["std"] }
+itertools = { version = "0.11", default-features = false, features = ["use_std"] }
+connlib-shared = { workspace = true }
+libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
+ip_network = { version = "0.4", default-features = false }
+ip_network_table = { version = "0.2", default-features = false }
+domain = "0.8"
+boringtun = { workspace = true }
+chrono = { workspace = true }
+pnet_packet = { version = "0.34" }
+
+# TODO: research replacing for https://github.com/algesten/str0m
+webrtc = { version = "0.8" }
+
+# Needed for Android logging until tracing is fixed
+log = "0.4"
+
+# Linux tunnel dependencies
+[target.'cfg(target_os = "linux")'.dependencies]
+netlink-packet-route = { version = "0.17", default-features = false }
+netlink-packet-core = { version = "0.7", default-features = false }
+rtnetlink = { version = "0.13", default-features = false, features = ["tokio_socket"] }
+
+# Android tunnel dependencies
+[target.'cfg(target_os = "android")'.dependencies]
+tracing-android = "0.2"
+
+# Windows tunnel dependencies
+[target.'cfg(target_os = "windows")'.dependencies]
+wintun = "0.3.2"

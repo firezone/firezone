@@ -1,5 +1,5 @@
 [package]
-name = "connlib-android"
+name = "connlib-client-android"
 # mark:automatic-version
 version = "1.20231001.0"
 edition = "2021"
@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 doc = false
 
 [features]
-mock = ["firezone-client-connlib/mock"]
+mock = ["connlib-client-shared/mock"]
 
 [dependencies]
 secrecy = { workspace = true }
@@ -18,7 +18,7 @@ tracing-android = "0.2"
 tracing = { workspace = true, features = ["std", "attributes"] }
 tracing-subscriber = { workspace = true }
 tracing-appender = "0.2"
-firezone-client-connlib = { path = "../../libs/client" }
+connlib-client-shared = { workspace = true }
 jni = { version = "0.21.1", features = ["invocation"] }
 ip_network = "0.4"
 log = "0.4"
