@@ -29,37 +29,40 @@ jobs:
       matrix:
         include:
           - image_name: api
+            target: runtime
             push: ${{ github.ref == 'refs/heads/main' }}
             cache_scope: elixir
             build-args: |
               APPLICATION_NAME=api
           - image_name: web
+            target: runtime
             push: ${{ github.ref == 'refs/heads/main' }}
             cache_scope: elixir
             build-args: |
               APPLICATION_NAME=web
           - image_name: gateway
+            target: runtime
             push: ${{ github.ref == 'refs/heads/main' }}
             cache_scope: rust
             build-args: |
               PACKAGE=gateway
           - image_name: relay
+            target: runtime
             push: ${{ github.ref == 'refs/heads/main' }}
             cache_scope: rust
             build-args: |
               PACKAGE=relay
           - image_name: client
-            ci_tags: firezone/client
-            main_tags:
+            target: runtime
             push: false
             cache_scope: rust
             build-args: |
               PACKAGE=headless
           - image_name: elixir
+            target: builder
             push: false
             cache_scope: elixir
             build-args: |
-              MIX_ENV=dev
               APPLICATION_NAME=api
     permissions:
       contents: read
@@ -103,6 +106,7 @@ jobs:
             format('type=gha,mode=max,scope={0}', matrix.cache_scope) || '' }}
           file: ${{ matrix.cache_scope }}/Dockerfile
           push: ${{ matrix.push}}
+          target: ${{ matrix.target }}
           tags: |
             ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
             ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:${{ github.sha }}

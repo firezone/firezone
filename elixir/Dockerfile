@@ -35,7 +35,7 @@ RUN mix release ${APPLICATION_NAME}
 
 # start a new build stage so that the final image will only contain
 # the compiled release and other runtime necessities
-FROM ${RUNNER_IMAGE}
+FROM ${RUNNER_IMAGE} AS runtime
 WORKDIR /app
 RUN apk add -u --no-cache libstdc++ ncurses-libs openssl curl
 ARG APPLICATION_NAME
