@@ -11,8 +11,6 @@ on:
 env:
   # mark:automatic-version
   VERSION: "1.20231001.0"
-  GCP_PROJECT: firezone-staging
-  GCP_REGISTRY: us-east1-docker.pkg.dev
 
 jobs:
   elixir:
@@ -38,37 +36,21 @@ jobs:
       matrix:
         include:
           - image_name: api
-            ci_tags: firezone/api
-            main_tags: |
-              ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/api:${{ env.VERSION }}
-              ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/api:${{ github.sha }}
             push: ${{ github.ref == 'refs/heads/main' }}
             cache_scope: elixir
             build-args: |
               APPLICATION_NAME=api
           - image_name: web
-            ci_tags: firezone/gateway
-            main_tags: |
-              ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/web:${{ env.VERSION }}
-              ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/web:${{ github.sha }}
             push: ${{ github.ref == 'refs/heads/main' }}
             cache_scope: elixir
             build-args: |
               APPLICATION_NAME=web
           - image_name: gateway
-            ci_tags: firezone/gateway
-            main_tags: |
-              ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/gateway:${{ env.VERSION }}
-              ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/gateway:${{ github.sha }}
             push: ${{ github.ref == 'refs/heads/main' }}
             cache_scope: rust
             build-args: |
               PACKAGE=gateway
           - image_name: relay
-            ci_tags: firezone/relay
-            main_tags: |
-              ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/relay:${{ env.VERSION }}
-              ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/relay:${{ github.sha }}
             push: ${{ github.ref == 'refs/heads/main' }}
             cache_scope: rust
             build-args: |
@@ -81,8 +63,6 @@ jobs:
             build-args: |
               PACKAGE=headless
           - image_name: elixir
-            ci_tags: firezone/elixir
-            main_tags:
             push: false
             cache_scope: elixir
             build-args: |
@@ -125,9 +105,10 @@ jobs:
             format('type=gha,mode=max,scope={0}', matrix.scope) || '' }}
           file: ${{ matrix.cache_scope }}/Dockerfile
           push: ${{ matrix.push}}
-          tags:
-            ${{ github.ref == 'refs/heads/main' && matrix.main_tags ||
-            matrix.ci_tags }}
+          tags: |
+            us-east1-docker.pkg.dev/firezone-staging/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
+            us-east1-docker.pkg.dev/firezone-staging/firezone/${{ matrix.image_name }}:${{ github.sha }}
+            us-east1-docker.pkg.dev/firezone-staging/firezone/${{ matrix.image_name }}:latest
           outputs: type=docker,dest=/tmp/${{ matrix.image_name }}.tar
       - name: Upload built images as artifacts
         uses: actions/upload-artifact@v3
