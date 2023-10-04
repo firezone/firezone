@@ -560,7 +560,7 @@ jobs:
           cache-from: type=gha,scope=elixir
           cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=elixir' }}
           file: elixir/Dockerfile
-          push: true
+          push: ${{ github.ref == 'refs/head/main' }}
           tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}
   elixir_api-container-build:
     runs-on: ubuntu-latest
@@ -619,7 +619,7 @@ jobs:
           cache-from: type=gha,scope=elixir
           cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=elixir' }}
           file: elixir/Dockerfile
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}
       # TODO: add a sanity check to make sure the image is actually built
       # and can be started

@@ -3,21 +3,19 @@ WORKDIR /build
 
 FROM chef as planner
 COPY . .
-ARG PACKAGE
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef as builder
-COPY --from=planner /build/recipe.json recipe.json
+COPY --from=planner /build/recipe.json .
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 ARG PACKAGE
 RUN cargo build -p $PACKAGE --release
-RUN mv ./target/release/$PACKAGE /usr/local/bin/$PACKAGE
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
 ARG PACKAGE
-COPY --from=builder /usr/local/bin/$PACKAGE .
+COPY --from=builder /build/target/release/$PACKAGE .
 RUN ln -s ./${PACKAGE} ./app
 COPY ./docker-init.sh .
 ENV RUST_BACKTRACE=1
