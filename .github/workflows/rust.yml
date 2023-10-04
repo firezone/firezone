@@ -25,11 +25,13 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-latest
-            packages: -p headless -p gateway -p headless -p connlib-android
+            packages:
+              -p firezone-headless-client -p firezone-gateway -p
+              connlib-client-android
           - runs-on: macos-13
-            packages: -p connlib-apple
+            packages: -p connlib-client-apple
           - runs-on: windows-2022
-            packages: -p firezone-client-connlib
+            packages: -p connlib-client-shared
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4

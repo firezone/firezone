@@ -752,10 +752,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "connlib-android"
+name = "connlib-client-android"
 version = "1.20231001.0"
 dependencies = [
- "firezone-client-connlib",
+ "connlib-client-shared",
  "ip_network",
  "jni",
  "log",
@@ -769,12 +769,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "connlib-apple"
+name = "connlib-client-apple"
 version = "1.20231001.0"
 dependencies = [
  "anyhow",
+ "connlib-client-shared",
  "diva",
- "firezone-client-connlib",
  "ip_network",
  "libc",
  "secrecy",
@@ -786,6 +786,89 @@ dependencies = [
  "tracing-oslog",
  "tracing-subscriber",
  "walkdir",
+]
+
+[[package]]
+name = "connlib-client-shared"
+version = "1.20231001.0"
+dependencies = [
+ "async-trait",
+ "backoff",
+ "boringtun",
+ "chrono",
+ "connlib-shared",
+ "firezone-tunnel",
+ "rand",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "tracing-android",
+ "tracing-appender",
+ "tracing-stackdriver",
+ "tracing-subscriber",
+ "url",
+ "webrtc",
+]
+
+[[package]]
+name = "connlib-gateway-shared"
+version = "1.20231001.0"
+dependencies = [
+ "async-trait",
+ "backoff",
+ "boringtun",
+ "chrono",
+ "connlib-shared",
+ "firezone-tunnel",
+ "rand",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "url",
+ "webrtc",
+]
+
+[[package]]
+name = "connlib-shared"
+version = "1.20231001.0"
+dependencies = [
+ "base64 0.21.4",
+ "boringtun",
+ "chrono",
+ "futures",
+ "futures-util",
+ "ip_network",
+ "log",
+ "os_info",
+ "parking_lot",
+ "rand",
+ "rand_core",
+ "ring 0.17.0",
+ "rtnetlink",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "smbios-lib",
+ "swift-bridge",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite",
+ "tracing",
+ "tracing-android",
+ "tracing-appender",
+ "url",
+ "uuid",
+ "webrtc",
 ]
 
 [[package]]
@@ -1173,52 +1256,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e825f6987101665dea6ec934c09ec6d721de7bc1bf92248e1d5810c8cd636b77"
 
 [[package]]
-name = "firezone-client-connlib"
+name = "firezone-gateway"
 version = "1.20231001.0"
 dependencies = [
- "async-trait",
- "backoff",
- "boringtun",
- "chrono",
- "firezone-tunnel",
- "libs-common",
- "rand",
- "reqwest",
+ "anyhow",
+ "clap",
+ "connlib-gateway-shared",
+ "headless-utils",
  "secrecy",
- "serde",
- "serde_json",
- "time",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
  "tracing",
- "tracing-android",
- "tracing-appender",
- "tracing-stackdriver",
  "tracing-subscriber",
- "url",
- "webrtc",
 ]
 
 [[package]]
-name = "firezone-gateway-connlib"
+name = "firezone-headless-client"
 version = "1.20231001.0"
 dependencies = [
- "async-trait",
- "backoff",
- "boringtun",
- "chrono",
- "firezone-tunnel",
- "libs-common",
- "rand",
+ "anyhow",
+ "clap",
+ "connlib-client-shared",
+ "headless-utils",
  "secrecy",
- "serde",
- "serde_json",
- "tokio",
- "tokio-tungstenite",
  "tracing",
- "url",
- "webrtc",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1229,6 +1289,7 @@ dependencies = [
  "boringtun",
  "bytes",
  "chrono",
+ "connlib-shared",
  "domain",
  "futures",
  "futures-util",
@@ -1236,7 +1297,6 @@ dependencies = [
  "ip_network_table",
  "itertools 0.11.0",
  "libc",
- "libs-common",
  "log",
  "netlink-packet-core",
  "netlink-packet-route",
@@ -1359,19 +1419,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gateway"
-version = "1.20231001.0"
-dependencies = [
- "anyhow",
- "clap",
- "firezone-gateway-connlib",
- "headless-utils",
- "secrecy",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1460,25 +1507,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
-name = "headless"
-version = "1.20231001.0"
-dependencies = [
- "anyhow",
- "clap",
- "firezone-client-connlib",
- "headless-utils",
- "secrecy",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "headless-utils"
 version = "1.20231001.0"
 dependencies = [
  "clap",
  "ctrlc",
- "firezone-client-connlib",
  "ip_network",
  "tracing",
  "tracing-subscriber",
@@ -1876,40 +1909,6 @@ name = "libm"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7012b1bbb0719e1097c47611d3898568c546d597c2e74d66f6087edd5233ff4"
-
-[[package]]
-name = "libs-common"
-version = "1.20231001.0"
-dependencies = [
- "base64 0.21.4",
- "boringtun",
- "chrono",
- "futures",
- "futures-util",
- "ip_network",
- "log",
- "os_info",
- "parking_lot",
- "rand",
- "rand_core",
- "ring 0.17.0",
- "rtnetlink",
- "secrecy",
- "serde",
- "serde_json",
- "smbios-lib",
- "swift-bridge",
- "thiserror",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite",
- "tracing",
- "tracing-android",
- "tracing-appender",
- "url",
- "uuid",
- "webrtc",
-]
 
 [[package]]
 name = "linux-raw-sys"

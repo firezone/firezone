@@ -3,7 +3,7 @@
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
 
-use firezone_client_connlib::{file_logger, Callbacks, Error, ResourceDescription, Session};
+use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
 use ip_network::IpNetwork;
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
