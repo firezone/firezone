@@ -33,15 +33,6 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache/restore@v3
-        name: Restore toolchain cache
-        with:
-          path: |
-            ~/.rustup/toolchains
-          key:
-            ${{ runner.os }}-rust-toolchain-${{
-            hashFiles('rust/rust-toolchain.toml') }}
-          restore-keys: ${{ runner.os }}-rust-toolchain-
       - name: Update toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2
@@ -57,14 +48,6 @@ jobs:
       - run: |
           cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
       - run: cargo test --all-features ${{ matrix.packages }}
-      - uses: actions/cache/save@v3
-        name: Save toolchain cache
-        with:
-          path: |
-            ~/.rustup/toolchains
-          key:
-            ${{ runner.os }}-rust-toolchain-${{
-            hashFiles('rust/rust-toolchain.toml') }}
 
   smoke-test-relay:
     runs-on: ${{ matrix.runs-on }}
@@ -77,15 +60,6 @@ jobs:
         working-directory: ./rust/relay
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache/restore@v3
-        name: Restore toolchain cache
-        with:
-          path: |
-            ~/.rustup/toolchains
-          key:
-            ${{ runner.os }}-rust-toolchain-${{
-            hashFiles('rust/rust-toolchain.toml') }}
-          restore-keys: ${{ runner.os }}-rust-toolchain-
       - name: Update toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2
@@ -94,11 +68,3 @@ jobs:
           shared-key: ${{ runner.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ./run_smoke_test.sh
-      - uses: actions/cache/save@v3
-        name: Save toolchain cache
-        with:
-          path: |
-            ~/.rustup/toolchains
-          key:
-            ${{ runner.os }}-rust-toolchain-${{
-            hashFiles('rust/rust-toolchain.toml') }}
