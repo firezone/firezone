@@ -77,5 +77,3 @@ jobs:
         with:
           path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
           key: ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
-          restore-keys: |
-            ${{ matrix.target.platform }}-spm-

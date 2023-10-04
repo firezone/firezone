@@ -170,8 +170,6 @@ jobs:
           cache-name: cache-erlang-plt-${{ env.MIX_ENV }}
         with:
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-plt
-          restore-keys: |
-            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-plt
           path: elixir/priv/plts
   elixir_static-analysis:
     runs-on: ubuntu-latest
