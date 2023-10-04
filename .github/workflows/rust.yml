@@ -34,9 +34,9 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on:  ubuntu-20.04
-            packages: -p connlib-client-headless -p firezone-gateway
+            packages: -p firezone-headless-client -p firezone-gateway
           - runs-on: ubuntu-22.04
-            packages: -p connlib-client-headless -p firezone-gateway
+            packages: -p firezone-headless-client -p firezone-gateway
           - runs-on: macos-11
             packages: -p connlib-client-apple
           - runs-on: macos-12

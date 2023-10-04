@@ -1511,7 +1511,6 @@ name = "headless-utils"
 version = "1.20231001.0"
 dependencies = [
  "clap",
- "connlib-client-shared",
  "ctrlc",
  "ip_network",
  "tracing",
