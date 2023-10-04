@@ -1,13 +1,6 @@
 name: Terraform
 on:
-  merge_group:
-    type: [checks_requested]
-  pull_request:
-    paths:
-      - "terraform/**"
-      - ".github/workflows/terraform.yml"
   workflow_call:
-  workflow_dispatch:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:

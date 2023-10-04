@@ -1,9 +1,6 @@
 name: Static Analysis
 on:
-  merge_group:
-    types: [checks_requested]
-  pull_request:
-  workflow_dispatch:
+  workflow_call:
 
 jobs:
   static-analysis_linter:

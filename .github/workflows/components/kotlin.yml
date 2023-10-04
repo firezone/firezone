@@ -1,14 +1,6 @@
 name: Kotlin
 on:
-  pull_request:
-    paths:
-      - "kotlin/**"
-      - "rust/connlib/**"
-      - ".github/workflows/kotlin.yml"
-  merge_group:
-    types: [checks_requested]
   workflow_call:
-  workflow_dispatch:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:

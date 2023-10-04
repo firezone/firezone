@@ -11,20 +11,30 @@ concurrency:
 
 jobs:
   elixir:
-    uses: ./.github/workflows/elixir.yml
+    uses: ./.github/workflows/components/elixir.yml
   rust:
-    uses: ./.github/workflows/rust.yml
+    uses: ./.github/workflows/components/rust.yml
+  kotlin:
+    uses: ./.github/workflows/components/kotlin.yml
+  swift:
+    uses: ./.github/workflows/components/swift.yml
+  static-analysis:
+    uses: ./.github/workflows/components/static-analysis.yml
   terraform:
-    uses: ./.github/workflows/terraform.yml
+    uses: ./.github/workflows/components/terraform.yml
     secrets: inherit
   deploy:
     runs-on: ubuntu-latest
+    # TODO:
     # if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write
     needs:
       - elixir
       - rust
+      - kotlin
+      - swift
+      - static-analysis
       - terraform
     env:
       TF_CLOUD_ORGANIZATION: "firezone"
@@ -79,7 +89,8 @@ jobs:
           TF_VAR_relay_image_tag: '"${{ github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
-          configuration_version: ${{ steps.apply-upload.outputs.configuration_version_id }}
+          configuration_version:
+            ${{ steps.apply-upload.outputs.configuration_version_id }}
       - name: Apply
         uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.0.4
         if: fromJSON(steps.apply-run.outputs.payload).data.attributes.actions.IsConfirmable
@@ -96,7 +107,8 @@ jobs:
           SLACK_COLOR: "#ff0000"
           MSG_MINIMAL: "ref,actions url"
           SLACK_TITLE: "Deployment Failed"
-          SLACK_MESSAGE: "Automatic deployment to ${{ env.TF_WORKSPACE }} failed"
+          SLACK_MESSAGE:
+            "Automatic deployment to ${{ env.TF_WORKSPACE }} failed"
         with:
           status: ${{ job.status }}
           notify_when: "failure"
