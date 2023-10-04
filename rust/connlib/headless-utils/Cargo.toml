@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-firezone-client-connlib = { path = "../libs/client" }
+firezone-client-connlib = { workspace = true }
 ip_network = "0.4"
 url = { version = "2.3.1", default-features = false }
 tracing-subscriber = { workspace = true }

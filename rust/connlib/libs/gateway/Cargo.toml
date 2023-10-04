@@ -6,9 +6,9 @@ edition = "2021"
 
 [dependencies]
 secrecy = { workspace = true }
-libs-common = { path = "../common" }
+libs-common = { workspace = true }
 async-trait = { version = "0.1", default-features = false }
-firezone-tunnel = { path = "../tunnel" }
+firezone-tunnel = { workspace = true }
 tokio = { version = "1.32", default-features = false, features = ["sync"] }
 tracing = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }

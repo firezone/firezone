@@ -24,6 +24,16 @@ tracing = { version = "0.1.37" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
 
+connlib-android = { path = "connlib/clients/android"}
+connlib-apple = { path = "connlib/clients/apple"}
+headless = { path = "connlib/clients/headless"}
+gateway = { path = "connlib/gateway"}
+headless-utils = { path = "connlib/headless-utils"}
+firezone-client-connlib = { path = "connlib/libs/client"}
+libs-common = { path = "connlib/libs/common"}
+firezone-gateway-connlib = { path = "connlib/libs/gateway"}
+firezone-tunnel = { path = "connlib/libs/tunnel"}
+
 # Patched to use https://github.com/rust-lang/cc-rs/pull/708
 # (the `patch` section can't be used for build deps...)
 [patch.crates-io]

@@ -8,8 +8,8 @@ edition = "2021"
 
 [dependencies]
 secrecy = { workspace = true }
-firezone-client-connlib = { path = "../../libs/client" }
-headless-utils = { path = "../../headless-utils" }
+firezone-client-connlib = { workspace = true }
+headless-utils = { workspace = true }
 anyhow = { version = "1.0" }
 tracing = { workspace = true }
 clap = { version = "4.4", features = ["derive",  "env"] }

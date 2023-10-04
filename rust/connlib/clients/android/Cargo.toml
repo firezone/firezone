@@ -18,7 +18,7 @@ tracing-android = "0.2"
 tracing = { workspace = true, features = ["std", "attributes"] }
 tracing-subscriber = { workspace = true }
 tracing-appender = "0.2"
-firezone-client-connlib = { path = "../../libs/client" }
+firezone-client-connlib = { workspace = true }
 jni = { version = "0.21.1", features = ["invocation"] }
 ip_network = "0.4"
 log = "0.4"
