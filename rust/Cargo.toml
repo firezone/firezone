@@ -2,13 +2,13 @@
 members = [
   "connlib/clients/android",
   "connlib/clients/apple",
-  "connlib/clients/headless",
   "connlib/clients/shared",
   "connlib/gateway-shared",
   "connlib/headless-utils",
   "connlib/shared",
   "connlib/tunnel",
   "gateway",
+  "headless-client",
   "phoenix-channel",
   "relay",
 ]
@@ -26,10 +26,10 @@ secrecy = "0.8"
 
 connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}
-connlib-client-headless = { path = "connlib/clients/headless"}
 connlib-client-shared = { path = "connlib/clients/shared"}
 connlib-gateway-shared = { path = "connlib/gateway-shared"}
 firezone-gateway = { path = "gateway"}
+firezone-headless-client = { path = "headless-client"}
 headless-utils = { path = "connlib/headless-utils"}
 connlib-shared = { path = "connlib/shared"}
 firezone-tunnel = { path = "connlib/tunnel"}

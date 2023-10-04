@@ -1,5 +1,5 @@
 [package]
-name = "connlib-client-headless"
+name = "firezone-headless-client"
 # mark:automatic-version
 version = "1.20231001.0"
 edition = "2021"
