@@ -99,7 +99,7 @@ jobs:
           path: /tmp/${{ matrix.image_name }}.tar
 
   integration-tests:
-    needs: build-containers
+    needs: build-images
     runs-on: ubuntu-latest
     strategy:
       matrix:
