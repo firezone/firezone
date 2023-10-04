@@ -195,27 +195,30 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_add_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
+    fn on_add_route(&self, route: IpNetwork) -> Result<RawFd, Self::Error> {
         self.env(|mut env| {
-            let route = env.new_string(route.to_string()).map_err(|source| {
-                CallbackError::NewStringFailed {
-                    name: "route",
+            let ip = env
+                .new_string(route.network_address().to_string())
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "route_ip",
                     source,
-                }
-            })?;
-            call_method(
-                &mut env,
+                })?;
+
+            let name = "onAddRoute";
+            env.call_method(
                 &self.callback_handler,
-                "onAddRoute",
-                "(Ljava/lang/String;)V",
-                &[JValue::from(&route)],
+                name,
+                "(Ljava/lang/String;I)I",
+                &[JValue::from(&ip), JValue::Int(route.netmask().into())],
             )
+            .and_then(|val| val.i())
+            .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
     }
 
     fn on_remove_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
         self.env(|mut env| {
-            let route = env.new_string(route.to_string()).map_err(|source| {
+            let ip = env.new_string(route.to_string()).map_err(|source| {
                 CallbackError::NewStringFailed {
                     name: "route",
                     source,
@@ -225,8 +228,8 @@ impl Callbacks for CallbackHandler {
                 &mut env,
                 &self.callback_handler,
                 "onRemoveRoute",
-                "(Ljava/lang/String;)V",
-                &[JValue::from(&route)],
+                "(Ljava/lang/String;I)V",
+                &[JValue::from(&ip), JValue::Int(route.netmask().into())],
             )
         })
     }
@@ -301,7 +304,7 @@ impl Callbacks for CallbackHandler {
 fn throw(env: &mut JNIEnv, class: &str, msg: impl Into<JNIString>) {
     if let Err(err) = env.throw_new(class, msg) {
         // We can't panic, since unwinding across the FFI boundary is UB...
-        tracing::error!("failed to throw Java exception: {err}");
+        tracing::error!(?err, "failed to throw Java exception");
     }
 }
 

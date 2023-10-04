@@ -54,7 +54,8 @@ impl IfaceConfig {
         route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<()> {
-        self.iface.add_route(route, callbacks).await
+        self.iface.add_route(route, callbacks).await?;
+        Ok(())
     }
 }
 

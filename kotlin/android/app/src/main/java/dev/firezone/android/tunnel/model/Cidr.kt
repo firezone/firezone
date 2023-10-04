@@ -8,14 +8,8 @@ import java.net.InetAddress
 
 @JsonClass(generateAdapter = true)
 @Parcelize
-data class Tunnel(
-    val config: TunnelConfig = TunnelConfig(),
-    var state: State = State.Down,
-    val routes: List<Cidr> = emptyList(),
-    val resources: List<Resource> = emptyList(),
-) : Parcelable {
-
-    enum class State {
-        Up, Connecting, Down
-    }
-}
+data class Cidr(
+    // TODO: Not convinced of using String to store address, we can make a moshi InetAddress adapter
+    val address: String,
+    val prefix: Int,
+) : Parcelable

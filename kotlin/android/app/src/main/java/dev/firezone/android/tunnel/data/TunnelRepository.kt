@@ -2,9 +2,11 @@
 package dev.firezone.android.tunnel.data
 
 import android.content.SharedPreferences
+import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.Tunnel
 import dev.firezone.android.tunnel.model.TunnelConfig
+import java.net.InetAddress
 
 interface TunnelRepository {
 
@@ -22,11 +24,11 @@ interface TunnelRepository {
 
     fun getResources(): List<Resource>
 
-    fun addRoute(route: String)
+    fun addRoute(route: Cidr)
 
-    fun removeRoute(route: String)
+    fun removeRoute(route: Cidr)
 
-    fun getRoutes(): List<String>
+    fun getRoutes(): List<Cidr>
 
     fun clear()
 

@@ -31,8 +31,8 @@ pub trait Callbacks: Clone + Send + Sync {
     }
 
     /// Called when when a route is added.
-    fn on_add_route(&self, _: IpNetwork) -> Result<(), Self::Error> {
-        Ok(())
+    fn on_add_route(&self, _: IpNetwork) -> Result<RawFd, Self::Error> {
+        Ok(-1)
     }
 
     /// Called when when a route is removed.

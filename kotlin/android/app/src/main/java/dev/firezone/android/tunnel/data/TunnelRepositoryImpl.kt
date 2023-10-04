@@ -8,10 +8,12 @@ import dev.firezone.android.tunnel.data.TunnelRepository.Companion.CONFIG_KEY
 import dev.firezone.android.tunnel.data.TunnelRepository.Companion.RESOURCES_KEY
 import dev.firezone.android.tunnel.data.TunnelRepository.Companion.ROUTES_KEY
 import dev.firezone.android.tunnel.data.TunnelRepository.Companion.STATE_KEY
+import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.Tunnel
 import dev.firezone.android.tunnel.model.TunnelConfig
 import java.lang.Exception
+import java.net.InetAddress
 import javax.inject.Inject
 
 @OptIn(ExperimentalStdlibApi::class)
@@ -80,29 +82,29 @@ class TunnelRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun addRoute(route: String) {
+    override fun addRoute(route: Cidr) {
         synchronized(lock) {
             getRoutes().toMutableList().run {
                 add(route)
-                val json = moshi.adapter<List<String>>().toJson(this)
+                val json = moshi.adapter<List<Cidr>>().toJson(this)
                 sharedPreferences.edit().putString(ROUTES_KEY, json).apply()
             }
         }
     }
 
-    override fun removeRoute(route: String) {
+    override fun removeRoute(route: Cidr) {
         synchronized(lock) {
             getRoutes().toMutableList().run {
                 remove(route)
-                val json = moshi.adapter<List<String>>().toJson(this)
+                val json = moshi.adapter<List<Cidr>>().toJson(this)
                 sharedPreferences.edit().putString(ROUTES_KEY, json).apply()
             }
         }
     }
 
-    override fun getRoutes(): List<String> = synchronized(lock) {
+    override fun getRoutes(): List<Cidr> = synchronized(lock) {
         val json = sharedPreferences.getString(ROUTES_KEY, "[]") ?: "[]"
-        return moshi.adapter<List<String>>().fromJson(json) ?: emptyList()
+        return moshi.adapter<List<Cidr>>().fromJson(json) ?: emptyList()
     }
 
     override fun clear() {

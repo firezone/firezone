@@ -29,7 +29,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
             )
             .map_err(|err| Error::OnSetInterfaceConfigFailed(err.to_string()));
         if let Err(err) = result.as_ref() {
-            tracing::error!("{err}");
+            tracing::error!(?err);
         }
         result
     }
@@ -40,18 +40,18 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
             .on_tunnel_ready()
             .map_err(|err| Error::OnTunnelReadyFailed(err.to_string()));
         if let Err(err) = result.as_ref() {
-            tracing::error!("{err}");
+            tracing::error!(?err);
         }
         result
     }
 
-    fn on_add_route(&self, route: IpNetwork) -> Result<()> {
+    fn on_add_route(&self, route: IpNetwork) -> Result<RawFd> {
         let result = self
             .0
             .on_add_route(route)
             .map_err(|err| Error::OnAddRouteFailed(err.to_string()));
         if let Err(err) = result.as_ref() {
-            tracing::error!("{err}");
+            tracing::error!(?err);
         }
         result
     }
@@ -62,7 +62,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
             .on_remove_route(route)
             .map_err(|err| Error::OnRemoveRouteFailed(err.to_string()));
         if let Err(err) = result.as_ref() {
-            tracing::error!("{err}");
+            tracing::error!(?err);
         }
         result
     }
@@ -73,14 +73,14 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
             .on_update_resources(resource_list)
             .map_err(|err| Error::OnUpdateResourcesFailed(err.to_string()));
         if let Err(err) = result.as_ref() {
-            tracing::error!("{err}");
+            tracing::error!(?err);
         }
         result
     }
 
     fn on_disconnect(&self, error: Option<&Error>) -> Result<()> {
         if let Err(err) = self.0.on_disconnect(error) {
-            tracing::error!("`on_disconnect` failed: {err}");
+            tracing::error!(?err, "`on_disconnect` failed");
         }
         // There's nothing we can really do if `on_disconnect` fails.
         Ok(())
@@ -88,7 +88,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
 
     fn on_error(&self, error: &Error) -> Result<()> {
         if let Err(err) = self.0.on_error(error) {
-            tracing::error!("`on_error` failed: {err}");
+            tracing::error!(?err, "`on_error` failed");
         }
         // There's nothing we really want to do if `on_error` fails.
         Ok(())

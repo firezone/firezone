@@ -6,9 +6,9 @@ interface ConnlibCallback {
 
     fun onTunnelReady(): Boolean
 
-    fun onAddRoute(cidrAddress: String)
+    fun onAddRoute(cidrAddress: String, prefix: Int): Int
 
-    fun onRemoveRoute(cidrAddress: String)
+    fun onRemoveRoute(addr: String, prefix: Int)
 
     fun onUpdateResources(resourceListJSON: String)
 

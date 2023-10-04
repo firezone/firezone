@@ -151,7 +151,7 @@ impl IfaceDevice {
         &self,
         route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<()> {
+    ) -> Result<RawFd> {
         callbacks.on_add_route(route)
     }
 
