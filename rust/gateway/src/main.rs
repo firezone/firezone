@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use firezone_gateway_connlib::{get_device_id, Callbacks, Session};
+use connlib_gateway_shared::{get_device_id, Callbacks, Session};
 use headless_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
 use tracing_subscriber::layer;

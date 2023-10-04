@@ -8,7 +8,7 @@ edition = "2021"
 
 [dependencies]
 secrecy = { workspace = true }
-firezone-gateway-connlib = { workspace = true }
+connlib-gateway-shared = { workspace = true }
 headless-utils = { workspace = true }
 anyhow = { version = "1.0" }
 tracing = { workspace = true }

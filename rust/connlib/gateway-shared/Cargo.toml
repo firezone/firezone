@@ -1,5 +1,5 @@
 [package]
-name = "firezone-gateway-connlib"
+name = "connlib-gateway-shared"
 # mark:automatic-version
 version = "1.20231001.0"
 edition = "2021"

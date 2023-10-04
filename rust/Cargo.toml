@@ -7,8 +7,8 @@ members = [
   "connlib/clients/apple",
   "connlib/clients/headless",
   "connlib/clients/shared",
+  "connlib/gateway-shared",
   "connlib/libs/tunnel",
-  "connlib/libs/gateway",
   "connlib/libs/common",
   "gateway",
 ]
@@ -28,10 +28,10 @@ connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}
 connlib-client-headless = { path = "connlib/clients/headless"}
 connlib-client-shared = { path = "connlib/clients/shared"}
+connlib-gateway-shared = { path = "connlib/gateway-shared"}
 firezone-gateway = { path = "gateway"}
 headless-utils = { path = "connlib/headless-utils"}
 libs-common = { path = "connlib/libs/common"}
-firezone-gateway-connlib = { path = "connlib/libs/gateway"}
 firezone-tunnel = { path = "connlib/libs/tunnel"}
 
 # Patched to use https://github.com/rust-lang/cc-rs/pull/708
