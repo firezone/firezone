@@ -28,7 +28,7 @@ connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}
 connlib-client-headless = { path = "connlib/clients/headless"}
 connlib-client-shared = { path = "connlib/clients/shared"}
-gateway = { path = "gateway"}
+firezone-gateway = { path = "gateway"}
 headless-utils = { path = "connlib/headless-utils"}
 libs-common = { path = "connlib/libs/common"}
 firezone-gateway-connlib = { path = "connlib/libs/gateway"}

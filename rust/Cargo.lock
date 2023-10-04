@@ -1214,6 +1214,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e825f6987101665dea6ec934c09ec6d721de7bc1bf92248e1d5810c8cd636b77"
 
 [[package]]
+name = "firezone-gateway"
+version = "1.20231001.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "firezone-gateway-connlib",
+ "headless-utils",
+ "secrecy",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "firezone-gateway-connlib"
 version = "1.20231001.0"
 dependencies = [
@@ -1369,19 +1382,6 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
  "slab",
-]
-
-[[package]]
-name = "gateway"
-version = "1.20231001.0"
-dependencies = [
- "anyhow",
- "clap",
- "firezone-gateway-connlib",
- "headless-utils",
- "secrecy",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
