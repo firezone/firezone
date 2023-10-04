@@ -25,13 +25,13 @@ jobs:
             gateway.cache-from=type=gha,scope=rust
             relay.cache-from=type=gha,scope=rust
             ${{ github.ref == 'refs/heads/main' && '
-            elixir.cache-to=type=gha,mode=max,scope=elixir
-            api.cache-to=type=gha,mode=max,scope=elixir
-            web.cache-to=type=gha,mode=max,scope=elixir
-            client.cache-to=type=gha,mode=max,scope=rust
-            gateway.cache-to=type=gha,mode=max,scope=rust
-            relay.cache-to=type=gha,mode=max,scope=rust
-            ' }}
+              elixir.cache-to=type=gha,mode=max,scope=elixir
+              api.cache-to=type=gha,mode=max,scope=elixir
+              web.cache-to=type=gha,mode=max,scope=elixir
+              client.cache-to=type=gha,mode=max,scope=rust
+              gateway.cache-to=type=gha,mode=max,scope=rust
+              relay.cache-to=type=gha,mode=max,scope=rust
+            ' || ''}}
           files: docker-compose.yml
           push: false
       - name: Seed database
@@ -76,13 +76,13 @@ jobs:
             gateway.cache-from=type=gha,scope=rust
             relay.cache-from=type=gha,scope=rust
             ${{ github.ref == 'refs/heads/main' && '
-            elixir.cache-to=type=gha,mode=max,scope=elixir
-            api.cache-to=type=gha,mode=max,scope=elixir
-            web.cache-to=type=gha,mode=max,scope=elixir
-            client.cache-to=type=gha,mode=max,scope=rust
-            gateway.cache-to=type=gha,mode=max,scope=rust
-            relay.cache-to=type=gha,mode=max,scope=rust
-            ' }}
+              elixir.cache-to=type=gha,mode=max,scope=elixir
+              api.cache-to=type=gha,mode=max,scope=elixir
+              web.cache-to=type=gha,mode=max,scope=elixir
+              client.cache-to=type=gha,mode=max,scope=rust
+              gateway.cache-to=type=gha,mode=max,scope=rust
+              relay.cache-to=type=gha,mode=max,scope=rust
+            ' || ''}}
           files: docker-compose.yml
           push: false
       - name: Seed database
