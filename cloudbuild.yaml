@@ -8,7 +8,7 @@ options:
 substitutions:
   _BRANCH_NAME: "main"
   _DOCKER_CONTROL_PLANE_PLATFORMS: "linux/amd64"
-  # _DOCKER_DATA_PLANE_PLATFORMS: "linux/amd64,linux/arm64"
+  _DOCKER_DATA_PLANE_PLATFORMS: "linux/amd64"
 
 steps:
   - id: "initialize-qemu"
@@ -68,34 +68,36 @@ steps:
     waitFor:
       - "Build and compile Elixir deps"
 
-  # # Rust
-  # - id: "Build relay"
-  #   name: "gcr.io/cloud-builders/docker:latest"
-  #   args:
-  #     - buildx
-  #     - build
-  #     - --platform=${_DOCKER_DATA_PLANE_PLATFORMS}
-  #     - --build-arg=PACKAGE=relay
-  #     - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/rust:relay-${_BRANCH_NAME}
-  #     - --cache-to=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/rust:relay-${_BRANCH_NAME},mode=max
-  #     - --pull
-  #     - --tag=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/relay:${_RELAY_TAG}
-  #     - --push
-  #     - ./rust
-  #   waitFor:
-  #     - "initialize-qemu"
-  # - id: "Build gateway"
-  #   name: "gcr.io/cloud-builders/docker:latest"
-  #   args:
-  #     - buildx
-  #     - build
-  #     - --platform=${_DOCKER_DATA_PLANE_PLATFORMS}
-  #     - --build-arg=PACKAGE=gateway
-  #     - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/rust:gateway-${_BRANCH_NAME}
-  #     - --cache-to=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/rust:gateway-${_BRANCH_NAME},mode=max
-  #     - --pull
-  #     - --tag=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/gateway:${_GATEWAY_TAG}
-  #     - --push
-  #     - ./rust
-  #   waitFor:
-  #     - "initialize-qemu"
+  # Rust
+  - id: "Build relay"
+    name: "gcr.io/cloud-builders/docker:latest"
+    args:
+      - buildx
+      - build
+      - --platform=${_DOCKER_DATA_PLANE_PLATFORMS}
+      - --build-arg=PACKAGE=relay
+      # It takes more time to push and pull caches than rebuild it on 32 cores machine
+      # - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/rust:relay-${_BRANCH_NAME}
+      # - --cache-to=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/rust:relay-${_BRANCH_NAME},mode=max
+      - --pull
+      - --tag=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/relay:${_RELAY_TAG}
+      - --push
+      - ./rust
+    waitFor:
+      - "initialize-qemu"
+  - id: "Build gateway"
+    name: "gcr.io/cloud-builders/docker:latest"
+    args:
+      - buildx
+      - build
+      - --platform=${_DOCKER_DATA_PLANE_PLATFORMS}
+      - --build-arg=PACKAGE=gateway
+      # It takes more time to push and pull caches than rebuild it on 32 cores machine
+      # - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/rust:gateway-${_BRANCH_NAME}
+      # - --cache-to=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/rust:gateway-${_BRANCH_NAME},mode=max
+      - --pull
+      - --tag=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/gateway:${_GATEWAY_TAG}
+      - --push
+      - ./rust
+    waitFor:
+      - "initialize-qemu"

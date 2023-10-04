@@ -1,36 +1,47 @@
-FROM rust:1.72-slim as BUILDER
-ARG PACKAGE
-WORKDIR /build/
-COPY . ./
-RUN --mount=type=cache,target=./target \
-    --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/usr/local/rustup,sharing=locked \
-    cargo build -p $PACKAGE --release
+FROM lukemathwalker/cargo-chef:latest-rust-1.72-slim-bookworm as chef
+WORKDIR /build
 
-RUN --mount=type=cache,target=./target \
-    mv ./target/release/$PACKAGE /usr/local/bin/$PACKAGE
+FROM chef as planner
 
-FROM debian:12-slim
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef as builder
+
+COPY --from=planner /build/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+COPY . .
+
 ARG PACKAGE
-WORKDIR /app/
-COPY --from=BUILDER /usr/local/bin/$PACKAGE .
+RUN cargo build -p $PACKAGE --release
+RUN mv ./target/release/$PACKAGE /usr/local/bin/$PACKAGE
+
+FROM debian:bookworm-slim AS runtime
+
+WORKDIR /app
+
+ARG PACKAGE
+COPY --from=builder /usr/local/bin/$PACKAGE .
 RUN ln -s ./${PACKAGE} ./app
-COPY ./docker-init.sh .
-ENV RUST_BACKTRACE=1
-ENV PATH "/app:$PATH"
-ENV PACKAGE_NAME ${PACKAGE}
+
 RUN apt-get -qq update \
     && DEBIAN_FRONTEND=noninteractive \
     apt-get -qq install \
-      iputils-ping \
-      iptables \
-      lsof \
-      iproute2 \
-      curl \
-      iperf3 \
-      ca-certificates \
+    iputils-ping \
+    iptables \
+    lsof \
+    iproute2 \
+    curl \
+    iperf3 \
+    ca-certificates \
     && apt-get -qq clean \
     && rm -rf /var/lib/apt/lists/*
 
+ENV RUST_BACKTRACE=1
+ENV PATH "/app:$PATH"
+ENV PACKAGE_NAME ${PACKAGE}
+
+COPY ./docker-init.sh .
 ENTRYPOINT ["docker-init.sh"]
+
 CMD ["app"]
