@@ -4,11 +4,11 @@ use crate::{
     ip_packet::{to_dns, IpPacket, MutableIpPacket, Version},
     ControlSignal, Tunnel,
 };
+use connlib_shared::{messages::ResourceDescription, Callbacks, DNS_SENTINEL};
 use domain::base::{
     iana::{Class, Rcode, Rtype},
     Dname, Message, MessageBuilder, ParsedDname, ToDname,
 };
-use libs_common::{messages::ResourceDescription, Callbacks, DNS_SENTINEL};
 use pnet_packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, PacketSize};
 
 const DNS_TTL: u32 = 300;

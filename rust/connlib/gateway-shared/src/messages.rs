@@ -1,10 +1,10 @@
 use std::net::IpAddr;
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
-use firezone_tunnel::RTCSessionDescription;
-use libs_common::messages::{
+use connlib_shared::messages::{
     ActorId, ClientId, Interface, Peer, Relay, ResourceDescription, ResourceId,
 };
+use firezone_tunnel::RTCSessionDescription;
 use serde::{Deserialize, Serialize};
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
@@ -134,7 +134,7 @@ pub struct ConnectionReady {
 
 #[cfg(test)]
 mod test {
-    use libs_common::{control::PhoenixMessage, messages::Interface};
+    use connlib_shared::{control::PhoenixMessage, messages::Interface};
 
     use super::{IngressMessages, InitGateway};
 

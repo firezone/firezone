@@ -7,7 +7,7 @@ use crate::{
     device_channel::DeviceIo, ip_packet::MutableIpPacket, peer::Peer, ControlSignal, Tunnel,
 };
 
-use libs_common::{messages::ResourceDescription, Callbacks, Error, Result};
+use connlib_shared::{messages::ResourceDescription, Callbacks, Error, Result};
 
 impl<C, CB> Tunnel<C, CB>
 where

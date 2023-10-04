@@ -1,10 +1,10 @@
+use connlib_shared::{CallbackErrorFacade, Callbacks, Error, Result};
 use futures::TryStreamExt;
 use ip_network::IpNetwork;
 use libc::{
     close, fcntl, ioctl, open, read, sockaddr, sockaddr_in, write, F_GETFL, F_SETFL,
     IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN, IFNAMSIZ, O_NONBLOCK, O_RDWR,
 };
-use libs_common::{CallbackErrorFacade, Callbacks, Error, Result};
 use netlink_packet_route::{rtnl::link::nlas::Nla, RT_SCOPE_UNIVERSE};
 use rtnetlink::{new_connection, Handle};
 use std::{

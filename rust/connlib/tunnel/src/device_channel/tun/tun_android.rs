@@ -1,10 +1,10 @@
 use crate::InterfaceConfig;
+use connlib_shared::{CallbackErrorFacade, Callbacks, Error, Result, DNS_SENTINEL};
 use ip_network::IpNetwork;
 use libc::{
     close, ioctl, read, sockaddr, sockaddr_in, write, AF_INET, IFNAMSIZ, IPPROTO_IP, SIOCGIFMTU,
     SOCK_STREAM,
 };
-use libs_common::{CallbackErrorFacade, Callbacks, Error, Result, DNS_SENTINEL};
 use std::{
     ffi::{c_int, c_short, c_uchar},
     io,

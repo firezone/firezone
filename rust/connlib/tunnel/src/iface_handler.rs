@@ -2,7 +2,7 @@ use std::{net::IpAddr, sync::Arc, time::Duration};
 
 use boringtun::noise::{errors::WireGuardError, Tunn, TunnResult};
 use bytes::Bytes;
-use libs_common::{Callbacks, Error, Result};
+use connlib_shared::{Callbacks, Error, Result};
 
 use crate::{
     device_channel::{DeviceIo, IfaceConfig},

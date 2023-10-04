@@ -2,9 +2,9 @@
 use std::{collections::HashMap, net::IpAddr, rc::Rc};
 
 use chrono::{DateTime, Utc};
+use connlib_shared::messages::{ResourceDescription, ResourceId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::messages::{ResourceDescription, ResourceId};
 
 pub(crate) trait Resource {
     fn description(&self) -> &ResourceDescription;

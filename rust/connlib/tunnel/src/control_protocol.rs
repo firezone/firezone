@@ -4,7 +4,7 @@ use secrecy::ExposeSecret;
 use std::sync::Arc;
 use tracing::instrument;
 
-use libs_common::{
+use connlib_shared::{
     messages::{Relay, RequestConnection, ResourceDescription, ReuseConnection},
     Callbacks, Error, Result,
 };

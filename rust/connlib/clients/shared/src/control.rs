@@ -5,7 +5,7 @@ use crate::messages::{
     BroadcastGatewayIceCandidates, Connect, ConnectionDetails, EgressMessages,
     GatewayIceCandidates, InitClient, Messages,
 };
-use libs_common::{
+use connlib_shared::{
     control::{ErrorInfo, ErrorReply, PhoenixSenderWithTopic, Reference},
     messages::{GatewayId, ResourceDescription, ResourceId},
     Callbacks,

@@ -3,7 +3,7 @@ use std::net::IpAddr;
 use firezone_tunnel::RTCSessionDescription;
 use serde::{Deserialize, Serialize};
 
-use libs_common::messages::{
+use connlib_shared::messages::{
     GatewayId, Interface, Key, Relay, RequestConnection, ResourceDescription, ResourceId,
     ReuseConnection,
 };
@@ -151,7 +151,7 @@ pub enum EgressMessages {
 
 #[cfg(test)]
 mod test {
-    use libs_common::{
+    use connlib_shared::{
         control::PhoenixMessage,
         messages::{
             Interface, Relay, ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
@@ -160,7 +160,7 @@ mod test {
     };
 
     use chrono::NaiveDateTime;
-    use libs_common::control::ErrorInfo;
+    use connlib_shared::control::ErrorInfo;
 
     use crate::messages::{ConnectionDetails, EgressMessages, ReplyMessages};
 

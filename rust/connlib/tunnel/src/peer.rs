@@ -3,12 +3,12 @@ use std::{collections::HashMap, net::IpAddr, sync::Arc};
 use boringtun::noise::{Tunn, TunnResult};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use ip_network::IpNetwork;
-use ip_network_table::IpNetworkTable;
-use libs_common::{
+use connlib_shared::{
     messages::{ResourceDescription, ResourceId},
     Callbacks, Error, Result,
 };
+use ip_network::IpNetwork;
+use ip_network_table::IpNetworkTable;
 use parking_lot::{Mutex, RwLock};
 use webrtc::data::data_channel::DataChannel;
 

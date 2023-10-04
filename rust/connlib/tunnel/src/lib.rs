@@ -8,9 +8,9 @@ use boringtun::{
 };
 use bytes::Bytes;
 
+use connlib_shared::{messages::Key, CallbackErrorFacade, Callbacks, Error, DNS_SENTINEL};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use libs_common::{messages::Key, CallbackErrorFacade, Callbacks, Error, DNS_SENTINEL};
 use serde::{Deserialize, Serialize};
 
 use async_trait::async_trait;
@@ -31,7 +31,7 @@ use webrtc::{
 
 use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
 
-use libs_common::{
+use connlib_shared::{
     messages::{
         ClientId, GatewayId, Interface as InterfaceConfig, ResourceDescription, ResourceId,
     },
@@ -43,8 +43,8 @@ use device_channel::{create_iface, DeviceIo, IfaceConfig};
 pub use control_protocol::Request;
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
+use connlib_shared::messages::SecretKey;
 use index::IndexLfsr;
-use libs_common::messages::SecretKey;
 
 mod control_protocol;
 mod device_channel;
@@ -100,8 +100,8 @@ pub struct PeerConfig {
     pub(crate) preshared_key: SecretKey,
 }
 
-impl From<libs_common::messages::Peer> for PeerConfig {
-    fn from(value: libs_common::messages::Peer) -> Self {
+impl From<connlib_shared::messages::Peer> for PeerConfig {
+    fn from(value: connlib_shared::messages::Peer) -> Self {
         Self {
             persistent_keepalive: value.persistent_keepalive,
             public_key: value.public_key.0.into(),

@@ -8,9 +8,8 @@ members = [
   "connlib/clients/headless",
   "connlib/clients/shared",
   "connlib/gateway-shared",
-  "connlib/libs/tunnel",
-  "connlib/libs/common",
-  "gateway",
+  "connlib/shared",
+  "connlib/tunnel",
 ]
 
 resolver = "2"
@@ -31,8 +30,8 @@ connlib-client-shared = { path = "connlib/clients/shared"}
 connlib-gateway-shared = { path = "connlib/gateway-shared"}
 firezone-gateway = { path = "gateway"}
 headless-utils = { path = "connlib/headless-utils"}
-libs-common = { path = "connlib/libs/common"}
-firezone-tunnel = { path = "connlib/libs/tunnel"}
+connlib-shared = { path = "connlib/shared"}
+firezone-tunnel = { path = "connlib/tunnel"}
 
 # Patched to use https://github.com/rust-lang/cc-rs/pull/708
 # (the `patch` section can't be used for build deps...)

@@ -1,15 +1,15 @@
 //! Main connlib library for gateway.
-pub use libs_common::{get_device_id, messages::ResourceDescription, Callbacks, Error};
+pub use connlib_shared::{get_device_id, messages::ResourceDescription, Callbacks, Error};
 
 use crate::control::ControlSignaler;
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use boringtun::x25519::{PublicKey, StaticSecret};
-use control::ControlPlane;
-use firezone_tunnel::Tunnel;
-use libs_common::control::SecureUrl;
-use libs_common::{
+use connlib_shared::control::SecureUrl;
+use connlib_shared::{
     control::PhoenixChannel, get_websocket_path, messages::Key, sha256, CallbackErrorFacade, Result,
 };
+use control::ControlPlane;
+use firezone_tunnel::Tunnel;
 use messages::IngressMessages;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use secrecy::{Secret, SecretString};

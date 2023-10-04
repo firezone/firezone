@@ -1,5 +1,5 @@
+use connlib_shared::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
 use ip_network::IpNetwork;
-use libs_common::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
 
 #[derive(Clone)]
 pub(crate) struct DeviceIo;

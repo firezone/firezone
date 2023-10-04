@@ -1,17 +1,17 @@
 //! Main connlib library for clients.
-pub use libs_common::{get_device_id, messages::ResourceDescription};
-pub use libs_common::{Callbacks, Error};
+pub use connlib_shared::{get_device_id, messages::ResourceDescription};
+pub use connlib_shared::{Callbacks, Error};
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use crate::control::ControlSignaler;
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use boringtun::x25519::{PublicKey, StaticSecret};
-use control::ControlPlane;
-use firezone_tunnel::Tunnel;
-use libs_common::control::SecureUrl;
-use libs_common::{
+use connlib_shared::control::SecureUrl;
+use connlib_shared::{
     control::PhoenixChannel, get_websocket_path, messages::Key, sha256, CallbackErrorFacade, Result,
 };
+use control::ControlPlane;
+use firezone_tunnel::Tunnel;
 use messages::IngressMessages;
 use messages::Messages;
 use messages::ReplyMessages;

@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use boringtun::x25519::{PublicKey, StaticSecret};
 use chrono::{DateTime, Utc};
-use libs_common::messages::SecretKey;
-use libs_common::{
+use connlib_shared::messages::SecretKey;
+use connlib_shared::{
     control::Reference,
     messages::{
         ClientId, GatewayId, Key, Relay, RequestConnection, ResourceDescription, ResourceId,

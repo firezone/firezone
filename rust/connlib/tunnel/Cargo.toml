@@ -17,7 +17,7 @@ tracing = { workspace = true }
 parking_lot = { version = "0.12", default-features = false }
 bytes = { version = "1.4", default-features = false, features = ["std"] }
 itertools = { version = "0.11", default-features = false, features = ["use_std"] }
-libs-common = { workspace = true }
+connlib-shared = { workspace = true }
 libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }

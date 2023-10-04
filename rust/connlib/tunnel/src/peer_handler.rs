@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use boringtun::noise::{handshake::parse_handshake_anon, Packet, TunnResult};
 use bytes::Bytes;
-use libs_common::{Callbacks, Error, Result};
+use connlib_shared::{Callbacks, Error, Result};
 
 use crate::{
     device_channel::DeviceIo, index::check_packet_index, peer::Peer, ControlSignal, Tunnel,

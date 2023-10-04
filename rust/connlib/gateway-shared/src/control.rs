@@ -3,13 +3,13 @@ use super::messages::{
 };
 use crate::messages::{AllowAccess, BroadcastClientIceCandidates, ClientIceCandidates};
 use async_trait::async_trait;
-use firezone_tunnel::{ConnId, ControlSignal, Tunnel};
-use libs_common::Error::ControlProtocolError;
-use libs_common::{
+use connlib_shared::Error::ControlProtocolError;
+use connlib_shared::{
     control::PhoenixSenderWithTopic,
     messages::{GatewayId, ResourceDescription},
     Callbacks, Result,
 };
+use firezone_tunnel::{ConnId, ControlSignal, Tunnel};
 use std::sync::Arc;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 

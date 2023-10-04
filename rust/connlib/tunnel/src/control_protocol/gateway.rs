@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use libs_common::{
+use connlib_shared::{
     messages::{ClientId, Relay, ResourceDescription},
     Callbacks, Error, Result,
 };

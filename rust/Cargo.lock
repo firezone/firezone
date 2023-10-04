@@ -809,8 +809,8 @@ dependencies = [
  "backoff",
  "boringtun",
  "chrono",
+ "connlib-shared",
  "firezone-tunnel",
- "libs-common",
  "rand",
  "reqwest",
  "secrecy",
@@ -837,8 +837,8 @@ dependencies = [
  "backoff",
  "boringtun",
  "chrono",
+ "connlib-shared",
  "firezone-tunnel",
- "libs-common",
  "rand",
  "secrecy",
  "serde",
@@ -847,6 +847,40 @@ dependencies = [
  "tokio-tungstenite",
  "tracing",
  "url",
+ "webrtc",
+]
+
+[[package]]
+name = "connlib-shared"
+version = "1.20231001.0"
+dependencies = [
+ "base64 0.21.4",
+ "boringtun",
+ "chrono",
+ "futures",
+ "futures-util",
+ "ip_network",
+ "log",
+ "os_info",
+ "parking_lot",
+ "rand",
+ "rand_core",
+ "ring 0.17.0",
+ "rtnetlink",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "smbios-lib",
+ "swift-bridge",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite",
+ "tracing",
+ "tracing-android",
+ "tracing-appender",
+ "url",
+ "uuid",
  "webrtc",
 ]
 
@@ -1235,19 +1269,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e825f6987101665dea6ec934c09ec6d721de7bc1bf92248e1d5810c8cd636b77"
 
 [[package]]
-name = "firezone-gateway"
-version = "1.20231001.0"
-dependencies = [
- "anyhow",
- "clap",
- "connlib-gateway-shared",
- "headless-utils",
- "secrecy",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "firezone-tunnel"
 version = "1.20231001.0"
 dependencies = [
@@ -1255,6 +1276,7 @@ dependencies = [
  "boringtun",
  "bytes",
  "chrono",
+ "connlib-shared",
  "domain",
  "futures",
  "futures-util",
@@ -1262,7 +1284,6 @@ dependencies = [
  "ip_network_table",
  "itertools 0.11.0",
  "libc",
- "libs-common",
  "log",
  "netlink-packet-core",
  "netlink-packet-route",
@@ -1876,40 +1897,6 @@ name = "libm"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7012b1bbb0719e1097c47611d3898568c546d597c2e74d66f6087edd5233ff4"
-
-[[package]]
-name = "libs-common"
-version = "1.20231001.0"
-dependencies = [
- "base64 0.21.4",
- "boringtun",
- "chrono",
- "futures",
- "futures-util",
- "ip_network",
- "log",
- "os_info",
- "parking_lot",
- "rand",
- "rand_core",
- "ring 0.17.0",
- "rtnetlink",
- "secrecy",
- "serde",
- "serde_json",
- "smbios-lib",
- "swift-bridge",
- "thiserror",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite",
- "tracing",
- "tracing-android",
- "tracing-appender",
- "url",
- "uuid",
- "webrtc",
-]
 
 [[package]]
 name = "linux-raw-sys"
