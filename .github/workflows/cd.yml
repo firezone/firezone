@@ -11,17 +11,17 @@ concurrency:
 
 jobs:
   elixir:
-    uses: ./.github/workflows/components/elixir.yml
+    uses: ./.github/workflows/elixir.yml
   rust:
-    uses: ./.github/workflows/components/rust.yml
+    uses: ./.github/workflows/rust.yml
   kotlin:
-    uses: ./.github/workflows/components/kotlin.yml
+    uses: ./.github/workflows/kotlin.yml
   swift:
-    uses: ./.github/workflows/components/swift.yml
+    uses: ./.github/workflows/swift.yml
   static-analysis:
-    uses: ./.github/workflows/components/static-analysis.yml
+    uses: ./.github/workflows/static-analysis.yml
   terraform:
-    uses: ./.github/workflows/components/terraform.yml
+    uses: ./.github/workflows/terraform.yml
     secrets: inherit
   deploy:
     runs-on: ubuntu-latest
