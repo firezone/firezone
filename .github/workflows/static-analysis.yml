@@ -28,7 +28,7 @@ jobs:
           pre-commit install
           SKIP=no-commit-to-branch pre-commit run --all-files
       - uses: actions/cache/save@v3
-        # if: ${{ github.ref == 'refs/heads/main' }}
+        if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Python Cache
         with:
           path: ~/.cache/pip
