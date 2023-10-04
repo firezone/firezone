@@ -5,7 +5,7 @@ version = "1.20231001.0"
 edition = "2021"
 
 [features]
-mock = ["firezone-client-connlib/mock"]
+mock = ["firezone-client-shared/mock"]
 
 [build-dependencies]
 anyhow = "1.0.75"
@@ -18,7 +18,7 @@ secrecy = { workspace = true }
 ip_network = "0.4"
 libc = "0.2"
 swift-bridge = { workspace = true }
-firezone-client-connlib = { workspace = true }
+firezone-client-shared = { workspace = true }
 serde_json = "1"
 tracing = { workspace = true }
 # TODO: https://github.com/Absolucy/tracing-oslog/pull/9

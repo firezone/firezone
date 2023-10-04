@@ -6,8 +6,8 @@ members = [
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/headless",
+  "connlib/clients/shared",
   "connlib/libs/tunnel",
-  "connlib/libs/client",
   "connlib/libs/gateway",
   "connlib/libs/common",
   "connlib/gateway",
@@ -27,9 +27,9 @@ secrecy = "0.8"
 connlib-android = { path = "connlib/clients/android"}
 connlib-apple = { path = "connlib/clients/apple"}
 headless = { path = "connlib/clients/headless"}
+firezone-client-shared = { path = "connlib/clients/shared"}
 gateway = { path = "connlib/gateway"}
 headless-utils = { path = "connlib/headless-utils"}
-firezone-client-connlib = { path = "connlib/libs/client"}
 libs-common = { path = "connlib/libs/common"}
 firezone-gateway-connlib = { path = "connlib/libs/gateway"}
 firezone-tunnel = { path = "connlib/libs/tunnel"}

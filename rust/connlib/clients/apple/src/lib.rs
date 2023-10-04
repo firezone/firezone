@@ -1,7 +1,7 @@
 // Swift bridge generated code triggers this below
 #![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
 
-use firezone_client_connlib::{file_logger, Callbacks, Error, ResourceDescription, Session};
+use firezone_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
 use ip_network::IpNetwork;
 use secrecy::SecretString;
 use std::{

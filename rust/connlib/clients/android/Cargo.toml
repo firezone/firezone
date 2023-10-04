@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 doc = false
 
 [features]
-mock = ["firezone-client-connlib/mock"]
+mock = ["firezone-client-shared/mock"]
 
 [dependencies]
 secrecy = { workspace = true }
@@ -18,7 +18,7 @@ tracing-android = "0.2"
 tracing = { workspace = true, features = ["std", "attributes"] }
 tracing-subscriber = { workspace = true }
 tracing-appender = "0.2"
-firezone-client-connlib = { workspace = true }
+firezone-client-shared = { workspace = true }
 jni = { version = "0.21.1", features = ["invocation"] }
 ip_network = "0.4"
 log = "0.4"

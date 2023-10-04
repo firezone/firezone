@@ -755,7 +755,7 @@ dependencies = [
 name = "connlib-android"
 version = "1.20231001.0"
 dependencies = [
- "firezone-client-connlib",
+ "firezone-client-shared",
  "ip_network",
  "jni",
  "log",
@@ -774,7 +774,7 @@ version = "1.20231001.0"
 dependencies = [
  "anyhow",
  "diva",
- "firezone-client-connlib",
+ "firezone-client-shared",
  "ip_network",
  "libc",
  "secrecy",
@@ -1173,7 +1173,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e825f6987101665dea6ec934c09ec6d721de7bc1bf92248e1d5810c8cd636b77"
 
 [[package]]
-name = "firezone-client-connlib"
+name = "firezone-client-shared"
 version = "1.20231001.0"
 dependencies = [
  "async-trait",
@@ -1465,7 +1465,7 @@ version = "1.20231001.0"
 dependencies = [
  "anyhow",
  "clap",
- "firezone-client-connlib",
+ "firezone-client-shared",
  "headless-utils",
  "secrecy",
  "tracing",
@@ -1478,7 +1478,7 @@ version = "1.20231001.0"
 dependencies = [
  "clap",
  "ctrlc",
- "firezone-client-connlib",
+ "firezone-client-shared",
  "ip_network",
  "tracing",
  "tracing-subscriber",
