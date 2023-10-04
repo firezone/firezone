@@ -57,8 +57,9 @@ jobs:
               PACKAGE=headless
           - image_name: elixir
             push: false
-            cache_scope: elixir-mix
+            cache_scope: elixir
             build-args: |
+              MIX_ENV=dev
               APPLICATION_NAME=api
     permissions:
       contents: read
@@ -99,7 +100,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.cache_scope }}
           cache-to:
             ${{ github.ref == 'refs/heads/main' &&
-            format('type=gha,mode=max,scope={0}', matrix.scope) || '' }}
+            format('type=gha,mode=max,scope={0}', matrix.cache_scope) || '' }}
           file: ${{ matrix.cache_scope }}/Dockerfile
           push: ${{ matrix.push}}
           tags: |
