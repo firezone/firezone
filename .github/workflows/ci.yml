@@ -5,11 +5,6 @@ on:
     types: [checks_requested]
   workflow_dispatch:
 
-# Cancel old workflow runs if new code is pushed
-concurrency:
-  group: "ci-${{ github.workflow }}-${{ github.ref }}"
-  cancel-in-progress: false
-
 jobs:
   elixir:
     uses: ./.github/workflows/elixir.yml
@@ -56,19 +51,29 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
+      - name: Build Branch Name
+        id: vsn
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        run: |
+          BRANCH_NAME=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
       - name: "Run Cloud Build"
         run: |
           gcloud builds submit \
             --config cloudbuild.yaml \
-            --substitutions='_REPOSITORY=firezone,_REGISTRY=${REGISTRY},_API_TAG=${{ github.sha }},_WEB_TAG=${{ github.sha }},_RELAY_TAG=${{ github.sha }},_GATEWAY_TAG=${{ github.sha }}' \
+            --substitutions='_REPOSITORY=firezone,_REGISTRY=${REGISTRY},_BRANCH_NAME=${{ env.BRANCH_NAME }},_API_TAG=${{ github.sha }},_WEB_TAG=${{ github.sha }},_RELAY_TAG=${{ github.sha }},_GATEWAY_TAG=${{ github.sha }}' \
             --project "firezone-staging" \
             --timeout "30m"
 
   integration-test_basic-flow:
+    needs:
+      - build-containers
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      # TODO: reuse build containers
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Build images
@@ -115,6 +120,8 @@ jobs:
         run: docker compose logs httpbin
 
   integration-test_relayed-flow:
+    needs:
+      - build-containers
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

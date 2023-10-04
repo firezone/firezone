@@ -6,7 +6,6 @@ options:
     - "DOCKER_CLI_EXPERIMENTAL=enabled"
 
 substitutions:
-  _BRANCH_NAME: "main"
   _DOCKER_CONTROL_PLANE_PLATFORMS: "linux/amd64"
   _DOCKER_DATA_PLANE_PLATFORMS: "linux/amd64"
 
@@ -28,6 +27,7 @@ steps:
       - build
       - --platform=${_DOCKER_CONTROL_PLANE_PLATFORMS}
       - --target=compiler
+      - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:main-compile
       - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:${_BRANCH_NAME}-compile
       - --cache-to=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:${_BRANCH_NAME}-compile,mode=max
       - ./elixir
@@ -41,6 +41,8 @@ steps:
       - --platform=${_DOCKER_CONTROL_PLANE_PLATFORMS}
       - --build-arg=APPLICATION_NAME=web
       - --build-arg=APPLICATION_VERSION=${_WEB_TAG}
+      - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:main-compile
+      - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:main
       - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:${_BRANCH_NAME}-compile
       - --cache-from=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:${_BRANCH_NAME}
       - --cache-to=type=registry,ref=${_REGISTRY}/$PROJECT_ID/${_REPOSITORY}/cache/elixir:${_BRANCH_NAME},mode=max
