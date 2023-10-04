@@ -5,13 +5,6 @@ on:
     types: [checks_requested]
   workflow_call:
 
-# Used to canonically tag images throughout this workflow, otherwise we get into
-# cases on main where a build-push-action tries to push a built image to the
-# public Docker Hub registry.
-env:
-  # mark:automatic-version
-  VERSION: "1.20231001.0"
-
 jobs:
   elixir:
     uses: ./.github/workflows/elixir.yml
@@ -71,7 +64,11 @@ jobs:
       contents: read
       id-token: write
     env:
+      # mark:automatic-version
+      VERSION: "1.20231001.0"
       APPLICATION_NAME: ${{ matrix.image_name }}
+      GCP_PROJECT: firezone-staging
+      GCP_REGISTRY: us-east1-docker.pkg.dev
     steps:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -86,7 +83,7 @@ jobs:
           service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
           export_environment_variables: false
       - name: Change current gcloud account
-        run: gcloud --quiet config set project ${GCP_PROJECT}
+        run: gcloud --quiet config set project ${{ env.GCP_PROJECT }}
       - name: Login to Google Artifact Registry
         uses: docker/login-action@v3
         with:
@@ -106,9 +103,9 @@ jobs:
           file: ${{ matrix.cache_scope }}/Dockerfile
           push: ${{ matrix.push}}
           tags: |
-            us-east1-docker.pkg.dev/firezone-staging/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
-            us-east1-docker.pkg.dev/firezone-staging/firezone/${{ matrix.image_name }}:${{ github.sha }}
-            us-east1-docker.pkg.dev/firezone-staging/firezone/${{ matrix.image_name }}:latest
+            ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
+            ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+            ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:latest
           outputs: type=docker,dest=/tmp/${{ matrix.image_name }}.tar
       - name: Upload built images as artifacts
         uses: actions/upload-artifact@v3
