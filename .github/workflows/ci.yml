@@ -75,7 +75,7 @@ jobs:
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
       - id: short_sha
-        run: echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        run: echo 'short_sha=$(git rev-parse --short HEAD)' >> $GITHUB_OUTPUT
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -83,9 +83,9 @@ jobs:
           build-args: APPLICATION_NAME=${{ env.APPLICATION_NAME }}
           context: ${{ matrix.cache_scope }}/
           cache-from: type=gha,scope=${{ matrix.cache_scope }}
-          cache-to: >-
+          cache-to:
             ${{ github.ref == 'refs/heads/main' &&
-            format("type=gha,mode=max,scope={0}", matrix.scope) || '' }}
+            format('type=gha,mode=max,scope={0}', matrix.scope) || '' }}
           file: ${{ matrix.cache_scope }}/Dockerfile
           push: ${{ github.ref == 'refs/head/main' }}
           tags: |
@@ -111,12 +111,12 @@ jobs:
               sudo iptables -I FORWARD 1 -s  172.28.0.105 -d 172.28.0.100 -j DROP
             execute: |
               docker compose exec -it client timeout 60 \
-              bash -c "until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done"
+              bash -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
           - test_name: Basic flow
-            setup: echo "Noop"
+            setup: echo 'Noop'
             execute: |
               docker compose exec -it client timeout 60 \
-              bash -c "until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done"
+              bash -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
 
     steps:
       - uses: actions/checkout@v4
@@ -134,7 +134,7 @@ jobs:
           docker image ls -a
       - name: Seed database
         run:
-          docker compose run elixir /bin/sh -c "cd apps/domain && mix ecto.seed"
+          docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: docker compose up -d
       - name: Setup ${{ matrix.test_name }} test
