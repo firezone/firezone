@@ -80,11 +80,10 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           platforms: linux/amd64
-          build-args: |
-            APPLICATION_NAME=${{ env.APPLICATION_NAME }}
+          build-args: APPLICATION_NAME=${{ env.APPLICATION_NAME }}
           context: ${{ matrix.cache_scope }}/
           cache-from: type=gha,scope=${{ matrix.cache_scope }}
-          cache-to:
+          cache-to: >-
             ${{ github.ref == 'refs/heads/main' &&
             format("type=gha,mode=max,scope={0}", matrix.scope) || '' }}
           file: ${{ matrix.cache_scope }}/Dockerfile
