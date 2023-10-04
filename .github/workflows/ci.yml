@@ -57,7 +57,7 @@ jobs:
               PACKAGE=headless
           - image_name: elixir
             push: false
-            cache_scope: elixir
+            cache_scope: elixir-mix
             build-args: |
               APPLICATION_NAME=api
     permissions:
