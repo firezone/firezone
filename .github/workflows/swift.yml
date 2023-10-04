@@ -22,8 +22,6 @@ jobs:
       fail-fast: false
       matrix:
         runs-on:
-          - os: macos-12
-            xcode-ver: '14.2'
           - os: macos-13
             xcode-ver: '14.3'
         target:
