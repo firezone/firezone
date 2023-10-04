@@ -95,6 +95,7 @@ jobs:
           file: ${{ matrix.cache_scope }}/Dockerfile
           push: ${{ github.ref == 'refs/head/main' }}
           tags: |
+            firezone/${{ matrix.image_name }}
             ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
             ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
           outputs: type=docker,dest=/tmp/${{ matrix.image_name }}.tar
@@ -137,7 +138,8 @@ jobs:
             docker load --input $image
             file_name=$(basename $image)
             image_name=${file_name%.tar}
-            docker tag $image_name firezone/${image_name}:latest
+            tag_name=$(docker image ls | grep $image_name | cut -f 1 -d ' ')
+            docker tag $tag_name firezone/${image_name}:latest
           done
           docker image ls -a
       - name: Seed database
