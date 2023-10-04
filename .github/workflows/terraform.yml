@@ -8,7 +8,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  terraform_plan-deploy:
+  plan-deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read

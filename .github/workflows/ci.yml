@@ -74,8 +74,6 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
-      - id: short_sha
-        run: echo 'short_sha=$(git rev-parse --short HEAD)' >> $GITHUB_OUTPUT
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -90,7 +88,7 @@ jobs:
           push: ${{ github.ref == 'refs/head/main' }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
-            ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ matrix.image_name }}:${{ steps.short_sha.outputs.short_sha }}
+            ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
           outputs: type=docker,dest=/tmp/${{ matrix.image_name }}.tar
       - name: Upload built images as artifacts
         uses: actions/upload-artifact@v3

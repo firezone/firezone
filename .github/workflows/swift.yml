@@ -8,7 +8,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  swift_build:
+  build:
     runs-on: ${{ matrix.runs-on.os }}
     strategy:
       fail-fast: false

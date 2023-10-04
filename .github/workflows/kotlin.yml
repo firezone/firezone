@@ -9,7 +9,7 @@ concurrency:
 
 jobs:
   # See rust.yml how we build, package and release connlib as an example
-  kotlin_build:
+  build:
     runs-on: ${{ matrix.runs-on }}
     strategy:
       matrix:
