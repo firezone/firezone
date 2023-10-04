@@ -1,14 +1,6 @@
 name: Swift
 on:
-  pull_request:
-    paths:
-      - "swift/**"
-      - "rust/connlib/**"
-      - ".github/workflows/swift.yml"
-  merge_group:
-    types: [checks_requested]
   workflow_call:
-  workflow_dispatch:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -23,7 +15,7 @@ jobs:
       matrix:
         runs-on:
           - os: macos-13
-            xcode-ver: '14.3'
+            xcode-ver: "14.3"
         target:
           - sdk: macosx
             platform: macOS
@@ -51,7 +43,9 @@ jobs:
         name: Restore SwiftPM Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
-          key: ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
+          key:
+            ${{ matrix.target.platform }}-spm-${{
+            hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ matrix.target.platform }}-spm-
       - run: |
@@ -74,4 +68,6 @@ jobs:
         name: Save SwiftPM Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
-          key: ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
+          key:
+            ${{ matrix.target.platform }}-spm-${{
+            hashFiles('**/Package.resolved') }}

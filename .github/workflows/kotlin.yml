@@ -1,14 +1,6 @@
 name: Kotlin
 on:
-  pull_request:
-    paths:
-      - "kotlin/**"
-      - "rust/connlib/**"
-      - ".github/workflows/kotlin.yml"
-  merge_group:
-    types: [checks_requested]
   workflow_call:
-  workflow_dispatch:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -47,7 +39,9 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key:
+            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*',
+            '**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
       - name: Create Local Properties File
@@ -64,7 +58,7 @@ jobs:
         run: ./gradlew testReleaseUnitTest
       - name: Android Test Report
         uses: asadmansr/android-test-report-action@v1.2.0
-        if: '!cancelled()'
+        if: "!cancelled()"
       - uses: actions/cache/save@v3
         if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Gradle Cache
@@ -72,4 +66,6 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key:
+            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*',
+            '**/gradle-wrapper.properties') }}

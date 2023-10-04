@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # Dependencies
@@ -11,11 +11,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: firezone_dev
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"
-        ]
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
       start_period: 20s
       interval: 30s
       retries: 5
@@ -28,9 +24,9 @@ services:
   vault:
     image: vault:1.13.3
     environment:
-      VAULT_ADDR: 'http://127.0.0.1:8200'
-      VAULT_DEV_ROOT_TOKEN_ID: 'firezone'
-      VAULT_LOG_LEVEL: 'debug'
+      VAULT_ADDR: "http://127.0.0.1:8200"
+      VAULT_DEV_ROOT_TOKEN_ID: "firezone"
+      VAULT_LOG_LEVEL: "debug"
     ports:
       - 8200:8200/tcp
     cap_add:
@@ -45,7 +41,7 @@ services:
           "--spider",
           "--proxy",
           "off",
-          "http://127.0.0.1:8200/v1/sys/health?standbyok=true"
+          "http://127.0.0.1:8200/v1/sys/health?standbyok=true",
         ]
       interval: 10s
       timeout: 3s
@@ -58,7 +54,7 @@ services:
       context: elixir
       args:
         APPLICATION_NAME: web
-    image: firezone_web_dev
+    image: firezone/web
     hostname: web.cluster.local
     ports:
       - 8080:8080/tcp
@@ -102,14 +98,14 @@ services:
       OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
       ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
       ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
-      OUTBOUND_EMAIL_ADAPTER_OPTS: "{\"api_key\":\"7da7d1cd-111c-44a7-b5ac-4027b9d230e5\"}"
+      OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
       # Seeds
       STATIC_SEEDS: "true"
     depends_on:
       vault:
-        condition: 'service_healthy'
+        condition: "service_healthy"
       postgres:
-        condition: 'service_healthy'
+        condition: "service_healthy"
     networks:
       - app
 
@@ -123,7 +119,7 @@ services:
       dockerfile: Dockerfile
       args:
         PACKAGE: headless
-    image: firezone-headless
+    image: firezone/client
     dns:
       - 100.100.111.1
       - 8.8.8.8
@@ -135,18 +131,18 @@ services:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
       gateway:
-        condition: 'service_healthy'
+        condition: "service_healthy"
       httpbin:
-        condition: 'service_healthy'
+        condition: "service_healthy"
       api:
-        condition: 'service_healthy'
+        condition: "service_healthy"
     networks:
       app:
         ipv4_address: 172.28.0.100
 
   gateway:
     healthcheck:
-      test: [ "CMD-SHELL", "ip link | grep tun-firezone" ]
+      test: ["CMD-SHELL", "ip link | grep tun-firezone"]
     environment:
       FZ_URL: "ws://api:8081/"
       FZ_SECRET: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAEC0b0KJAWIAAVGA.9Oirn9t8rvQpfOhW7hwGBFVzeMm9di0xYGTlwf9cFFk"
@@ -157,7 +153,7 @@ services:
       dockerfile: Dockerfile
       args:
         PACKAGE: gateway
-    image: firezone-gateway
+    image: firezone/gateway
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -170,7 +166,7 @@ services:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
       api:
-        condition: 'service_healthy'
+        condition: "service_healthy"
     networks:
       app:
         ipv4_address: 172.28.0.105
@@ -179,7 +175,7 @@ services:
   httpbin:
     image: kennethreitz/httpbin
     healthcheck:
-      test: [ "CMD-SHELL", "ps -C gunicorn" ]
+      test: ["CMD-SHELL", "ps -C gunicorn"]
     networks:
       resources:
         ipv4_address: 172.20.0.100
@@ -206,16 +202,16 @@ services:
       dockerfile: Dockerfile
       args:
         PACKAGE: relay
-    image: firezone-relay
+    image: firezone/relay
     healthcheck:
-      test: [ "CMD-SHELL", "lsof -i UDP | grep relay" ]
+      test: ["CMD-SHELL", "lsof -i UDP | grep relay"]
       start_period: 20s
       interval: 30s
       retries: 5
       timeout: 5s
     depends_on:
       api:
-        condition: 'service_healthy'
+        condition: "service_healthy"
     ports:
       # XXX: Only 111 ports are used for local dev / testing because Docker Desktop
       # allocates a userland proxy process for each forwarded port X_X.
@@ -232,7 +228,7 @@ services:
       context: elixir
       args:
         APPLICATION_NAME: api
-    image: firezone_api_dev
+    image: firezone/api
     hostname: api.cluster.local
     ports:
       - 8081:8081/tcp
@@ -276,16 +272,16 @@ services:
       OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
       ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
       ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
-      OUTBOUND_EMAIL_ADAPTER_OPTS: "{\"api_key\":\"7da7d1cd-111c-44a7-b5ac-4027b9d230e5\"}"
+      OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
       # Seeds
       STATIC_SEEDS: "true"
     depends_on:
       vault:
-        condition: 'service_healthy'
+        condition: "service_healthy"
       postgres:
-        condition: 'service_healthy'
+        condition: "service_healthy"
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f localhost:8081/healthz" ]
+      test: ["CMD-SHELL", "curl -f localhost:8081/healthz"]
       start_period: 20s
       interval: 30s
       retries: 5
@@ -301,7 +297,7 @@ services:
       target: builder
       args:
         APPLICATION_NAME: api
-    image: firezone_local_dev
+    image: firezone/elixir
     hostname: elixir
     volumes:
       - elixir-build-cache:/app/_build
@@ -348,7 +344,7 @@ services:
       OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
       ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
       ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
-      OUTBOUND_EMAIL_ADAPTER_OPTS: "{\"api_key\":\"7da7d1cd-111c-44a7-b5ac-4027b9d230e5\"}"
+      OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
       # Mix env should be set to prod to use secrets declared above,
       # otherwise seeds will generate invalid tokens
       MIX_ENV: "prod"
@@ -356,7 +352,7 @@ services:
       STATIC_SEEDS: "true"
     depends_on:
       postgres:
-        condition: 'service_healthy'
+        condition: "service_healthy"
     networks:
       - app
 

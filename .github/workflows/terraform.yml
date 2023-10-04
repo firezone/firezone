@@ -1,13 +1,6 @@
 name: Terraform
 on:
-  merge_group:
-    type: [checks_requested]
-  pull_request:
-    paths:
-      - "terraform/**"
-      - ".github/workflows/terraform.yml"
   workflow_call:
-  workflow_dispatch:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -62,13 +55,17 @@ jobs:
           TF_VAR_relay_image_tag: '"${{ github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
-          configuration_version: ${{ steps.plan-upload.outputs.configuration_version_id }}
+          configuration_version:
+            ${{ steps.plan-upload.outputs.configuration_version_id }}
           plan_only: true
       - name: Get Plan Output
         uses: hashicorp/tfc-workflows-github/actions/plan-output@v1.0.4
         id: plan-output
         with:
-          plan: ${{ fromJSON(steps.plan-run.outputs.payload).data.relationships.plan.data.id }}
+          plan:
+            ${{
+            fromJSON(steps.plan-run.outputs.payload).data.relationships.plan.data.id
+            }}
       - name: Update PR
         uses: actions/github-script@v6
         id: plan-comment
