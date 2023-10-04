@@ -30,12 +30,20 @@ jobs:
         include:
           - image_name: api
             cache_scope: elixir
+            build-args: |
+              APPLICATION_NAME=api
           - image_name: web
             cache_scope: elixir
+            build-args: |
+              APPLICATION_NAME=web
           - image_name: gateway
             cache_scope: rust
+            build-args: |
+              PACKAGE=gateway
           - image_name: relay
             cache_scope: rust
+            build-args: |
+              PACKAGE=relay
     needs:
       - rust
       - elixir
@@ -78,7 +86,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           platforms: linux/amd64
-          build-args: APPLICATION_NAME=${{ env.APPLICATION_NAME }}
+          build-args: ${{ matrix.build-args }}
           context: ${{ matrix.cache_scope }}/
           cache-from: type=gha,scope=${{ matrix.cache_scope }}
           cache-to:
