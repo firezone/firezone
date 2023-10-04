@@ -1,0 +1,16 @@
+[package]
+name = "firezone-headless-client"
+# mark:automatic-version
+version = "1.20231001.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+secrecy = { workspace = true }
+connlib-client-shared = { workspace = true }
+headless-utils = { workspace = true }
+anyhow = { version = "1.0" }
+tracing = { workspace = true }
+clap = { version = "4.4", features = ["derive",  "env"] }
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }

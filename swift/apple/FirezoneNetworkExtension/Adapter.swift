@@ -92,10 +92,10 @@ public class Adapter {
   // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
   #if DEBUG
     private let logFilterString =
-      "connlib_apple=debug,firezone_tunnel=trace,libs_common=debug,firezone_client_connlib=debug,warn"
+      "connlib_client_apple=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn"
   #else
     private let logFilterString =
-      "connlib_apple=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn"
+      "connlib_client_apple=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn"
   #endif
 
   private let connlibLogFolderPath: String

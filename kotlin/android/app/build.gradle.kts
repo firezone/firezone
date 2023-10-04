@@ -66,7 +66,7 @@ android {
             buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firez.one/\"")
 
             // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
-            buildConfigField("String", "CONNLIB_LOG_FILTER_STRING", "\"connlib_android=debug,firezone_tunnel=trace,libs_common=debug,firezone_client_connlib=debug,warn\"")
+            buildConfigField("String", "CONNLIB_LOG_FILTER_STRING", "\"connlib_client_android=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn\"")
 
             resValue("string", "app_name", "\"Firezone (Dev)\"")
         }
@@ -80,7 +80,7 @@ android {
             buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firezone.dev/\"")
 
             // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
-            buildConfigField("String", "CONNLIB_LOG_FILTER_STRING", "\"connlib_android=info,firezone_tunnel=info,libs_common=info,firezone_client_connlib=info,warn\"")
+            buildConfigField("String", "CONNLIB_LOG_FILTER_STRING", "\"connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn\"")
 
             resValue("string", "app_name", "\"Firezone\"")
         }

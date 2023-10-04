@@ -34,19 +34,19 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on:  ubuntu-20.04
-            packages: -p headless -p gateway
+            packages: -p firezone-headless-client -p firezone-gateway
           - runs-on: ubuntu-22.04
-            packages: -p headless -p gateway
+            packages: -p firezone-headless-client -p firezone-gateway
           - runs-on: macos-11
-            packages: -p connlib-apple
+            packages: -p connlib-client-apple
           - runs-on: macos-12
-            packages: -p connlib-apple
+            packages: -p connlib-client-apple
           - runs-on: macos-13
-            packages: -p connlib-apple
+            packages: -p connlib-client-apple
           - runs-on: windows-2019
-            packages: -p firezone-client-connlib
+            packages: -p connlib-client-shared
           - runs-on: windows-2022
-            packages: -p firezone-client-connlib
+            packages: -p connlib-client-shared
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -171,7 +171,7 @@ jobs:
       contents: read
       id-token: "write"
     env:
-      PACKAGE: gateway
+      PACKAGE: firezone-gateway
       REGISTRY: us-east1-docker.pkg.dev
       GCLOUD_PROJECT: firezone-staging
       GOOGLE_CLOUD_PROJECT: firezone-staging
