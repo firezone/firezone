@@ -752,10 +752,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "connlib-android"
+name = "connlib-client-android"
 version = "1.20231001.0"
 dependencies = [
- "firezone-client-shared",
+ "connlib-client-shared",
  "ip_network",
  "jni",
  "log",
@@ -769,12 +769,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "connlib-apple"
+name = "connlib-client-apple"
 version = "1.20231001.0"
 dependencies = [
  "anyhow",
+ "connlib-client-shared",
  "diva",
- "firezone-client-shared",
  "ip_network",
  "libc",
  "secrecy",
@@ -786,6 +786,47 @@ dependencies = [
  "tracing-oslog",
  "tracing-subscriber",
  "walkdir",
+]
+
+[[package]]
+name = "connlib-client-headless"
+version = "1.20231001.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "connlib-client-shared",
+ "headless-utils",
+ "secrecy",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "connlib-client-shared"
+version = "1.20231001.0"
+dependencies = [
+ "async-trait",
+ "backoff",
+ "boringtun",
+ "chrono",
+ "firezone-tunnel",
+ "libs-common",
+ "rand",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "tracing-android",
+ "tracing-appender",
+ "tracing-stackdriver",
+ "tracing-subscriber",
+ "url",
+ "webrtc",
 ]
 
 [[package]]
@@ -1173,34 +1214,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e825f6987101665dea6ec934c09ec6d721de7bc1bf92248e1d5810c8cd636b77"
 
 [[package]]
-name = "firezone-client-shared"
-version = "1.20231001.0"
-dependencies = [
- "async-trait",
- "backoff",
- "boringtun",
- "chrono",
- "firezone-tunnel",
- "libs-common",
- "rand",
- "reqwest",
- "secrecy",
- "serde",
- "serde_json",
- "time",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
- "tracing",
- "tracing-android",
- "tracing-appender",
- "tracing-stackdriver",
- "tracing-subscriber",
- "url",
- "webrtc",
-]
-
-[[package]]
 name = "firezone-gateway-connlib"
 version = "1.20231001.0"
 dependencies = [
@@ -1460,25 +1473,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
-name = "headless"
-version = "1.20231001.0"
-dependencies = [
- "anyhow",
- "clap",
- "firezone-client-shared",
- "headless-utils",
- "secrecy",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "headless-utils"
 version = "1.20231001.0"
 dependencies = [
  "clap",
+ "connlib-client-shared",
  "ctrlc",
- "firezone-client-shared",
  "ip_network",
  "tracing",
  "tracing-subscriber",

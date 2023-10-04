@@ -1,4 +1,4 @@
-use firezone_client_shared::file_logger;
+use connlib_client_shared::file_logger;
 use std::path::Path;
 use std::time::Duration;
 use tracing_subscriber::layer::SubscriberExt;

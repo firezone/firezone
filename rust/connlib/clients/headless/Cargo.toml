@@ -1,5 +1,5 @@
 [package]
-name = "headless"
+name = "connlib-client-headless"
 # mark:automatic-version
 version = "1.20231001.0"
 edition = "2021"
@@ -8,7 +8,7 @@ edition = "2021"
 
 [dependencies]
 secrecy = { workspace = true }
-firezone-client-shared = { workspace = true }
+connlib-client-shared = { workspace = true }
 headless-utils = { workspace = true }
 anyhow = { version = "1.0" }
 tracing = { workspace = true }

@@ -24,10 +24,10 @@ tracing = { version = "0.1.37" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
 
-connlib-android = { path = "connlib/clients/android"}
-connlib-apple = { path = "connlib/clients/apple"}
-headless = { path = "connlib/clients/headless"}
-firezone-client-shared = { path = "connlib/clients/shared"}
+connlib-client-android = { path = "connlib/clients/android"}
+connlib-client-apple = { path = "connlib/clients/apple"}
+connlib-client-headless = { path = "connlib/clients/headless"}
+connlib-client-shared = { path = "connlib/clients/shared"}
 gateway = { path = "connlib/gateway"}
 headless-utils = { path = "connlib/headless-utils"}
 libs-common = { path = "connlib/libs/common"}
