@@ -14,83 +14,76 @@ defmodule Web.RelayGroups.Index do
     end
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "relays" <> _account_id_or_nothing}, socket) do
-    subject = socket.assigns.subject
-    {:ok, groups} = Relays.list_groups(subject, preload: [:relays])
-    {:noreply, assign(socket, groups: groups)}
-  end
-
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/relay_groups"}>Relay Instance Groups</.breadcrumb>
     </.breadcrumbs>
-    <.header>
-      <:title>
-        All relays
-      </:title>
-      <:actions>
+    <.section>
+      <:title>Relays</:title>
+      <:action>
         <.add_button navigate={~p"/#{@account}/relay_groups/new"}>
           Add Instance Group
         </.add_button>
-      </:actions>
-    </.header>
-    <!-- Relays Table -->
-    <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <!--<.resource_filter />-->
-      <.table_with_groups
-        id="groups"
-        groups={@groups}
-        group_items={& &1.relays}
-        group_id={&"group-#{&1.id}"}
-        row_id={&"relay-#{&1.id}"}
-      >
-        <:group :let={group}>
-          <.link
-            :if={not is_nil(group.account_id)}
-            navigate={~p"/#{@account}/relay_groups/#{group.id}"}
-            class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
+      </:action>
+      <:content>
+        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+          <!--<.resource_filter />-->
+          <.table_with_groups
+            id="groups"
+            groups={@groups}
+            group_items={& &1.relays}
+            group_id={&"group-#{&1.id}"}
+            row_id={&"relay-#{&1.id}"}
           >
-            <%= group.name %>
-          </.link>
-          <span :if={is_nil(group.account_id)}>
-            <%= group.name %>
-          </span>
-        </:group>
+            <:group :let={group}>
+              <.link
+                :if={not is_nil(group.account_id)}
+                navigate={~p"/#{@account}/relay_groups/#{group.id}"}
+                class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
+              >
+                <%= group.name %>
+              </.link>
+              <span :if={is_nil(group.account_id)}>
+                <%= group.name %>
+              </span>
+            </:group>
 
-        <:col :let={relay} label="INSTANCE">
-          <.link
-            :if={relay.account_id}
-            navigate={~p"/#{@account}/relays/#{relay.id}"}
-            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-          >
-            <code :if={relay.ipv4} class="block text-xs">
-              <%= relay.ipv4 %>
-            </code>
-            <code :if={relay.ipv6} class="block text-xs">
-              <%= relay.ipv6 %>
-            </code>
-          </.link>
-          <div :if={is_nil(relay.account_id)}>
-            <code :if={relay.ipv4} class="block text-xs">
-              <%= relay.ipv4 %>
-            </code>
-            <code :if={relay.ipv6} class="block text-xs">
-              <%= relay.ipv6 %>
-            </code>
-          </div>
-        </:col>
+            <:col :let={relay} label="INSTANCE">
+              <.link
+                :if={relay.account_id}
+                navigate={~p"/#{@account}/relays/#{relay.id}"}
+                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              >
+                <code :if={relay.ipv4} class="block text-xs">
+                  <%= relay.ipv4 %>
+                </code>
+                <code :if={relay.ipv6} class="block text-xs">
+                  <%= relay.ipv6 %>
+                </code>
+              </.link>
+              <div :if={is_nil(relay.account_id)}>
+                <code :if={relay.ipv4} class="block text-xs">
+                  <%= relay.ipv4 %>
+                </code>
+                <code :if={relay.ipv6} class="block text-xs">
+                  <%= relay.ipv6 %>
+                </code>
+              </div>
+            </:col>
 
-        <:col :let={relay} label="TYPE">
-          <%= if relay.account_id, do: "self-hosted", else: "firezone-owned" %>
-        </:col>
+            <:col :let={relay} label="TYPE">
+              <%= if relay.account_id, do: "self-hosted", else: "firezone-owned" %>
+            </:col>
 
-        <:col :let={relay} label="STATUS">
-          <.connection_status schema={relay} />
-        </:col>
-      </.table_with_groups>
-      <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/relay_groups"} />-->
-    </div>
+            <:col :let={relay} label="STATUS">
+              <.connection_status schema={relay} />
+            </:col>
+          </.table_with_groups>
+          <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/relay_groups"} />-->
+        </div>
+      </:content>
+    </.section>
     """
   end
 
@@ -107,7 +100,11 @@ defmodule Web.RelayGroups.Index do
             <input
               type="text"
               id="simple-search"
-              class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
+              class={[
+                "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-500",
+                "focus:border-primary-500 block w-full pl-10 p-2 dark:bg-gray-700 dark:border-gray-600",
+                "dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
+              ]}
               placeholder="Search"
               required=""
             />
@@ -127,5 +124,11 @@ defmodule Web.RelayGroups.Index do
       </.button_group>
     </div>
     """
+  end
+
+  def handle_info(%Phoenix.Socket.Broadcast{topic: "relays" <> _account_id_or_nothing}, socket) do
+    subject = socket.assigns.subject
+    {:ok, groups} = Relays.list_groups(subject, preload: [:relays])
+    {:noreply, assign(socket, groups: groups)}
   end
 end

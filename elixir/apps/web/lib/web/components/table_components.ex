@@ -112,6 +112,7 @@ defmodule Web.TableComponents do
       <.table id="users" rows={@users}>
         <:col :let={user} label="id"><%= user.id %></:col>
         <:col :let={user} label="username"><%= user.username %></:col>
+        <:empty><div class="text-center">No users found</div></:empty>
       </.table>
   """
   attr :id, :string, required: true
@@ -130,6 +131,7 @@ defmodule Web.TableComponents do
   end
 
   slot :action, doc: "the slot for showing user actions in the last table column"
+  slot :empty, doc: "the slot for showing a message or content when there are no rows"
 
   def table(assigns) do
     assigns =
@@ -156,6 +158,9 @@ defmodule Web.TableComponents do
           />
         </tbody>
       </table>
+      <div :if={Enum.empty?(@rows)}>
+        <%= render_slot(@empty) %>
+      </div>
     </div>
     """
   end

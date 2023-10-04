@@ -28,13 +28,14 @@ defmodule Web.Actors.Index do
       <.breadcrumb path={~p"/#{@account}/actors"}><%= @page_title %></.breadcrumb>
     </.breadcrumbs>
 
-    <.page>
+    <.section>
       <:title><%= @page_title %></:title>
 
-      <:action navigate={~p"/#{@account}/actors/new"} icon="hero-plus">
-        Add a new Actor
+      <:action>
+        <.add_button navigate={~p"/#{@account}/actors/new"}>
+          Add Actor
+        </.add_button>
       </:action>
-
       <:content>
         <.table id="actors" rows={@actors} row_id={&"user-#{&1.id}"}>
           <:col :let={actor} label="name" sortable="false">
@@ -77,7 +78,7 @@ defmodule Web.Actors.Index do
           </:col>
         </.table>
       </:content>
-    </.page>
+    </.section>
     """
   end
 

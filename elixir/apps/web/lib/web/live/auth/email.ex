@@ -29,10 +29,6 @@ defmodule Web.Auth.Email do
      ]}
   end
 
-  def handle_info(:hide_resent_flash, socket) do
-    {:noreply, assign(socket, :resent, nil)}
-  end
-
   def render(assigns) do
     ~H"""
     <section class="bg-gray-50 dark:bg-gray-900">
@@ -127,6 +123,10 @@ defmodule Web.Auth.Email do
       </div>
     </section>
     """
+  end
+
+  def handle_info(:hide_resent_flash, socket) do
+    {:noreply, assign(socket, :resent, nil)}
   end
 
   if Mix.env() in [:dev, :test] do

@@ -165,7 +165,7 @@ defmodule Web.Live.RelayGroups.ShowTest do
       |> live(~p"/#{account}/relay_groups/#{group}")
 
     assert lv
-           |> element("button", "Delete Relay")
+           |> element("button", "Delete")
            |> render_click() ==
              {:error, {:redirect, %{to: ~p"/#{account}/relay_groups"}}}
 

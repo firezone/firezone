@@ -11,6 +11,44 @@ defmodule Web.GatewayGroups.Edit do
     end
   end
 
+  def render(assigns) do
+    ~H"""
+    <.breadcrumbs account={@account}>
+      <.breadcrumb path={~p"/#{@account}/gateway_groups"}>Gateway Instance Groups</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/gateway_groups/#{@group}"}>
+        <%= @group.name_prefix %>
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/gateway_groups/#{@group}/edit"}>Edit</.breadcrumb>
+    </.breadcrumbs>
+
+    <.section>
+      <:title>Edit Gateway Instance Group: <code><%= @group.name_prefix %></code></:title>
+      <:content>
+        <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
+          <.form for={@form} phx-change={:change} phx-submit={:submit}>
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <div>
+                <.input
+                  label="Name Prefix"
+                  field={@form[:name_prefix]}
+                  placeholder="Name of this Gateway Instance Group"
+                  required
+                />
+              </div>
+              <div>
+                <.input label="Tags" type="taglist" field={@form[:tags]} placeholder="Tag" />
+              </div>
+            </div>
+            <.submit_button>
+              Save
+            </.submit_button>
+          </.form>
+        </div>
+      </:content>
+    </.section>
+    """
+  end
+
   def handle_event("delete:group[tags]", %{"index" => index}, socket) do
     changeset = socket.assigns.form.source
     values = Ecto.Changeset.fetch_field!(changeset, :tags) || []
@@ -43,45 +81,5 @@ defmodule Web.GatewayGroups.Edit do
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
-  end
-
-  def render(assigns) do
-    ~H"""
-    <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/gateway_groups"}>Gateway Instance Groups</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/gateway_groups/#{@group}"}>
-        <%= @group.name_prefix %>
-      </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/gateway_groups/#{@group}/edit"}>Edit</.breadcrumb>
-    </.breadcrumbs>
-    <.header>
-      <:title>
-        Editing Gateway Instance Group <code><%= @group.name_prefix %></code>
-      </:title>
-    </.header>
-
-    <section class="bg-white dark:bg-gray-900">
-      <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
-        <.form for={@form} phx-change={:change} phx-submit={:submit}>
-          <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-            <div>
-              <.input
-                label="Name Prefix"
-                field={@form[:name_prefix]}
-                placeholder="Name of this Gateway Instance Group"
-                required
-              />
-            </div>
-            <div>
-              <.input label="Tags" type="taglist" field={@form[:tags]} placeholder="Tag" />
-            </div>
-          </div>
-          <.submit_button>
-            Save
-          </.submit_button>
-        </.form>
-      </div>
-    </section>
-    """
   end
 end

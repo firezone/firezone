@@ -235,7 +235,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
       |> live(~p"/#{account}/settings/identity_providers/google_workspace/#{provider}")
 
     assert lv
-           |> element("a", "Reconnect Identity Provider")
+           |> element("a", "Reconnect")
            |> render()
            |> Floki.attribute("href")
            |> hd() ==
