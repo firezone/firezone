@@ -47,6 +47,8 @@ jobs:
           workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
           service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
           export_environment_variables: false
+      - name: "Set up Cloud SDK"
+        uses: "google-github-actions/setup-gcloud@v1"
       - name: Change current gcloud account
         run: gcloud --quiet config set project ${GCLOUD_PROJECT}
       - name: Login to Google Artifact Registry
