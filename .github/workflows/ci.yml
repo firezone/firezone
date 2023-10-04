@@ -20,7 +20,7 @@ jobs:
     uses: ./.github/workflows/terraform.yml
     secrets: inherit
 
-  # We could build these in GCP with Cloud Build, but for now it"s probably
+  # We could build these in GCP with Cloud Build, but for now it's
   # less overhead to keep things in GH actions. See work on building these
   # in GCP with Cloud Build: https://github.com/firezone/firezone/pull/2234
   build-images:
