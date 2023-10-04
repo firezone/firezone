@@ -166,7 +166,6 @@ jobs:
       - uses: actions/cache/save@v3
         # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save PLT cache
-        id: plt_cache
         env:
           cache-name: cache-erlang-plt-${{ env.MIX_ENV }}
         with:
