@@ -16,6 +16,12 @@ jobs:
         working-directory: ./kotlin/android
     steps:
       - uses: actions/checkout@v4
+      - name: Update toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
+          # save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-java@v3
         with:
           distribution: temurin

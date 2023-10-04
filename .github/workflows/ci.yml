@@ -26,6 +26,9 @@ jobs:
       - elixir
       - rust
       - static-analysis
+    permissions:
+      contents: read
+      id-token: "write"
     runs-on: ubuntu-latest
     env:
       APPLICATION_NAME: web

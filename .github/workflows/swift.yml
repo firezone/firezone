@@ -32,7 +32,8 @@ jobs:
         working-directory: ./swift
     steps:
       - uses: actions/checkout@v4
-      - run: rustup show
+      - name: Update toolchain
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
