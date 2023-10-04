@@ -558,7 +558,7 @@ jobs:
             APPLICATION_NAME=${{ env.APPLICATION_NAME }}
           context: elixir/
           cache-from: type=gha,scope=elixir
-          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=elixir' }}
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=elixir' || 'type=local' }}
           file: elixir/Dockerfile
           push: ${{ github.ref == 'refs/head/main' }}
           tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}
@@ -617,7 +617,7 @@ jobs:
             APPLICATION_NAME=${{ env.APPLICATION_NAME }}
           context: elixir/
           cache-from: type=gha,scope=elixir
-          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=elixir' }}
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=elixir' || 'type=local' }}
           file: elixir/Dockerfile
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}
