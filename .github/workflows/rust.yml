@@ -126,7 +126,7 @@ jobs:
             PACKAGE=${{ env.PACKAGE }}
           context: rust/
           cache-from: type=gha,scope=rust
-          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=rust' || 'type=local' }}
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=rust' || '' }}
           file: rust/Dockerfile
           push: ${{ github.ref == 'refs/heads/main' }}
           tags:
@@ -185,7 +185,7 @@ jobs:
             PACKAGE=${{ env.PACKAGE }}
           context: rust/
           cache-from: type=gha,scope=rust
-          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=rust' || 'type=local' }}
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=rust' || '' }}
           file: rust/Dockerfile
           push: ${{ github.ref == 'refs/heads/main' }}
           tags:
