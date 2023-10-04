@@ -3,7 +3,7 @@ on:
   pull_request:
   merge_group:
     types: [checks_requested]
-  workflow_call:
+  workflow_dispatch:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
