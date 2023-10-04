@@ -34,9 +34,9 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on:  ubuntu-20.04
-            packages: -p headless -p gateway
+            packages: -p headless -p gateway -p headless -p connlib-android
           - runs-on: ubuntu-22.04
-            packages: -p headless -p gateway
+            packages: -p headless -p gateway -p headless -p connlib-android
           - runs-on: macos-11
             packages: -p connlib-apple
           - runs-on: macos-12
@@ -64,13 +64,7 @@ jobs:
       - run: cargo test --all-features ${{ matrix.packages }}
 
   rust_smoke-test-relay:
-    strategy:
-      fail-fast: false
-      matrix:
-        runs-on:
-          - ubuntu-20.04
-          - ubuntu-22.04
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./rust/relay
