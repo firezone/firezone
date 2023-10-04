@@ -55,7 +55,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          shared-key: ${{ runner.os }}
+          shared-key: ${{ matrix.runs-on }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
@@ -65,7 +65,11 @@ jobs:
       - run: cargo test --all-features ${{ matrix.packages }}
 
   rust_smoke-test-relay:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      matrix:
+        runs-on:
+          - ubuntu-latest
     defaults:
       run:
         working-directory: ./rust/relay
@@ -76,7 +80,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          shared-key: ${{ runner.os }}
+          shared-key: ${{ matrix.runs-on }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ./run_smoke_test.sh
 

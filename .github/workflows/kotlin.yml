@@ -18,7 +18,11 @@ concurrency:
 jobs:
   # See rust.yml how we build, package and release connlib as an example
   kotlin_build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      matrix:
+        runs-on:
+          - ubuntu-latest
     defaults:
       run:
         working-directory: ./kotlin/android
@@ -29,7 +33,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          shared-key: ${{ runner.os }}
+          shared-key: ${{ matrix.runs-on }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-java@v3
         with:
