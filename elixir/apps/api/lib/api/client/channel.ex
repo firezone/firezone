@@ -59,9 +59,10 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "client.after_join" do
       :ok = API.Endpoint.subscribe("client:#{socket.assigns.client.id}")
+      :ok = Resources.subscribe_for_resource_events_in_account(socket.assigns.client.account_id)
       :ok = Clients.connect_client(socket.assigns.client)
 
-      {:ok, resources} = Domain.Resources.list_authorized_resources(socket.assigns.subject)
+      {:ok, resources} = Resources.list_authorized_resources(socket.assigns.subject)
 
       :ok =
         push(socket, "init", %{
@@ -78,7 +79,7 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.token_expired" do
-      push(socket, "token_expired", %{})
+      push(socket, "disconnect", %{"reason" => "token_expired"})
       {:stop, {:shutdown, :token_expired}, socket}
     end
   end
@@ -130,14 +131,15 @@ defmodule API.Client.Channel do
     end
   end
 
-  def handle_info({:resource_added, resource_id}, socket) do
+  def handle_info({:resource_created, resource_id}, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "client.resource_added",
+    OpenTelemetry.Tracer.with_span "client.resource_created",
       attributes: %{resource_id: resource_id} do
-      with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject) do
-        push(socket, "resource_added", Views.Resource.render(resource))
+      with {:ok, resource} <-
+             Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject) do
+        push(socket, "resource_created", Views.Resource.render(resource))
       end
 
       {:noreply, socket}
@@ -150,7 +152,8 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "client.resource_updated",
       attributes: %{resource_id: resource_id} do
-      with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject) do
+      with {:ok, resource} <-
+             Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject) do
         push(socket, "resource_updated", Views.Resource.render(resource))
       end
 
@@ -158,13 +161,13 @@ defmodule API.Client.Channel do
     end
   end
 
-  def handle_info({:resource_removed, resource_id}, socket) do
+  def handle_info({:resource_deleted, resource_id}, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "client.resource_removed",
+    OpenTelemetry.Tracer.with_span "client.resource_deleted",
       attributes: %{resource_id: resource_id} do
-      push(socket, "resource_removed", resource_id)
+      push(socket, "resource_deleted", resource_id)
       {:noreply, socket}
     end
   end

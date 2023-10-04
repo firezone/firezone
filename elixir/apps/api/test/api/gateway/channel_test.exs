@@ -116,6 +116,38 @@ defmodule API.Gateway.ChannelTest do
       assert payload.client_id == client.id
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
     end
+
+    test "subscribes for resource events", %{
+      client: client,
+      resource: resource,
+      relay: relay,
+      subject: subject,
+      socket: socket
+    } do
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+      flow_id = Ecto.UUID.generate()
+
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      send(
+        socket.channel_pid,
+        {:allow_access,
+         %{
+           client_id: client.id,
+           resource_id: resource.id,
+           flow_id: flow_id,
+           authorization_expires_at: expires_at
+         }, otel_ctx}
+      )
+
+      assert_push "allow_access", %{}
+
+      {:ok, _resource} = Domain.Resources.delete_resource(resource, subject)
+      resource_id = resource.id
+      assert_push "resource_deleted", ^resource_id
+    end
   end
 
   describe "handle_info/2 :ice_candidates" do
@@ -437,6 +469,46 @@ defmodule API.Gateway.ChannelTest do
              }
 
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
+    end
+
+
+    test "subscribes for resource events", %{
+      client: client,
+      resource: resource,
+      relay: relay,
+      subject: subject,
+      socket: socket
+    } do
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      preshared_key = "PSK"
+      rtc_session_description = "RTC_SD"
+      flow_id = Ecto.UUID.generate()
+
+      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      send(
+        socket.channel_pid,
+        {:request_connection, {channel_pid, socket_ref},
+         %{
+           client_id: client.id,
+           resource_id: resource.id,
+           flow_id: flow_id,
+           authorization_expires_at: expires_at,
+           client_rtc_session_description: rtc_session_description,
+           client_preshared_key: preshared_key
+         }, otel_ctx}
+      )
+
+      assert_push "request_connection", %{}
+
+      {:ok, _resource} = Domain.Resources.delete_resource(resource, subject)
+      resource_id = resource.id
+      assert_push "resource_deleted", ^resource_id
     end
   end
 

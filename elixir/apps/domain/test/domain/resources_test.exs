@@ -1038,6 +1038,128 @@ defmodule Domain.ResourcesTest do
       assert Repo.aggregate(Domain.Network.Address, :count) == address_count
     end
 
+    test "does not allow to reuse IP addresses within an account", %{
+      account: account,
+      subject: subject
+    } do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+
+      attrs =
+        Fixtures.Resources.resource_attrs(
+          connections: [
+            %{gateway_group_id: gateway.group_id}
+          ]
+        )
+
+      assert {:ok, resource} = create_resource(attrs, subject)
+
+      addresses =
+        Domain.Network.Address
+        |> Repo.all()
+        |> Enum.map(fn %Domain.Network.Address{address: address, type: type} ->
+          %{address: address, type: type}
+        end)
+
+      assert %{address: resource.ipv4, type: :ipv4} in addresses
+      assert %{address: resource.ipv6, type: :ipv6} in addresses
+
+      assert_raise Ecto.ConstraintError, fn ->
+        Fixtures.Network.create_address(address: resource.ipv4, account: account)
+      end
+
+      assert_raise Ecto.ConstraintError, fn ->
+        Fixtures.Network.create_address(address: resource.ipv6, account: account)
+      end
+    end
+
+    test "ip addresses are unique per account", %{
+      account: account,
+      subject: subject
+    } do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+
+      attrs =
+        Fixtures.Resources.resource_attrs(
+          connections: [
+            %{gateway_group_id: gateway.group_id}
+          ]
+        )
+
+      assert {:ok, resource} = create_resource(attrs, subject)
+
+      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv4)
+      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv6)
+    end
+
+    test "broadcasts a resource added message", %{account: account, subject: subject} do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+
+      attrs =
+        Fixtures.Resources.resource_attrs(
+          connections: [
+            %{gateway_group_id: gateway.group_id}
+          ]
+        )
+
+      assert :ok = subscribe_for_resource_events_in_account(account)
+      assert {:ok, resource} = create_resource(attrs, subject)
+      resource_id = resource.id
+      assert_receive {:resource_created, ^resource_id}
+    end
+
+    test "does not allow to reuse IP addresses within an account", %{
+      account: account,
+      subject: subject
+    } do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+
+      attrs =
+        Fixtures.Resources.resource_attrs(
+          connections: [
+            %{gateway_group_id: gateway.group_id}
+          ]
+        )
+
+      assert {:ok, resource} = create_resource(attrs, subject)
+
+      addresses =
+        Domain.Network.Address
+        |> Repo.all()
+        |> Enum.map(fn %Domain.Network.Address{address: address, type: type} ->
+          %{address: address, type: type}
+        end)
+
+      assert %{address: resource.ipv4, type: :ipv4} in addresses
+      assert %{address: resource.ipv6, type: :ipv6} in addresses
+
+      assert_raise Ecto.ConstraintError, fn ->
+        Fixtures.Network.create_address(address: resource.ipv4, account: account)
+      end
+
+      assert_raise Ecto.ConstraintError, fn ->
+        Fixtures.Network.create_address(address: resource.ipv6, account: account)
+      end
+    end
+
+    test "ip addresses are unique per account", %{
+      account: account,
+      subject: subject
+    } do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+
+      attrs =
+        Fixtures.Resources.resource_attrs(
+          connections: [
+            %{gateway_group_id: gateway.group_id}
+          ]
+        )
+
+      assert {:ok, resource} = create_resource(attrs, subject)
+
+      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv4)
+      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv6)
+    end
+
     test "returns error when subject has no permission to create resources", %{
       subject: subject
     } do
@@ -1075,6 +1197,23 @@ defmodule Domain.ResourcesTest do
                filters: ["is invalid"],
                connections: ["is invalid"]
              }
+    end
+
+    test "broadcasts a resource updated message", %{
+      account: account,
+      resource: resource,
+      subject: subject
+    } do
+      attrs = %{"name" => "foo"}
+
+      assert :ok = subscribe_for_resource_events_in_account(account)
+      assert :ok = subscribe_for_resource_events(resource)
+
+      assert {:ok, resource} = update_resource(resource, attrs, subject)
+
+      resource_id = resource.id
+      assert_receive {:resource_updated, ^resource_id}
+      assert_receive {:resource_updated, ^resource_id}
     end
 
     test "allows to update name", %{resource: resource, subject: subject} do
@@ -1165,9 +1304,24 @@ defmodule Domain.ResourcesTest do
       assert delete_resource(resource, subject) == {:error, :not_found}
     end
 
-    test "deletes gateways", %{resource: resource, subject: subject} do
+    test "deletes resources", %{resource: resource, subject: subject} do
       assert {:ok, deleted} = delete_resource(resource, subject)
       assert deleted.deleted_at
+    end
+
+    test "broadcasts a resource deleted message", %{
+      account: account,
+      resource: resource,
+      subject: subject
+    } do
+      assert :ok = subscribe_for_resource_events_in_account(account)
+      assert :ok = subscribe_for_resource_events(resource)
+
+      assert {:ok, resource} = delete_resource(resource, subject)
+
+      resource_id = resource.id
+      assert_receive {:resource_deleted, ^resource_id}
+      assert_receive {:resource_deleted, ^resource_id}
     end
 
     test "returns error when subject has no permission to delete resources", %{

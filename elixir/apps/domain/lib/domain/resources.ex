@@ -154,6 +154,8 @@ defmodule Domain.Resources do
         #   {:resource_added, resource.id}
         # )
 
+        :ok = broadcast_resource_events(:created, resource)
+
         {:ok, resource}
       end
     end
@@ -170,12 +172,7 @@ defmodule Domain.Resources do
       |> Repo.update()
       |> case do
         {:ok, resource} ->
-          # Phoenix.PubSub.broadcast(
-          #   Domain.PubSub,
-          #   "actor_client:#{resource.actor_id}",
-          #   {:resource_updated, resource.id}
-          # )
-
+          :ok = broadcast_resource_events(:updated, resource)
           {:ok, resource}
 
         {:error, reason} ->
@@ -191,12 +188,7 @@ defmodule Domain.Resources do
       |> Repo.fetch_and_update(with: &Resource.Changeset.delete/1)
       |> case do
         {:ok, resource} ->
-          # Phoenix.PubSub.broadcast(
-          #   Domain.PubSub,
-          #   "actor_client:#{resource.actor_id}",
-          #   {:resource_removed, resource.id}
-          # )
-
+          :ok = broadcast_resource_events(:deleted, resource)
           {:ok, resource}
 
         {:error, reason} ->
@@ -212,5 +204,47 @@ defmodule Domain.Resources do
     Connection.Query.by_resource_id(resource.id)
     |> Connection.Query.by_gateway_group_id(gateway.group_id)
     |> Repo.exists?()
+  end
+
+  defp broadcast_resource_events(:created, %Resource{} = resource) do
+    payload = {:resource_created, resource.id}
+    Phoenix.PubSub.broadcast(Domain.PubSub, "account_resources:#{resource.account_id}", payload)
+  end
+
+  defp broadcast_resource_events(kind, %Resource{} = resource) do
+    payload = {:"resource_#{kind}", resource.id}
+
+    for topic <- [
+          "account_resources:#{resource.account_id}",
+          "resources:#{resource.id}"
+        ] do
+      Phoenix.PubSub.broadcast(Domain.PubSub, topic, payload)
+    end
+
+    :ok
+  end
+
+  def subscribe_for_resource_events_in_account(%Accounts.Account{} = account) do
+    subscribe_for_resource_events_in_account(account.id)
+  end
+
+  def subscribe_for_resource_events_in_account(account_id) do
+    Phoenix.PubSub.subscribe(Domain.PubSub, "account_resources:#{account_id}")
+  end
+
+  def subscribe_for_resource_events(%Resource{} = resource) do
+    subscribe_for_resource_events(resource.id)
+  end
+
+  def subscribe_for_resource_events(resource_id) do
+    Phoenix.PubSub.subscribe(Domain.PubSub, "resources:#{resource_id}")
+  end
+
+  def unsubscribe_from_resource_events(%Resource{} = resource) do
+    unsubscribe_from_resource_events(resource.id)
+  end
+
+  def unsubscribe_from_resource_events(resource_id) do
+    Phoenix.PubSub.unsubscribe(Domain.PubSub, "resources:#{resource_id}")
   end
 end

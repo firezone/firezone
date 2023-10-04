@@ -1,5 +1,6 @@
 defmodule API.Client.ChannelTest do
   use API.ChannelCase
+  import API.Client.Channel
   alias Domain.Mocks.GoogleCloudPlatform
 
   setup do
@@ -126,7 +127,7 @@ defmodule API.Client.ChannelTest do
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
-      assert_push "token_expired", %{}, 250
+      assert_push "disconnect", %{"reason" => "token_expired"}, 250
       assert_receive {:EXIT, _pid, {:shutdown, :token_expired}}
       assert_receive {:socket_close, _pid, {:shutdown, :token_expired}}
     end
@@ -170,6 +171,38 @@ defmodule API.Client.ChannelTest do
                ]
              }
     end
+
+    test "subscribes for client events", %{
+      client: client
+    } do
+      assert_push "init", %{}
+      Process.flag(:trap_exit, true)
+      broadcast(client, :token_expired)
+      assert_push "disconnect", %{"reason" => "token_expired"}, 250
+    end
+
+    test "subscribes for resource events", %{
+      dns_resource: resource,
+      subject: subject
+    } do
+      assert_push "init", %{}
+      {:ok, _resource} = Domain.Resources.update_resource(resource, %{name: "foobar"}, subject)
+      assert_push "resource_updated", %{name: "foobar"}
+    end
+  end
+
+  describe "handle_info/2 :handle_info" do
+    test "sends a token_expired messages and closes the socket", %{
+      socket: socket
+    } do
+      Process.flag(:trap_exit, true)
+      channel_pid = socket.channel_pid
+
+      send(channel_pid, :token_expired)
+      assert_push "disconnect", %{"reason" => "token_expired"}
+
+      assert_receive {:EXIT, ^channel_pid, {:shutdown, :token_expired}}
+    end
   end
 
   describe "handle_info/2 :ice_candidates" do
@@ -192,6 +225,82 @@ defmodule API.Client.ChannelTest do
                candidates: candidates,
                gateway_id: gateway.id
              }
+    end
+  end
+
+  describe "handle_info/2 :resource_created" do
+    test "pushes message to the socket for authorized clients", %{
+      dns_resource: resource,
+      socket: socket
+    } do
+      send(socket.channel_pid, {:resource_created, resource.id})
+
+      assert_push "resource_created", payload
+
+      assert payload == %{
+               id: resource.id,
+               type: :dns,
+               name: resource.name,
+               address: resource.address,
+               ipv4: resource.ipv4,
+               ipv6: resource.ipv6
+             }
+    end
+
+    test "ignores message to the socket for unauthorized clients", %{
+      unauthorized_resource: resource,
+      socket: socket
+    } do
+      send(socket.channel_pid, {:resource_created, resource.id})
+      refute_push "resource_created", %{}
+    end
+  end
+
+  describe "handle_info/2 :resource_updated" do
+    test "pushes message to the socket for authorized clients", %{
+      dns_resource: resource,
+      socket: socket
+    } do
+      send(socket.channel_pid, {:resource_updated, resource.id})
+
+      assert_push "resource_updated", payload
+
+      assert payload == %{
+               id: resource.id,
+               type: :dns,
+               name: resource.name,
+               address: resource.address,
+               ipv4: resource.ipv4,
+               ipv6: resource.ipv6
+             }
+    end
+
+    test "ignores message to the socket for unauthorized clients", %{
+      unauthorized_resource: resource,
+      socket: socket
+    } do
+      send(socket.channel_pid, {:resource_updated, resource.id})
+      refute_push "resource_updated", %{}
+    end
+  end
+
+  describe "handle_info/2 :resource_deleted" do
+    test "pushes message to the socket for authorized clients", %{
+      dns_resource: resource,
+      socket: socket
+    } do
+      send(socket.channel_pid, {:resource_deleted, resource.id})
+
+      assert_push "resource_deleted", payload
+      assert payload == resource.id
+    end
+
+    test "ignores message to the socket for unauthorized clients", %{
+      unauthorized_resource: resource,
+      socket: socket
+    } do
+      send(socket.channel_pid, {:resource_deleted, resource.id})
+      refute_push "resource_deleted", %{}
     end
   end
 
