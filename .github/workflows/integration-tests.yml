@@ -24,7 +24,7 @@ jobs:
             client.cache-from=type=gha,scope=rust
             gateway.cache-from=type=gha,scope=rust
             relay.cache-from=type=gha,scope=rust
-            ${{ github.ref == 'refs/heads/main' && '
+            ${{ github.ref != 'refs/heads/main' && '
               elixir.cache-to=type=gha,mode=max,scope=elixir
               api.cache-to=type=gha,mode=max,scope=elixir
               web.cache-to=type=gha,mode=max,scope=elixir
@@ -75,7 +75,7 @@ jobs:
             client.cache-from=type=gha,scope=rust
             gateway.cache-from=type=gha,scope=rust
             relay.cache-from=type=gha,scope=rust
-            ${{ github.ref == 'refs/heads/main' && '
+            ${{ github.ref != 'refs/heads/main' && '
               elixir.cache-to=type=gha,mode=max,scope=elixir
               api.cache-to=type=gha,mode=max,scope=elixir
               web.cache-to=type=gha,mode=max,scope=elixir

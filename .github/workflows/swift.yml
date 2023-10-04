@@ -46,10 +46,11 @@ jobs:
         with:
           workspaces: ./rust
           shared-key: ${{ matrix.runs-on.os }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Update toolchain
         run: rustup show
-      - uses: actions/cache@v3
+      - uses: actions/cache/restore@v3
+        name: Restore SwiftPM Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
           key: ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
@@ -70,3 +71,11 @@ jobs:
           cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
           cp Firezone/xcconfig/Server.xcconfig.ci Firezone/xcconfig/Server.xcconfig
           xcodebuild archive -configuration Release -scheme Firezone -sdk ${{ matrix.target.sdk }} -destination '${{ matrix.target.destination }}' CODE_SIGNING_ALLOWED=NO
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save SwiftPM Cache
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
+          key: ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ matrix.target.platform }}-spm-

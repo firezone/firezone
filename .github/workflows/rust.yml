@@ -56,7 +56,7 @@ jobs:
         with:
           workspaces: ./rust
           shared-key: ${{ matrix.runs-on }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
         env:
@@ -81,7 +81,7 @@ jobs:
         with:
           workspaces: ./rust
           shared-key: ${{ matrix.runs-on }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ./run_smoke_test.sh
 
   rust_relay-container-build:

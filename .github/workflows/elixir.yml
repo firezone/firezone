@@ -43,15 +43,15 @@ jobs:
           otp-version: "26.1.1"
           elixir-version: "1.15.6"
       - uses: actions/checkout@v4
-      - uses: actions/cache@v3
-        name: Elixir Deps Cache
+      - uses: actions/cache/restore@v3
+        name: Restore Elixir Deps Cache
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
-      - uses: actions/cache@v3
-        name: Elixir Build Cache
+      - uses: actions/cache/restore@v3
+        name: Restore Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
@@ -79,6 +79,22 @@ jobs:
           name: Elixir Unit Test Report
           path: elixir/_build/test/lib/*/test-junit-report.xml
           reporter: java-junit
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save Elixir Deps Cache
+        env:
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
+        with:
+          path: elixir/deps
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save Elixir Build Cache
+        env:
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
+        with:
+          path: elixir/_build
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
   elixir_type-check:
     runs-on: ubuntu-latest
     defaults:
@@ -94,15 +110,15 @@ jobs:
           otp-version: "26.1.1"
           elixir-version: "1.15.6"
       - uses: actions/checkout@v4
-      - uses: actions/cache@v3
-        name: Elixir Deps Cache
+      - uses: actions/cache/restore@v3
+        name: Restore Elixir Deps Cache
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
-      - uses: actions/cache@v3
-        name: Elixir Build Cache
+      - uses: actions/cache/restore@v3
+        name: Restore Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
@@ -116,9 +132,9 @@ jobs:
         run: mix compile
       # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
       # Cache key based on Elixir & Erlang version (also useful when running in matrix)
-      - name: Restore PLT cache
+      - uses: actions/cache/restore@v3
+        name: Restore PLT cache
         id: plt_cache
-        uses: actions/cache@v3
         env:
           cache-name: cache-erlang-plt-${{ env.MIX_ENV }}
         with:
@@ -131,6 +147,33 @@ jobs:
         run: mix dialyzer --plt
       - name: Run Dialyzer
         run: mix dialyzer --format dialyxir
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save Elixir Deps Cache
+        env:
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
+        with:
+          path: elixir/deps
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save Elixir Build Cache
+        env:
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
+        with:
+          path: elixir/_build
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save PLT cache
+        id: plt_cache
+        env:
+          cache-name: cache-erlang-plt-${{ env.MIX_ENV }}
+        with:
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-plt
+          restore-keys: |
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-plt
+          path: elixir/priv/plts
   elixir_static-analysis:
     runs-on: ubuntu-latest
     defaults:
@@ -146,15 +189,15 @@ jobs:
           otp-version: "26.1.1"
           elixir-version: "1.15.6"
       - uses: actions/checkout@v4
-      - uses: actions/cache@v3
-        name: Elixir Deps Cache
+      - uses: actions/cache/restore@v3
+        name: Restore Elixir Deps Cache
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
-      - uses: actions/cache@v3
-        name: Elixir Build Cache
+      - uses: actions/cache/restore@v3
+        name: Restore Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
@@ -177,6 +220,22 @@ jobs:
         run: mix format --check-formatted
       - name: Run Credo
         run: mix credo --strict
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save Elixir Deps Cache
+        env:
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
+        with:
+          path: elixir/deps
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save Elixir Build Cache
+        env:
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
+        with:
+          path: elixir/_build
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
   elixir_migrations-and-seed-test:
     runs-on: ubuntu-latest
     defaults:
@@ -213,15 +272,15 @@ jobs:
         with:
           otp-version: "26.1.1"
           elixir-version: "1.15.6"
-      - uses: actions/cache@v3
-        name: Elixir Deps Cache
+      - uses: actions/cache/restore@v3
+        name: Restore Elixir Deps Cache
         env:
-          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}-${{ env.MIX_ENV }}
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
-      - uses: actions/cache@v3
-        name: Elixir Build Cache
+      - uses: actions/cache/restore@v3
+        name: Restore Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
@@ -273,6 +332,22 @@ jobs:
           path: elixir/apps/domain/priv/repo/structure.sql
       - name: Run Seed
         run: mix ecto.seed
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save Elixir Deps Cache
+        env:
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
+        with:
+          path: elixir/deps
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save Elixir Build Cache
+        env:
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
+        with:
+          path: elixir/_build
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
   elixir_acceptance-test:
     runs-on: ubuntu-latest
     defaults:
@@ -322,28 +397,28 @@ jobs:
         with:
           version: 8
       - uses: actions/checkout@v4
-      - uses: actions/cache@v3
-        name: Elixir Deps Cache
+      - uses: actions/cache/restore@v3
+        name: Restore Elixir Deps Cache
         env:
-          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}-${{ env.MIX_ENV }}
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
-      - uses: actions/cache@v3
-        name: Elixir Build Cache
+      - uses: actions/cache/restore@v3
+        name: Restore Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: elixir/_build
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
-      - uses: actions/cache@v3
+      - uses: actions/cache/restore@v3
         name: pnpm Deps Cache
         env:
           cache-name: cache-pnpm-build-${{ env.MIX_ENV }}
         with:
           path: elixir/apps/web/assets/node_modules
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-      - uses: actions/cache@v3
+      - uses: actions/cache/restore@v3
         name: Assets Cache
         env:
           cache-name: cache-assets-build-${{ env.MIX_ENV }}
@@ -399,6 +474,38 @@ jobs:
           name: Elixir Acceptance Test Report
           path: elixir/_build/test/lib/*/test-junit-report.xml
           reporter: java-junit
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save Elixir Deps Cache
+        env:
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
+        with:
+          path: elixir/deps
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save Elixir Build Cache
+        env:
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
+        with:
+          path: elixir/_build
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save pnpm Deps Cache
+        env:
+          cache-name: cache-pnpm-build-${{ env.MIX_ENV }}
+        with:
+          path: elixir/apps/web/assets/node_modules
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+      - uses: actions/cache/save@v3
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save Assets Cache
+        env:
+          cache-name: cache-assets-build-${{ env.MIX_ENV }}
+        with:
+          path: elixir/apps/web/priv/static/dist
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/pnpm-lock.yaml') }}
   elixir_web-container-build:
     runs-on: ubuntu-latest
     defaults:
