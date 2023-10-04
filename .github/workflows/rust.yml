@@ -58,7 +58,7 @@ jobs:
           cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
       - run: cargo test --all-features ${{ matrix.packages }}
       - uses: actions/cache/save@v3
-        name: Restore toolchain cache
+        name: Save toolchain cache
         with:
           path: |
             ~/.rustup/toolchains
