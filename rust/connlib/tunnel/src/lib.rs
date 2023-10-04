@@ -18,7 +18,7 @@ use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
 use resource_table::ResourceTable;
-use tokio::time::MissedTickBehavior;
+use tokio::{task::AbortHandle, time::MissedTickBehavior};
 use webrtc::{
     api::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
@@ -163,6 +163,7 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     control_signaler: C,
     gateway_public_keys: Mutex<HashMap<GatewayId, PublicKey>>,
     callbacks: CallbackErrorFacade<CB>,
+    iface_handler_abort: Mutex<Option<AbortHandle>>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -251,6 +252,7 @@ where
         let iface_config = Default::default();
         let device_io = Default::default();
         let ice_candidate_queue = Default::default();
+        let iface_handler_abort = Default::default();
 
         // ICE
         let mut media_engine = MediaEngine::default();
@@ -294,7 +296,31 @@ where
             resources_gateways,
             ice_candidate_queue,
             callbacks: CallbackErrorFacade(callbacks),
+            iface_handler_abort,
         })
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn add_route(self: &Arc<Self>, route: IpNetwork) -> Result<()> {
+        let mut device_io = self.device_io.write().await;
+        let mut iface_config = self.iface_config.write().await;
+
+        if let Some((conf, io)) = iface_config
+            .as_ref()
+            .ok_or(Error::ControlProtocolError)?
+            .add_route(route, self.callbacks())
+            .await?
+        {
+            let conf = Arc::new(conf);
+            *iface_config = Some(Arc::clone(&conf));
+            *device_io = Some(io.clone());
+            let dev = Arc::clone(self);
+            self.iface_handler_abort.lock().replace(
+                tokio::spawn(async move { dev.iface_handler(conf, io).await }).abort_handle(),
+            );
+        }
+
+        Ok(())
     }
 
     /// Adds a the given resource to the tunnel.
@@ -302,33 +328,18 @@ where
     /// Once added, when a packet for the resource is intercepted a new data channel will be created
     /// and packets will be wrapped with wireguard and sent through it.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn add_resource(&self, resource_description: ResourceDescription) -> Result<()> {
+    pub async fn add_resource(
+        self: &Arc<Self>,
+        resource_description: ResourceDescription,
+    ) -> Result<()> {
         let mut any_valid_route = false;
         {
-            let mut device_io = self.device_io.write().await;
-            let mut iface_config = self.iface_config.write().await;
-
             for ip in resource_description.ips() {
-                let res = {
-                    let Some(iface_config) = iface_config.as_ref() else {
-                        tracing::error!("add_resource_before_initialization");
-                        return Err(Error::ControlProtocolError);
-                    };
-                    iface_config.add_route(ip, self.callbacks()).await
-                };
-                match res {
-                    Ok(Some((conf, io))) => {
-                        *iface_config = Some(Arc::new(conf));
-                        *device_io = Some(io);
-                        any_valid_route = true;
-                    }
-                    Ok(None) => {
-                        any_valid_route = true;
-                    }
-                    Err(e) => {
-                        tracing::warn!(route = %ip, error = ?e, "add_route");
-                        let _ = self.callbacks().on_error(&e);
-                    }
+                if let Err(e) = self.add_route(ip).await {
+                    tracing::warn!(route = %ip, error = ?e, "add_route");
+                    let _ = self.callbacks().on_error(&e);
+                } else {
+                    any_valid_route = true;
                 }
             }
         }
@@ -350,16 +361,18 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_interface(self: &Arc<Self>, config: &InterfaceConfig) -> Result<()> {
         let (iface_config, device_io) = create_iface(config, self.callbacks()).await?;
-        iface_config
-            .add_route(DNS_SENTINEL.into(), self.callbacks())
-            .await?;
         let iface_config = Arc::new(iface_config);
 
         *self.device_io.write().await = Some(device_io.clone());
         *self.iface_config.write().await = Some(Arc::clone(&iface_config));
         self.start_timers().await?;
         let dev = Arc::clone(self);
-        tokio::spawn(async move { dev.start_iface_handler().await });
+        *self.iface_handler_abort.lock() = Some(
+            tokio::spawn(async move { dev.iface_handler(iface_config, device_io).await })
+                .abort_handle(),
+        );
+
+        self.add_route(DNS_SENTINEL.into()).await?;
 
         self.callbacks.on_tunnel_ready()?;
 
@@ -467,15 +480,20 @@ where
     }
 
     async fn start_refresh_mtu_timer(self: &Arc<Self>) -> Result<()> {
-        let Some(iface_config) = self.iface_config.read().await.clone() else {
-            return Err(Error::NoIface);
-        };
+        let dev = self.clone();
         let callbacks = self.callbacks().clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(REFRESH_MTU_INTERVAL);
             interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
             loop {
                 interval.tick().await;
+
+                let Some(iface_config) = dev.iface_config.read().await.clone() else {
+                    let err = Error::ControlProtocolError;
+                    tracing::error!(?err, "get_iface_config");
+                    let _ = callbacks.0.on_error(&err);
+                    continue;
+                };
                 if let Err(e) = iface_config.refresh_mtu().await {
                     tracing::error!(error = ?e, "refresh_mtu");
                     let _ = callbacks.0.on_error(&e);

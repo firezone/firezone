@@ -120,6 +120,9 @@ pub enum ConnlibError {
     /// Invalid source address for peer
     #[error("Invalid source address")]
     InvalidSource,
+    /// Any parse error
+    #[error("parse error")]
+    ParseError,
 }
 
 #[cfg(target_os = "linux")]

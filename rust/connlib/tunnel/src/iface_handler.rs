@@ -164,7 +164,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self, iface_config, device_io))]
-    async fn iface_handler(
+    pub(crate) async fn iface_handler(
         self: &Arc<Self>,
         iface_config: Arc<IfaceConfig>,
         device_io: DeviceIo,
@@ -174,6 +174,9 @@ where
         let mut dst = [0u8; MAX_UDP_SIZE];
         loop {
             let res = device_io.read(&mut src[..iface_config.mtu()]).await?;
+            if res == 0 {
+                return Ok(());
+            }
 
             tracing::trace!(target: "wire", action = "read", bytes = res, from = "iface");
             if let Err(Error::Io(e)) = self
@@ -181,33 +184,6 @@ where
                 .await
             {
                 return Err(e);
-            }
-        }
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) async fn start_iface_handler(self: &Arc<Self>) {
-        loop {
-            let Some(device_io) = self.device_io.read().await.clone() else {
-                let err = Error::NoIface;
-                tracing::error!(?err);
-                let _ = self.callbacks().on_disconnect(Some(&err));
-                break;
-            };
-            let Some(iface_config) = self.iface_config.read().await.clone() else {
-                let err = Error::NoIface;
-                tracing::error!(?err);
-                let _ = self.callbacks().on_disconnect(Some(&err));
-                break;
-            };
-            if let Err(err) = self.iface_handler(iface_config, device_io).await {
-                if err.raw_os_error() != Some(9) {
-                    tracing::error!(?err);
-                    let _ = self.callbacks().on_error(&err.into());
-                    break;
-                } else {
-                    tracing::warn!("bad_file_descriptor");
-                }
             }
         }
     }

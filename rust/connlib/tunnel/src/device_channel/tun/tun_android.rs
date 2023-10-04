@@ -90,6 +90,8 @@ impl IfaceStream {
     }
 
     pub fn read(&self, dst: &mut [u8]) -> std::io::Result<usize> {
+        // We don't read(or write) again from the fd because the given fd number might be reclaimed
+        // so this could make an spurious read/write to another fd and we DEFINETLY don't want that
         if !self.closed.load(Ordering::Acquire) {
             match unsafe { read(self.fd, dst.as_mut_ptr() as _, dst.len()) } {
                 -1 => Err(io::Error::last_os_error()),
@@ -101,7 +103,7 @@ impl IfaceStream {
     }
 
     pub fn close(&self) {
-        self.closed.store(true, Ordering::Release)
+        self.closed.store(true, Ordering::Release);
     }
 }
 
