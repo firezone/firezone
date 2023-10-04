@@ -91,7 +91,7 @@ impl From<ResourceId> for ConnId {
 }
 
 /// Represent's the tunnel actual peer's config
-/// Obtained from libs_common's Peer
+/// Obtained from connlib_shared's Peer
 #[derive(Clone)]
 pub struct PeerConfig {
     pub(crate) persistent_keepalive: Option<u16>,
