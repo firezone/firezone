@@ -62,7 +62,7 @@ jobs:
       - id: auth
         uses: google-github-actions/auth@v1
         with:
-          token_format: "access_token"
+          token_format: access_token
           workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
           service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
           export_environment_variables: false
@@ -85,10 +85,10 @@ jobs:
           context: ${{ matrix.cache_scope }}/
           cache-from: type=gha,scope=${{ matrix.cache_scope }}
           cache-to:
-            ${{ github.ref == "refs/heads/main" &&
-            format("type=gha,mode=max,scope={0}", matrix.scope) || "" }}
+            ${{ github.ref == 'refs/heads/main' &&
+            format("type=gha,mode=max,scope={0}", matrix.scope) || '' }}
           file: ${{ matrix.cache_scope }}/Dockerfile
-          push: ${{ github.ref == "refs/head/main" }}
+          push: ${{ github.ref == 'refs/head/main' }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
             ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ matrix.image_name }}:${{ steps.short_sha.outputs.short_sha }}
