@@ -20,6 +20,15 @@ jobs:
         working-directory: ./kotlin/android
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v3
+        name: Restore toolchain cache
+        with:
+          path: |
+            ~/.rustup/toolchains
+          key:
+            ${{ runner.os }}-rust-toolchain-${{
+            hashFiles('rust/rust-toolchain.toml') }}
+          restore-keys: ${{ runner.os }}-rust-toolchain-
       - name: Update toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2
@@ -42,8 +51,7 @@ jobs:
           key:
             ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*',
             '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+          restore-keys: ${{ runner.os }}-gradle-
       - name: Create Local Properties File
         run: touch local.properties
       - name: Setup Gradle
@@ -69,3 +77,11 @@ jobs:
           key:
             ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*',
             '**/gradle-wrapper.properties') }}
+      - uses: actions/cache/save@v3
+        name: Save toolchain cache
+        with:
+          path: |
+            ~/.rustup/toolchains
+          key:
+            ${{ runner.os }}-rust-toolchain-${{
+            hashFiles('rust/rust-toolchain.toml') }}
