@@ -9,7 +9,10 @@ use std::{
     ffi::{c_int, c_short, c_uchar},
     io,
     os::fd::{AsRawFd, RawFd},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 use tokio::io::unix::AsyncFd;
 
@@ -50,6 +53,7 @@ pub(crate) struct IfaceDevice(Arc<AsyncFd<IfaceStream>>);
 
 #[derive(Debug)]
 pub(crate) struct IfaceStream {
+    closed: AtomicBool,
     fd: RawFd,
 }
 
@@ -67,9 +71,13 @@ impl Drop for IfaceStream {
 
 impl IfaceStream {
     fn write(&self, buf: &[u8]) -> std::io::Result<usize> {
-        match unsafe { write(self.fd, buf.as_ptr() as _, buf.len() as _) } {
-            -1 => Err(io::Error::last_os_error()),
-            n => Ok(n as usize),
+        if !self.closed.load(Ordering::Acquire) {
+            match unsafe { write(self.fd, buf.as_ptr() as _, buf.len() as _) } {
+                -1 => Err(io::Error::last_os_error()),
+                n => Ok(n as usize),
+            }
+        } else {
+            Err(std::io::Error::from_raw_os_error(9))
         }
     }
 
@@ -81,11 +89,19 @@ impl IfaceStream {
         self.write(src)
     }
 
-    pub fn read<'a>(&self, dst: &'a mut [u8]) -> std::io::Result<usize> {
-        match unsafe { read(self.fd, dst.as_mut_ptr() as _, dst.len()) } {
-            -1 => Err(io::Error::last_os_error()),
-            n => Ok(n as usize),
+    pub fn read(&self, dst: &mut [u8]) -> std::io::Result<usize> {
+        if !self.closed.load(Ordering::Acquire) {
+            match unsafe { read(self.fd, dst.as_mut_ptr() as _, dst.len()) } {
+                -1 => Err(io::Error::last_os_error()),
+                n => Ok(n as usize),
+            }
+        } else {
+            Err(std::io::Error::from_raw_os_error(9))
         }
+    }
+
+    pub fn close(&self) {
+        self.closed.store(true, Ordering::Release)
     }
 }
 
@@ -100,7 +116,10 @@ impl IfaceDevice {
             DNS_SENTINEL,
             DNS_FALLBACK_STRATEGY.to_string(),
         )?;
-        let iface_stream = Arc::new(AsyncFd::new(IfaceStream { fd: fd.into() })?);
+        let iface_stream = Arc::new(AsyncFd::new(IfaceStream {
+            fd: fd.into(),
+            closed: AtomicBool::new(false),
+        })?);
         let this = Self(Arc::clone(&iface_stream));
 
         Ok((this, iface_stream))
@@ -151,8 +170,16 @@ impl IfaceDevice {
         &self,
         route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<RawFd> {
-        callbacks.on_add_route(route)
+    ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
+        self.0.get_ref().close();
+        let fd = callbacks.on_add_route(route)?;
+        let iface_stream = Arc::new(AsyncFd::new(IfaceStream {
+            fd: fd.into(),
+            closed: AtomicBool::new(false),
+        })?);
+        let this = Self(Arc::clone(&iface_stream));
+
+        Ok(Some((this, iface_stream)))
     }
 
     pub async fn up(&self) -> Result<()> {

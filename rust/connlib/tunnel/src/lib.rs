@@ -145,10 +145,9 @@ struct AwaitingConnectionDetails {
 /// to communicate between peers.
 pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     next_index: Mutex<IndexLfsr>,
-    // We use a tokio's mutex here since it makes things easier and we only need it
-    // during init, so the performance hit is neglibile
-    iface_config: RwLock<Option<Arc<IfaceConfig>>>,
-    device_io: RwLock<Option<DeviceIo>>,
+    // We use a tokio Mutex here since this is only read/write during config so there's no relevant performance impact
+    iface_config: tokio::sync::RwLock<Option<Arc<IfaceConfig>>>,
+    device_io: tokio::sync::RwLock<Option<DeviceIo>>,
     rate_limiter: Arc<RateLimiter>,
     private_key: StaticSecret,
     public_key: PublicKey,
@@ -306,16 +305,30 @@ where
     pub async fn add_resource(&self, resource_description: ResourceDescription) -> Result<()> {
         let mut any_valid_route = false;
         {
-            let Some(iface_config) = self.iface_config.read().clone() else {
-                tracing::error!("add_resource_before_initialization");
-                return Err(Error::ControlProtocolError);
-            };
+            let mut device_io = self.device_io.write().await;
+            let mut iface_config = self.iface_config.write().await;
+
             for ip in resource_description.ips() {
-                if let Err(e) = iface_config.add_route(ip, self.callbacks()).await {
-                    tracing::warn!(route = %ip, error = ?e, "add_route");
-                    let _ = self.callbacks().on_error(&e);
-                } else {
-                    any_valid_route = true;
+                let res = {
+                    let Some(iface_config) = iface_config.as_ref() else {
+                        tracing::error!("add_resource_before_initialization");
+                        return Err(Error::ControlProtocolError);
+                    };
+                    iface_config.add_route(ip, self.callbacks()).await
+                };
+                match res {
+                    Ok(Some((conf, io))) => {
+                        *iface_config = Some(Arc::new(conf));
+                        *device_io = Some(io);
+                        any_valid_route = true;
+                    }
+                    Ok(None) => {
+                        any_valid_route = true;
+                    }
+                    Err(e) => {
+                        tracing::warn!(route = %ip, error = ?e, "add_route");
+                        let _ = self.callbacks().on_error(&e);
+                    }
                 }
             }
         }
@@ -342,9 +355,9 @@ where
             .await?;
         let iface_config = Arc::new(iface_config);
 
-        *self.device_io.write() = Some(device_io.clone());
-        *self.iface_config.write() = Some(Arc::clone(&iface_config));
-        self.start_timers()?;
+        *self.device_io.write().await = Some(device_io.clone());
+        *self.iface_config.write().await = Some(Arc::clone(&iface_config));
+        self.start_timers().await?;
         let dev = Arc::clone(self);
         tokio::spawn(async move { dev.start_iface_handler().await });
 
@@ -453,8 +466,8 @@ where
         });
     }
 
-    fn start_refresh_mtu_timer(self: &Arc<Self>) -> Result<()> {
-        let Some(iface_config) = self.iface_config.read().clone() else {
+    async fn start_refresh_mtu_timer(self: &Arc<Self>) -> Result<()> {
+        let Some(iface_config) = self.iface_config.read().await.clone() else {
             return Err(Error::NoIface);
         };
         let callbacks = self.callbacks().clone();
@@ -473,8 +486,8 @@ where
         Ok(())
     }
 
-    fn start_timers(self: &Arc<Self>) -> Result<()> {
-        self.start_refresh_mtu_timer()?;
+    async fn start_timers(self: &Arc<Self>) -> Result<()> {
+        self.start_refresh_mtu_timer().await?;
         self.start_rate_limiter_refresh_timer();
         self.start_peers_refresh_timer();
         Ok(())

@@ -241,8 +241,9 @@ impl IfaceDevice {
         &self,
         route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<()> {
-        callbacks.on_add_route(route)
+    ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
+        callbacks.on_add_route(route)?;
+        Ok(None)
     }
 
     pub async fn up(&self) -> Result<()> {

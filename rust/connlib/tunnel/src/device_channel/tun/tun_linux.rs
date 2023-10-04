@@ -175,7 +175,7 @@ impl IfaceDevice {
         &self,
         route: IpNetwork,
         _callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<()> {
+    ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
         let req = self
             .handle
             .route()
@@ -211,7 +211,7 @@ impl IfaceDevice {
         }
         */
 
-        Ok(())
+        Ok(None)
     }
 
     #[tracing::instrument(level = "trace", skip(self, _callbacks))]

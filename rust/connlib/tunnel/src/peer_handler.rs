@@ -155,7 +155,7 @@ where
 
     pub(crate) async fn start_peer_handler(self: &Arc<Self>, peer: Arc<Peer>) {
         loop {
-            let Some(device_io) = self.device_io.read().clone() else {
+            let Some(device_io) = self.device_io.read().await.clone() else {
                 let err = Error::NoIface;
                 tracing::error!(?err);
                 let _ = self.callbacks().on_disconnect(Some(&err));

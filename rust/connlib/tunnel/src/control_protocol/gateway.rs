@@ -96,7 +96,8 @@ where
                     tracing::trace!("new_data_channel_open");
                     Box::pin(async move {
                         {
-                            let Some(iface_config) = tunnel.iface_config.read().clone() else {
+                            let Some(iface_config) = tunnel.iface_config.read().await.clone()
+                            else {
                                 let e = Error::NoIface;
                                 tracing::error!(err = ?e, "channel_open");
                                 let _ = tunnel.callbacks().on_error(&e);

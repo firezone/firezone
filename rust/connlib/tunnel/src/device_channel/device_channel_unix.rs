@@ -53,9 +53,18 @@ impl IfaceConfig {
         &self,
         route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<()> {
-        self.iface.add_route(route, callbacks).await?;
-        Ok(())
+    ) -> Result<Option<(IfaceConfig, DeviceIo)>> {
+        if let Some((iface, stream)) = self.iface.add_route(route, callbacks).await? {
+            let device_io = DeviceIo(stream);
+            let mtu = iface.mtu().await?;
+            let iface_config = IfaceConfig {
+                iface,
+                mtu: AtomicUsize::new(mtu),
+            };
+            Ok(Some((iface_config, device_io)))
+        } else {
+            Ok(None)
+        }
     }
 }
 

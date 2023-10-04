@@ -139,7 +139,7 @@ where
         if let Some(r) = self.check_for_dns(src) {
             match r {
                 dns::SendPacket::Ipv4(r) => device_writer.write4(&r[..])?,
-                dns::SendPacket::Ipv6(r) => device_writer.write4(&r[..])?,
+                dns::SendPacket::Ipv6(r) => device_writer.write6(&r[..])?,
             };
             return Ok(());
         }
@@ -170,9 +170,9 @@ where
         device_io: DeviceIo,
     ) -> std::io::Result<()> {
         let device_writer = device_io.clone();
+        let mut src = [0u8; MAX_UDP_SIZE];
+        let mut dst = [0u8; MAX_UDP_SIZE];
         loop {
-            let mut src = [0u8; MAX_UDP_SIZE];
-            let mut dst = [0u8; MAX_UDP_SIZE];
             let res = device_io.read(&mut src[..iface_config.mtu()]).await?;
 
             tracing::trace!(target: "wire", action = "read", bytes = res, from = "iface");
@@ -188,13 +188,13 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub(crate) async fn start_iface_handler(self: &Arc<Self>) {
         loop {
-            let Some(device_io) = self.device_io.read().clone() else {
+            let Some(device_io) = self.device_io.read().await.clone() else {
                 let err = Error::NoIface;
                 tracing::error!(?err);
                 let _ = self.callbacks().on_disconnect(Some(&err));
                 break;
             };
-            let Some(iface_config) = self.iface_config.read().clone() else {
+            let Some(iface_config) = self.iface_config.read().await.clone() else {
                 let err = Error::NoIface;
                 tracing::error!(?err);
                 let _ = self.callbacks().on_disconnect(Some(&err));
