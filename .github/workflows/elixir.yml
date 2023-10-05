@@ -390,11 +390,11 @@ jobs:
       MIX_ENV: test
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      MIX_TEST_PARTITIONS: 4
+      MIX_TEST_PARTITIONS: 1
     strategy:
       fail-fast: false
       matrix:
-        MIX_TEST_PARTITION: [1, 2, 3, 4]
+        MIX_TEST_PARTITION: [1]
     services:
       postgres:
         image: postgres:16
