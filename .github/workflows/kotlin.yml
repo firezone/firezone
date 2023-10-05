@@ -10,11 +10,7 @@ concurrency:
 jobs:
   # See rust.yml how we build, package and release connlib as an example
   build:
-    runs-on: ${{ matrix.runs-on }}
-    strategy:
-      matrix:
-        runs-on:
-          - ubuntu-latest
+    runs-on: ubuntu-22.04-firezone
     defaults:
       run:
         working-directory: ./kotlin/android
