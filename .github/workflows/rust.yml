@@ -25,9 +25,7 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-latest
-            packages:
-              -p firezone-headless-client -p firezone-gateway -p
-              connlib-client-android
+            packages: -p firezone-headless-client -p firezone-gateway -p connlib-client-android
           - runs-on: macos-13
             packages: -p connlib-client-apple
           - runs-on: windows-2022
@@ -40,7 +38,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          shared-key: ${{ runner.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt -- --check
       - run: |
@@ -52,11 +49,7 @@ jobs:
       - run: cargo test --all-features ${{ matrix.packages }}
 
   smoke-test-relay:
-    runs-on: ${{ matrix.runs-on }}
-    strategy:
-      matrix:
-        runs-on:
-          - ubuntu-latest
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./rust/relay
@@ -67,6 +60,5 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          shared-key: ${{ runner.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ./run_smoke_test.sh
