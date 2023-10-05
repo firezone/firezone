@@ -45,6 +45,7 @@ jobs:
           key:
             ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
+            ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
             ${{ matrix.target.platform }}-
       - run: |
           sudo ls -al /Applications/

@@ -44,6 +44,7 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-
       - uses: actions/cache/restore@v3
         name: Restore Elixir Build Cache
@@ -54,6 +55,7 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
@@ -122,6 +124,7 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-
       - uses: actions/cache/restore@v3
         name: Restore Elixir Build Cache
@@ -132,6 +135,7 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
@@ -207,6 +211,7 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-
       - uses: actions/cache/restore@v3
         name: Restore Elixir Build Cache
@@ -217,6 +222,7 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
@@ -297,6 +303,7 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-
       - uses: actions/cache/restore@v3
         name: Restore Elixir Build Cache
@@ -307,6 +314,7 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
@@ -429,6 +437,7 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-
       - uses: actions/cache/restore@v3
         name: Restore Elixir Build Cache
@@ -439,6 +448,7 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-
       - uses: actions/cache/restore@v3
         name: pnpm Deps Cache
@@ -457,6 +467,7 @@ jobs:
           key:
             ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys:
+            ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/pnpm-lock.yaml') }}
             ${{ runner.os }}-${{ env.cache-name }}-
       - run: |
           export DISPLAY=:99

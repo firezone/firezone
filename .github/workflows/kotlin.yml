@@ -41,11 +41,10 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
           key:
-            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*',
-            '**/gradle-wrapper.properties') }}
+            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*','**/gradle-wrapper.properties') }}
           restore-keys:
-            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*',
-            '**/gradle-wrapper.properties') }}
+            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*','**/gradle-wrapper.properties') }}
+            ${{ runner.os }}-gradle-
       - name: Create Local Properties File
         run: touch local.properties
       - name: Setup Gradle
