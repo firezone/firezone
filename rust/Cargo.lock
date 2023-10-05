@@ -794,11 +794,9 @@ version = "1.20231001.0"
 dependencies = [
  "async-trait",
  "backoff",
- "boringtun",
  "chrono",
  "connlib-shared",
  "firezone-tunnel",
- "rand",
  "reqwest",
  "secrecy",
  "serde",
@@ -822,11 +820,9 @@ version = "1.20231001.0"
 dependencies = [
  "async-trait",
  "backoff",
- "boringtun",
  "chrono",
  "connlib-shared",
  "firezone-tunnel",
- "rand",
  "secrecy",
  "serde",
  "serde_json",
