@@ -91,7 +91,9 @@ jobs:
             type=registry,ref=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}-buildcache:main
           # This will write the cache on main even if integration tests fail,
           # but it'll just be corrected on the next successful build.
-          cache-to: type=registry,ref=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}-buildcache:${{ env.CACHE_TAG }}
+          cache-to:
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/${{
+            matrix.image_name }}-buildcache:${{ env.CACHE_TAG }}
           file: ${{ matrix.context }}/Dockerfile
           # pushing is handled in a later step; this action doesn't allow output and push
           # in the same step :-/
@@ -190,11 +192,21 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Download built image artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: images
+          path: /tmp
+      - name: Load images into docker
+        run: |
+          docker load --input /tmp/${{ matrix.image_name }}.tar
+          docker image ls -a
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
           project: firezone-staging
       - name: Push images
         if: ${{ github.ref == 'refs/heads/main' }}
-        run: docker push ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }} --all-tags
+        run:
+          docker push ${{ steps.login.outputs.registry }}/firezone/${{
+          matrix.image_name }} --all-tags
