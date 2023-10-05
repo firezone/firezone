@@ -39,6 +39,10 @@ tasks.named("build").configure {
 }
 
 android {
+    buildFeatures {
+        buildConfig = true
+    }
+
     namespace = "dev.firezone.android"
 
     compileSdk = 33
