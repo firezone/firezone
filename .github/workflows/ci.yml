@@ -60,7 +60,6 @@ jobs:
               APPLICATION_NAME=api
     permissions:
       contents: read
-      id-token: write
     env:
       # mark:automatic-version
       VERSION: "1.20231001.0"
@@ -150,7 +149,6 @@ jobs:
           docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
-          docker compose pull
           docker compose up -d \
             api \
             web \
@@ -187,6 +185,9 @@ jobs:
           - web
           - relay
           - gateway
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: .github/actions/gcp-docker-login
         id: login
