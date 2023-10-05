@@ -7,7 +7,7 @@ inputs:
 outputs:
   registry:
     description: "The full name of the registry we logged into"
-    value: "us-east1-docker.pkg.dev"/${{ inputs.project }}
+    value: ${{ format('us-east1-docker.pkg.dev/{0}', inputs.project) }}
 runs:
   using: "composite"
   steps:
