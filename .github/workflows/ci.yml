@@ -106,7 +106,7 @@ jobs:
           # but it'll just be corrected on the next successful build.
           cache-to:
             ${{ github.ref == 'refs/heads/main' &&
-            type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:buildcache,mode=max }}
+            format('type=registry,ref={0}/{1}/firezone/{2}:buildcache,mode=max ', env.GCP_REGISTRY, env.GCP_PROJECT, matrix.image_name) || '' }}
           file: ${{ matrix.cache_scope }}/Dockerfile
           # pushing is handled in a later step; this action doesn't allow output and push
           # in the same step :-/
