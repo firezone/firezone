@@ -78,11 +78,11 @@ jobs:
           build-args: ${{ matrix.build-args }}
           context: ${{ matrix.context }}/
           cache-from: |
-            type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}-buildcache:${{ github.ref }}
-            type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}-buildcache:refs/heads/main
+            type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}-buildcache:${{ github.ref_name }}
+            type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}-buildcache:main
           # This will write the cache on main even if integration tests fail,
           # but it'll just be corrected on the next successful build.
-          cache-to: type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:buildcache:${{ github.ref }}
+          cache-to: type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:buildcache:${{ github.ref_name }}
           file: ${{ matrix.context }}/Dockerfile
           # pushing is handled in a later step; this action doesn't allow output and push
           # in the same step :-/
