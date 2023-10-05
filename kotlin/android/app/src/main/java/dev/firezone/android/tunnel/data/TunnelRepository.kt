@@ -6,7 +6,6 @@ import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.Tunnel
 import dev.firezone.android.tunnel.model.TunnelConfig
-import java.net.InetAddress
 
 interface TunnelRepository {
 

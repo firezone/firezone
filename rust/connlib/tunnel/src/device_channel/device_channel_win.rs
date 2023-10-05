@@ -33,7 +33,7 @@ impl IfaceConfig {
         &self,
         _: IpNetwork,
         _: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<()> {
+    ) -> Result<Option<(IfaceConfig, DeviceIo)>> {
         todo!()
     }
 }

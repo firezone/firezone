@@ -13,7 +13,6 @@ import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.Tunnel
 import dev.firezone.android.tunnel.model.TunnelConfig
 import java.lang.Exception
-import java.net.InetAddress
 import javax.inject.Inject
 
 @OptIn(ExperimentalStdlibApi::class)

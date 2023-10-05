@@ -6,7 +6,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
-import android.net.IpPrefix
 import android.net.VpnService
 import android.system.OsConstants
 import android.util.Log
