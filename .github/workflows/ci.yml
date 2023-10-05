@@ -192,6 +192,7 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - uses: actions/checkout@v4
       - name: Download built image artifacts
         uses: actions/download-artifact@v3
         with:
