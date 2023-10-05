@@ -190,7 +190,7 @@ jobs:
           registry: ${{ env.GCP_REGISTRY }}
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
-      -       - name: Download built image artifacts
+      - name: Download built image artifacts
         uses: actions/download-artifact@v3
         with:
           name: images
@@ -209,4 +209,3 @@ jobs:
           docker image ls -a
           docker push ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
           docker push ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
-
