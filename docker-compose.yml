@@ -305,6 +305,8 @@ services:
     build:
       context: elixir
       target: builder
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/elixir-buildcache:main
       args:
         APPLICATION_NAME: api
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/elixir
