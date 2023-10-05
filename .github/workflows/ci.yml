@@ -1,8 +1,5 @@
 name: Continuous Integration
 on:
-  push:
-    branches:
-      - main
   pull_request:
   merge_group:
     types: [checks_requested]
@@ -33,38 +30,33 @@ jobs:
         include:
           - image_name: api
             target: runtime
-            push: ${{ github.ref == 'refs/heads/main' }}
-            cache_scope: elixir
+            context: elixir
             build-args: |
               APPLICATION_NAME=api
           - image_name: web
             target: runtime
-            push: ${{ github.ref == 'refs/heads/main' }}
-            cache_scope: elixir
+            context: elixir
             build-args: |
               APPLICATION_NAME=web
           - image_name: gateway
-            target: runtime
             push: ${{ github.ref == 'refs/heads/main' }}
-            cache_scope: rust
+            target: runtime
+            context: rust
             build-args: |
               PACKAGE=firezone-gateway
           - image_name: relay
             target: runtime
-            push: ${{ github.ref == 'refs/heads/main' }}
-            cache_scope: rust
+            context: rust
             build-args: |
               PACKAGE=relay
           - image_name: client
             target: runtime
-            push: false
-            cache_scope: rust
+            context: rust
             build-args: |
               PACKAGE=firezone-headless-client
           - image_name: elixir
             target: builder
-            push: false
-            cache_scope: elixir
+            context: elixir
             build-args: |
               APPLICATION_NAME=api
     permissions:
@@ -74,59 +66,49 @@ jobs:
       # mark:automatic-version
       VERSION: "1.20231001.0"
       APPLICATION_NAME: ${{ matrix.image_name }}
-      GCP_PROJECT: firezone-staging
-      GCP_REGISTRY: us-east1-docker.pkg.dev
     steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - uses: actions/checkout@v4
-      - id: auth
-        uses: google-github-actions/auth@v1
+      - name: Sanitize github.ref_name
+        run: |
+          REF="${{ github.ref_name }}" # `ref_name` contains `/` which is not a valid docker image tag.
+          CACHE_TAG="${REF//\//-}"
+          echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
         with:
-          token_format: access_token
-          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
-          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
-          export_environment_variables: false
-      - name: Change current gcloud account
-        run: gcloud --quiet config set project ${{ env.GCP_PROJECT }}
-      - name: Login to Google Artifact Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.GCP_REGISTRY }}
-          username: oauth2accesstoken
-          password: ${{ steps.auth.outputs.access_token }}
-      - name: Build and push Docker image
+          project: firezone-staging
+      - name: Build Docker images
         uses: docker/build-push-action@v5
         with:
           platforms: linux/amd64
           build-args: ${{ matrix.build-args }}
-          context: ${{ matrix.cache_scope }}/
-          cache-from: type=gha,scope=${{ matrix.cache_scope }}
-          cache-to:
-            ${{ github.ref == 'refs/heads/main' &&
-            format('type=gha,mode=max,scope={0}', matrix.cache_scope) || '' }}
-          file: ${{ matrix.cache_scope }}/Dockerfile
-          push: ${{ matrix.push}}
+          context: ${{ matrix.context }}/
+          cache-from: |
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.image_name }}:main
+          # This will write the cache on main even if integration tests fail,
+          # but it'll just be corrected on the next successful build.
+          cache-to: >-
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+          file: ${{ matrix.context }}/Dockerfile
+          push: true
           target: ${{ matrix.target }}
           tags: |
-            ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
-            ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
-            ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:latest
-          outputs: type=docker,dest=/tmp/${{ matrix.image_name }}.tar
-      - name: Upload built images as artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: images
-          path: /tmp/${{ matrix.image_name }}.tar
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:latest
 
   integration-tests:
     needs: build-images
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       matrix:
         include:
+          # TODO: Add more NAT type tests here
           - test_name: Relayed flow
             setup: |
               #  Disallow traffic between gateway and client container
@@ -140,25 +122,15 @@ jobs:
             execute: |
               docker compose exec -it client timeout 60 \
               bash -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-
     steps:
       - uses: actions/checkout@v4
-      - name: Download built image artifacts
-        uses: actions/download-artifact@v3
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
         with:
-          name: images
-          path: /tmp
-      - name: Load images into docker
-        run: |
-          docker load --input /tmp/api.tar
-          docker load --input /tmp/web.tar
-          docker load --input /tmp/elixir.tar
-          docker load --input /tmp/gateway.tar
-          docker load --input /tmp/relay.tar
-          docker load --input /tmp/client.tar
-          docker image ls -a
+          project: firezone-staging
       - name: Seed database
         run:
+          # FIXME: This doesn't use the Elixir cache, and so compiles every time
           docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |

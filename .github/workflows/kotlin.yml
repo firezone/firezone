@@ -22,10 +22,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Update toolchain
         run: rustup show
+        working-directory: ./rust
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          shared-key: ${{ runner.os }}
+          key: ${{ runner.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-java@v3
         with:
@@ -33,16 +34,6 @@ jobs:
           java-version: 11
       - name: Validate Gradle wrapper
         uses: gradle/wrapper-validation-action@v1
-      - uses: actions/cache/restore@v3
-        name: Restore Gradle Cache
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key:
-            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*',
-            '**/gradle-wrapper.properties') }}
-          restore-keys: ${{ runner.os }}-gradle-
       - name: Create Local Properties File
         run: touch local.properties
       - name: Setup Gradle
@@ -58,13 +49,3 @@ jobs:
       - name: Android Test Report
         uses: asadmansr/android-test-report-action@v1.2.0
         if: "!cancelled()"
-      - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
-        name: Save Gradle Cache
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key:
-            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*',
-            '**/gradle-wrapper.properties') }}

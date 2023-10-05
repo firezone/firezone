@@ -4,6 +4,10 @@ on:
     branches:
       - main
 
+env:
+  # mark:automatic-version
+  VERSION: "1.20231001.0"
+
 # Cancel old workflow runs if new code is pushed
 concurrency:
   group: "cd-${{ github.workflow }}-${{ github.ref }}"
@@ -12,15 +16,15 @@ concurrency:
 jobs:
   ci:
     uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
   deploy:
     runs-on: ubuntu-latest
     # if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write
     needs:
-      - elixir
-      - rust
-      - terraform
+      - ci
     env:
       TF_CLOUD_ORGANIZATION: "firezone"
       TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
@@ -69,9 +73,9 @@ jobs:
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.4
         id: apply-run
         env:
-          TF_VAR_api_image_tag: '"${{ github.sha }}"'
-          TF_VAR_web_image_tag: '"${{ github.sha }}"'
-          TF_VAR_relay_image_tag: '"${{ github.sha }}"'
+          TF_VAR_api_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
+          TF_VAR_web_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
+          TF_VAR_relay_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
           configuration_version:
@@ -97,3 +101,18 @@ jobs:
         with:
           status: ${{ job.status }}
           notify_when: "failure"
+
+  update_release_draft:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      # write permission is required to create a github release
+      contents: write
+      # autolabeler
+      pull-requests: write
+    steps:
+      - uses: release-drafter/release-drafter@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          version: ${{ env.VERSION }}

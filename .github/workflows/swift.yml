@@ -32,20 +32,21 @@ jobs:
       - uses: actions/checkout@v4
       - name: Update toolchain
         run: rustup show
+        working-directory: ./rust
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          shared-key: ${{ runner.os }}
+          key: ${{ matrix.target.platform }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/cache/restore@v3
         name: Restore SwiftPM Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
           key:
-            ${{ matrix.target.platform }}-spm-${{
-            hashFiles('**/Package.resolved') }}
+            ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
-            ${{ matrix.target.platform }}-spm-
+            ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
+            ${{ matrix.target.platform }}-
       - run: |
           sudo ls -al /Applications/
       - name: Select Xcode
@@ -67,5 +68,4 @@ jobs:
         with:
           path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
           key:
-            ${{ matrix.target.platform }}-spm-${{
-            hashFiles('**/Package.resolved') }}
+            ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}

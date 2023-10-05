@@ -52,6 +52,8 @@ services:
   web:
     build:
       context: elixir
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/web:main
       args:
         APPLICATION_NAME: web
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/web
@@ -117,6 +119,8 @@ services:
     build:
       context: rust
       dockerfile: Dockerfile
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/client:main
       args:
         PACKAGE: firezone-headless-client
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/client
@@ -151,6 +155,8 @@ services:
     build:
       context: rust
       dockerfile: Dockerfile
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/gateway:main
       args:
         PACKAGE: firezone-gateway
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/gateway
@@ -200,6 +206,8 @@ services:
     build:
       context: rust
       dockerfile: Dockerfile
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/relay:main
       args:
         PACKAGE: relay
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay
@@ -226,6 +234,8 @@ services:
   api:
     build:
       context: elixir
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/api:main
       args:
         APPLICATION_NAME: api
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/api
@@ -295,6 +305,8 @@ services:
     build:
       context: elixir
       target: builder
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/elixir:main
       args:
         APPLICATION_NAME: api
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/elixir
