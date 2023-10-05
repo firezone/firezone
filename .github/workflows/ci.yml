@@ -82,6 +82,11 @@ jobs:
       - name: Build Docker images
         uses: docker/build-push-action@v5
         with:
+          # # We are overriding the default buildkit version being used by Buildx. We need buildkit >= 12.0 and currently BuildX
+          # supports v0.11.6 https://github.com/docker/buildx/blob/b8739d74417f86aa8fc9aafb830a8ba656bdef0e/Dockerfile#L9.
+          # We should for any updates on buildx and on the setup-buildx-action itself.
+          driver-opts: |
+            image=moby/buildkit:v0.12.0
           platforms: linux/amd64
           build-args: ${{ matrix.build-args }}
           context: ${{ matrix.context }}/
