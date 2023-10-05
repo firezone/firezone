@@ -1,5 +1,5 @@
-use crate::messages::BroadcastClientIceCandidates;
 use async_trait::async_trait;
+use connlib_shared::messages::ClientId;
 use connlib_shared::Error::ControlProtocolError;
 use connlib_shared::{
     messages::{GatewayId, ResourceDescription},
@@ -11,11 +11,11 @@ use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 #[derive(Clone)]
 pub struct ControlSignaler {
-    tx: mpsc::Sender<BroadcastClientIceCandidates>,
+    tx: mpsc::Sender<(ClientId, RTCIceCandidate)>,
 }
 
 impl ControlSignaler {
-    pub fn new(tx: mpsc::Sender<BroadcastClientIceCandidates>) -> Self {
+    pub fn new(tx: mpsc::Sender<(ClientId, RTCIceCandidate)>) -> Self {
         Self { tx }
     }
 }
@@ -41,13 +41,7 @@ impl ControlSignal for ControlSignaler {
         // functions for gateway/client but ultimately we just want
         // separate control_plane modules
         if let ConnId::Client(id) = conn_id {
-            let _ = self
-                .tx
-                .send(BroadcastClientIceCandidates {
-                    client_ids: vec![id],
-                    candidates: vec![ice_candidate.to_json()?],
-                })
-                .await;
+            let _ = self.tx.send((id, ice_candidate)).await;
             Ok(())
         } else {
             Err(ControlProtocolError)

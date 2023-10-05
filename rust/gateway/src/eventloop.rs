@@ -6,7 +6,7 @@ use crate::messages::{
 use crate::CallbackHandler;
 use anyhow::Result;
 use connlib_shared::messages::ClientId;
-use connlib_shared::{Callbacks, Error};
+use connlib_shared::Error;
 use firezone_tunnel::Tunnel;
 use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
@@ -14,13 +14,14 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::sync::mpsc;
+use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
 pub struct Eventloop {
     tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler>>,
-    control_rx: mpsc::Receiver<BroadcastClientIceCandidates>,
+    control_rx: mpsc::Receiver<(ClientId, RTCIceCandidate)>,
     portal: PhoenixChannel<IngressMessages, ()>,
 
     // TODO: Strongly type request reference (currently `String`)
@@ -34,7 +35,7 @@ pub struct Eventloop {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler>>,
-        control_rx: mpsc::Receiver<BroadcastClientIceCandidates>,
+        control_rx: mpsc::Receiver<(ClientId, RTCIceCandidate)>,
         portal: PhoenixChannel<IngressMessages, ()>,
     ) -> Self {
         Self {
@@ -54,18 +55,37 @@ impl Eventloop {
 }
 
 impl Eventloop {
+    #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {
-            if let Poll::Ready(Some(ice_candidates)) = self.control_rx.poll_recv(cx) {
+            if let Poll::Ready(Some((client, ice_candidate))) = self.control_rx.poll_recv(cx) {
+                let ice_candidate = match ice_candidate.to_json() {
+                    Ok(ice_candidate) => ice_candidate,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to serialize ICE candidate to JSON: {:#}",
+                            anyhow::Error::new(e)
+                        );
+                        continue;
+                    }
+                };
+
+                tracing::debug!(%client, candidate = %ice_candidate.candidate, "Sending ICE candidate to client");
+
                 let _id = self.portal.send(
                     PHOENIX_TOPIC,
-                    EgressMessages::BroadcastIceCandidates(ice_candidates),
+                    EgressMessages::BroadcastIceCandidates(BroadcastClientIceCandidates {
+                        client_ids: vec![client],
+                        candidates: vec![ice_candidate],
+                    }),
                 );
                 continue;
             }
 
             match self.connection_request_tasks.poll_unpin(cx) {
-                Poll::Ready(((_, reference), Ok(Ok(gateway_rtc_session_description)))) => {
+                Poll::Ready(((client, reference), Ok(Ok(gateway_rtc_session_description)))) => {
+                    tracing::debug!(%client, %reference, "Connection is ready");
+
                     let _id = self.portal.send(
                         PHOENIX_TOPIC,
                         EgressMessages::ConnectionReady(ConnectionReady {
@@ -79,12 +99,15 @@ impl Eventloop {
                 }
                 Poll::Ready(((client, _), Ok(Err(e)))) => {
                     self.tunnel.cleanup_connection(client.into());
-                    let _ = self.tunnel.callbacks().on_error(&e);
+                    tracing::debug!(%client, "Connection request failed: {:#}", anyhow::Error::new(e));
+
                     continue;
                 }
                 Poll::Ready(((client, reference), Err(e))) => {
                     tracing::debug!(
-                        "Failed to establish connection {reference} from client {client:?}: {e}"
+                        %client,
+                        %reference,
+                        "Failed to establish connection: {:#}", anyhow::Error::new(e)
                     );
                     continue;
                 }
@@ -96,12 +119,12 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Ok(Err(e))) => {
-                    tracing::error!(err = ?e,"add_ice_candidate");
-                    let _ = self.tunnel.callbacks().on_error(&e);
+                    tracing::error!("Failed to add ICE candidate: {:#}", anyhow::Error::new(e));
+
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    tracing::error!("Failed to add ICE candidatee: {e}");
+                    tracing::error!("Failed to add ICE candidate: {e}");
                     continue;
                 }
                 Poll::Pending => {}
@@ -154,6 +177,8 @@ impl Eventloop {
                         }),
                     ..
                 }) => {
+                    tracing::debug!(client = %client_id, resource = %resource.id(), expires = %expires_at.to_rfc3339() ,"Allowing access to resource");
+
                     self.tunnel.allow_access(resource, client_id, expires_at);
                     continue;
                 }
@@ -166,6 +191,8 @@ impl Eventloop {
                     ..
                 }) => {
                     for candidate in candidates {
+                        tracing::debug!(client = %client_id, candidate = %candidate.candidate, "Adding ICE candidate from client");
+
                         let tunnel = Arc::clone(&self.tunnel);
                         if self
                             .add_ice_candidate_tasks
