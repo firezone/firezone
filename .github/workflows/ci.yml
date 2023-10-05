@@ -33,37 +33,31 @@ jobs:
         include:
           - image_name: api
             target: runtime
-            push: ${{ github.ref == 'refs/heads/main' }}
             cache_scope: elixir
             build-args: |
               APPLICATION_NAME=api
           - image_name: web
             target: runtime
-            push: ${{ github.ref == 'refs/heads/main' }}
             cache_scope: elixir
             build-args: |
               APPLICATION_NAME=web
           - image_name: gateway
             target: runtime
-            push: ${{ github.ref == 'refs/heads/main' }}
             cache_scope: rust
             build-args: |
               PACKAGE=firezone-gateway
           - image_name: relay
             target: runtime
-            push: ${{ github.ref == 'refs/heads/main' }}
             cache_scope: rust
             build-args: |
               PACKAGE=relay
           - image_name: client
             target: runtime
-            push: false
             cache_scope: rust
             build-args: |
               PACKAGE=firezone-headless-client
           - image_name: elixir
             target: builder
-            push: false
             cache_scope: elixir
             build-args: |
               APPLICATION_NAME=api
@@ -80,21 +74,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - uses: actions/checkout@v4
-      - id: auth
-        uses: google-github-actions/auth@v1
-        with:
-          token_format: access_token
-          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
-          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
-          export_environment_variables: false
-      - name: Change current gcloud account
-        run: gcloud --quiet config set project ${{ env.GCP_PROJECT }}
-      - name: Login to Google Artifact Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.GCP_REGISTRY }}
-          username: oauth2accesstoken
-          password: ${{ steps.auth.outputs.access_token }}
       - name: Build Docker images
         uses: docker/build-push-action@v5
         with:
@@ -117,13 +96,6 @@ jobs:
             ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
             ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:latest
           outputs: type=docker,dest=/tmp/${{ matrix.image_name }}.tar
-      - name: Push images
-        if: ${{ matrix.push }}
-        run:
-          # Yes, we do this even if integration-tests fail. Gives us an convenient way to push
-          # and pull images for manual testing in staging.
-          docker push ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT
-          }}/firezone/${{ matrix.image_name }} --all-tags
       - name: Upload built images as artifacts
         uses: actions/upload-artifact@v3
         with:
@@ -172,6 +144,7 @@ jobs:
           docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
+          docker compose pull
           docker compose up -d \
             api \
             web \
@@ -197,3 +170,37 @@ jobs:
       - name: Show httpbin logs
         if: "!cancelled()"
         run: docker compose logs httpbin
+
+  push-images:
+    needs: integration-tests
+    runs-on: ubuntu-latest
+    matrix:
+      image_name:
+        - api
+        - web
+        - relay
+        - gateway
+    env:
+      GCP_PROJECT: firezone-staging
+      GCP_REGISTRY: us-east1-docker.pkg.dev
+    steps:
+      - id: auth
+        uses: google-github-actions/auth@v1
+        with:
+          token_format: access_token
+          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
+          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+          export_environment_variables: false
+      - name: Change current gcloud account
+        run: gcloud --quiet config set project ${{ env.GCP_PROJECT }}
+      - name: Login to Google Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GCP_REGISTRY }}
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+      - name: Push images
+        if: ${{ github.ref == 'refs/heads/main' }}
+        run:
+          docker push ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT
+          }}/firezone/${{ matrix.image_name }} --all-tags
