@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         runs-on:
-          - os: macos-13-large
+          - os: macos-13-xlarge
             xcode-ver: "14.3"
         target:
           - sdk: macosx
