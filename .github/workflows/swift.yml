@@ -36,7 +36,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          shared-key: ${{ runner.os }}
+          key: ${{ runner.os }}
 #          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/cache/restore@v3
         name: Restore SwiftPM Cache
