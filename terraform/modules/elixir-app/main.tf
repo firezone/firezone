@@ -455,13 +455,14 @@ resource "google_compute_url_map" "default" {
 resource "google_compute_url_map" "https_redirect" {
   project = var.project_id
 
-  name = "${local.application_name}-https-redirect"
+  name            = "${local.application_name}-https-redirect"
+  default_service = google_compute_backend_service.default["http"].self_link
 
-  default_url_redirect {
-    https_redirect         = true
-    redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
-    strip_query            = false
-  }
+  # default_url_redirect {
+  #   https_redirect         = true
+  #   redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
+  #   strip_query            = false
+  # }
 }
 
 resource "google_compute_target_http_proxy" "default" {
