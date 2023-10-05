@@ -19,13 +19,11 @@ async-trait = { version = "0.1", default-features = false }
 connlib-shared = { workspace = true }
 firezone-tunnel = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
-boringtun = { workspace = true }
 backoff = { workspace = true }
 webrtc = "0.8"
 url = { version = "2.4.1", features = ["serde"] }
 time = { version = "0.3.29", features = ["formatting"] }
 reqwest = { version = "0.11.20", default-features = false, features = ["stream", "rustls-tls"] }
-rand = { version = "0.8", default-features = false, features = ["std"] }
 tokio-tungstenite = { version = "0.20", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 
 [target.'cfg(target_os = "android")'.dependencies]

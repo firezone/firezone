@@ -3,15 +3,11 @@ pub use connlib_shared::{get_device_id, messages::ResourceDescription, Callbacks
 
 use crate::control::ControlSignaler;
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
-use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::control::SecureUrl;
-use connlib_shared::{
-    control::PhoenixChannel, get_websocket_path, messages::Key, sha256, CallbackErrorFacade, Result,
-};
+use connlib_shared::{control::PhoenixChannel, login_url, CallbackErrorFacade, Mode, Result};
 use control::ControlPlane;
 use firezone_tunnel::Tunnel;
 use messages::IngressMessages;
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use secrecy::{Secret, SecretString};
 use std::sync::Arc;
 use std::time::Duration;
@@ -122,16 +118,11 @@ where
         callbacks: CallbackErrorFacade<CB>,
     ) {
         runtime.spawn(async move {
-            let private_key = StaticSecret::random_from_rng(rand::rngs::OsRng);
-            let name_suffix: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
-            let external_id = sha256(device_id);
-
-            let connect_url = fatal_error!(
-                get_websocket_path(portal_url, token, "gateway", &Key(PublicKey::from(&private_key).to_bytes()), &external_id, &name_suffix),
+            let (connect_url, private_key) = fatal_error!(
+                login_url(Mode::Gateway, portal_url, token, device_id),
                 runtime_stopper,
                 &callbacks
             );
-
 
             // This is kinda hacky, the buffer size is 1 so that we make sure that we
             // process one message at a time, blocking if a previous message haven't been processed
