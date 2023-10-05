@@ -34,37 +34,37 @@ jobs:
           - image_name: api
             target: runtime
             push: ${{ github.ref == 'refs/heads/main' }}
-            cache_scope: elixir
+            context: elixir
             build-args: |
               APPLICATION_NAME=api
           - image_name: web
             target: runtime
             push: ${{ github.ref == 'refs/heads/main' }}
-            cache_scope: elixir
+            context: elixir
             build-args: |
               APPLICATION_NAME=web
           - image_name: gateway
             target: runtime
             push: ${{ github.ref == 'refs/heads/main' }}
-            cache_scope: rust
+            context: rust
             build-args: |
               PACKAGE=firezone-gateway
           - image_name: relay
             target: runtime
             push: ${{ github.ref == 'refs/heads/main' }}
-            cache_scope: rust
+            context: rust
             build-args: |
               PACKAGE=relay
           - image_name: client
             target: runtime
             push: false
-            cache_scope: rust
+            context: rust
             build-args: |
               PACKAGE=firezone-headless-client
           - image_name: elixir
             target: builder
             push: false
-            cache_scope: elixir
+            context: elixir
             build-args: |
               APPLICATION_NAME=api
     permissions:
@@ -100,14 +100,14 @@ jobs:
         with:
           platforms: linux/amd64
           build-args: ${{ matrix.build-args }}
-          context: ${{ matrix.cache_scope }}/
+          context: ${{ matrix.context }}/
           cache-from: type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:buildcache
           # This will write the cache on main even if integration tests fail,
           # but it'll just be corrected on the next successful build.
           cache-to:
             ${{ github.ref == 'refs/heads/main' &&
             format('type=registry,ref={0}/{1}/firezone/{2}:buildcache,mode=max', env.GCP_REGISTRY, env.GCP_PROJECT, matrix.image_name) || '' }}
-          file: ${{ matrix.cache_scope }}/Dockerfile
+          file: ${{ matrix.context }}/Dockerfile
           # pushing is handled in a later step; this action doesn't allow output and push
           # in the same step :-/
           push: false
