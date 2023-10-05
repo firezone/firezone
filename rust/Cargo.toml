@@ -31,6 +31,7 @@ firezone-headless-client = { path = "headless-client"}
 headless-utils = { path = "headless-utils"}
 connlib-shared = { path = "connlib/shared"}
 firezone-tunnel = { path = "connlib/tunnel"}
+phoenix-channel = { path = "phoenix-channel"}
 
 # Patched to use https://github.com/rust-lang/cc-rs/pull/708
 # (the `patch` section can't be used for build deps...)
