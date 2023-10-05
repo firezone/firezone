@@ -34,17 +34,6 @@ jobs:
           java-version: 11
       - name: Validate Gradle wrapper
         uses: gradle/wrapper-validation-action@v1
-      - uses: actions/cache/restore@v3
-        name: Restore Gradle Cache
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key:
-            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*','**/gradle-wrapper.properties') }}
-          restore-keys:
-            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*','**/gradle-wrapper.properties') }}
-            ${{ runner.os }}-gradle-
       - name: Create Local Properties File
         run: touch local.properties
       - name: Setup Gradle
@@ -60,13 +49,3 @@ jobs:
       - name: Android Test Report
         uses: asadmansr/android-test-report-action@v1.2.0
         if: "!cancelled()"
-      - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
-        name: Save Gradle Cache
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key:
-            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*',
-            '**/gradle-wrapper.properties') }}
