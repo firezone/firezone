@@ -1,13 +1,6 @@
 name: Rust
 on:
-  merge_group:
-    types: [checks_requested]
-  pull_request:
-    paths:
-      - "rust/**"
-      - ".github/workflows/rust.yml"
   workflow_call:
-  workflow_dispatch:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -19,205 +12,61 @@ defaults:
     working-directory: ./rust
 
 jobs:
-  rust_test:
+  test:
     strategy:
       fail-fast: false
       matrix:
         runs-on:
-          - ubuntu-20.04
-          - ubuntu-22.04
-          - macos-11
-          - macos-12
+          # We only need to run unit tests on one OS version.
+          # Saves cache size.
+          - ubuntu-latest
           - macos-13
-          - windows-2019
           - windows-2022
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
-          - runs-on:  ubuntu-20.04
-            packages: -p firezone-headless-client -p firezone-gateway
-          - runs-on: ubuntu-22.04
-            packages: -p firezone-headless-client -p firezone-gateway
-          - runs-on: macos-11
-            packages: -p connlib-client-apple
-          - runs-on: macos-12
-            packages: -p connlib-client-apple
+          - runs-on: ubuntu-latest
+            packages:
+              -p firezone-headless-client -p firezone-gateway -p
+              connlib-client-android
           - runs-on: macos-13
             packages: -p connlib-client-apple
-          - runs-on: windows-2019
-            packages: -p connlib-client-shared
           - runs-on: windows-2022
             packages: -p connlib-client-shared
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
-
-      # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
-      # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
-      - run: rustup show
-
+      - name: Update toolchain
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          key: v2
-          prefix-key: rust-${{ matrix.runs-on }}
+          shared-key: ${{ runner.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      # TODO: Building *ring* from git requires us to install additional tools;
-      # once we're not using a forked *ring* these 2 steps can be removed.
-      - if: ${{ contains(matrix.runs-on, 'windows') }}
-        name: Install *ring* build tools
-        run: |
-          git clone `
-            --branch windows `
-            --depth 1 `
-            https://github.com/briansmith/ring-toolchain `
-            target/tools/windows
-      # The repo above is for a newer version of the *ring* build script which
-      # expects different paths; instead of going through the trouble of
-      # copying the older installation script let's just move the exe.
-      - if: ${{ contains(matrix.runs-on, 'windows') }}
-        name: Move *ring* build tools
-        run: |
-          mv target/tools/windows/nasm/nasm.exe target/tools/nasm.exe
-
       - run: cargo fmt -- --check
-      - run: cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
+      - run: |
+          cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
         env:
           RUSTDOCFLAGS: "-D warnings"
-      - run: cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
+      - run: |
+          cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
       - run: cargo test --all-features ${{ matrix.packages }}
 
-  rust_smoke-test-relay:
-    runs-on: ubuntu-latest
+  smoke-test-relay:
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      matrix:
+        runs-on:
+          - ubuntu-latest
     defaults:
       run:
         working-directory: ./rust/relay
     steps:
       - uses: actions/checkout@v4
-
-      # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
-      # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
-      - run: rustup show
+      - name: Update toolchain
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
+          shared-key: ${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ./run_smoke_test.sh
-
-  rust_relay-container-build:
-    runs-on: ubuntu-latest
-    needs:
-      - rust_test
-      - rust_smoke-test-relay
-    permissions:
-      contents: read
-      id-token: "write"
-    env:
-      PACKAGE: relay
-      REGISTRY: us-east1-docker.pkg.dev
-      GCLOUD_PROJECT: firezone-staging
-      GOOGLE_CLOUD_PROJECT: firezone-staging
-      CLOUDSDK_PROJECT: firezone-staging
-      CLOUDSDK_CORE_PROJECT: firezone-staging
-      GCP_PROJECT: firezone-staging
-    steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - uses: actions/checkout@v4
-      - id: auth
-        uses: google-github-actions/auth@v1
-        with:
-          token_format: "access_token"
-          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
-          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
-          export_environment_variables: false
-      - name: Change current gcloud account
-        run: gcloud --quiet config set project ${GCLOUD_PROJECT}
-      - name: Login to Google Artifact Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: oauth2accesstoken
-          password: ${{ steps.auth.outputs.access_token }}
-      - name: Build Tag and Version ID
-        id: vsn
-        env:
-          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
-        run: |
-          TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
-          echo "TAG=branch-${TAG}" >> $GITHUB_ENV
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          platforms: linux/amd64
-          build-args: |
-            PACKAGE=${{ env.PACKAGE }}
-          context: rust/
-          cache-from: type=gha,scope=${{ env.PACKAGE }}-${{ github.sha }}
-          cache-to: type=gha,mode=max,scope=${{ env.PACKAGE }}-${{ github.sha }}
-          file: rust/Dockerfile
-          push: true
-          tags:
-            ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{
-            env.PACKAGE }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{
-            env.GCLOUD_PROJECT }}/firezone/${{ env.PACKAGE }}:${{ github.sha }}
-
-  rust_gateway-container-build:
-    runs-on: ubuntu-latest
-    needs:
-      - rust_test
-    permissions:
-      contents: read
-      id-token: "write"
-    env:
-      PACKAGE: firezone-gateway
-      REGISTRY: us-east1-docker.pkg.dev
-      GCLOUD_PROJECT: firezone-staging
-      GOOGLE_CLOUD_PROJECT: firezone-staging
-      CLOUDSDK_PROJECT: firezone-staging
-      CLOUDSDK_CORE_PROJECT: firezone-staging
-      GCP_PROJECT: firezone-staging
-    steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - uses: actions/checkout@v4
-      - id: auth
-        uses: google-github-actions/auth@v1
-        with:
-          token_format: "access_token"
-          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
-          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
-          export_environment_variables: false
-      - name: Change current gcloud account
-        run: gcloud --quiet config set project ${GCLOUD_PROJECT}
-      - name: Login to Google Artifact Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: oauth2accesstoken
-          password: ${{ steps.auth.outputs.access_token }}
-      - name: Build Tag and Version ID
-        id: vsn
-        env:
-          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
-        run: |
-          TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
-          echo "TAG=branch-${TAG}" >> $GITHUB_ENV
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          platforms: linux/amd64
-          build-args: |
-            PACKAGE=${{ env.PACKAGE }}
-          context: rust/
-          cache-from: type=gha,scope=${{ env.PACKAGE }}-${{ github.sha }}
-          cache-to: type=gha,mode=max,scope=${{ env.PACKAGE }}-${{ github.sha }}
-          file: rust/Dockerfile
-          push: true
-          tags:
-            ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{
-            env.PACKAGE }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{
-            env.GCLOUD_PROJECT }}/firezone/${{ env.PACKAGE }}:${{ github.sha }}
