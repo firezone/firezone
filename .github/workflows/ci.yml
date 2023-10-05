@@ -57,7 +57,7 @@ jobs:
             push: false
             cache_scope: rust
             build-args: |
-              PACKAGE=headless
+              PACKAGE=firezone-headless-client
           - image_name: elixir
             target: builder
             push: false
