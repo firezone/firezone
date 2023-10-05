@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-java@v3
         with:
           distribution: oracle
-          java-version: 21
+          java-version: 11
       - name: Validate Gradle wrapper
         uses: gradle/wrapper-validation-action@v1
       - name: Create Local Properties File
@@ -39,7 +39,7 @@ jobs:
       - name: Run linter
         run: ./gradlew spotlessCheck
       - name: Execute Gradle build
-        run: ./gradlew build
+        run: ./gradlew assembleRelease
       - name: Run Test
         run: ./gradlew testReleaseUnitTest
       - name: Android Test Report
