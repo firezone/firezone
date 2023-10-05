@@ -29,13 +29,11 @@ jobs:
       matrix:
         include:
           - image_name: api
-            push: ${{ github.ref == 'refs/heads/main' }}
             target: runtime
             context: elixir
             build-args: |
               APPLICATION_NAME=api
           - image_name: web
-            push: ${{ github.ref == 'refs/heads/main' }}
             target: runtime
             context: elixir
             build-args: |
@@ -47,19 +45,16 @@ jobs:
             build-args: |
               PACKAGE=firezone-gateway
           - image_name: relay
-            push: ${{ github.ref == 'refs/heads/main' }}
             target: runtime
             context: rust
             build-args: |
               PACKAGE=relay
           - image_name: client
-            push: false
             target: runtime
             context: rust
             build-args: |
               PACKAGE=firezone-headless-client
           - image_name: elixir
-            push: false
             target: builder
             context: elixir
             build-args: |
@@ -98,11 +93,10 @@ jobs:
           cache-to: >-
             type=registry,ref=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}-buildcache:${{ env.CACHE_TAG }}
           file: ${{ matrix.context }}/Dockerfile
-          push: ${{ matrix.push }}
+          push: true
           target: ${{ matrix.target }}
           tags: |
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:latest
 
   integration-tests:
