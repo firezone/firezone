@@ -78,8 +78,8 @@ jobs:
           build-args: ${{ matrix.build-args }}
           context: ${{ matrix.context }}/
           cache-from: |
-            type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:buildcache-${{ github.ref }}
-            type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:buildcache-refs/heads/main
+            type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}-buildcache:${{ github.ref }}
+            type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}-buildcache:refs/heads/main
           # This will write the cache on main even if integration tests fail,
           # but it'll just be corrected on the next successful build.
           cache-to: type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:buildcache:${{ github.ref }}
