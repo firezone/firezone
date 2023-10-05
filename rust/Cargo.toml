@@ -3,7 +3,6 @@ members = [
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/shared",
-  "connlib/gateway-shared",
   "connlib/shared",
   "connlib/tunnel",
   "gateway",
@@ -27,7 +26,6 @@ secrecy = "0.8"
 connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}
 connlib-client-shared = { path = "connlib/clients/shared"}
-connlib-gateway-shared = { path = "connlib/gateway-shared"}
 firezone-gateway = { path = "gateway"}
 firezone-headless-client = { path = "headless-client"}
 headless-utils = { path = "headless-utils"}
