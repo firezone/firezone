@@ -103,10 +103,10 @@ jobs:
           platforms: linux/amd64
           build-args: ${{ matrix.build-args }}
           context: ${{ matrix.cache_scope }}/
-          cache-from: type=gha,scope=${{ matrix.cache_scope }}
+          cache-from: type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:buildcache
           cache-to:
             ${{ github.ref == 'refs/heads/main' &&
-            format('type=gha,mode=max,scope={0}', matrix.cache_scope) || '' }}
+            type=registry,ref=${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:buildcache }}
           file: ${{ matrix.cache_scope }}/Dockerfile
           push: ${{ matrix.push}}
           target: ${{ matrix.target }}
