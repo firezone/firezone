@@ -115,6 +115,7 @@ jobs:
           tags: |
             ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
             ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+            ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:latest
           outputs: type=docker,dest=/tmp/${{ matrix.image_name }}.tar
       - name: Push images
         if: ${{ matrix.push }}
@@ -165,6 +166,7 @@ jobs:
           docker load --input /tmp/relay.tar
           docker load --input /tmp/client.tar
           docker image ls -a
+      # FIXME: This doesn't use the Elixir cache, and so compiles every time
       - name: Seed database
         run:
           docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
