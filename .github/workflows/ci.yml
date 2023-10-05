@@ -174,12 +174,13 @@ jobs:
   push-images:
     needs: integration-tests
     runs-on: ubuntu-latest
-    matrix:
-      image_name:
-        - api
-        - web
-        - relay
-        - gateway
+    strategy:
+      matrix:
+        image_name:
+          - api
+          - web
+          - relay
+          - gateway
     env:
       GCP_PROJECT: firezone-staging
       GCP_REGISTRY: us-east1-docker.pkg.dev
