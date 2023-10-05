@@ -195,5 +195,4 @@ jobs:
           project: firezone-staging
       - name: Push images
         if: ${{ github.ref == 'refs/heads/main' }}
-        run:
-          docker push ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }} --all-tags
+        run: docker push ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }} --all-tags
