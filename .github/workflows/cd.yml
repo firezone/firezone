@@ -10,13 +10,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  elixir:
-    uses: ./.github/workflows/elixir.yml
-  rust:
-    uses: ./.github/workflows/rust.yml
-  terraform:
-    uses: ./.github/workflows/terraform.yml
-    secrets: inherit
+  ci:
+    uses: ./.github/workflows/ci.yml
   deploy:
     runs-on: ubuntu-latest
     # if: ${{ github.event.workflow_run.conclusion == 'success' }}
