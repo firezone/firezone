@@ -17,3 +17,6 @@ www
 .terraform
 *.tfstate.backup
 terraform.tfstate.d
+
+rust/connlib/clients/android/connlib/build/
+rust/connlib/clients/android/connlib/jniLibs/

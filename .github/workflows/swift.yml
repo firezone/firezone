@@ -1,14 +1,6 @@
 name: Swift
 on:
-  pull_request:
-    paths:
-      - "swift/**"
-      - "rust/connlib/**"
-      - ".github/workflows/swift.yml"
-  merge_group:
-    types: [checks_requested]
   workflow_call:
-  workflow_dispatch:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -16,16 +8,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  swift_build:
+  build:
     runs-on: ${{ matrix.runs-on.os }}
     strategy:
       fail-fast: false
       matrix:
         runs-on:
-          - os: macos-12
-            xcode-ver: '14.2'
           - os: macos-13
-            xcode-ver: '14.3'
+            xcode-ver: "14.3"
         target:
           - sdk: macosx
             platform: macOS
@@ -40,17 +30,20 @@ jobs:
         working-directory: ./swift
     steps:
       - uses: actions/checkout@v4
-      - run: rustup show
+      - name: Update toolchain
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
+          shared-key: ${{ runner.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Update toolchain
-        run: rustup show
-      - uses: actions/cache@v3
+      - uses: actions/cache/restore@v3
+        name: Restore SwiftPM Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
-          key: ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
+          key:
+            ${{ matrix.target.platform }}-spm-${{
+            hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ matrix.target.platform }}-spm-
       - run: |
@@ -68,3 +61,11 @@ jobs:
           cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
           cp Firezone/xcconfig/Server.xcconfig.ci Firezone/xcconfig/Server.xcconfig
           xcodebuild archive -configuration Release -scheme Firezone -sdk ${{ matrix.target.sdk }} -destination '${{ matrix.target.destination }}' CODE_SIGNING_ALLOWED=NO
+      - uses: actions/cache/save@v3
+        if: ${{ github.ref == 'refs/heads/main' }}
+        name: Save SwiftPM Cache
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
+          key:
+            ${{ matrix.target.platform }}-spm-${{
+            hashFiles('**/Package.resolved') }}

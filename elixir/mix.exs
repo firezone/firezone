@@ -1,16 +1,12 @@
 defmodule Firezone.MixProject do
   use Mix.Project
 
-  def version do
-    # Use dummy version for dev and test
-    System.get_env("APPLICATION_VERSION", "0.0.0+git.0.deadbeef")
-  end
-
   def project do
     [
       name: :firezone,
       apps_path: "apps",
-      version: version(),
+      # mark:automatic-version
+      version: "1.20231001.0",
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
