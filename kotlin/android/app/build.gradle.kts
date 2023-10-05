@@ -44,11 +44,11 @@ android {
     }
 
     namespace = "dev.firezone.android"
-
     compileSdk = 33
+
     defaultConfig {
         applicationId = "dev.firezone.android"
-        minSdk = 29
+        minSdk = 30
         targetSdk = 33
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:automatic-version
@@ -87,6 +87,9 @@ android {
             buildConfigField("String", "CONNLIB_LOG_FILTER_STRING", "\"connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn\"")
 
             resValue("string", "app_name", "\"Firezone\"")
+
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 

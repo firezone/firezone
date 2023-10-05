@@ -10,8 +10,7 @@ android {
     compileSdk = 33
 
     defaultConfig {
-        minSdk = 29
-        targetSdk = 33
+        minSdk = 30
         consumerProguardFiles("consumer-rules.pro")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -23,7 +22,7 @@ android {
     ndkVersion = "25.2.9519653"
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
