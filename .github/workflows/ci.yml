@@ -190,6 +190,7 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
