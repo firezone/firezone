@@ -93,11 +93,10 @@ jobs:
           cache-to: >-
             type=registry,ref=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}-buildcache:${{ env.CACHE_TAG }}
           file: ${{ matrix.context }}/Dockerfile
-          push: ${{ github.ref == 'refs/heads/main' }}
+          push: true
           target: ${{ matrix.target }}
           tags: |
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:latest
 
   integration-tests:
