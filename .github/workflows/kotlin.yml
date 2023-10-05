@@ -42,7 +42,9 @@ jobs:
           key:
             ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*',
             '**/gradle-wrapper.properties') }}
-          restore-keys: ${{ runner.os }}-gradle-
+          restore-keys:
+            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*',
+            '**/gradle-wrapper.properties') }}
       - name: Create Local Properties File
         run: touch local.properties
       - name: Setup Gradle

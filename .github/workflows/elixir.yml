@@ -44,6 +44,9 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
             env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
+            env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache/restore@v3
         name: Restore Elixir Build Cache
         env:
@@ -51,6 +54,9 @@ jobs:
         with:
           path: elixir/_build
           key:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
+            env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          restore-keys:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
             env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
@@ -122,6 +128,9 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
             env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
+            env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache/restore@v3
         name: Restore Elixir Build Cache
         env:
@@ -129,6 +138,9 @@ jobs:
         with:
           path: elixir/_build
           key:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
+            env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          restore-keys:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
             env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
@@ -209,6 +221,9 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
             env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
+            env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache/restore@v3
         name: Restore Elixir Build Cache
         env:
@@ -216,6 +231,9 @@ jobs:
         with:
           path: elixir/_build
           key:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
+            env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          restore-keys:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
             env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
@@ -299,6 +317,9 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
             env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
+            env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache/restore@v3
         name: Restore Elixir Build Cache
         env:
@@ -306,6 +327,9 @@ jobs:
         with:
           path: elixir/_build
           key:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
+            env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          restore-keys:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
             env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
@@ -431,6 +455,9 @@ jobs:
           key:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
             env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          restore-keys:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
+            env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache/restore@v3
         name: Restore Elixir Build Cache
         env:
@@ -438,6 +465,9 @@ jobs:
         with:
           path: elixir/_build
           key:
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
+            env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          restore-keys:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
             env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache/restore@v3
@@ -456,6 +486,9 @@ jobs:
         with:
           path: elixir/apps/web/priv/static/dist
           key:
+            ${{ runner.os }}-${{ env.cache-name }}-${{
+            hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys:
             ${{ runner.os }}-${{ env.cache-name }}-${{
             hashFiles('**/pnpm-lock.yaml') }}
       - run: |
