@@ -14,7 +14,10 @@ pub use callbacks_error_facade::CallbackErrorFacade;
 pub use error::ConnlibError as Error;
 pub use error::Result;
 
+use boringtun::x25519::{PublicKey, StaticSecret};
 use messages::Key;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use ring::digest::{Context, SHA256};
 use secrecy::{ExposeSecret, SecretString};
 use std::net::Ipv4Addr;
@@ -24,6 +27,42 @@ pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
+
+/// Creates a new login URL to use with the portal.
+pub fn login_url(
+    mode: Mode,
+    portal_url: Url,
+    portal_token: SecretString,
+    device_id: String,
+) -> Result<(Url, StaticSecret)> {
+    let private_key = StaticSecret::random_from_rng(rand::rngs::OsRng);
+    let name_suffix: String = thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(8)
+        .map(char::from)
+        .collect();
+    let external_id = sha256(device_id);
+
+    let url = get_websocket_path(
+        portal_url,
+        portal_token,
+        match mode {
+            Mode::Client => "client",
+            Mode::Gateway => "gateway",
+        },
+        &Key(PublicKey::from(&private_key).to_bytes()),
+        &external_id,
+        &name_suffix,
+    )?;
+
+    Ok((url, private_key))
+}
+
+// FIXME: This is a terrible name :(
+pub enum Mode {
+    Client,
+    Gateway,
+}
 
 pub fn get_user_agent() -> String {
     let info = os_info::get();
@@ -64,7 +103,7 @@ pub fn get_device_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
-pub fn set_ws_scheme(url: &mut Url) -> Result<()> {
+fn set_ws_scheme(url: &mut Url) -> Result<()> {
     let scheme = match url.scheme() {
         "http" | "ws" => "ws",
         "https" | "wss" => "wss",
@@ -75,7 +114,7 @@ pub fn set_ws_scheme(url: &mut Url) -> Result<()> {
     Ok(())
 }
 
-pub fn sha256(input: String) -> String {
+fn sha256(input: String) -> String {
     let mut ctx = Context::new(&SHA256);
     ctx.update(input.as_bytes());
     let digest = ctx.finish();
@@ -87,7 +126,7 @@ pub fn sha256(input: String) -> String {
         .collect()
 }
 
-pub fn get_websocket_path(
+fn get_websocket_path(
     mut url: Url,
     secret: SecretString,
     mode: &str,
