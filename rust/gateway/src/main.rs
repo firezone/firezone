@@ -1,5 +1,5 @@
 use crate::control::ControlSignaler;
-use crate::eventloop::Eventloop;
+use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use crate::messages::IngressMessages;
 use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
@@ -68,14 +68,14 @@ async fn connect(
     tracing::debug!("Attempting connection to portal...");
 
     let mut channel = phoenix_channel::PhoenixChannel::connect(connect_url, device_id).await?;
-    channel.join("gateway", ());
+    channel.join(PHOENIX_TOPIC, ());
 
     let channel = loop {
         match future::poll_fn(|cx| channel.poll(cx))
             .await
             .context("portal connection failed")?
         {
-            phoenix_channel::Event::JoinedRoom { topic } if topic == "gateway" => {
+            phoenix_channel::Event::JoinedRoom { topic } if topic == PHOENIX_TOPIC => {
                 tracing::info!("Joined gateway room on portal")
             }
             phoenix_channel::Event::InboundMessage {

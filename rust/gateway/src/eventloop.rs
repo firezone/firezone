@@ -16,6 +16,8 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
+pub const PHOENIX_TOPIC: &str = "gateway";
+
 pub struct Eventloop {
     tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler>>,
     control_rx: mpsc::Receiver<BroadcastClientIceCandidates>,
@@ -56,7 +58,7 @@ impl Eventloop {
         loop {
             if let Poll::Ready(Some(ice_candidates)) = self.control_rx.poll_recv(cx) {
                 let _id = self.portal.send(
-                    "gateway",
+                    PHOENIX_TOPIC,
                     EgressMessages::BroadcastIceCandidates(ice_candidates),
                 );
                 continue;
@@ -65,7 +67,7 @@ impl Eventloop {
             match self.connection_request_tasks.poll_unpin(cx) {
                 Poll::Ready(((_, reference), Ok(Ok(gateway_rtc_session_description)))) => {
                     let _id = self.portal.send(
-                        "gateway",
+                        PHOENIX_TOPIC,
                         EgressMessages::ConnectionReady(ConnectionReady {
                             reference,
                             gateway_rtc_session_description,
