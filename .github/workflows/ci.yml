@@ -199,7 +199,7 @@ jobs:
           path: /tmp
       - name: Load images into docker
         run: |
-          docker load --input /tmp/${image_name}.tar
+          docker load --input /tmp/${{ matrix.image_name }}.tar
           docker image ls -a
       - uses: ./.github/actions/gcp-docker-login
         id: login
