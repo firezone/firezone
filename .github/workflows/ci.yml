@@ -1,8 +1,5 @@
 name: Continuous Integration
 on:
-  push:
-    branches:
-      - main
   pull_request:
   merge_group:
     types: [checks_requested]
