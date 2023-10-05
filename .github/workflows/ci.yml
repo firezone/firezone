@@ -141,7 +141,6 @@ jobs:
           docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
-          docker compose pull
           docker compose up -d \
             api \
             web \
