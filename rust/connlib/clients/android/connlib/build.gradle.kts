@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "dev.firezone.connlib"
-    compileSdk = 33
+    compileSdk = 34
 
     defaultConfig {
         minSdk = 30

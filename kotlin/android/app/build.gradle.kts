@@ -44,7 +44,7 @@ android {
     }
 
     namespace = "dev.firezone.android"
-    compileSdk = 33
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "dev.firezone.android"
@@ -108,7 +108,7 @@ android {
 }
 
 dependencies {
-    val core_version = "1.9.0"
+    val core_version = "1.12.0"
 
     // Connlib
     implementation(project(":connlib"))

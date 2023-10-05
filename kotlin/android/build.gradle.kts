@@ -7,8 +7,8 @@ buildscript {
         maven(url = "https://plugins.gradle.org/m2/")
     }
     dependencies {
-        classpath("com.android.tools.build:gradle:7.4.1")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10")
+        classpath("com.android.tools.build:gradle:8.1.2")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.20-Beta2")
         classpath("com.google.dagger:hilt-android-gradle-plugin:2.44.1")
         classpath("com.google.android.libraries.mapsplatform.secrets-gradle-plugin:secrets-gradle-plugin:2.0.1")
         classpath("androidx.navigation:navigation-safe-args-gradle-plugin:2.5.3")

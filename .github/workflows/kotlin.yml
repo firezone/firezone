@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-java@v3
         with:
           distribution: temurin
-          java-version: 11
+          java-version: 17
       - name: Validate Gradle wrapper
         uses: gradle/wrapper-validation-action@v1
       - name: Create Local Properties File
