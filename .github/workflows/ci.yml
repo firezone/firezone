@@ -117,7 +117,7 @@ jobs:
             ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
           outputs: type=docker,dest=/tmp/${{ matrix.image_name }}.tar
       - name: Push images
-        if: ${{ github.ref == 'refs/heads/main' }}
+        if: ${{ matrix.push }}
         run:
           # Yes, we do this even if integration-tests fail. Gives us an convenient way to push
           # and pull images for manual testing in staging.
