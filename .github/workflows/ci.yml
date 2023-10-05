@@ -60,6 +60,7 @@ jobs:
               APPLICATION_NAME=api
     permissions:
       contents: read
+      id-token: write
     env:
       # mark:automatic-version
       VERSION: "1.20231001.0"
