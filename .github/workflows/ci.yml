@@ -75,7 +75,7 @@ jobs:
           REF="${{ github.ref_name }}" # `ref_name` contains `/` which is not a valid docker image tag.
           CACHE_TAG="${REF//\//-}"
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
-      - uses: .github/actions/gcp-docker-login
+      - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
           project: firezone-staging
@@ -189,7 +189,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: .github/actions/gcp-docker-login
+      - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
           project: firezone-staging
