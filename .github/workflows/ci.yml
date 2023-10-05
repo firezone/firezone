@@ -220,5 +220,4 @@ jobs:
       - name: Push images
         if: ${{ github.ref == 'refs/heads/main' }}
         run:
-          docker push ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT
-          }}/firezone/${{ matrix.image_name }} --all-tags
+          docker push ${{ env.GCP_REGISTRY }}/${{ env.GCP_PROJECT }}/firezone/${{ matrix.image_name }} --all-tags
