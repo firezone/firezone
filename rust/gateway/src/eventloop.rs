@@ -112,7 +112,7 @@ impl Eventloop {
                     msg: IngressMessages::Init(_),
                     ..
                 }) => {
-                    todo!("received init after init");
+                    debug_assert!(false, "Received init message during operation");
                 }
                 Poll::Ready(phoenix_channel::Event::InboundMessage {
                     msg: IngressMessages::RequestConnection(req),
