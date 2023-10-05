@@ -75,8 +75,8 @@ async fn connect(
             .await
             .context("portal connection failed")?
         {
-            phoenix_channel::Event::JoinedRoom { topic } if topic == "relay" => {
-                tracing::info!("Joined gatway room on portal")
+            phoenix_channel::Event::JoinedRoom { topic } if topic == "gateway" => {
+                tracing::info!("Joined gateway room on portal")
             }
             phoenix_channel::Event::InboundMessage {
                 topic,
