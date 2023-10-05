@@ -45,7 +45,8 @@ jobs:
             ${{ matrix.target.platform }}-spm-${{
             hashFiles('**/Package.resolved') }}
           restore-keys: |
-            ${{ matrix.target.platform }}-spm-
+            ${{ matrix.target.platform }}-spm-${{
+            hashFiles('**/Package.resolved') }}
       - run: |
           sudo ls -al /Applications/
       - name: Select Xcode
