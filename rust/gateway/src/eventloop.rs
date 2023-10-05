@@ -101,7 +101,7 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    tracing::debug!("Failed to add ICE candidatee: {e}");
+                    tracing::error!("Failed to add ICE candidatee: {e}");
                     continue;
                 }
                 Poll::Pending => {}
