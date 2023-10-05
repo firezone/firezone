@@ -1,0 +1,29 @@
+name: "GCP docker registry login"
+description: "Login to the GCP docker registry"
+inputs:
+  project:
+    description: "The GCP project name"
+    required: true
+outputs:
+  registry:
+    description: "The full name of the registry we logged into"
+    value: "us-east1-docker.pkg.dev"/${{ inputs.project }}
+runs:
+  using: "composite"
+  steps:
+    - id: auth
+      uses: google-github-actions/auth@v1
+      with:
+        token_format: access_token
+        workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
+        service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+        export_environment_variables: false
+    - name: Change current gcloud account
+      shell: bash
+      run: gcloud --quiet config set project ${{ inputs.project }}
+    - name: Login to Google Artifact Registry
+      uses: docker/login-action@v3
+      with:
+        registry: "us-east1-docker.pkg.dev"
+        username: oauth2accesstoken
+        password: ${{ steps.auth.outputs.access_token }}
