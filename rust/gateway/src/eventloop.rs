@@ -136,12 +136,10 @@ impl Eventloop {
                         },
                     ) {
                         Err(futures_bounded::PushError::BeyondCapacity(_)) => {
-                            todo!("too many connection requests at a time")
+                            tracing::warn!("Too many connections requests, dropping existing one");
                         }
                         Err(futures_bounded::PushError::ReplacedFuture(_)) => {
-                            todo!(
-                                "received a 2nd connection request with the same reference from the same client"
-                            )
+                            debug_assert!(false, "Received a 2nd connection requested with the same reference from the same client");
                         }
                         Ok(()) => {}
                     };
