@@ -108,6 +108,9 @@ jobs:
   integration-tests:
     needs: build-images
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       matrix:
         include:
@@ -125,7 +128,6 @@ jobs:
             execute: |
               docker compose exec -it client timeout 60 \
               bash -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
