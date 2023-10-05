@@ -10,7 +10,9 @@ concurrency:
 jobs:
   # See rust.yml how we build, package and release connlib as an example
   build:
-    runs-on: ubuntu-22.04-firezone
+    # Builds are more IO-bound than CPU-bound so using a larger GitHub-hosted
+    # runner isn't worth it.
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./kotlin/android
