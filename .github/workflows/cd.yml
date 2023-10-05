@@ -97,3 +97,19 @@ jobs:
         with:
           status: ${{ job.status }}
           notify_when: "failure"
+
+  update_release_draft:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      # write permission is required to create a github release
+      contents: write
+      # autolabeler
+      pull-requests: write
+    steps:
+      - uses: release-drafter/release-drafter@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # mark:automatic-version
+          version: 1.20231001.0
