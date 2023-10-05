@@ -18,9 +18,7 @@ jobs:
     permissions:
       contents: write
     needs:
-      - elixir
-      - rust
-      - terraform
+      - ci
     env:
       TF_CLOUD_ORGANIZATION: "firezone"
       TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
