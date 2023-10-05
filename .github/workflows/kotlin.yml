@@ -26,7 +26,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-java@v3
         with:
-          distribution: oracle
+          distribution: temurin
           java-version: 11
       - name: Validate Gradle wrapper
         uses: gradle/wrapper-validation-action@v1
