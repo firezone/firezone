@@ -45,7 +45,7 @@ jobs:
             push: ${{ github.ref == 'refs/heads/main' }}
             cache_scope: rust
             build-args: |
-              PACKAGE=gateway
+              PACKAGE=firezone-gateway
           - image_name: relay
             target: runtime
             push: ${{ github.ref == 'refs/heads/main' }}
