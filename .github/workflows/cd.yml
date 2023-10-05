@@ -10,13 +10,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  elixir:
-    uses: ./.github/workflows/elixir.yml
-  rust:
-    uses: ./.github/workflows/rust.yml
-  terraform:
-    uses: ./.github/workflows/terraform.yml
-    secrets: inherit
+  ci:
+    uses: ./.github/workflows/ci.yml
   deploy:
     runs-on: ubuntu-latest
     # if: ${{ github.event.workflow_run.conclusion == 'success' }}
@@ -79,7 +74,8 @@ jobs:
           TF_VAR_relay_image_tag: '"${{ github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
-          configuration_version: ${{ steps.apply-upload.outputs.configuration_version_id }}
+          configuration_version:
+            ${{ steps.apply-upload.outputs.configuration_version_id }}
       - name: Apply
         uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.0.4
         if: fromJSON(steps.apply-run.outputs.payload).data.attributes.actions.IsConfirmable
@@ -96,7 +92,8 @@ jobs:
           SLACK_COLOR: "#ff0000"
           MSG_MINIMAL: "ref,actions url"
           SLACK_TITLE: "Deployment Failed"
-          SLACK_MESSAGE: "Automatic deployment to ${{ env.TF_WORKSPACE }} failed"
+          SLACK_MESSAGE:
+            "Automatic deployment to ${{ env.TF_WORKSPACE }} failed"
         with:
           status: ${{ job.status }}
           notify_when: "failure"
