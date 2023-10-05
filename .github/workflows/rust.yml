@@ -60,5 +60,5 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          # save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ./run_smoke_test.sh
