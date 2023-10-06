@@ -20,3 +20,6 @@ npm-debug.log
 # Built packages
 /*.deb
 /*.rpm
+
+# Ignore generated credentials from google-github-actions/auth
+gha-creds-*.json
