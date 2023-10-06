@@ -274,7 +274,7 @@ async fn connect_to_portal(
     Ok(Some(channel))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 struct Init {}
 
 #[derive(serde::Serialize, PartialEq, Debug)]

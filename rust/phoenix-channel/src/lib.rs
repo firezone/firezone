@@ -44,13 +44,16 @@ pub async fn init<TInitM, TInboundMsg, TOutboundRes>(
     user_agent: String,
     login_topic: &'static str,
     payload: impl Serialize,
-) -> Result<Result<(PhoenixChannel<TInboundMsg, TOutboundRes>, TInitM), InitFailed>, Error>
+) -> Result<
+    Result<(PhoenixChannel<TInboundMsg, TOutboundRes>, TInitM), UnexpectedEventDuringInit>,
+    Error,
+>
 where
-    TInitM: DeserializeOwned,
+    TInitM: DeserializeOwned + fmt::Debug,
     TInboundMsg: DeserializeOwned,
     TOutboundRes: DeserializeOwned,
 {
-    #[derive(serde::Deserialize)]
+    #[derive(serde::Deserialize, Debug)]
     pub struct InitMessage<M> {
         init: M,
     }
@@ -71,36 +74,8 @@ where
 
                 break (channel, msg);
             }
-            Event::SuccessResponse { topic, .. } => {
-                return Ok(Err(InitFailed {
-                    reason: format!(
-                        "unexpected success response on topic '{topic}' while waiting for `init`"
-                    ),
-                }));
-            }
-            Event::JoinedRoom { topic } => {
-                return Ok(Err(InitFailed {
-                    reason: format!("unexpectedly joined room '{topic}' while waiting for `init`"),
-                }));
-            }
-            Event::ErrorResponse { topic, reason, .. } => {
-                return Ok(Err(InitFailed {
-                    reason: format!("unexpected error response on topic '{topic}' while waiting for `init`: {reason}"),
-                }));
-            }
-            Event::InboundReq { .. } => {
-                return Ok(Err(InitFailed {
-                    reason: "unexpected inbound request while waiting for `init`".to_owned(),
-                }));
-            }
-            Event::InboundMessage { topic, .. } => {
-                return Ok(Err(InitFailed {
-                    reason: format!(
-                        "unexpected inbound message on topic '{topic}' while waiting for `init`"
-                    ),
-                }));
-            }
             Event::HeartbeatSent => {}
+            e => return Ok(Err(UnexpectedEventDuringInit(format!("{e:?}")))),
         }
     };
 
@@ -108,10 +83,8 @@ where
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("failed to log into portal: {reason}")]
-pub struct InitFailed {
-    reason: String,
-}
+#[error("encountered unexpected event during init: {0}")]
+pub struct UnexpectedEventDuringInit(String);
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
