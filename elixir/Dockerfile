@@ -14,7 +14,8 @@ RUN apk add --update --no-cache \
     make \
     git \
     nodejs \
-    npm
+    npm \
+    build-base
 
 # Add pnpm
 RUN npm i -g pnpm
