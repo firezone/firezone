@@ -441,7 +441,7 @@ module "web" {
       port     = 80
 
       health_check = {
-        initial_delay_sec = 50
+        initial_delay_sec = 60
 
         check_interval_sec  = 15
         timeout_sec         = 10
@@ -510,12 +510,12 @@ module "api" {
       port     = 80
 
       health_check = {
-        initial_delay_sec = 50
+        initial_delay_sec = 60
 
         check_interval_sec  = 15
         timeout_sec         = 10
         healthy_threshold   = 1
-        unhealthy_threshold = 2
+        unhealthy_threshold = 3
 
         http_health_check = {
           request_path = "/healthz"
@@ -697,12 +697,12 @@ module "relays" {
     protocol = "TCP"
     port     = 8080
 
-    initial_delay_sec = 50
+    initial_delay_sec = 60
 
     check_interval_sec  = 15
     timeout_sec         = 10
     healthy_threshold   = 1
-    unhealthy_threshold = 2
+    unhealthy_threshold = 3
 
     http_health_check = {
       request_path = "/healthz"
