@@ -109,9 +109,14 @@ RUN set -xe \
 
 # Create default user and home directory, set owner to default
 RUN set -xe \
-    mkdir -p /app && \
-    adduser -s /bin/sh -u 1001 -G root -h /app -S -D default && \
-    chown -R 1001:0 /app
+    && mkdir -p /app \
+    && adduser -s /bin/sh -u 1001 -G root -h /app -S -D default \
+    && chown -R 1001:0 /app
+
+# Add other directories firezone needs to run
+RUN set -xe \
+    && mkdir -p /var/firezone \
+    && chown -R 1001:0 /var/firezone
 
 WORKDIR /app
 
