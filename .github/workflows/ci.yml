@@ -55,7 +55,7 @@ jobs:
             build-args: |
               PACKAGE=firezone-headless-client
           - image_name: elixir
-            target: builder
+            target: compiler
             context: elixir
             build-args: |
               APPLICATION_NAME=api
@@ -91,7 +91,8 @@ jobs:
           # This will write the cache on main even if integration tests fail,
           # but it'll just be corrected on the next successful build.
           cache-to: >-
-            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{ steps.login.outputs.registry
+            }}/firezone/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
           file: ${{ matrix.context }}/Dockerfile
           push: true
           target: ${{ matrix.target }}
