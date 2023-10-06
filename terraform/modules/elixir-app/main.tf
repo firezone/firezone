@@ -342,6 +342,12 @@ resource "google_compute_region_instance_group_manager" "application" {
     max_surge_fixed       = max(1, var.scaling_horizontal_replicas - 1)
   }
 
+  timeouts {
+    create = "20m"
+    update = "30m"
+    delete = "20m"
+  }
+
   depends_on = [
     google_compute_instance_template.application
   ]
@@ -455,14 +461,13 @@ resource "google_compute_url_map" "default" {
 resource "google_compute_url_map" "https_redirect" {
   project = var.project_id
 
-  name            = "${local.application_name}-https-redirect"
-  default_service = google_compute_backend_service.default["http"].self_link
+  name = "${local.application_name}-https-redirect"
 
-  # default_url_redirect {
-  #   https_redirect         = true
-  #   redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
-  #   strip_query            = false
-  # }
+  default_url_redirect {
+    https_redirect         = true
+    redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
+    strip_query            = false
+  }
 }
 
 resource "google_compute_target_http_proxy" "default" {

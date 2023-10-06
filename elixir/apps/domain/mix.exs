@@ -4,8 +4,7 @@ defmodule Domain.MixProject do
   def project do
     [
       app: :domain,
-      # mark:automatic-version
-      version: "1.20231001.0",
+      version: String.trim(File.read!("../../VERSION")),
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
