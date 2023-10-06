@@ -37,6 +37,8 @@ pub struct PhoenixChannel<TInboundMsg, TOutboundRes> {
 ///
 /// The provided URL must contain a host.
 /// Additionally, you must already provide any query parameters required for authentication.
+#[tracing::instrument(level = "debug", skip(payload, secret_url))]
+#[allow(clippy::type_complexity)]
 pub async fn init<TInitM, TInboundMsg, TOutboundRes>(
     secret_url: Secret<SecureUrl>,
     user_agent: String,
