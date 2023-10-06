@@ -342,6 +342,7 @@ where
         next_id
     }
 
+    /// Cast this instance of [PhoenixChannel] to new message types.
     fn cast<TInboundMsgNew, TOutboundResNew>(
         self,
     ) -> PhoenixChannel<TInboundMsgNew, TOutboundResNew> {
