@@ -59,8 +59,6 @@ async fn connect(private_key: StaticSecret, connect_url: Secret<SecureUrl>) -> R
     let signaler = ControlSignaler::new(control_tx);
     let tunnel = Arc::new(Tunnel::new(private_key, signaler, CallbackHandler).await?);
 
-    tracing::debug!("Attempting connection to portal...");
-
     let (channel, init) = phoenix_channel::init::<InitGateway, _, _>(
         connect_url,
         get_user_agent(),
@@ -68,8 +66,6 @@ async fn connect(private_key: StaticSecret, connect_url: Secret<SecureUrl>) -> R
         (),
     )
     .await??;
-
-    tracing::info!("Received init message from portal");
 
     tunnel
         .set_interface(&init.interface)

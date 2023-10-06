@@ -271,8 +271,6 @@ async fn connect_to_portal(
     )
     .await??;
 
-    tracing::info!("Received init message from portal, starting relay activities");
-
     Ok(Some(channel))
 }
 
