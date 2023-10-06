@@ -5,8 +5,7 @@ defmodule Firezone.MixProject do
     [
       name: :firezone,
       apps_path: "apps",
-      # mark:automatic-version
-      version: "1.20231001.0",
+      version: String.trim(File.read!("VERSION")),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
