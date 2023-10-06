@@ -261,44 +261,19 @@ async fn connect_to_portal(
             .append_pair("ipv6", &public_ip6_addr.to_string());
     }
 
-    let mut channel = PhoenixChannel::<InboundPortalMessage, ()>::connect(
+    let (channel, ()) = phoenix_channel::init::<(), _, _>(
         Secret::from(SecureUrl::from_url(url)),
         format!("relay/{}", env!("CARGO_PKG_VERSION")),
-    )
-    .await
-    .context("Failed to connect to the portal")?;
-
-    tracing::info!("Connected to portal, waiting for init message",);
-
-    channel.join(
         "relay",
         JoinMessage {
             stamp_secret: stamp_secret.expose_secret().to_string(),
         },
-    );
+    )
+    .await??;
 
-    loop {
-        match future::poll_fn(|cx| channel.poll(cx))
-            .await
-            .context("portal connection failed")?
-        {
-            Event::JoinedRoom { topic } if topic == "relay" => {
-                tracing::info!("Joined relay room on portal")
-            }
-            Event::InboundMessage {
-                topic,
-                msg: InboundPortalMessage::Init {},
-            } => {
-                tracing::info!(
-                    "Received init message from portal on topic {topic}, starting relay activities"
-                );
-                return Ok(Some(channel));
-            }
-            other => {
-                tracing::debug!("Unhandled message from portal: {other:?}");
-            }
-        }
-    }
+    tracing::info!("Received init message from portal, starting relay activities");
+
+    Ok(Some(channel))
 }
 
 #[derive(serde::Serialize, PartialEq, Debug)]

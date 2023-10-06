@@ -132,12 +132,6 @@ impl Eventloop {
 
             match self.portal.poll(cx)? {
                 Poll::Ready(phoenix_channel::Event::InboundMessage {
-                    msg: IngressMessages::Init(_),
-                    ..
-                }) => {
-                    debug_assert!(false, "Received init message during operation");
-                }
-                Poll::Ready(phoenix_channel::Event::InboundMessage {
                     msg: IngressMessages::RequestConnection(req),
                     ..
                 }) => {

@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::{fmt, marker::PhantomData, time::Duration};
+use std::{fmt, future, marker::PhantomData, time::Duration};
 
 use base64::Engine;
 use futures::{FutureExt, SinkExt, StreamExt};
@@ -31,6 +31,84 @@ pub struct PhoenixChannel<TInboundMsg, TOutboundRes> {
     _phantom: PhantomData<(TInboundMsg, TOutboundRes)>,
 
     pending_join_requests: HashSet<OutboundRequestId>,
+}
+
+/// Creates a new [PhoenixChannel] to the given endpoint and waits for an `init` message.
+///
+/// The provided URL must contain a host.
+/// Additionally, you must already provide any query parameters required for authentication.
+pub async fn init<TInitM, TInboundMsg, TOutboundRes>(
+    secret_url: Secret<SecureUrl>,
+    user_agent: String,
+    login_topic: &'static str,
+    payload: impl Serialize,
+) -> Result<Result<(PhoenixChannel<TInboundMsg, TOutboundRes>, TInitM), InitFailed>, Error>
+where
+    TInitM: DeserializeOwned,
+    TInboundMsg: DeserializeOwned,
+    TOutboundRes: DeserializeOwned,
+{
+    #[derive(serde::Deserialize)]
+    pub struct InitMessage<M> {
+        init: M,
+    }
+
+    let mut channel =
+        PhoenixChannel::<InitMessage<TInitM>, ()>::connect(secret_url, user_agent).await?;
+    channel.join(login_topic, payload);
+
+    tracing::info!("Connected to portal, waiting for `init` message");
+
+    let (channel, init_message) = loop {
+        match future::poll_fn(|cx| channel.poll(cx)).await? {
+            Event::JoinedRoom { topic } if topic == login_topic => {
+                tracing::info!("Joined {login_topic} room on portal")
+            }
+            Event::InboundMessage { topic, msg } if topic == login_topic => {
+                tracing::info!("Received init message from portal");
+
+                break (channel, msg);
+            }
+            Event::SuccessResponse { topic, .. } => {
+                return Ok(Err(InitFailed {
+                    reason: format!(
+                        "unexpected success response on topic '{topic}' while waiting for `init`"
+                    ),
+                }));
+            }
+            Event::JoinedRoom { topic } => {
+                return Ok(Err(InitFailed {
+                    reason: format!("unexpectedly joined room '{topic}' while waiting for `init`"),
+                }));
+            }
+            Event::ErrorResponse { topic, reason, .. } => {
+                return Ok(Err(InitFailed {
+                    reason: format!("unexpected error response on topic '{topic}' while waiting for `init`: {reason}"),
+                }));
+            }
+            Event::InboundReq { .. } => {
+                return Ok(Err(InitFailed {
+                    reason: "unexpected inbound request while waiting for `init`".to_owned(),
+                }));
+            }
+            Event::InboundMessage { topic, .. } => {
+                return Ok(Err(InitFailed {
+                    reason: format!(
+                        "unexpected inbound message on topic '{topic}' while waiting for `init`"
+                    ),
+                }));
+            }
+            Event::HeartbeatSent => {}
+        }
+    };
+
+    Ok(Ok((channel.cast(), init_message.init)))
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("failed to log into portal: {reason}")]
+pub struct InitFailed {
+    reason: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -262,6 +340,19 @@ where
         self.next_request_id += 1;
 
         next_id
+    }
+
+    fn cast<TInboundMsgNew, TOutboundResNew>(
+        self,
+    ) -> PhoenixChannel<TInboundMsgNew, TOutboundResNew> {
+        PhoenixChannel {
+            stream: self.stream,
+            pending_messages: self.pending_messages,
+            next_request_id: self.next_request_id,
+            next_heartbeat: self.next_heartbeat,
+            _phantom: PhantomData,
+            pending_join_requests: self.pending_join_requests,
+        }
     }
 }
 
