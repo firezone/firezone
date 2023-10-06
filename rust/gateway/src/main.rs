@@ -5,7 +5,7 @@ use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use boringtun::x25519::StaticSecret;
 use clap::Parser;
-use connlib_shared::{get_device_id, login_url, Callbacks, Mode};
+use connlib_shared::{get_device_id, get_user_agent, login_url, Callbacks, Mode};
 use firezone_tunnel::Tunnel;
 use futures::{future, TryFutureExt};
 use headless_utils::{setup_global_subscriber, CommonArgs};
@@ -67,7 +67,8 @@ async fn connect(
 
     tracing::debug!("Attempting connection to portal...");
 
-    let mut channel = phoenix_channel::PhoenixChannel::connect(connect_url, device_id).await?;
+    let mut channel =
+        phoenix_channel::PhoenixChannel::connect(connect_url, get_user_agent()).await?;
     channel.join(PHOENIX_TOPIC, ());
 
     let channel = loop {
