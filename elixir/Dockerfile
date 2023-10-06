@@ -103,6 +103,7 @@ RUN set -xe \
     pcre \
     unixodbc \
     zlib \
+    curl \
     tini \
     # Update ca certificates
     && update-ca-certificates --fresh
