@@ -335,6 +335,12 @@ resource "google_compute_region_instance_group_manager" "application" {
     max_surge_fixed       = max(length(each.value.zones), each.value.replicas - 1)
   }
 
+  timeouts {
+    create = "20m"
+    update = "30m"
+    delete = "20m"
+  }
+
   depends_on = [
     google_compute_instance_template.application
   ]

@@ -2,6 +2,7 @@ FROM lukemathwalker/cargo-chef:latest-rust-1.72-slim-bookworm as chef
 
 # See https://github.com/LukeMathWalker/cargo-chef/issues/231.
 COPY rust-toolchain.toml rust-toolchain.toml
+RUN rustup show
 
 WORKDIR /build
 
