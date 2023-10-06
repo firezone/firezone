@@ -165,3 +165,18 @@ jobs:
       - name: Show httpbin logs
         if: "!cancelled()"
         run: docker compose logs httpbin
+
+  # Makes managing the required status checks easier, and moves that source of truth to code
+  # TODO: Use https://registry.terraform.io/providers/integrations/github/latest/docs instead
+  required-status-checks:
+    runs-on: ubuntu-latest
+    needs:
+      - integration-tests
+      - elixir
+      - kotlin
+      - swift
+      - rust
+      - static-analysis
+      - terraform
+    steps:
+      - run: echo "No-op"
