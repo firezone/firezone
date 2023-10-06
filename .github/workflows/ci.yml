@@ -167,6 +167,7 @@ jobs:
       - integration-tests
       - elixir
       - kotlin
+      - swift
       - rust
       - static-analysis
       - terraform
