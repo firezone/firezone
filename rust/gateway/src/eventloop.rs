@@ -135,6 +135,7 @@ impl Eventloop {
                     msg: IngressMessages::Init(_),
                     ..
                 }) => {
+                    tracing::warn!("Received init message during operation");
                     debug_assert!(false, "Received init message during operation");
                 }
                 Poll::Ready(phoenix_channel::Event::InboundMessage {
