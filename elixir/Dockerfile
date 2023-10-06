@@ -1,9 +1,11 @@
 ARG ALPINE_VERSION=3.18.4
 ARG OTP_VERSION=26.1.1
 ARG ELIXIR_VERSION=1.15.6
+# Commit hash for firezone/containers repository which is used to build the image
+ARG BUILD_HASH="de432689b9df208df2f58aca63be0094ab666353"
 
-ARG BUILDER_IMAGE="firezone/elixir:${ELIXIR_VERSION}-otp-${OTP_VERSION}"
 ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
+ARG BUILDER_IMAGE="us-central1-docker.pkg.dev/firezone-containers/elixir/${ELIXIR_VERSION}-otp-${OTP_VERSION}:${BUILD_HASH}"
 
 FROM ${BUILDER_IMAGE} as compiler
 
