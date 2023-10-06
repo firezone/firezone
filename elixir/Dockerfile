@@ -2,7 +2,7 @@ ARG ALPINE_VERSION=3.18.4
 ARG OTP_VERSION=26.1.1
 ARG ELIXIR_VERSION=1.15.6
 
-ARG BUILDER_IMAGE="ghcr.io/firezone/elixir:${ELIXIR_VERSION}-otp-${OTP_VERSION}"
+ARG BUILDER_IMAGE="firezone/elixir:${ELIXIR_VERSION}-otp-${OTP_VERSION}"
 ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
 
 FROM ${BUILDER_IMAGE} as compiler
@@ -57,6 +57,10 @@ COPY apps apps
 RUN mix compile
 
 FROM ${BUILDER_IMAGE} as builder
+
+# Install build deps
+RUN apk add --update --no-cache \
+    git
 
 WORKDIR /app
 
