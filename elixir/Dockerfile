@@ -42,8 +42,10 @@ COPY apps/web/assets/pnpm-lock.yaml ./apps/web/assets/
 RUN cd apps/web \
     && mix assets.setup
 
-# Copy the files needed to compile application assets
+# Copy the files needed to compile application assets,
+# Tailwind needs assets and lib directories to look for used classes
 COPY apps/web/assets ./apps/web/assets
+COPY apps/web/lib ./apps/web/lib
 COPY apps/web/priv ./apps/web/priv
 
 # Install pipeline and compile assets for Web app
@@ -51,9 +53,6 @@ RUN cd apps/web \
     && mix assets.deploy
 
 # Copy the rest of the application files and compile them
-COPY VERSION ./
-COPY priv priv
-COPY apps apps
 RUN mix compile
 
 FROM ${BUILDER_IMAGE} as builder
