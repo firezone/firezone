@@ -119,7 +119,7 @@ RUN set -xe \
     ) \
     && make -j$(getconf _NPROCESSORS_ONLN)
 
-# Install to temporary location, stip the install, install runtime deps and copy to the final location
+# Install to temporary location, strip the install, install runtime deps and copy to the final location
 RUN set -xe \
     && make DESTDIR=/tmp install \
     && cd /tmp && rm -rf /tmp/erlang-build \
