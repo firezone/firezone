@@ -8,6 +8,7 @@ version = 1.20231001.0
 .PHONY: version
 
 version:
+	@echo $(version) > elixir/VERSION
 	@find elixir/ -name "mix.exs" -exec sed -i '' -e '/mark:automatic-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(version)/;}' {} \;
 	@find rust/ -name "Cargo.toml" -exec sed -i '' -e '/mark:automatic-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(version)/;}' {} \;
 	@find .github/ -name "*.yml" -exec sed -i '' -e '/mark:automatic-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(version)/;}' {} \;

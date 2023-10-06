@@ -430,7 +430,7 @@ module "web" {
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "web"
-  application_version = "0-0-1"
+  application_version = replace(var.web_image_tag, ".", "-")
 
   application_dns_tld = "app.${local.tld}"
 
@@ -499,7 +499,7 @@ module "api" {
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "api"
-  application_version = "0-0-1"
+  application_version = replace(var.api_image_tag, ".", "-")
 
   application_dns_tld = "api.${local.tld}"
 
@@ -690,7 +690,7 @@ module "relays" {
   observability_log_level = "debug,relay=trace,hyper=off,h2=warn,tower=warn,wire=trace"
 
   application_name    = "relay"
-  application_version = "0-0-1"
+  application_version = replace(var.relay_image_tag, ".", "-")
 
   health_check = {
     name     = "health"
