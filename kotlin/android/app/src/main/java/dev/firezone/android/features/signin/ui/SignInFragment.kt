@@ -34,7 +34,6 @@ internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
                         AuthActivity::class.java,
                     ),
                 )
-                requireActivity().finish()
             }
             btSettings.setOnClickListener {
                 findNavController().navigate(

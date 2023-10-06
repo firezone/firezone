@@ -64,6 +64,7 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
 
             try {
                 intent.launchUrl(this@AuthActivity, Uri.parse(url))
+                finish()
             } catch (e: Exception) {
                 showChromeAppRequiredError()
             }
