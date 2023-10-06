@@ -8,7 +8,7 @@ defmodule Web.Gateways.Show do
            Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: :group),
          {:ok, flows} <-
            Flows.list_flows_for(gateway, socket.assigns.subject,
-             preload: [:client, policy: [:resource, :actor_group]]
+             preload: [client: [:actor], policy: [:resource, :actor_group]]
            ) do
       :ok = Gateways.subscribe_for_gateways_presence_in_group(gateway.group)
       {:ok, assign(socket, gateway: gateway, flows: flows)}
@@ -154,12 +154,19 @@ defmodule Web.Gateways.Show do
             <.policy_name policy={flow.policy} />
           </.link>
         </:col>
-        <:col :let={flow} label="CLIENT (IP)">
+        <:col :let={flow} label="CLIENT, ACTOR (IP)">
           <.link
             navigate={~p"/#{@account}/clients/#{flow.client_id}"}
             class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
           >
             <%= flow.client.name %>
+          </.link>
+          owned by
+          <.link
+            navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"}
+            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+          >
+            <%= flow.client.actor.name %>
           </.link>
           (<%= flow.client_remote_ip %>)
         </:col>
