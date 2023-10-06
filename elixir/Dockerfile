@@ -78,6 +78,7 @@ ENV LANG=C.UTF-8 \
     HOME=/app/ \
     TERM=xterm
 
+ARG RUNNER_IMAGE
 RUN set -xe \
     && ALPINE_MINOR_VERSION=$(echo ${RUNNER_IMAGE} | cut -d ':' -f 2 | cut -d '.' -f 1,2) \
     && echo "@main http://dl-cdn.alpinelinux.org/alpine/v${ALPINE_MINOR_VERSION}/main" >> /etc/apk/repositories \
