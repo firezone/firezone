@@ -1,9 +1,5 @@
 #cloud-config
 
-users:
-  - name: cloudservice
-    uid: 2000
-
 write_files:
   - path: /etc/otelcol-contrib/config.yaml
     permissions: "0644"

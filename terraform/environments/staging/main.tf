@@ -438,7 +438,7 @@ module "web" {
     {
       name     = "http"
       protocol = "TCP"
-      port     = 80
+      port     = 8080
 
       health_check = {
         initial_delay_sec = 60
@@ -463,7 +463,7 @@ module "web" {
     },
     {
       name  = "PHOENIX_HTTP_WEB_PORT"
-      value = "80"
+      value = "8080"
     }
   ], local.shared_application_environment_variables)
 
@@ -507,7 +507,7 @@ module "api" {
     {
       name     = "http"
       protocol = "TCP"
-      port     = 80
+      port     = 8080
 
       health_check = {
         initial_delay_sec = 60
@@ -532,7 +532,7 @@ module "api" {
     },
     {
       name  = "PHOENIX_HTTP_API_PORT"
-      value = "80"
+      value = "8080"
     },
   ], local.shared_application_environment_variables)
 
