@@ -27,6 +27,7 @@
 	<string name="request_permission">Request Permission</string>
 	<string name="enter_team_id">Enter team id</string>
 	<string name="sign_in_debug_user">Sign In (Debug User)</string>
+	<string name="signing_in_requires_chrome_browser">Signing in requires chrome browser</string>
 	<!-- Error Dialog -->
 
 </resources>
