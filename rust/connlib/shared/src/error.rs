@@ -122,6 +122,16 @@ pub enum ConnlibError {
     InvalidSource,
 }
 
+impl ConnlibError {
+    pub fn is_http_client_error(&self) -> bool {
+        matches!(
+            self,
+            Self::PortalConnectionError(tokio_tungstenite::tungstenite::error::Error::Http(e))
+            if e.status().is_client_error()
+        )
+    }
+}
+
 #[cfg(target_os = "linux")]
 impl From<rtnetlink::Error> for ConnlibError {
     fn from(err: rtnetlink::Error) -> Self {
