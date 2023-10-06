@@ -8,8 +8,8 @@ version = 1.20231001.0
 .PHONY: version
 
 version:
+	# Elixir can set its Application version from a file, but other components aren't so flexible.
 	@echo $(version) > elixir/VERSION
-	@find elixir/ -name "mix.exs" -exec sed -i '' -e '/mark:automatic-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(version)/;}' {} \;
 	@find rust/ -name "Cargo.toml" -exec sed -i '' -e '/mark:automatic-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(version)/;}' {} \;
 	@find .github/ -name "*.yml" -exec sed -i '' -e '/mark:automatic-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(version)/;}' {} \;
 	@find swift/ -name "project.pbxproj" -exec sed -i '' -e 's/MARKETING_VERSION = .*;/MARKETING_VERSION = $(version);/' {} \;
