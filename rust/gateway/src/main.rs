@@ -25,12 +25,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     setup_global_subscriber(layer::Identity::new());
 
-    let device_id = get_device_id();
     let (connect_url, private_key) = login_url(
         Mode::Gateway,
         cli.common.url,
         SecretString::new(cli.common.secret),
-        device_id.clone(),
+        get_device_id(),
     )?;
 
     tokio::spawn(backoff::future::retry_notify(
@@ -39,7 +38,6 @@ async fn main() -> Result<()> {
             .build(),
         move || {
             connect(
-                device_id.clone(),
                 private_key.clone(),
                 Secret::new(SecureUrl::from_url(connect_url.clone())),
             )
@@ -55,11 +53,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn connect(
-    device_id: String,
-    private_key: StaticSecret,
-    connect_url: Secret<SecureUrl>,
-) -> Result<Infallible> {
+async fn connect(private_key: StaticSecret, connect_url: Secret<SecureUrl>) -> Result<Infallible> {
     // Note: This is only needed because [`Tunnel`] does not (yet) have a synchronous, poll-like interface. If it would have, ICE candidates would be emitted as events and we could just hand them to the phoenix channel.
     let (control_tx, control_rx) = tokio::sync::mpsc::channel(1);
     let signaler = ControlSignaler::new(control_tx);
