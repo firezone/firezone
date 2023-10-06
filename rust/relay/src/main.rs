@@ -261,7 +261,7 @@ async fn connect_to_portal(
             .append_pair("ipv6", &public_ip6_addr.to_string());
     }
 
-    let (channel, ()) = phoenix_channel::init::<(), _, _>(
+    let (channel, Init {}) = phoenix_channel::init::<Init, _, _>(
         Secret::from(SecureUrl::from_url(url)),
         format!("relay/{}", env!("CARGO_PKG_VERSION")),
         "relay",
@@ -273,6 +273,9 @@ async fn connect_to_portal(
 
     Ok(Some(channel))
 }
+
+#[derive(serde::Deserialize)]
+struct Init {}
 
 #[derive(serde::Serialize, PartialEq, Debug)]
 struct JoinMessage {
