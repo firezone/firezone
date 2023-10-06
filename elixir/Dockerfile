@@ -58,6 +58,10 @@ RUN mix compile
 
 FROM ${BUILDER_IMAGE} as builder
 
+# Install build deps
+RUN apk add --update --no-cache \
+    git
+
 WORKDIR /app
 
 # Copy the compiled dependencies from the previous step
