@@ -56,16 +56,18 @@ class CustomTabsHelper {
                 sPackageNameToUse == DEV_PACKAGE ||
                 sPackageNameToUse == LOCAL_PACKAGE
 
-        fun checkIfChromeIsInstalled(context: Context): Boolean = try {
-            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getPackageInfo(STABLE_PACKAGE, PackageManager.PackageInfoFlags.of(0L))
-            } else {
-                @Suppress("DEPRECATION")
-                context.packageManager.getPackageInfo(STABLE_PACKAGE, 0)
+        fun checkIfChromeIsInstalled(context: Context): Boolean =
+            try {
+                val info =
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        context.packageManager.getPackageInfo(STABLE_PACKAGE, PackageManager.PackageInfoFlags.of(0L))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        context.packageManager.getPackageInfo(STABLE_PACKAGE, 0)
+                    }
+                info.applicationInfo.enabled
+            } catch (e: PackageManager.NameNotFoundException) {
+                false
             }
-            info.applicationInfo.enabled
-        } catch (e: PackageManager.NameNotFoundException) {
-            false
-        }
     }
 }

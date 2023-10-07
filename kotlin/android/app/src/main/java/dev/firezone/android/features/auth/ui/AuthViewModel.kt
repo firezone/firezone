@@ -15,46 +15,49 @@ import java.lang.Exception
 import javax.inject.Inject
 
 @HiltViewModel
-internal class AuthViewModel @Inject constructor(
-    private val getConfigUseCase: GetConfigUseCase,
-    private val getCsrfTokenUseCase: GetCsrfTokenUseCase,
-) : ViewModel() {
+internal class AuthViewModel
+    @Inject
+    constructor(
+        private val getConfigUseCase: GetConfigUseCase,
+        private val getCsrfTokenUseCase: GetCsrfTokenUseCase,
+    ) : ViewModel() {
+        private val actionMutableLiveData = MutableLiveData<ViewAction>()
+        val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-    private val actionMutableLiveData = MutableLiveData<ViewAction>()
-    val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
+        fun startAuthFlow() =
+            try {
+                viewModelScope.launch {
+                    val config =
+                        getConfigUseCase()
+                            .firstOrNull() ?: throw Exception("config cannot be null")
 
-    fun startAuthFlow() = try {
-        viewModelScope.launch {
-            val config = getConfigUseCase()
-                .firstOrNull() ?: throw Exception("config cannot be null")
+                    val csrfToken =
+                        getCsrfTokenUseCase()
+                            .firstOrNull() ?: throw Exception("csrfToken cannot be null")
 
-            val csrfToken = getCsrfTokenUseCase()
-                .firstOrNull() ?: throw Exception("csrfToken cannot be null")
-
-            actionMutableLiveData.postValue(
-                if (config.token != null) {
-                    ViewAction.NavigateToSignInFragment
-                } else {
-                    ViewAction.LaunchAuthFlow(
-                        url = "$AUTH_URL${config.accountId}?client_csrf_token=$csrfToken&client_platform=android",
+                    actionMutableLiveData.postValue(
+                        if (config.token != null) {
+                            ViewAction.NavigateToSignInFragment
+                        } else {
+                            ViewAction.LaunchAuthFlow(
+                                url = "$AUTH_URL${config.accountId}?client_csrf_token=$csrfToken&client_platform=android",
+                            )
+                        },
                     )
-                },
-            )
+                }
+            } catch (e: Exception) {
+                actionMutableLiveData.postValue(ViewAction.ShowError)
+            }
+
+        companion object {
+            val AUTH_URL = "${BuildConfig.AUTH_SCHEME}://${BuildConfig.AUTH_HOST}:${BuildConfig.AUTH_PORT}/"
         }
-    } catch (e: Exception) {
-        actionMutableLiveData.postValue(ViewAction.ShowError)
+
+        internal sealed class ViewAction {
+            data class LaunchAuthFlow(val url: String) : ViewAction()
+
+            object NavigateToSignInFragment : ViewAction()
+
+            object ShowError : ViewAction()
+        }
     }
-
-    companion object {
-        val AUTH_URL = "${BuildConfig.AUTH_SCHEME}://${BuildConfig.AUTH_HOST}:${BuildConfig.AUTH_PORT}/"
-    }
-
-    internal sealed class ViewAction {
-
-        data class LaunchAuthFlow(val url: String) : ViewAction()
-
-        object NavigateToSignInFragment : ViewAction()
-
-        object ShowError : ViewAction()
-    }
-}

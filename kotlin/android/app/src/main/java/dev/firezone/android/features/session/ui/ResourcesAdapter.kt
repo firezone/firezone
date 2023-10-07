@@ -8,8 +8,9 @@ import androidx.recyclerview.widget.RecyclerView
 import dev.firezone.android.databinding.ListItemResourceBinding
 import dev.firezone.android.tunnel.model.Resource
 
-internal class ResourcesAdapter(private var clickListener: ((Resource) -> Unit)? = null) : RecyclerView.Adapter<ResourcesAdapter.ViewHolder>() {
-
+internal class ResourcesAdapter(
+    private var clickListener: ((Resource) -> Unit)? = null,
+) : RecyclerView.Adapter<ResourcesAdapter.ViewHolder>() {
     private val resources: MutableList<Resource> = mutableListOf()
 
     fun updateResources(updatedResources: List<Resource>) {
@@ -20,7 +21,10 @@ internal class ResourcesAdapter(private var clickListener: ((Resource) -> Unit)?
         diffCourses.dispatchUpdatesTo(this)
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+    override fun onCreateViewHolder(
+        parent: ViewGroup,
+        viewType: Int,
+    ): ViewHolder {
         return ViewHolder(
             ListItemResourceBinding.inflate(LayoutInflater.from(parent.context), parent, false),
         )
@@ -28,7 +32,10 @@ internal class ResourcesAdapter(private var clickListener: ((Resource) -> Unit)?
 
     override fun getItemCount(): Int = resources.size
 
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+    override fun onBindViewHolder(
+        holder: ViewHolder,
+        position: Int,
+    ) {
         holder.bind(resources[position])
         holder.itemView.setOnClickListener {
             clickListener?.invoke(resources[holder.adapterPosition])
@@ -48,11 +55,17 @@ class ResourcesCallback(private val oldList: List<Resource>, private val newList
 
     override fun getNewListSize(): Int = newList.size
 
-    override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+    override fun areItemsTheSame(
+        oldItemPosition: Int,
+        newItemPosition: Int,
+    ): Boolean {
         return oldList[oldItemPosition] === newList[newItemPosition]
     }
 
-    override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+    override fun areContentsTheSame(
+        oldItemPosition: Int,
+        newItemPosition: Int,
+    ): Boolean {
         val (type1, id1, address1, name1) = oldList[oldItemPosition]
         val (type2, id2, address2, name2) = newList[newItemPosition]
         return type1 == type2 && id1 == id2 && address1 == address2 && name1 == name2

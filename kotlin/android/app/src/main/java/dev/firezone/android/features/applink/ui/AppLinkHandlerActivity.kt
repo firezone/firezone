@@ -14,7 +14,6 @@ import dev.firezone.android.databinding.ActivityAppLinkHandlerBinding
 
 @AndroidEntryPoint
 class AppLinkHandlerActivity : AppCompatActivity(R.layout.activity_app_link_handler) {
-
     private lateinit var binding: ActivityAppLinkHandlerBinding
     private val viewModel: AppLinkViewModel by viewModels()
 

@@ -24,7 +24,6 @@ internal const val TUNNEL_ENCRYPTED_SHARED_PREFERENCES = "tunnelEncryptedSharedP
 @Module
 @InstallIn(SingletonComponent::class)
 object TunnelModule {
-
     @Singleton
     @Provides
     internal fun provideTunnelRepository(

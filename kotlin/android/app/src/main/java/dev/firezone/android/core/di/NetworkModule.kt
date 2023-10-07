@@ -21,18 +21,16 @@ private const val NETWORK_TIMEOUT = 30L
 @Module
 @InstallIn(SingletonComponent::class)
 internal object NetworkModule {
-
     @Provides
     @Singleton
-    fun provideBaseUrlInterceptor(
-        sharedPreferences: SharedPreferences,
-    ): BaseUrlInterceptor = BaseUrlInterceptor(sharedPreferences)
+    fun provideBaseUrlInterceptor(sharedPreferences: SharedPreferences): BaseUrlInterceptor = BaseUrlInterceptor(sharedPreferences)
 
     @Singleton
     @Provides
-    fun provideLoggingInterceptor() = HttpLoggingInterceptor().apply {
-        setLevel(HttpLoggingInterceptor.Level.BODY)
-    }
+    fun provideLoggingInterceptor() =
+        HttpLoggingInterceptor().apply {
+            setLevel(HttpLoggingInterceptor.Level.BODY)
+        }
 
     @Singleton
     @Provides
@@ -51,7 +49,10 @@ internal object NetworkModule {
 
     @Singleton
     @Provides
-    fun provideRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit =
+    fun provideRetrofit(
+        okHttpClient: OkHttpClient,
+        moshi: Moshi,
+    ): Retrofit =
         Retrofit.Builder()
             .baseUrl("http://localhost.com/")
             .client(okHttpClient)

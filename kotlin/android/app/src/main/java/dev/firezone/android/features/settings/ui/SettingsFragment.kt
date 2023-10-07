@@ -14,10 +14,13 @@ import dev.firezone.android.databinding.FragmentSettingsBinding
 
 @AndroidEntryPoint
 internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
-
     private lateinit var binding: FragmentSettingsBinding
     private val viewModel: SettingsViewModel by viewModels()
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+
+    override fun onViewCreated(
+        view: View,
+        savedInstanceState: Bundle?,
+    ) {
         super.onViewCreated(view, savedInstanceState)
         binding = FragmentSettingsBinding.bind(view)
 
@@ -40,9 +43,10 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
             when (action) {
-                is SettingsViewModel.ViewAction.NavigateToSignInFragment -> findNavController().navigate(
-                    R.id.signInFragment,
-                )
+                is SettingsViewModel.ViewAction.NavigateToSignInFragment ->
+                    findNavController().navigate(
+                        R.id.signInFragment,
+                    )
                 is SettingsViewModel.ViewAction.FillAccountId -> {
                     binding.etInput.apply {
                         setText(action.value)

@@ -18,7 +18,10 @@ internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
     private lateinit var binding: FragmentSignInBinding
     private val viewModel: SignInViewModel by viewModels()
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    override fun onViewCreated(
+        view: View,
+        savedInstanceState: Bundle?,
+    ) {
         super.onViewCreated(view, savedInstanceState)
         binding = FragmentSignInBinding.bind(view)
 

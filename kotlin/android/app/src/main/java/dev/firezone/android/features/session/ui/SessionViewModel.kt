@@ -17,60 +17,63 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-internal class SessionViewModel @Inject constructor(
-    private val tunnelManager: TunnelManager,
-) : ViewModel() {
-    private val _uiState = MutableStateFlow(UiState())
-    val uiState: StateFlow<UiState> = _uiState
+internal class SessionViewModel
+    @Inject
+    constructor(
+        private val tunnelManager: TunnelManager,
+    ) : ViewModel() {
+        private val _uiState = MutableStateFlow(UiState())
+        val uiState: StateFlow<UiState> = _uiState
 
-    private val actionMutableLiveData = MutableLiveData<ViewAction>()
-    val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
+        private val actionMutableLiveData = MutableLiveData<ViewAction>()
+        val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-    private val tunnelListener = object : TunnelListener {
-        override fun onTunnelStateUpdate(state: Tunnel.State) {
-            TODO("Not yet implemented")
+        private val tunnelListener =
+            object : TunnelListener {
+                override fun onTunnelStateUpdate(state: Tunnel.State) {
+                    TODO("Not yet implemented")
+                }
+
+                override fun onResourcesUpdate(resources: List<Resource>) {
+                    Log.d("TunnelManager", "onUpdateResources: $resources")
+                    _uiState.value =
+                        _uiState.value.copy(
+                            resources = resources,
+                        )
+                }
+
+                override fun onError(error: String): Boolean {
+                    // TODO("Not yet implemented")
+                    return true
+                }
+            }
+
+        fun startSession() {
+            viewModelScope.launch {
+                tunnelManager.addListener(tunnelListener)
+                tunnelManager.connect()
+            }
         }
 
-        override fun onResourcesUpdate(resources: List<Resource>) {
-            Log.d("TunnelManager", "onUpdateResources: $resources")
-            _uiState.value = _uiState.value.copy(
-                resources = resources,
-            )
+        override fun onCleared() {
+            super.onCleared()
+
+            tunnelManager.removeListener(tunnelListener)
         }
 
-        override fun onError(error: String): Boolean {
-            // TODO("Not yet implemented")
-            return true
+        fun onDisconnect() {
+            tunnelManager.disconnect()
+            tunnelManager.removeListener(tunnelListener)
+            actionMutableLiveData.postValue(ViewAction.NavigateToSignInFragment)
+        }
+
+        internal data class UiState(
+            val resources: List<Resource>? = null,
+        )
+
+        internal sealed class ViewAction {
+            object NavigateToSignInFragment : ViewAction()
+
+            object ShowError : ViewAction()
         }
     }
-
-    fun startSession() {
-        viewModelScope.launch {
-            tunnelManager.addListener(tunnelListener)
-            tunnelManager.connect()
-        }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-
-        tunnelManager.removeListener(tunnelListener)
-    }
-
-    fun onDisconnect() {
-        tunnelManager.disconnect()
-        tunnelManager.removeListener(tunnelListener)
-        actionMutableLiveData.postValue(ViewAction.NavigateToSignInFragment)
-    }
-
-    internal data class UiState(
-        val resources: List<Resource>? = null,
-    )
-
-    internal sealed class ViewAction {
-
-        object NavigateToSignInFragment : ViewAction()
-
-        object ShowError : ViewAction()
-    }
-}

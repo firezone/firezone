@@ -8,10 +8,13 @@ import android.os.Build
 import android.widget.Toast
 
 object ClipboardUtils {
-
     private const val COPIED = "Copied"
 
-    fun copyToClipboard(context: Context, label: String, text: String) {
+    fun copyToClipboard(
+        context: Context,
+        label: String,
+        text: String,
+    ) {
         val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboardManager.setPrimaryClip(ClipData.newPlainText(label, text))
 

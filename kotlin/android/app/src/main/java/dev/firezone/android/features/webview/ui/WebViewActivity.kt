@@ -19,7 +19,6 @@ import dev.firezone.android.databinding.ActivityWebViewBinding
 
 @AndroidEntryPoint
 internal class WebViewActivity : AppCompatActivity(R.layout.activity_web_view) {
-
     private lateinit var binding: ActivityWebViewBinding
     private val viewModel: WebViewViewModel by viewModels()
 
@@ -56,16 +55,25 @@ internal class WebViewActivity : AppCompatActivity(R.layout.activity_web_view) {
     }
 
     private inner class WebViewBrowser : WebViewClient() {
-
-        override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+        override fun onPageStarted(
+            view: WebView?,
+            url: String?,
+            favicon: Bitmap?,
+        ) {
             super.onPageStarted(view, url, favicon)
         }
 
-        override fun onPageFinished(view: WebView?, url: String?) {
+        override fun onPageFinished(
+            view: WebView?,
+            url: String?,
+        ) {
             super.onPageFinished(view, url)
         }
 
-        override fun onPageCommitVisible(view: WebView?, url: String?) {
+        override fun onPageCommitVisible(
+            view: WebView?,
+            url: String?,
+        ) {
             super.onPageCommitVisible(view, url)
         }
 
