@@ -9,14 +9,15 @@ import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import javax.inject.Inject
 
 @HiltViewModel
-internal class SignInViewModel @Inject constructor(
-    private val useCase: GetConfigUseCase,
-) : ViewModel() {
+internal class SignInViewModel
+    @Inject
+    constructor(
+        private val useCase: GetConfigUseCase,
+    ) : ViewModel() {
+        private val actionMutableLiveData = MutableLiveData<SignInViewAction>()
+        val actionLiveData: LiveData<SignInViewAction> = actionMutableLiveData
 
-    private val actionMutableLiveData = MutableLiveData<SignInViewAction>()
-    val actionLiveData: LiveData<SignInViewAction> = actionMutableLiveData
-
-    internal sealed class SignInViewAction {
-        object NavigateToAuthActivity : SignInViewAction()
+        internal sealed class SignInViewAction {
+            object NavigateToAuthActivity : SignInViewAction()
+        }
     }
-}

@@ -8,7 +8,6 @@ import dev.firezone.android.tunnel.model.Tunnel
 import dev.firezone.android.tunnel.model.TunnelConfig
 
 interface TunnelRepository {
-
     fun get(): Tunnel?
 
     fun setConfig(config: TunnelConfig)

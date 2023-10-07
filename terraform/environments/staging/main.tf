@@ -430,7 +430,7 @@ module "web" {
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "web"
-  application_version = "0-0-1"
+  application_version = replace(var.web_image_tag, ".", "-")
 
   application_dns_tld = "app.${local.tld}"
 
@@ -438,10 +438,10 @@ module "web" {
     {
       name     = "http"
       protocol = "TCP"
-      port     = 80
+      port     = 8080
 
       health_check = {
-        initial_delay_sec = 50
+        initial_delay_sec = 60
 
         check_interval_sec  = 15
         timeout_sec         = 10
@@ -463,7 +463,7 @@ module "web" {
     },
     {
       name  = "PHOENIX_HTTP_WEB_PORT"
-      value = "80"
+      value = "8080"
     }
   ], local.shared_application_environment_variables)
 
@@ -499,7 +499,7 @@ module "api" {
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "api"
-  application_version = "0-0-1"
+  application_version = replace(var.api_image_tag, ".", "-")
 
   application_dns_tld = "api.${local.tld}"
 
@@ -507,15 +507,15 @@ module "api" {
     {
       name     = "http"
       protocol = "TCP"
-      port     = 80
+      port     = 8080
 
       health_check = {
-        initial_delay_sec = 50
+        initial_delay_sec = 60
 
         check_interval_sec  = 15
         timeout_sec         = 10
         healthy_threshold   = 1
-        unhealthy_threshold = 2
+        unhealthy_threshold = 3
 
         http_health_check = {
           request_path = "/healthz"
@@ -532,7 +532,7 @@ module "api" {
     },
     {
       name  = "PHOENIX_HTTP_API_PORT"
-      value = "80"
+      value = "8080"
     },
   ], local.shared_application_environment_variables)
 
@@ -690,19 +690,19 @@ module "relays" {
   observability_log_level = "debug,relay=trace,hyper=off,h2=warn,tower=warn,wire=trace"
 
   application_name    = "relay"
-  application_version = "0-0-1"
+  application_version = replace(var.relay_image_tag, ".", "-")
 
   health_check = {
     name     = "health"
     protocol = "TCP"
     port     = 8080
 
-    initial_delay_sec = 50
+    initial_delay_sec = 60
 
     check_interval_sec  = 15
     timeout_sec         = 10
     healthy_threshold   = 1
-    unhealthy_threshold = 2
+    unhealthy_threshold = 3
 
     http_health_check = {
       request_path = "/healthz"

@@ -8,7 +8,6 @@ import dev.firezone.android.BuildConfig
 
 @HiltAndroidApp
 class FirezoneApp : Application() {
-
     override fun onCreate() {
         super.onCreate()
 

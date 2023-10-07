@@ -3,7 +3,7 @@ version: "3.8"
 services:
   # Dependencies
   postgres:
-    image: postgres:16
+    image: postgres:15.2
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
@@ -53,7 +53,7 @@ services:
     build:
       context: elixir
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/web-buildcache:main
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/web:main
       args:
         APPLICATION_NAME: web
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/web
@@ -120,7 +120,7 @@ services:
       context: rust
       dockerfile: Dockerfile
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/client-buildcache:main
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/client:main
       args:
         PACKAGE: firezone-headless-client
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/client
@@ -156,7 +156,7 @@ services:
       context: rust
       dockerfile: Dockerfile
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/gateway-buildcache:main
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/gateway:main
       args:
         PACKAGE: firezone-gateway
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/gateway
@@ -207,7 +207,7 @@ services:
       context: rust
       dockerfile: Dockerfile
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/relay-buildcache:main
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/relay:main
       args:
         PACKAGE: relay
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay
@@ -235,7 +235,7 @@ services:
     build:
       context: elixir
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/api-buildcache:main
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/api:main
       args:
         APPLICATION_NAME: api
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/api
@@ -304,22 +304,13 @@ services:
   elixir:
     build:
       context: elixir
-      target: builder
+      target: compiler
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/elixir-buildcache:main
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/elixir:main
       args:
         APPLICATION_NAME: api
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/elixir
     hostname: elixir
-    volumes:
-      - elixir-build-cache:/app/_build
-      - ./elixir/apps:/app/apps
-      - ./elixir/config:/app/config
-      - ./elixir/priv:/app/priv
-      - ./elixir/rel:/app/rel
-      - ./elixir/mix.exs:/app/mix.exs
-      - ./elixir/mix.lock:/app/mix.lock
-      - assets-build-cache:/app/apps/web/assets/node_modules
     environment:
       # Web Server
       EXTERNAL_URL: http://localhost:8081/

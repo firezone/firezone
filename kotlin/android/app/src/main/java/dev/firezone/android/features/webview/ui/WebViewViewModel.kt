@@ -9,14 +9,15 @@ import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import javax.inject.Inject
 
 @HiltViewModel
-internal class WebViewViewModel @Inject constructor(
-    private val getConfigUseCase: GetConfigUseCase,
-) : ViewModel() {
+internal class WebViewViewModel
+    @Inject
+    constructor(
+        private val getConfigUseCase: GetConfigUseCase,
+    ) : ViewModel() {
+        private val actionMutableLiveData = MutableLiveData<ViewAction>()
+        val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-    private val actionMutableLiveData = MutableLiveData<ViewAction>()
-    val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
-
-    internal sealed class ViewAction {
-        object ShowError : ViewAction()
+        internal sealed class ViewAction {
+            object ShowError : ViewAction()
+        }
     }
-}

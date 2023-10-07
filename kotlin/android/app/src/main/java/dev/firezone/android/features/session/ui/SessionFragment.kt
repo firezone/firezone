@@ -25,11 +25,15 @@ internal class SessionFragment : Fragment(R.layout.fragment_session) {
     private lateinit var binding: FragmentSessionBinding
     private val viewModel: SessionViewModel by viewModels()
 
-    private val resourcesAdapter: ResourcesAdapter = ResourcesAdapter { resource ->
-        ClipboardUtils.copyToClipboard(requireContext(), resource.name, resource.address)
-    }
+    private val resourcesAdapter: ResourcesAdapter =
+        ResourcesAdapter { resource ->
+            ClipboardUtils.copyToClipboard(requireContext(), resource.name, resource.address)
+        }
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    override fun onViewCreated(
+        view: View,
+        savedInstanceState: Bundle?,
+    ) {
         super.onViewCreated(view, savedInstanceState)
         binding = FragmentSessionBinding.bind(view)
 
@@ -45,10 +49,11 @@ internal class SessionFragment : Fragment(R.layout.fragment_session) {
         }
 
         val layoutManager = LinearLayoutManager(requireContext())
-        val dividerItemDecoration = DividerItemDecoration(
-            requireContext(),
-            layoutManager.orientation,
-        )
+        val dividerItemDecoration =
+            DividerItemDecoration(
+                requireContext(),
+                layoutManager.orientation,
+            )
         binding.resourcesList.addItemDecoration(dividerItemDecoration)
         binding.resourcesList.adapter = resourcesAdapter
         binding.resourcesList.layoutManager = layoutManager
