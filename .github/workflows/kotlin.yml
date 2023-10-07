@@ -15,14 +15,6 @@ jobs:
         working-directory: ./kotlin/android
     steps:
       - uses: actions/checkout@v4
-      - name: Update toolchain
-        run: rustup show
-        working-directory: ./rust
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ./rust
-          key: ${{ runner.os }}-${{ github.ref }}
-          # save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-java@v3
         with:
           distribution: temurin
@@ -32,8 +24,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          # cache-read-only: ${{ github.ref != 'refs/heads/main' }}
-          cache-read-only: false # ${{ github.ref != 'refs/heads/main' }}
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
           build-root-directory: ./kotlin/android
       - run: touch local.properties
       - name: Run linter
@@ -53,7 +44,7 @@ jobs:
         with:
           workspaces: ./rust
           key: ${{ runner.os }}-${{ github.ref }}
-          # save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-java@v3
         with:
           distribution: temurin
@@ -61,11 +52,10 @@ jobs:
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          # cache-read-only: ${{ github.ref != 'refs/heads/main' }}
-          cache-read-only: false
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
           build-root-directory: ./kotlin/android
           # https://github.com/gradle/gradle-build-action#overwriting-an-existing-gradle-user-home
-          cache-overwrite-existing: true #${{ github.ref == 'refs/heads/main' }}
+          cache-overwrite-existing: ${{ github.ref == 'refs/heads/main' }}
       - run: touch local.properties
       - name: Execute Gradle build
         run: ./gradlew assembleRelease
