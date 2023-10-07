@@ -88,6 +88,11 @@ fun copyJniShared(task: Task, buildType: String) = task.apply {
 }
 
 cargo {
+    if (gradle.startParameter.taskNames.any{it.toLowerCase().contains("debug")}) {
+        profile = "debug"
+    } else {
+        profile = "release"
+    }
     prebuiltToolchains = true
     verbose = true
     module = "../"
