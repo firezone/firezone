@@ -144,7 +144,7 @@ defmodule Web.Live.Gateways.ShowTest do
     assert row["remote ip"] == to_string(gateway.last_seen_remote_ip)
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
-    assert row["client (ip)"] == "#{flow.client.name} (100.64.100.58)"
+    assert row["client, actor (ip)"] == "#{flow.client.name} (100.64.100.58)"
   end
 
   test "allows deleting gateways", %{

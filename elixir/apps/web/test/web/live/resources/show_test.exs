@@ -177,7 +177,7 @@ defmodule Web.Live.Resources.ShowTest do
     assert row["gateway (ip)"] ==
              "#{flow.gateway.group.name_prefix}-#{flow.gateway.name_suffix} (189.172.73.153)"
 
-    assert row["client (ip)"] == "#{flow.client.name} (100.64.100.58)"
+    assert row["client, actor (ip)"] == "#{flow.client.name} (100.64.100.58)"
   end
 
   test "allows deleting resource", %{

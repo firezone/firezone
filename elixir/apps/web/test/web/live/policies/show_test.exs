@@ -152,7 +152,7 @@ defmodule Web.Live.Policies.ShowTest do
 
     assert row["authorized at"]
     assert row["expires at"]
-    assert row["client (ip)"] == "#{flow.client.name} (100.64.100.58)"
+    assert row["client, actor (ip)"] == "#{flow.client.name} (100.64.100.58)"
 
     assert row["gateway (ip)"] ==
              "#{flow.gateway.group.name_prefix}-#{flow.gateway.name_suffix} (189.172.73.153)"
