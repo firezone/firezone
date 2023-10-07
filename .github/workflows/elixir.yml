@@ -59,10 +59,8 @@ jobs:
             ${{ runner.os }}-
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        run: mix deps.compile --skip-umbrella-children
       - name: Compile Application
-        run: mix compile --warnings-as-errors
+        run: mix compile
       - name: Setup Database
         run: |
           mix ecto.create
@@ -137,8 +135,6 @@ jobs:
             ${{ runner.os }}-
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        run: mix deps.compile --skip-umbrella-children
       - name: Compile Application
         run: mix compile
       # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
@@ -218,8 +214,6 @@ jobs:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        run: mix deps.compile --skip-umbrella-children
       - name: Compile Application
         run: mix compile --force --warnings-as-errors
       - name: Check For Retired Packages
@@ -461,8 +455,6 @@ jobs:
           sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        run: mix deps.compile --skip-umbrella-children
       - name: Compile Application
         run: mix compile
       - name: Install Front-End Dependencies
