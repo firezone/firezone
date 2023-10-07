@@ -39,12 +39,16 @@ tasks.named("build").configure {
 }
 
 android {
-    namespace = "dev.firezone.android"
+    buildFeatures {
+        buildConfig = true
+    }
 
-    compileSdk = 33
+    namespace = "dev.firezone.android"
+    compileSdk = 34
+
     defaultConfig {
         applicationId = "dev.firezone.android"
-        minSdk = 29
+        minSdk = 30
         targetSdk = 33
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:automatic-version
@@ -73,7 +77,24 @@ android {
 
         // Release Config
         getByName("release") {
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Enables code shrinking, obfuscation, and optimization for only
+            // your project's release build type. Make sure to use a build
+            // variant with `isDebuggable=false`.
+            isMinifyEnabled = true
+
+            // Enables resource shrinking, which is performed by the
+            // Android Gradle plugin.
+            isShrinkResources = true
+
+            // Includes the default ProGuard rules files that are packaged with
+            // the Android Gradle plugin. To learn more, go to the section about
+            // R8 configuration files.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            isDebuggable = false
+
             buildConfigField("String", "AUTH_HOST", "\"app.firezone.dev\"")
             buildConfigField("String", "AUTH_SCHEME", "\"https\"")
             buildConfigField("Integer", "AUTH_PORT", "443")
@@ -87,12 +108,12 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
 
     buildFeatures {
@@ -101,7 +122,7 @@ android {
 }
 
 dependencies {
-    val core_version = "1.9.0"
+    val core_version = "1.12.0"
 
     // Connlib
     implementation(project(":connlib"))
