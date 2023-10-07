@@ -9,7 +9,7 @@ concurrency:
 
 jobs:
   unit-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04-firezone-4c
     defaults:
       run:
         working-directory: ./elixir
@@ -414,7 +414,7 @@ jobs:
             env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
 
   acceptance-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04-firezone-4c
     defaults:
       run:
         working-directory: ./elixir

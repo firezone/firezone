@@ -14,6 +14,8 @@ jobs:
       fail-fast: false
       matrix:
         runs-on:
+          # Builds are more IO-bound than CPU-bound so using a larger GitHub-hosted
+          # runner isn't worth it.
           - os: macos-13
             xcode-ver: "14.3"
         target:
