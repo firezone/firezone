@@ -213,7 +213,7 @@ jobs:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-
       - name: Install Dependencies
-        run: mix deps.get --only $MIX_ENV
+        run: mix deps.get
       - name: Check for unused deps
         run: mix deps.unlock --check-unused
       - name: Compile Application
@@ -229,6 +229,8 @@ jobs:
         run: mix format --check-formatted
       - name: Run Credo
         run: mix credo --strict
+      - name: Check for unused deps
+        run: mix deps.unlock --check-unused
       - uses: actions/cache/save@v3
         if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Elixir Deps Cache
