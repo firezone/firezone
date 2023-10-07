@@ -214,6 +214,8 @@ jobs:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
+      - name: Check for unused deps
+        run: mix deps.unlock --check-unused
       - name: Compile Application
         run: mix compile --force --warnings-as-errors
       - name: Check For Retired Packages
