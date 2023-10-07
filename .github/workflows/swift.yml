@@ -44,11 +44,9 @@ jobs:
         name: Restore SwiftPM Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
-          key:
-            ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
+          key: ${{ matrix.target.platform }}-spm-${{ hashFiles('swift/**/Package.resolved') }}
           restore-keys: |
-            ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
-            ${{ matrix.target.platform }}-
+            ${{ matrix.target.platform }}-spm-
       - run: |
           sudo ls -al /Applications/
       - name: Select Xcode
@@ -69,5 +67,4 @@ jobs:
         name: Save SwiftPM Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
-          key:
-            ${{ matrix.target.platform }}-spm-${{ hashFiles('**/Package.resolved') }}
+          key: ${{ matrix.target.platform }}-spm-${{ hashFiles('swift/**/Package.resolved') }}

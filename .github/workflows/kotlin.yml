@@ -43,7 +43,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          key: ${{ runner.os }}-${{ github.ref }}
+          key: ${{ runner.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-java@v3
         with:
