@@ -80,7 +80,7 @@ jobs:
           path: elixir/_build/test/lib/*/test-junit-report.xml
           reporter: java-junit
       - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
+        # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Elixir Deps Cache
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
@@ -88,7 +88,7 @@ jobs:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
+        # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
@@ -154,7 +154,7 @@ jobs:
       - name: Run Dialyzer
         run: mix dialyzer --format dialyxir
       - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
+        # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Elixir Deps Cache
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
@@ -162,7 +162,7 @@ jobs:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
+        # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
@@ -170,7 +170,7 @@ jobs:
           path: elixir/_build
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
+        # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save PLT cache
         with:
           key: ${{ runner.os }}-plt-${{ steps.setup-beam.outputs.elixir-version }}
@@ -230,7 +230,7 @@ jobs:
       - name: Run Credo
         run: mix credo --strict
       - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
+        # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Elixir Deps Cache
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
@@ -238,7 +238,7 @@ jobs:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
+        # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
@@ -349,7 +349,7 @@ jobs:
       - name: Run Seed
         run: mix ecto.seed
       - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
+        # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Elixir Deps Cache
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
@@ -357,7 +357,7 @@ jobs:
           path: elixir/deps
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
+        # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
@@ -503,7 +503,7 @@ jobs:
           path: elixir/_build/test/lib/*/test-junit-report.xml
           reporter: java-junit
       - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
+        # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Elixir Deps Cache
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
@@ -513,7 +513,7 @@ jobs:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
             env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
+        # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Elixir Build Cache
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
@@ -523,7 +523,7 @@ jobs:
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{
             env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
+        # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save pnpm Deps Cache
         env:
           cache-name: cache-pnpm-build-${{ env.MIX_ENV }}
@@ -531,7 +531,7 @@ jobs:
           path: elixir/apps/web/assets/node_modules
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('elixir/apps/web/assets/pnpm-lock.yaml') }}
       - uses: actions/cache/save@v3
-        if: ${{ github.ref == 'refs/heads/main' }}
+        # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Assets Cache
         env:
           cache-name: cache-assets-build-${{ env.MIX_ENV }}
