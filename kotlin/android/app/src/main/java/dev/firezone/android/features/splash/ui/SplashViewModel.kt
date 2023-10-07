@@ -17,43 +17,45 @@ import javax.inject.Inject
 private const val REQUEST_DELAY = 1000L
 
 @HiltViewModel
-internal class SplashViewModel @Inject constructor(
-    private val useCase: GetConfigUseCase,
-) : ViewModel() {
+internal class SplashViewModel
+    @Inject
+    constructor(
+        private val useCase: GetConfigUseCase,
+    ) : ViewModel() {
+        private val actionMutableLiveData = MutableLiveData<ViewAction>()
+        val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-    private val actionMutableLiveData = MutableLiveData<ViewAction>()
-    val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
-    internal fun checkUserState(context: Context) {
-        viewModelScope.launch {
-            delay(REQUEST_DELAY)
-            if (!hasVpnPermissions(context)) {
-                actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
-            } else {
-                useCase.invoke()
-                    .catch {
-                        Log.e("Error", it.message.toString())
-                    }
-                    .collect { user ->
-                        if (user.accountId.isNullOrEmpty()) {
-                            actionMutableLiveData.postValue(ViewAction.NavigateToSettingsFragment)
-                        } else if (user.token.isNullOrBlank()) {
-                            actionMutableLiveData.postValue(ViewAction.NavigateToSignInFragment)
-                        } else {
-                            actionMutableLiveData.postValue(ViewAction.NavigateToSessionFragment)
+        internal fun checkUserState(context: Context) {
+            viewModelScope.launch {
+                delay(REQUEST_DELAY)
+                if (!hasVpnPermissions(context)) {
+                    actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
+                } else {
+                    useCase.invoke()
+                        .catch {
+                            Log.e("Error", it.message.toString())
                         }
-                    }
+                        .collect { user ->
+                            if (user.accountId.isNullOrEmpty()) {
+                                actionMutableLiveData.postValue(ViewAction.NavigateToSettingsFragment)
+                            } else if (user.token.isNullOrBlank()) {
+                                actionMutableLiveData.postValue(ViewAction.NavigateToSignInFragment)
+                            } else {
+                                actionMutableLiveData.postValue(ViewAction.NavigateToSessionFragment)
+                            }
+                        }
+                }
             }
         }
-    }
 
-    private fun hasVpnPermissions(context: Context): Boolean {
-        return android.net.VpnService.prepare(context) == null
-    }
+        private fun hasVpnPermissions(context: Context): Boolean {
+            return android.net.VpnService.prepare(context) == null
+        }
 
-    internal sealed class ViewAction {
-        object NavigateToVpnPermission : ViewAction()
-        object NavigateToSettingsFragment : ViewAction()
-        object NavigateToSignInFragment : ViewAction()
-        object NavigateToSessionFragment : ViewAction()
+        internal sealed class ViewAction {
+            object NavigateToVpnPermission : ViewAction()
+            object NavigateToSettingsFragment : ViewAction()
+            object NavigateToSignInFragment : ViewAction()
+            object NavigateToSessionFragment : ViewAction()
+        }
     }
-}

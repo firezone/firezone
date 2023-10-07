@@ -225,10 +225,11 @@ class DnsServersDetector(
          * Holds some default DNS servers used in case all DNS servers detection methods fail.
          * Can be set to null if you want caller to fail in this situation.
          */
-        private val FACTORY_DNS_SERVERS = arrayOf(
-            "8.8.8.8",
-            "8.8.4.4",
-        )
+        private val FACTORY_DNS_SERVERS =
+            arrayOf(
+                "8.8.8.8",
+                "8.8.4.4",
+            )
 
         /**
          * Properties delimiter used in exec method of DNS servers detection

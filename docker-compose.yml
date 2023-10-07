@@ -3,7 +3,7 @@ version: "3.8"
 services:
   # Dependencies
   postgres:
-    image: postgres:16
+    image: postgres:15.2
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
@@ -304,22 +304,13 @@ services:
   elixir:
     build:
       context: elixir
-      target: builder
+      target: compiler
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/elixir:main
       args:
         APPLICATION_NAME: api
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/elixir
     hostname: elixir
-    volumes:
-      - elixir-build-cache:/app/_build
-      - ./elixir/apps:/app/apps
-      - ./elixir/config:/app/config
-      - ./elixir/priv:/app/priv
-      - ./elixir/rel:/app/rel
-      - ./elixir/mix.exs:/app/mix.exs
-      - ./elixir/mix.lock:/app/mix.lock
-      - assets-build-cache:/app/apps/web/assets/node_modules
     environment:
       # Web Server
       EXTERNAL_URL: http://localhost:8081/

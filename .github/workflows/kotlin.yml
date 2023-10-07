@@ -8,13 +8,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # See rust.yml how we build, package and release connlib as an example
+  static-analysis:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./kotlin/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v1
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+          build-root-directory: ./kotlin/android
+      - run: touch local.properties
+      - name: Run linter
+        run: ./gradlew spotlessCheck
+
   build:
-    runs-on: ${{ matrix.runs-on }}
-    strategy:
-      matrix:
-        runs-on:
-          - ubuntu-latest
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./kotlin/android
@@ -26,24 +43,22 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          key: ${{ runner.os }}
+          key: ${{ runner.os }}-${{ github.ref }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-java@v3
         with:
           distribution: temurin
-          java-version: 11
-      - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@v1
-      - name: Create Local Properties File
-        run: touch local.properties
+          java-version: 17
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
         with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
           build-root-directory: ./kotlin/android
-      - name: Run linter
-        run: ./gradlew spotlessCheck
+          # https://github.com/gradle/gradle-build-action#overwriting-an-existing-gradle-user-home
+          cache-overwrite-existing: ${{ github.ref == 'refs/heads/main' }}
+      - run: touch local.properties
       - name: Execute Gradle build
-        run: ./gradlew build
+        run: ./gradlew assembleRelease
       - name: Run Test
         run: ./gradlew testReleaseUnitTest
       - name: Android Test Report

@@ -438,10 +438,10 @@ module "web" {
     {
       name     = "http"
       protocol = "TCP"
-      port     = 80
+      port     = 8080
 
       health_check = {
-        initial_delay_sec = 50
+        initial_delay_sec = 60
 
         check_interval_sec  = 15
         timeout_sec         = 10
@@ -463,7 +463,7 @@ module "web" {
     },
     {
       name  = "PHOENIX_HTTP_WEB_PORT"
-      value = "80"
+      value = "8080"
     }
   ], local.shared_application_environment_variables)
 
@@ -507,15 +507,15 @@ module "api" {
     {
       name     = "http"
       protocol = "TCP"
-      port     = 80
+      port     = 8080
 
       health_check = {
-        initial_delay_sec = 50
+        initial_delay_sec = 60
 
         check_interval_sec  = 15
         timeout_sec         = 10
         healthy_threshold   = 1
-        unhealthy_threshold = 2
+        unhealthy_threshold = 3
 
         http_health_check = {
           request_path = "/healthz"
@@ -532,7 +532,7 @@ module "api" {
     },
     {
       name  = "PHOENIX_HTTP_API_PORT"
-      value = "80"
+      value = "8080"
     },
   ], local.shared_application_environment_variables)
 
@@ -697,12 +697,12 @@ module "relays" {
     protocol = "TCP"
     port     = 8080
 
-    initial_delay_sec = 50
+    initial_delay_sec = 60
 
     check_interval_sec  = 15
     timeout_sec         = 10
     healthy_threshold   = 1
-    unhealthy_threshold = 2
+    unhealthy_threshold = 3
 
     http_health_check = {
       request_path = "/healthz"

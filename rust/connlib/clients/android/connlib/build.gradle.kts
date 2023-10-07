@@ -7,11 +7,10 @@ plugins {
 
 android {
     namespace = "dev.firezone.connlib"
-    compileSdk = 33
+    compileSdk = 34
 
     defaultConfig {
-        minSdk = 29
-        targetSdk = 33
+        minSdk = 30
         consumerProguardFiles("consumer-rules.pro")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -23,16 +22,17 @@ android {
     ndkVersion = "25.2.9519653"
     buildTypes {
         getByName("release") {
+            // Won't build if set to true
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
     compileOptions {
-        sourceCompatibility(JavaVersion.VERSION_1_8)
-        targetCompatibility(JavaVersion.VERSION_1_8)
+        sourceCompatibility(JavaVersion.VERSION_17)
+        targetCompatibility(JavaVersion.VERSION_17)
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
     publishing {
         singleVariant("release")

@@ -17,7 +17,6 @@ internal const val ENCRYPTED_SHARED_PREFERENCES = "encryptedSharedPreferences"
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
-
     @Provides
     internal fun provideContext(app: Application): Context = app.applicationContext
 

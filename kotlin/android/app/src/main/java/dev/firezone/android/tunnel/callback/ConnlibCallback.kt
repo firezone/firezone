@@ -2,7 +2,12 @@
 package dev.firezone.android.tunnel.callback
 
 interface ConnlibCallback {
-    fun onSetInterfaceConfig(tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String, dnsFallbackStrategy: String): Int
+    fun onSetInterfaceConfig(
+        tunnelAddressIPv4: String,
+        tunnelAddressIPv6: String,
+        dnsAddress: String,
+        dnsFallbackStrategy: String,
+    ): Int
 
     fun onTunnelReady(): Boolean
 

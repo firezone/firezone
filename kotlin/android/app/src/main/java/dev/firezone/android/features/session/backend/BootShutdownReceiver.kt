@@ -7,7 +7,10 @@ import android.content.Intent
 import android.util.Log
 
 internal class BootShutdownReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ) {
         if (Intent.ACTION_BOOT_COMPLETED == intent.action) {
             Log.d("BootShutdownReceiver", "Boot completed. Attempting to connect.")
             // TODO: Retrieve the session manager from the application context.
