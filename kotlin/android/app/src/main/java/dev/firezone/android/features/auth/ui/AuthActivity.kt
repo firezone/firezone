@@ -18,7 +18,6 @@ import java.lang.Exception
 
 @AndroidEntryPoint
 class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
-
     private lateinit var binding: ActivityAuthBinding
     private val viewModel: AuthViewModel by viewModels()
 
