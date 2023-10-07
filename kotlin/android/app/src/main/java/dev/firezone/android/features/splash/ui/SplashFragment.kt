@@ -12,10 +12,13 @@ import dev.firezone.android.databinding.FragmentSplashBinding
 
 @AndroidEntryPoint
 internal class SplashFragment : Fragment(R.layout.fragment_splash) {
-
     private lateinit var binding: FragmentSplashBinding
     private val viewModel: SplashViewModel by viewModels()
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+
+    override fun onViewCreated(
+        view: View,
+        savedInstanceState: Bundle?,
+    ) {
         super.onViewCreated(view, savedInstanceState)
         binding = FragmentSplashBinding.bind(view)
 
@@ -30,18 +33,22 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
             when (action) {
-                SplashViewModel.ViewAction.NavigateToVpnPermission -> findNavController().navigate(
-                    R.id.vpnPermissionActivity,
-                )
-                SplashViewModel.ViewAction.NavigateToSignInFragment -> findNavController().navigate(
-                    R.id.signInFragment,
-                )
-                SplashViewModel.ViewAction.NavigateToSettingsFragment -> findNavController().navigate(
-                    R.id.settingsFragment,
-                )
-                SplashViewModel.ViewAction.NavigateToSessionFragment -> findNavController().navigate(
-                    R.id.sessionFragment,
-                )
+                SplashViewModel.ViewAction.NavigateToVpnPermission ->
+                    findNavController().navigate(
+                        R.id.vpnPermissionActivity,
+                    )
+                SplashViewModel.ViewAction.NavigateToSignInFragment ->
+                    findNavController().navigate(
+                        R.id.signInFragment,
+                    )
+                SplashViewModel.ViewAction.NavigateToSettingsFragment ->
+                    findNavController().navigate(
+                        R.id.settingsFragment,
+                    )
+                SplashViewModel.ViewAction.NavigateToSessionFragment ->
+                    findNavController().navigate(
+                        R.id.sessionFragment,
+                    )
             }
         }
     }

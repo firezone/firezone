@@ -8,14 +8,14 @@ import androidx.appcompat.app.AppCompatActivity
 import dev.firezone.android.databinding.ActivityVpnPermissionBinding
 
 class VpnPermissionActivity : AppCompatActivity() {
-
     private lateinit var binding: ActivityVpnPermissionBinding
 
-    private val result = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (it.resultCode == Activity.RESULT_OK) {
-            finish()
+    private val result =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            if (it.resultCode == Activity.RESULT_OK) {
+                finish()
+            }
         }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
