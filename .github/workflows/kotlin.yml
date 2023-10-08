@@ -31,7 +31,7 @@ jobs:
         run: ./gradlew spotlessCheck
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04-firezone-4c
     defaults:
       run:
         working-directory: ./kotlin/android
