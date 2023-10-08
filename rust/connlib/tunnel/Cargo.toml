@@ -45,3 +45,15 @@ tracing-android = "0.2"
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
 wintun = "0.3.2"
+windows = { version = "0.51", features = [
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_SystemServices",
+    "Win32_Security_Cryptography",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+    "Win32_System_Threading",
+    "Win32_System_Com",
+    "Win32_Security",
+    "Win32_Foundation",
+] }

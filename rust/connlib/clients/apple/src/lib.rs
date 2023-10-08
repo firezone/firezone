@@ -6,10 +6,14 @@ use ip_network::IpNetwork;
 use secrecy::SecretString;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
-    os::fd::RawFd,
     path::PathBuf,
     sync::Arc,
 };
+#[cfg(windows)]
+type RawFd = i32;
+#[cfg(not(windows))]
+use os::fd::RawFd;
+
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 

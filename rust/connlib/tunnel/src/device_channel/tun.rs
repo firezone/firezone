@@ -13,4 +13,8 @@ mod tun;
 #[path = "tun/tun_android.rs"]
 mod tun;
 
+#[cfg(target_os = "windows")]
+#[path = "tun/tun_windows.rs"]
+mod tun;
+
 pub(crate) use tun::*;

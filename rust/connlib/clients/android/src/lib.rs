@@ -15,9 +15,12 @@ use std::path::Path;
 use std::sync::OnceLock;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
-    os::fd::RawFd,
     path::PathBuf,
 };
+#[cfg(windows)]
+type RawFd = i32;
+#[cfg(not(windows))]
+use os::fd::RawFd;
 use thiserror::Error;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
