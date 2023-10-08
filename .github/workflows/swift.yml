@@ -55,7 +55,6 @@ jobs:
           cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
           cp Firezone/xcconfig/Server.xcconfig.ci Firezone/xcconfig/Server.xcconfig
           xcodebuild archive \
-            -arch ${{ matrix.target.arch }} \
             -configuration Release \
             -scheme Firezone \
             -sdk ${{ matrix.target.sdk }} \
