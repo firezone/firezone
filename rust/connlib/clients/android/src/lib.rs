@@ -2,6 +2,7 @@
 // https://github.com/jni-rs/jni-rs/pull/22
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
+#![cfg(not(target_os = "windows"))]
 
 use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
 use ip_network::IpNetwork;

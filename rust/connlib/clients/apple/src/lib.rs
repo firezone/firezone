@@ -1,5 +1,6 @@
 // Swift bridge generated code triggers this below
 #![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
+#![cfg(not(target_os = "windows"))]
 
 use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
 use ip_network::IpNetwork;
@@ -10,6 +11,7 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
+
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
