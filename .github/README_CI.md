@@ -15,3 +15,18 @@ gcloud iam service-accounts add-iam-policy-binding "github-actions@github-iam-38
 ```
 
 for more details see https://github.com/google-github-actions/auth.
+
+## Larger runners
+
+We've configured two larger runners to use in workflows:
+
+- `ubuntu-22.04.firezone-4c`
+- `ubuntu-22.04-firezone-16c`
+
+Please use them wisely (especially the 16c one) as we are billed for their
+usage.
+
+Before you run your jobs on these larger runners, please ensure your workload is
+**CPU-bound** or **Memory-size-bound** so that your workflow / job will actually
+benefit from the extra cores. Many workloads are IO-bound and won't see a marked
+difference using a larger runner.
