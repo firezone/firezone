@@ -16,6 +16,11 @@ jobs:
         target:
           - sdk: macosx
             platform: macOS
+            arch: x86_64
+            destination: platform=macOS
+          - sdk: macosx
+            platform: macOS
+            arch: arm64
             destination: platform=macOS
           - sdk: iphoneos
             platform: iOS
@@ -44,13 +49,19 @@ jobs:
             ${{ matrix.target.platform }}-swift-
       - name: Build app
         env:
-          ONLY_ACTIVE_ARCH: no
+          ONLY_ACTIVE_ARCH: yes
+          CODESIGNING_ALLOWED: no
         run: |
           sudo xcode-select -s /Applications/Xcode_14.3.app
           brew install swift-format
           cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
           cp Firezone/xcconfig/Server.xcconfig.ci Firezone/xcconfig/Server.xcconfig
-          xcodebuild archive -configuration Release -scheme Firezone -sdk ${{ matrix.target.sdk }} -destination '${{ matrix.target.destination }}' CODE_SIGNING_ALLOWED=NO
+          xcodebuild archive \
+            -arch ${{ matrix.target.arch }} \
+            -configuration Release \
+            -scheme Firezone \
+            -sdk ${{ matrix.target.sdk }} \
+            -destination '${{ matrix.target.destination }}'
       - uses: actions/cache/save@v3
         # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Swift DerivedData Cache
