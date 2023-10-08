@@ -16,16 +16,13 @@ jobs:
         target:
           - sdk: macosx
             platform: macOS
-            arch: x86_64
-            destination: platform=macOS
+            destination: platform=macOS,arch=x86_64
           - sdk: macosx
             platform: macOS
-            arch: arm64
-            destination: platform=macOS
+            destination: platform=macOS,arch=arm64
           - sdk: iphoneos
             platform: iOS
-            arch: arm64
-            destination: generic/platform=iOS
+            destination: generic/platform=iOS,arch=arm64
     permissions:
       contents: read
     defaults:
