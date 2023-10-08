@@ -39,9 +39,8 @@ jobs:
         name: Restore Swift DerivedData Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/**/Package.resolved', 'swift/**/*.swift') }}-${{ github.sha }}
-          restore_keys: |
-            ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/**/Package.resolved', 'swift/**/*.swift') }}-
+          key: ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}-
+          restore-keys: |
             ${{ matrix.target.platform }}-swift-
       - name: Build app
         env:
@@ -57,6 +56,6 @@ jobs:
         name: Save Swift DerivedData Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          # Swift benefits heavily from build cache, so write a new one on each build on `main`
-          # and attempt to restore it in PR builds with a broader restory-key.
-          key: ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/**/Package.resolved', 'swift/**/*.swift') }}-${{ github.sha }}
+          # Swift benefits heavily from build cache, so aggressively write a new one
+          # on each build on `main` and attempt to restore it in PR builds with broader restore-key.
+          key: ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}-
