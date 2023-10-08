@@ -39,7 +39,7 @@ jobs:
         name: Restore Swift DerivedData Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ matrix.target.platform }}-swift-${{ github.ref }}
+          key: ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/**/Package.resolved', 'swift/**/*.swift') }}
           restore_keys: |
             ${{ matrix.target.platform }}-swift-${{ github.ref }}
             ${{ matrix.target.platform }}-swift-
@@ -48,7 +48,7 @@ jobs:
           ONLY_ACTIVE_ARCH: no
         run: |
           sudo xcode-select -s /Applications/Xcode_14.3.app
-          brew install swift-format # linting
+          brew install swift-format
           cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
           cp Firezone/xcconfig/Server.xcconfig.ci Firezone/xcconfig/Server.xcconfig
           xcodebuild archive -configuration Release -scheme Firezone -sdk ${{ matrix.target.sdk }} -destination '${{ matrix.target.destination }}' CODE_SIGNING_ALLOWED=NO
@@ -57,4 +57,4 @@ jobs:
         name: Save Swift DerivedData Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ matrix.target.platform }}-swift-${{ github.ref }}
+          key: ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/**/Package.resolved', 'swift/**/*.swift') }}
