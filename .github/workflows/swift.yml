@@ -36,13 +36,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          key: ${{ matrix.target.platform }}
+          key: ${{ matrix.target.destination }}
           # save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/cache/restore@v3
         name: Restore Swift DerivedData Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ matrix.target.platform }}-${{ matrix.target.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}-
+          key: ${{ matrix.target.destination }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}-
           restore-keys: |
             ${{ matrix.target.platform }}-swift-
       - name: Build app
@@ -66,4 +66,4 @@ jobs:
           path: ~/Library/Developer/Xcode/DerivedData
           # Swift benefits heavily from build cache, so aggressively write a new one
           # on each build on `main` and attempt to restore it in PR builds with broader restore-key.
-          key: ${{ matrix.target.platform }}-${{ matrix.target.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}-
+          key: ${{ matrix.target.destination }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}-
