@@ -138,7 +138,7 @@ where
             let mut connection = PhoenixChannel::<_, IngressMessages, ReplyMessages, Messages>::new(Secret::new(SecureUrl::from_url(connect_url)), move |msg, reference| {
                 let control_plane_sender = control_plane_sender.clone();
                 async move {
-                    tracing::trace!("Received message: {msg:?}");
+                    tracing::trace!(?msg);
                     if let Err(e) = control_plane_sender.send((msg, reference)).await {
                         tracing::warn!("Received a message after handler already closed: {e}. Probably message received during session clean up.");
                     }
@@ -187,6 +187,9 @@ where
                     tracing::warn!("Disconnected from the portal");
                     if let Err(e) = &result {
                         tracing::warn!(error = ?e, "Portal connection error");
+                        if e.is_http_client_error() {
+                            fatal_error!(result, runtime_stopper, &callbacks);
+                        }
                     }
                     if let Some(t) = exponential_backoff.next_backoff() {
                         tracing::warn!("Error connecting to portal, retrying in {} seconds", t.as_secs());

@@ -3,7 +3,10 @@ package dev.firezone.android.util
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+
 class CustomTabsHelper {
     companion object {
         val STABLE_PACKAGE = "com.android.chrome"
@@ -46,5 +49,25 @@ class CustomTabsHelper {
             }
             return sPackageNameToUse
         }
+
+        fun checkIfChromeAppIsDefault() =
+            sPackageNameToUse == STABLE_PACKAGE ||
+                sPackageNameToUse == BETA_PACKAGE ||
+                sPackageNameToUse == DEV_PACKAGE ||
+                sPackageNameToUse == LOCAL_PACKAGE
+
+        fun checkIfChromeIsInstalled(context: Context): Boolean =
+            try {
+                val info =
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        context.packageManager.getPackageInfo(STABLE_PACKAGE, PackageManager.PackageInfoFlags.of(0L))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        context.packageManager.getPackageInfo(STABLE_PACKAGE, 0)
+                    }
+                info.applicationInfo.enabled
+            } catch (e: PackageManager.NameNotFoundException) {
+                false
+            }
     }
 }

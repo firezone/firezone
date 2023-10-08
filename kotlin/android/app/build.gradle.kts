@@ -1,7 +1,3 @@
-/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
-import java.io.FileInputStream
-import java.util.Properties
-
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -12,7 +8,7 @@ plugins {
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
-    id("com.diffplug.spotless") version "6.21.0"
+    id("com.diffplug.spotless") version "6.22.0"
 }
 
 spotless {
@@ -24,27 +20,28 @@ spotless {
     }
     kotlin {
         ktlint()
-        target("**/*.kt", "**/*.kts")
+        target("**/*.kt")
         targetExclude("**/generated/*")
-        licenseHeader("/* Licensed under Apache 2.0 (C) \$YEAR Firezone, Inc. */")
+        licenseHeader("/* Licensed under Apache 2.0 (C) \$YEAR Firezone, Inc. */", "^(package |import |@file)")
     }
     kotlinGradle {
-        target("**/*.gradle.kts")
         ktlint()
+        target("**/*.gradle.kts")
+        targetExclude("**/generated/*")
     }
-}
-
-tasks.named("build").configure {
-    dependsOn("spotlessApply")
 }
 
 android {
-    namespace = "dev.firezone.android"
+    buildFeatures {
+        buildConfig = true
+    }
 
-    compileSdk = 33
+    namespace = "dev.firezone.android"
+    compileSdk = 34
+
     defaultConfig {
         applicationId = "dev.firezone.android"
-        minSdk = 29
+        minSdk = 30
         targetSdk = 33
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:automatic-version
@@ -58,41 +55,64 @@ android {
         getByName("debug") {
             isDebuggable = true
 
-            val localProperties = Properties()
-            localProperties.load(FileInputStream(rootProject.file("local.properties")))
             buildConfigField("String", "AUTH_HOST", "\"app.firez.one\"")
             buildConfigField("String", "AUTH_SCHEME", "\"https\"")
             buildConfigField("Integer", "AUTH_PORT", "443")
             buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firez.one/\"")
 
             // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
-            buildConfigField("String", "CONNLIB_LOG_FILTER_STRING", "\"connlib_client_android=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn\"")
+            buildConfigField(
+                "String",
+                "CONNLIB_LOG_FILTER_STRING",
+                "\"connlib_client_android=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn\"",
+            )
 
             resValue("string", "app_name", "\"Firezone (Dev)\"")
         }
 
         // Release Config
         getByName("release") {
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Enables code shrinking, obfuscation, and optimization for only
+            // your project's release build type. Make sure to use a build
+            // variant with `isDebuggable=false`.
+            isMinifyEnabled = true
+
+            // Enables resource shrinking, which is performed by the
+            // Android Gradle plugin.
+            isShrinkResources = true
+
+            // Includes the default ProGuard rules files that are packaged with
+            // the Android Gradle plugin. To learn more, go to the section about
+            // R8 configuration files.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            isDebuggable = false
+
             buildConfigField("String", "AUTH_HOST", "\"app.firezone.dev\"")
             buildConfigField("String", "AUTH_SCHEME", "\"https\"")
             buildConfigField("Integer", "AUTH_PORT", "443")
             buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firezone.dev/\"")
 
             // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
-            buildConfigField("String", "CONNLIB_LOG_FILTER_STRING", "\"connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn\"")
+            buildConfigField(
+                "String",
+                "CONNLIB_LOG_FILTER_STRING",
+                "\"connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn\"",
+            )
 
             resValue("string", "app_name", "\"Firezone\"")
         }
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
 
     buildFeatures {
@@ -101,13 +121,13 @@ android {
 }
 
 dependencies {
-    val core_version = "1.9.0"
+    val coreVersion = "1.12.0"
 
     // Connlib
     implementation(project(":connlib"))
 
     // AndroidX
-    implementation("androidx.core:core-ktx:$core_version")
+    implementation("androidx.core:core-ktx:$coreVersion")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.preference:preference-ktx:1.2.0")
 
@@ -127,7 +147,7 @@ dependencies {
     // Hilt
     implementation("com.google.dagger:hilt-android:2.44.1")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("androidx.core:core-ktx:$core_version")
+    implementation("androidx.core:core-ktx:$coreVersion")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
     kapt("androidx.hilt:hilt-compiler:1.0.0")
     kapt("com.google.dagger:hilt-android-compiler:2.44.1")

@@ -31,7 +31,6 @@ import javax.inject.Inject
 @AndroidEntryPoint
 @OptIn(ExperimentalStdlibApi::class)
 class TunnelService : VpnService() {
-
     @Inject
     internal lateinit var getConfigUseCase: GetConfigUseCase
 
@@ -46,73 +45,83 @@ class TunnelService : VpnService() {
     private val activeTunnel: Tunnel?
         get() = tunnelRepository.get()
 
-    private val callback: ConnlibCallback = object : ConnlibCallback {
-        override fun onUpdateResources(resourceListJSON: String) {
-            Log.d(TAG, "onUpdateResources: $resourceListJSON")
-            moshi.adapter<List<Resource>>().fromJson(resourceListJSON)?.let { resources ->
-                tunnelRepository.setResources(resources)
+    private val callback: ConnlibCallback =
+        object : ConnlibCallback {
+            override fun onUpdateResources(resourceListJSON: String) {
+                Log.d(TAG, "onUpdateResources: $resourceListJSON")
+                moshi.adapter<List<Resource>>().fromJson(resourceListJSON)?.let { resources ->
+                    tunnelRepository.setResources(resources)
+                }
+            }
+
+            override fun onSetInterfaceConfig(
+                tunnelAddressIPv4: String,
+                tunnelAddressIPv6: String,
+                dnsAddress: String,
+                dnsFallbackStrategy: String,
+            ): Int {
+                Log.d(
+                    TAG,
+                    """
+                    onSetInterfaceConfig:
+                    [IPv4:$tunnelAddressIPv4]
+                    [IPv6:$tunnelAddressIPv6]
+                    [dns:$dnsAddress]
+                    [dnsFallbackStrategy:$dnsFallbackStrategy]
+                    """.trimIndent(),
+                )
+
+                tunnelRepository.setConfig(
+                    TunnelConfig(
+                        tunnelAddressIPv4,
+                        tunnelAddressIPv6,
+                        dnsAddress,
+                        dnsFallbackStrategy,
+                    ),
+                )
+
+                // TODO: throw error if failed to establish VpnService
+                val fd = buildVpnService().establish()?.detachFd() ?: -1
+                protect(fd)
+                return fd
+            }
+
+            override fun onTunnelReady(): Boolean {
+                Log.d(TAG, "onTunnelReady")
+
+                tunnelRepository.setState(Tunnel.State.Up)
+                updateStatusNotification("Status: Connected")
+                return true
+            }
+
+            override fun onError(error: String): Boolean {
+                Log.d(TAG, "onError: $error")
+                return true
+            }
+
+            override fun onAddRoute(cidrAddress: String) {
+                Log.d(TAG, "onAddRoute: $cidrAddress")
+
+                tunnelRepository.addRoute(cidrAddress)
+            }
+
+            override fun onRemoveRoute(cidrAddress: String) {
+                Log.d(TAG, "onRemoveRoute: $cidrAddress")
+
+                tunnelRepository.removeRoute(cidrAddress)
+            }
+
+            override fun getSystemDefaultResolvers(): String {
+                return moshi.adapter<Array<String>>().toJson(DnsServersDetector(this@TunnelService).servers)
+            }
+
+            override fun onDisconnect(error: String?): Boolean {
+                Log.d(TAG, "onDisconnect $error")
+
+                onTunnelStateUpdate(Tunnel.State.Down)
+                return true
             }
         }
-
-        override fun onSetInterfaceConfig(
-            tunnelAddressIPv4: String,
-            tunnelAddressIPv6: String,
-            dnsAddress: String,
-            dnsFallbackStrategy: String,
-        ): Int {
-            Log.d(TAG, "onSetInterfaceConfig: [IPv4:$tunnelAddressIPv4] [IPv6:$tunnelAddressIPv6] [dns:$dnsAddress] [dnsFallbackStrategy:$dnsFallbackStrategy]")
-
-            tunnelRepository.setConfig(
-                TunnelConfig(
-                    tunnelAddressIPv4,
-                    tunnelAddressIPv6,
-                    dnsAddress,
-                    dnsFallbackStrategy,
-                ),
-            )
-
-            // TODO: throw error if failed to establish VpnService
-            val fd = buildVpnService().establish()?.detachFd() ?: -1
-            protect(fd)
-            return fd
-        }
-
-        override fun onTunnelReady(): Boolean {
-            Log.d(TAG, "onTunnelReady")
-
-            tunnelRepository.setState(Tunnel.State.Up)
-            updateStatusNotification("Status: Connected")
-            return true
-        }
-
-        override fun onError(error: String): Boolean {
-            Log.d(TAG, "onError: $error")
-            return true
-        }
-
-        override fun onAddRoute(cidrAddress: String) {
-            Log.d(TAG, "onAddRoute: $cidrAddress")
-
-            tunnelRepository.addRoute(cidrAddress)
-        }
-
-        override fun onRemoveRoute(cidrAddress: String) {
-            Log.d(TAG, "onRemoveRoute: $cidrAddress")
-
-            tunnelRepository.removeRoute(cidrAddress)
-        }
-
-        override fun getSystemDefaultResolvers(): String {
-            return moshi.adapter<Array<String>>().toJson(DnsServersDetector(this@TunnelService).servers)
-        }
-
-        override fun onDisconnect(error: String?): Boolean {
-            Log.d(TAG, "onDisconnect $error")
-
-            onTunnelStateUpdate(Tunnel.State.Down)
-            return true
-        }
-    }
 
     override fun onCreate() {
         super.onCreate()
@@ -124,7 +133,11 @@ class TunnelService : VpnService() {
         Log.d(TAG, "onDestroy")
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
         Log.d(TAG, "onStartCommand")
 
         if (intent != null && ACTION_DISCONNECT == intent.action) {
@@ -148,14 +161,15 @@ class TunnelService : VpnService() {
 
             if (config.accountId != null && config.token != null) {
                 Log.d("Connlib", "Attempting to establish TunnelSession...")
-                sessionPtr = TunnelSession.connect(
-                    controlPlaneUrl = BuildConfig.CONTROL_PLANE_URL,
-                    token = config.token,
-                    deviceId = deviceId(),
-                    logDir = getLogDir(),
-                    logFilter = BuildConfig.CONNLIB_LOG_FILTER_STRING,
-                    callback = callback,
-                )
+                sessionPtr =
+                    TunnelSession.connect(
+                        controlPlaneUrl = BuildConfig.CONTROL_PLANE_URL,
+                        token = config.token,
+                        deviceId = deviceId(),
+                        logDir = getLogDir(),
+                        logFilter = BuildConfig.CONNLIB_LOG_FILTER_STRING,
+                        callback = callback,
+                    )
                 Log.d(TAG, "connlib session started! sessionPtr: $sessionPtr")
 
                 onTunnelStateUpdate(Tunnel.State.Connecting)
@@ -238,24 +252,26 @@ class TunnelService : VpnService() {
     private fun updateStatusNotification(message: String?) {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
-        val chan = NotificationChannel(
-            NOTIFICATION_CHANNEL_ID,
-            NOTIFICATION_CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_DEFAULT,
-        )
+        val chan =
+            NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                NOTIFICATION_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_DEFAULT,
+            )
         chan.description = "firezone connection status"
 
         manager.createNotificationChannel(chan)
 
         val notificationBuilder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-        val notification = notificationBuilder.setOngoing(true)
-            .setSmallIcon(R.drawable.ic_firezone_logo)
-            .setContentTitle(NOTIFICATION_TITLE)
-            .setContentText(message)
-            .setPriority(NotificationManager.IMPORTANCE_MIN)
-            .setCategory(Notification.CATEGORY_SERVICE)
-            .setContentIntent(configIntent())
-            .build()
+        val notification =
+            notificationBuilder.setOngoing(true)
+                .setSmallIcon(R.drawable.ic_firezone_logo)
+                .setContentTitle(NOTIFICATION_TITLE)
+                .setContentText(message)
+                .setPriority(NotificationManager.IMPORTANCE_MIN)
+                .setCategory(Notification.CATEGORY_SERVICE)
+                .setContentIntent(configIntent())
+                .build()
 
         startForeground(STATUS_NOTIFICATION_ID, notification)
     }
