@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::{fmt, marker::PhantomData, time::Duration};
+use std::{fmt, future, marker::PhantomData, time::Duration};
 
 use base64::Engine;
 use futures::{FutureExt, SinkExt, StreamExt};
@@ -32,6 +32,63 @@ pub struct PhoenixChannel<TInboundMsg, TOutboundRes> {
 
     pending_join_requests: HashSet<OutboundRequestId>,
 }
+
+/// Creates a new [PhoenixChannel] to the given endpoint and waits for an `init` message.
+///
+/// The provided URL must contain a host.
+/// Additionally, you must already provide any query parameters required for authentication.
+#[tracing::instrument(level = "debug", skip(payload, secret_url))]
+#[allow(clippy::type_complexity)]
+pub async fn init<TInitM, TInboundMsg, TOutboundRes>(
+    secret_url: Secret<SecureUrl>,
+    user_agent: String,
+    login_topic: &'static str,
+    payload: impl Serialize,
+) -> Result<
+    Result<(PhoenixChannel<TInboundMsg, TOutboundRes>, TInitM), UnexpectedEventDuringInit>,
+    Error,
+>
+where
+    TInitM: DeserializeOwned + fmt::Debug,
+    TInboundMsg: DeserializeOwned,
+    TOutboundRes: DeserializeOwned,
+{
+    let mut channel =
+        PhoenixChannel::<InitMessage<TInitM>, ()>::connect(secret_url, user_agent).await?;
+    channel.join(login_topic, payload);
+
+    tracing::info!("Connected to portal, waiting for `init` message");
+
+    let (channel, init_message) = loop {
+        match future::poll_fn(|cx| channel.poll(cx)).await? {
+            Event::JoinedRoom { topic } if topic == login_topic => {
+                tracing::info!("Joined {login_topic} room on portal")
+            }
+            Event::InboundMessage {
+                topic,
+                msg: InitMessage::Init(msg),
+            } if topic == login_topic => {
+                tracing::info!("Received init message from portal");
+
+                break (channel, msg);
+            }
+            Event::HeartbeatSent => {}
+            e => return Ok(Err(UnexpectedEventDuringInit(format!("{e:?}")))),
+        }
+    };
+
+    Ok(Ok((channel.cast(), init_message)))
+}
+
+#[derive(serde::Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+pub enum InitMessage<M> {
+    Init(M),
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("encountered unexpected event during init: {0}")]
+pub struct UnexpectedEventDuringInit(String);
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -263,6 +320,20 @@ where
 
         next_id
     }
+
+    /// Cast this instance of [PhoenixChannel] to new message types.
+    fn cast<TInboundMsgNew, TOutboundResNew>(
+        self,
+    ) -> PhoenixChannel<TInboundMsgNew, TOutboundResNew> {
+        PhoenixChannel {
+            stream: self.stream,
+            pending_messages: self.pending_messages,
+            next_request_id: self.next_request_id,
+            next_heartbeat: self.next_heartbeat,
+            _phantom: PhantomData,
+            pending_join_requests: self.pending_join_requests,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -405,7 +476,6 @@ mod tests {
     #[serde(rename_all = "snake_case", tag = "event", content = "payload")] // This line makes it all work.
     enum Msg {
         Shout { hello: String },
-        Init {},
     }
 
     #[test]
@@ -433,12 +503,18 @@ mod tests {
     }
     #[test]
     fn can_deserialize_init_message() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct EmptyInit {}
+
         let msg = r#"{"event":"init","payload":{},"ref":null,"topic":"relay"}"#;
 
-        let msg = serde_json::from_str::<PhoenixMessage<Msg, ()>>(msg).unwrap();
+        let msg = serde_json::from_str::<PhoenixMessage<InitMessage<EmptyInit>, ()>>(msg).unwrap();
 
         assert_eq!(msg.topic, "relay");
         assert_eq!(msg.reference, None);
-        assert_eq!(msg.payload, Payload::Message(Msg::Init {}));
+        assert_eq!(
+            msg.payload,
+            Payload::Message(InitMessage::Init(EmptyInit {}))
+        );
     }
 }
