@@ -279,8 +279,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     pub async fn handle_tunnel_event(&mut self, event: firezone_tunnel::Event<GatewayId>) {
         match event {
             firezone_tunnel::Event::SignalIceCandidate { conn_id, candidate } => {
-                // TODO: How to handle this error?
-                let _ = self
+                if let Err(e) = self
                     .control_signaler
                     .control_signal
                     .send(EgressMessages::BroadcastIceCandidates(
@@ -289,7 +288,10 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                             candidates: vec![candidate],
                         },
                     ))
-                    .await;
+                    .await
+                {
+                    tracing::error!("Failed to signal ICE candidate: {e}")
+                }
             }
         }
     }
