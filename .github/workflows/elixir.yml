@@ -370,6 +370,8 @@ jobs:
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
 
   acceptance-test:
+    permissions:
+      checks: write
     runs-on: ubuntu-22.04-firezone-4c
     defaults:
       run:
