@@ -179,24 +179,13 @@ impl Eventloop {
                     conn_id: client,
                     candidate,
                 }) => {
-                    let ice_candidate = match candidate.to_json() {
-                        Ok(ice_candidate) => ice_candidate,
-                        Err(e) => {
-                            tracing::warn!(
-                                "Failed to serialize ICE candidate to JSON: {:#}",
-                                anyhow::Error::new(e)
-                            );
-                            continue;
-                        }
-                    };
-
-                    tracing::debug!(%client, candidate = %ice_candidate.candidate, "Sending ICE candidate to client");
+                    tracing::debug!(%client, candidate = %candidate.candidate, "Sending ICE candidate to client");
 
                     let _id = self.portal.send(
                         PHOENIX_TOPIC,
                         EgressMessages::BroadcastIceCandidates(BroadcastClientIceCandidates {
                             client_ids: vec![client],
-                            candidates: vec![ice_candidate],
+                            candidates: vec![candidate],
                         }),
                     );
                     continue;

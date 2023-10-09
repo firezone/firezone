@@ -278,29 +278,15 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 
     pub async fn handle_tunnel_event(&mut self, event: firezone_tunnel::Event<GatewayId>) {
         match event {
-            firezone_tunnel::Event::SignalIceCandidate {
-                conn_id: gateway_id,
-                candidate,
-            } => {
-                let ice_candidate = match candidate.to_json() {
-                    Ok(ice_candidate) => ice_candidate,
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to serialize ICE candidate to JSON: {:#}",
-                            anyhow::Error::new(e)
-                        );
-                        return;
-                    }
-                };
-
+            firezone_tunnel::Event::SignalIceCandidate { conn_id, candidate } => {
                 // TODO: How to handle this error?
                 let _ = self
                     .control_signaler
                     .control_signal
                     .send(EgressMessages::BroadcastIceCandidates(
                         BroadcastGatewayIceCandidates {
-                            gateway_ids: vec![gateway_id],
-                            candidates: vec![ice_candidate],
+                            gateway_ids: vec![conn_id],
+                            candidates: vec![candidate],
                         },
                     ))
                     .await;

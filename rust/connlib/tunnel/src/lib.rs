@@ -24,7 +24,6 @@ use webrtc::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
         setting_engine::SettingEngine, APIBuilder, API,
     },
-    ice_transport::ice_candidate::RTCIceCandidate,
     interceptor::registry::Registry,
     peer_connection::RTCPeerConnection,
 };
@@ -32,6 +31,7 @@ use webrtc::{
 use futures::channel::mpsc;
 use std::task::{ready, Context, Poll};
 use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
+use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 use connlib_shared::{
     messages::{
@@ -217,12 +217,12 @@ pub struct TunnelStats {
 pub trait IceState: Send + 'static + Default {
     type Id: fmt::Debug;
 
-    fn add_new_receiver(&mut self, id: Self::Id, receiver: mpsc::Receiver<RTCIceCandidate>);
+    fn add_new_receiver(&mut self, id: Self::Id, receiver: mpsc::Receiver<RTCIceCandidateInit>);
 
     fn poll_next_ice_candidate(
         &mut self,
         cx: &mut Context<'_>,
-    ) -> Poll<(Self::Id, RTCIceCandidate)>;
+    ) -> Poll<(Self::Id, RTCIceCandidateInit)>;
 }
 
 impl<C, CB, TIceState> Tunnel<C, CB, TIceState>
@@ -279,7 +279,7 @@ where
 pub enum Event<TId> {
     SignalIceCandidate {
         conn_id: TId,
-        candidate: RTCIceCandidate,
+        candidate: RTCIceCandidateInit,
     },
 }
 

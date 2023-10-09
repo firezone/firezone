@@ -195,7 +195,15 @@ where
 
             let mut ice_candidate_tx = ice_candidate_tx.clone();
             Box::pin(async move {
-                if ice_candidate_tx.send(candidate).await.is_err() {
+                let ice_candidate = match candidate.to_json() {
+                    Ok(ice_candidate) => ice_candidate,
+                    Err(e) => {
+                        tracing::warn!("Failed to serialize ICE candidate to JSON: {e}",);
+                        return;
+                    }
+                };
+
+                if ice_candidate_tx.send(ice_candidate).await.is_err() {
                     debug_assert!(false, "receiver was dropped before sender")
                 }
             })
