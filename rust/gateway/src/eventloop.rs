@@ -7,7 +7,7 @@ use crate::CallbackHandler;
 use anyhow::Result;
 use connlib_shared::messages::ClientId;
 use connlib_shared::Error;
-use firezone_tunnel::Tunnel;
+use firezone_tunnel::{GatewayIceState, Tunnel};
 use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -18,7 +18,7 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 pub const PHOENIX_TOPIC: &str = "gateway";
 
 pub struct Eventloop {
-    tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler>>,
+    tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayIceState>>,
     portal: PhoenixChannel<IngressMessages, ()>,
 
     // TODO: Strongly type request reference (currently `String`)
@@ -31,7 +31,7 @@ pub struct Eventloop {
 
 impl Eventloop {
     pub(crate) fn new(
-        tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler>>,
+        tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayIceState>>,
         portal: PhoenixChannel<IngressMessages, ()>,
     ) -> Self {
         Self {
@@ -175,11 +175,10 @@ impl Eventloop {
             }
 
             match self.tunnel.poll_next_event(cx) {
-                Poll::Ready(firezone_tunnel::Event::SignalIceCandidate { conn_id, candidate }) => {
-                    let Some(client) = conn_id.into_client_id() else {
-                        continue;
-                    };
-
+                Poll::Ready(firezone_tunnel::Event::SignalIceCandidate {
+                    conn_id: client,
+                    candidate,
+                }) => {
                     let ice_candidate = match candidate.to_json() {
                         Ok(ice_candidate) => ice_candidate,
                         Err(e) => {

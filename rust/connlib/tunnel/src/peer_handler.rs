@@ -5,14 +5,15 @@ use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
 
 use crate::{
-    device_channel::DeviceIo, index::check_packet_index, peer::Peer, ControlSignal, Tunnel,
-    MAX_UDP_SIZE,
+    device_channel::DeviceIo, index::check_packet_index, peer::Peer, ControlSignal, IceState,
+    Tunnel, MAX_UDP_SIZE,
 };
 
-impl<C, CB> Tunnel<C, CB>
+impl<C, CB, TIceState> Tunnel<C, CB, TIceState>
 where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
+    TIceState: IceState,
 {
     #[inline(always)]
     fn is_wireguard_packet_ok(&self, parsed_packet: &Packet, peer: &Peer) -> bool {

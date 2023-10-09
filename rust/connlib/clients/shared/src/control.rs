@@ -14,7 +14,7 @@ use connlib_shared::{
 };
 
 use async_trait::async_trait;
-use firezone_tunnel::{ControlSignal, Request, Tunnel};
+use firezone_tunnel::{ClientIceState, ControlSignal, Request, Tunnel};
 use tokio::sync::Mutex;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
@@ -43,7 +43,7 @@ impl ControlSignal for ControlSignaler {
 }
 
 pub struct ControlPlane<CB: Callbacks> {
-    pub tunnel: Arc<Tunnel<ControlSignaler, CB>>,
+    pub tunnel: Arc<Tunnel<ControlSignaler, CB, ClientIceState>>,
     pub control_signaler: ControlSignaler,
     pub tunnel_init: Mutex<bool>,
 }
@@ -276,12 +276,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             .await;
     }
 
-    pub async fn handle_tunnel_event(&mut self, event: firezone_tunnel::Event) {
+    pub async fn handle_tunnel_event(&mut self, event: firezone_tunnel::Event<GatewayId>) {
         match event {
-            firezone_tunnel::Event::SignalIceCandidate { conn_id, candidate } => {
-                let Some(gateway_id) = conn_id.into_gateway_id() else {
-                    return;
-                };
+            firezone_tunnel::Event::SignalIceCandidate {
+                conn_id: gateway_id,
+                candidate,
+            } => {
                 let ice_candidate = match candidate.to_json() {
                     Ok(ice_candidate) => ice_candidate,
                     Err(e) => {

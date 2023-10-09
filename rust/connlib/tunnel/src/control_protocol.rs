@@ -21,7 +21,7 @@ use webrtc::{
     },
 };
 
-use crate::{peer::Peer, ConnId, ControlSignal, PeerConfig, Tunnel};
+use crate::{peer::Peer, ConnId, ControlSignal, IceState, PeerConfig, Tunnel};
 
 mod client;
 mod gateway;
@@ -36,14 +36,15 @@ pub enum Request {
 }
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
-async fn handle_connection_state_update_with_peer<C, CB>(
-    tunnel: &Arc<Tunnel<C, CB>>,
+async fn handle_connection_state_update_with_peer<C, CB, TIceState>(
+    tunnel: &Arc<Tunnel<C, CB, TIceState>>,
     state: RTCPeerConnectionState,
     index: u32,
     conn_id: ConnId,
 ) where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
+    TIceState: IceState,
 {
     tracing::trace!(?state, "peer_state_update");
     if state == RTCPeerConnectionState::Failed {
@@ -52,14 +53,15 @@ async fn handle_connection_state_update_with_peer<C, CB>(
 }
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
-fn set_connection_state_with_peer<C, CB>(
-    tunnel: &Arc<Tunnel<C, CB>>,
+fn set_connection_state_with_peer<C, CB, TIceState>(
+    tunnel: &Arc<Tunnel<C, CB, TIceState>>,
     peer_connection: &Arc<RTCPeerConnection>,
     index: u32,
     conn_id: ConnId,
 ) where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
+    TIceState: IceState,
 {
     let tunnel = Arc::clone(tunnel);
     peer_connection.on_peer_connection_state_change(Box::new(
@@ -72,10 +74,11 @@ fn set_connection_state_with_peer<C, CB>(
     ));
 }
 
-impl<C, CB> Tunnel<C, CB>
+impl<C, CB, TIceState> Tunnel<C, CB, TIceState>
 where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
+    TIceState: IceState,
 {
     #[instrument(level = "trace", skip(self, data_channel, peer_config))]
     async fn handle_channel_open(
@@ -156,7 +159,7 @@ where
     async fn initialize_peer_request(
         self: &Arc<Self>,
         relays: Vec<Relay>,
-        conn_id: ConnId,
+        conn_id: TIceState::Id,
     ) -> Result<Arc<RTCPeerConnection>> {
         let config = RTCConfiguration {
             ice_servers: relays
@@ -181,9 +184,9 @@ where
 
         let (ice_candidate_tx, ice_candidate_rx) =
             futures::channel::mpsc::channel(ICE_CANDIDATE_BUFFER);
-        self.waiting_ice_candidate_receivers
+        self.ice_state
             .lock()
-            .insert(conn_id, ice_candidate_rx);
+            .add_new_receiver(conn_id, ice_candidate_rx);
 
         peer_connection.on_ice_candidate(Box::new(move |candidate| {
             let Some(candidate) = candidate else {
@@ -199,29 +202,6 @@ where
         }));
 
         Ok(peer_connection)
-    }
-
-    fn start_ice_candidate_handler(&self, conn_id: ConnId) -> Result<()> {
-        let receiver = self
-            .waiting_ice_candidate_receivers
-            .lock()
-            .remove(&conn_id)
-            .ok_or(Error::ControlProtocolError)?;
-        match self
-            .active_ice_candidate_receivers
-            .lock()
-            .try_push(conn_id, receiver)
-        {
-            Ok(()) => {}
-            Err(futures_bounded::PushError::BeyondCapacity(_)) => {
-                todo!("Too many receivers")
-            }
-            Err(futures_bounded::PushError::Replaced(_)) => {
-                todo!("Already a receiver with this ID")
-            }
-        }
-
-        Ok(())
     }
 
     pub async fn add_ice_candidate(
