@@ -5,9 +5,11 @@ import android.content.SharedPreferences
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dev.firezone.android.tunnel.data.TunnelRepository.Companion.CONFIG_KEY
+import dev.firezone.android.tunnel.data.TunnelRepository.Companion.RESOURCES_KEY
 import dev.firezone.android.tunnel.data.TunnelRepository.Companion.ROUTES_KEY
 import dev.firezone.android.tunnel.data.TunnelRepository.Companion.STATE_KEY
 import dev.firezone.android.tunnel.model.Cidr
+import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.Tunnel
 import dev.firezone.android.tunnel.model.TunnelConfig
 import java.lang.Exception
@@ -66,6 +68,19 @@ class TunnelRepositoryImpl
         override fun getState(): Tunnel.State {
             val json = sharedPreferences.getString(STATE_KEY, null)
             return json?.let { Tunnel.State.valueOf(it) } ?: Tunnel.State.Down
+        }
+
+        override fun setResources(resources: List<Resource>) {
+            synchronized(lock) {
+                val json = moshi.adapter<List<Resource>>().toJson(resources)
+                sharedPreferences.edit().putString(RESOURCES_KEY, json).apply()
+            }
+        }
+        override fun getResources(): List<Resource> {
+            synchronized(lock) {
+                val json = sharedPreferences.getString(RESOURCES_KEY, "[]") ?: "[]"
+                return moshi.adapter<List<Resource>>().fromJson(json) ?: emptyList()
+            }
         }
 
         override fun addRoute(route: Cidr) {
