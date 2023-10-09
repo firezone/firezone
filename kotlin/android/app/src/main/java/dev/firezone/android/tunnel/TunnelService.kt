@@ -20,6 +20,7 @@ import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.data.TunnelRepository
+import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.Tunnel
 import dev.firezone.android.tunnel.model.TunnelConfig
@@ -99,16 +100,26 @@ class TunnelService : VpnService() {
                 return true
             }
 
-            override fun onAddRoute(cidrAddress: String) {
-                Log.d(TAG, "onAddRoute: $cidrAddress")
-
-                tunnelRepository.addRoute(cidrAddress)
+            override fun onAddRoute(
+                addr: String,
+                prefix: Int,
+            ): Int {
+                Log.d(TAG, "onAddRoute: $addr/$prefix")
+                val route = Cidr(addr, prefix)
+                tunnelRepository.addRoute(route)
+                val fd = buildVpnService().establish()?.detachFd() ?: -1
+                protect(fd)
+                return fd
             }
 
-            override fun onRemoveRoute(cidrAddress: String) {
-                Log.d(TAG, "onRemoveRoute: $cidrAddress")
+            override fun onRemoveRoute(
+                addr: String,
+                prefix: Int,
+            ) {
+                Log.d(TAG, "onRemoveRoute: $addr/$prefix")
+                val cidr = Cidr(addr, prefix)
 
-                tunnelRepository.removeRoute(cidrAddress)
+                tunnelRepository.removeRoute(cidr)
             }
 
             override fun getSystemDefaultResolvers(): String {
@@ -231,16 +242,9 @@ class TunnelService : VpnService() {
 
                 addDnsServer(tunnel.config.dnsAddress)
 
-                /*tunnel.routes.forEach {
-                    addRoute(it, 32)
-                }*/
-
-                // TODO: These are the staging Resources. Remove these in favor of the onUpdateResources callback.
-                addRoute("100.100.111.1", 32)
-                addRoute("172.31.82.179", 32)
-                addRoute("172.31.83.10", 32)
-                addRoute("172.31.92.238", 32)
-                addRoute("172.31.93.123", 32)
+                tunnel.routes.forEach {
+                    addRoute(it.address, it.prefix)
+                }
 
                 setSession(SESSION_NAME)
 

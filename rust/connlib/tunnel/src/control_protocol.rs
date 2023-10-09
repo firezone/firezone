@@ -145,12 +145,8 @@ where
             })
         });
 
-        let Some(device_io) = self.device_io.read().clone() else {
-            return Err(Error::NoIface);
-        };
-
         let tunnel = Arc::clone(self);
-        tokio::spawn(async move { tunnel.peer_handler(peer, device_io).await });
+        tokio::spawn(async move { tunnel.start_peer_handler(peer).await });
 
         Ok(())
     }

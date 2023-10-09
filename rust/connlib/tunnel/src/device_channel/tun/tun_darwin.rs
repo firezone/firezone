@@ -195,12 +195,12 @@ impl IfaceDevice {
             }
 
             if addr.sc_id == info.ctl_id {
-                let _ = callbacks.on_set_interface_config(
+                callbacks.on_set_interface_config(
                     config.ipv4,
                     config.ipv6,
                     DNS_SENTINEL,
                     "system_resolver".to_string(),
-                );
+                )?;
 
                 set_non_blocking(fd)?;
 
@@ -241,8 +241,10 @@ impl IfaceDevice {
         &self,
         route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<()> {
-        callbacks.on_add_route(route)
+    ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
+        // This will always be None in macos
+        callbacks.on_add_route(route)?;
+        Ok(None)
     }
 
     pub async fn up(&self) -> Result<()> {

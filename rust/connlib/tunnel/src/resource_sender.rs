@@ -24,15 +24,17 @@ where
     }
 
     #[inline(always)]
-    fn send_packet(&self, device_io: &DeviceIo, packet: &mut [u8], dst_addr: IpAddr) {
+    fn send_packet(
+        &self,
+        device_io: &DeviceIo,
+        packet: &mut [u8],
+        dst_addr: IpAddr,
+    ) -> std::io::Result<()> {
         match dst_addr {
-            IpAddr::V4(_) => {
-                self.write4_device_infallible(device_io, packet);
-            }
-            IpAddr::V6(_) => {
-                self.write6_device_infallible(device_io, packet);
-            }
-        }
+            IpAddr::V4(_) => device_io.write4(packet)?,
+            IpAddr::V6(_) => device_io.write6(packet)?,
+        };
+        Ok(())
     }
 
     #[inline(always)]
@@ -42,26 +44,20 @@ where
         peer: &Arc<Peer>,
         addr: IpAddr,
         packet: &mut [u8],
-    ) {
+    ) -> Result<()> {
         let Some((dst, resource)) = peer.get_packet_resource(packet) else {
             // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
             // and we just trust gateways.
             // In gateways this should never happen.
             tracing::trace!(target: "wire", action = "writing", to = "iface", %addr, bytes = %packet.len());
-            self.send_packet(device_io, packet, addr);
-            return;
+            self.send_packet(device_io, packet, addr)?;
+            return Ok(());
         };
 
-        match get_resource_addr_and_port(peer, &resource, &addr, &dst) {
-            Ok((dst_addr, _dst_port)) => {
-                self.update_packet(packet, dst_addr);
-                self.send_packet(device_io, packet, addr);
-            }
-            Err(e) => {
-                tracing::error!(err = ?e, "resource_parse");
-                let _ = self.callbacks().on_error(&e);
-            }
-        }
+        let (dst_addr, _dst_port) = get_resource_addr_and_port(peer, &resource, &addr, &dst)?;
+        self.update_packet(packet, dst_addr);
+        self.send_packet(device_io, packet, addr)?;
+        Ok(())
     }
 
     pub(crate) fn send_to_resource(
@@ -70,11 +66,13 @@ where
         peer: &Arc<Peer>,
         addr: IpAddr,
         packet: &mut [u8],
-    ) {
+    ) -> Result<()> {
         if peer.is_allowed(addr) {
-            self.packet_allowed(device_io, peer, addr, packet);
+            self.packet_allowed(device_io, peer, addr, packet)?;
+            Ok(())
         } else {
             tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
+            Ok(())
         }
     }
 }
@@ -90,7 +88,6 @@ fn get_resource_addr_and_port(
     dst: &IpAddr,
 ) -> Result<(IpAddr, Option<u16>)> {
     match resource {
-        // Note: for now no translation is needed for the ip since we do a peer/connection per resource
         ResourceDescription::Dns(r) => {
             let mut address = r.address.split(':');
             let Some(dst_addr) = address.next() else {

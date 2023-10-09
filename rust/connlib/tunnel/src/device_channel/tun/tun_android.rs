@@ -1,4 +1,5 @@
 use crate::InterfaceConfig;
+use closeable::Closeable;
 use connlib_shared::{CallbackErrorFacade, Callbacks, Error, Result, DNS_SENTINEL};
 use ip_network::IpNetwork;
 use libc::{
@@ -13,6 +14,7 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
+mod closeable;
 mod wrapped_socket;
 // Android doesn't support Split DNS. So we intercept all requests and forward
 // the non-Firezone name resolution requests to the upstream DNS resolver.
@@ -50,24 +52,27 @@ pub(crate) struct IfaceDevice(Arc<AsyncFd<IfaceStream>>);
 
 #[derive(Debug)]
 pub(crate) struct IfaceStream {
-    fd: RawFd,
+    fd: Closeable,
 }
 
 impl AsRawFd for IfaceStream {
     fn as_raw_fd(&self) -> RawFd {
-        self.fd
+        self.fd.as_raw_fd()
     }
 }
 
 impl Drop for IfaceStream {
     fn drop(&mut self) {
-        unsafe { close(self.fd) };
+        unsafe { close(self.fd.as_raw_fd()) };
     }
 }
 
 impl IfaceStream {
     fn write(&self, buf: &[u8]) -> std::io::Result<usize> {
-        match unsafe { write(self.fd, buf.as_ptr() as _, buf.len() as _) } {
+        match self
+            .fd
+            .with(|fd| unsafe { write(fd, buf.as_ptr() as _, buf.len() as _) })?
+        {
             -1 => Err(io::Error::last_os_error()),
             n => Ok(n as usize),
         }
@@ -81,11 +86,20 @@ impl IfaceStream {
         self.write(src)
     }
 
-    pub fn read<'a>(&self, dst: &'a mut [u8]) -> std::io::Result<usize> {
-        match unsafe { read(self.fd, dst.as_mut_ptr() as _, dst.len()) } {
+    pub fn read(&self, dst: &mut [u8]) -> std::io::Result<usize> {
+        // We don't read(or write) again from the fd because the given fd number might be reclaimed
+        // so this could make an spurious read/write to another fd and we DEFINITELY don't want that
+        match self
+            .fd
+            .with(|fd| unsafe { read(fd, dst.as_mut_ptr() as _, dst.len()) })?
+        {
             -1 => Err(io::Error::last_os_error()),
             n => Ok(n as usize),
         }
+    }
+
+    pub fn close(&self) {
+        self.fd.close();
     }
 }
 
@@ -94,13 +108,17 @@ impl IfaceDevice {
         config: &InterfaceConfig,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
-        let fd = callbacks.on_set_interface_config(
-            config.ipv4,
-            config.ipv6,
-            DNS_SENTINEL,
-            DNS_FALLBACK_STRATEGY.to_string(),
-        )?;
-        let iface_stream = Arc::new(AsyncFd::new(IfaceStream { fd: fd.into() })?);
+        let fd = callbacks
+            .on_set_interface_config(
+                config.ipv4,
+                config.ipv6,
+                DNS_SENTINEL,
+                DNS_FALLBACK_STRATEGY.to_string(),
+            )?
+            .ok_or(Error::NoFd)?;
+        let iface_stream = Arc::new(AsyncFd::new(IfaceStream {
+            fd: Closeable::new(fd.into()),
+        })?);
         let this = Self(Arc::clone(&iface_stream));
 
         Ok((this, iface_stream))
@@ -112,7 +130,12 @@ impl IfaceDevice {
             ifr_ifru: unsafe { std::mem::zeroed() },
         };
 
-        match unsafe { ioctl(self.0.get_ref().fd, TUNGETIFF as _, &mut ifr) } {
+        match self
+            .0
+            .get_ref()
+            .fd
+            .with(|fd| unsafe { ioctl(fd, TUNGETIFF as _, &mut ifr) })?
+        {
             0 => {
                 let name_cstr = unsafe { std::ffi::CStr::from_ptr(ifr.ifr_name.as_ptr() as _) };
                 Ok(name_cstr.to_string_lossy().into_owned())
@@ -151,8 +174,15 @@ impl IfaceDevice {
         &self,
         route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<()> {
-        callbacks.on_add_route(route)
+    ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
+        self.0.get_ref().close();
+        let fd = callbacks.on_add_route(route)?.ok_or(Error::NoFd)?;
+        let iface_stream = Arc::new(AsyncFd::new(IfaceStream {
+            fd: Closeable::new(fd.into()),
+        })?);
+        let this = Self(Arc::clone(&iface_stream));
+
+        Ok(Some((this, iface_stream)))
     }
 
     pub async fn up(&self) -> Result<()> {

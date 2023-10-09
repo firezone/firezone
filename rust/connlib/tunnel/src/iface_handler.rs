@@ -138,9 +138,9 @@ where
     ) -> Result<()> {
         if let Some(r) = self.check_for_dns(src) {
             match r {
-                dns::SendPacket::Ipv4(r) => self.write4_device_infallible(device_writer, &r[..]),
-                dns::SendPacket::Ipv6(r) => self.write6_device_infallible(device_writer, &r[..]),
-            }
+                dns::SendPacket::Ipv4(r) => device_writer.write4(&r[..])?,
+                dns::SendPacket::Ipv6(r) => device_writer.write6(&r[..])?,
+            };
             return Ok(());
         }
 
@@ -170,29 +170,30 @@ where
         device_io: DeviceIo,
     ) {
         let device_writer = device_io.clone();
+        let mut src = [0u8; MAX_UDP_SIZE];
+        let mut dst = [0u8; MAX_UDP_SIZE];
         loop {
-            let mut src = [0u8; MAX_UDP_SIZE];
-            let mut dst = [0u8; MAX_UDP_SIZE];
-            let res = {
-                // TODO: We should check here if what we read is a whole packet
-                // there's no docs on tun device on when a whole packet is read, is it \n or another thing?
-                // found some comments saying that a single read syscall represents a single packet but no docs on that
-                // See https://stackoverflow.com/questions/18461365/how-to-read-packet-by-packet-from-linux-tun-tap
-                match device_io.read(&mut src[..iface_config.mtu()]).await {
-                    Ok(res) => res,
-                    Err(e) => {
-                        tracing::error!(error = ?e, from = "iface", action = "read");
-                        let _ = self.callbacks.on_error(&e.into());
-                        continue;
-                    }
+            let res = match device_io.read(&mut src[..iface_config.mtu()]).await {
+                Ok(res) => res,
+                Err(e) => {
+                    tracing::error!(err = ?e, "failed to read interface: {e:#}");
+                    let _ = self.callbacks.on_error(&e.into());
+                    break;
                 }
             };
-
             tracing::trace!(target: "wire", action = "read", bytes = res, from = "iface");
-            // TODO
-            let _ = self
+
+            if res == 0 {
+                break;
+            }
+
+            if let Err(e) = self
                 .handle_iface_packet(&device_writer, &mut src[..res], &mut dst)
-                .await;
+                .await
+            {
+                let _ = self.callbacks.on_error(&e);
+                tracing::error!(err = ?e, "failed to handle packet {e:#}")
+            }
         }
     }
 }

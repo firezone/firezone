@@ -66,26 +66,26 @@ where
         peer: &Arc<Peer>,
         device_io: &DeviceIo,
         decapsulate_result: TunnResult<'a>,
-    ) -> bool {
+    ) -> Result<bool> {
         match decapsulate_result {
-            TunnResult::Done => false,
+            TunnResult::Done => Ok(false),
             TunnResult::Err(e) => {
                 tracing::error!(error = ?e, "decapsulate_packet");
                 let _ = self.callbacks().on_error(&e.into());
-                false
+                Ok(false)
             }
             TunnResult::WriteToNetwork(packet) => {
                 let bytes = Bytes::copy_from_slice(packet);
                 peer.send_infallible(bytes, &self.callbacks).await;
-                true
+                Ok(true)
             }
             TunnResult::WriteToTunnelV4(packet, addr) => {
-                self.send_to_resource(device_io, peer, addr.into(), packet);
-                false
+                self.send_to_resource(device_io, peer, addr.into(), packet)?;
+                Ok(false)
             }
             TunnResult::WriteToTunnelV6(packet, addr) => {
-                self.send_to_resource(device_io, peer, addr.into(), packet);
-                false
+                self.send_to_resource(device_io, peer, addr.into(), packet)?;
+                Ok(false)
             }
         }
     }
@@ -108,7 +108,7 @@ where
 
         if self
             .handle_decapsulated_packet(peer, device_writer, decapsulate_result)
-            .await
+            .await?
         {
             // Flush pending queue
             while let TunnResult::WriteToNetwork(packet) = {
@@ -125,10 +125,16 @@ where
         Ok(())
     }
 
-    pub(crate) async fn peer_handler(self: &Arc<Self>, peer: Arc<Peer>, device_io: DeviceIo) {
+    async fn peer_handler(
+        self: &Arc<Self>,
+        peer: &Arc<Peer>,
+        device_io: DeviceIo,
+    ) -> std::io::Result<()> {
         let mut src_buf = [0u8; MAX_UDP_SIZE];
         let mut dst_buf = [0u8; MAX_UDP_SIZE];
         while let Ok(size) = peer.channel.read(&mut src_buf[..]).await {
+            tracing::trace!(target: "wire", action = "read", bytes = size, from = "peer");
+
             // TODO: Double check that this can only happen on closed channel
             // I think it's possible to transmit a 0-byte message through the channel
             // but we would never use that.
@@ -137,14 +143,38 @@ where
                 break;
             }
 
-            tracing::trace!(target: "wire", action = "read", bytes = size, from = "peer");
-            let _ = self
-                .handle_peer_packet(&peer, &device_io, &src_buf[..size], &mut dst_buf)
-                .await;
+            if let Err(Error::Io(e)) = self
+                .handle_peer_packet(peer, &device_io, &src_buf[..size], &mut dst_buf)
+                .await
+            {
+                return Err(e);
+            }
         }
 
-        let peer_stats = peer.stats();
-        tracing::debug!(peer = ?peer_stats, "peer_stopped");
+        Ok(())
+    }
+
+    pub(crate) async fn start_peer_handler(self: &Arc<Self>, peer: Arc<Peer>) {
+        loop {
+            let Some(device) = self.device.read().await.clone() else {
+                let err = Error::NoIface;
+                tracing::error!(?err);
+                let _ = self.callbacks().on_disconnect(Some(&err));
+                break;
+            };
+            let device_io = device.io;
+
+            if let Err(err) = self.peer_handler(&peer, device_io).await {
+                if err.raw_os_error() != Some(9) {
+                    tracing::error!(?err);
+                    let _ = self.callbacks().on_error(&err.into());
+                    break;
+                } else {
+                    tracing::warn!("bad_file_descriptor");
+                }
+            }
+        }
+        tracing::debug!(peer = ?peer.stats(), "peer_stopped");
         self.stop_peer(peer.index, peer.conn_id).await;
     }
 }

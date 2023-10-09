@@ -14,14 +14,17 @@ pub trait Callbacks: Clone + Send + Sync {
     type Error: Debug + Display + Error;
 
     /// Called when the tunnel address is set.
+    ///
+    /// This should return a new `fd` if there is one.
+    /// (Only happens on android for now)
     fn on_set_interface_config(
         &self,
         _: Ipv4Addr,
         _: Ipv6Addr,
         _: Ipv4Addr,
         _: String,
-    ) -> Result<RawFd, Self::Error> {
-        Ok(-1)
+    ) -> Result<Option<RawFd>, Self::Error> {
+        Ok(None)
     }
 
     /// Called when the tunnel is connected.
@@ -31,8 +34,11 @@ pub trait Callbacks: Clone + Send + Sync {
     }
 
     /// Called when when a route is added.
-    fn on_add_route(&self, _: IpNetwork) -> Result<(), Self::Error> {
-        Ok(())
+    ///
+    /// This should return a new `fd` if there is one.
+    /// (Only happens on android for now)
+    fn on_add_route(&self, _: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
+        Ok(None)
     }
 
     /// Called when when a route is removed.
