@@ -1,5 +1,6 @@
 use boringtun::noise::Tunn;
 use chrono::{DateTime, Utc};
+use futures_util::SinkExt;
 use secrecy::ExposeSecret;
 use std::sync::Arc;
 use tracing::instrument;
@@ -178,19 +179,21 @@ where
         };
         let peer_connection = Arc::new(self.webrtc_api.new_peer_connection(config).await?);
 
-        let (ice_candidate_tx, ice_candidate_rx) = tokio::sync::mpsc::channel(ICE_CANDIDATE_BUFFER);
-        self.ice_candidate_queue
+        let (ice_candidate_tx, ice_candidate_rx) =
+            futures::channel::mpsc::channel(ICE_CANDIDATE_BUFFER);
+        self.waiting_ice_candidate_receivers
             .lock()
             .insert(conn_id, ice_candidate_rx);
 
-        let callbacks = self.callbacks().clone();
         peer_connection.on_ice_candidate(Box::new(move |candidate| {
-            let ice_candidate_tx = ice_candidate_tx.clone();
-            let callbacks = callbacks.clone();
+            let Some(candidate) = candidate else {
+                return Box::pin(async {});
+            };
+
+            let mut ice_candidate_tx = ice_candidate_tx.clone();
             Box::pin(async move {
-                if let Err(e) = ice_candidate_tx.send(candidate).await {
-                    tracing::error!(err = ?e, "buffer_ice_candidate");
-                    let _ = callbacks.on_error(&e.into());
+                if ice_candidate_tx.send(candidate).await.is_err() {
+                    debug_assert!(false, "receiver was dropped before sender")
                 }
             })
         }));
@@ -199,25 +202,24 @@ where
     }
 
     fn start_ice_candidate_handler(&self, conn_id: ConnId) -> Result<()> {
-        let mut ice_candidate_rx = self
-            .ice_candidate_queue
+        let receiver = self
+            .waiting_ice_candidate_receivers
             .lock()
             .remove(&conn_id)
-            .ok_or(Error::ControlProtocolError)?;
-        let control_signaler = self.control_signaler.clone();
-        let callbacks = self.callbacks().clone();
-
-        tokio::spawn(async move {
-            while let Some(ice_candidate) = ice_candidate_rx.recv().await.flatten() {
-                if let Err(e) = control_signaler
-                    .signal_ice_candidate(ice_candidate, conn_id)
-                    .await
-                {
-                    tracing::error!(err = ?e, "add_ice_candidate");
-                    let _ = callbacks.on_error(&e);
-                }
+            .ok_or_else(|| Error::Other("missing ICE candidate receiver"))?;
+        match self
+            .active_ice_candidate_receivers
+            .lock()
+            .try_push(conn_id, receiver)
+        {
+            Ok(()) => {}
+            Err(futures_bounded::PushError::BeyondCapacity(_)) => {
+                todo!("Too many receivers")
             }
-        });
+            Err(futures_bounded::PushError::Replaced(_)) => {
+                todo!("Already a receiver with this ID")
+            }
+        }
 
         Ok(())
     }

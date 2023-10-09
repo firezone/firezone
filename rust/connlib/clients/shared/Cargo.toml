@@ -8,6 +8,7 @@ edition = "2021"
 mock = ["connlib-shared/mock"]
 
 [dependencies]
+anyhow = "1.0.75"
 tokio = { version = "1.32", default-features = false, features = ["sync", "rt"] }
 tokio-util = "0.7.9"
 secrecy = { workspace = true }

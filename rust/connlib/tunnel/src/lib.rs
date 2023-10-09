@@ -29,7 +29,10 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
-use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
+use futures::channel::mpsc;
+use futures_bounded::StreamMap;
+use std::task::{ready, Context, Poll};
+use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
 
 use connlib_shared::{
     messages::{
@@ -72,6 +75,22 @@ pub enum ConnId {
     Resource(ResourceId),
 }
 
+impl ConnId {
+    pub fn into_client_id(self) -> Option<ClientId> {
+        match self {
+            ConnId::Client(inner) => Some(inner),
+            _ => None,
+        }
+    }
+
+    pub fn into_gateway_id(self) -> Option<GatewayId> {
+        match self {
+            ConnId::Gateway(inner) => Some(inner),
+            _ => None,
+        }
+    }
+}
+
 impl From<GatewayId> for ConnId {
     fn from(id: GatewayId) -> Self {
         Self::Gateway(id)
@@ -87,6 +106,16 @@ impl From<ClientId> for ConnId {
 impl From<ResourceId> for ConnId {
     fn from(id: ResourceId) -> Self {
         Self::Resource(id)
+    }
+}
+
+impl fmt::Display for ConnId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConnId::Gateway(inner) => fmt::Display::fmt(inner, f),
+            ConnId::Client(inner) => fmt::Display::fmt(inner, f),
+            ConnId::Resource(inner) => fmt::Display::fmt(inner, f),
+        }
     }
 }
 
@@ -125,13 +154,6 @@ pub trait ControlSignal {
         connected_gateway_ids: &[GatewayId],
         reference: usize,
     ) -> Result<()>;
-
-    /// Signals a new candidate to the control plane
-    async fn signal_ice_candidate(
-        &self,
-        ice_candidate: RTCIceCandidate,
-        conn_id: ConnId,
-    ) -> Result<()>;
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -158,8 +180,12 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<ConnId, Arc<RTCPeerConnection>>>,
-    ice_candidate_queue:
-        Mutex<HashMap<ConnId, tokio::sync::mpsc::Receiver<Option<RTCIceCandidate>>>>,
+
+    /// Receivers for ICE candidates that are actively polled.
+    active_ice_candidate_receivers: Mutex<StreamMap<ConnId, RTCIceCandidate>>,
+    /// Receivers for ICE candidates that are not yet active, i.e. we are not polling these.
+    waiting_ice_candidate_receivers: Mutex<HashMap<ConnId, mpsc::Receiver<RTCIceCandidate>>>,
+
     awaiting_connection: Mutex<HashMap<ConnId, AwaitingConnectionDetails>>,
     gateway_awaiting_connection: Mutex<HashMap<GatewayId, Vec<IpNetwork>>>,
     resources_gateways: Mutex<HashMap<ResourceId, GatewayId>>,
@@ -226,6 +252,33 @@ where
             gateway_public_keys,
         }
     }
+
+    pub async fn next_event(&self) -> Event {
+        std::future::poll_fn(|cx| self.poll_next_event(cx)).await
+    }
+
+    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event> {
+        let mut receivers = self.active_ice_candidate_receivers.lock();
+
+        loop {
+            match ready!(receivers.poll_next_unpin(cx)) {
+                (conn_id, Some(Ok(candidate))) => {
+                    return Poll::Ready(Event::SignalIceCandidate { conn_id, candidate })
+                }
+                (conn_id, Some(Err(e))) => {
+                    tracing::debug!(%conn_id, "ICE candidate stream timed out: {e}")
+                }
+                (_, None) => {}
+            }
+        }
+    }
+}
+
+pub enum Event {
+    SignalIceCandidate {
+        conn_id: ConnId,
+        candidate: RTCIceCandidate,
+    },
 }
 
 impl<C, CB> Tunnel<C, CB>
@@ -255,7 +308,6 @@ where
         let resources_gateways = Default::default();
         let gateway_awaiting_connection = Default::default();
         let device = Default::default();
-        let ice_candidate_queue = Default::default();
         let iface_handler_abort = Default::default();
 
         // ICE
@@ -297,7 +349,11 @@ where
             gateway_awaiting_connection,
             control_signaler,
             resources_gateways,
-            ice_candidate_queue,
+            active_ice_candidate_receivers: Mutex::new(StreamMap::new(
+                Duration::from_secs(60),
+                100,
+            )),
+            waiting_ice_candidate_receivers: Default::default(),
             callbacks: CallbackErrorFacade(callbacks),
             iface_handler_abort,
         })

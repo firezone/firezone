@@ -1,24 +1,12 @@
 use async_trait::async_trait;
-use connlib_shared::messages::ClientId;
-use connlib_shared::Error::ControlProtocolError;
 use connlib_shared::{
     messages::{GatewayId, ResourceDescription},
     Result,
 };
-use firezone_tunnel::{ConnId, ControlSignal};
-use tokio::sync::mpsc;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
+use firezone_tunnel::ControlSignal;
 
 #[derive(Clone)]
-pub struct ControlSignaler {
-    tx: mpsc::Sender<(ClientId, RTCIceCandidate)>,
-}
-
-impl ControlSignaler {
-    pub fn new(tx: mpsc::Sender<(ClientId, RTCIceCandidate)>) -> Self {
-        Self { tx }
-    }
-}
+pub struct ControlSignaler;
 
 #[async_trait]
 impl ControlSignal for ControlSignaler {
@@ -30,21 +18,5 @@ impl ControlSignal for ControlSignaler {
     ) -> Result<()> {
         tracing::warn!("A message to network resource: {resource:?} was discarded, gateways aren't meant to be used as clients.");
         Ok(())
-    }
-
-    async fn signal_ice_candidate(
-        &self,
-        ice_candidate: RTCIceCandidate,
-        conn_id: ConnId,
-    ) -> Result<()> {
-        // TODO: We probably want to have different signal_ice_candidate
-        // functions for gateway/client but ultimately we just want
-        // separate control_plane modules
-        if let ConnId::Client(id) = conn_id {
-            let _ = self.tx.send((id, ice_candidate)).await;
-            Ok(())
-        } else {
-            Err(ControlProtocolError)
-        }
     }
 }

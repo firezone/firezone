@@ -5,7 +5,6 @@ use anyhow::{Context, Result};
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_shared::messages::ClientId;
 use connlib_shared::{get_device_id, get_user_agent, login_url, Callbacks, Mode};
 use firezone_tunnel::Tunnel;
 use futures::future;
@@ -15,10 +14,8 @@ use secrecy::{Secret, SecretString};
 use std::convert::Infallible;
 use std::pin::pin;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tracing_subscriber::layer;
 use url::Url;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 mod control;
 mod eventloop;
@@ -35,11 +32,7 @@ async fn main() -> Result<()> {
         SecretString::new(cli.common.secret),
         get_device_id(),
     )?;
-
-    // Note: This channel is only needed because [`Tunnel`] does not (yet) have a synchronous, poll-like interface. If it would have, ICE candidates would be emitted as events and we could just hand them to the phoenix channel.
-    let (control_tx, mut control_rx) = mpsc::channel(1);
-    let signaler = ControlSignaler::new(control_tx);
-    let tunnel = Arc::new(Tunnel::new(private_key, signaler, CallbackHandler).await?);
+    let tunnel = Arc::new(Tunnel::new(private_key, ControlSignaler, CallbackHandler).await?);
 
     let mut backoff = ExponentialBackoffBuilder::default()
         .with_max_elapsed_time(None)
@@ -47,7 +40,7 @@ async fn main() -> Result<()> {
 
     let eventloop = async {
         loop {
-            let error = match run(tunnel.clone(), &mut control_rx, connect_url.clone()).await {
+            let error = match run(tunnel.clone(), connect_url.clone()).await {
                 Err(e) => e,
                 Ok(never) => match never {},
             };
@@ -66,7 +59,6 @@ async fn main() -> Result<()> {
 
 async fn run(
     tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler>>,
-    control_rx: &mut mpsc::Receiver<(ClientId, RTCIceCandidate)>,
     connect_url: Url,
 ) -> Result<Infallible> {
     let (portal, init) = phoenix_channel::init::<InitGateway, _, _>(
@@ -82,7 +74,7 @@ async fn run(
         .await
         .context("Failed to set interface")?;
 
-    let mut eventloop = Eventloop::new(tunnel, control_rx, portal);
+    let mut eventloop = Eventloop::new(tunnel, portal);
 
     future::poll_fn(|cx| eventloop.poll(cx)).await
 }

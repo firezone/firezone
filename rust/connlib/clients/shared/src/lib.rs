@@ -149,7 +149,8 @@ where
                 }
             });
 
-            let control_signaler = ControlSignaler { control_signal: connection.sender_with_topic("client".to_owned()) };
+            let phoenix_sender = connection.sender_with_topic("client".to_owned());
+            let control_signaler = ControlSignaler { control_signal: phoenix_sender.clone() };
             let tunnel = fatal_error!(
                 Tunnel::new(private_key, control_signaler.clone(), callbacks.clone()).await,
                 runtime_stopper,
@@ -165,6 +166,7 @@ where
             tokio::spawn(async move {
                 let mut log_stats_interval = tokio::time::interval(Duration::from_secs(10));
                 let mut upload_logs_interval = upload_interval();
+
                 loop {
                     tokio::select! {
                         Some((msg, reference)) = control_plane_receiver.recv() => {
@@ -173,6 +175,7 @@ where
                                 Err(err) => control_plane.handle_error(err, reference).await,
                             }
                         },
+                        event = control_plane.tunnel.next_event() => control_plane.handle_tunnel_event(event).await,
                         _ = log_stats_interval.tick() => control_plane.stats_event().await,
                         _ = upload_logs_interval.tick() => control_plane.request_log_upload_url().await,
                         else => break
