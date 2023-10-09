@@ -126,7 +126,8 @@ defmodule Web.Live.Gateways.ShowTest do
         gateway: gateway
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+    flow =
+      Repo.preload(flow, client: [:actor], gateway: [:group], policy: [:actor_group, :resource])
 
     {:ok, lv, _html} =
       conn
@@ -144,7 +145,10 @@ defmodule Web.Live.Gateways.ShowTest do
     assert row["remote ip"] == to_string(gateway.last_seen_remote_ip)
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
-    assert row["client (ip)"] == "#{flow.client.name} (100.64.100.58)"
+
+    assert row["client, actor (ip)"] =~ flow.client.name
+    assert row["client, actor (ip)"] =~ "owned by #{flow.client.actor.name}"
+    assert row["client, actor (ip)"] =~ to_string(flow.client_remote_ip)
   end
 
   test "allows deleting gateways", %{
