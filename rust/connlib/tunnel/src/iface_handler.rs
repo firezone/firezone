@@ -168,22 +168,31 @@ where
         self: &Arc<Self>,
         iface_config: Arc<IfaceConfig>,
         device_io: DeviceIo,
-    ) -> std::io::Result<()> {
+    ) {
         let device_writer = device_io.clone();
         let mut src = [0u8; MAX_UDP_SIZE];
         let mut dst = [0u8; MAX_UDP_SIZE];
         loop {
-            let res = device_io.read(&mut src[..iface_config.mtu()]).await?;
+            let res = match device_io.read(&mut src[..iface_config.mtu()]).await {
+                Ok(res) => res,
+                Err(e) => {
+                    tracing::error!(err = ?e, "failed to read interface: {e:#}");
+                    let _ = self.callbacks.on_error(&e.into());
+                    break;
+                }
+            };
+            tracing::trace!(target: "wire", action = "read", bytes = res, from = "iface");
+
             if res == 0 {
-                return Ok(());
+                break;
             }
 
-            tracing::trace!(target: "wire", action = "read", bytes = res, from = "iface");
-            if let Err(Error::Io(e)) = self
+            if let Err(e) = self
                 .handle_iface_packet(&device_writer, &mut src[..res], &mut dst)
                 .await
             {
-                return Err(e);
+                let _ = self.callbacks.on_error(&e);
+                tracing::error!(err = ?e, "failed to handle packet {e:#}")
             }
         }
     }

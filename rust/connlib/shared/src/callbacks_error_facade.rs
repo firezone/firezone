@@ -18,7 +18,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
         dns_fallback_strategy: String,
-    ) -> Result<RawFd> {
+    ) -> Result<Option<RawFd>> {
         let result = self
             .0
             .on_set_interface_config(
@@ -45,7 +45,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         result
     }
 
-    fn on_add_route(&self, route: IpNetwork) -> Result<RawFd> {
+    fn on_add_route(&self, route: IpNetwork) -> Result<Option<RawFd>> {
         let result = self
             .0
             .on_add_route(route)

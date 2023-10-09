@@ -140,14 +140,19 @@ struct AwaitingConnectionDetails {
     pub response_received: bool,
 }
 
+#[derive(Clone)]
+struct Device {
+    pub config: Arc<IfaceConfig>,
+    pub io: DeviceIo,
+}
+
 // TODO: We should use newtypes for each kind of Id
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets
 /// to communicate between peers.
 pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     next_index: Mutex<IndexLfsr>,
     // We use a tokio Mutex here since this is only read/write during config so there's no relevant performance impact
-    iface_config: tokio::sync::RwLock<Option<Arc<IfaceConfig>>>,
-    device_io: tokio::sync::RwLock<Option<DeviceIo>>,
+    device: tokio::sync::RwLock<Option<Device>>,
     rate_limiter: Arc<RateLimiter>,
     private_key: StaticSecret,
     public_key: PublicKey,
@@ -249,8 +254,7 @@ where
         let gateway_public_keys = Default::default();
         let resources_gateways = Default::default();
         let gateway_awaiting_connection = Default::default();
-        let iface_config = Default::default();
-        let device_io = Default::default();
+        let device = Default::default();
         let ice_candidate_queue = Default::default();
         let iface_handler_abort = Default::default();
 
@@ -288,8 +292,7 @@ where
             next_index,
             webrtc_api,
             resources,
-            iface_config,
-            device_io,
+            device,
             awaiting_connection,
             gateway_awaiting_connection,
             control_signaler,
@@ -302,21 +305,22 @@ where
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn add_route(self: &Arc<Self>, route: IpNetwork) -> Result<()> {
-        let mut device_io = self.device_io.write().await;
-        let mut iface_config = self.iface_config.write().await;
+        let mut device = self.device.write().await;
 
-        if let Some((conf, io)) = iface_config
+        if let Some(new_device) = device
             .as_ref()
             .ok_or(Error::ControlProtocolError)?
+            .config
             .add_route(route, self.callbacks())
             .await?
         {
-            let conf = Arc::new(conf);
-            *iface_config = Some(Arc::clone(&conf));
-            *device_io = Some(io.clone());
+            *device = Some(new_device.clone());
             let dev = Arc::clone(self);
             self.iface_handler_abort.lock().replace(
-                tokio::spawn(async move { dev.iface_handler(conf, io).await }).abort_handle(),
+                tokio::spawn(
+                    async move { dev.iface_handler(new_device.config, new_device.io).await },
+                )
+                .abort_handle(),
             );
         }
 
@@ -360,15 +364,13 @@ where
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_interface(self: &Arc<Self>, config: &InterfaceConfig) -> Result<()> {
-        let (iface_config, device_io) = create_iface(config, self.callbacks()).await?;
-        let iface_config = Arc::new(iface_config);
+        let device = create_iface(config, self.callbacks()).await?;
+        *self.device.write().await = Some(device.clone());
 
-        *self.device_io.write().await = Some(device_io.clone());
-        *self.iface_config.write().await = Some(Arc::clone(&iface_config));
         self.start_timers().await?;
         let dev = Arc::clone(self);
         *self.iface_handler_abort.lock() = Some(
-            tokio::spawn(async move { dev.iface_handler(iface_config, device_io).await })
+            tokio::spawn(async move { dev.iface_handler(device.config, device.io).await })
                 .abort_handle(),
         );
 
@@ -488,13 +490,13 @@ where
             loop {
                 interval.tick().await;
 
-                let Some(iface_config) = dev.iface_config.read().await.clone() else {
+                let Some(device) = dev.device.read().await.clone() else {
                     let err = Error::ControlProtocolError;
                     tracing::error!(?err, "get_iface_config");
                     let _ = callbacks.0.on_error(&err);
                     continue;
                 };
-                if let Err(e) = iface_config.refresh_mtu().await {
+                if let Err(e) = device.config.refresh_mtu().await {
                     tracing::error!(error = ?e, "refresh_mtu");
                     let _ = callbacks.0.on_error(&e);
                 }

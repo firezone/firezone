@@ -52,7 +52,7 @@ pub(crate) struct IfaceDevice(Arc<AsyncFd<IfaceStream>>);
 
 #[derive(Debug)]
 pub(crate) struct IfaceStream {
-    fd: Closeable<RawFd>,
+    fd: Closeable,
 }
 
 impl AsRawFd for IfaceStream {
@@ -108,12 +108,14 @@ impl IfaceDevice {
         config: &InterfaceConfig,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
-        let fd = callbacks.on_set_interface_config(
-            config.ipv4,
-            config.ipv6,
-            DNS_SENTINEL,
-            DNS_FALLBACK_STRATEGY.to_string(),
-        )?;
+        let fd = callbacks
+            .on_set_interface_config(
+                config.ipv4,
+                config.ipv6,
+                DNS_SENTINEL,
+                DNS_FALLBACK_STRATEGY.to_string(),
+            )?
+            .ok_or(Error::NoFd)?;
         let iface_stream = Arc::new(AsyncFd::new(IfaceStream {
             fd: Closeable::new(fd.into()),
         })?);
@@ -174,7 +176,7 @@ impl IfaceDevice {
         callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
         self.0.get_ref().close();
-        let fd = callbacks.on_add_route(route)?;
+        let fd = callbacks.on_add_route(route)?.ok_or(Error::NoFd)?;
         let iface_stream = Arc::new(AsyncFd::new(IfaceStream {
             fd: Closeable::new(fd.into()),
         })?);

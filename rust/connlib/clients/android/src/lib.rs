@@ -138,7 +138,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
         dns_fallback_strategy: String,
-    ) -> Result<RawFd, Self::Error> {
+    ) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
             let tunnel_address_v4 =
                 env.new_string(tunnel_address_v4.to_string())
@@ -179,6 +179,7 @@ impl Callbacks for CallbackHandler {
                 ],
             )
             .and_then(|val| val.i())
+            .map(Some)
             .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
     }
@@ -195,7 +196,7 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_add_route(&self, route: IpNetwork) -> Result<RawFd, Self::Error> {
+    fn on_add_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
             let ip = env
                 .new_string(route.network_address().to_string())
@@ -212,6 +213,7 @@ impl Callbacks for CallbackHandler {
                 &[JValue::from(&ip), JValue::Int(route.netmask().into())],
             )
             .and_then(|val| val.i())
+            .map(Some)
             .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
     }

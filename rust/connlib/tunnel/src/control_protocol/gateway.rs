@@ -96,13 +96,13 @@ where
                     tracing::trace!("new_data_channel_open");
                     Box::pin(async move {
                         {
-                            let Some(iface_config) = tunnel.iface_config.read().await.clone()
-                            else {
+                            let Some(device) = tunnel.device.read().await.clone() else {
                                 let e = Error::NoIface;
                                 tracing::error!(err = ?e, "channel_open");
                                 let _ = tunnel.callbacks().on_error(&e);
                                 return;
                             };
+                            let iface_config = device.config;
                             for &ip in &peer.ips {
                                 if let Err(e) = iface_config.add_route(ip, tunnel.callbacks()).await
                                 {

@@ -89,14 +89,14 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
         dns_fallback_strategy: String,
-    ) -> Result<RawFd, Self::Error> {
+    ) -> Result<Option<RawFd>, Self::Error> {
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
             dns_address.to_string(),
             dns_fallback_strategy.to_string(),
         );
-        Ok(-1)
+        Ok(None)
     }
 
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
@@ -104,9 +104,9 @@ impl Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_add_route(&self, route: IpNetwork) -> Result<RawFd, Self::Error> {
+    fn on_add_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
         self.inner.on_add_route(route.to_string());
-        Ok(-1)
+        Ok(None)
     }
 
     fn on_remove_route(&self, route: IpNetwork) -> Result<(), Self::Error> {

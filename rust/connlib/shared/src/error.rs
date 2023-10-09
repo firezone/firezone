@@ -96,6 +96,9 @@ pub enum ConnlibError {
     /// No iface found
     #[error("No iface found")]
     NoIface,
+    /// Expected file descriptor and none was found
+    #[error("No filedescriptor")]
+    NoFd,
     /// No MTU found
     #[error("No MTU found")]
     NoMtu,
