@@ -241,7 +241,7 @@ async fn connect_to_portal(
     token: &SecretString,
     mut url: Url,
     stamp_secret: &SecretString,
-) -> Result<Option<PhoenixChannel<InboundPortalMessage, ()>>> {
+) -> Result<Option<PhoenixChannel<(), ()>>> {
     use secrecy::ExposeSecret;
 
     if !url.path().is_empty() {
@@ -261,55 +261,25 @@ async fn connect_to_portal(
             .append_pair("ipv6", &public_ip6_addr.to_string());
     }
 
-    let mut channel = PhoenixChannel::<InboundPortalMessage, ()>::connect(
+    let (channel, Init {}) = phoenix_channel::init::<Init, _, _>(
         Secret::from(SecureUrl::from_url(url)),
         format!("relay/{}", env!("CARGO_PKG_VERSION")),
-    )
-    .await
-    .context("Failed to connect to the portal")?;
-
-    tracing::info!("Connected to portal, waiting for init message",);
-
-    channel.join(
         "relay",
         JoinMessage {
             stamp_secret: stamp_secret.expose_secret().to_string(),
         },
-    );
+    )
+    .await??;
 
-    loop {
-        match future::poll_fn(|cx| channel.poll(cx))
-            .await
-            .context("portal connection failed")?
-        {
-            Event::JoinedRoom { topic } if topic == "relay" => {
-                tracing::info!("Joined relay room on portal")
-            }
-            Event::InboundMessage {
-                topic,
-                msg: InboundPortalMessage::Init {},
-            } => {
-                tracing::info!(
-                    "Received init message from portal on topic {topic}, starting relay activities"
-                );
-                return Ok(Some(channel));
-            }
-            other => {
-                tracing::debug!("Unhandled message from portal: {other:?}");
-            }
-        }
-    }
+    Ok(Some(channel))
 }
+
+#[derive(serde::Deserialize, Debug)]
+struct Init {}
 
 #[derive(serde::Serialize, PartialEq, Debug)]
 struct JoinMessage {
     stamp_secret: String,
-}
-
-#[derive(serde::Deserialize, PartialEq, Debug)]
-#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-enum InboundPortalMessage {
-    Init {},
 }
 
 #[cfg(debug_assertions)]
@@ -337,7 +307,7 @@ struct Eventloop<R> {
     outbound_ip4_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
     outbound_ip6_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
     server: Server<R>,
-    channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
+    channel: Option<PhoenixChannel<(), ()>>,
     allocations: HashMap<(AllocationId, AddressFamily), Allocation>,
     relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     relay_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr, AllocationId)>,
@@ -350,7 +320,7 @@ where
 {
     fn new(
         server: Server<R>,
-        channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
+        channel: Option<PhoenixChannel<(), ()>>,
         public_address: IpStack,
     ) -> Result<Self> {
         let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);
@@ -506,13 +476,6 @@ where
 
             // Priority 5: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
-                Some(Poll::Ready(Ok(Event::InboundMessage {
-                    msg: InboundPortalMessage::Init {},
-                    ..
-                }))) => {
-                    tracing::warn!("Received init message during operation");
-                    continue;
-                }
                 Some(Poll::Ready(Err(Error::Serde(e)))) => {
                     tracing::warn!("Failed to deserialize portal message: {e}");
                     continue; // This is not a hard-error, we can continue.
@@ -535,17 +498,15 @@ where
                     tracing::warn!("Request with ID {req_id} on topic {topic} failed: {reason}");
                     continue;
                 }
-                Some(Poll::Ready(Ok(Event::InboundReq {
-                    req: InboundPortalMessage::Init {},
-                    ..
-                }))) => {
-                    return Poll::Ready(Err(anyhow!("Init message is not a request")));
-                }
                 Some(Poll::Ready(Ok(Event::HeartbeatSent))) => {
                     tracing::debug!("Heartbeat sent to portal");
                     continue;
                 }
-                Some(Poll::Pending) | None => {}
+                Some(Poll::Ready(Ok(
+                    Event::InboundMessage { msg: (), .. } | Event::InboundReq { req: (), .. },
+                )))
+                | Some(Poll::Pending)
+                | None => {}
             }
 
             return Poll::Pending;

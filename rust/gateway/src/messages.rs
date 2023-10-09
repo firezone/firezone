@@ -89,7 +89,6 @@ pub struct AllowAccess {
 // TODO: We will need to re-visit webrtc-rs
 #[allow(clippy::large_enum_variant)]
 pub enum IngressMessages {
-    Init(InitGateway),
     RequestConnection(RequestConnection),
     AllowAccess(AllowAccess),
     IceCandidates(ClientIceCandidates),
@@ -135,6 +134,7 @@ pub struct ConnectionReady {
 #[cfg(test)]
 mod test {
     use connlib_shared::{control::PhoenixMessage, messages::Interface};
+    use phoenix_channel::InitMessage;
 
     use super::{IngressMessages, InitGateway};
 
@@ -190,35 +190,18 @@ mod test {
     }
     #[test]
     fn init_phoenix_message() {
-        let m = PhoenixMessage::new(
-            "gateway:83d28051-324e-48fe-98ed-19690899b3b6",
-            IngressMessages::Init(InitGateway {
-                interface: Interface {
-                    ipv4: "100.115.164.78".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                ipv4_masquerade_enabled: true,
-                ipv6_masquerade_enabled: true,
-            }),
-            None,
-        );
-
-        let message = r#"{
-            "event": "init",
-            "payload": {
-                "interface": {
-                    "ipv4": "100.115.164.78",
-                    "ipv6": "fd00:2021:1111::2c:f6ab"
-                },
-                "ipv4_masquerade_enabled": true,
-                "ipv6_masquerade_enabled": true
+        let m = InitMessage::Init(InitGateway {
+            interface: Interface {
+                ipv4: "100.115.164.78".parse().unwrap(),
+                ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
+                upstream_dns: vec![],
             },
-            "ref": null,
-            "topic": "gateway:83d28051-324e-48fe-98ed-19690899b3b6"
-        }"#;
-        let ingress_message: PhoenixMessage<IngressMessages, ()> =
-            serde_json::from_str(message).unwrap();
+            ipv4_masquerade_enabled: true,
+            ipv6_masquerade_enabled: true,
+        });
+
+        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}"#;
+        let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
         assert_eq!(m, ingress_message);
     }
 }
