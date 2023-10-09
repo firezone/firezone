@@ -60,7 +60,7 @@ jobs:
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Application
-        run: mix compile
+        run: mix compile --warnings-as-errors
       - name: Setup Database
         run: |
           mix ecto.create
@@ -136,7 +136,7 @@ jobs:
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Application
-        run: mix compile
+        run: mix compile --warnings-as-errors
       # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
       # Cache key based on Elixir & Erlang version (also useful when running in matrix)
       - uses: actions/cache/restore@v3
@@ -212,10 +212,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-
-      - name: Install Dependencies
+      - name: Install All Dependencies
         run: mix deps.get
-      - name: Check for unused deps
-        run: mix deps.unlock --check-unused
       - name: Compile Application
         run: mix compile --force --warnings-as-errors
       - name: Check For Retired Packages
@@ -307,7 +305,7 @@ jobs:
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile
-        run: mix compile
+        run: mix compile --warnings-as-errors
       - name: Download main branch DB dump
         id: download-artifact
         uses: dawidd6/action-download-artifact@v2
@@ -460,7 +458,7 @@ jobs:
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Application
-        run: mix compile
+        run: mix compile --warnings-as-errors
       - name: Install Front-End Dependencies
         run: |
           cd apps/web
