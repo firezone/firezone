@@ -10,7 +10,7 @@ defmodule Web.Policies.Show do
            ),
          {:ok, flows} <-
            Flows.list_flows_for(policy, socket.assigns.subject,
-             preload: [:client, gateway: [:group]]
+             preload: [client: [:actor], gateway: [:group]]
            ) do
       {:ok, assign(socket, policy: policy, flows: flows)}
     else
@@ -116,12 +116,19 @@ defmodule Web.Policies.Show do
       <:col :let={flow} label="EXPIRES AT">
         <.relative_datetime datetime={flow.expires_at} />
       </:col>
-      <:col :let={flow} label="CLIENT (IP)">
+      <:col :let={flow} label="CLIENT, ACTOR (IP)">
         <.link
           navigate={~p"/#{@account}/clients/#{flow.client_id}"}
           class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
         >
           <%= flow.client.name %>
+        </.link>
+        owned by
+        <.link
+          navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"}
+          class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+        >
+          <%= flow.client.actor.name %>
         </.link>
         (<%= flow.client_remote_ip %>)
       </:col>
