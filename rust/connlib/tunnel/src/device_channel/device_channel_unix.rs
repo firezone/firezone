@@ -9,6 +9,8 @@ use tokio::io::{unix::AsyncFd, Interest};
 
 use tun::{IfaceDevice, IfaceStream};
 
+use crate::Device;
+
 mod tun;
 
 pub(crate) struct IfaceConfig {
@@ -53,23 +55,32 @@ impl IfaceConfig {
         &self,
         route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<()> {
-        self.iface.add_route(route, callbacks).await
+    ) -> Result<Option<Device>> {
+        let Some((iface, stream)) = self.iface.add_route(route, callbacks).await? else {
+            return Ok(None);
+        };
+        let io = DeviceIo(stream);
+        let mtu = iface.mtu().await?;
+        let config = Arc::new(IfaceConfig {
+            iface,
+            mtu: AtomicUsize::new(mtu),
+        });
+        Ok(Some(Device { io, config }))
     }
 }
 
 pub(crate) async fn create_iface(
     config: &Interface,
     callbacks: &CallbackErrorFacade<impl Callbacks>,
-) -> Result<(IfaceConfig, DeviceIo)> {
+) -> Result<Device> {
     let (iface, stream) = IfaceDevice::new(config, callbacks).await?;
     iface.up().await?;
-    let device_io = DeviceIo(stream);
+    let io = DeviceIo(stream);
     let mtu = iface.mtu().await?;
-    let iface_config = IfaceConfig {
+    let config = Arc::new(IfaceConfig {
         iface,
         mtu: AtomicUsize::new(mtu),
-    };
+    });
 
-    Ok((iface_config, device_io))
+    Ok(Device { config, io })
 }

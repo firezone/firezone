@@ -78,7 +78,11 @@ where
             runtime_stopper: tx.clone(),
             callbacks,
         };
+        // In android we get an stack-overflow due to tokio
+        // taking too much of the stack-space:
+        // See: https://github.com/firezone/firezone/issues/2227
         let runtime = tokio::runtime::Builder::new_multi_thread()
+            .thread_stack_size(3 * 1024 * 1024)
             .enable_all()
             .build()?;
         {

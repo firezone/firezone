@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    id("kotlin-kapt")
     id("dagger.hilt.android.plugin")
     id("kotlin-parcelize")
     id("androidx.navigation.safeargs")
@@ -9,6 +8,7 @@ plugins {
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
     id("com.diffplug.spotless") version "6.22.0"
+    id("kotlin-kapt")
 }
 
 spotless {

@@ -10,7 +10,7 @@ import kotlinx.parcelize.Parcelize
 data class Tunnel(
     val config: TunnelConfig = TunnelConfig(),
     var state: State = State.Down,
-    val routes: List<String> = emptyList(),
+    val routes: List<Cidr> = emptyList(),
     val resources: List<Resource> = emptyList(),
 ) : Parcelable {
     enum class State {
