@@ -47,7 +47,8 @@ jobs:
             ${{ matrix.target.destination }}-swift-
       - name: Build app
         env:
-          ONLY_ACTIVE_ARCH: yes
+          # Allow cross-compiling
+          ONLY_ACTIVE_ARCH: no
         run: |
           sudo xcode-select -s /Applications/Xcode_14.3.app
           brew install swift-format
