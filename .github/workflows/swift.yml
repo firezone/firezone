@@ -9,15 +9,10 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ${{ matrix.runs-on.os }}
+    runs-on: macos-13
     strategy:
       fail-fast: false
       matrix:
-        runs-on:
-          # Builds are more IO-bound than CPU-bound so using a larger GitHub-hosted
-          # runner isn't worth it.
-          - os: macos-13
-            xcode-ver: "14.3"
         target:
           - sdk: macosx
             platform: macOS
@@ -29,7 +24,7 @@ jobs:
       contents: read
     defaults:
       run:
-        working-directory: ./swift
+        working-directory: ./swift/apple
     steps:
       - uses: actions/checkout@v4
       - name: Update toolchain
@@ -41,30 +36,31 @@ jobs:
           key: ${{ matrix.target.platform }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/cache/restore@v3
-        name: Restore SwiftPM Cache
+        name: Restore Swift DerivedData Cache
         with:
-          path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
-          key: ${{ matrix.target.platform }}-spm-${{ hashFiles('swift/**/Package.resolved') }}
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
           restore-keys: |
-            ${{ matrix.target.platform }}-spm-
-      - run: |
-          sudo ls -al /Applications/
-      - name: Select Xcode
-        run: |
-          sudo xcode-select -s /Applications/Xcode_${{ matrix.runs-on.xcode-ver }}.app
-      - name: Install swift-format
-        run: brew install swift-format
+            ${{ matrix.target.platform }}-swift-
       - name: Build app
         env:
           ONLY_ACTIVE_ARCH: no
-        working-directory: ./swift/apple
         run: |
+          sudo xcode-select -s /Applications/Xcode_14.3.app
+          brew install swift-format
           cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
           cp Firezone/xcconfig/Server.xcconfig.ci Firezone/xcconfig/Server.xcconfig
-          xcodebuild archive -configuration Release -scheme Firezone -sdk ${{ matrix.target.sdk }} -destination '${{ matrix.target.destination }}' CODE_SIGNING_ALLOWED=NO
+          xcodebuild archive \
+            -configuration Release \
+            -scheme Firezone \
+            -sdk ${{ matrix.target.sdk }} \
+            -destination '${{ matrix.target.destination }}' \
+            CODE_SIGNING_ALLOWED=no
       - uses: actions/cache/save@v3
         if: ${{ github.ref == 'refs/heads/main' }}
-        name: Save SwiftPM Cache
+        name: Save Swift DerivedData Cache
         with:
-          path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
-          key: ${{ matrix.target.platform }}-spm-${{ hashFiles('swift/**/Package.resolved') }}
+          path: ~/Library/Developer/Xcode/DerivedData
+          # Swift benefits heavily from build cache, so aggressively write a new one
+          # on each build on `main` and attempt to restore it in PR builds with broader restore-key.
+          key: ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}

@@ -1,6 +1,6 @@
 use crate::control::ControlSignaler;
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
-use crate::messages::IngressMessages;
+use crate::messages::InitGateway;
 use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use boringtun::x25519::StaticSecret;
@@ -59,38 +59,18 @@ async fn connect(private_key: StaticSecret, connect_url: Secret<SecureUrl>) -> R
     let signaler = ControlSignaler::new(control_tx);
     let tunnel = Arc::new(Tunnel::new(private_key, signaler, CallbackHandler).await?);
 
-    tracing::debug!("Attempting connection to portal...");
+    let (channel, init) = phoenix_channel::init::<InitGateway, _, _>(
+        connect_url,
+        get_user_agent(),
+        PHOENIX_TOPIC,
+        (),
+    )
+    .await??;
 
-    let mut channel =
-        phoenix_channel::PhoenixChannel::connect(connect_url, get_user_agent()).await?;
-    channel.join(PHOENIX_TOPIC, ());
-
-    let channel = loop {
-        match future::poll_fn(|cx| channel.poll(cx))
-            .await
-            .context("portal connection failed")?
-        {
-            phoenix_channel::Event::JoinedRoom { topic } if topic == PHOENIX_TOPIC => {
-                tracing::info!("Joined gateway room on portal")
-            }
-            phoenix_channel::Event::InboundMessage {
-                topic,
-                msg: IngressMessages::Init(init),
-            } => {
-                tracing::info!("Received init message from portal on topic {topic}");
-
-                tunnel
-                    .set_interface(&init.interface)
-                    .await
-                    .context("Failed to set interface")?;
-
-                break channel;
-            }
-            other => {
-                tracing::debug!("Unhandled message from portal: {other:?}");
-            }
-        }
-    };
+    tunnel
+        .set_interface(&init.interface)
+        .await
+        .context("Failed to set interface")?;
 
     let mut eventloop = Eventloop::new(tunnel, control_rx, channel);
 
