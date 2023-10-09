@@ -22,7 +22,7 @@ jobs:
             destination: platform=macOS,arch=arm64
           - sdk: iphoneos
             platform: iOS
-            destination: generic/platform=iOS,arch=arm64
+            destination: generic/platform=iOS
     permissions:
       contents: read
     defaults:
@@ -44,10 +44,11 @@ jobs:
           path: ~/Library/Developer/Xcode/DerivedData
           key: ${{ matrix.target.destination }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}-
           restore-keys: |
-            ${{ matrix.target.platform }}-swift-
+            ${{ matrix.target.destination }}-swift-
       - name: Build app
         env:
           ONLY_ACTIVE_ARCH: yes
+          CODE_SIGNING_ALLOWED: no
         run: |
           sudo xcode-select -s /Applications/Xcode_14.3.app
           brew install swift-format
@@ -57,8 +58,7 @@ jobs:
             -configuration Release \
             -scheme Firezone \
             -sdk ${{ matrix.target.sdk }} \
-            -destination '${{ matrix.target.destination }}' CODESIGNING_ALLOWED=no
-
+            -destination '${{ matrix.target.destination }}'
       - uses: actions/cache/save@v3
         # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Swift DerivedData Cache
