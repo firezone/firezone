@@ -14,6 +14,7 @@ jobs:
     uses: ./.github/workflows/kotlin.yml
   swift:
     uses: ./.github/workflows/swift.yml
+    secrets: inherit
   static-analysis:
     uses: ./.github/workflows/static-analysis.yml
   terraform:
@@ -64,7 +65,7 @@ jobs:
       id-token: write
     env:
       # mark:automatic-version
-      VERSION: "1.20231001.0"
+      VERSION: "20231001.0.0"
       APPLICATION_NAME: ${{ matrix.image_name }}
     steps:
       - name: Set up Docker Buildx

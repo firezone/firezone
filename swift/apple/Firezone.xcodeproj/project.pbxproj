@@ -541,8 +541,9 @@
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension_iOS.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_IDENTITY = "Apple Distribution: Firezone, Inc. (47R2M6779T)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 0;
 				FRAMEWORK_SEARCH_PATHS = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FirezoneNetworkExtension/Info.plist;
@@ -559,11 +560,13 @@
 					"${CONNLIB_TARGET_DIR}/x86_64-apple-ios/debug",
 				);
 				MACOSX_DEPLOYMENT_TARGET = "$(RECOMMENDED_MACOSX_DEPLOYMENT_TARGET)";
-				MARKETING_VERSION = 1.20231001.0;
+				MARKETING_VERSION = 20231001.0.0;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_LDFLAGS = "-lconnlib";
 				PRODUCT_BUNDLE_IDENTIFIER = "${APP_ID}.network-extension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "23402aaa-f72c-4947-a795-23a9cf495968";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
@@ -583,8 +586,9 @@
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension_iOS.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_IDENTITY = "Apple Distribution: Firezone, Inc. (47R2M6779T)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 0;
 				FRAMEWORK_SEARCH_PATHS = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FirezoneNetworkExtension/Info.plist;
@@ -601,10 +605,12 @@
 					"${CONNLIB_TARGET_DIR}/x86_64-apple-ios/release",
 				);
 				MACOSX_DEPLOYMENT_TARGET = "$(RECOMMENDED_MACOSX_DEPLOYMENT_TARGET)";
-				MARKETING_VERSION = 1.20231001.0;
+				MARKETING_VERSION = 20231001.0.0;
 				OTHER_LDFLAGS = "-lconnlib";
 				PRODUCT_BUNDLE_IDENTIFIER = "${APP_ID}.network-extension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "23402aaa-f72c-4947-a795-23a9cf495968";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
@@ -624,10 +630,9 @@
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension_macOS.entitlements;
-				CODE_SIGN_IDENTITY = "-";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_IDENTITY = "Apple Distribution: Firezone, Inc. (47R2M6779T)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 0;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -643,10 +648,12 @@
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(CONNLIB_TARGET_DIR)/aarch64-apple-darwin/debug";
 				"LIBRARY_SEARCH_PATHS[arch=arm64e]" = "$(CONNLIB_TARGET_DIR)/aarch64-apple-darwin/debug";
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(CONNLIB_TARGET_DIR)/x86_64-apple-darwin/debug";
-				MARKETING_VERSION = 1.20231001.0;
+				MARKETING_VERSION = 20231001.0.0;
 				OTHER_LDFLAGS = "-lconnlib";
 				PRODUCT_BUNDLE_IDENTIFIER = "${APP_ID}.network-extension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "1e965794-0b2c-46d3-a955-d96aacf25546";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = macosx;
@@ -665,10 +672,9 @@
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension_macOS.entitlements;
-				CODE_SIGN_IDENTITY = "-";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_IDENTITY = "Apple Distribution: Firezone, Inc. (47R2M6779T)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 0;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -684,10 +690,12 @@
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(CONNLIB_TARGET_DIR)/aarch64-apple-darwin/release";
 				"LIBRARY_SEARCH_PATHS[arch=arm64e]" = "$(CONNLIB_TARGET_DIR)/aarch64-apple-darwin/release";
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(CONNLIB_TARGET_DIR)/x86_64-apple-darwin/release";
-				MARKETING_VERSION = 1.20231001.0;
+				MARKETING_VERSION = 20231001.0.0;
 				OTHER_LDFLAGS = "-lconnlib";
 				PRODUCT_BUNDLE_IDENTIFIER = "${APP_ID}.network-extension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "1e965794-0b2c-46d3-a955-d96aacf25546";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = macosx;
@@ -852,11 +860,9 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Firezone/Firezone.entitlements;
-				CODE_SIGN_IDENTITY = "-";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_IDENTITY = "Apple Distribution: Firezone, Inc. (47R2M6779T)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 0;
 				DEAD_CODE_STRIPPING = YES;
 				DEFINES_MODULE = NO;
 				DEVELOPMENT_ASSET_PATHS = "\"Firezone/Preview Content\"";
@@ -879,9 +885,12 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 1.20231001.0;
+				MARKETING_VERSION = 20231001.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "${APP_ID}";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "b32a5853-699d-4f19-85d3-5b13b1ac5dbb";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "70055d90-0252-4ee5-a60c-4d6f3840ee62";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -904,11 +913,9 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Firezone/Firezone.entitlements;
-				CODE_SIGN_IDENTITY = "-";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_IDENTITY = "Apple Distribution: Firezone, Inc. (47R2M6779T)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 0;
 				DEAD_CODE_STRIPPING = YES;
 				DEFINES_MODULE = NO;
 				DEVELOPMENT_ASSET_PATHS = "\"Firezone/Preview Content\"";
@@ -931,10 +938,13 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 1.20231001.0;
+				MARKETING_VERSION = 20231001.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "${APP_ID}";
 				PRODUCT_MODULE_NAME = "$(PRODUCT_NAME:c99extidentifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "b32a5853-699d-4f19-85d3-5b13b1ac5dbb";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "70055d90-0252-4ee5-a60c-4d6f3840ee62";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = YES;

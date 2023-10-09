@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-android"
-version = "1.20231001.0"
+version = "20231001.0.0"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.20231001.0"
+version = "20231001.0.0"
 dependencies = [
  "anyhow",
  "connlib-client-shared",
@@ -790,7 +790,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-shared"
-version = "1.20231001.0"
+version = "20231001.0.0"
 dependencies = [
  "async-trait",
  "backoff",
@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-shared"
-version = "1.20231001.0"
+version = "20231001.0.0"
 dependencies = [
  "base64 0.21.4",
  "boringtun",
@@ -1234,7 +1234,7 @@ checksum = "e825f6987101665dea6ec934c09ec6d721de7bc1bf92248e1d5810c8cd636b77"
 
 [[package]]
 name = "firezone-gateway"
-version = "1.20231001.0"
+version = "20231001.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1261,7 +1261,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.20231001.0"
+version = "20231001.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1274,7 +1274,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-tunnel"
-version = "1.20231001.0"
+version = "20231001.0.0"
 dependencies = [
  "async-trait",
  "boringtun",
@@ -1515,7 +1515,7 @@ checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
 name = "headless-utils"
-version = "1.20231001.0"
+version = "20231001.0.0"
 dependencies = [
  "clap",
  "ctrlc",
@@ -2450,7 +2450,7 @@ checksum = "9b2a4787296e9989611394c33f193f676704af1686e70b8f8033ab5ba9a35a94"
 
 [[package]]
 name = "phoenix-channel"
-version = "1.20231001.0"
+version = "20231001.0.0"
 dependencies = [
  "base64 0.21.4",
  "futures",
@@ -2777,7 +2777,7 @@ checksum = "dbb5fb1acd8a1a18b3dd5be62d25485eb770e05afb408a9627d14d451bae12da"
 
 [[package]]
 name = "relay"
-version = "1.20231001.0"
+version = "20231001.0.0"
 dependencies = [
  "anyhow",
  "axum",

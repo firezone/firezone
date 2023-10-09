@@ -1,9 +1,4 @@
-// Configure the Authentication URL and the Control Plane URL
-
-
-// For staging:
-
-AUTH_URL_SCHEME = https
-AUTH_URL_HOST = app.firez.one
-CONTROL_PLANE_URL_SCHEME = wss
-CONTROL_PLANE_URL_HOST = api.firez.one
+AUTH_URL_SCHEME = http
+AUTH_URL_HOST = localhost:8080
+CONTROL_PLANE_URL_SCHEME = ws
+CONTROL_PLANE_URL_HOST = localhost:8081
