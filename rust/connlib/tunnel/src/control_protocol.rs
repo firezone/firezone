@@ -206,7 +206,7 @@ where
             .waiting_ice_candidate_receivers
             .lock()
             .remove(&conn_id)
-            .ok_or_else(|| Error::Other("missing ICE candidate receiver"))?;
+            .ok_or(Error::ControlProtocolError)?;
         match self
             .active_ice_candidate_receivers
             .lock()
