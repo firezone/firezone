@@ -137,7 +137,7 @@ defmodule Web.Live.Policies.ShowTest do
         policy: policy
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:group]])
+    flow = Repo.preload(flow, client: [:actor], gateway: [:group])
 
     {:ok, lv, _html} =
       conn
@@ -152,9 +152,11 @@ defmodule Web.Live.Policies.ShowTest do
 
     assert row["authorized at"]
     assert row["expires at"]
-    assert row["client, actor (ip)"] == "#{flow.client.name} (100.64.100.58)"
+    assert row["client, actor (ip)"] =~ flow.client.name
+    assert row["client, actor (ip)"] =~ "owned by #{flow.client.actor.name}"
+    assert row["client, actor (ip)"] =~ to_string(flow.client_remote_ip)
 
-    assert row["gateway (ip)"] ==
+    assert row["gateway (ip)"] =~
              "#{flow.gateway.group.name_prefix}-#{flow.gateway.name_suffix} (189.172.73.153)"
   end
 

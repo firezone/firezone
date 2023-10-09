@@ -156,7 +156,8 @@ defmodule Web.Live.Resources.ShowTest do
         resource: resource
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+    flow =
+      Repo.preload(flow, client: [:actor], gateway: [:group], policy: [:actor_group, :resource])
 
     {:ok, lv, _html} =
       conn
@@ -177,7 +178,9 @@ defmodule Web.Live.Resources.ShowTest do
     assert row["gateway (ip)"] ==
              "#{flow.gateway.group.name_prefix}-#{flow.gateway.name_suffix} (189.172.73.153)"
 
-    assert row["client, actor (ip)"] == "#{flow.client.name} (100.64.100.58)"
+    assert row["client, actor (ip)"] =~ flow.client.name
+    assert row["client, actor (ip)"] =~ "owned by #{flow.client.actor.name}"
+    assert row["client, actor (ip)"] =~ to_string(flow.client_remote_ip)
   end
 
   test "allows deleting resource", %{
