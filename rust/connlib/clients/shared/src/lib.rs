@@ -149,8 +149,7 @@ where
                 }
             });
 
-            let phoenix_sender = connection.sender_with_topic("client".to_owned());
-            let control_signaler = ControlSignaler { control_signal: phoenix_sender.clone() };
+            let control_signaler = ControlSignaler { control_signal: connection.sender_with_topic("client".to_owned()) };
             let tunnel = fatal_error!(
                 Tunnel::new(private_key, control_signaler.clone(), callbacks.clone()).await,
                 runtime_stopper,
