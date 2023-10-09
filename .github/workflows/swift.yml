@@ -48,7 +48,6 @@ jobs:
       - name: Build app
         env:
           ONLY_ACTIVE_ARCH: yes
-          CODE_SIGNING_ALLOWED: no
         run: |
           sudo xcode-select -s /Applications/Xcode_14.3.app
           brew install swift-format
@@ -58,7 +57,7 @@ jobs:
             -configuration Release \
             -scheme Firezone \
             -sdk ${{ matrix.target.sdk }} \
-            -destination '${{ matrix.target.destination }}'
+            -destination '${{ matrix.target.destination }}' CODE_SIGNING_ALLOWED=no
       - uses: actions/cache/save@v3
         # if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Swift DerivedData Cache
