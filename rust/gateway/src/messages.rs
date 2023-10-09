@@ -134,6 +134,7 @@ pub struct ConnectionReady {
 #[cfg(test)]
 mod test {
     use connlib_shared::{control::PhoenixMessage, messages::Interface};
+    use phoenix_channel::InitMessage;
 
     use super::{IngressMessages, InitGateway};
 
@@ -189,7 +190,7 @@ mod test {
     }
     #[test]
     fn init_phoenix_message() {
-        let m = InitGateway {
+        let m = InitMessage::Init(InitGateway {
             interface: Interface {
                 ipv4: "100.115.164.78".parse().unwrap(),
                 ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
@@ -197,17 +198,10 @@ mod test {
             },
             ipv4_masquerade_enabled: true,
             ipv6_masquerade_enabled: true,
-        };
+        });
 
-        let message = r#"{
-            "interface": {
-                "ipv4": "100.115.164.78",
-                "ipv6": "fd00:2021:1111::2c:f6ab"
-            },
-            "ipv4_masquerade_enabled": true,
-            "ipv6_masquerade_enabled": true
-        }"#;
-        let ingress_message = serde_json::from_str::<InitGateway>(message).unwrap();
+        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}"#;
+        let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
         assert_eq!(m, ingress_message);
     }
 }

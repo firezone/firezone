@@ -53,11 +53,6 @@ where
     TInboundMsg: DeserializeOwned,
     TOutboundRes: DeserializeOwned,
 {
-    #[derive(serde::Deserialize, Debug)]
-    pub struct InitMessage<M> {
-        init: M,
-    }
-
     let mut channel =
         PhoenixChannel::<InitMessage<TInitM>, ()>::connect(secret_url, user_agent).await?;
     channel.join(login_topic, payload);
@@ -69,7 +64,10 @@ where
             Event::JoinedRoom { topic } if topic == login_topic => {
                 tracing::info!("Joined {login_topic} room on portal")
             }
-            Event::InboundMessage { topic, msg } if topic == login_topic => {
+            Event::InboundMessage {
+                topic,
+                msg: InitMessage::Init(msg),
+            } if topic == login_topic => {
                 tracing::info!("Received init message from portal");
 
                 break (channel, msg);
@@ -79,7 +77,13 @@ where
         }
     };
 
-    Ok(Ok((channel.cast(), init_message.init)))
+    Ok(Ok((channel.cast(), init_message)))
+}
+
+#[derive(serde::Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+pub enum InitMessage<M> {
+    Init(M),
 }
 
 #[derive(Debug, thiserror::Error)]
