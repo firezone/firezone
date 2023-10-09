@@ -476,7 +476,6 @@ mod tests {
     #[serde(rename_all = "snake_case", tag = "event", content = "payload")] // This line makes it all work.
     enum Msg {
         Shout { hello: String },
-        Init {},
     }
 
     #[test]
@@ -501,15 +500,5 @@ mod tests {
                 hello: "world".to_owned()
             })
         );
-    }
-    #[test]
-    fn can_deserialize_init_message() {
-        let msg = r#"{"event":"init","payload":{},"ref":null,"topic":"relay"}"#;
-
-        let msg = serde_json::from_str::<PhoenixMessage<Msg, ()>>(msg).unwrap();
-
-        assert_eq!(msg.topic, "relay");
-        assert_eq!(msg.reference, None);
-        assert_eq!(msg.payload, Payload::Message(Msg::Init {}));
     }
 }
