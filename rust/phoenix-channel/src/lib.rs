@@ -501,4 +501,20 @@ mod tests {
             })
         );
     }
+    #[test]
+    fn can_deserialize_init_message() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct EmptyInit {}
+
+        let msg = r#"{"event":"init","payload":{},"ref":null,"topic":"relay"}"#;
+
+        let msg = serde_json::from_str::<PhoenixMessage<InitMessage<EmptyInit>, ()>>(msg).unwrap();
+
+        assert_eq!(msg.topic, "relay");
+        assert_eq!(msg.reference, None);
+        assert_eq!(
+            msg.payload,
+            Payload::Message(InitMessage::Init(EmptyInit {}))
+        );
+    }
 }
