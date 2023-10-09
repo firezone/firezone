@@ -1,3 +1,4 @@
+use crate::Device;
 use connlib_shared::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
 use ip_network::IpNetwork;
 
@@ -33,7 +34,7 @@ impl IfaceConfig {
         &self,
         _: IpNetwork,
         _: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<Option<(IfaceConfig, DeviceIo)>> {
+    ) -> Result<Option<Device>> {
         todo!()
     }
 }
@@ -41,6 +42,6 @@ impl IfaceConfig {
 pub(crate) async fn create_iface(
     _: &Interface,
     _: &CallbackErrorFacade<impl Callbacks>,
-) -> Result<(IfaceConfig, DeviceIo)> {
+) -> Result<Device> {
     todo!()
 }

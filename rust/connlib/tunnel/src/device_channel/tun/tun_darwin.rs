@@ -242,7 +242,9 @@ impl IfaceDevice {
         route: IpNetwork,
         callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
-        Ok(callbacks.on_add_route(route)?)
+        // This will always be None in macos
+        callbacks.on_add_route(route)?;
+        Ok(None)
     }
 
     pub async fn up(&self) -> Result<()> {
