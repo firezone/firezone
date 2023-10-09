@@ -76,6 +76,7 @@ class TunnelRepositoryImpl
                 sharedPreferences.edit().putString(RESOURCES_KEY, json).apply()
             }
         }
+
         override fun getResources(): List<Resource> {
             synchronized(lock) {
                 val json = sharedPreferences.getString(RESOURCES_KEY, "[]") ?: "[]"
