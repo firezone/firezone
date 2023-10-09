@@ -15,15 +15,9 @@ jobs:
       matrix:
         target:
           - sdk: macosx
-            arch: x86_64
             platform: macOS
-            destination: platform=macOS,arch=x86_64
-          - sdk: macosx
-            arch: arm64
-            platform: macOS
-            destination: platform=macOS,arch=arm64
+            destination: platform=macOS
           - sdk: iphoneos
-            arch: arm64
             platform: iOS
             destination: generic/platform=iOS
     permissions:
@@ -39,18 +33,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          key: ${{ matrix.target.destination }}
-          # save-if: ${{ github.ref == 'refs/heads/main' }}
+          key: ${{ matrix.target.platform }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/cache/restore@v3
         name: Restore Swift DerivedData Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ matrix.target.destination }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}-
+          key: ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
           restore-keys: |
-            ${{ matrix.target.destination }}-swift-
+            ${{ matrix.target.platform }}-swift-
       - name: Build app
         env:
-          ONLY_ACTIVE_ARCH: yes
+          ONLY_ACTIVE_ARCH: no
         run: |
           sudo xcode-select -s /Applications/Xcode_14.3.app
           brew install swift-format
@@ -60,12 +54,13 @@ jobs:
             -configuration Release \
             -scheme Firezone \
             -sdk ${{ matrix.target.sdk }} \
-            -arch ${{ matrix.target.arch }} CODE_SIGNING_ALLOWED=no
+            -destination '${{ matrix.target.destination }}' \
+            CODE_SIGNING_ALLOWED=no
       - uses: actions/cache/save@v3
-        # if: ${{ github.ref == 'refs/heads/main' }}
+        if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Swift DerivedData Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
           # Swift benefits heavily from build cache, so aggressively write a new one
           # on each build on `main` and attempt to restore it in PR builds with broader restore-key.
-          key: ${{ matrix.target.destination }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}-
+          key: ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
