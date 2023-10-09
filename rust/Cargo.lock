@@ -829,7 +829,7 @@ dependencies = [
  "parking_lot",
  "rand",
  "rand_core",
- "ring 0.17.0",
+ "ring 0.17.2",
  "rtnetlink",
  "secrecy",
  "serde",
@@ -2886,9 +2886,9 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.17.0"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb9d44f9bf6b635117787f72416783eb7e4227aaf255e5ce739563d817176a7e"
+checksum = "911b295d2d302948838c8ac142da1ee09fa7863163b44e6715bc9357905878b8"
 dependencies = [
  "cc",
  "getrandom",
