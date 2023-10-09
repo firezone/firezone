@@ -19,9 +19,9 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
-pub struct Eventloop {
+pub struct Eventloop<'a> {
     tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler>>,
-    control_rx: mpsc::Receiver<(ClientId, RTCIceCandidate)>,
+    control_rx: &'a mut mpsc::Receiver<(ClientId, RTCIceCandidate)>,
     portal: PhoenixChannel<IngressMessages, ()>,
 
     // TODO: Strongly type request reference (currently `String`)
@@ -32,12 +32,12 @@ pub struct Eventloop {
     print_stats_timer: tokio::time::Interval,
 }
 
-impl Eventloop {
+impl<'a> Eventloop<'a> {
     pub(crate) fn new(
         tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler>>,
-        control_rx: mpsc::Receiver<(ClientId, RTCIceCandidate)>,
+        control_rx: &'a mut mpsc::Receiver<(ClientId, RTCIceCandidate)>,
         portal: PhoenixChannel<IngressMessages, ()>,
-    ) -> Self {
+    ) -> Eventloop<'a> {
         Self {
             tunnel,
             control_rx,
@@ -54,7 +54,7 @@ impl Eventloop {
     }
 }
 
-impl Eventloop {
+impl Eventloop<'_> {
     #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {
