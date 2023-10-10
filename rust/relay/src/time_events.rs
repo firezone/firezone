@@ -80,7 +80,7 @@ impl<A> Ord for TimeEvent<A> {
 
 impl<A> PartialOrd for TimeEvent<A> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.time.partial_cmp(&other.time)
+        Some(self.cmp(other))
     }
 }
 

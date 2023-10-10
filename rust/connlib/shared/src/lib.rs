@@ -119,11 +119,12 @@ fn sha256(input: String) -> String {
     ctx.update(input.as_bytes());
     let digest = ctx.finish();
 
-    digest
-        .as_ref()
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect()
+    digest.as_ref().iter().fold(String::new(), |mut output, b| {
+        use std::fmt::Write;
+
+        let _ = write!(output, "{b:02x}");
+        output
+    })
 }
 
 fn get_websocket_path(
