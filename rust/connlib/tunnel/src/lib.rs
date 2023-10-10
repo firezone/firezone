@@ -29,7 +29,7 @@ use webrtc::{
 };
 
 use std::task::{Context, Poll};
-use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 use connlib_shared::{
@@ -151,6 +151,17 @@ struct AwaitingConnectionDetails {
 struct Device {
     config: Arc<IfaceConfig>,
     io: DeviceIo,
+
+    buf: Box<[u8; MAX_UDP_SIZE]>,
+}
+
+impl Device {
+    async fn read(&mut self) -> io::Result<&mut [u8]> {
+        let res = self.io.read(&mut self.buf[..self.config.mtu()]).await?;
+        tracing::trace!(target: "wire", action = "read", bytes = res, from = "iface");
+
+        Ok(&mut self.buf[..res])
+    }
 }
 
 // TODO: We should use newtypes for each kind of Id
