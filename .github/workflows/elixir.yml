@@ -38,50 +38,36 @@ jobs:
         with:
           otp-version: ${{ steps.versions.outputs.erlang }}
           elixir-version: ${{ steps.versions.outputs.elixir }}
-      # - uses: actions/cache/restore@v3
-      #   name: Restore Elixir Build Cache
-      #   env:
-      #     cache-name: elixir-build-${{ env.MIX_ENV }}
-      #   with:
-      #     path: | 
-      #       elixir/deps
-      #       elixir/_build/${{ env.MIX_ENV }}
-      #     key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}-${{ github.ref }}
       - uses: actions/cache/restore@v3
-        name: Restore Elixir Deps Cache
-        id: deps-cache
+        name: Restore Elixir Cache
+        id: cache
         env:
-          cache-name: elixir-deps3-${{ env.MIX_ENV }}
+          cache-name: elixir-${{ env.MIX_ENV }}
         with:
           path: |
             elixir/deps
             elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}-${{ github.ref }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-
       - name: Install Dependencies
+        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: mix deps.get --only $MIX_ENV
       - name: Compile Dependencies
+        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: mix deps.compile --skip-umbrella-children
       - uses: actions/cache/save@v3
-        name: Save Elixir Deps Cache
-        if: ${{ steps.deps-cache.outputs.cache-hit != 'true' }}
+        name: Save Elixir Cache
+        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         env:
-          cache-name: elixir-deps3-${{ env.MIX_ENV }}
+          cache-name: elixir-${{ env.MIX_ENV }}
         with:
           path: |
             elixir/deps
             elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}-${{ github.ref }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - name: Compile Application
-        run: mix compile --warnings-as-errors
-      # - uses: actions/cache/save@v3
-      #   name: Save Elixir Build Cache
-      #   env:
-      #     cache-name: elixir-build-${{ env.MIX_ENV }}
-      #   with:
-      #     path: |
-      #       elixir/deps
-      #       elixir/_build/${{ env.MIX_ENV }}
-      #     key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}-${{ github.ref }}
+        run: mix compile --warnings-as-errors --all-warnings
       - name: Setup Database
         run: |
           mix ecto.create
