@@ -49,10 +49,13 @@ jobs:
       #     key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}-${{ github.ref }}
       - uses: actions/cache/restore@v3
         name: Restore Elixir Deps Cache
+        id: deps-cache
         env:
-          cache-name: elixir-deps2-${{ env.MIX_ENV }}
+          cache-name: elixir-deps3-${{ env.MIX_ENV }}
         with:
-          path: elixir/deps
+          path: |
+            elixir/deps
+            elixir/_build/${{ env.MIX_ENV }}
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}-${{ github.ref }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
@@ -60,8 +63,9 @@ jobs:
         run: mix deps.compile --skip-umbrella-children
       - uses: actions/cache/save@v3
         name: Save Elixir Deps Cache
+        if: ${{ steps.deps-cache.outputs.cache-hit != 'true' }}
         env:
-          cache-name: elixir-deps2-${{ env.MIX_ENV }}
+          cache-name: elixir-deps3-${{ env.MIX_ENV }}
         with:
           path: |
             elixir/deps
