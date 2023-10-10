@@ -5,6 +5,11 @@ on:
     types: [checks_requested]
   workflow_call:
 
+# Cancel old workflow runs if new code is pushed
+concurrency:
+  group: "ci-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
 jobs:
   elixir:
     uses: ./.github/workflows/elixir.yml
