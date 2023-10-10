@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Tool Versions
         id: versions
-        uses: marocchino/tool-versions-action@v1.1
+        uses: marocchino/tool-versions-action@v1.1.1
       - uses: erlef/setup-beam@v1
         id: setup-beam
         with:
