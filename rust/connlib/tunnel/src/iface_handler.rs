@@ -8,7 +8,7 @@ use crate::{
     device_channel::{DeviceIo, IfaceConfig},
     dns,
     peer::EncapsulatedPacket,
-    ConnId, ControlSignal, IceState, Tunnel, MAX_UDP_SIZE,
+    ConnId, ControlSignal, PollNextIceCandidate, Tunnel, MAX_UDP_SIZE,
 };
 
 const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
@@ -17,7 +17,7 @@ impl<C, CB, TIceState> Tunnel<C, CB, TIceState>
 where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
-    TIceState: IceState,
+    TIceState: PollNextIceCandidate,
 {
     #[inline(always)]
     fn connection_intent(self: &Arc<Self>, src: &[u8], dst_addr: &IpAddr) {

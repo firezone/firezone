@@ -1,4 +1,4 @@
-use crate::IceState;
+use crate::PollNextIceCandidate;
 use connlib_shared::messages::{ClientId, GatewayId};
 use futures::channel::mpsc::Receiver;
 use futures_bounded::StreamMap;
@@ -13,6 +13,10 @@ pub struct ClientIceState {
 }
 
 impl ClientIceState {
+    pub fn add_waiting_receiver(&mut self, id: GatewayId, receiver: Receiver<RTCIceCandidateInit>) {
+        self.waiting_ice_candidate_receivers.insert(id, receiver);
+    }
+
     pub fn activate_ice_candidate_receiver(&mut self, id: GatewayId) {
         let Some(receiver) = self.waiting_ice_candidate_receivers.remove(&id) else {
             return;
@@ -31,12 +35,8 @@ impl Default for ClientIceState {
     }
 }
 
-impl IceState for ClientIceState {
+impl PollNextIceCandidate for ClientIceState {
     type Id = GatewayId;
-
-    fn add_new_receiver(&mut self, id: Self::Id, receiver: Receiver<RTCIceCandidateInit>) {
-        self.waiting_ice_candidate_receivers.insert(id, receiver);
-    }
 
     fn poll_next_ice_candidate(
         &mut self,
@@ -58,6 +58,12 @@ pub struct GatewayIceState {
     ice_candidate_receivers: StreamMap<ClientId, RTCIceCandidateInit>,
 }
 
+impl GatewayIceState {
+    pub fn add_new_receiver(&mut self, id: ClientId, receiver: Receiver<RTCIceCandidateInit>) {
+        let _ = self.ice_candidate_receivers.try_push(id, receiver);
+    }
+}
+
 impl Default for GatewayIceState {
     fn default() -> Self {
         Self {
@@ -66,12 +72,8 @@ impl Default for GatewayIceState {
     }
 }
 
-impl IceState for GatewayIceState {
+impl PollNextIceCandidate for GatewayIceState {
     type Id = ClientId;
-
-    fn add_new_receiver(&mut self, id: Self::Id, receiver: Receiver<RTCIceCandidateInit>) {
-        let _ = self.ice_candidate_receivers.try_push(id, receiver);
-    }
 
     fn poll_next_ice_candidate(
         &mut self,

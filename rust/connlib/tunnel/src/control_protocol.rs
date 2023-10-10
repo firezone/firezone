@@ -1,5 +1,6 @@
 use boringtun::noise::Tunn;
 use chrono::{DateTime, Utc};
+use futures::channel::mpsc;
 use futures_util::SinkExt;
 use secrecy::ExposeSecret;
 use std::sync::Arc;
@@ -21,7 +22,7 @@ use webrtc::{
     },
 };
 
-use crate::{peer::Peer, ConnId, ControlSignal, IceState, PeerConfig, Tunnel};
+use crate::{peer::Peer, ConnId, ControlSignal, PeerConfig, PollNextIceCandidate, Tunnel};
 
 mod client;
 mod gateway;
@@ -44,7 +45,7 @@ async fn handle_connection_state_update_with_peer<C, CB, TIceState>(
 ) where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
-    TIceState: IceState,
+    TIceState: PollNextIceCandidate,
 {
     tracing::trace!(?state, "peer_state_update");
     if state == RTCPeerConnectionState::Failed {
@@ -61,7 +62,7 @@ fn set_connection_state_with_peer<C, CB, TIceState>(
 ) where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
-    TIceState: IceState,
+    TIceState: PollNextIceCandidate,
 {
     let tunnel = Arc::clone(tunnel);
     peer_connection.on_peer_connection_state_change(Box::new(
@@ -78,7 +79,7 @@ impl<C, CB, TIceState> Tunnel<C, CB, TIceState>
 where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
-    TIceState: IceState,
+    TIceState: PollNextIceCandidate,
 {
     #[instrument(level = "trace", skip(self, data_channel, peer_config))]
     async fn handle_channel_open(
@@ -156,11 +157,10 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn initialize_peer_request(
+    pub async fn new_peer_connection(
         self: &Arc<Self>,
         relays: Vec<Relay>,
-        conn_id: TIceState::Id,
-    ) -> Result<Arc<RTCPeerConnection>> {
+    ) -> Result<(Arc<RTCPeerConnection>, mpsc::Receiver<RTCIceCandidateInit>)> {
         let config = RTCConfiguration {
             ice_servers: relays
                 .into_iter()
@@ -180,13 +180,10 @@ where
                 .collect(),
             ..Default::default()
         };
+
         let peer_connection = Arc::new(self.webrtc_api.new_peer_connection(config).await?);
 
-        let (ice_candidate_tx, ice_candidate_rx) =
-            futures::channel::mpsc::channel(ICE_CANDIDATE_BUFFER);
-        self.ice_state
-            .lock()
-            .add_new_receiver(conn_id, ice_candidate_rx);
+        let (ice_candidate_tx, ice_candidate_rx) = mpsc::channel(ICE_CANDIDATE_BUFFER);
 
         peer_connection.on_ice_candidate(Box::new(move |candidate| {
             let Some(candidate) = candidate else {
@@ -209,7 +206,7 @@ where
             })
         }));
 
-        Ok(peer_connection)
+        Ok((peer_connection, ice_candidate_rx))
     }
 
     pub async fn add_ice_candidate(

@@ -160,7 +160,11 @@ where
             }
         }
         let peer_connection = {
-            let peer_connection = Arc::new(self.initialize_peer_request(relays, gateway_id).await?);
+            let (peer_connection, receiver) = self.new_peer_connection(relays).await?;
+            self.ice_state
+                .lock()
+                .add_waiting_receiver(gateway_id, receiver);
+            let peer_connection = Arc::new(peer_connection);
             let mut peer_connections = self.peer_connections.lock();
             peer_connections.insert(gateway_id.into(), Arc::clone(&peer_connection));
             peer_connection

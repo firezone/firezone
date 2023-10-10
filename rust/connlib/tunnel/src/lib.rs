@@ -28,7 +28,6 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
-use futures::channel::mpsc;
 use std::task::{ready, Context, Poll};
 use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
@@ -214,10 +213,8 @@ pub struct TunnelStats {
 /// Dedicated trait for abstracting over the different ICE states.
 ///
 /// Depending on where the [`Tunnel`] is used (i.e. client vs gateway), this behaves slightly different.
-pub trait IceState: Send + 'static + Default {
+pub trait PollNextIceCandidate: Send + 'static + Default {
     type Id: fmt::Debug;
-
-    fn add_new_receiver(&mut self, id: Self::Id, receiver: mpsc::Receiver<RTCIceCandidateInit>);
 
     fn poll_next_ice_candidate(
         &mut self,
@@ -229,7 +226,7 @@ impl<C, CB, TIceState> Tunnel<C, CB, TIceState>
 where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
-    TIceState: IceState,
+    TIceState: PollNextIceCandidate,
 {
     pub fn stats(&self) -> TunnelStats {
         let peers_by_ip = self
@@ -287,7 +284,7 @@ impl<C, CB, TIceState> Tunnel<C, CB, TIceState>
 where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
-    TIceState: IceState,
+    TIceState: PollNextIceCandidate,
 {
     /// Creates a new tunnel.
     ///
