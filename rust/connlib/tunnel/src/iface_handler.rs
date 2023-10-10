@@ -1,4 +1,4 @@
-use std::{net::IpAddr, sync::Arc, time::Duration};
+use std::{io, net::IpAddr, sync::Arc, time::Duration};
 
 use boringtun::noise::{errors::WireGuardError, Tunn, TunnResult};
 use bytes::Bytes;
@@ -162,21 +162,14 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self, device))]
-    pub(crate) async fn iface_handler(self: Arc<Self>, mut device: Device) {
+    pub(crate) async fn iface_handler(self: Arc<Self>, mut device: Device) -> io::Result<()> {
         let device_writer = device.io.clone();
         let mut dst = [0u8; MAX_UDP_SIZE];
         loop {
-            let src = match device.read().await {
-                Ok(res) => res,
-                Err(e) => {
-                    tracing::error!(err = ?e, "failed to read interface: {e:#}");
-                    let _ = self.callbacks.on_error(&e.into());
-                    break;
-                }
-            };
+            let src = device.read().await?;
 
             if src.is_empty() {
-                break;
+                return Ok(());
             }
 
             if let Err(e) = self
