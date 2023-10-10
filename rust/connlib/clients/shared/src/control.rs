@@ -9,13 +9,12 @@ use connlib_shared::{
     control::{ErrorInfo, ErrorReply, PhoenixSenderWithTopic, Reference},
     messages::{GatewayId, ResourceDescription, ResourceId},
     Callbacks,
-    Error::{self, ControlProtocolError},
+    Error::{self},
     Result,
 };
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 use async_trait::async_trait;
-use firezone_tunnel::{ConnId, ControlSignal, Request, Tunnel};
+use firezone_tunnel::{ClientState, ControlSignal, Request, Tunnel};
 use tokio::sync::Mutex;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
@@ -41,35 +40,10 @@ impl ControlSignal for ControlSignaler {
             .await?;
         Ok(())
     }
-
-    async fn signal_ice_candidate(
-        &self,
-        ice_candidate: RTCIceCandidate,
-        conn_id: ConnId,
-    ) -> Result<()> {
-        // TODO: We probably want to have different signal_ice_candidate
-        // functions for gateway/client but ultimately we just want
-        // separate control_plane modules
-        if let ConnId::Gateway(id) = conn_id {
-            self.control_signal
-                .clone()
-                .send(EgressMessages::BroadcastIceCandidates(
-                    BroadcastGatewayIceCandidates {
-                        gateway_ids: vec![id],
-                        candidates: vec![ice_candidate.to_json()?],
-                    },
-                ))
-                .await?;
-
-            Ok(())
-        } else {
-            Err(ControlProtocolError)
-        }
-    }
 }
 
 pub struct ControlPlane<CB: Callbacks> {
-    pub tunnel: Arc<Tunnel<ControlSignaler, CB>>,
+    pub tunnel: Arc<Tunnel<ControlSignaler, CB, ClientState>>,
     pub control_signaler: ControlSignaler,
     pub tunnel_init: Mutex<bool>,
 }
@@ -300,6 +274,26 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             .control_signal
             .send(EgressMessages::CreateLogSink {})
             .await;
+    }
+
+    pub async fn handle_tunnel_event(&mut self, event: firezone_tunnel::Event<GatewayId>) {
+        match event {
+            firezone_tunnel::Event::SignalIceCandidate { conn_id, candidate } => {
+                if let Err(e) = self
+                    .control_signaler
+                    .control_signal
+                    .send(EgressMessages::BroadcastIceCandidates(
+                        BroadcastGatewayIceCandidates {
+                            gateway_ids: vec![conn_id],
+                            candidates: vec![candidate],
+                        },
+                    ))
+                    .await
+                {
+                    tracing::error!("Failed to signal ICE candidate: {e}")
+                }
+            }
+        }
     }
 }
 

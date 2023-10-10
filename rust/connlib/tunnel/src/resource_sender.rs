@@ -9,7 +9,7 @@ use crate::{
 
 use connlib_shared::{messages::ResourceDescription, Callbacks, Error, Result};
 
-impl<C, CB> Tunnel<C, CB>
+impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
 where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,

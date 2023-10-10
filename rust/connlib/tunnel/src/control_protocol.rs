@@ -1,5 +1,7 @@
 use boringtun::noise::Tunn;
 use chrono::{DateTime, Utc};
+use futures::channel::mpsc;
+use futures_util::SinkExt;
 use secrecy::ExposeSecret;
 use std::sync::Arc;
 use tracing::instrument;
@@ -20,6 +22,7 @@ use webrtc::{
     },
 };
 
+use crate::role_state::RoleState;
 use crate::{peer::Peer, ConnId, ControlSignal, PeerConfig, Tunnel};
 
 mod client;
@@ -35,14 +38,15 @@ pub enum Request {
 }
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
-async fn handle_connection_state_update_with_peer<C, CB>(
-    tunnel: &Arc<Tunnel<C, CB>>,
+async fn handle_connection_state_update_with_peer<C, CB, TRoleState>(
+    tunnel: &Arc<Tunnel<C, CB, TRoleState>>,
     state: RTCPeerConnectionState,
     index: u32,
     conn_id: ConnId,
 ) where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
+    TRoleState: RoleState,
 {
     tracing::trace!(?state, "peer_state_update");
     if state == RTCPeerConnectionState::Failed {
@@ -51,14 +55,15 @@ async fn handle_connection_state_update_with_peer<C, CB>(
 }
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
-fn set_connection_state_with_peer<C, CB>(
-    tunnel: &Arc<Tunnel<C, CB>>,
+fn set_connection_state_with_peer<C, CB, TRoleState>(
+    tunnel: &Arc<Tunnel<C, CB, TRoleState>>,
     peer_connection: &Arc<RTCPeerConnection>,
     index: u32,
     conn_id: ConnId,
 ) where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
+    TRoleState: RoleState,
 {
     let tunnel = Arc::clone(tunnel);
     peer_connection.on_peer_connection_state_change(Box::new(
@@ -71,10 +76,11 @@ fn set_connection_state_with_peer<C, CB>(
     ));
 }
 
-impl<C, CB> Tunnel<C, CB>
+impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
 where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
+    TRoleState: RoleState,
 {
     #[instrument(level = "trace", skip(self, data_channel, peer_config))]
     async fn handle_channel_open(
@@ -152,11 +158,10 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn initialize_peer_request(
+    pub async fn new_peer_connection(
         self: &Arc<Self>,
         relays: Vec<Relay>,
-        conn_id: ConnId,
-    ) -> Result<Arc<RTCPeerConnection>> {
+    ) -> Result<(Arc<RTCPeerConnection>, mpsc::Receiver<RTCIceCandidateInit>)> {
         let config = RTCConfiguration {
             ice_servers: relays
                 .into_iter()
@@ -176,50 +181,33 @@ where
                 .collect(),
             ..Default::default()
         };
+
         let peer_connection = Arc::new(self.webrtc_api.new_peer_connection(config).await?);
 
-        let (ice_candidate_tx, ice_candidate_rx) = tokio::sync::mpsc::channel(ICE_CANDIDATE_BUFFER);
-        self.ice_candidate_queue
-            .lock()
-            .insert(conn_id, ice_candidate_rx);
+        let (ice_candidate_tx, ice_candidate_rx) = mpsc::channel(ICE_CANDIDATE_BUFFER);
 
-        let callbacks = self.callbacks().clone();
         peer_connection.on_ice_candidate(Box::new(move |candidate| {
-            let ice_candidate_tx = ice_candidate_tx.clone();
-            let callbacks = callbacks.clone();
+            let Some(candidate) = candidate else {
+                return Box::pin(async {});
+            };
+
+            let mut ice_candidate_tx = ice_candidate_tx.clone();
             Box::pin(async move {
-                if let Err(e) = ice_candidate_tx.send(candidate).await {
-                    tracing::error!(err = ?e, "buffer_ice_candidate");
-                    let _ = callbacks.on_error(&e.into());
+                let ice_candidate = match candidate.to_json() {
+                    Ok(ice_candidate) => ice_candidate,
+                    Err(e) => {
+                        tracing::warn!("Failed to serialize ICE candidate to JSON: {e}",);
+                        return;
+                    }
+                };
+
+                if ice_candidate_tx.send(ice_candidate).await.is_err() {
+                    debug_assert!(false, "receiver was dropped before sender")
                 }
             })
         }));
 
-        Ok(peer_connection)
-    }
-
-    fn start_ice_candidate_handler(&self, conn_id: ConnId) -> Result<()> {
-        let mut ice_candidate_rx = self
-            .ice_candidate_queue
-            .lock()
-            .remove(&conn_id)
-            .ok_or(Error::ControlProtocolError)?;
-        let control_signaler = self.control_signaler.clone();
-        let callbacks = self.callbacks().clone();
-
-        tokio::spawn(async move {
-            while let Some(ice_candidate) = ice_candidate_rx.recv().await.flatten() {
-                if let Err(e) = control_signaler
-                    .signal_ice_candidate(ice_candidate, conn_id)
-                    .await
-                {
-                    tracing::error!(err = ?e, "add_ice_candidate");
-                    let _ = callbacks.on_error(&e);
-                }
-            }
-        });
-
-        Ok(())
+        Ok((peer_connection, ice_candidate_rx))
     }
 
     pub async fn add_ice_candidate(

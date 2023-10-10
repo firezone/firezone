@@ -7,21 +7,18 @@ use crate::CallbackHandler;
 use anyhow::Result;
 use connlib_shared::messages::ClientId;
 use connlib_shared::Error;
-use firezone_tunnel::Tunnel;
+use firezone_tunnel::{GatewayState, Tunnel};
 use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use tokio::sync::mpsc;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
-pub struct Eventloop<'a> {
-    tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler>>,
-    control_rx: &'a mut mpsc::Receiver<(ClientId, RTCIceCandidate)>,
+pub struct Eventloop {
+    tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayState>>,
     portal: PhoenixChannel<IngressMessages, ()>,
 
     // TODO: Strongly type request reference (currently `String`)
@@ -32,15 +29,13 @@ pub struct Eventloop<'a> {
     print_stats_timer: tokio::time::Interval,
 }
 
-impl<'a> Eventloop<'a> {
+impl Eventloop {
     pub(crate) fn new(
-        tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler>>,
-        control_rx: &'a mut mpsc::Receiver<(ClientId, RTCIceCandidate)>,
+        tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayState>>,
         portal: PhoenixChannel<IngressMessages, ()>,
-    ) -> Eventloop<'a> {
+    ) -> Self {
         Self {
             tunnel,
-            control_rx,
             portal,
 
             // TODO: Pick sane values for timeouts and size.
@@ -54,34 +49,10 @@ impl<'a> Eventloop<'a> {
     }
 }
 
-impl Eventloop<'_> {
+impl Eventloop {
     #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {
-            if let Poll::Ready(Some((client, ice_candidate))) = self.control_rx.poll_recv(cx) {
-                let ice_candidate = match ice_candidate.to_json() {
-                    Ok(ice_candidate) => ice_candidate,
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to serialize ICE candidate to JSON: {:#}",
-                            anyhow::Error::new(e)
-                        );
-                        continue;
-                    }
-                };
-
-                tracing::debug!(%client, candidate = %ice_candidate.candidate, "Sending ICE candidate to client");
-
-                let _id = self.portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::BroadcastIceCandidates(BroadcastClientIceCandidates {
-                        client_ids: vec![client],
-                        candidates: vec![ice_candidate],
-                    }),
-                );
-                continue;
-            }
-
             match self.connection_request_tasks.poll_unpin(cx) {
                 Poll::Ready(((client, reference), Ok(Ok(gateway_rtc_session_description)))) => {
                     tracing::debug!(%client, %reference, "Connection is ready");
@@ -201,6 +172,25 @@ impl Eventloop<'_> {
                     continue;
                 }
                 _ => {}
+            }
+
+            match self.tunnel.poll_next_event(cx) {
+                Poll::Ready(firezone_tunnel::Event::SignalIceCandidate {
+                    conn_id: client,
+                    candidate,
+                }) => {
+                    tracing::debug!(%client, candidate = %candidate.candidate, "Sending ICE candidate to client");
+
+                    let _id = self.portal.send(
+                        PHOENIX_TOPIC,
+                        EgressMessages::BroadcastIceCandidates(BroadcastClientIceCandidates {
+                            client_ids: vec![client],
+                            candidates: vec![candidate],
+                        }),
+                    );
+                    continue;
+                }
+                Poll::Pending => {}
             }
 
             if self.print_stats_timer.poll_tick(cx).is_ready() {

@@ -165,6 +165,7 @@ where
             tokio::spawn(async move {
                 let mut log_stats_interval = tokio::time::interval(Duration::from_secs(10));
                 let mut upload_logs_interval = upload_interval();
+
                 loop {
                     tokio::select! {
                         Some((msg, reference)) = control_plane_receiver.recv() => {
@@ -173,6 +174,7 @@ where
                                 Err(err) => control_plane.handle_error(err, reference).await,
                             }
                         },
+                        event = control_plane.tunnel.next_event() => control_plane.handle_tunnel_event(event).await,
                         _ = log_stats_interval.tick() => control_plane.stats_event().await,
                         _ = upload_logs_interval.tick() => control_plane.request_log_upload_url().await,
                         else => break
