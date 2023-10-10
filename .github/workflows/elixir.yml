@@ -199,8 +199,6 @@ jobs:
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - name: Compile Application
         run: mix compile --force --warnings-as-errors
-      - name: Check for unused deps
-        run: mix deps.unlock --check-unused
       - name: Check Formatting
         run: mix format --check-formatted
       - name: Check For Retired Packages
@@ -212,6 +210,8 @@ jobs:
         run: mix sobelow --skip
       - name: Run Credo
         run: mix credo --strict
+      - name: Check for unused deps
+        run: mix deps.unlock --check-unused
 
   migrations-and-seed-test:
     runs-on: ubuntu-latest
@@ -404,6 +404,7 @@ jobs:
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - name: Compile Application
         run: mix compile --warnings-as-errors
+
       # Front-End deps cache
       - uses: actions/cache/restore@v3
         name: pnpm Web Deps Cache
@@ -411,7 +412,10 @@ jobs:
         env:
           cache-name: pnpm-deps-web
         with:
-          path: elixir/apps/web/assets/node_modules
+          path: |
+            elixir/apps/web/assets/node_modules
+            elixir/esbuild-*
+            elixir/tailwind-*
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('elixir/apps/web/assets/pnpm-lock.yaml') }}
       - name: Install Front-End Dependencies
         if: ${{ steps.pnpm-web-deps-cache.outputs.cache-hit != 'true' }}
@@ -424,7 +428,10 @@ jobs:
         env:
           cache-name: pnpm-deps-web
         with:
-          path: elixir/apps/web/assets/node_modules
+          path: |
+            elixir/apps/web/assets/node_modules
+            elixir/esbuild-*
+            elixir/tailwind-*
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('elixir/apps/web/assets/pnpm-lock.yaml') }}
       # Front-End build cache, it rarely changes so we cache it agressively too
       - uses: actions/cache/restore@v3
