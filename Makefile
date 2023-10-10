@@ -1,11 +1,11 @@
 # Format:
-# MAJOR: This is the current version of the portal API in YYYYMMDD format. REST consumers will request
+# MAJOR: This is the marketing version, e.g. 1. Don't change it.
+# MINOR: This is the current version of the portal API in YYYYMMDD format. REST consumers will request
 #        this API from the portal with the X-Firezone-API-Version request header.
-#        Increment this for breaking API changes (~ e.g. every 6 months to a year)
-# MINOR: Increment this for new features (~ e.g. monthly)
-# PATCH: Increment this for bugfix releases (~ e.g. daily or weekly)
+#        Increment this for breaking API changes (e.g. once a quarter)
+# PATCH: Increment this for each backwards-compatible release
 # See discussion here: https://github.com/firezone/firezone/issues/2041
-version = 20231001.0.0
+version = 1.20231001.0
 
 .PHONY: version
 

@@ -70,7 +70,7 @@ jobs:
       id-token: write
     env:
       # mark:automatic-version
-      VERSION: "20231001.0.0"
+      VERSION: "1.20231001.0"
       APPLICATION_NAME: ${{ matrix.image_name }}
     steps:
       - name: Set up Docker Buildx
