@@ -2,7 +2,6 @@ use crate::PollNextIceCandidate;
 use connlib_shared::messages::{ClientId, GatewayId};
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
-use futures_util::stream::BoxStream;
 use std::collections::HashMap;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
