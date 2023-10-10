@@ -320,7 +320,7 @@ jobs:
           path: elixir/apps/domain/priv/repo/structure.sql
       - name: Run Seed
         run: mix ecto.seed
-      
+
   acceptance-test:
     runs-on: ubuntu-22.04-firezone-4c
     defaults:
