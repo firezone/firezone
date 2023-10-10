@@ -1,5 +1,5 @@
 [toolchain]
-channel = "1.72.1"
+channel = "1.73.0"
 components = ["rustfmt", "clippy"]
 targets = [
   "x86_64-unknown-linux-musl",
