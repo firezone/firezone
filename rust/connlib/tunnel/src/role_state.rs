@@ -18,6 +18,16 @@ pub trait RoleState: Default + Send + 'static {
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
 }
 
+/// For how long we will attempt to gather ICE candidates before aborting.
+///
+/// Chosen arbitrarily.
+const ICE_GATHERING_TIMEOUT_SECONDS: u64 = 5 * 60;
+
+/// How many concurrent ICE gathering attempts we are allow.
+///
+/// Chosen arbitrarily.
+const MAX_CONCURRENT_ICE_GATHERING: usize = 100;
+
 /// [`Tunnel`](crate::Tunnel) state specific to clients.
 pub struct ClientState {
     active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidateInit>,
@@ -54,7 +64,10 @@ impl ClientState {
 impl Default for ClientState {
     fn default() -> Self {
         Self {
-            active_candidate_receivers: StreamMap::new(Duration::from_secs(5 * 60), 100),
+            active_candidate_receivers: StreamMap::new(
+                Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
+                MAX_CONCURRENT_ICE_GATHERING,
+            ),
             waiting_for_sdp_from_gatway: Default::default(),
         }
     }
@@ -103,7 +116,10 @@ impl GatewayState {
 impl Default for GatewayState {
     fn default() -> Self {
         Self {
-            candidate_receivers: StreamMap::new(Duration::from_secs(5 * 60), 100),
+            candidate_receivers: StreamMap::new(
+                Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
+                MAX_CONCURRENT_ICE_GATHERING,
+            ),
         }
     }
 }
