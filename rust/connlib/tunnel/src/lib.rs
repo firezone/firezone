@@ -350,10 +350,10 @@ where
             .await?
         {
             *device = Some(new_device.clone());
-            let dev = Arc::clone(self);
+            let tunnel = Arc::clone(self);
             self.iface_handler_abort.lock().replace(
                 tokio::spawn(async move {
-                    if let Err(e) = dev.iface_handler(new_device).await {
+                    if let Err(e) = tunnel.iface_handler(new_device).await {
                         let _ = self.callbacks.on_error(&e.into());
                     }
                 })
@@ -371,10 +371,10 @@ where
         *self.device.write().await = Some(device.clone());
 
         self.start_timers().await?;
-        let dev = Arc::clone(self);
+        let tunnel = Arc::clone(self);
         *self.iface_handler_abort.lock() = Some(
             tokio::spawn(async move {
-                if let Err(e) = dev.iface_handler(device).await {
+                if let Err(e) = tunnel.iface_handler(device).await {
                     let _ = self.callbacks.on_error(&e.into());
                 }
             })
