@@ -149,8 +149,8 @@ struct AwaitingConnectionDetails {
 
 #[derive(Clone)]
 struct Device {
-    pub config: Arc<IfaceConfig>,
-    pub io: DeviceIo,
+    config: Arc<IfaceConfig>,
+    io: DeviceIo,
 }
 
 // TODO: We should use newtypes for each kind of Id
