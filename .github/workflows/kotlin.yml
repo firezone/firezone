@@ -2,11 +2,6 @@ name: Kotlin
 on:
   workflow_call:
 
-# Cancel old workflow runs if new code is pushed
-concurrency:
-  group: "kotlin-${{ github.workflow }}-${{ github.ref }}"
-  cancel-in-progress: true
-
 jobs:
   static-analysis:
     runs-on: ubuntu-latest
