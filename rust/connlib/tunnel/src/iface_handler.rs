@@ -4,6 +4,7 @@ use boringtun::noise::{errors::WireGuardError, Tunn, TunnResult};
 use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
 
+use crate::dns::check_for_dns;
 use crate::role_state::RoleState;
 use crate::{
     device_channel::{DeviceIo, IfaceConfig},
@@ -138,7 +139,7 @@ where
         src: &mut [u8],
         dst: &mut [u8],
     ) -> Result<()> {
-        if let Some(r) = self.check_for_dns(src) {
+        if let Some(r) = check_for_dns(&self.resources.read(), src) {
             match r {
                 dns::SendPacket::Ipv4(r) => device_writer.write4(&r[..])?,
                 dns::SendPacket::Ipv6(r) => device_writer.write6(&r[..])?,
