@@ -1,15 +1,12 @@
-use std::{net::IpAddr, sync::Arc};
-
-use crate::{
-    ip_packet::{to_dns, IpPacket, MutableIpPacket, Version},
-    ControlSignal, Tunnel,
-};
-use connlib_shared::{messages::ResourceDescription, Callbacks, DNS_SENTINEL};
+use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
+use crate::resource_table::ResourceTable;
+use connlib_shared::{messages::ResourceDescription, DNS_SENTINEL};
 use domain::base::{
     iana::{Class, Rcode, Rtype},
     Dname, Message, MessageBuilder, ParsedDname, ToDname,
 };
 use pnet_packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, PacketSize};
+use std::net::IpAddr;
 
 const DNS_TTL: u32 = 300;
 const UDP_HEADER_SIZE: usize = 8;
@@ -23,7 +20,78 @@ pub(crate) enum SendPacket {
     Ipv6(Vec<u8>),
 }
 
-pub fn build_response(original_buf: &[u8], mut dns_answer: Vec<u8>) -> Option<Vec<u8>> {
+// We don't need to support multiple questions/qname in a single query because
+// nobody does it and since this run with each packet we want to squeeze as much optimization
+// as we can therefore we won't do it.
+//
+// See: https://stackoverflow.com/a/55093896
+pub(crate) fn check_for_dns(
+    resources: &ResourceTable<ResourceDescription>,
+    buf: &[u8],
+) -> Option<SendPacket> {
+    let packet = IpPacket::new(buf)?;
+    let version = packet.version();
+    if packet.destination() != IpAddr::from(DNS_SENTINEL) {
+        return None;
+    }
+    let datagram = packet.as_udp()?;
+    let message = to_dns(&datagram)?;
+    if message.header().qr() {
+        return None;
+    }
+    let question = message.first_question()?;
+    let resource = match question.qtype() {
+        Rtype::A | Rtype::Aaaa => resources
+            .get_by_name(&ToDname::to_cow(question.qname()).to_string())
+            .cloned(),
+        Rtype::Ptr => {
+            let dns_parts = ToDname::to_cow(question.qname()).to_string();
+            let mut dns_parts = dns_parts.split('.').rev();
+            if !dns_parts
+                .next()
+                .is_some_and(|d| d == REVERSE_DNS_ADDRESS_END)
+            {
+                return None;
+            }
+            let ip: IpAddr = match dns_parts.next() {
+                Some(REVERSE_DNS_ADDRESS_V4) => {
+                    let mut ip = [0u8; 4];
+                    for i in ip.iter_mut() {
+                        *i = dns_parts.next()?.parse().ok()?;
+                    }
+                    ip.into()
+                }
+                Some(REVERSE_DNS_ADDRESS_V6) => {
+                    let mut ip = [0u8; 16];
+                    for i in ip.iter_mut() {
+                        *i = u8::from_str_radix(
+                            &format!("{}{}", dns_parts.next()?, dns_parts.next()?),
+                            16,
+                        )
+                        .ok()?;
+                    }
+                    ip.into()
+                }
+                _ => return None,
+            };
+
+            if dns_parts.next().is_some() {
+                return None;
+            }
+
+            resources.get_by_ip(ip).cloned()
+        }
+        _ => return None,
+    };
+    let response = build_dns_with_answer(message, question.qname(), question.qtype(), &resource?)?;
+    let response = build_response(buf, response);
+    response.map(|pkt| match version {
+        Version::Ipv4 => SendPacket::Ipv4(pkt),
+        Version::Ipv6 => SendPacket::Ipv6(pkt),
+    })
+}
+
+fn build_response(original_buf: &[u8], mut dns_answer: Vec<u8>) -> Option<Vec<u8>> {
     let response_len = dns_answer.len();
     let original_pkt = IpPacket::new(original_buf)?;
     let original_dgm = original_pkt.as_udp()?;
@@ -50,7 +118,7 @@ pub fn build_response(original_buf: &[u8], mut dns_answer: Vec<u8>) -> Option<Ve
     Some(res_buf)
 }
 
-pub fn build_dns_with_answer<N>(
+fn build_dns_with_answer<N>(
     message: &Message<[u8]>,
     qname: &N,
     qtype: Rtype,
@@ -94,81 +162,4 @@ where
         _ => return None,
     }
     Some(answer_builder.finish())
-}
-
-// We don't need to support multiple questions/qname in a single query because
-// nobody does it and since this run with each packet we want to squeeze as much optimization
-// as we can therefore we won't do it.
-//
-// See: https://stackoverflow.com/a/55093896
-impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
-where
-    C: ControlSignal + Send + Sync + 'static,
-    CB: Callbacks + 'static,
-{
-    pub(crate) fn check_for_dns(self: &Arc<Self>, buf: &[u8]) -> Option<SendPacket> {
-        let packet = IpPacket::new(buf)?;
-        let version = packet.version();
-        if packet.destination() != IpAddr::from(DNS_SENTINEL) {
-            return None;
-        }
-        let datagram = packet.as_udp()?;
-        let message = to_dns(&datagram)?;
-        if message.header().qr() {
-            return None;
-        }
-        let question = message.first_question()?;
-        let resource = match question.qtype() {
-            Rtype::A | Rtype::Aaaa => self
-                .resources
-                .read()
-                .get_by_name(&ToDname::to_cow(question.qname()).to_string())
-                .cloned(),
-            Rtype::Ptr => {
-                let dns_parts = ToDname::to_cow(question.qname()).to_string();
-                let mut dns_parts = dns_parts.split('.').rev();
-                if !dns_parts
-                    .next()
-                    .is_some_and(|d| d == REVERSE_DNS_ADDRESS_END)
-                {
-                    return None;
-                }
-                let ip: IpAddr = match dns_parts.next() {
-                    Some(REVERSE_DNS_ADDRESS_V4) => {
-                        let mut ip = [0u8; 4];
-                        for i in ip.iter_mut() {
-                            *i = dns_parts.next()?.parse().ok()?;
-                        }
-                        ip.into()
-                    }
-                    Some(REVERSE_DNS_ADDRESS_V6) => {
-                        let mut ip = [0u8; 16];
-                        for i in ip.iter_mut() {
-                            *i = u8::from_str_radix(
-                                &format!("{}{}", dns_parts.next()?, dns_parts.next()?),
-                                16,
-                            )
-                            .ok()?;
-                        }
-                        ip.into()
-                    }
-                    _ => return None,
-                };
-
-                if dns_parts.next().is_some() {
-                    return None;
-                }
-
-                self.resources.read().get_by_ip(ip).cloned()
-            }
-            _ => return None,
-        };
-        let response =
-            build_dns_with_answer(message, question.qname(), question.qtype(), &resource?)?;
-        let response = build_response(buf, response);
-        response.map(|pkt| match version {
-            Version::Ipv4 => SendPacket::Ipv4(pkt),
-            Version::Ipv6 => SendPacket::Ipv6(pkt),
-        })
-    }
 }
