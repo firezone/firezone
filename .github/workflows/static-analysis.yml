@@ -3,7 +3,29 @@ on:
   workflow_call:
 
 jobs:
-  static-analysis_linter:
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Check version is up to date
+        run: |
+          make version
+          if [ -z "$(git status --porcelain)" ]; then
+            # Working directory clean
+            echo "Version manifests up to date"
+          else
+            # Uncommitted changes
+            echo '`make version` found outdated files! Showing diff'
+            git diff
+            exit 1
+          fi
+  global-linter:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
