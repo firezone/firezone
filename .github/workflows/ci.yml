@@ -24,7 +24,7 @@ jobs:
   # less overhead to keep things in GH actions. See work on building these
   # in GCP with Cloud Build: https://github.com/firezone/firezone/pull/2234
   build-images:
-    runs-on: ubuntu-22.04-firezone-16c
+    runs-on: ubuntu-22.04-firezone-4c
     strategy:
       matrix:
         include:
