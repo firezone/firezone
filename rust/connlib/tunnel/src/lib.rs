@@ -351,40 +351,6 @@ where
         Ok(())
     }
 
-    /// Adds a the given resource to the tunnel.
-    ///
-    /// Once added, when a packet for the resource is intercepted a new data channel will be created
-    /// and packets will be wrapped with wireguard and sent through it.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn add_resource(
-        self: &Arc<Self>,
-        resource_description: ResourceDescription,
-    ) -> Result<()> {
-        let mut any_valid_route = false;
-        {
-            for ip in resource_description.ips() {
-                if let Err(e) = self.add_route(ip).await {
-                    tracing::warn!(route = %ip, error = ?e, "add_route");
-                    let _ = self.callbacks().on_error(&e);
-                } else {
-                    any_valid_route = true;
-                }
-            }
-        }
-        if !any_valid_route {
-            return Err(Error::InvalidResource);
-        }
-
-        let resource_list = {
-            let mut resources = self.resources.write();
-            resources.insert(resource_description);
-            resources.resource_list()
-        };
-
-        self.callbacks.on_update_resources(resource_list)?;
-        Ok(())
-    }
-
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_interface(self: &Arc<Self>, config: &InterfaceConfig) -> Result<()> {
@@ -552,5 +518,45 @@ where
 
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
+    }
+}
+
+impl<C, CB> Tunnel<C, CB, ClientState>
+where
+    C: ControlSignal + Send + Sync + 'static,
+    CB: Callbacks + 'static,
+{
+    /// Adds a the given resource to the tunnel.
+    ///
+    /// Once added, when a packet for the resource is intercepted a new data channel will be created
+    /// and packets will be wrapped with wireguard and sent through it.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn add_resource(
+        self: &Arc<Self>,
+        resource_description: ResourceDescription,
+    ) -> Result<()> {
+        let mut any_valid_route = false;
+        {
+            for ip in resource_description.ips() {
+                if let Err(e) = self.add_route(ip).await {
+                    tracing::warn!(route = %ip, error = ?e, "add_route");
+                    let _ = self.callbacks().on_error(&e);
+                } else {
+                    any_valid_route = true;
+                }
+            }
+        }
+        if !any_valid_route {
+            return Err(Error::InvalidResource);
+        }
+
+        let resource_list = {
+            let mut resources = self.resources.write();
+            resources.insert(resource_description);
+            resources.resource_list()
+        };
+
+        self.callbacks.on_update_resources(resource_list)?;
+        Ok(())
     }
 }
