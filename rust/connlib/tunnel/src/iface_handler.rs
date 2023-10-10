@@ -7,10 +7,8 @@ use connlib_shared::{Callbacks, Error, Result};
 use crate::dns::check_for_dns;
 use crate::role_state::RoleState;
 use crate::{
-    device_channel::{DeviceIo, IfaceConfig},
-    dns,
-    peer::EncapsulatedPacket,
-    ConnId, ControlSignal, Tunnel, MAX_UDP_SIZE,
+    device_channel::DeviceIo, dns, peer::EncapsulatedPacket, ConnId, ControlSignal, Device, Tunnel,
+    MAX_UDP_SIZE,
 };
 
 const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
@@ -163,17 +161,13 @@ where
             .await
     }
 
-    #[tracing::instrument(level = "trace", skip(self, iface_config, device_io))]
-    pub(crate) async fn iface_handler(
-        self: &Arc<Self>,
-        iface_config: Arc<IfaceConfig>,
-        device_io: DeviceIo,
-    ) {
-        let device_writer = device_io.clone();
+    #[tracing::instrument(level = "trace", skip(self, config, io))]
+    pub(crate) async fn iface_handler(self: &Arc<Self>, Device { config, io }: Device) {
+        let device_writer = io.clone();
         let mut src = [0u8; MAX_UDP_SIZE];
         let mut dst = [0u8; MAX_UDP_SIZE];
         loop {
-            let res = match device_io.read(&mut src[..iface_config.mtu()]).await {
+            let res = match io.read(&mut src[..config.mtu()]).await {
                 Ok(res) => res,
                 Err(e) => {
                     tracing::error!(err = ?e, "failed to read interface: {e:#}");
