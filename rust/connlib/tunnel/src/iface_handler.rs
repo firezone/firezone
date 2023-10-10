@@ -162,7 +162,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self, config, io))]
-    pub(crate) async fn iface_handler(self: &Arc<Self>, Device { config, io }: Device) {
+    pub(crate) async fn iface_handler(self: Arc<Self>, Device { config, io }: Device) {
         let device_writer = io.clone();
         let mut src = [0u8; MAX_UDP_SIZE];
         let mut dst = [0u8; MAX_UDP_SIZE];
