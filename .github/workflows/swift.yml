@@ -106,7 +106,7 @@ jobs:
 
           # Copy xcconfig templates
           cp Firezone/xcconfig/Developer.xcconfig.firezone Firezone/xcconfig/Developer.xcconfig
-          cp Firezone/xcconfig/Server.xcconfig.ci Firezone/xcconfig/Server.xcconfig
+          cp Firezone/xcconfig/Server.xcconfig.staging Firezone/xcconfig/Server.xcconfig
 
           # App Store Connect requires a new build version on each upload and it must be an integer.
           # See https://developer.apple.com/documentation/xcode/build-settings-reference#Current-Project-Version

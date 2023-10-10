@@ -1,6 +1,13 @@
-// Configure the Authentication URL and the Control Plane URL
+// This file configures the Authentication URL and the Control Plane URL
 
+// http or https
 AUTH_URL_SCHEME = <auth_uri_scheme>
+
+// auth host and optional port, e.g. app.firezone.dev:443
 AUTH_URL_HOST = <auth_uri_host>
+
+// websocket scheme, ws or wss
 CONTROL_PLANE_URL_SCHEME = <control_plane_websocket_uri_scheme>
+
+// control plane host and optional port, e.g. app.firezone.dev:443
 CONTROL_PLANE_URL_HOST = <control_plane_websocket_uri_host>
