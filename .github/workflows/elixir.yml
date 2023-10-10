@@ -404,7 +404,6 @@ jobs:
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - name: Compile Application
         run: mix compile --warnings-as-errors
-
       # Front-End deps cache
       - uses: actions/cache/restore@v3
         name: pnpm Web Deps Cache
@@ -435,7 +434,7 @@ jobs:
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('elixir/apps/web/assets/pnpm-lock.yaml') }}
       # Front-End build cache, it rarely changes so we cache it agressively too
       - uses: actions/cache/restore@v3
-        name: Assets Cache
+        name: Web Assets Cache
         id: pnpm-web-build-cache
         env:
           cache-name: pnpm-build-web
@@ -444,13 +443,13 @@ jobs:
             elixir/apps/web/assets/tmp
             elixir/apps/web/priv/static
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('elixir/apps/web/assets/**') }}
-      - name: Build Assets
+      - name: Build Web Assets
         if: ${{ steps.pnpm-web-build-cache.outputs.cache-hit != 'true' }}
         run: |
           cd apps/web
           mix assets.build
       - uses: actions/cache/save@v3
-        name: Save Assets Cache
+        name: Save Web Assets Cache
         if: ${{ steps.pnpm-web-build-cache.outputs.cache-hit != 'true' }}
         env:
           cache-name: pnpm-build-web
