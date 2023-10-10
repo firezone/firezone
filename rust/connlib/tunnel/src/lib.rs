@@ -75,22 +75,6 @@ pub enum ConnId {
     Resource(ResourceId),
 }
 
-impl ConnId {
-    pub fn into_client_id(self) -> Option<ClientId> {
-        match self {
-            ConnId::Client(inner) => Some(inner),
-            _ => None,
-        }
-    }
-
-    pub fn into_gateway_id(self) -> Option<GatewayId> {
-        match self {
-            ConnId::Gateway(inner) => Some(inner),
-            _ => None,
-        }
-    }
-}
-
 impl From<GatewayId> for ConnId {
     fn from(id: GatewayId) -> Self {
         Self::Gateway(id)
