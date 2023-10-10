@@ -11,7 +11,7 @@
 # Double the default maximum ports value
 # +Q 131072
 
-# Bind shedulers to CPU's (good when there are no other processes in OS that bind to processors)
+# Bind schedulers to CPU's (good when there are no other processes in OS that bind to processors)
 # +stbt db
 
 # Disable schedulers compaction of load (don't disable schedulers that is out of work)
