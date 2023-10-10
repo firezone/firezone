@@ -2,6 +2,10 @@ name: Swift
 on:
   workflow_call:
 
+env:
+  # TODO: Change this to "prod" when app is released
+  CLIENT_ENV: staging
+
 jobs:
   build:
     runs-on: macos-13
@@ -37,20 +41,137 @@ jobs:
           key: ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
           restore-keys: |
             ${{ matrix.target.platform }}-swift-
-      - name: Build app
+      - name: Install the Apple build certificate and provisioning profile
         env:
-          ONLY_ACTIVE_ARCH: no
+          BUILD_CERT: ${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}
+          BUILD_CERT_PASS: ${{ secrets.APPLE_BUILD_CERTIFICATE_P12_PASSWORD }}
+          INSTALLER_CERT: ${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_BASE64 }}
+          INSTALLER_CERT_PASS: ${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}
+          KEYCHAIN_PASS: ${{ secrets.APPLE_RUNNER_KEYCHAIN_PASSWORD }}
+          IOS_APP_PP: ${{ secrets.APPLE_IOS_APP_PROVISIONING_PROFILE }}
+          IOS_NE_PP: ${{ secrets.APPLE_IOS_NE_PROVISIONING_PROFILE }}
+          MACOS_APP_PP: ${{ secrets.APPLE_MACOS_APP_PROVISIONING_PROFILE }}
+          MACOS_NE_PP: ${{ secrets.APPLE_MACOS_NE_PROVISIONING_PROFILE }}
         run: |
+          BUILD_CERT_PATH=$RUNNER_TEMP/build_certificate.p12
+          INSTALLER_CERT_PATH=$RUNNER_TEMP/installer_certificate.cer
+
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          PP_PATH=~/Library/MobileDevice/Provisioning\ Profiles
+          mkdir -p "$PP_PATH"
+
+          # import certificate and provisioning profiles from secrets
+          echo -n "$BUILD_CERT" | base64 --decode -o $BUILD_CERT_PATH
+
+          # Matrix won't let us access secrets (for good reason), so use an explicit conditional here instead
+          if [ "${{ matrix.target.platform }}" = "iOS" ]; then
+            echo -n "$IOS_APP_PP" | base64 --decode -o "$PP_PATH"/app.mobileprovision
+            echo -n "$IOS_NE_PP" | base64 --decode -o "$PP_PATH"/ne.mobileprovision
+          elif [ "${{ matrix.target.platform }}" = "macOS" ]; then
+            echo -n "$MACOS_APP_PP" | base64 --decode -o "$PP_PATH"/app.provisionprofile
+            echo -n "$MACOS_NE_PP" | base64 --decode -o "$PP_PATH"/ne.provisionprofile
+
+            # Submission to the macOS app store requires an installer package
+            # which must be signed separately.
+            echo -n "$INSTALLER_CERT" | base64 --decode -o $INSTALLER_CERT_PATH
+          else
+            echo "Platform not supported"
+            exit 1
+          fi
+
+          # create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASS" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASS" $KEYCHAIN_PATH
+
+          # import certificate to keychain
+          security import $BUILD_CERT_PATH -P "$BUILD_CERT_PASS" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+
+          if [ "${{ matrix.target.platform }}" = "macOS" ]; then
+            security import $INSTALLER_CERT_PATH -P "$INSTALLER_CERT_PASS" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          fi
+          security list-keychain -d user -s $KEYCHAIN_PATH
+      - name: Build and sign app
+        id: build
+        env:
+          # Build universal binary
+          ONLY_ACTIVE_ARCH: no
+          # Needed because `productbuild` doesn't support picking this up automatically like Xcode does
+          INSTALLER_CODE_SIGN_IDENTITY: "3rd Party Mac Developer Installer: Firezone, Inc. (47R2M6779T)"
+        run: |
+          # Explicitly select Xcode version to use
           sudo xcode-select -s /Applications/Xcode_14.3.app
+
+          # Needed by the linter built into the build process
           brew install swift-format
-          cp Firezone/xcconfig/Developer.xcconfig.ci-${{ matrix.target.platform }} Firezone/xcconfig/Developer.xcconfig
-          cp Firezone/xcconfig/Server.xcconfig.ci Firezone/xcconfig/Server.xcconfig
-          xcodebuild archive \
-            -configuration Release \
-            -scheme Firezone \
-            -sdk ${{ matrix.target.sdk }} \
-            -destination '${{ matrix.target.destination }}' \
-            CODE_SIGNING_ALLOWED=no
+
+          # Copy xcconfig templates
+          cp Firezone/xcconfig/Developer.xcconfig.firezone Firezone/xcconfig/Developer.xcconfig
+          cp Firezone/xcconfig/Server.xcconfig.${{ env.CLIENT_ENV }} Firezone/xcconfig/Server.xcconfig
+
+          # App Store Connect requires a new build version on each upload and it must be an integer.
+          # See https://developer.apple.com/documentation/xcode/build-settings-reference#Current-Project-Version
+          seconds_since_epoch=$(date +%s)
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]/CURRENT_PROJECT_VERSION = $seconds_since_epoch/" \
+            Firezone.xcodeproj/project.pbxproj
+
+          # Unfortunately the macOS app requires an installer package to make it into the App Store,
+          # while iOS requires an ipa. The process for building each of these is slightly different.
+          if [ "${{ matrix.target.platform }}" = "iOS" ]; then
+            # Build archive
+            xcodebuild archive \
+              -archivePath ~/Firezone.xcarchive \
+              -configuration Release \
+              -scheme Firezone \
+              -sdk ${{ matrix.target.sdk }} \
+              -destination '${{ matrix.target.destination }}'
+            # Export IPA
+            xcodebuild \
+              -exportArchive \
+              -archivePath ~/Firezone.xcarchive \
+              -exportPath ~/ \
+              -exportOptionsPlist Firezone/ExportOptions.plist
+
+            # Save resulting file to use for upload
+            echo "app_bundle=~/Firezone.ipa" >> "$GITHUB_OUTPUT"
+          elif [ "${{ matrix.target.platform }}" = "macOS" ]; then
+            # Build app bundle
+            xcodebuild build \
+              -configuration Release \
+              -scheme Firezone \
+              -sdk ${{ matrix.target.sdk }} \
+              -destination '${{ matrix.target.destination }}'
+            # Move it from randomized build output dir to somewhere we can find it
+            mv ~/Library/Developer/Xcode/DerivedData/Firezone-*/Build/Products/Release/Firezone.app ~/.
+            # Create signed installer pkg
+            productbuild \
+              --sign "${{ env.INSTALLER_CODE_SIGN_IDENTITY }}" \
+              --component ~/Firezone.app /Applications ~/Firezone.pkg
+
+            # Save resulting file to use for upload
+            echo "app_bundle=~/Firezone.pkg" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unsupported platform"
+            exit 1
+          fi
+      - name: Upload build to App Store Connect
+        if: ${{ github.ref == 'refs/heads/main' }}
+        env:
+          ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}
+          API_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}
+        run: |
+          # set up private key from env
+          mkdir -p ~/private_keys
+          echo "$API_KEY" > ~/private_keys/AuthKey_$API_KEY_ID.p8
+
+          # Submit app to App Store Connect
+          xcrun altool \
+            --upload-app \
+            -f ${{ steps.build.outputs.app_bundle }} \
+            -t ${{ matrix.target.platform }} \
+            --apiKey $API_KEY_ID \
+            --apiIssuer $ISSUER_ID
       - uses: actions/cache/save@v3
         if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Swift DerivedData Cache

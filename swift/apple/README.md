@@ -23,7 +23,7 @@ Firezone app clients for macOS and iOS.
 1. Rename and populate xcconfig files:
 
    ```bash
-   cp Firezone/xcconfig/Developer.xcconfig.template Firezone/xcconfig/Developer.xcconfig
+   cp Firezone/xcconfig/Developer.xcconfig.firezone Firezone/xcconfig/Developer.xcconfig
    vim Firezone/xcconfig/Developer.xcconfig
    ```
 
