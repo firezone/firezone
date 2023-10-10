@@ -115,11 +115,13 @@ class TunnelService : VpnService() {
             override fun onRemoveRoute(
                 addr: String,
                 prefix: Int,
-            ) {
+            ): Int {
                 Log.d(TAG, "onRemoveRoute: $addr/$prefix")
-                val cidr = Cidr(addr, prefix)
-
-                tunnelRepository.removeRoute(cidr)
+                val route = Cidr(addr, prefix)
+                tunnelRepository.removeRoute(route)
+                val fd = buildVpnService().establish()?.detachFd() ?: -1
+                protect(fd)
+                return fd
             }
 
             override fun getSystemDefaultResolvers(): String {

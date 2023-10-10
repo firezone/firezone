@@ -42,8 +42,8 @@ pub trait Callbacks: Clone + Send + Sync {
     }
 
     /// Called when when a route is removed.
-    fn on_remove_route(&self, _: IpNetwork) -> Result<(), Self::Error> {
-        Ok(())
+    fn on_remove_route(&self, _: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
+        Ok(None)
     }
 
     /// Called when the resource list changes.

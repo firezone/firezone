@@ -12,14 +12,14 @@ interface ConnlibCallback {
     fun onTunnelReady(): Boolean
 
     fun onAddRoute(
-        cidrAddress: String,
+        addr: String,
         prefix: Int,
     ): Int
 
     fun onRemoveRoute(
         addr: String,
         prefix: Int,
-    )
+    ): Int
 
     fun onUpdateResources(resourceListJSON: String)
 
