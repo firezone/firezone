@@ -350,15 +350,7 @@ where
             .await?
         {
             *device = Some(new_device.clone());
-            let tunnel = Arc::clone(self);
-            self.iface_handler_abort.lock().replace(
-                tokio::spawn(async move {
-                    if let Err(e) = tunnel.iface_handler(new_device).await {
-                        let _ = self.callbacks.on_error(&e.into());
-                    }
-                })
-                .abort_handle(),
-            );
+            self.start_device(new_device);
         }
 
         Ok(())
@@ -371,15 +363,7 @@ where
         *self.device.write().await = Some(device.clone());
 
         self.start_timers().await?;
-        let tunnel = Arc::clone(self);
-        *self.iface_handler_abort.lock() = Some(
-            tokio::spawn(async move {
-                if let Err(e) = tunnel.iface_handler(device).await {
-                    let _ = self.callbacks.on_error(&e.into());
-                }
-            })
-            .abort_handle(),
-        );
+        self.start_device(device);
 
         self.add_route(DNS_SENTINEL.into()).await?;
 
@@ -388,6 +372,19 @@ where
         tracing::debug!("background_loop_started");
 
         Ok(())
+    }
+
+    fn start_device(self: &Arc<Self>, device: Device) {
+        let tunnel = Arc::clone(self);
+
+        *self.iface_handler_abort.lock() = Some(
+            tokio::spawn(async move {
+                if let Err(e) = tunnel.clone().iface_handler(device).await {
+                    let _ = tunnel.callbacks.on_error(&e.into());
+                }
+            })
+            .abort_handle(),
+        );
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
