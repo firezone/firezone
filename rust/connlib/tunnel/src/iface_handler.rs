@@ -4,20 +4,21 @@ use boringtun::noise::{errors::WireGuardError, Tunn, TunnResult};
 use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
 
+use crate::role_state::RoleState;
 use crate::{
     device_channel::{DeviceIo, IfaceConfig},
     dns,
     peer::EncapsulatedPacket,
-    ConnId, ControlSignal, PollNextIceCandidate, Tunnel, MAX_UDP_SIZE,
+    ConnId, ControlSignal, Tunnel, MAX_UDP_SIZE,
 };
 
 const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
 
-impl<C, CB, TIceState> Tunnel<C, CB, TIceState>
+impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
 where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
-    TIceState: PollNextIceCandidate,
+    TRoleState: RoleState,
 {
     #[inline(always)]
     fn connection_intent(self: &Arc<Self>, src: &[u8], dst_addr: &IpAddr) {

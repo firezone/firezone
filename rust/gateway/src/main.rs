@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_shared::{get_device_id, get_user_agent, login_url, Callbacks, Mode};
-use firezone_tunnel::{GatewayIceState, Tunnel};
+use firezone_tunnel::{GatewayState, Tunnel};
 use futures::{future, TryFutureExt};
 use headless_utils::{setup_global_subscriber, CommonArgs};
 use phoenix_channel::SecureUrl;
@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
 }
 
 async fn run(
-    tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayIceState>>,
+    tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayState>>,
     connect_url: Url,
 ) -> Result<Infallible> {
     let (portal, init) = phoenix_channel::init::<InitGateway, _, _>(

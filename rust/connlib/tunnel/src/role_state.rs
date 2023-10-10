@@ -1,22 +1,36 @@
-use crate::PollNextIceCandidate;
+use crate::Event;
 use connlib_shared::messages::{ClientId, GatewayId};
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
 use std::collections::HashMap;
+use std::fmt;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
-/// The [`Tunnel`]s ICE state on the client.
+/// Dedicated trait for abstracting over the different ICE states.
 ///
-/// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
-pub struct ClientIceState {
+/// By design, this trait does not allow any operations apart from advancing via [`RoleState::poll_next_event`].
+/// The state should only be modified when the concrete type is known, e.g. [`ClientState`] or [`GatewayState`].
+pub trait RoleState: Default + Send + 'static {
+    type Id: fmt::Debug;
+
+    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
+}
+
+/// [`Tunnel`](crate::Tunnel) state specific to clients.
+pub struct ClientState {
     active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidateInit>,
+    /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
     waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidateInit>>,
 }
 
-impl ClientIceState {
-    pub fn add_waiting_receiver(&mut self, id: GatewayId, receiver: Receiver<RTCIceCandidateInit>) {
+impl ClientState {
+    pub fn add_waiting_ice_receiver(
+        &mut self,
+        id: GatewayId,
+        receiver: Receiver<RTCIceCandidateInit>,
+    ) {
         self.waiting_for_sdp_from_gatway.insert(id, receiver);
     }
 
@@ -37,7 +51,7 @@ impl ClientIceState {
     }
 }
 
-impl Default for ClientIceState {
+impl Default for ClientState {
     fn default() -> Self {
         Self {
             active_candidate_receivers: StreamMap::new(Duration::from_secs(5 * 60), 100),
@@ -46,16 +60,18 @@ impl Default for ClientIceState {
     }
 }
 
-impl PollNextIceCandidate for ClientIceState {
+impl RoleState for ClientState {
     type Id = GatewayId;
 
-    fn poll_next_ice_candidate(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<(Self::Id, RTCIceCandidateInit)> {
+    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
             match ready!(self.active_candidate_receivers.poll_next_unpin(cx)) {
-                (id, Some(Ok(c))) => return Poll::Ready((id, c)),
+                (conn_id, Some(Ok(c))) => {
+                    return Poll::Ready(Event::SignalIceCandidate {
+                        conn_id,
+                        candidate: c,
+                    })
+                }
                 (id, Some(Err(e))) => {
                     tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}")
                 }
@@ -65,12 +81,13 @@ impl PollNextIceCandidate for ClientIceState {
     }
 }
 
-pub struct GatewayIceState {
+/// [`Tunnel`](crate::Tunnel) state specific to gateways.
+pub struct GatewayState {
     candidate_receivers: StreamMap<ClientId, RTCIceCandidateInit>,
 }
 
-impl GatewayIceState {
-    pub fn add_new_receiver(&mut self, id: ClientId, receiver: Receiver<RTCIceCandidateInit>) {
+impl GatewayState {
+    pub fn add_new_ice_receiver(&mut self, id: ClientId, receiver: Receiver<RTCIceCandidateInit>) {
         match self.candidate_receivers.try_push(id, receiver) {
             Ok(()) => {}
             Err(PushError::BeyondCapacity(_)) => {
@@ -83,7 +100,7 @@ impl GatewayIceState {
     }
 }
 
-impl Default for GatewayIceState {
+impl Default for GatewayState {
     fn default() -> Self {
         Self {
             candidate_receivers: StreamMap::new(Duration::from_secs(5 * 60), 100),
@@ -91,16 +108,18 @@ impl Default for GatewayIceState {
     }
 }
 
-impl PollNextIceCandidate for GatewayIceState {
+impl RoleState for GatewayState {
     type Id = ClientId;
 
-    fn poll_next_ice_candidate(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<(Self::Id, RTCIceCandidateInit)> {
+    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
             match ready!(self.candidate_receivers.poll_next_unpin(cx)) {
-                (id, Some(Ok(c))) => return Poll::Ready((id, c)),
+                (conn_id, Some(Ok(c))) => {
+                    return Poll::Ready(Event::SignalIceCandidate {
+                        conn_id,
+                        candidate: c,
+                    })
+                }
                 (id, Some(Err(e))) => {
                     tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}")
                 }

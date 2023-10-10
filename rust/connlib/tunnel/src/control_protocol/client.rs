@@ -17,12 +17,11 @@ use webrtc::{
     },
 };
 
-use crate::ice::ClientIceState;
-use crate::{ControlSignal, Error, PeerConfig, Request, Result, Tunnel};
+use crate::{ClientState, ControlSignal, Error, PeerConfig, Request, Result, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
 fn handle_connection_state_update<C, CB>(
-    tunnel: &Arc<Tunnel<C, CB, ClientIceState>>,
+    tunnel: &Arc<Tunnel<C, CB, ClientState>>,
     state: RTCPeerConnectionState,
     gateway_id: GatewayId,
     resource_id: ResourceId,
@@ -46,7 +45,7 @@ fn handle_connection_state_update<C, CB>(
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
 fn set_connection_state_update<C, CB>(
-    tunnel: &Arc<Tunnel<C, CB, ClientIceState>>,
+    tunnel: &Arc<Tunnel<C, CB, ClientState>>,
     peer_connection: &Arc<RTCPeerConnection>,
     gateway_id: GatewayId,
     resource_id: ResourceId,
@@ -65,7 +64,7 @@ fn set_connection_state_update<C, CB>(
     ));
 }
 
-impl<C, CB> Tunnel<C, CB, ClientIceState>
+impl<C, CB> Tunnel<C, CB, ClientState>
 where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
@@ -161,9 +160,9 @@ where
         }
         let peer_connection = {
             let (peer_connection, receiver) = self.new_peer_connection(relays).await?;
-            self.ice_state
+            self.role_state
                 .lock()
-                .add_waiting_receiver(gateway_id, receiver);
+                .add_waiting_ice_receiver(gateway_id, receiver);
             let peer_connection = Arc::new(peer_connection);
             let mut peer_connections = self.peer_connections.lock();
             peer_connections.insert(gateway_id.into(), Arc::clone(&peer_connection));
@@ -277,7 +276,7 @@ where
             .insert(gateway_id, gateway_public_key);
 
         peer_connection.set_remote_description(rtc_sdp).await?;
-        self.ice_state
+        self.role_state
             .lock()
             .activate_ice_candidate_receiver(gateway_id);
 

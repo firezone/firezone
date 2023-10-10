@@ -7,7 +7,7 @@ use crate::CallbackHandler;
 use anyhow::Result;
 use connlib_shared::messages::ClientId;
 use connlib_shared::Error;
-use firezone_tunnel::{GatewayIceState, Tunnel};
+use firezone_tunnel::{GatewayState, Tunnel};
 use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -18,7 +18,7 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 pub const PHOENIX_TOPIC: &str = "gateway";
 
 pub struct Eventloop {
-    tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayIceState>>,
+    tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayState>>,
     portal: PhoenixChannel<IngressMessages, ()>,
 
     // TODO: Strongly type request reference (currently `String`)
@@ -31,7 +31,7 @@ pub struct Eventloop {
 
 impl Eventloop {
     pub(crate) fn new(
-        tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayIceState>>,
+        tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayState>>,
         portal: PhoenixChannel<IngressMessages, ()>,
     ) -> Self {
         Self {

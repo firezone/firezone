@@ -28,7 +28,7 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
@@ -42,16 +42,16 @@ use connlib_shared::{
 use device_channel::{create_iface, DeviceIo, IfaceConfig};
 
 pub use control_protocol::Request;
-pub use ice::{ClientIceState, GatewayIceState};
+pub use role_state::{ClientState, GatewayState};
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
+use crate::role_state::RoleState;
 use connlib_shared::messages::SecretKey;
 use index::IndexLfsr;
 
 mod control_protocol;
 mod device_channel;
 mod dns;
-mod ice;
 mod iface_handler;
 mod index;
 mod ip_packet;
@@ -59,6 +59,7 @@ mod peer;
 mod peer_handler;
 mod resource_sender;
 mod resource_table;
+mod role_state;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const RESET_PACKET_COUNT_INTERVAL: Duration = Duration::from_secs(1);
@@ -155,7 +156,7 @@ struct Device {
 // TODO: We should use newtypes for each kind of Id
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets
 /// to communicate between peers.
-pub struct Tunnel<C: ControlSignal, CB: Callbacks, TIceState> {
+pub struct Tunnel<C: ControlSignal, CB: Callbacks, TRoleState> {
     next_index: Mutex<IndexLfsr>,
     // We use a tokio Mutex here since this is only read/write during config so there's no relevant performance impact
     device: tokio::sync::RwLock<Option<Device>>,
@@ -164,9 +165,6 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks, TIceState> {
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<ConnId, Arc<RTCPeerConnection>>>,
-
-    ice_state: Mutex<TIceState>,
-
     awaiting_connection: Mutex<HashMap<ConnId, AwaitingConnectionDetails>>,
     gateway_awaiting_connection: Mutex<HashMap<GatewayId, Vec<IpNetwork>>>,
     resources_gateways: Mutex<HashMap<ResourceId, GatewayId>>,
@@ -176,6 +174,9 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks, TIceState> {
     gateway_public_keys: Mutex<HashMap<GatewayId, PublicKey>>,
     callbacks: CallbackErrorFacade<CB>,
     iface_handler_abort: Mutex<Option<AbortHandle>>,
+
+    /// State that differs per role, i.e. clients vs gateways.
+    role_state: Mutex<TRoleState>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -194,23 +195,11 @@ pub struct TunnelStats {
     gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
 }
 
-/// Dedicated trait for abstracting over the different ICE states.
-///
-/// Depending on where the [`Tunnel`] is used (i.e. client vs gateway), this behaves slightly different.
-pub trait PollNextIceCandidate: Send + 'static + Default {
-    type Id: fmt::Debug;
-
-    fn poll_next_ice_candidate(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<(Self::Id, RTCIceCandidateInit)>;
-}
-
-impl<C, CB, TIceState> Tunnel<C, CB, TIceState>
+impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
 where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
-    TIceState: PollNextIceCandidate,
+    TRoleState: RoleState,
 {
     pub fn stats(&self) -> TunnelStats {
         let peers_by_ip = self
@@ -247,13 +236,12 @@ where
         }
     }
 
-    pub async fn next_event(&self) -> Event<TIceState::Id> {
+    pub async fn next_event(&self) -> Event<TRoleState::Id> {
         std::future::poll_fn(|cx| self.poll_next_event(cx)).await
     }
 
-    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TIceState::Id>> {
-        let (conn_id, candidate) = ready!(self.ice_state.lock().poll_next_ice_candidate(cx));
-        Poll::Ready(Event::SignalIceCandidate { conn_id, candidate })
+    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
+        self.role_state.lock().poll_next_event(cx)
     }
 }
 
@@ -264,11 +252,11 @@ pub enum Event<TId> {
     },
 }
 
-impl<C, CB, TIceState> Tunnel<C, CB, TIceState>
+impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
 where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
-    TIceState: PollNextIceCandidate,
+    TRoleState: RoleState,
 {
     /// Creates a new tunnel.
     ///
@@ -335,7 +323,7 @@ where
             resources_gateways,
             callbacks: CallbackErrorFacade(callbacks),
             iface_handler_abort,
-            ice_state: Default::default(),
+            role_state: Default::default(),
         })
     }
 

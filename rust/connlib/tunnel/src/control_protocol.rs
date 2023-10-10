@@ -22,7 +22,8 @@ use webrtc::{
     },
 };
 
-use crate::{peer::Peer, ConnId, ControlSignal, PeerConfig, PollNextIceCandidate, Tunnel};
+use crate::role_state::RoleState;
+use crate::{peer::Peer, ConnId, ControlSignal, PeerConfig, Tunnel};
 
 mod client;
 mod gateway;
@@ -37,15 +38,15 @@ pub enum Request {
 }
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
-async fn handle_connection_state_update_with_peer<C, CB, TIceState>(
-    tunnel: &Arc<Tunnel<C, CB, TIceState>>,
+async fn handle_connection_state_update_with_peer<C, CB, TRoleState>(
+    tunnel: &Arc<Tunnel<C, CB, TRoleState>>,
     state: RTCPeerConnectionState,
     index: u32,
     conn_id: ConnId,
 ) where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
-    TIceState: PollNextIceCandidate,
+    TRoleState: RoleState,
 {
     tracing::trace!(?state, "peer_state_update");
     if state == RTCPeerConnectionState::Failed {
@@ -54,15 +55,15 @@ async fn handle_connection_state_update_with_peer<C, CB, TIceState>(
 }
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
-fn set_connection_state_with_peer<C, CB, TIceState>(
-    tunnel: &Arc<Tunnel<C, CB, TIceState>>,
+fn set_connection_state_with_peer<C, CB, TRoleState>(
+    tunnel: &Arc<Tunnel<C, CB, TRoleState>>,
     peer_connection: &Arc<RTCPeerConnection>,
     index: u32,
     conn_id: ConnId,
 ) where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
-    TIceState: PollNextIceCandidate,
+    TRoleState: RoleState,
 {
     let tunnel = Arc::clone(tunnel);
     peer_connection.on_peer_connection_state_change(Box::new(
@@ -75,11 +76,11 @@ fn set_connection_state_with_peer<C, CB, TIceState>(
     ));
 }
 
-impl<C, CB, TIceState> Tunnel<C, CB, TIceState>
+impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
 where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
-    TIceState: PollNextIceCandidate,
+    TRoleState: RoleState,
 {
     #[instrument(level = "trace", skip(self, data_channel, peer_config))]
     async fn handle_channel_open(

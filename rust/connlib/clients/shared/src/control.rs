@@ -14,7 +14,7 @@ use connlib_shared::{
 };
 
 use async_trait::async_trait;
-use firezone_tunnel::{ClientIceState, ControlSignal, Request, Tunnel};
+use firezone_tunnel::{ClientState, ControlSignal, Request, Tunnel};
 use tokio::sync::Mutex;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
@@ -43,7 +43,7 @@ impl ControlSignal for ControlSignaler {
 }
 
 pub struct ControlPlane<CB: Callbacks> {
-    pub tunnel: Arc<Tunnel<ControlSignaler, CB, ClientIceState>>,
+    pub tunnel: Arc<Tunnel<ControlSignaler, CB, ClientState>>,
     pub control_signaler: ControlSignaler,
     pub tunnel_init: Mutex<bool>,
 }
