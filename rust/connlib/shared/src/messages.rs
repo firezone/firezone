@@ -97,7 +97,7 @@ pub struct RequestConnection {
 pub struct ReuseConnection {
     /// Resource id the request is for.
     pub resource_id: ResourceId,
-    /// Id of the gateway we want to re-use
+    /// Id of the gateway we want to reuse
     pub gateway_id: GatewayId,
 }
 
