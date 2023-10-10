@@ -341,10 +341,7 @@ where
             *device = Some(new_device.clone());
             let dev = Arc::clone(self);
             self.iface_handler_abort.lock().replace(
-                tokio::spawn(
-                    async move { dev.iface_handler(new_device.config, new_device.io).await },
-                )
-                .abort_handle(),
+                tokio::spawn(async move { dev.iface_handler(new_device).await }).abort_handle(),
             );
         }
 
@@ -359,10 +356,8 @@ where
 
         self.start_timers().await?;
         let dev = Arc::clone(self);
-        *self.iface_handler_abort.lock() = Some(
-            tokio::spawn(async move { dev.iface_handler(device.config, device.io).await })
-                .abort_handle(),
-        );
+        *self.iface_handler_abort.lock() =
+            Some(tokio::spawn(async move { dev.iface_handler(device).await }).abort_handle());
 
         self.add_route(DNS_SENTINEL.into()).await?;
 
