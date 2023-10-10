@@ -21,6 +21,8 @@ pub trait RoleState: Default + Send + 'static {
 /// For how long we will attempt to gather ICE candidates before aborting.
 ///
 /// Chosen arbitrarily.
+/// Very likely, the actual WebRTC connection will timeout before this.
+/// This timeout is just here to eventually clean-up tasks if they are somehow broken.
 const ICE_GATHERING_TIMEOUT_SECONDS: u64 = 5 * 60;
 
 /// How many concurrent ICE gathering attempts we are allow.
