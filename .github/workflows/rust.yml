@@ -12,6 +12,24 @@ defaults:
     working-directory: ./rust
 
 jobs:
+  static-analysis:
+    runs-on:
+      - ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo fmt -- --check
+      - run: |
+          cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+      - run: |
+          cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
   test:
     strategy:
       fail-fast: false
@@ -39,13 +57,6 @@ jobs:
         with:
           workspaces: ./rust
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: cargo fmt -- --check
-      - run: |
-          cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
-        env:
-          RUSTDOCFLAGS: "-D warnings"
-      - run: |
-          cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
       - run: cargo test --all-features ${{ matrix.packages }}
 
   smoke-test-relay:
