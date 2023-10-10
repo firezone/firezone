@@ -2,11 +2,6 @@ name: Swift
 on:
   workflow_call:
 
-# Cancel old workflow runs if new code is pushed
-concurrency:
-  group: "swift-${{ github.workflow }}-${{ github.ref }}"
-  cancel-in-progress: true
-
 env:
   # TODO: Change this to "prod" when app is released
   CLIENT_ENV: staging
