@@ -351,9 +351,14 @@ where
         {
             *device = Some(new_device.clone());
             let dev = Arc::clone(self);
-            self.iface_handler_abort
-                .lock()
-                .replace(tokio::spawn(dev.iface_handler(new_device)).abort_handle());
+            self.iface_handler_abort.lock().replace(
+                tokio::spawn(async move {
+                    if let Err(e) = dev.iface_handler(new_device).await {
+                        let _ = self.callbacks.on_error(&e.into());
+                    }
+                })
+                .abort_handle(),
+            );
         }
 
         Ok(())
@@ -367,8 +372,14 @@ where
 
         self.start_timers().await?;
         let dev = Arc::clone(self);
-        *self.iface_handler_abort.lock() =
-            Some(tokio::spawn(dev.iface_handler(device)).abort_handle());
+        *self.iface_handler_abort.lock() = Some(
+            tokio::spawn(async move {
+                if let Err(e) = dev.iface_handler(device).await {
+                    let _ = self.callbacks.on_error(&e.into());
+                }
+            })
+            .abort_handle(),
+        );
 
         self.add_route(DNS_SENTINEL.into()).await?;
 
