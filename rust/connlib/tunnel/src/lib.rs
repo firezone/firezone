@@ -24,12 +24,13 @@ use webrtc::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
         setting_engine::SettingEngine, APIBuilder, API,
     },
-    ice_transport::ice_candidate::RTCIceCandidate,
     interceptor::registry::Registry,
     peer_connection::RTCPeerConnection,
 };
 
-use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
+use std::task::{Context, Poll};
+use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
+use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 use connlib_shared::{
     messages::{
@@ -41,8 +42,10 @@ use connlib_shared::{
 use device_channel::{create_iface, DeviceIo, IfaceConfig};
 
 pub use control_protocol::Request;
+pub use role_state::{ClientState, GatewayState};
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
+use crate::role_state::RoleState;
 use connlib_shared::messages::SecretKey;
 use index::IndexLfsr;
 
@@ -56,6 +59,7 @@ mod peer;
 mod peer_handler;
 mod resource_sender;
 mod resource_table;
+mod role_state;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const RESET_PACKET_COUNT_INTERVAL: Duration = Duration::from_secs(1);
@@ -87,6 +91,16 @@ impl From<ClientId> for ConnId {
 impl From<ResourceId> for ConnId {
     fn from(id: ResourceId) -> Self {
         Self::Resource(id)
+    }
+}
+
+impl fmt::Display for ConnId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConnId::Gateway(inner) => fmt::Display::fmt(inner, f),
+            ConnId::Client(inner) => fmt::Display::fmt(inner, f),
+            ConnId::Resource(inner) => fmt::Display::fmt(inner, f),
+        }
     }
 }
 
@@ -125,13 +139,6 @@ pub trait ControlSignal {
         connected_gateway_ids: &[GatewayId],
         reference: usize,
     ) -> Result<()>;
-
-    /// Signals a new candidate to the control plane
-    async fn signal_ice_candidate(
-        &self,
-        ice_candidate: RTCIceCandidate,
-        conn_id: ConnId,
-    ) -> Result<()>;
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -149,7 +156,7 @@ struct Device {
 // TODO: We should use newtypes for each kind of Id
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets
 /// to communicate between peers.
-pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
+pub struct Tunnel<C: ControlSignal, CB: Callbacks, TRoleState> {
     next_index: Mutex<IndexLfsr>,
     // We use a tokio Mutex here since this is only read/write during config so there's no relevant performance impact
     device: tokio::sync::RwLock<Option<Device>>,
@@ -158,8 +165,6 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<ConnId, Arc<RTCPeerConnection>>>,
-    ice_candidate_queue:
-        Mutex<HashMap<ConnId, tokio::sync::mpsc::Receiver<Option<RTCIceCandidate>>>>,
     awaiting_connection: Mutex<HashMap<ConnId, AwaitingConnectionDetails>>,
     gateway_awaiting_connection: Mutex<HashMap<GatewayId, Vec<IpNetwork>>>,
     resources_gateways: Mutex<HashMap<ResourceId, GatewayId>>,
@@ -169,6 +174,9 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks> {
     gateway_public_keys: Mutex<HashMap<GatewayId, PublicKey>>,
     callbacks: CallbackErrorFacade<CB>,
     iface_handler_abort: Mutex<Option<AbortHandle>>,
+
+    /// State that differs per role, i.e. clients vs gateways.
+    role_state: Mutex<TRoleState>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -187,10 +195,11 @@ pub struct TunnelStats {
     gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
 }
 
-impl<C, CB> Tunnel<C, CB>
+impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
 where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
+    TRoleState: RoleState,
 {
     pub fn stats(&self) -> TunnelStats {
         let peers_by_ip = self
@@ -226,12 +235,28 @@ where
             gateway_public_keys,
         }
     }
+
+    pub async fn next_event(&self) -> Event<TRoleState::Id> {
+        std::future::poll_fn(|cx| self.poll_next_event(cx)).await
+    }
+
+    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
+        self.role_state.lock().poll_next_event(cx)
+    }
 }
 
-impl<C, CB> Tunnel<C, CB>
+pub enum Event<TId> {
+    SignalIceCandidate {
+        conn_id: TId,
+        candidate: RTCIceCandidateInit,
+    },
+}
+
+impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
 where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
+    TRoleState: RoleState,
 {
     /// Creates a new tunnel.
     ///
@@ -255,7 +280,6 @@ where
         let resources_gateways = Default::default();
         let gateway_awaiting_connection = Default::default();
         let device = Default::default();
-        let ice_candidate_queue = Default::default();
         let iface_handler_abort = Default::default();
 
         // ICE
@@ -297,9 +321,9 @@ where
             gateway_awaiting_connection,
             control_signaler,
             resources_gateways,
-            ice_candidate_queue,
             callbacks: CallbackErrorFacade(callbacks),
             iface_handler_abort,
+            role_state: Default::default(),
         })
     }
 

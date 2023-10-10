@@ -28,7 +28,7 @@ pub(crate) enum SendPacket {
 // as we can therefore we won't do it.
 //
 // See: https://stackoverflow.com/a/55093896
-impl<C, CB> Tunnel<C, CB>
+impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
 where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,

@@ -1,14 +1,10 @@
 use std::sync::Arc;
 
 use boringtun::x25519::{PublicKey, StaticSecret};
-use chrono::{DateTime, Utc};
 use connlib_shared::messages::SecretKey;
 use connlib_shared::{
     control::Reference,
-    messages::{
-        ClientId, GatewayId, Key, Relay, RequestConnection, ResourceDescription, ResourceId,
-        ReuseConnection,
-    },
+    messages::{GatewayId, Key, Relay, RequestConnection, ResourceId, ReuseConnection},
     Callbacks,
 };
 use rand_core::OsRng;
@@ -21,11 +17,11 @@ use webrtc::{
     },
 };
 
-use crate::{ControlSignal, Error, PeerConfig, Request, Result, Tunnel};
+use crate::{ClientState, ControlSignal, Error, PeerConfig, Request, Result, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
 fn handle_connection_state_update<C, CB>(
-    tunnel: &Arc<Tunnel<C, CB>>,
+    tunnel: &Arc<Tunnel<C, CB, ClientState>>,
     state: RTCPeerConnectionState,
     gateway_id: GatewayId,
     resource_id: ResourceId,
@@ -49,7 +45,7 @@ fn handle_connection_state_update<C, CB>(
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
 fn set_connection_state_update<C, CB>(
-    tunnel: &Arc<Tunnel<C, CB>>,
+    tunnel: &Arc<Tunnel<C, CB, ClientState>>,
     peer_connection: &Arc<RTCPeerConnection>,
     gateway_id: GatewayId,
     resource_id: ResourceId,
@@ -68,7 +64,7 @@ fn set_connection_state_update<C, CB>(
     ));
 }
 
-impl<C, CB> Tunnel<C, CB>
+impl<C, CB> Tunnel<C, CB, ClientState>
 where
     C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
@@ -163,10 +159,11 @@ where
             }
         }
         let peer_connection = {
-            let peer_connection = Arc::new(
-                self.initialize_peer_request(relays, gateway_id.into())
-                    .await?,
-            );
+            let (peer_connection, receiver) = self.new_peer_connection(relays).await?;
+            self.role_state
+                .lock()
+                .add_waiting_ice_receiver(gateway_id, receiver);
+            let peer_connection = Arc::new(peer_connection);
             let mut peer_connections = self.peer_connections.lock();
             peer_connections.insert(gateway_id.into(), Arc::clone(&peer_connection));
             peer_connection
@@ -279,24 +276,10 @@ where
             .insert(gateway_id, gateway_public_key);
 
         peer_connection.set_remote_description(rtc_sdp).await?;
-        self.start_ice_candidate_handler(gateway_id.into())?;
+        self.role_state
+            .lock()
+            .activate_ice_candidate_receiver(gateway_id);
 
         Ok(())
-    }
-
-    pub fn allow_access(
-        &self,
-        resource: ResourceDescription,
-        client_id: ClientId,
-        expires_at: DateTime<Utc>,
-    ) {
-        if let Some(peer) = self
-            .peers_by_ip
-            .write()
-            .iter_mut()
-            .find_map(|(_, p)| (p.conn_id == client_id.into()).then_some(p))
-        {
-            peer.add_resource(resource, expires_at);
-        }
     }
 }

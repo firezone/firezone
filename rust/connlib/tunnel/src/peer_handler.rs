@@ -4,15 +4,17 @@ use boringtun::noise::{handshake::parse_handshake_anon, Packet, TunnResult};
 use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
 
+use crate::role_state::RoleState;
 use crate::{
     device_channel::DeviceIo, index::check_packet_index, peer::Peer, ControlSignal, Tunnel,
     MAX_UDP_SIZE,
 };
 
-impl<C, CB> Tunnel<C, CB>
+impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
 where
     C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
+    TRoleState: RoleState,
 {
     #[inline(always)]
     fn is_wireguard_packet_ok(&self, parsed_packet: &Packet, peer: &Peer) -> bool {
