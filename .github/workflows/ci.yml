@@ -19,6 +19,7 @@ jobs:
     uses: ./.github/workflows/kotlin.yml
   swift:
     uses: ./.github/workflows/swift.yml
+    secrets: inherit
   static-analysis:
     uses: ./.github/workflows/static-analysis.yml
   terraform:
