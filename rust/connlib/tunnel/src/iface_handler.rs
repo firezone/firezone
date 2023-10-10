@@ -161,13 +161,12 @@ where
             .await
     }
 
-    #[tracing::instrument(level = "trace", skip(self, config, io))]
-    pub(crate) async fn iface_handler(self: Arc<Self>, Device { config, io }: Device) {
-        let device_writer = io.clone();
-        let mut src = [0u8; MAX_UDP_SIZE];
+    #[tracing::instrument(level = "trace", skip(self, device))]
+    pub(crate) async fn iface_handler(self: Arc<Self>, mut device: Device) {
+        let device_writer = device.io.clone();
         let mut dst = [0u8; MAX_UDP_SIZE];
         loop {
-            let res = match io.read(&mut src[..config.mtu()]).await {
+            let src = match device.read().await {
                 Ok(res) => res,
                 Err(e) => {
                     tracing::error!(err = ?e, "failed to read interface: {e:#}");
@@ -175,14 +174,13 @@ where
                     break;
                 }
             };
-            tracing::trace!(target: "wire", action = "read", bytes = res, from = "iface");
 
-            if res == 0 {
+            if src.is_empty() {
                 break;
             }
 
             if let Err(e) = self
-                .handle_iface_packet(&device_writer, &mut src[..res], &mut dst)
+                .handle_iface_packet(&device_writer, src, &mut dst)
                 .await
             {
                 let _ = self.callbacks.on_error(&e);
