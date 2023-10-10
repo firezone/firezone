@@ -88,10 +88,11 @@ fun copyJniShared(task: Task, buildType: String) = task.apply {
 }
 
 cargo {
-    if (gradle.startParameter.taskNames.any{it.toLowerCase().contains("debug")}) {
-        profile = "debug"
-    } else {
+    // TODO: Read the build variant from the android plugin instead
+    if (gradle.startParameter.taskNames.any{it.lowercase().contains("release")}) {
         profile = "release"
+    } else {
+        profile = "debug"
     }
     prebuiltToolchains = true
     verbose = true

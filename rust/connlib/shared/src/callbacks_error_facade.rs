@@ -56,7 +56,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         result
     }
 
-    fn on_remove_route(&self, route: IpNetwork) -> Result<()> {
+    fn on_remove_route(&self, route: IpNetwork) -> Result<Option<RawFd>> {
         let result = self
             .0
             .on_remove_route(route)

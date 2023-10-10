@@ -218,21 +218,25 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_remove_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
+    fn on_remove_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
-            let ip = env.new_string(route.to_string()).map_err(|source| {
-                CallbackError::NewStringFailed {
-                    name: "route",
+            let ip = env
+                .new_string(route.network_address().to_string())
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "route_ip",
                     source,
-                }
-            })?;
-            call_method(
-                &mut env,
+                })?;
+
+            let name = "onRemoveRoute";
+            env.call_method(
                 &self.callback_handler,
-                "onRemoveRoute",
-                "(Ljava/lang/String;I)V",
+                name,
+                "(Ljava/lang/String;I)I",
                 &[JValue::from(&ip), JValue::Int(route.netmask().into())],
             )
+            .and_then(|val| val.i())
+            .map(Some)
+            .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
     }
 
