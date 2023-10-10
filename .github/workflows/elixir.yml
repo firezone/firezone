@@ -138,8 +138,8 @@ jobs:
         with:
           path: elixir/priv/plts
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
+          # This will make sure that we can incrementally build the PLT from older cache and save it under a new key
           restore-keys: |
-            # This will make sure that we can incrementally build the PLT from older cache and save it under a new key
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-
       - name: Create PLTs
         if: ${{ steps.plt_cache.outputs.cache-hit != 'true' }}
