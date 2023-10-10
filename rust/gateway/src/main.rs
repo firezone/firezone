@@ -52,7 +52,9 @@ async fn main() -> Result<()> {
                 Ok(never) => match never {},
             };
 
-            let t = backoff.next_backoff().expect("the exponential backoff reconnect loop should run indefinetly");
+            let t = backoff
+                .next_backoff()
+                .expect("the exponential backoff reconnect loop should run indefinitely");
             tracing::warn!(retry_in = ?t, "Error connecting to portal: {error:#}");
 
             tokio::time::sleep(t).await;
