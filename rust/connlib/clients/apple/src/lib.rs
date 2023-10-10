@@ -109,9 +109,9 @@ impl Callbacks for CallbackHandler {
         Ok(None)
     }
 
-    fn on_remove_route(&self, route: IpNetwork) -> Result<(), Self::Error> {
+    fn on_remove_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
         self.inner.on_remove_route(route.to_string());
-        Ok(())
+        Ok(None)
     }
 
     fn on_update_resources(
