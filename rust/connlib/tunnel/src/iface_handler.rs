@@ -146,13 +146,11 @@ where
 
         let dst_addr = Tunn::dst_address(src).ok_or(Error::BadPacket)?;
 
-        let encapsulated_packet = {
-            match self.peers_by_ip.read().longest_match(dst_addr) {
-                Some((_, peer)) => peer.encapsulate(src, dst)?,
-                None => {
-                    self.connection_intent(src, &dst_addr);
-                    return Ok(());
-                }
+        let encapsulated_packet = match self.peers_by_ip.read().longest_match(dst_addr) {
+            Some((_, peer)) => peer.encapsulate(src, dst)?,
+            None => {
+                self.connection_intent(src, &dst_addr);
+                return Ok(());
             }
         };
 
