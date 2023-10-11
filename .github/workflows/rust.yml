@@ -67,6 +67,8 @@ jobs:
         run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
+          # Prevents runner.os caches from conflicting
+          key: ${{ matrix.runs-on }}
           workspaces: ./rust
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo test --all-features ${{ matrix.packages }}
