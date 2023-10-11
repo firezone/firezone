@@ -68,7 +68,7 @@ impl IfaceConfig {
         Ok(Some(Device {
             io,
             config,
-            buf: [0u8; MAX_UDP_SIZE],
+            buf: Box::new([0u8; MAX_UDP_SIZE]),
         }))
     }
 }
@@ -89,6 +89,6 @@ pub(crate) async fn create_iface(
     Ok(Device {
         io,
         config,
-        buf: [0u8; MAX_UDP_SIZE],
+        buf: Box::new([0u8; MAX_UDP_SIZE]),
     })
 }

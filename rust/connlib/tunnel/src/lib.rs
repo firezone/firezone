@@ -154,7 +154,7 @@ struct Device {
     config: Arc<IfaceConfig>,
     io: DeviceIo,
 
-    buf: [u8; MAX_UDP_SIZE],
+    buf: Box<[u8; MAX_UDP_SIZE]>,
 }
 
 impl Device {
