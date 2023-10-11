@@ -42,6 +42,14 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     #[inline]
+    pub(crate) fn destination(&self) -> IpAddr {
+        match self {
+            MutableIpPacket::MutableIpv4Packet(i) => i.get_destination().into(),
+            MutableIpPacket::MutableIpv6Packet(i) => i.get_destination().into(),
+        }
+    }
+
+    #[inline]
     pub(crate) fn update_checksum(&mut self) {
         // Note: neither ipv6 nor icmp have a checksum.
         self.set_icmpv6_checksum();
@@ -86,6 +94,13 @@ impl<'a> MutableIpPacket<'a> {
         match self {
             Self::MutableIpv4Packet(p) => p.to_immutable().into(),
             Self::MutableIpv6Packet(p) => p.to_immutable().into(),
+        }
+    }
+
+    pub(crate) fn as_immutable(&self) -> IpPacket<'_> {
+        match self {
+            Self::MutableIpv4Packet(p) => IpPacket::Ipv4Packet(p.to_immutable()),
+            Self::MutableIpv6Packet(p) => IpPacket::Ipv6Packet(p.to_immutable()),
         }
     }
 
@@ -176,14 +191,6 @@ pub(crate) enum IpPacket<'a> {
 }
 
 impl<'a> IpPacket<'a> {
-    pub(crate) fn new(data: &[u8]) -> Option<IpPacket> {
-        match data[0] >> 4 {
-            4 => Ipv4Packet::new(data).map(Into::into),
-            6 => Ipv6Packet::new(data).map(Into::into),
-            _ => None,
-        }
-    }
-
     pub(crate) fn version(&self) -> Version {
         match self {
             IpPacket::Ipv4Packet(_) => Version::Ipv4,
@@ -216,17 +223,17 @@ impl<'a> IpPacket<'a> {
             .flatten()
     }
 
-    pub(crate) fn destination(&self) -> IpAddr {
-        match self {
-            Self::Ipv4Packet(p) => p.get_destination().into(),
-            Self::Ipv6Packet(p) => p.get_destination().into(),
-        }
-    }
-
     pub(crate) fn source(&self) -> IpAddr {
         match self {
             Self::Ipv4Packet(p) => p.get_source().into(),
             Self::Ipv6Packet(p) => p.get_source().into(),
+        }
+    }
+
+    pub(crate) fn destination(&self) -> IpAddr {
+        match self {
+            Self::Ipv4Packet(p) => p.get_destination().into(),
+            Self::Ipv6Packet(p) => p.get_destination().into(),
         }
     }
 

@@ -25,8 +25,10 @@ pub(crate) enum Packet {
 // as we can therefore we won't do it.
 //
 // See: https://stackoverflow.com/a/55093896
-pub(crate) fn parse(resources: &ResourceTable<ResourceDescription>, buf: &[u8]) -> Option<Packet> {
-    let packet = IpPacket::new(buf)?;
+pub(crate) fn parse(
+    resources: &ResourceTable<ResourceDescription>,
+    packet: IpPacket<'_>,
+) -> Option<Packet> {
     let version = packet.version();
     if packet.destination() != IpAddr::from(DNS_SENTINEL) {
         return None;
@@ -81,21 +83,20 @@ pub(crate) fn parse(resources: &ResourceTable<ResourceDescription>, buf: &[u8]) 
         _ => return None,
     };
     let response = build_dns_with_answer(message, question.qname(), question.qtype(), &resource?)?;
-    let response = build_response(buf, response);
+    let response = build_response(packet, response);
     response.map(|pkt| match version {
         Version::Ipv4 => Packet::Ipv4(pkt),
         Version::Ipv6 => Packet::Ipv6(pkt),
     })
 }
 
-fn build_response(original_buf: &[u8], mut dns_answer: Vec<u8>) -> Option<Vec<u8>> {
+fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> Option<Vec<u8>> {
     let response_len = dns_answer.len();
-    let original_pkt = IpPacket::new(original_buf)?;
     let original_dgm = original_pkt.as_udp()?;
     let hdr_len = original_pkt.packet_size() - original_dgm.payload().len();
     let mut res_buf = Vec::with_capacity(hdr_len + response_len);
 
-    res_buf.extend_from_slice(&original_buf[..hdr_len]);
+    res_buf.extend_from_slice(&original_pkt.packet()[..hdr_len]);
     res_buf.append(&mut dns_answer);
 
     let mut pkt = MutableIpPacket::new(&mut res_buf)?;

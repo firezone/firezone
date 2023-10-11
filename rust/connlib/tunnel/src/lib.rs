@@ -3,7 +3,7 @@
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
 use boringtun::{
-    noise::{errors::WireGuardError, rate_limiter::RateLimiter, Tunn, TunnResult},
+    noise::{errors::WireGuardError, rate_limiter::RateLimiter, TunnResult},
     x25519::{PublicKey, StaticSecret},
 };
 use bytes::Bytes;
@@ -45,6 +45,7 @@ pub use control_protocol::Request;
 pub use role_state::{ClientState, GatewayState};
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
+use crate::ip_packet::MutableIpPacket;
 use crate::role_state::RoleState;
 use connlib_shared::messages::SecretKey;
 use index::IndexLfsr;
@@ -157,11 +158,22 @@ struct Device {
 }
 
 impl Device {
-    async fn read(&mut self) -> io::Result<&mut [u8]> {
+    async fn read(&mut self) -> io::Result<Option<MutableIpPacket<'_>>> {
         let res = self.io.read(&mut self.buf[..self.config.mtu()]).await?;
         tracing::trace!(target: "wire", action = "read", bytes = res, from = "iface");
 
-        Ok(&mut self.buf[..res])
+        if res == 0 {
+            return Ok(None);
+        }
+
+        Ok(Some(
+            MutableIpPacket::new(&mut self.buf[..res]).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "received bytes are not an IP packet",
+                )
+            })?,
+        ))
     }
 }
 
@@ -365,13 +377,13 @@ where
                 let device_writer = device.io.clone();
                 let mut dst = [0u8; MAX_UDP_SIZE];
                 loop {
-                    let src = device.read().await?;
-
-                    if src.is_empty() {
+                    let Some(packet) = device.read().await? else {
                         return Ok(());
-                    }
+                    };
 
-                    if let Some(packet) = dns::parse(&tunnel.resources.read(), src) {
+                    if let Some(packet) =
+                        dns::parse(&tunnel.resources.read(), packet.as_immutable())
+                    {
                         if let Err(e) = send_dns_packet(&device_writer, packet) {
                             tracing::error!(err = %e, "failed to send DNS packet");
                             let _ = tunnel.callbacks.on_error(&e.into());
@@ -380,7 +392,7 @@ where
                         continue;
                     }
 
-                    if let Err(e) = tunnel.handle_iface_packet(src, &mut dst).await {
+                    if let Err(e) = tunnel.handle_iface_packet(packet, &mut dst).await {
                         let _ = tunnel.callbacks.on_error(&e);
                         tracing::error!(err = ?e, "failed to handle packet {e:#}")
                     }
@@ -536,8 +548,7 @@ where
         Ok(())
     }
 
-    fn get_resource(&self, buff: &[u8]) -> Option<ResourceDescription> {
-        let addr = Tunn::dst_address(buff)?;
+    fn get_resource(&self, addr: IpAddr) -> Option<ResourceDescription> {
         let resources = self.resources.read();
         match addr {
             IpAddr::V4(ipv4) => resources.get_by_ip(ipv4).cloned(),
