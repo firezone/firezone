@@ -32,11 +32,13 @@ macro_rules! swap_src_dst {
 impl<'a> MutableIpPacket<'a> {
     #[inline]
     pub(crate) fn new(data: &mut [u8]) -> Option<MutableIpPacket> {
-        match data[0] >> 4 {
-            4 => MutableIpv4Packet::new(data).map(Into::into),
-            6 => MutableIpv6Packet::new(data).map(Into::into),
-            _ => None,
-        }
+        let packet = match data[0] >> 4 {
+            4 => MutableIpv4Packet::new(data)?.into(),
+            6 => MutableIpv6Packet::new(data)?.into(),
+            _ => return None,
+        };
+
+        Some(packet)
     }
 
     #[inline]
