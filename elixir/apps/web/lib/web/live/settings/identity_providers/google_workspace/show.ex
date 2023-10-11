@@ -96,8 +96,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
       </:content>
     </.section>
 
-    <.section>
-      <:title>Danger Zone</:title>
+    <.danger_zone>
       <:action>
         <.delete_button
           data-confirm="Are you sure want to delete this provider along with all related data?"
@@ -107,7 +106,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
         </.delete_button>
       </:action>
       <:content></:content>
-    </.section>
+    </.danger_zone>
     """
   end
 

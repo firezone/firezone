@@ -79,6 +79,18 @@ defmodule Web.RelayGroups.Index do
             <:col :let={relay} label="STATUS">
               <.connection_status schema={relay} />
             </:col>
+            <:empty>
+              <div class="flex justify-center text-center text-slate-500 p-4">
+                <div class="w-auto">
+                  <div class="pb-4">
+                    No relay instance groups to display
+                  </div>
+                  <.add_button navigate={~p"/#{@account}/relay_groups/new"}>
+                    Add Instance Group
+                  </.add_button>
+                </div>
+              </div>
+            </:empty>
           </.table_with_groups>
           <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/relay_groups"} />-->
         </div>

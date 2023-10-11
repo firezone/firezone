@@ -191,7 +191,7 @@ defmodule Web.Live.Groups.ShowTest do
       |> live(~p"/#{account}/groups/#{group}")
 
     assert lv
-           |> element("a", "Edit Group")
+           |> element("a:first-child", "Edit Group")
            |> render_click() ==
              {:error, {:live_redirect, %{to: ~p"/#{account}/groups/#{group}/edit", kind: :push}}}
   end

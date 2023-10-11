@@ -42,6 +42,18 @@ defmodule Web.Policies.Index do
               <%= policy.resource.name %>
             </.link>
           </:col>
+          <:empty>
+            <div class="flex justify-center text-center text-slate-500 p-4">
+              <div class="w-auto">
+                <div class="pb-4">
+                  No policies to display
+                </div>
+                <.add_button navigate={~p"/#{@account}/policies/new"}>
+                  Add Policy
+                </.add_button>
+              </div>
+            </div>
+          </:empty>
         </.table>
       </:content>
     </.section>

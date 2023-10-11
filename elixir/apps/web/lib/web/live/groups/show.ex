@@ -78,14 +78,29 @@ defmodule Web.Groups.Show do
               identity={identity}
             />
           </:col>
+          <:empty>
+            <div class="flex justify-center text-center text-slate-500 p-4">
+              <div :if={not Actors.group_synced?(@group)} class="w-auto">
+                <div class="pb-4">
+                  No actors in group
+                </div>
+                <.edit_button
+                  :if={not Actors.group_synced?(@group)}
+                  navigate={~p"/#{@account}/groups/#{@group}/edit"}
+                >
+                  Edit Group
+                </.edit_button>
+              </div>
+              <div :if={Actors.group_synced?(@group)} class="w-auto">
+                No actors in synced group
+              </div>
+            </div>
+          </:empty>
         </.table>
       </:content>
     </.section>
 
-    <.section>
-      <:title>
-        Danger zone
-      </:title>
+    <.danger_zone>
       <:action>
         <.delete_button
           phx-click="delete"
@@ -95,7 +110,7 @@ defmodule Web.Groups.Show do
         </.delete_button>
       </:action>
       <:content></:content>
-    </.section>
+    </.danger_zone>
     """
   end
 

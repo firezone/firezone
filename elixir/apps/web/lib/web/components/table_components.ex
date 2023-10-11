@@ -205,6 +205,7 @@ defmodule Web.TableComponents do
   slot :group, required: true
 
   slot :action, doc: "the slot for showing user actions in the last table column"
+  slot :empty, doc: "the slot for showing a message or content when there are no rows"
 
   def table_with_groups(assigns) do
     assigns =
@@ -234,6 +235,9 @@ defmodule Web.TableComponents do
         />
       </tbody>
     </table>
+    <div :if={Enum.empty?(@groups)}>
+      <%= render_slot(@empty) %>
+    </div>
     """
   end
 

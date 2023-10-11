@@ -78,16 +78,16 @@ defmodule Web.RelayGroups.Show do
               <:col :let={relay} label="STATUS">
                 <.connection_status schema={relay} />
               </:col>
+              <:empty>
+                <div class="text-center text-slate-500 p-4">No relay instances to display</div>
+              </:empty>
             </.table>
           </div>
         </div>
       </:content>
     </.section>
 
-    <.section>
-      <:title>
-        Danger zone
-      </:title>
+    <.danger_zone>
       <:action :if={@group.account_id}>
         <.delete_button
           phx-click="delete"
@@ -97,7 +97,7 @@ defmodule Web.RelayGroups.Show do
         </.delete_button>
       </:action>
       <:content></:content>
-    </.section>
+    </.danger_zone>
     """
   end
 

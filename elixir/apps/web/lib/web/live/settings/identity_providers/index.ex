@@ -74,6 +74,18 @@ defmodule Web.Settings.IdentityProviders.Index do
                 groups_count_by_provider_id={@groups_count_by_provider_id}
               />
             </:col>
+            <:empty>
+              <div class="flex justify-center text-center text-slate-500 p-4">
+                <div class="w-auto">
+                  <div class="pb-4">
+                    No identity providers to display
+                  </div>
+                  <.add_button navigate={~p"/#{@account}/settings/identity_providers/new"}>
+                    Add Identity Provider
+                  </.add_button>
+                </div>
+              </div>
+            </:empty>
           </.table>
         </div>
       </:content>

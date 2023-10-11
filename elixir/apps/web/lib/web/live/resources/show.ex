@@ -96,6 +96,9 @@ defmodule Web.Resources.Show do
               <%= gateway_group.name_prefix %>
             </.link>
           </:col>
+          <:empty>
+            <div class="text-center text-slate-500 p-4">No linked gateways to display</div>
+          </:empty>
         </.table>
       </:content>
     </.section>
@@ -153,12 +156,14 @@ defmodule Web.Resources.Show do
               Show
             </.link>
           </:col>
+          <:empty>
+            <div class="text-center text-slate-500 p-4">No authorizations to display</div>
+          </:empty>
         </.table>
       </:content>
     </.section>
 
-    <.section>
-      <:title>Danger Zone</:title>
+    <.danger_zone>
       <:action>
         <.delete_button
           data-confirm="Are you sure want to delete this resource?"
@@ -169,7 +174,7 @@ defmodule Web.Resources.Show do
         </.delete_button>
       </:action>
       <:content></:content>
-    </.section>
+    </.danger_zone>
     """
   end
 

@@ -132,8 +132,7 @@ defmodule Web.Policies.Show do
       </:content>
     </.section>
 
-    <.section>
-      <:title>Danger Zone</:title>
+    <.danger_zone>
       <:action>
         <.delete_button
           phx-click="delete"
@@ -144,7 +143,7 @@ defmodule Web.Policies.Show do
         </.delete_button>
       </:action>
       <:content></:content>
-    </.section>
+    </.danger_zone>
     """
   end
 

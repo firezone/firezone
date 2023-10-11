@@ -81,6 +81,18 @@ defmodule Web.GatewayGroups.Index do
             <:col :let={gateway} label="STATUS">
               <.connection_status schema={gateway} />
             </:col>
+            <:empty>
+              <div class="flex justify-center text-center text-slate-500 p-4">
+                <div class="w-auto">
+                  <div class="pb-4">
+                    No gateway instance groups to display
+                  </div>
+                  <.add_button navigate={~p"/#{@account}/gateway_groups/new"}>
+                    Add Instance Group
+                  </.add_button>
+                </div>
+              </div>
+            </:empty>
           </.table_with_groups>
           <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/gateway_groups"} />-->
         </div>

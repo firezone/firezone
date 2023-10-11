@@ -87,6 +87,9 @@ defmodule Web.GatewayGroups.Show do
             <:col :let={gateway} label="STATUS">
               <.connection_status schema={gateway} />
             </:col>
+            <:empty>
+              <div class="text-center text-slate-500 p-4">No gateway instances to display</div>
+            </:empty>
           </.table>
         </div>
       </:content>
@@ -110,13 +113,15 @@ defmodule Web.GatewayGroups.Show do
             <:col :let={resource} label="ADDRESS">
               <%= resource.address %>
             </:col>
+            <:empty>
+              <div class="text-center text-slate-500 p-4">No resources to display</div>
+            </:empty>
           </.table>
         </div>
       </:content>
     </.section>
 
-    <.section>
-      <:title>Danger Zone</:title>
+    <.danger_zone>
       <:action>
         <.delete_button
           phx-click="delete"
@@ -126,7 +131,7 @@ defmodule Web.GatewayGroups.Show do
         </.delete_button>
       </:action>
       <:content></:content>
-    </.section>
+    </.danger_zone>
     """
   end
 

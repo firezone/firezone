@@ -22,21 +22,9 @@ defmodule Web.Clients.Index do
       </:title>
       <:content>
         <div class="bg-white dark:bg-gray-800 overflow-hidden">
-          <div :if={Enum.empty?(@clients)} class="text-center align-middle pb-8 pt-4">
-            <h3 class="mt-2 text-lg font-semibold text-gray-900">There are no clients to display.</h3>
-
-            <div class="mt-6">
-              Clients are created automatically when user connects to a Resource.
-            </div>
-          </div>
           <!--<.resource_filter />-->
-          <.table
-            :if={not Enum.empty?(@clients)}
-            id="clients"
-            rows={@clients}
-            row_id={&"client-#{&1.id}"}
-          >
-            <:col :let={client} label="NAME" sortable="true">
+          <.table id="clients" rows={@clients} row_id={&"client-#{&1.id}"}>
+            <:col :let={client} label="NAME">
               <.link
                 navigate={~p"/#{@account}/clients/#{client.id}"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
@@ -44,7 +32,7 @@ defmodule Web.Clients.Index do
                 <%= client.name %>
               </.link>
             </:col>
-            <:col :let={client} label="USER" sortable="true">
+            <:col :let={client} label="USER">
               <.link
                 navigate={~p"/#{@account}/actors/#{client.actor.id}"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
@@ -52,9 +40,15 @@ defmodule Web.Clients.Index do
                 <%= client.actor.name %>
               </.link>
             </:col>
-            <:col :let={client} label="STATUS" sortable="true">
+            <:col :let={client} label="STATUS">
               <.connection_status schema={client} />
             </:col>
+            <:empty>
+              <div class="text-center text-slate-500 p-4">No clients to display</div>
+              <div class="text-center text-slate-500 mb-4">
+                Clients are created automatically when user connects to a resource.
+              </div>
+            </:empty>
           </.table>
           <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/clients"} />-->
         </div>

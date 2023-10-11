@@ -120,12 +120,32 @@ defmodule Web.Actors.Show do
               Delete
             </button>
           </:action>
+          <:empty>
+            <div class="flex justify-center text-center text-slate-500 p-4">
+              <div class="w-auto">
+                <div class="pb-4">
+                  No authentication identities to display
+                </div>
+                <.add_button
+                  :if={@actor.type == :service_account}
+                  navigate={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}
+                >
+                  Create Token
+                </.add_button>
+                <.add_button
+                  :if={@actor.type != :service_account}
+                  navigate={~p"/#{@account}/actors/users/#{@actor}/new_identity"}
+                >
+                  Create Identity
+                </.add_button>
+              </div>
+            </div>
+          </:empty>
         </.table>
       </:content>
     </.section>
 
-    <.section>
-      <:title>Danger Zone</:title>
+    <.danger_zone>
       <:action>
         <.delete_button
           :if={not Actors.actor_synced?(@actor)}
@@ -158,7 +178,7 @@ defmodule Web.Actors.Show do
         </.button>
       </:action>
       <:content></:content>
-    </.section>
+    </.danger_zone>
     """
   end
 

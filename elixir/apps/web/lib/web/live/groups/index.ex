@@ -37,24 +37,8 @@ defmodule Web.Groups.Index do
       </:action>
       <:content>
         <div class="bg-white dark:bg-gray-800 overflow-hidden">
-          <div :if={Enum.empty?(@groups)} class="text-center align-middle pb-8 pt-4">
-            <h3 class="mt-2 text-lg font-semibold text-gray-900">There are no groups to display.</h3>
-
-            <div class="mt-6">
-              <.add_button navigate={~p"/#{@account}/groups/new"} class="inline-flex items-center">
-                Add a new group
-              </.add_button>
-              <span class="font-semibold px-2 mb-4">or</span>
-              <.add_button
-                navigate={~p"/#{@account}/settings/identity_providers"}
-                class="inline-flex items-center"
-              >
-                Sync groups from an IdP
-              </.add_button>
-            </div>
-          </div>
           <!--<.resource_filter />-->
-          <.table :if={not Enum.empty?(@groups)} id="groups" rows={@groups} row_id={&"user-#{&1.id}"}>
+          <.table id="groups" rows={@groups} row_id={&"user-#{&1.id}"}>
             <:col :let={group} label="NAME" sortable="false">
               <.link
                 navigate={~p"/#{@account}/groups/#{group.id}"}
@@ -96,6 +80,22 @@ defmodule Web.Groups.Index do
             <:col :let={group} label="SOURCE" sortable="false">
               <.source account={@account} group={group} />
             </:col>
+            <:empty>
+              <div class="flex justify-center text-center text-slate-500 p-4">
+                <div class="w-auto">
+                  <div class="pb-4">
+                    No groups to display
+                  </div>
+                  <.add_button navigate={~p"/#{@account}/groups/new"}>
+                    Add Group
+                  </.add_button>
+                  <span class="font-semibold px-2 mb-4">or</span>
+                  <.add_button navigate={~p"/#{@account}/settings/identity_providers"}>
+                    Sync Groups from IdP
+                  </.add_button>
+                </div>
+              </div>
+            </:empty>
           </.table>
           <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/groups"} />-->
         </div>

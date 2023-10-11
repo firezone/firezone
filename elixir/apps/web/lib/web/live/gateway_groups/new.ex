@@ -15,8 +15,11 @@ defmodule Web.GatewayGroups.New do
     </.breadcrumbs>
 
     <.section>
-      <:title>
-        Add Gateway Instance Group
+      <:title :if={is_nil(@group)}>
+        Add a new Gateway Instance Group
+      </:title>
+      <:title :if={not is_nil(@group)}>
+        Deploy your Gateway Instance
       </:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">

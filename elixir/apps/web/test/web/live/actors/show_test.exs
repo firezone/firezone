@@ -445,7 +445,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("a", "Create Token")
+      |> element("a:first-child", "Create Token")
       |> render_click()
 
       assert_redirect(lv, ~p"/#{account}/actors/service_accounts/#{actor}/new_identity")

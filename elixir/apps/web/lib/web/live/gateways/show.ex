@@ -148,14 +148,14 @@ defmodule Web.Gateways.Show do
               Show
             </.link>
           </:col>
+          <:empty>
+            <div class="text-center text-slate-500 p-4">No authorizations to display</div>
+          </:empty>
         </.table>
       </:content>
     </.section>
 
-    <.section>
-      <:title>
-        Danger Zone
-      </:title>
+    <.danger_zone>
       <:action>
         <.delete_button
           phx-click="delete"
@@ -165,7 +165,7 @@ defmodule Web.Gateways.Show do
         </.delete_button>
       </:action>
       <:content></:content>
-    </.section>
+    </.danger_zone>
     """
   end
 

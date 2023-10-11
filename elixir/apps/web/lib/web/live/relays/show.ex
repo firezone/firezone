@@ -98,17 +98,14 @@ defmodule Web.Relays.Show do
       </:content>
     </.section>
 
-    <.section>
-      <:title>
-        Danger zone
-      </:title>
+    <.danger_zone>
       <:action :if={@relay.account_id}>
         <.delete_button phx-click="delete">
           Delete Relay
         </.delete_button>
       </:action>
       <:content></:content>
-    </.section>
+    </.danger_zone>
     """
   end
 
