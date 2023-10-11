@@ -44,7 +44,7 @@ resource "google_artifact_registry_repository" "firezone" {
 
     condition {
       tag_state  = "UNTAGGED"
-      older_than = "90d"
+      older_than = "${90 * 24 * 60 * 60}s"
     }
   }
 
@@ -55,7 +55,7 @@ resource "google_artifact_registry_repository" "firezone" {
     condition {
       tag_state             = "ANY"
       package_name_prefixes = ["cache/"]
-      older_than            = "30d"
+      older_than            = "${30 * 24 * 60 * 60}s"
     }
   }
 

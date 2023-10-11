@@ -57,7 +57,7 @@ module "google-artifact-registry" {
 
   immutable_tags = false
 
-  store_tagged_artifacts_for = "90d"
+  store_tagged_artifacts_for = "${90 * 24 * 60 * 60}s"
 
   writers = [
     # This is GitHub Actions service account configured manually
