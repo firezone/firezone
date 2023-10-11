@@ -2,7 +2,7 @@ defmodule Web.Auth.SignIn do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
   alias Domain.{Auth, Accounts}
 
-  def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
+  def mount(%{"account_id_or_slug" => account_id_or_slug} = params, session, socket) do
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, [_ | _] = providers} <- Auth.list_active_providers_for_account(account) do
       providers_by_adapter =
@@ -17,9 +17,13 @@ defmodule Web.Auth.SignIn do
         end)
         |> Map.drop([:token])
 
+      query_params = Map.take(params, ["client_platform", "client_csrf_token"])
+      session_params = Map.take(session, ["client_platform", "client_csrf_token"])
+      params = Map.merge(session_params, query_params)
+
       {:ok, socket,
        temporary_assigns: [
-         params: Map.take(params, ["client_platform", "client_csrf_token"]),
+         params: params,
          account: account,
          providers_by_adapter: providers_by_adapter,
          page_title: "Sign in"

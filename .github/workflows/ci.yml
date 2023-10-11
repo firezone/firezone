@@ -87,6 +87,7 @@ jobs:
           REF="${{ github.ref_name }}" # `ref_name` contains `/` which is not a valid docker image tag.
           CACHE_TAG="${REF//\//-}"
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
+          echo "BRANCH_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
@@ -102,14 +103,15 @@ jobs:
             type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.image_name }}:main
           # This will write the cache on main even if integration tests fail,
           # but it'll just be corrected on the next successful build.
-          cache-to: >-
-            type=registry,ref=${{ steps.login.outputs.registry}}/firezone/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+          cache-to: |
+            type=registry,ref=${{steps.login.outputs.registry}}/firezone/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }}
           file: ${{ matrix.context }}/Dockerfile
           push: true
           target: ${{ matrix.target }}
           tags: |
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:latest
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.BRANCH_TAG }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
 
   integration-tests:
     needs: build-images
@@ -117,6 +119,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      VERSION: ${{ github.sha }}
     strategy:
       matrix:
         include:
@@ -142,7 +146,6 @@ jobs:
           project: firezone-staging
       - name: Seed database
         run:
-          # FIXME: This doesn't use the Elixir cache, and so compiles every time
           docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |

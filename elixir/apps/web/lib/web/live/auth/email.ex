@@ -12,6 +12,10 @@ defmodule Web.Auth.Email do
       ) do
     form = to_form(%{"secret" => nil})
 
+    query_params = Map.take(params, ["client_platform", "client_csrf_token"])
+    session_params = Map.take(session, ["client_platform", "client_csrf_token"])
+    params = Map.merge(session_params, query_params)
+
     {:ok, socket,
      temporary_assigns: [
        form: form,
@@ -19,8 +23,9 @@ defmodule Web.Auth.Email do
        account_id_or_slug: account_id_or_slug,
        provider_id: provider_id,
        resent: params["resent"],
-       client_platform: session["client_platform"] || params["client_platform"],
-       client_csrf_token: session["client_csrf_token"] || params["client_csrf_token"]
+       redirect_params: params,
+       client_platform: params["client_platform"],
+       client_csrf_token: params["client_csrf_token"]
      ]}
   end
 
@@ -39,6 +44,7 @@ defmodule Web.Auth.Email do
             <h1 class="text-xl font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl dark:text-white">
               Please check your email
             </h1>
+            <.flash flash={@flash} kind={:error} phx-click={JS.hide(transition: "fade-out")} />
             <.flash flash={@flash} kind={:info} phx-click={JS.hide(transition: "fade-out")} />
 
             <div :if={is_nil(@client_platform)}>
@@ -107,7 +113,14 @@ defmodule Web.Auth.Email do
                 provider_identifier={@provider_identifier}
                 client_platform={@client_platform}
                 client_csrf_token={@client_csrf_token}
-              />
+              /> or
+              <.link
+                navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
+                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              >
+                use a different Sign In method
+              </.link>
+              .
             </div>
           </div>
         </div>

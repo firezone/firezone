@@ -41,6 +41,9 @@ defmodule Web.AuthController do
           }
         } = params
       ) do
+    redirect_params =
+      Map.take(params, ["client_platform", "client_csrf_token"])
+
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
          {:ok, subject} <-
            Domain.Auth.sign_in(
@@ -61,13 +64,13 @@ defmodule Web.AuthController do
         conn
         |> put_flash(:userpass_provider_identifier, String.slice(provider_identifier, 0, 160))
         |> put_flash(:error, "You may not use this method to sign in.")
-        |> redirect(to: "/#{account_id_or_slug}")
+        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
 
       {:error, _reason} ->
         conn
         |> put_flash(:userpass_provider_identifier, String.slice(provider_identifier, 0, 160))
         |> put_flash(:error, "Invalid username or password.")
-        |> redirect(to: "/#{account_id_or_slug}")
+        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
     end
   end
 
@@ -112,8 +115,8 @@ defmodule Web.AuthController do
       end
 
     redirect_params =
-      Map.take(params, ["client_platform"])
-      |> Map.merge(%{"provider_identifier" => provider_identifier})
+      Map.take(params, ["client_platform", "client_csrf_token"])
+      |> Map.put("provider_identifier", provider_identifier)
 
     conn
     |> maybe_put_resent_flash(params)
@@ -143,6 +146,13 @@ defmodule Web.AuthController do
           "secret" => email_secret
         } = params
       ) do
+    client_platform = get_session(conn, :client_platform) || params["client_platform"]
+    client_csrf_token = get_session(conn, :client_csrf_token) || params["client_csrf_token"]
+
+    redirect_params =
+      put_if_not_nil(:client_platform, client_platform)
+      |> put_if_not_nil(:client_csrf_token, client_csrf_token)
+
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
          nonce = get_session(conn, :sign_in_nonce) || "=",
          {:ok, subject} <-
@@ -153,9 +163,6 @@ defmodule Web.AuthController do
              conn.assigns.user_agent,
              conn.remote_ip
            ) do
-      client_platform = get_session(conn, :client_platform) || params["client_platform"]
-      client_csrf_token = get_session(conn, :client_csrf_token) || params["client_csrf_token"]
-
       conn
       |> delete_session(:client_platform)
       |> delete_session(:client_csrf_token)
@@ -166,12 +173,16 @@ defmodule Web.AuthController do
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "You may not use this method to sign in.")
-        |> redirect(to: "/#{account_id_or_slug}")
+        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
 
       {:error, _reason} ->
+        redirect_params = put_if_not_nil(redirect_params, "provider_identifier", identity_id)
+
         conn
         |> put_flash(:error, "The sign in link is invalid or expired.")
-        |> redirect(to: "/#{account_id_or_slug}")
+        |> redirect(
+          to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}?#{redirect_params}"
+        )
     end
   end
 
@@ -196,9 +207,11 @@ defmodule Web.AuthController do
       redirect_to_idp(conn, redirect_url, provider)
     else
       {:error, :not_found} ->
+        redirect_params = Map.take(params, ["client_platform", "client_csrf_token"])
+
         conn
         |> put_flash(:error, "You may not use this method to sign in.")
-        |> redirect(to: "/#{account_id_or_slug}")
+        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
     end
   end
 
@@ -223,6 +236,13 @@ defmodule Web.AuthController do
         "state" => state,
         "code" => code
       }) do
+    client_platform = get_session(conn, :client_platform)
+    client_csrf_token = get_session(conn, :client_csrf_token)
+
+    redirect_params =
+      put_if_not_nil(:client_platform, client_platform)
+      |> put_if_not_nil(:client_csrf_token, client_csrf_token)
+
     with {:ok, code_verifier, conn} <- verify_state_and_fetch_verifier(conn, provider_id, state) do
       payload = {
         url(~p"/#{account_id_or_slug}/sign_in/providers/#{provider_id}/handle_callback"),
@@ -233,9 +253,6 @@ defmodule Web.AuthController do
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
            {:ok, subject} <-
              Domain.Auth.sign_in(provider, payload, conn.assigns.user_agent, conn.remote_ip) do
-        client_platform = get_session(conn, :client_platform)
-        client_csrf_token = get_session(conn, :client_csrf_token)
-
         conn
         |> delete_session(:client_platform)
         |> delete_session(:client_csrf_token)
@@ -246,18 +263,18 @@ defmodule Web.AuthController do
         {:error, :not_found} ->
           conn
           |> put_flash(:error, "You may not use this method to sign in.")
-          |> redirect(to: "/#{account_id_or_slug}")
+          |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
 
         {:error, _reason} ->
           conn
           |> put_flash(:error, "You may not authenticate to this account.")
-          |> redirect(to: "/#{account_id_or_slug}")
+          |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
       end
     else
       {:error, :invalid_state, conn} ->
         conn
         |> put_flash(:error, "Your session has expired, please try again.")
-        |> redirect(to: "/#{account_id_or_slug}")
+        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
     end
   end
 
@@ -281,8 +298,10 @@ defmodule Web.AuthController do
   def sign_out(%{assigns: %{subject: subject}} = conn, %{
         "account_id_or_slug" => account_id_or_slug
       }) do
+    redirect_params = Map.take(conn.params, ["client_platform"])
+
     {:ok, _identity, redirect_url} =
-      Domain.Auth.sign_out(subject.identity, url(~p"/#{account_id_or_slug}"))
+      Domain.Auth.sign_out(subject.identity, url(~p"/#{account_id_or_slug}?#{redirect_params}"))
 
     conn
     |> delete_recent_account()
@@ -291,9 +310,11 @@ defmodule Web.AuthController do
   end
 
   def sign_out(conn, %{"account_id_or_slug" => account_id_or_slug}) do
+    redirect_params = Map.take(conn.params, ["client_platform"])
+
     conn
     |> Auth.sign_out()
-    |> redirect(to: ~p"/#{account_id_or_slug}")
+    |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
   end
 
   defp delete_recent_account(%{assigns: %{subject: subject}} = conn) do
@@ -331,4 +352,8 @@ defmodule Web.AuthController do
       @remember_me_cookie_options
     )
   end
+
+  defp put_if_not_nil(map \\ %{}, key, value)
+  defp put_if_not_nil(map, _key, nil), do: map
+  defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
 end
