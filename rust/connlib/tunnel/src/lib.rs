@@ -41,12 +41,12 @@ use connlib_shared::{
 
 use device_channel::{DeviceIo, IfaceConfig};
 
+pub use client::ClientState;
 pub use control_protocol::Request;
-pub use role_state::{ClientState, GatewayState};
+pub use gateway::GatewayState;
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 use crate::ip_packet::MutableIpPacket;
-use crate::role_state::RoleState;
 use connlib_shared::messages::SecretKey;
 use index::IndexLfsr;
 
@@ -62,13 +62,23 @@ mod peer;
 mod peer_handler;
 mod resource_sender;
 mod resource_table;
-mod role_state;
 mod tokio_util;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const RESET_PACKET_COUNT_INTERVAL: Duration = Duration::from_secs(1);
 const REFRESH_PEERS_TIMERS_INTERVAL: Duration = Duration::from_secs(1);
 const REFRESH_MTU_INTERVAL: Duration = Duration::from_secs(30);
+/// For how long we will attempt to gather ICE candidates before aborting.
+///
+/// Chosen arbitrarily.
+/// Very likely, the actual WebRTC connection will timeout before this.
+/// This timeout is just here to eventually clean-up tasks if they are somehow broken.
+const ICE_GATHERING_TIMEOUT_SECONDS: u64 = 5 * 60;
+
+/// How many concurrent ICE gathering attempts we are allow.
+///
+/// Chosen arbitrarily.
+const MAX_CONCURRENT_ICE_GATHERING: usize = 100;
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
@@ -506,4 +516,14 @@ where
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
+}
+
+/// Dedicated trait for abstracting over the different ICE states.
+///
+/// By design, this trait does not allow any operations apart from advancing via [`RoleState::poll_next_event`].
+/// The state should only be modified when the concrete type is known, e.g. [`ClientState`] or [`GatewayState`].
+pub trait RoleState: Default + Send + 'static {
+    type Id: fmt::Debug;
+
+    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
 }

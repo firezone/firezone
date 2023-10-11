@@ -1,13 +1,21 @@
 use crate::device_channel::{create_iface, DeviceIo};
 use crate::ip_packet::IpPacket;
-use crate::{dns, tokio_util, ClientState, ConnId, ControlSignal, Device, Tunnel, MAX_UDP_SIZE};
+use crate::{
+    dns, tokio_util, ConnId, ControlSignal, Device, Event, RoleState, Tunnel,
+    ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
+};
 use connlib_shared::error::ConnlibError as Error;
-use connlib_shared::messages::{Interface as InterfaceConfig, ResourceDescription};
+use connlib_shared::messages::{GatewayId, Interface as InterfaceConfig, ResourceDescription};
 use connlib_shared::{Callbacks, DNS_SENTINEL};
+use futures::channel::mpsc::Receiver;
+use futures_bounded::{PushError, StreamMap};
 use ip_network::IpNetwork;
+use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
+use std::task::{ready, Context, Poll};
 use std::time::Duration;
+use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 impl<C, CB> Tunnel<C, CB, ClientState>
 where
@@ -201,4 +209,70 @@ fn send_dns_packet(device_writer: &DeviceIo, packet: dns::Packet) -> io::Result<
     };
 
     Ok(())
+}
+
+/// [`Tunnel`](crate::Tunnel) state specific to clients.
+pub struct ClientState {
+    active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidateInit>,
+    /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
+    waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidateInit>>,
+}
+
+impl ClientState {
+    pub fn add_waiting_ice_receiver(
+        &mut self,
+        id: GatewayId,
+        receiver: Receiver<RTCIceCandidateInit>,
+    ) {
+        self.waiting_for_sdp_from_gatway.insert(id, receiver);
+    }
+
+    pub fn activate_ice_candidate_receiver(&mut self, id: GatewayId) {
+        let Some(receiver) = self.waiting_for_sdp_from_gatway.remove(&id) else {
+            return;
+        };
+
+        match self.active_candidate_receivers.try_push(id, receiver) {
+            Ok(()) => {}
+            Err(PushError::BeyondCapacity(_)) => {
+                tracing::warn!("Too many active ICE candidate receivers at a time")
+            }
+            Err(PushError::Replaced(_)) => {
+                tracing::warn!(%id, "Replaced old ICE candidate receiver with new one")
+            }
+        }
+    }
+}
+
+impl Default for ClientState {
+    fn default() -> Self {
+        Self {
+            active_candidate_receivers: StreamMap::new(
+                Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
+                MAX_CONCURRENT_ICE_GATHERING,
+            ),
+            waiting_for_sdp_from_gatway: Default::default(),
+        }
+    }
+}
+
+impl RoleState for ClientState {
+    type Id = GatewayId;
+
+    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
+        loop {
+            match ready!(self.active_candidate_receivers.poll_next_unpin(cx)) {
+                (conn_id, Some(Ok(c))) => {
+                    return Poll::Ready(Event::SignalIceCandidate {
+                        conn_id,
+                        candidate: c,
+                    })
+                }
+                (id, Some(Err(e))) => {
+                    tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}")
+                }
+                (_, None) => {}
+            }
+        }
+    }
 }
