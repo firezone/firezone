@@ -621,7 +621,7 @@ where
                     };
 
                     if let Err(e) = tunnel
-                        .encapsulate_and_send_to_peer(packet, &mut buf, &dest, peer)
+                        .encapsulate_and_send_to_peer(packet, peer, &dest, &mut buf)
                         .await
                     {
                         let _ = tunnel.callbacks.on_error(&e);
@@ -735,7 +735,7 @@ where
                     };
 
                     if let Err(e) = tunnel
-                        .encapsulate_and_send_to_peer(packet, &mut buf, &dest, peer)
+                        .encapsulate_and_send_to_peer(packet, peer, &dest, &mut buf)
                         .await
                     {
                         tracing::error!(err = ?e, "failed to handle packet {e:#}")
