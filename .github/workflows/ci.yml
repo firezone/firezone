@@ -111,6 +111,7 @@ jobs:
           tags: |
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.BRANCH_TAG }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
 
   integration-tests:
     needs: build-images
@@ -118,6 +119,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      VERSION: ${{ github.sha }}
     strategy:
       matrix:
         include:
@@ -141,11 +144,6 @@ jobs:
         id: login
         with:
           project: firezone-staging
-      - name: Sanitize github.ref_name
-        run: |
-          REF="${{ github.ref_name }}" # `ref_name` contains `/` which is not a valid docker image tag.
-          BRANCH_TAG="${REF//\//-}"
-          echo "VERSION=$BRANCH_TAG" >> "$GITHUB_ENV"
       - name: Seed database
         run:
           docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
