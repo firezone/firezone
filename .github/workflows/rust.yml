@@ -19,7 +19,7 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-latest
-            packages: -p firezone-headless-client -p firezone-gateway -p connlib-client-android
+            packages: # Intentionally blank as a package catch-all linter
           - runs-on: macos-13
             packages: -p connlib-client-apple
           - runs-on: windows-2022
@@ -45,7 +45,6 @@ jobs:
       fail-fast: false
       matrix:
         runs-on:
-          - ubuntu-18.04
           - ubuntu-20.04
           - ubuntu-22.04
           - macos-11
