@@ -148,7 +148,7 @@ jobs:
           echo "VERSION=$BRANCH_TAG" >> "$GITHUB_ENV"
       - name: Seed database
         run:
-          docker compose run --env elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
+          docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
           docker compose up -d \
