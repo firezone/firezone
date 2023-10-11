@@ -110,7 +110,7 @@ class TunnelRepositoryImpl
                 return moshi.adapter<List<Cidr>>().fromJson(json) ?: emptyList()
             }
 
-        override fun clear() {
+        override fun clearAll() {
             synchronized(lock) {
                 sharedPreferences.edit().clear().apply()
             }

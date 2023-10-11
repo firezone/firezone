@@ -77,8 +77,8 @@ internal class TunnelManager
             val intent = Intent(appContext, TunnelService::class.java)
             intent.action = TunnelService.ACTION_DISCONNECT
             appContext.startService(intent)
-            tunnelRepository.clear()
-            preferenceRepository.clear()
+            tunnelRepository.clearAll()
+            preferenceRepository.clearToken()
         }
 
         internal companion object {
