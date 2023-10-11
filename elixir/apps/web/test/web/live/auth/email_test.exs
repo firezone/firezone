@@ -124,11 +124,17 @@ defmodule Web.Auth.EmailTest do
       lv
       |> form("#verify-sign-in-token", %{
         identity_id: identity.id,
-        secret: "foo"
+        secret: "foo",
+        client_csrf_token: "xxx"
       })
       |> submit_form(conn)
 
-    assert redirected_to(conn, 302) == ~p"/#{account}"
+    assert redirected_to(conn, 302) ==
+             ~p"/#{account}/sign_in/providers/email/#{provider}" <>
+               "?client_platform=android" <>
+               "&client_csrf_token=foo" <>
+               "&provider_identifier=#{identity.id}"
+
     assert conn.assigns.flash["error"] == "The sign in link is invalid or expired."
   end
 

@@ -55,6 +55,10 @@ module "google-artifact-registry" {
 
   region = local.region
 
+  immutable_tags = false
+
+  store_tagged_artifacts_for = "${90 * 24 * 60 * 60}s"
+
   writers = [
     # This is GitHub Actions service account configured manually
     # in the project github-iam-387915
@@ -546,7 +550,7 @@ module "api" {
 }
 
 ## Allow API nodes to sign URLs for Google Cloud Storage
-resource "google_storage_bucket_iam_member" "dealerships-catalog-photos-public-rule" {
+resource "google_storage_bucket_iam_member" "sign-urls" {
   bucket = google_storage_bucket.client-logs.name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${module.api.service_account.email}"

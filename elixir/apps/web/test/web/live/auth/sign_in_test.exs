@@ -45,4 +45,20 @@ defmodule Web.Auth.SignInTest do
 
     assert html =~ "Vault"
   end
+
+  test "takes client params from session", %{conn: conn} do
+    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    account = Fixtures.Accounts.create_account()
+    Fixtures.Auth.create_email_provider(account: account)
+
+    conn =
+      conn
+      |> put_session(:client_platform, "ios")
+      |> put_session(:client_csrf_token, "csrf-token")
+
+    {:ok, _lv, html} = live(conn, ~p"/#{account}")
+
+    assert html =~ ~s|value="ios"|
+    assert html =~ ~s|value="csrf-token"|
+  end
 end

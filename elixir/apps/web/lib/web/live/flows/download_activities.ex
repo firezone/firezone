@@ -24,7 +24,7 @@ defmodule Web.Flows.DownloadActivities do
           ]
         end)
 
-      iodata = Web.CSV.dump_to_iodata(dbg([fields] ++ rows))
+      iodata = Web.CSV.dump_to_iodata([fields] ++ rows)
 
       conn
       |> put_resp_content_type("text/csv")
