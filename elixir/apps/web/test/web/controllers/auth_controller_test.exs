@@ -524,33 +524,44 @@ defmodule Web.AuthControllerTest do
 
     test "redirects back to the form when identity does not exist", %{conn: conn} do
       provider = Fixtures.Auth.create_email_provider()
+      identity_id = Ecto.UUID.generate()
 
       conn =
         get(
           conn,
           ~p"/#{provider.account_id}/sign_in/providers/#{provider}/verify_sign_in_token",
           %{
-            "identity_id" => Ecto.UUID.generate(),
+            "identity_id" => identity_id,
             "secret" => "foo"
           }
         )
 
-      assert redirected_to(conn) == "/#{provider.account_id}"
+      assert redirected_to(conn) ==
+               ~p"/#{provider.account_id}/sign_in/providers/email/#{provider}?provider_identifier=#{identity_id}"
+
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
-    test "redirects back to the form when credentials are invalid", %{conn: conn} do
+    test "redirects back to the form when sign in token is invalid", %{conn: conn} do
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
       conn =
-        get(conn, ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+        conn
+        |> put_session(:client_platform, "apple")
+        |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
           "identity_id" => identity.id,
+          "client_csrf_token" => "foo",
           "secret" => "bar"
         })
 
-      assert redirected_to(conn) == ~p"/#{account}"
+      assert redirected_to(conn) ==
+               ~p"/#{account}/sign_in/providers/email/#{provider}" <>
+                 "?client_platform=apple" <>
+                 "&client_csrf_token=foo" <>
+                 "&provider_identifier=#{identity.id}"
+
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
@@ -573,15 +584,22 @@ defmodule Web.AuthControllerTest do
         conn
         |> put_session(:sign_in_nonce, "foo")
         |> put_session(:user_return_to, "/foo/bar")
+        |> put_session(:client_platform, "foo")
         |> get(
           ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
           %{
             "identity_id" => identity.id,
-            "secret" => email_token
+            "secret" => email_token,
+            "client_csrf_token" => "bar"
           }
         )
 
-      assert redirected_to(conn) == ~p"/#{account}"
+      assert redirected_to(conn) ==
+               ~p"/#{account}/sign_in/providers/email/#{provider}" <>
+                 "?client_platform=foo" <>
+                 "&client_csrf_token=bar" <>
+                 "&provider_identifier=#{identity.id}"
+
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 
@@ -611,7 +629,10 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == ~p"/#{account}"
+      assert redirected_to(conn) ==
+               ~p"/#{account}/sign_in/providers/email/#{provider}" <>
+                 "?provider_identifier=#{identity.id}"
+
       assert flash(conn, :error) == "The sign in link is invalid or expired."
     end
 

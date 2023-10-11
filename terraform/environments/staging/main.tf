@@ -546,7 +546,7 @@ module "api" {
 }
 
 ## Allow API nodes to sign URLs for Google Cloud Storage
-resource "google_storage_bucket_iam_member" "dealerships-catalog-photos-public-rule" {
+resource "google_storage_bucket_iam_member" "client-logs" {
   bucket = google_storage_bucket.client-logs.name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${module.api.service_account.email}"
