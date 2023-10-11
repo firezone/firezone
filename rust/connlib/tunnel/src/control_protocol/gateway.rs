@@ -10,7 +10,8 @@ use webrtc::peer_connection::{
     RTCPeerConnection,
 };
 
-use crate::{ControlSignal, GatewayState, PeerConfig, Tunnel};
+use crate::role_state::GatewayState;
+use crate::{ControlSignal, PeerConfig, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
 fn handle_connection_state_update<C, CB>(

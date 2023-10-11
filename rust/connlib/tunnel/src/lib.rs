@@ -3,12 +3,12 @@
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
 use boringtun::{
-    noise::{errors::WireGuardError, rate_limiter::RateLimiter, TunnResult},
+    noise::{errors::WireGuardError, rate_limiter::RateLimiter, Tunn, TunnResult},
     x25519::{PublicKey, StaticSecret},
 };
 use bytes::Bytes;
 
-use connlib_shared::{messages::Key, CallbackErrorFacade, Callbacks, Error};
+use connlib_shared::{messages::Key, CallbackErrorFacade, Callbacks, Error, DNS_SENTINEL};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use serde::{Deserialize, Serialize};
@@ -29,7 +29,7 @@ use webrtc::{
 };
 
 use std::task::{Context, Poll};
-use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 use connlib_shared::{
@@ -39,22 +39,19 @@ use connlib_shared::{
     Result,
 };
 
-use device_channel::{DeviceIo, IfaceConfig};
+use device_channel::{create_iface, DeviceIo, IfaceConfig};
 
-pub use client::ClientState;
 pub use control_protocol::Request;
-pub use gateway::GatewayState;
+pub use role_state::{ClientState, GatewayState};
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
-use crate::ip_packet::MutableIpPacket;
+use crate::role_state::RoleState;
 use connlib_shared::messages::SecretKey;
 use index::IndexLfsr;
 
-mod client;
 mod control_protocol;
 mod device_channel;
 mod dns;
-mod gateway;
 mod iface_handler;
 mod index;
 mod ip_packet;
@@ -62,23 +59,12 @@ mod peer;
 mod peer_handler;
 mod resource_sender;
 mod resource_table;
-mod tokio_util;
+mod role_state;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const RESET_PACKET_COUNT_INTERVAL: Duration = Duration::from_secs(1);
 const REFRESH_PEERS_TIMERS_INTERVAL: Duration = Duration::from_secs(1);
 const REFRESH_MTU_INTERVAL: Duration = Duration::from_secs(30);
-/// For how long we will attempt to gather ICE candidates before aborting.
-///
-/// Chosen arbitrarily.
-/// Very likely, the actual WebRTC connection will timeout before this.
-/// This timeout is just here to eventually clean-up tasks if they are somehow broken.
-const ICE_GATHERING_TIMEOUT_SECONDS: u64 = 5 * 60;
-
-/// How many concurrent ICE gathering attempts we are allow.
-///
-/// Chosen arbitrarily.
-const MAX_CONCURRENT_ICE_GATHERING: usize = 100;
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
@@ -163,30 +149,8 @@ struct AwaitingConnectionDetails {
 
 #[derive(Clone)]
 struct Device {
-    config: Arc<IfaceConfig>,
-    io: DeviceIo,
-
-    buf: Box<[u8; MAX_UDP_SIZE]>,
-}
-
-impl Device {
-    async fn read(&mut self) -> io::Result<Option<MutableIpPacket<'_>>> {
-        let res = self.io.read(&mut self.buf[..self.config.mtu()]).await?;
-        tracing::trace!(target: "wire", action = "read", bytes = res, from = "iface");
-
-        if res == 0 {
-            return Ok(None);
-        }
-
-        Ok(Some(
-            MutableIpPacket::new(&mut self.buf[..res]).ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "received bytes are not an IP packet",
-                )
-            })?,
-        ))
-    }
+    pub config: Arc<IfaceConfig>,
+    pub io: DeviceIo,
 }
 
 // TODO: We should use newtypes for each kind of Id
@@ -279,14 +243,6 @@ where
     pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         self.role_state.lock().poll_next_event(cx)
     }
-
-    pub(crate) fn peer_by_ip(&self, ip: IpAddr) -> Option<Arc<Peer>> {
-        self.peers_by_ip
-            .read()
-            .longest_match(ip)
-            .map(|(_, peer)| peer)
-            .cloned()
-    }
 }
 
 pub enum Event<TId> {
@@ -369,6 +325,86 @@ where
             iface_handler_abort,
             role_state: Default::default(),
         })
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn add_route(self: &Arc<Self>, route: IpNetwork) -> Result<()> {
+        let mut device = self.device.write().await;
+
+        if let Some(new_device) = device
+            .as_ref()
+            .ok_or(Error::ControlProtocolError)?
+            .config
+            .add_route(route, self.callbacks())
+            .await?
+        {
+            *device = Some(new_device.clone());
+            let dev = Arc::clone(self);
+            self.iface_handler_abort.lock().replace(
+                tokio::spawn(
+                    async move { dev.iface_handler(new_device.config, new_device.io).await },
+                )
+                .abort_handle(),
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Adds a the given resource to the tunnel.
+    ///
+    /// Once added, when a packet for the resource is intercepted a new data channel will be created
+    /// and packets will be wrapped with wireguard and sent through it.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn add_resource(
+        self: &Arc<Self>,
+        resource_description: ResourceDescription,
+    ) -> Result<()> {
+        let mut any_valid_route = false;
+        {
+            for ip in resource_description.ips() {
+                if let Err(e) = self.add_route(ip).await {
+                    tracing::warn!(route = %ip, error = ?e, "add_route");
+                    let _ = self.callbacks().on_error(&e);
+                } else {
+                    any_valid_route = true;
+                }
+            }
+        }
+        if !any_valid_route {
+            return Err(Error::InvalidResource);
+        }
+
+        let resource_list = {
+            let mut resources = self.resources.write();
+            resources.insert(resource_description);
+            resources.resource_list()
+        };
+
+        self.callbacks.on_update_resources(resource_list)?;
+        Ok(())
+    }
+
+    /// Sets the interface configuration and starts background tasks.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn set_interface(self: &Arc<Self>, config: &InterfaceConfig) -> Result<()> {
+        let device = create_iface(config, self.callbacks()).await?;
+        *self.device.write().await = Some(device.clone());
+
+        self.start_timers().await?;
+        let dev = Arc::clone(self);
+        *self.iface_handler_abort.lock() = Some(
+            tokio::spawn(async move { dev.iface_handler(device.config, device.io).await })
+                .abort_handle(),
+        );
+
+        self.add_route(DNS_SENTINEL.into()).await?;
+
+        self.callbacks.on_tunnel_ready()?;
+
+        tracing::debug!("background_loop_started");
+
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -501,7 +537,8 @@ where
         Ok(())
     }
 
-    fn get_resource(&self, addr: IpAddr) -> Option<ResourceDescription> {
+    fn get_resource(&self, buff: &[u8]) -> Option<ResourceDescription> {
+        let addr = Tunn::dst_address(buff)?;
         let resources = self.resources.read();
         match addr {
             IpAddr::V4(ipv4) => resources.get_by_ip(ipv4).cloned(),
@@ -516,14 +553,4 @@ where
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
-}
-
-/// Dedicated trait for abstracting over the different ICE states.
-///
-/// By design, this trait does not allow any operations apart from advancing via [`RoleState::poll_next_event`].
-/// The state should only be modified when the concrete type is known, e.g. [`ClientState`] or [`GatewayState`].
-pub trait RoleState: Default + Send + 'static {
-    type Id: fmt::Debug;
-
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
 }
