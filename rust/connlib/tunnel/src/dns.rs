@@ -15,7 +15,7 @@ const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
 
 #[derive(Debug, Clone)]
-pub(crate) enum SendPacket {
+pub(crate) enum Packet {
     Ipv4(Vec<u8>),
     Ipv6(Vec<u8>),
 }
@@ -25,10 +25,7 @@ pub(crate) enum SendPacket {
 // as we can therefore we won't do it.
 //
 // See: https://stackoverflow.com/a/55093896
-pub(crate) fn check_for_dns(
-    resources: &ResourceTable<ResourceDescription>,
-    buf: &[u8],
-) -> Option<SendPacket> {
+pub(crate) fn parse(resources: &ResourceTable<ResourceDescription>, buf: &[u8]) -> Option<Packet> {
     let packet = IpPacket::new(buf)?;
     let version = packet.version();
     if packet.destination() != IpAddr::from(DNS_SENTINEL) {
@@ -86,8 +83,8 @@ pub(crate) fn check_for_dns(
     let response = build_dns_with_answer(message, question.qname(), question.qtype(), &resource?)?;
     let response = build_response(buf, response);
     response.map(|pkt| match version {
-        Version::Ipv4 => SendPacket::Ipv4(pkt),
-        Version::Ipv6 => SendPacket::Ipv6(pkt),
+        Version::Ipv4 => Packet::Ipv4(pkt),
+        Version::Ipv6 => Packet::Ipv6(pkt),
     })
 }
 
