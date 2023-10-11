@@ -339,24 +339,6 @@ where
         })
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn add_route(self: &Arc<Self>, route: IpNetwork) -> Result<()> {
-        let mut device = self.device.write().await;
-
-        if let Some(new_device) = device
-            .as_ref()
-            .ok_or(Error::ControlProtocolError)?
-            .config
-            .add_route(route, self.callbacks())
-            .await?
-        {
-            *device = Some(new_device.clone());
-            self.start_device(new_device);
-        }
-
-        Ok(())
-    }
-
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_interface(self: &Arc<Self>, config: &InterfaceConfig) -> Result<()> {
@@ -399,6 +381,24 @@ where
                     }
                 }
             }));
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn add_route(self: &Arc<Self>, route: IpNetwork) -> Result<()> {
+        let mut device = self.device.write().await;
+
+        if let Some(new_device) = device
+            .as_ref()
+            .ok_or(Error::ControlProtocolError)?
+            .config
+            .add_route(route, self.callbacks())
+            .await?
+        {
+            *device = Some(new_device.clone());
+            self.start_device(new_device);
+        }
+
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
