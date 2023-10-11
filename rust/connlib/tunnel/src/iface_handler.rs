@@ -135,15 +135,25 @@ where
     ) -> Result<()> {
         let dest = packet.destination();
 
-        let encapsulated_packet = match self.peers_by_ip.read().longest_match(dest) {
-            Some((_, peer)) => peer.encapsulate(&mut packet, dst)?,
+        let maybe_peer = self
+            .peers_by_ip
+            .read()
+            .longest_match(dest)
+            .map(|(_, p)| p)
+            .cloned();
+        match maybe_peer {
+            Some(peer) => {
+                let encapsulated_packet = peer.encapsulate(&mut packet, dst)?;
+
+                self.handle_encapsulated_packet(encapsulated_packet, &dest)
+                    .await?;
+
+                Ok(())
+            }
             None => {
                 self.connection_intent(packet.as_immutable());
-                return Ok(());
+                Ok(())
             }
-        };
-
-        self.handle_encapsulated_packet(encapsulated_packet, &dest)
-            .await
+        }
     }
 }
