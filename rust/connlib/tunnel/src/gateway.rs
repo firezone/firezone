@@ -3,6 +3,7 @@ use crate::{
     ControlSignal, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
+use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
 use futures::channel::mpsc::Receiver;
@@ -27,41 +28,43 @@ where
         *self.device.write().await = Some(device.clone());
 
         self.start_timers().await?;
-        self.start_device(device);
+        *self.iface_handler_abort.lock() =
+            Some(tokio::spawn(device_handler(Arc::clone(self), device)).abort_handle());
 
         tracing::debug!("background_loop_started");
 
         Ok(())
     }
+}
 
-    fn start_device(self: &Arc<Self>, mut device: Device) {
-        let tunnel = Arc::clone(self);
+/// Reads IP packets from the [`Device`] and handles them accordingly.
+async fn device_handler<C, CB>(
+    tunnel: Arc<Tunnel<C, CB, GatewayState>>,
+    mut device: Device,
+) -> Result<(), ConnlibError>
+where
+    C: ControlSignal + Send + Sync + 'static,
+    CB: Callbacks + 'static,
+{
+    let mut buf = [0u8; MAX_UDP_SIZE];
+    loop {
+        let Some(packet) = device.read().await? else {
+            // Reading a bad IP packet or otherwise from the device seems bad. Should we restart the tunnel or something?
+            return Ok(());
+        };
 
-        *self.iface_handler_abort.lock() = Some(
-            tokio::spawn(async move {
-                let mut buf = [0u8; MAX_UDP_SIZE];
-                loop {
-                    let Some(packet) = device.read().await? else {
-                        // Reading a bad IP packet or otherwise from the device seems bad. Should we restart the tunnel or something?
-                        return connlib_shared::Result::Ok(());
-                    };
+        let dest = packet.destination();
 
-                    let dest = packet.destination();
+        let Some(peer) = tunnel.peer_by_ip(dest) else {
+            continue;
+        };
 
-                    let Some(peer) = tunnel.peer_by_ip(dest) else {
-                        continue;
-                    };
-
-                    if let Err(e) = tunnel
-                        .encapsulate_and_send_to_peer(packet, peer, &dest, &mut buf)
-                        .await
-                    {
-                        tracing::error!(err = ?e, "failed to handle packet {e:#}")
-                    }
-                }
-            })
-            .abort_handle(),
-        );
+        if let Err(e) = tunnel
+            .encapsulate_and_send_to_peer(packet, peer, &dest, &mut buf)
+            .await
+        {
+            tracing::error!(err = ?e, "failed to handle packet {e:#}")
+        }
     }
 }
 
