@@ -5,8 +5,9 @@ use bytes::Bytes;
 use connlib_shared::{Callbacks, Result};
 
 use crate::ip_packet::{IpPacket, MutableIpPacket};
+use crate::peer::Peer;
 use crate::role_state::RoleState;
-use crate::{peer::EncapsulatedPacket, ConnId, ControlSignal, Tunnel};
+use crate::{ConnId, ControlSignal, Tunnel};
 
 const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
 
@@ -80,11 +81,15 @@ where
     }
 
     #[inline(always)]
-    async fn handle_encapsulated_packet<'a>(
+    async fn encapsulate_and_send_to_peer<'a>(
         &self,
-        encapsulated_packet: EncapsulatedPacket<'a>,
+        mut packet: MutableIpPacket<'_>,
+        buf: &mut [u8],
         dst_addr: &IpAddr,
+        peer: Arc<Peer>,
     ) -> Result<()> {
+        let encapsulated_packet = peer.encapsulate(&mut packet, buf)?;
+
         match encapsulated_packet.encapsulate_result {
             TunnResult::Done => Ok(()),
             TunnResult::Err(WireGuardError::ConnectionExpired)
@@ -130,8 +135,8 @@ where
     #[inline(always)]
     pub(crate) async fn handle_iface_packet(
         self: &Arc<Self>,
-        mut packet: MutableIpPacket<'_>,
-        dst: &mut [u8],
+        packet: MutableIpPacket<'_>,
+        buf: &mut [u8],
     ) -> Result<()> {
         let dest = packet.destination();
 
@@ -141,11 +146,10 @@ where
             .longest_match(dest)
             .map(|(_, p)| p)
             .cloned();
+
         match maybe_peer {
             Some(peer) => {
-                let encapsulated_packet = peer.encapsulate(&mut packet, dst)?;
-
-                self.handle_encapsulated_packet(encapsulated_packet, &dest)
+                self.encapsulate_and_send_to_peer(packet, buf, &dest, peer)
                     .await?;
 
                 Ok(())
