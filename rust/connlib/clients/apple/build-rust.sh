@@ -11,43 +11,43 @@ if [[ $1 == "clean" ]]; then
   exit 0
 fi
 
-# Default PLATFORM_NAME to macosx if not set.
-: "${PLATFORM_NAME:=macosx}"
-
-export PATH="$HOME/.cargo/bin:$PATH"
-base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
-export INCLUDE_PATH="${base_dir}/usr/include"
-export LIBRARY_PATH="${base_dir}/usr/lib:${LIBRARY_PATH:-}"
-export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
-# `-Qunused-arguments` stops clang from failing while building *ring*
-# (but the library search path is still necessary when building the framework!)
-# See https://github.com/briansmith/ring/issues/1332
-export CFLAGS="-L ${LIBRARY_PATH} -I ${INCLUDE_PATH} -Qunused-arguments"
-
-# Borrowed from https://github.com/signalapp/libsignal/commit/02899cac643a14b2ced7c058cc15a836a2165b6d
-# Thanks to @francesca64 for the fix
-if [[ -n "${DEVELOPER_SDK_DIR:-}" ]]; then
-  # Assume we're in Xcode, which means we're probably cross-compiling.
-  # In this case, we need to add an extra library search path for build scripts and proc-macros,
-  # which run on the host instead of the target.
-  # (macOS Big Sur does not have linkable libraries in /usr/lib/.)
-  if [[ "$XCODE_VERSION_MAJOR" -lt "1500" ]]; then
-    # It appears we may not need this workaround with the new linker in Xcode 15, but GitHub Actions
-    # currently has spotty support for Xcode 15 on its macOS 13 VMs, so we'll keep this workaround for now.
-    export LIBRARY_PATH="${DEVELOPER_SDK_DIR}/MacOSX.sdk/usr/lib:${LIBRARY_PATH}"
-  fi
+if [[ -z "$PLATFORM_NAME" ]]; then
+  echo "PLATFORM_NAME is not set"
+  exit 1
 fi
 
-TARGETS=()
+# Use the lld linker from llvm. Fixes issues with building Rust with Xcode 15's
+# for aarch64-apple-ios.
+#
+# lld is also faster than the default macOS LD64 linker.
+#
+# `brew` is not in our PATH in this script, so adjust PATH temporarily just for
+# this command to avoid polluting the build env.
+# We use llvm@15 because that's what's installed on our CI.
+lld_path="$(PATH=/opt/homebrew/bin:/usr/local/bin:$PATH brew --prefix llvm@15):/usr/bin/ld64.lld"
+if [[ $? -ne 0 ]]; then
+  echo "Could not find llvm@15. Maybe try 'brew install llvm@15' or update this script to use a newer llvm if available."
+  exit 1
+fi
+
+base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
+
+export PATH="$HOME/.cargo/bin:$PATH"
+export INCLUDE_PATH="$base_dir/usr/include:${INCLUDE_PATH:-}"
+export LIBRARY_PATH="$base_dir/usr/lib:${LIBRARY_PATH:-}"
+export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks -C link-arg=-fuse-ld=$lld_path"
+export CFLAGS="-L ${LIBRARY_PATH} -I ${INCLUDE_PATH}"
+
+TARGETS=""
 if [[ "$PLATFORM_NAME" = "macosx" ]]; then
     if [[ $CONFIGURATION == "Release" ]] || [[ -z "$NATIVE_ARCH" ]]; then
-      TARGETS=("aarch64-apple-darwin" "x86_64-apple-darwin")
+      TARGETS="--target aarch64-apple-darwin --target x86_64-apple-darwin"
     else
       if [[ $NATIVE_ARCH == "arm64" ]]; then
-        TARGETS=("aarch64-apple-darwin")
+        TARGETS="--target aarch64-apple-darwin"
       else
         if [[ $NATIVE_ARCH == "x86_64" ]]; then
-          TARGETS=("x86_64-apple-darwin")
+          TARGETS="--target x86_64-apple-darwin"
 	else
           echo "Unsupported native arch for $PLATFORM_NAME: $NATIVE_ARCH"
         fi
@@ -55,7 +55,7 @@ if [[ "$PLATFORM_NAME" = "macosx" ]]; then
     fi
 else
   if [[ "$PLATFORM_NAME" = "iphoneos" ]]; then
-    TARGETS="aarch64-apple-ios"
+    TARGETS="--target aarch64-apple-ios"
   else
     echo "Unsupported platform: $PLATFORM_NAME"
     exit 1
@@ -77,9 +77,6 @@ if [[ -n "$CONNLIB_TARGET_DIR" ]]; then
   set +x
 fi
 
-for target in "${TARGETS[@]}"
-do
-  set -x
-  cargo build --verbose --target=$target $CONFIGURATION_ARGS
-  set +x
-done
+set -x
+cargo build --verbose $TARGETS $CONFIGURATION_ARGS
+set +x

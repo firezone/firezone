@@ -109,9 +109,6 @@ jobs:
           # Needed because `productbuild` doesn't support picking this up automatically like Xcode does
           INSTALLER_CODE_SIGN_IDENTITY: "3rd Party Mac Developer Installer: Firezone, Inc. (47R2M6779T)"
         run: |
-          # Needed by the linter built into the build process
-          brew install swift-format
-
           # Copy xcconfig templates
           cp Firezone/xcconfig/Developer.xcconfig.firezone Firezone/xcconfig/Developer.xcconfig
           cp Firezone/xcconfig/Server.xcconfig.${{ env.CLIENT_ENV }} Firezone/xcconfig/Server.xcconfig
@@ -127,7 +124,7 @@ jobs:
           if [ "${{ matrix.platform }}" = "iOS" ]; then
             # Build archive
             xcodebuild archive \
-              -archivePath ~/Firezone.xcarchive \
+              -archivePath $RUNNER_TEMP/Firezone.xcarchive \
               -configuration Release \
               -scheme Firezone \
               -sdk ${{ matrix.sdk }} \
@@ -135,12 +132,12 @@ jobs:
             # Export IPA
             xcodebuild \
               -exportArchive \
-              -archivePath ~/Firezone.xcarchive \
-              -exportPath ~/ \
+              -archivePath $RUNNER_TEMP/Firezone.xcarchive \
+              -exportPath $RUNNER_TEMP/ \
               -exportOptionsPlist Firezone/ExportOptions.plist
 
             # Save resulting file to use for upload
-            echo "app_bundle=~/Firezone.ipa" >> "$GITHUB_OUTPUT"
+            echo "app_bundle=$RUNNER_TEMP/Firezone.ipa" >> "$GITHUB_OUTPUT"
           elif [ "${{ matrix.platform }}" = "macOS" ]; then
             # Build app bundle
             xcodebuild build \
@@ -149,14 +146,14 @@ jobs:
               -sdk ${{ matrix.sdk }} \
               -destination '${{ matrix.destination }}'
             # Move it from randomized build output dir to somewhere we can find it
-            mv ~/Library/Developer/Xcode/DerivedData/Firezone-*/Build/Products/Release/Firezone.app ~/.
+            mv ~/Library/Developer/Xcode/DerivedData/Firezone-*/Build/Products/Release/Firezone.app $RUNNER_TEMP/.
             # Create signed installer pkg
             productbuild \
               --sign "${{ env.INSTALLER_CODE_SIGN_IDENTITY }}" \
-              --component ~/Firezone.app /Applications ~/Firezone.pkg
+              --component $RUNNER_TEMP/Firezone.app /Applications $RUNNER_TEMP/Firezone.pkg
 
             # Save resulting file to use for upload
-            echo "app_bundle=~/Firezone.pkg" >> "$GITHUB_OUTPUT"
+            echo "app_bundle=$RUNNER_TEMP/Firezone.pkg" >> "$GITHUB_OUTPUT"
           else
             echo "Unsupported platform"
             exit 1
