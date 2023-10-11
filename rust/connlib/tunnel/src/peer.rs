@@ -10,7 +10,6 @@ use connlib_shared::{
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use parking_lot::{Mutex, RwLock};
-use pnet_packet::MutablePacket;
 use webrtc::data::data_channel::DataChannel;
 
 use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, ConnId};
@@ -195,9 +194,14 @@ impl Peer {
 
     pub(crate) fn encapsulate<'a>(
         &self,
-        packet: &mut MutableIpPacket<'a>,
+        src: &'a mut [u8],
         dst: &'a mut [u8],
     ) -> Result<EncapsulatedPacket<'a>> {
+        let Some(mut packet) = MutableIpPacket::new(src) else {
+            debug_assert!(false, "Got non-ip packet from the tunnel interface");
+            tracing::error!("Developer error: we should never see a packet through the tunnel wire that isn't ip");
+            return Err(Error::BadPacket);
+        };
         if let Some(resource) = self.get_translation(packet.to_immutable().source()) {
             let ResourceDescription::Dns(resource) = resource else {
                 tracing::error!(
@@ -206,7 +210,7 @@ impl Peer {
                 return Err(Error::ControlProtocolError);
             };
 
-            match packet {
+            match &mut packet {
                 MutableIpPacket::MutableIpv4Packet(ref mut p) => p.set_source(resource.ipv4),
                 MutableIpPacket::MutableIpv6Packet(ref mut p) => p.set_source(resource.ipv6),
             }
@@ -217,7 +221,7 @@ impl Peer {
             index: self.index,
             conn_id: self.conn_id,
             channel: self.channel.clone(),
-            encapsulate_result: self.tunnel.lock().encapsulate(packet.packet_mut(), dst),
+            encapsulate_result: self.tunnel.lock().encapsulate(src, dst),
         })
     }
 
