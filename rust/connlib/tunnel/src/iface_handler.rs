@@ -4,11 +4,8 @@ use boringtun::noise::{errors::WireGuardError, Tunn, TunnResult};
 use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
 
-use crate::dns::check_for_dns;
 use crate::role_state::RoleState;
-use crate::{
-    device_channel::DeviceIo, dns, peer::EncapsulatedPacket, ConnId, ControlSignal, Tunnel,
-};
+use crate::{peer::EncapsulatedPacket, ConnId, ControlSignal, Tunnel};
 
 const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
 
@@ -132,18 +129,9 @@ where
     #[inline(always)]
     pub(crate) async fn handle_iface_packet(
         self: &Arc<Self>,
-        device_writer: &DeviceIo,
         src: &mut [u8],
         dst: &mut [u8],
     ) -> Result<()> {
-        if let Some(r) = check_for_dns(&self.resources.read(), src) {
-            match r {
-                dns::SendPacket::Ipv4(r) => device_writer.write4(&r[..])?,
-                dns::SendPacket::Ipv6(r) => device_writer.write6(&r[..])?,
-            };
-            return Ok(());
-        }
-
         let dst_addr = Tunn::dst_address(src).ok_or(Error::BadPacket)?;
 
         let encapsulated_packet = match self.peers_by_ip.read().longest_match(dst_addr) {

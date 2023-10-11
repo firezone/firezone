@@ -371,10 +371,16 @@ where
                         return Ok(());
                     }
 
-                    if let Err(e) = tunnel
-                        .handle_iface_packet(&device_writer, src, &mut dst)
-                        .await
-                    {
+                    if let Some(packet) = dns::parse(&tunnel.resources.read(), src) {
+                        if let Err(e) = send_dns_packet(&device_writer, packet) {
+                            tracing::error!(err = %e, "failed to send DNS packet");
+                            let _ = tunnel.callbacks.on_error(&e.into());
+                        }
+
+                        continue;
+                    }
+
+                    if let Err(e) = tunnel.handle_iface_packet(src, &mut dst).await {
                         let _ = tunnel.callbacks.on_error(&e);
                         tracing::error!(err = ?e, "failed to handle packet {e:#}")
                     }
@@ -546,6 +552,15 @@ where
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
+}
+
+fn send_dns_packet(device_writer: &DeviceIo, packet: dns::Packet) -> io::Result<()> {
+    match packet {
+        dns::Packet::Ipv4(r) => device_writer.write4(&r[..])?,
+        dns::Packet::Ipv6(r) => device_writer.write6(&r[..])?,
+    };
+
+    Ok(())
 }
 
 impl<C, CB> Tunnel<C, CB, ClientState>
