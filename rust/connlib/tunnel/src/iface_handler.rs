@@ -1,9 +1,10 @@
 use std::{net::IpAddr, sync::Arc, time::Duration};
 
-use boringtun::noise::{errors::WireGuardError, Tunn, TunnResult};
+use boringtun::noise::{errors::WireGuardError, TunnResult};
 use bytes::Bytes;
-use connlib_shared::{Callbacks, Error, Result};
+use connlib_shared::{Callbacks, Result};
 
+use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::role_state::RoleState;
 use crate::{peer::EncapsulatedPacket, ConnId, ControlSignal, Tunnel};
 
@@ -16,9 +17,9 @@ where
     TRoleState: RoleState,
 {
     #[inline(always)]
-    fn connection_intent(self: &Arc<Self>, src: &[u8], dst_addr: &IpAddr) {
+    fn connection_intent(self: &Arc<Self>, packet: IpPacket<'_>) {
         // We can buffer requests here but will drop them for now and let the upper layer reliability protocol handle this
-        if let Some(resource) = self.get_resource(src) {
+        if let Some(resource) = self.get_resource(packet.destination()) {
             // We have awaiting connection to prevent a race condition where
             // create_peer_connection hasn't added the thing to peer_connections
             // and we are finding another packet to the same address (otherwise we would just use peer_connections here)
@@ -26,7 +27,7 @@ where
             let conn_id = ConnId::from(resource.id());
             if awaiting_connection.get(&conn_id).is_none() {
                 tracing::trace!(
-                    resource_ip = %dst_addr,
+                    resource_ip = %packet.destination(),
                     "resource_connection_intent",
                 );
 
@@ -129,20 +130,20 @@ where
     #[inline(always)]
     pub(crate) async fn handle_iface_packet(
         self: &Arc<Self>,
-        src: &mut [u8],
+        mut packet: MutableIpPacket<'_>,
         dst: &mut [u8],
     ) -> Result<()> {
-        let dst_addr = Tunn::dst_address(src).ok_or(Error::BadPacket)?;
+        let dest = packet.destination();
 
-        let encapsulated_packet = match self.peers_by_ip.read().longest_match(dst_addr) {
-            Some((_, peer)) => peer.encapsulate(src, dst)?,
+        let encapsulated_packet = match self.peers_by_ip.read().longest_match(dest) {
+            Some((_, peer)) => peer.encapsulate(&mut packet, dst)?,
             None => {
-                self.connection_intent(src, &dst_addr);
+                self.connection_intent(packet.as_immutable());
                 return Ok(());
             }
         };
 
-        self.handle_encapsulated_packet(encapsulated_packet, &dst_addr)
+        self.handle_encapsulated_packet(encapsulated_packet, &dest)
             .await
     }
 }
