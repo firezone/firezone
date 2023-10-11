@@ -4,10 +4,7 @@ use boringtun::noise::{errors::WireGuardError, TunnResult};
 use bytes::Bytes;
 use connlib_shared::{Callbacks, Result};
 
-use crate::ip_packet::MutableIpPacket;
-use crate::peer::Peer;
-use crate::role_state::RoleState;
-use crate::{ControlSignal, Tunnel};
+use crate::{ip_packet::MutableIpPacket, peer::Peer, ControlSignal, RoleState, Tunnel};
 
 impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
 where
