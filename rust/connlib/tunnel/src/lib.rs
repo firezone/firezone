@@ -652,12 +652,12 @@ where
     fn start_device(self: &Arc<Self>, mut device: Device) {
         let tunnel = Arc::clone(self);
 
-        *self.iface_handler_abort.lock() =
-            Some(tokio_util::spawn_log(&self.callbacks, async move {
+        *self.iface_handler_abort.lock() = Some(
+            tokio::spawn(async move {
                 let mut buf = [0u8; MAX_UDP_SIZE];
                 loop {
                     let Some(packet) = device.read().await? else {
-                        return Ok(());
+                        return Result::Ok(());
                     };
 
                     let dest = packet.destination();
@@ -679,6 +679,8 @@ where
                         tracing::error!(err = ?e, "failed to handle packet {e:#}")
                     }
                 }
-            }));
+            })
+            .abort_handle(),
+        );
     }
 }
