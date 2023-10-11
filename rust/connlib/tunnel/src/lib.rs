@@ -351,53 +351,6 @@ where
         })
     }
 
-    fn start_device(self: &Arc<Self>, mut device: Device) {
-        let tunnel = Arc::clone(self);
-
-        *self.iface_handler_abort.lock() =
-            Some(tokio_util::spawn_log(&self.callbacks, async move {
-                let device_writer = device.io.clone();
-                let mut buf = [0u8; MAX_UDP_SIZE];
-                loop {
-                    let Some(packet) = device.read().await? else {
-                        return Ok(());
-                    };
-
-                    if let Some(dns_packet) =
-                        dns::parse(&tunnel.resources.read(), packet.as_immutable())
-                    {
-                        if let Err(e) = send_dns_packet(&device_writer, dns_packet) {
-                            tracing::error!(err = %e, "failed to send DNS packet");
-                            let _ = tunnel.callbacks.on_error(&e.into());
-                        }
-
-                        continue;
-                    }
-
-                    let dest = packet.destination();
-
-                    let Some(peer) = tunnel
-                        .peers_by_ip
-                        .read()
-                        .longest_match(dest)
-                        .map(|(_, peer)| peer)
-                        .cloned()
-                    else {
-                        tunnel.connection_intent(packet.as_immutable());
-                        continue;
-                    };
-
-                    if let Err(e) = tunnel
-                        .encapsulate_and_send_to_peer(packet, &mut buf, &dest, peer)
-                        .await
-                    {
-                        let _ = tunnel.callbacks.on_error(&e);
-                        tracing::error!(err = ?e, "failed to handle packet {e:#}")
-                    }
-                }
-            }));
-    }
-
     #[tracing::instrument(level = "trace", skip(self))]
     async fn stop_peer(&self, index: u32, conn_id: ConnId) {
         self.peers_by_ip.write().retain(|_, p| p.index != index);
@@ -628,6 +581,53 @@ where
 
         Ok(())
     }
+
+    fn start_device(self: &Arc<Self>, mut device: Device) {
+        let tunnel = Arc::clone(self);
+
+        *self.iface_handler_abort.lock() =
+            Some(tokio_util::spawn_log(&self.callbacks, async move {
+                let device_writer = device.io.clone();
+                let mut buf = [0u8; MAX_UDP_SIZE];
+                loop {
+                    let Some(packet) = device.read().await? else {
+                        return Ok(());
+                    };
+
+                    if let Some(dns_packet) =
+                        dns::parse(&tunnel.resources.read(), packet.as_immutable())
+                    {
+                        if let Err(e) = send_dns_packet(&device_writer, dns_packet) {
+                            tracing::error!(err = %e, "failed to send DNS packet");
+                            let _ = tunnel.callbacks.on_error(&e.into());
+                        }
+
+                        continue;
+                    }
+
+                    let dest = packet.destination();
+
+                    let Some(peer) = tunnel
+                        .peers_by_ip
+                        .read()
+                        .longest_match(dest)
+                        .map(|(_, peer)| peer)
+                        .cloned()
+                    else {
+                        tunnel.connection_intent(packet.as_immutable());
+                        continue;
+                    };
+
+                    if let Err(e) = tunnel
+                        .encapsulate_and_send_to_peer(packet, &mut buf, &dest, peer)
+                        .await
+                    {
+                        let _ = tunnel.callbacks.on_error(&e);
+                        tracing::error!(err = ?e, "failed to handle packet {e:#}")
+                    }
+                }
+            }));
+    }
 }
 
 impl<C, CB> Tunnel<C, CB, GatewayState>
@@ -649,5 +649,52 @@ where
         tracing::debug!("background_loop_started");
 
         Ok(())
+    }
+
+    fn start_device(self: &Arc<Self>, mut device: Device) {
+        let tunnel = Arc::clone(self);
+
+        *self.iface_handler_abort.lock() =
+            Some(tokio_util::spawn_log(&self.callbacks, async move {
+                let device_writer = device.io.clone();
+                let mut buf = [0u8; MAX_UDP_SIZE];
+                loop {
+                    let Some(packet) = device.read().await? else {
+                        return Ok(());
+                    };
+
+                    if let Some(dns_packet) =
+                        dns::parse(&tunnel.resources.read(), packet.as_immutable())
+                    {
+                        if let Err(e) = send_dns_packet(&device_writer, dns_packet) {
+                            tracing::error!(err = %e, "failed to send DNS packet");
+                            let _ = tunnel.callbacks.on_error(&e.into());
+                        }
+
+                        continue;
+                    }
+
+                    let dest = packet.destination();
+
+                    let Some(peer) = tunnel
+                        .peers_by_ip
+                        .read()
+                        .longest_match(dest)
+                        .map(|(_, peer)| peer)
+                        .cloned()
+                    else {
+                        tunnel.connection_intent(packet.as_immutable());
+                        continue;
+                    };
+
+                    if let Err(e) = tunnel
+                        .encapsulate_and_send_to_peer(packet, &mut buf, &dest, peer)
+                        .await
+                    {
+                        let _ = tunnel.callbacks.on_error(&e);
+                        tracing::error!(err = ?e, "failed to handle packet {e:#}")
+                    }
+                }
+            }));
     }
 }
