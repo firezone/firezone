@@ -22,7 +22,8 @@ use webrtc::{
     },
 };
 
-use crate::{peer::Peer, ConnId, ControlSignal, PeerConfig, RoleState, Tunnel};
+use crate::role_state::RoleState;
+use crate::{peer::Peer, ConnId, ControlSignal, PeerConfig, Tunnel};
 
 mod client;
 mod gateway;

@@ -9,7 +9,7 @@ use tokio::io::{unix::AsyncFd, Interest};
 
 use tun::{IfaceDevice, IfaceStream};
 
-use crate::{Device, MAX_UDP_SIZE};
+use crate::Device;
 
 mod tun;
 
@@ -65,11 +65,7 @@ impl IfaceConfig {
             iface,
             mtu: AtomicUsize::new(mtu),
         });
-        Ok(Some(Device {
-            io,
-            config,
-            buf: Box::new([0u8; MAX_UDP_SIZE]),
-        }))
+        Ok(Some(Device { io, config }))
     }
 }
 
@@ -86,9 +82,5 @@ pub(crate) async fn create_iface(
         mtu: AtomicUsize::new(mtu),
     });
 
-    Ok(Device {
-        io,
-        config,
-        buf: Box::new([0u8; MAX_UDP_SIZE]),
-    })
+    Ok(Device { config, io })
 }

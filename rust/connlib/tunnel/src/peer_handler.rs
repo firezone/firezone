@@ -4,9 +4,10 @@ use boringtun::noise::{handshake::parse_handshake_anon, Packet, TunnResult};
 use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
 
+use crate::role_state::RoleState;
 use crate::{
-    device_channel::DeviceIo, index::check_packet_index, peer::Peer, ControlSignal, RoleState,
-    Tunnel, MAX_UDP_SIZE,
+    device_channel::DeviceIo, index::check_packet_index, peer::Peer, ControlSignal, Tunnel,
+    MAX_UDP_SIZE,
 };
 
 impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
