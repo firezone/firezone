@@ -103,8 +103,8 @@ jobs:
             type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.image_name }}:main
           # This will write the cache on main even if integration tests fail,
           # but it'll just be corrected on the next successful build.
-          cache-to: >-
-            type=registry,ref=${{ steps.login.outputs.registry}}/firezone/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+          cache-to: |
+            type=registry,ref=${{steps.login.outputs.registry}}/firezone/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }}
           file: ${{ matrix.context }}/Dockerfile
           push: true
           target: ${{ matrix.target }}
@@ -141,12 +141,18 @@ jobs:
         id: login
         with:
           project: firezone-staging
+      - name: Sanitize github.ref_name
+        run: |
+          REF="${{ github.ref_name }}" # `ref_name` contains `/` which is not a valid docker image tag.
+          BRANCH_TAG="${REF//\//-}"
+          echo "BRANCH_TAG=$BRANCH_TAG" >> "$GITHUB_ENV"
       - name: Seed database
         run:
           # FIXME: This doesn't use the Elixir cache, and so compiles every time
-          docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
+          docker compose run --env elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
+          export VERSION="${{ env.BRANCH_TAG }}"
           docker compose up -d \
             api \
             web \
