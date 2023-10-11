@@ -656,23 +656,11 @@ where
 
         *self.iface_handler_abort.lock() =
             Some(tokio_util::spawn_log(&self.callbacks, async move {
-                let device_writer = device.io.clone();
                 let mut buf = [0u8; MAX_UDP_SIZE];
                 loop {
                     let Some(packet) = device.read().await? else {
                         return Ok(());
                     };
-
-                    if let Some(dns_packet) =
-                        dns::parse(&tunnel.resources.read(), packet.as_immutable())
-                    {
-                        if let Err(e) = send_dns_packet(&device_writer, dns_packet) {
-                            tracing::error!(err = %e, "failed to send DNS packet");
-                            let _ = tunnel.callbacks.on_error(&e.into());
-                        }
-
-                        continue;
-                    }
 
                     let dest = packet.destination();
 
@@ -683,7 +671,6 @@ where
                         .map(|(_, peer)| peer)
                         .cloned()
                     else {
-                        tunnel.connection_intent(packet.as_immutable());
                         continue;
                     };
 
@@ -691,7 +678,6 @@ where
                         .encapsulate_and_send_to_peer(packet, &mut buf, &dest, peer)
                         .await
                     {
-                        let _ = tunnel.callbacks.on_error(&e);
                         tracing::error!(err = ?e, "failed to handle packet {e:#}")
                     }
                 }
