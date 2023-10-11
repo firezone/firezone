@@ -381,10 +381,10 @@ where
                         return Ok(());
                     };
 
-                    if let Some(packet) =
+                    if let Some(dns_packet) =
                         dns::parse(&tunnel.resources.read(), packet.as_immutable())
                     {
-                        if let Err(e) = send_dns_packet(&device_writer, packet) {
+                        if let Err(e) = send_dns_packet(&device_writer, dns_packet) {
                             tracing::error!(err = %e, "failed to send DNS packet");
                             let _ = tunnel.callbacks.on_error(&e.into());
                         }
