@@ -44,20 +44,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on:
-          - ubuntu-20.04
-          - ubuntu-22.04
-          - macos-11
-          - macos-12
-          - macos-13
-          - windows-2019
-          - windows-2022
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
-          - runs-on: ubuntu-latest
+          - runs-on: ubuntu-20.04
             packages: -p firezone-headless-client -p firezone-gateway -p connlib-client-android
+          - runs-on: ubuntu-22.04
+            packages: -p firezone-headless-client -p firezone-gateway -p connlib-client-android
+          - runs-on: macos-11
+            packages: -p connlib-client-apple
+          - runs-on: macos-12
+            packages: -p connlib-client-apple
           - runs-on: macos-13
             packages: -p connlib-client-apple
+          - runs-on: windows-2019
+            packages: -p connlib-client-shared
           - runs-on: windows-2022
             packages: -p connlib-client-shared
     runs-on: ${{ matrix.runs-on }}
