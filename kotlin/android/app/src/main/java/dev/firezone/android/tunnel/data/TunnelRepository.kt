@@ -28,7 +28,7 @@ interface TunnelRepository {
 
     fun getRoutes(): List<Cidr>
 
-    fun clear()
+    fun clearAll()
 
     fun addListener(callback: SharedPreferences.OnSharedPreferenceChangeListener)
 

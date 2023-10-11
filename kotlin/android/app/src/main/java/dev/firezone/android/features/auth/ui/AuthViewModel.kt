@@ -24,7 +24,9 @@ internal class AuthViewModel
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        fun startAuthFlow() =
+        private var authFlowLaunched: Boolean = false
+
+        fun onActivityResume() =
             try {
                 viewModelScope.launch {
                     val config =
@@ -36,9 +38,10 @@ internal class AuthViewModel
                             .firstOrNull() ?: throw Exception("csrfToken cannot be null")
 
                     actionMutableLiveData.postValue(
-                        if (config.token != null) {
+                        if (authFlowLaunched || config.token != null) {
                             ViewAction.NavigateToSignInFragment
                         } else {
+                            authFlowLaunched = true
                             ViewAction.LaunchAuthFlow(
                                 url = "$AUTH_URL${config.accountId}?client_csrf_token=$csrfToken&client_platform=android",
                             )
