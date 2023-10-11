@@ -19,6 +19,7 @@ defmodule Web.SignUp do
     def changeset(%Registration{} = registration, attrs) do
       registration
       |> Ecto.Changeset.cast(attrs, [:email])
+      |> Ecto.Changeset.validate_required([:email])
       |> Ecto.Changeset.validate_format(:email, ~r/.+@.+/)
       |> Ecto.Changeset.cast_embed(:account,
         with: fn _account, attrs -> Accounts.Account.Changeset.create(attrs) end
@@ -239,8 +240,8 @@ defmodule Web.SignUp do
         )
         |> Ecto.Multi.run(
           :identity,
-          fn _repo, %{provider: provider} ->
-            Auth.create_identity(provider, registration.email, %{
+          fn _repo, %{actor: actor, provider: provider} ->
+            Auth.create_identity(actor, provider, %{
               provider_identifier: registration.email
             })
           end
