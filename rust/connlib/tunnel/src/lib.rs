@@ -267,6 +267,14 @@ where
     pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         self.role_state.lock().poll_next_event(cx)
     }
+
+    pub(crate) fn peer_by_ip(&self, ip: IpAddr) -> Option<Arc<Peer>> {
+        self.peers_by_ip
+            .read()
+            .longest_match(ip)
+            .map(|(_, peer)| peer)
+            .cloned()
+    }
 }
 
 pub enum Event<TId> {
@@ -607,13 +615,7 @@ where
 
                     let dest = packet.destination();
 
-                    let Some(peer) = tunnel
-                        .peers_by_ip
-                        .read()
-                        .longest_match(dest)
-                        .map(|(_, peer)| peer)
-                        .cloned()
-                    else {
+                    let Some(peer) = tunnel.peer_by_ip(dest) else {
                         tunnel.connection_intent(packet.as_immutable());
                         continue;
                     };
@@ -728,13 +730,7 @@ where
 
                     let dest = packet.destination();
 
-                    let Some(peer) = tunnel
-                        .peers_by_ip
-                        .read()
-                        .longest_match(dest)
-                        .map(|(_, peer)| peer)
-                        .cloned()
-                    else {
+                    let Some(peer) = tunnel.peer_by_ip(dest) else {
                         continue;
                     };
 
