@@ -1,6 +1,6 @@
 defmodule Domain.Relays do
   use Supervisor
-  alias Domain.{Repo, Auth, Validator, Geo}
+  alias Domain.{Repo, Auth, Validator, Geo, PubSub}
   alias Domain.{Accounts, Resources, Tokens}
   alias Domain.Relays.{Authorizer, Relay, Group, Presence}
 
@@ -396,11 +396,11 @@ defmodule Domain.Relays do
   end
 
   def subscribe_for_relays_presence_in_account(%Accounts.Account{} = account) do
-    Phoenix.PubSub.subscribe(Domain.PubSub, "relays")
-    Phoenix.PubSub.subscribe(Domain.PubSub, "relays:#{account.id}")
+    PubSub.subscribe("relays")
+    PubSub.subscribe("relays:#{account.id}")
   end
 
   def subscribe_for_relays_presence_in_group(%Group{} = group) do
-    Phoenix.PubSub.subscribe(Domain.PubSub, "relay_groups:#{group.id}")
+    PubSub.subscribe("relay_groups:#{group.id}")
   end
 end

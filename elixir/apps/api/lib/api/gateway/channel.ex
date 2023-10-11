@@ -11,7 +11,7 @@ defmodule API.Gateway.Channel do
 
   def broadcast(gateway_id, payload) do
     Logger.debug("Gateway message is being dispatched", gateway_id: gateway_id)
-    Phoenix.PubSub.broadcast(Domain.PubSub, "gateway:#{gateway_id}", payload)
+    Domain.PubSub.broadcast("gateway:#{gateway_id}", payload)
   end
 
   @impl true
@@ -42,7 +42,7 @@ defmodule API.Gateway.Channel do
 
     OpenTelemetry.Tracer.with_span "gateway.after_join" do
       :ok = Gateways.connect_gateway(socket.assigns.gateway)
-      :ok = API.Endpoint.subscribe("gateway:#{socket.assigns.gateway.id}")
+      :ok = Domain.PubSub.subscribe("gateway:#{socket.assigns.gateway.id}")
 
       config = Domain.Config.fetch_env!(:domain, Domain.Gateways)
       ipv4_masquerade_enabled = Keyword.fetch!(config, :gateway_ipv4_masquerade)

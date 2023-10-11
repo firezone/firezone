@@ -1,5 +1,5 @@
 defmodule Domain.Resources do
-  alias Domain.{Repo, Validator, Auth}
+  alias Domain.{Repo, Validator, Auth, PubSub}
   alias Domain.{Accounts, Gateways}
   alias Domain.Resources.{Authorizer, Resource, Connection}
 
@@ -208,7 +208,7 @@ defmodule Domain.Resources do
 
   defp broadcast_resource_events(:created, %Resource{} = resource) do
     payload = {:resource_created, resource.id}
-    Phoenix.PubSub.broadcast(Domain.PubSub, "account_resources:#{resource.account_id}", payload)
+    PubSub.broadcast("account_resources:#{resource.account_id}", payload)
   end
 
   defp broadcast_resource_events(kind, %Resource{} = resource) do
@@ -218,7 +218,7 @@ defmodule Domain.Resources do
           "account_resources:#{resource.account_id}",
           "resources:#{resource.id}"
         ] do
-      Phoenix.PubSub.broadcast(Domain.PubSub, topic, payload)
+      PubSub.broadcast(topic, payload)
     end
 
     :ok
@@ -229,7 +229,7 @@ defmodule Domain.Resources do
   end
 
   def subscribe_for_resource_events_in_account(account_id) do
-    Phoenix.PubSub.subscribe(Domain.PubSub, "account_resources:#{account_id}")
+    PubSub.subscribe("account_resources:#{account_id}")
   end
 
   def subscribe_for_resource_events(%Resource{} = resource) do
@@ -237,7 +237,7 @@ defmodule Domain.Resources do
   end
 
   def subscribe_for_resource_events(resource_id) do
-    Phoenix.PubSub.subscribe(Domain.PubSub, "resources:#{resource_id}")
+    PubSub.subscribe("resources:#{resource_id}")
   end
 
   def unsubscribe_from_resource_events(%Resource{} = resource) do
@@ -245,6 +245,6 @@ defmodule Domain.Resources do
   end
 
   def unsubscribe_from_resource_events(resource_id) do
-    Phoenix.PubSub.unsubscribe(Domain.PubSub, "resources:#{resource_id}")
+    PubSub.unsubscribe("resources:#{resource_id}")
   end
 end

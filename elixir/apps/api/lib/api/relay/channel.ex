@@ -32,7 +32,7 @@ defmodule API.Relay.Channel do
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "relay.after_join" do
-      API.Endpoint.subscribe("relay:#{socket.assigns.relay.id}")
+      Domain.PubSub.subscribe("relay:#{socket.assigns.relay.id}")
       push(socket, "init", %{})
       :ok = Relays.connect_relay(socket.assigns.relay, stamp_secret)
       {:noreply, socket}

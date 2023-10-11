@@ -12,7 +12,7 @@ defmodule API.Client.Channel do
 
   def broadcast(client_id, payload) do
     Logger.debug("Client message is being dispatched", client_id: client_id)
-    Phoenix.PubSub.broadcast(Domain.PubSub, "client:#{client_id}", payload)
+    Domain.PubSub.broadcast("client:#{client_id}", payload)
   end
 
   @impl true
@@ -58,7 +58,7 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.after_join" do
-      :ok = API.Endpoint.subscribe("client:#{socket.assigns.client.id}")
+      :ok = Domain.PubSub.subscribe("client:#{socket.assigns.client.id}")
       :ok = Resources.subscribe_for_resource_events_in_account(socket.assigns.client.account_id)
       :ok = Clients.connect_client(socket.assigns.client)
 
