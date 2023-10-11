@@ -33,9 +33,7 @@ use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration}
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 use connlib_shared::{
-    messages::{
-        ClientId, GatewayId, Interface as InterfaceConfig, ResourceDescription, ResourceId,
-    },
+    messages::{ClientId, GatewayId, ResourceDescription, ResourceId},
     Result,
 };
 

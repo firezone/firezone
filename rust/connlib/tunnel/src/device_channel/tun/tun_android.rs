@@ -1,6 +1,8 @@
-use crate::InterfaceConfig;
 use closeable::Closeable;
-use connlib_shared::{CallbackErrorFacade, Callbacks, Error, Result, DNS_SENTINEL};
+use connlib_shared::{
+    messages::Interface as InterfaceConfig, CallbackErrorFacade, Callbacks, Error, Result,
+    DNS_SENTINEL,
+};
 use ip_network::IpNetwork;
 use libc::{
     close, ioctl, read, sockaddr, sockaddr_in, write, AF_INET, IFNAMSIZ, IPPROTO_IP, SIOCGIFMTU,
