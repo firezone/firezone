@@ -26,14 +26,12 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
         binding = ActivityAuthBinding.inflate(layoutInflater)
 
         setupActionObservers()
-
-        viewModel.startAuthFlow()
     }
 
     override fun onResume() {
         super.onResume()
 
-        viewModel.startAuthFlow()
+        viewModel.onActivityResume()
     }
 
     private fun setupActionObservers() {
@@ -63,7 +61,6 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
 
             try {
                 intent.launchUrl(this@AuthActivity, Uri.parse(url))
-                finish()
             } catch (e: Exception) {
                 showChromeAppRequiredError()
             }

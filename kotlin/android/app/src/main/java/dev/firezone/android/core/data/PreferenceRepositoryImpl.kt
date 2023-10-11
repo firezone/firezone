@@ -52,7 +52,15 @@ internal class PreferenceRepositoryImpl
                 emit(token == value)
             }.flowOn(coroutineDispatcher)
 
-        override fun clear() {
+        override fun clearToken() {
+            sharedPreferences.edit().apply {
+                remove(CSRF_KEY)
+                remove(TOKEN_KEY)
+                apply()
+            }
+        }
+
+        override fun clearAll() {
             sharedPreferences.edit().clear().apply()
         }
 
