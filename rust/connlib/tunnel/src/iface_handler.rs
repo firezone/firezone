@@ -1,4 +1,4 @@
-use std::{io, net::IpAddr, sync::Arc, time::Duration};
+use std::{net::IpAddr, sync::Arc, time::Duration};
 
 use boringtun::noise::{errors::WireGuardError, Tunn, TunnResult};
 use bytes::Bytes;
@@ -7,8 +7,7 @@ use connlib_shared::{Callbacks, Error, Result};
 use crate::dns::check_for_dns;
 use crate::role_state::RoleState;
 use crate::{
-    device_channel::DeviceIo, dns, peer::EncapsulatedPacket, ConnId, ControlSignal, Device, Tunnel,
-    MAX_UDP_SIZE,
+    device_channel::DeviceIo, dns, peer::EncapsulatedPacket, ConnId, ControlSignal, Tunnel,
 };
 
 const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
@@ -131,7 +130,7 @@ where
     }
 
     #[inline(always)]
-    async fn handle_iface_packet(
+    pub(crate) async fn handle_iface_packet(
         self: &Arc<Self>,
         device_writer: &DeviceIo,
         src: &mut [u8],
@@ -159,26 +158,5 @@ where
 
         self.handle_encapsulated_packet(encapsulated_packet, &dst_addr)
             .await
-    }
-
-    #[tracing::instrument(level = "trace", skip(self, device))]
-    pub(crate) async fn iface_handler(self: Arc<Self>, mut device: Device) -> io::Result<()> {
-        let device_writer = device.io.clone();
-        let mut dst = [0u8; MAX_UDP_SIZE];
-        loop {
-            let src = device.read().await?;
-
-            if src.is_empty() {
-                return Ok(());
-            }
-
-            if let Err(e) = self
-                .handle_iface_packet(&device_writer, src, &mut dst)
-                .await
-            {
-                let _ = self.callbacks.on_error(&e);
-                tracing::error!(err = ?e, "failed to handle packet {e:#}")
-            }
-        }
     }
 }
