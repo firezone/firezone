@@ -65,7 +65,7 @@ locals {
 
 # Fetch most recent COS image
 data "google_compute_image" "coreos" {
-  family  = "cos-105-lts"
+  family  = "cos-109-lts"
   project = "cos-cloud"
 }
 
@@ -211,10 +211,8 @@ resource "google_compute_instance_template" "application" {
 
     user-data = templatefile("${path.module}/templates/cloud-init.yaml", {})
 
-    google-logging-enabled = "true"
-    # Enable FluentBit agent for logging, which will be default one from COS 109
-    # Re-enable once https://issuetracker.google.com/issues/285950891 is closed
-    # google-logging-use-fluentbit = "true"
+    google-logging-enabled       = "true"
+    google-logging-use-fluentbit = "true"
 
     # Report health-related metrics to Cloud Monitoring
     google-monitoring-enabled = "true"
