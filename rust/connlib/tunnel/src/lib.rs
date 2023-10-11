@@ -399,24 +399,6 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn add_route(self: &Arc<Self>, route: IpNetwork) -> Result<()> {
-        let mut device = self.device.write().await;
-
-        if let Some(new_device) = device
-            .as_ref()
-            .ok_or(Error::ControlProtocolError)?
-            .config
-            .add_route(route, self.callbacks())
-            .await?
-        {
-            *device = Some(new_device.clone());
-            self.start_device(new_device);
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn stop_peer(&self, index: u32, conn_id: ConnId) {
         self.peers_by_ip.write().retain(|_, p| p.index != index);
         let conn = self.peer_connections.lock().remove(&conn_id);
@@ -625,6 +607,24 @@ where
         self.callbacks.on_tunnel_ready()?;
 
         tracing::debug!("background_loop_started");
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn add_route(self: &Arc<Self>, route: IpNetwork) -> Result<()> {
+        let mut device = self.device.write().await;
+
+        if let Some(new_device) = device
+            .as_ref()
+            .ok_or(Error::ControlProtocolError)?
+            .config
+            .add_route(route, self.callbacks())
+            .await?
+        {
+            *device = Some(new_device.clone());
+            self.start_device(new_device);
+        }
 
         Ok(())
     }
