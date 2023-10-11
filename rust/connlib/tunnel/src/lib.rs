@@ -357,16 +357,15 @@ where
         Ok(())
     }
 
-    fn start_device(self: &Arc<Self>, device: Device) {
+    fn start_device(self: &Arc<Self>, mut device: Device) {
         let tunnel = Arc::clone(self);
 
         *self.iface_handler_abort.lock() =
             Some(tokio_util::spawn_log(&self.callbacks, async move {
-                let mut device1 = device;
-                let device_writer = device1.io.clone();
+                let device_writer = device.io.clone();
                 let mut dst = [0u8; MAX_UDP_SIZE];
                 loop {
-                    let src = device1.read().await?;
+                    let src = device.read().await?;
 
                     if src.is_empty() {
                         return Ok(());
