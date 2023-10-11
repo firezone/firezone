@@ -19,9 +19,9 @@ where
     pub(crate) async fn encapsulate_and_send_to_peer<'a>(
         &self,
         mut packet: MutableIpPacket<'_>,
-        buf: &mut [u8],
-        dst_addr: &IpAddr,
         peer: Arc<Peer>,
+        dst_addr: &IpAddr,
+        buf: &mut [u8],
     ) -> Result<()> {
         let encapsulated_packet = peer.encapsulate(&mut packet, buf)?;
 
