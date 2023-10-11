@@ -644,8 +644,6 @@ where
         self.start_timers().await?;
         self.start_device(device);
 
-        self.callbacks.on_tunnel_ready()?;
-
         tracing::debug!("background_loop_started");
 
         Ok(())
