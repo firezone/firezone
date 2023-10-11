@@ -192,6 +192,7 @@ impl Eventloop {
                 Poll::Ready(Event::ConnectionIntent { .. }) => {
                     unreachable!("Not used on the gateway, split the events!")
                 }
+                Poll::Ready(_) => {}
                 Poll::Pending => {}
             }
 

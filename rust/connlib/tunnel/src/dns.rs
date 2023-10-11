@@ -1,12 +1,15 @@
 use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
 use crate::resource_table::ResourceTable;
+use crate::DnsQuery;
 use connlib_shared::{messages::ResourceDescription, DNS_SENTINEL};
 use domain::base::{
     iana::{Class, Rcode, Rtype},
-    Dname, Message, MessageBuilder, ParsedDname, ToDname,
+    Dname, Message, MessageBuilder, ParsedDname, Question, ToDname,
 };
 use pnet_packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, PacketSize};
 use std::net::IpAddr;
+use trust_dns_resolver::proto::op::Message as TrustDnsMessage;
+use trust_dns_resolver::proto::rr::RecordType;
 
 const DNS_TTL: u32 = 300;
 const UDP_HEADER_SIZE: usize = 8;
@@ -20,16 +23,47 @@ pub(crate) enum Packet {
     Ipv6(Vec<u8>),
 }
 
+#[derive(Debug)]
+pub(crate) enum ResolveStrategy<T, U> {
+    LocalResponse(T),
+    ForwardQuery(U),
+}
+
+struct DnsQueryParams {
+    name: String,
+    record_type: RecordType,
+}
+
+impl DnsQueryParams {
+    fn into_query(self, query: IpPacket) -> DnsQuery {
+        DnsQuery {
+            name: self.name,
+            record_type: self.record_type,
+            query,
+        }
+    }
+}
+
+impl<T> ResolveStrategy<T, DnsQueryParams> {
+    fn new(name: String, record_type: Rtype) -> ResolveStrategy<T, DnsQueryParams> {
+        ResolveStrategy::ForwardQuery(DnsQueryParams {
+            name,
+            record_type: u16::from(record_type).into(),
+        })
+    }
+}
+
+impl<'a, T> ResolveStrategy<T, DnsQuery<'a>> {}
+
 // We don't need to support multiple questions/qname in a single query because
 // nobody does it and since this run with each packet we want to squeeze as much optimization
 // as we can therefore we won't do it.
 //
 // See: https://stackoverflow.com/a/55093896
-pub(crate) fn parse(
+pub(crate) fn parse<'a>(
     resources: &ResourceTable<ResourceDescription>,
-    packet: IpPacket<'_>,
-) -> Option<Packet> {
-    let version = packet.version();
+    packet: IpPacket<'a>,
+) -> Option<ResolveStrategy<Packet, DnsQuery<'a>>> {
     if packet.destination() != IpAddr::from(DNS_SENTINEL) {
         return None;
     }
@@ -39,58 +73,22 @@ pub(crate) fn parse(
         return None;
     }
     let question = message.first_question()?;
-    let resource = match question.qtype() {
-        Rtype::A | Rtype::Aaaa => resources
-            .get_by_name(&ToDname::to_cow(question.qname()).to_string())
-            .cloned(),
-        Rtype::Ptr => {
-            let dns_parts = ToDname::to_cow(question.qname()).to_string();
-            let mut dns_parts = dns_parts.split('.').rev();
-            if !dns_parts
-                .next()
-                .is_some_and(|d| d == REVERSE_DNS_ADDRESS_END)
-            {
-                return None;
-            }
-            let ip: IpAddr = match dns_parts.next() {
-                Some(REVERSE_DNS_ADDRESS_V4) => {
-                    let mut ip = [0u8; 4];
-                    for i in ip.iter_mut() {
-                        *i = dns_parts.next()?.parse().ok()?;
-                    }
-                    ip.into()
-                }
-                Some(REVERSE_DNS_ADDRESS_V6) => {
-                    let mut ip = [0u8; 16];
-                    for i in ip.iter_mut() {
-                        *i = u8::from_str_radix(
-                            &format!("{}{}", dns_parts.next()?, dns_parts.next()?),
-                            16,
-                        )
-                        .ok()?;
-                    }
-                    ip.into()
-                }
-                _ => return None,
-            };
-
-            if dns_parts.next().is_some() {
-                return None;
-            }
-
-            resources.get_by_ip(ip).cloned()
+    let resource = match resource_from_question(resources, &question)? {
+        ResolveStrategy::LocalResponse(resource) => resource,
+        ResolveStrategy::ForwardQuery(params) => {
+            return Some(ResolveStrategy::ForwardQuery(params.into_query(packet)))
         }
-        _ => return None,
     };
-    let response = build_dns_with_answer(message, question.qname(), question.qtype(), &resource?)?;
+    let response = build_dns_with_answer(message, question.qname(), question.qtype(), &resource)?;
     let response = build_response(packet, response);
-    response.map(|pkt| match version {
-        Version::Ipv4 => Packet::Ipv4(pkt),
-        Version::Ipv6 => Packet::Ipv6(pkt),
-    })
+    response.map(ResolveStrategy::LocalResponse)
 }
 
-fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> Option<Vec<u8>> {
+pub(crate) fn build_response(
+    original_pkt: IpPacket<'_>,
+    mut dns_answer: Vec<u8>,
+) -> Option<Packet> {
+    let version = original_pkt.version();
     let response_len = dns_answer.len();
     let original_dgm = original_pkt.as_udp()?;
     let hdr_len = original_pkt.packet_size() - original_dgm.payload().len();
@@ -113,7 +111,10 @@ fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> Option
     let udp_checksum = pkt.to_immutable().udp_checksum(&pkt.as_immutable_udp()?);
     pkt.as_udp()?.set_checksum(udp_checksum);
     pkt.set_ipv4_checksum();
-    Some(res_buf)
+    match version {
+        Version::Ipv4 => Some(Packet::Ipv4(res_buf)),
+        Version::Ipv6 => Some(Packet::Ipv6(res_buf)),
+    }
 }
 
 fn build_dns_with_answer<N>(
@@ -160,4 +161,67 @@ where
         _ => return None,
     }
     Some(answer_builder.finish())
+}
+
+fn resource_from_question<N: ToDname>(
+    resources: &ResourceTable<ResourceDescription>,
+    question: &Question<N>,
+) -> Option<ResolveStrategy<ResourceDescription, DnsQueryParams>> {
+    let name = ToDname::to_cow(question.qname()).to_string();
+    let qtype = question.qtype();
+    match qtype {
+        Rtype::A | Rtype::Aaaa => resources
+            .get_by_name(&name)
+            .cloned()
+            .map(ResolveStrategy::LocalResponse)
+            .unwrap_or(ResolveStrategy::new(name, qtype))
+            .into(),
+        Rtype::Ptr => {
+            let mut dns_parts = name.split('.').rev();
+            if !dns_parts
+                .next()
+                .is_some_and(|d| d == REVERSE_DNS_ADDRESS_END)
+            {
+                return None;
+            }
+            let ip: IpAddr = match dns_parts.next() {
+                Some(REVERSE_DNS_ADDRESS_V4) => {
+                    let mut ip = [0u8; 4];
+                    for i in ip.iter_mut() {
+                        *i = dns_parts.next()?.parse().ok()?;
+                    }
+                    ip.into()
+                }
+                Some(REVERSE_DNS_ADDRESS_V6) => {
+                    let mut ip = [0u8; 16];
+                    for i in ip.iter_mut() {
+                        *i = u8::from_str_radix(
+                            &format!("{}{}", dns_parts.next()?, dns_parts.next()?),
+                            16,
+                        )
+                        .ok()?;
+                    }
+                    ip.into()
+                }
+                _ => return None,
+            };
+
+            if dns_parts.next().is_some() {
+                return None;
+            }
+
+            resources
+                .get_by_ip(ip)
+                .cloned()
+                .map(ResolveStrategy::LocalResponse)
+                .unwrap_or(ResolveStrategy::new(name, qtype))
+                .into()
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn as_dns_message(pkt: &IpPacket) -> Option<TrustDnsMessage> {
+    let datagram = pkt.as_udp()?;
+    TrustDnsMessage::from_vec(datagram.payload()).ok()
 }

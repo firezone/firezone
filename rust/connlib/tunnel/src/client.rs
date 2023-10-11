@@ -1,9 +1,12 @@
 use crate::device_channel::{create_iface, DeviceIo};
+use crate::event_queue::EventQueue;
+use crate::ip_packet::IpPacket;
 use crate::peer::Peer;
 use crate::resource_table::ResourceTable;
 use crate::{
-    dns, peer_by_ip, tokio_util, Device, Event, PeerConfig, RoleState, Tunnel,
-    ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
+    dns, peer_by_ip, tokio_util, Device, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
+    DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
+    MAX_UDP_SIZE,
 };
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
@@ -22,9 +25,10 @@ use std::collections::HashMap;
 use std::io;
 use std::net::IpAddr;
 use std::sync::Arc;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 use tokio::time::Instant;
+use trust_dns_resolver::lookup::Lookup;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 impl<CB> Tunnel<CB, ClientState>
@@ -62,6 +66,48 @@ where
         };
 
         self.callbacks.on_update_resources(resource_list)?;
+        Ok(())
+    }
+
+    /// Writes the response to a DNS lookup
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn write_dns_lookup_response(
+        self: &Arc<Self>,
+        response: trust_dns_resolver::error::ResolveResult<Lookup>,
+        query: IpPacket<'static>,
+    ) -> connlib_shared::Result<()> {
+        let Some(mut message) = dns::as_dns_message(&query) else {
+            debug_assert!(false, "The original message should be a DNS query for us to ever call write_dns_lookup_response");
+            return Ok(());
+        };
+        let response = match response {
+            Ok(response) => message.add_answers(response.records().to_vec()),
+            Err(err) => {
+                if let trust_dns_resolver::error::ResolveErrorKind::NoRecordsFound {
+                    soa,
+                    response_code,
+                    ..
+                } = err.kind()
+                {
+                    if let Some(soa) = soa {
+                        message.add_name_server(soa.clone().into_record_of_rdata());
+                    }
+
+                    message.set_response_code(*response_code)
+                } else {
+                    return Err(err.into());
+                }
+            }
+        };
+
+        if let Some(pkt) = dns::build_response(query, response.to_vec()?) {
+            let Some(ref device) = *self.device.read().await else {
+                return Ok(());
+            };
+            let device_writer = device.io.clone();
+            send_dns_packet(&device_writer, pkt)?;
+        }
+
         Ok(())
     }
 
@@ -136,9 +182,16 @@ where
         if let Some(dns_packet) =
             dns::parse(&tunnel.role_state.lock().resources, packet.as_immutable())
         {
-            if let Err(e) = send_dns_packet(&device_writer, dns_packet) {
-                tracing::error!(err = %e, "failed to send DNS packet");
-                let _ = tunnel.callbacks.on_error(&e.into());
+            match dns_packet {
+                dns::ResolveStrategy::LocalResponse(pkt) => {
+                    if let Err(e) = send_dns_packet(&device_writer, pkt) {
+                        tracing::error!(err = %e, "failed to send DNS packet");
+                        let _ = tunnel.callbacks.on_error(&e.into());
+                    }
+                }
+                dns::ResolveStrategy::ForwardQuery(query) => {
+                    tunnel.role_state.lock().dns_query(query);
+                }
             }
 
             continue;
@@ -166,10 +219,13 @@ where
 
 fn send_dns_packet(device_writer: &DeviceIo, packet: dns::Packet) -> io::Result<()> {
     match packet {
-        dns::Packet::Ipv4(r) => device_writer.write4(&r[..])?,
-        dns::Packet::Ipv6(r) => device_writer.write6(&r[..])?,
-    };
-
+        dns::Packet::Ipv4(r) => {
+            device_writer.write4(&r[..])?;
+        }
+        dns::Packet::Ipv6(r) => {
+            device_writer.write6(&r[..])?;
+        }
+    }
     Ok(())
 }
 
@@ -188,6 +244,8 @@ pub struct ClientState {
     pub gateway_public_keys: HashMap<GatewayId, PublicKey>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
     resources: ResourceTable<ResourceDescription>,
+    dns_queries: EventQueue<DnsQuery<'static>>,
+    waker: Option<Waker>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -416,6 +474,13 @@ impl ClientState {
             IpAddr::V6(ipv6) => self.resources.get_by_ip(ipv6),
         }
     }
+
+    pub fn dns_query(&mut self, query: DnsQuery) {
+        self.dns_queries.push_back(query.owned());
+        if let Some(ref waker) = self.waker {
+            waker.wake_by_ref();
+        }
+    }
 }
 
 impl Default for ClientState {
@@ -432,6 +497,8 @@ impl Default for ClientState {
             gateway_public_keys: Default::default(),
             resources_gateways: Default::default(),
             resources: Default::default(),
+            dns_queries: EventQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
+            waker: None,
         }
     }
 }
@@ -440,6 +507,10 @@ impl RoleState for ClientState {
     type Id = GatewayId;
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
+        let waker = cx.waker();
+        if !self.waker.as_ref().is_some_and(|w| w.will_wake(waker)) {
+            self.waker = Some(waker.clone());
+        }
         loop {
             match self.active_candidate_receivers.poll_next_unpin(cx) {
                 Poll::Ready((conn_id, Some(Ok(c)))) => {
@@ -492,6 +563,10 @@ impl RoleState for ClientState {
                 }
                 Poll::Ready((_, None)) => continue,
                 Poll::Pending => {}
+            }
+
+            if let Some(dns_query) = self.dns_queries.pop_front() {
+                return Poll::Ready(Event::DnsQuery(dns_query));
             }
 
             return Poll::Pending;

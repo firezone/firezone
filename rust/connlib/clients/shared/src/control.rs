@@ -1,4 +1,5 @@
 use async_compression::tokio::bufread::GzipEncoder;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::{io, sync::Arc};
 
@@ -19,12 +20,44 @@ use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use tokio::io::BufReader;
 use tokio::sync::Mutex;
 use tokio_util::codec::{BytesCodec, FramedRead};
+use trust_dns_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
+use trust_dns_resolver::TokioAsyncResolver;
 use url::Url;
 
+const DNS_PORT: u16 = 53;
 pub struct ControlPlane<CB: Callbacks> {
     pub tunnel: Arc<Tunnel<CB, ClientState>>,
     pub phoenix_channel: PhoenixSenderWithTopic,
     pub tunnel_init: Mutex<bool>,
+    // It's a Mutex<Option<_>> because we need the init message to initialize the resolver
+    // also, in platforms with split DNS and no configured upstream dns this will be None.
+    //
+    // We could still initialize the resolver with no nameservers in those platforms...
+    pub fallback_resolver: parking_lot::Mutex<Option<TokioAsyncResolver>>,
+}
+
+fn create_resolver(upstream_dns: Vec<IpAddr>) -> Option<TokioAsyncResolver> {
+    // TODO: UNCOMMENTME
+    // if upstream_dns.is_empty() {
+    //     return None;
+    // }
+
+    let mut resolver_config = ResolverConfig::new();
+    for ip in upstream_dns.iter() {
+        let name_server = NameServerConfig::new(SocketAddr::new(*ip, DNS_PORT), Protocol::Udp);
+        resolver_config.add_name_server(name_server);
+    }
+
+    let name_server = NameServerConfig::new(
+        SocketAddr::new("1.1.1.1".parse().unwrap(), 53),
+        Protocol::Udp,
+    );
+    resolver_config.add_name_server(name_server);
+
+    Some(TokioAsyncResolver::tokio(
+        resolver_config,
+        Default::default(),
+    ))
 }
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
@@ -44,6 +77,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     return Err(e);
                 } else {
                     *init = true;
+                    *self.fallback_resolver.lock() = create_resolver(interface.upstream_dns);
                     tracing::info!("Firezoned Started!");
                 }
             } else {
@@ -284,6 +318,22 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 
                     // TODO: Clean up connection in `ClientState` here?
                 }
+            }
+            firezone_tunnel::Event::DnsQuery(query) => {
+                // Until we handle it better on a gateway-like eventloop, making sure not to block the loop
+                let Some(resolver) = self.fallback_resolver.lock().clone() else {
+                    return;
+                };
+                let tunnel = self.tunnel.clone();
+                tokio::spawn(async move {
+                    let response = resolver.lookup(query.name, query.record_type).await;
+                    if let Err(err) = tunnel
+                        .write_dns_lookup_response(response, query.query)
+                        .await
+                    {
+                        tracing::error!(err = ?err, "DNS lookup failed: {err:#}");
+                    }
+                });
             }
         }
     }
