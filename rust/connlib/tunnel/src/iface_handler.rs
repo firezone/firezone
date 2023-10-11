@@ -18,7 +18,7 @@ where
     TRoleState: RoleState,
 {
     #[inline(always)]
-    fn connection_intent(self: &Arc<Self>, packet: IpPacket<'_>) {
+    pub(crate) fn connection_intent(self: &Arc<Self>, packet: IpPacket<'_>) {
         // We can buffer requests here but will drop them for now and let the upper layer reliability protocol handle this
         if let Some(resource) = self.get_resource(packet.destination()) {
             // We have awaiting connection to prevent a race condition where
@@ -81,7 +81,7 @@ where
     }
 
     #[inline(always)]
-    async fn encapsulate_and_send_to_peer<'a>(
+    pub(crate) async fn encapsulate_and_send_to_peer<'a>(
         &self,
         mut packet: MutableIpPacket<'_>,
         buf: &mut [u8],
@@ -129,35 +129,6 @@ where
                 }
             }
             _ => panic!("Unexpected result from encapsulate"),
-        }
-    }
-
-    #[inline(always)]
-    pub(crate) async fn handle_iface_packet(
-        self: &Arc<Self>,
-        packet: MutableIpPacket<'_>,
-        buf: &mut [u8],
-    ) -> Result<()> {
-        let dest = packet.destination();
-
-        let maybe_peer = self
-            .peers_by_ip
-            .read()
-            .longest_match(dest)
-            .map(|(_, p)| p)
-            .cloned();
-
-        match maybe_peer {
-            Some(peer) => {
-                self.encapsulate_and_send_to_peer(packet, buf, &dest, peer)
-                    .await?;
-
-                Ok(())
-            }
-            None => {
-                self.connection_intent(packet.as_immutable());
-                Ok(())
-            }
         }
     }
 }

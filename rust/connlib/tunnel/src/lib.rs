@@ -375,7 +375,7 @@ where
         *self.iface_handler_abort.lock() =
             Some(tokio_util::spawn_log(&self.callbacks, async move {
                 let device_writer = device.io.clone();
-                let mut dst = [0u8; MAX_UDP_SIZE];
+                let mut buf = [0u8; MAX_UDP_SIZE];
                 loop {
                     let Some(packet) = device.read().await? else {
                         return Ok(());
@@ -392,7 +392,23 @@ where
                         continue;
                     }
 
-                    if let Err(e) = tunnel.handle_iface_packet(packet, &mut dst).await {
+                    let dest = packet.destination();
+
+                    let Some(peer) = tunnel
+                        .peers_by_ip
+                        .read()
+                        .longest_match(dest)
+                        .map(|(_, peer)| peer)
+                        .cloned()
+                    else {
+                        tunnel.connection_intent(packet.as_immutable());
+                        continue;
+                    };
+
+                    if let Err(e) = tunnel
+                        .encapsulate_and_send_to_peer(packet, &mut buf, &dest, peer)
+                        .await
+                    {
                         let _ = tunnel.callbacks.on_error(&e);
                         tracing::error!(err = ?e, "failed to handle packet {e:#}")
                     }
