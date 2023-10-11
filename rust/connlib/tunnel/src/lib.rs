@@ -351,24 +351,6 @@ where
         })
     }
 
-    /// Sets the interface configuration and starts background tasks.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_interface(self: &Arc<Self>, config: &InterfaceConfig) -> Result<()> {
-        let device = create_iface(config, self.callbacks()).await?;
-        *self.device.write().await = Some(device.clone());
-
-        self.start_timers().await?;
-        self.start_device(device);
-
-        self.add_route(DNS_SENTINEL.into()).await?;
-
-        self.callbacks.on_tunnel_ready()?;
-
-        tracing::debug!("background_loop_started");
-
-        Ok(())
-    }
-
     fn start_device(self: &Arc<Self>, mut device: Device) {
         let tunnel = Arc::clone(self);
 
@@ -626,6 +608,48 @@ where
         };
 
         self.callbacks.on_update_resources(resource_list)?;
+        Ok(())
+    }
+
+    /// Sets the interface configuration and starts background tasks.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn set_interface(self: &Arc<Self>, config: &InterfaceConfig) -> Result<()> {
+        let device = create_iface(config, self.callbacks()).await?;
+        *self.device.write().await = Some(device.clone());
+
+        self.start_timers().await?;
+        self.start_device(device);
+
+        self.add_route(DNS_SENTINEL.into()).await?;
+
+        self.callbacks.on_tunnel_ready()?;
+
+        tracing::debug!("background_loop_started");
+
+        Ok(())
+    }
+}
+
+impl<C, CB> Tunnel<C, CB, GatewayState>
+where
+    C: ControlSignal + Send + Sync + 'static,
+    CB: Callbacks + 'static,
+{
+    /// Sets the interface configuration and starts background tasks.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn set_interface(self: &Arc<Self>, config: &InterfaceConfig) -> Result<()> {
+        let device = create_iface(config, self.callbacks()).await?;
+        *self.device.write().await = Some(device.clone());
+
+        self.start_timers().await?;
+        self.start_device(device);
+
+        self.add_route(DNS_SENTINEL.into()).await?;
+
+        self.callbacks.on_tunnel_ready()?;
+
+        tracing::debug!("background_loop_started");
+
         Ok(())
     }
 }
