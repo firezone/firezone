@@ -60,6 +60,7 @@ mod peer_handler;
 mod resource_sender;
 mod resource_table;
 mod role_state;
+mod tokio_util;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const RESET_PACKET_COUNT_INTERVAL: Duration = Duration::from_secs(1);
@@ -377,14 +378,27 @@ where
     fn start_device(self: &Arc<Self>, device: Device) {
         let tunnel = Arc::clone(self);
 
-        *self.iface_handler_abort.lock() = Some(
-            tokio::spawn(async move {
-                if let Err(e) = tunnel.clone().iface_handler(device).await {
-                    let _ = tunnel.callbacks.on_error(&e.into());
+        *self.iface_handler_abort.lock() =
+            Some(tokio_util::spawn_log(&self.callbacks, async move {
+                let mut device1 = device;
+                let device_writer = device1.io.clone();
+                let mut dst = [0u8; MAX_UDP_SIZE];
+                loop {
+                    let src = device1.read().await?;
+
+                    if src.is_empty() {
+                        return Ok(());
+                    }
+
+                    if let Err(e) = tunnel
+                        .handle_iface_packet(&device_writer, src, &mut dst)
+                        .await
+                    {
+                        let _ = tunnel.callbacks.on_error(&e);
+                        tracing::error!(err = ?e, "failed to handle packet {e:#}")
+                    }
                 }
-            })
-            .abort_handle(),
-        );
+            }));
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
