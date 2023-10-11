@@ -218,7 +218,7 @@ fn send_dns_packet(device_writer: &DeviceIo, packet: dns::Packet) -> io::Result<
     Ok(())
 }
 
-/// [`Tunnel`](crate::Tunnel) state specific to clients.
+/// [`Tunnel`] state specific to clients.
 pub struct ClientState {
     active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidateInit>,
     /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.

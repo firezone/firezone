@@ -68,7 +68,7 @@ where
     }
 }
 
-/// [`Tunnel`](crate::Tunnel) state specific to gateways.
+/// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
     candidate_receivers: StreamMap<ClientId, RTCIceCandidateInit>,
 }
