@@ -87,6 +87,7 @@ jobs:
           REF="${{ github.ref_name }}" # `ref_name` contains `/` which is not a valid docker image tag.
           CACHE_TAG="${REF//\//-}"
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
+          echo "BRANCH_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
@@ -109,7 +110,7 @@ jobs:
           target: ${{ matrix.target }}
           tags: |
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:latest
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.BRANCH_TAG }}
 
   integration-tests:
     needs: build-images
