@@ -4,7 +4,7 @@ use crate::{
     dns, tokio_util, ConnId, ControlSignal, Device, Event, RoleState, Tunnel,
     ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
-use connlib_shared::error::ConnlibError as Error;
+use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{GatewayId, Interface as InterfaceConfig, ResourceDescription};
 use connlib_shared::{Callbacks, DNS_SENTINEL};
 use futures::channel::mpsc::Receiver;
@@ -66,7 +66,10 @@ where
         *self.device.write().await = Some(device.clone());
 
         self.start_timers().await?;
-        self.start_device(device);
+        *self.iface_handler_abort.lock() = Some(tokio_util::spawn_log(
+            &self.callbacks,
+            device_handler(Arc::clone(self), device),
+        ));
 
         self.add_route(DNS_SENTINEL.into()).await?;
 
@@ -89,51 +92,13 @@ where
             .await?
         {
             *device = Some(new_device.clone());
-            self.start_device(new_device);
+            *self.iface_handler_abort.lock() = Some(tokio_util::spawn_log(
+                &self.callbacks,
+                device_handler(Arc::clone(self), new_device),
+            ));
         }
 
         Ok(())
-    }
-
-    fn start_device(self: &Arc<Self>, mut device: Device) {
-        let tunnel = Arc::clone(self);
-
-        *self.iface_handler_abort.lock() =
-            Some(tokio_util::spawn_log(&self.callbacks, async move {
-                let device_writer = device.io.clone();
-                let mut buf = [0u8; MAX_UDP_SIZE];
-                loop {
-                    let Some(packet) = device.read().await? else {
-                        return Ok(());
-                    };
-
-                    if let Some(dns_packet) =
-                        dns::parse(&tunnel.resources.read(), packet.as_immutable())
-                    {
-                        if let Err(e) = send_dns_packet(&device_writer, dns_packet) {
-                            tracing::error!(err = %e, "failed to send DNS packet");
-                            let _ = tunnel.callbacks.on_error(&e.into());
-                        }
-
-                        continue;
-                    }
-
-                    let dest = packet.destination();
-
-                    let Some(peer) = tunnel.peer_by_ip(dest) else {
-                        tunnel.connection_intent(packet.as_immutable());
-                        continue;
-                    };
-
-                    if let Err(e) = tunnel
-                        .encapsulate_and_send_to_peer(packet, peer, &dest, &mut buf)
-                        .await
-                    {
-                        let _ = tunnel.callbacks.on_error(&e);
-                        tracing::error!(err = ?e, "failed to handle packet {e:#}")
-                    }
-                }
-            }));
     }
 
     #[inline(always)]
@@ -198,6 +163,48 @@ where
                     }
                 });
             }
+        }
+    }
+}
+
+/// Reads IP packets from the [`Device`] and handles them accordingly.
+async fn device_handler<C, CB>(
+    tunnel: Arc<Tunnel<C, CB, ClientState>>,
+    mut device: Device,
+) -> Result<(), ConnlibError>
+where
+    C: ControlSignal + Send + Sync + 'static,
+    CB: Callbacks + 'static,
+{
+    let device_writer = device.io.clone();
+    let mut buf = [0u8; MAX_UDP_SIZE];
+    loop {
+        let Some(packet) = device.read().await? else {
+            return Ok(());
+        };
+
+        if let Some(dns_packet) = dns::parse(&tunnel.resources.read(), packet.as_immutable()) {
+            if let Err(e) = send_dns_packet(&device_writer, dns_packet) {
+                tracing::error!(err = %e, "failed to send DNS packet");
+                let _ = tunnel.callbacks.on_error(&e.into());
+            }
+
+            continue;
+        }
+
+        let dest = packet.destination();
+
+        let Some(peer) = tunnel.peer_by_ip(dest) else {
+            tunnel.connection_intent(packet.as_immutable());
+            continue;
+        };
+
+        if let Err(e) = tunnel
+            .encapsulate_and_send_to_peer(packet, peer, &dest, &mut buf)
+            .await
+        {
+            let _ = tunnel.callbacks.on_error(&e);
+            tracing::error!(err = ?e, "failed to handle packet {e:#}")
         }
     }
 }
