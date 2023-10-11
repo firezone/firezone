@@ -15,22 +15,18 @@ jobs:
         include:
           - sdk: macosx
             runs-on: macos-13
-            xcode: "14.3"
             platform: macOS
             destination: platform=macOS
           - sdk: iphoneos
             runs-on: macos-13
-            xcode: "14.3"
             platform: iOS
             destination: generic/platform=iOS
           - sdk: macosx
             runs-on: macos-14
-            xcode: "15"
             platform: macOS
             destination: platform=macOS
           - sdk: iphoneos
             runs-on: macos-14
-            xcode: "15"
             platform: iOS
             destination: generic/platform=iOS
     permissions:
@@ -113,9 +109,6 @@ jobs:
           # Needed because `productbuild` doesn't support picking this up automatically like Xcode does
           INSTALLER_CODE_SIGN_IDENTITY: "3rd Party Mac Developer Installer: Firezone, Inc. (47R2M6779T)"
         run: |
-          # Explicitly select Xcode version to use
-          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
-
           # Needed by the linter built into the build process
           brew install swift-format
 
