@@ -145,14 +145,12 @@ jobs:
         run: |
           REF="${{ github.ref_name }}" # `ref_name` contains `/` which is not a valid docker image tag.
           BRANCH_TAG="${REF//\//-}"
-          echo "BRANCH_TAG=$BRANCH_TAG" >> "$GITHUB_ENV"
+          echo "VERSION=$BRANCH_TAG" >> "$GITHUB_ENV"
       - name: Seed database
         run:
-          # FIXME: This doesn't use the Elixir cache, and so compiles every time
           docker compose run --env elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
-          export VERSION="${{ env.BRANCH_TAG }}"
           docker compose up -d \
             api \
             web \
