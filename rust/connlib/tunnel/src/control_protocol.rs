@@ -132,11 +132,4 @@ where
         peer_connection.add_ice_candidate(ice_candidate).await?;
         Ok(())
     }
-
-    /// Clean up a connection to a resource.
-    // FIXME: this cleanup connection is wrong!
-    pub fn cleanup_connection(&self, id: ConnId) {
-        self.awaiting_connection.lock().remove(&id);
-        self.peer_connections.lock().remove(&id);
-    }
 }

@@ -1,6 +1,6 @@
 use crate::device_channel::create_iface;
 use crate::{
-    ControlSignal, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
+    ConnId, ControlSignal, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
 use connlib_shared::error::ConnlibError;
@@ -34,6 +34,13 @@ where
         tracing::debug!("background_loop_started");
 
         Ok(())
+    }
+
+    /// Clean up a connection to a resource.
+    // FIXME: this cleanup connection is wrong!
+    pub fn cleanup_connection(&self, id: ConnId) {
+        self.awaiting_connection.lock().remove(&id);
+        self.peer_connections.lock().remove(&id);
     }
 }
 

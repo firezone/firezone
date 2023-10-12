@@ -80,6 +80,13 @@ where
         Ok(())
     }
 
+    /// Clean up a connection to a resource.
+    // FIXME: this cleanup connection is wrong!
+    pub fn cleanup_connection(&self, id: ConnId) {
+        self.awaiting_connection.lock().remove(&id);
+        self.peer_connections.lock().remove(&id);
+    }
+
     #[tracing::instrument(level = "trace", skip(self))]
     async fn add_route(self: &Arc<Self>, route: IpNetwork) -> connlib_shared::Result<()> {
         let mut device = self.device.write().await;
