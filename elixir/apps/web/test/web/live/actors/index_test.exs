@@ -47,7 +47,7 @@ defmodule Web.Live.Actors.IndexTest do
       |> live(~p"/#{account}/actors")
 
     assert button = Floki.find(html, "a[href='/#{account.id}/actors/new']")
-    assert Floki.text(button) =~ "Add a new Actor"
+    assert Floki.text(button) =~ "Add Actor"
   end
 
   test "renders actors table", %{

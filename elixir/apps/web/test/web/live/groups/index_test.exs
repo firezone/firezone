@@ -47,7 +47,7 @@ defmodule Web.Live.Groups.IndexTest do
       |> live(~p"/#{account}/groups")
 
     assert button = Floki.find(html, "a[href='/#{account.id}/groups/new']")
-    assert Floki.text(button) =~ "Add a new group"
+    assert Floki.text(button) =~ "Add Group"
   end
 
   test "renders empty table when there are no groups", %{
@@ -60,11 +60,9 @@ defmodule Web.Live.Groups.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/groups")
 
-    assert html =~ "There are no groups to display."
-    assert html =~ "Add a new group"
-    assert html =~ "Sync groups from an IdP"
-
-    refute html =~ "tbody"
+    assert html =~ "No groups to display"
+    assert html =~ "Add Group"
+    assert html =~ "Sync Groups from IdP"
   end
 
   test "renders groups table", %{

@@ -129,14 +129,14 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
       |> live(~p"/#{account}/settings/identity_providers/openid_connect/#{provider}")
 
     assert lv
-           |> element("button", "Disable Identity Provider")
+           |> element("button", "Disable")
            |> render_click()
            |> Floki.find("#provider")
            |> vertical_table_to_map()
            |> Map.fetch!("status") == "Disabled"
 
     assert lv
-           |> element("button", "Enable Identity Provider")
+           |> element("button", "Enable")
            |> render_click()
            |> Floki.find("#provider")
            |> vertical_table_to_map()
@@ -174,7 +174,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
       |> live(~p"/#{account}/settings/identity_providers/openid_connect/#{provider}")
 
     assert lv
-           |> element("a", "Reconnect Identity Provider")
+           |> element("a", "Reconnect")
            |> render()
            |> Floki.attribute("href")
            |> hd() ==

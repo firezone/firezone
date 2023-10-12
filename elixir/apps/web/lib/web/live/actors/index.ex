@@ -28,13 +28,14 @@ defmodule Web.Actors.Index do
       <.breadcrumb path={~p"/#{@account}/actors"}><%= @page_title %></.breadcrumb>
     </.breadcrumbs>
 
-    <.page>
+    <.section>
       <:title><%= @page_title %></:title>
 
-      <:action navigate={~p"/#{@account}/actors/new"} icon="hero-plus">
-        Add a new Actor
+      <:action>
+        <.add_button navigate={~p"/#{@account}/actors/new"}>
+          Add Actor
+        </.add_button>
       </:action>
-
       <:content>
         <.table id="actors" rows={@actors} row_id={&"user-#{&1.id}"}>
           <:col :let={actor} label="name" sortable="false">
@@ -75,9 +76,21 @@ defmodule Web.Actors.Index do
           <:col :let={actor} label="last signed in" sortable="false">
             <.relative_datetime datetime={last_seen_at(actor.identities)} />
           </:col>
+          <:empty>
+            <div class="flex justify-center text-center text-slate-500 p-4">
+              <div class="w-auto">
+                <div class="pb-4">
+                  No actors to display
+                </div>
+                <.add_button navigate={~p"/#{@account}/actors/new"}>
+                  Add Actor
+                </.add_button>
+              </div>
+            </div>
+          </:empty>
         </.table>
       </:content>
-    </.page>
+    </.section>
     """
   end
 

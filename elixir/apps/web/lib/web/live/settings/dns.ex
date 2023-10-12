@@ -23,54 +23,55 @@ defmodule Web.Settings.DNS do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/settings/dns"}>DNS Settings</.breadcrumb>
     </.breadcrumbs>
-    <.header>
+
+    <.section>
       <:title>
         DNS
       </:title>
-    </.header>
-    <p class="ml-4 mb-4 font-medium bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-500">
-      Configure the default resolver used by connected Clients in your Firezone network. Queries for
-      defined Resources will <strong>always</strong>
-      use Firezone's internal DNS. All other queries will
-      use the resolver configured below.
-    </p>
-    <p class="ml-4 mb-4 font-medium bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-500">
-      <.link
-        class="text-blue-600 dark:text-blue-500 hover:underline"
-        href="https://www.firezone.dev/docs/architecture/dns"
-        target="_blank"
-      >
-        Read more about how DNS works in Firezone.
-        <.icon name="hero-arrow-top-right-on-square" class="-ml-1 mb-3 w-3 h-3" />
-      </.link>
-    </p>
-    <section class="bg-white dark:bg-gray-900">
-      <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
-        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Client DNS</h2>
-        <p class="mb-4 text-slate-500">
-          DNS servers will be used in the order they are listed below.
+      <:content>
+        <p class="ml-4 mb-4 font-medium text-gray-600 dark:text-gray-500">
+          Configure the default resolver used by connected Clients in your Firezone network. Queries for
+          defined Resources will <strong>always</strong>
+          use Firezone's internal DNS. All other queries will
+          use the resolver configured below.
         </p>
+        <p class="ml-4 mb-4 font-medium text-gray-600 dark:text-gray-500">
+          <.link
+            class="text-blue-600 dark:text-blue-500 hover:underline"
+            href="https://www.firezone.dev/docs/architecture/dns"
+            target="_blank"
+          >
+            Read more about how DNS works in Firezone.
+            <.icon name="hero-arrow-top-right-on-square" class="-ml-1 mb-3 w-3 h-3" />
+          </.link>
+        </p>
+        <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+          <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
+          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Client DNS</h2>
+          <p class="mb-4 text-slate-500">
+            DNS servers will be used in the order they are listed below.
+          </p>
 
-        <.form for={@form} phx-submit={:submit} phx-change={:change}>
-          <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-            <div>
-              <.inputs_for :let={dns} field={@form[:clients_upstream_dns]}>
-                <div class="mb-4">
-                  <.input label="Address" field={dns[:address]} placeholder="DNS Server Address" />
-                </div>
-              </.inputs_for>
+          <.form for={@form} phx-submit={:submit} phx-change={:change}>
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <div>
+                <.inputs_for :let={dns} field={@form[:clients_upstream_dns]}>
+                  <div class="mb-4">
+                    <.input label="Address" field={dns[:address]} placeholder="DNS Server Address" />
+                  </div>
+                </.inputs_for>
+              </div>
+              <.error :for={msg <- @errors} data-validation-error-for="clients_upstream_dns">
+                <%= msg %>
+              </.error>
+              <.submit_button>
+                Save
+              </.submit_button>
             </div>
-            <.error :for={msg <- @errors} data-validation-error-for="clients_upstream_dns">
-              <%= msg %>
-            </.error>
-            <.button>
-              Save
-            </.button>
-          </div>
-        </.form>
-      </div>
-    </section>
+          </.form>
+        </div>
+      </:content>
+    </.section>
     """
   end
 

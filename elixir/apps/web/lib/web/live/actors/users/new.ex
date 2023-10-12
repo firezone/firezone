@@ -19,6 +19,36 @@ defmodule Web.Actors.Users.New do
     end
   end
 
+  def render(assigns) do
+    ~H"""
+    <.breadcrumbs account={@account}>
+      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors/new"}>Add</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors/users/new"}>User</.breadcrumb>
+    </.breadcrumbs>
+
+    <.section>
+      <:title>
+        Create Actor
+      </:title>
+      <:content>
+        <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Create a User</h2>
+          <.flash kind={:error} flash={@flash} />
+          <.form for={@form} phx-change={:change} phx-submit={:submit}>
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <.actor_form form={@form} type={:user} groups={@groups} subject={@subject} />
+            </div>
+            <.submit_button>
+              Create
+            </.submit_button>
+          </.form>
+        </div>
+      </:content>
+    </.section>
+    """
+  end
+
   def handle_event("change", %{"actor" => attrs}, socket) do
     changeset =
       attrs
@@ -54,35 +84,5 @@ defmodule Web.Actors.Users.New do
         %{group_id: group_id}
       end)
     end)
-  end
-
-  def render(assigns) do
-    ~H"""
-    <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/new"}>Add</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/users/new"}>User</.breadcrumb>
-    </.breadcrumbs>
-    <.header>
-      <:title>
-        Creating an Actor
-      </:title>
-    </.header>
-    <!-- Create User -->
-    <section class="bg-white dark:bg-gray-900">
-      <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Create a User</h2>
-        <.flash kind={:error} flash={@flash} />
-        <.form for={@form} phx-change={:change} phx-submit={:submit}>
-          <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-            <.actor_form form={@form} type={:user} groups={@groups} subject={@subject} />
-          </div>
-          <.submit_button>
-            Create
-          </.submit_button>
-        </.form>
-      </div>
-    </section>
-    """
   end
 end

@@ -23,6 +23,38 @@ defmodule Web.Actors.ServiceAccounts.New do
     end
   end
 
+  def render(assigns) do
+    ~H"""
+    <.breadcrumbs account={@account}>
+      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors/new"}>Add</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors/service_accounts/new"}>Service Account</.breadcrumb>
+    </.breadcrumbs>
+
+    <.section>
+      <:title>
+        Create Actor
+      </:title>
+      <:content>
+        <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">
+            Create a Service Account
+          </h2>
+          <.flash kind={:error} flash={@flash} />
+          <.form for={@form} phx-change={:change} phx-submit={:submit}>
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <.actor_form form={@form} type={:service_account} groups={@groups} subject={@subject} />
+            </div>
+            <.submit_button>
+              Create
+            </.submit_button>
+          </.form>
+        </div>
+      </:content>
+    </.section>
+    """
+  end
+
   def handle_event("change", %{"actor" => attrs}, socket) do
     changeset =
       attrs
@@ -56,37 +88,5 @@ defmodule Web.Actors.ServiceAccounts.New do
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
-  end
-
-  def render(assigns) do
-    ~H"""
-    <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/new"}>Add</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/service_accounts/new"}>Service Account</.breadcrumb>
-    </.breadcrumbs>
-
-    <.header>
-      <:title>
-        Creating an Actor
-      </:title>
-    </.header>
-
-    <section class="bg-white dark:bg-gray-900">
-      <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Create a Service Account</h2>
-        <.flash kind={:error} flash={@flash} />
-        <.form for={@form} phx-change={:change} phx-submit={:submit}>
-          <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-            <.actor_form form={@form} type={:service_account} groups={@groups} subject={@subject} />
-          </div>
-
-          <.submit_button>
-            Create
-          </.submit_button>
-        </.form>
-      </div>
-    </section>
-    """
   end
 end

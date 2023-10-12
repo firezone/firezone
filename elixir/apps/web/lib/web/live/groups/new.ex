@@ -7,6 +7,39 @@ defmodule Web.Groups.New do
     {:ok, assign(socket, form: to_form(changeset))}
   end
 
+  def render(assigns) do
+    ~H"""
+    <.breadcrumbs account={@account}>
+      <.breadcrumb path={~p"/#{@account}/groups"}>Actor Groups</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/groups/new"}>Add</.breadcrumb>
+    </.breadcrumbs>
+    <.section>
+      <:title>
+        Create Group
+      </:title>
+      <:content>
+        <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
+          <.form for={@form} phx-change={:change} phx-submit={:submit}>
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <div>
+                <.input
+                  label="Name Prefix"
+                  field={@form[:name]}
+                  placeholder="Name of this Actor Group"
+                  required
+                />
+              </div>
+            </div>
+            <.submit_button>
+              Save
+            </.submit_button>
+          </.form>
+        </div>
+      </:content>
+    </.section>
+    """
+  end
+
   def handle_event("change", %{"group" => attrs}, socket) do
     changeset =
       Actors.new_group(attrs)
@@ -24,39 +57,5 @@ defmodule Web.Groups.New do
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
-  end
-
-  def render(assigns) do
-    ~H"""
-    <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/groups"}>Actor Groups</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/groups/new"}>Add</.breadcrumb>
-    </.breadcrumbs>
-    <.header>
-      <:title>
-        Creating Group
-      </:title>
-    </.header>
-
-    <section class="bg-white dark:bg-gray-900">
-      <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
-        <.form for={@form} phx-change={:change} phx-submit={:submit}>
-          <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-            <div>
-              <.input
-                label="Name Prefix"
-                field={@form[:name]}
-                placeholder="Name of this Actor Group"
-                required
-              />
-            </div>
-          </div>
-          <.submit_button>
-            Save
-          </.submit_button>
-        </.form>
-      </div>
-    </section>
-    """
   end
 end

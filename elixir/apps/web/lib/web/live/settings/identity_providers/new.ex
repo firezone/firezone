@@ -29,33 +29,37 @@ defmodule Web.Settings.IdentityProviders.New do
         Create Identity Provider
       </.breadcrumb>
     </.breadcrumbs>
-    <.header>
+    <.section>
       <:title>
         Add a new Identity Provider
       </:title>
-    </.header>
-    <section class="bg-white dark:bg-gray-900">
-      <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Choose type</h2>
-        <.form id="identity-provider-type-form" for={@form} phx-submit="submit">
-          <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-            <fieldset>
-              <legend class="sr-only">Identity Provider Type</legend>
+      <:content>
+        <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Choose type</h2>
+          <.form id="identity-provider-type-form" for={@form} phx-submit="submit">
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <fieldset>
+                <legend class="sr-only">Identity Provider Type</legend>
 
-              <.adapter :for={{adapter, _module} <- @adapters} adapter={adapter} account={@account} />
-            </fieldset>
-          </div>
-          <div class="flex justify-end items-center space-x-4">
-            <button
-              type="submit"
-              class="text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:outline-none focus:ring-primary-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800"
-            >
-              Next: Configure
-            </button>
-          </div>
-        </.form>
-      </div>
-    </section>
+                <.adapter :for={{adapter, _module} <- @adapters} adapter={adapter} account={@account} />
+              </fieldset>
+            </div>
+            <div class="flex justify-end items-center space-x-4">
+              <button
+                type="submit"
+                class={[
+                  "text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:outline-none focus:ring-primary-300",
+                  "font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-primary-600 dark:hover:bg-primary-700",
+                  "dark:focus:ring-primary-800"
+                ]}
+              >
+                Next: Configure
+              </button>
+            </div>
+          </.form>
+        </div>
+      </:content>
+    </.section>
     """
   end
 

@@ -19,11 +19,6 @@ defmodule Web.Groups.Show do
     end
   end
 
-  def handle_event("delete", _params, socket) do
-    {:ok, _group} = Actors.delete_group(socket.assigns.group, socket.assigns.subject)
-    {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/groups")}
-  end
-
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
@@ -32,48 +27,46 @@ defmodule Web.Groups.Show do
         <%= @group.name %>
       </.breadcrumb>
     </.breadcrumbs>
-    <.header>
+
+    <.section>
       <:title>
-        Viewing Group <code><%= @group.name %></code>
+        Group: <code><%= @group.name %></code>
       </:title>
-      <:actions>
+      <:action>
         <.edit_button
           :if={not Actors.group_synced?(@group)}
           navigate={~p"/#{@account}/groups/#{@group}/edit"}
         >
           Edit Group
         </.edit_button>
-      </:actions>
-    </.header>
-    <!-- Group Details -->
-    <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.vertical_table id="group">
-        <.vertical_table_row>
-          <:label>Name</:label>
-          <:value><%= @group.name %></:value>
-        </.vertical_table_row>
-        <.vertical_table_row>
-          <:label>Source</:label>
-          <:value>
-            <.source account={@account} group={@group} />
-          </:value>
-        </.vertical_table_row>
-      </.vertical_table>
-      <!-- Actors Table -->
-      <.header>
-        <:title>
-          Actors
-        </:title>
-        <:actions>
-          <.edit_button
-            :if={not Actors.group_synced?(@group)}
-            navigate={~p"/#{@account}/groups/#{@group}/edit_actors"}
-          >
-            Edit Actors
-          </.edit_button>
-        </:actions>
-      </.header>
-      <div class="relative overflow-x-auto">
+      </:action>
+      <:content>
+        <.vertical_table id="group">
+          <.vertical_table_row>
+            <:label>Name</:label>
+            <:value><%= @group.name %></:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Source</:label>
+            <:value>
+              <.source account={@account} group={@group} />
+            </:value>
+          </.vertical_table_row>
+        </.vertical_table>
+      </:content>
+    </.section>
+
+    <.section>
+      <:title>Actors</:title>
+      <:action>
+        <.edit_button
+          :if={not Actors.group_synced?(@group)}
+          navigate={~p"/#{@account}/groups/#{@group}/edit_actors"}
+        >
+          Edit Actors
+        </.edit_button>
+      </:action>
+      <:content>
         <.table id="actors" rows={@group.actors}>
           <:col :let={actor} label="ACTOR">
             <.actor_name_and_role account={@account} actor={actor} />
@@ -85,23 +78,44 @@ defmodule Web.Groups.Show do
               identity={identity}
             />
           </:col>
+          <:empty>
+            <div class="flex justify-center text-center text-slate-500 p-4">
+              <div :if={not Actors.group_synced?(@group)} class="w-auto">
+                <div class="pb-4">
+                  No actors in group
+                </div>
+                <.edit_button
+                  :if={not Actors.group_synced?(@group)}
+                  navigate={~p"/#{@account}/groups/#{@group}/edit"}
+                >
+                  Edit Group
+                </.edit_button>
+              </div>
+              <div :if={Actors.group_synced?(@group)} class="w-auto">
+                No actors in synced group
+              </div>
+            </div>
+          </:empty>
         </.table>
-      </div>
-    </div>
+      </:content>
+    </.section>
 
-    <.header :if={is_nil(@group.provider_id)}>
-      <:title>
-        Danger zone
-      </:title>
-      <:actions>
+    <.danger_zone>
+      <:action>
         <.delete_button
           phx-click="delete"
           data-confirm="Are you sure want to delete this group and all related policies?"
         >
           Delete Group
         </.delete_button>
-      </:actions>
-    </.header>
+      </:action>
+      <:content></:content>
+    </.danger_zone>
     """
+  end
+
+  def handle_event("delete", _params, socket) do
+    {:ok, _group} = Actors.delete_group(socket.assigns.group, socket.assigns.subject)
+    {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/groups")}
   end
 end

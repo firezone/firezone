@@ -24,48 +24,48 @@ defmodule Web.Resources.New do
       <.breadcrumb path={~p"/#{@account}/resources"}>Resources</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/resources/new"}>Add Resource</.breadcrumb>
     </.breadcrumbs>
-    <.header>
+    <.section>
       <:title>
         Add Resource
       </:title>
-    </.header>
-    <section class="bg-white dark:bg-gray-900">
-      <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Resource details</h2>
-        <.form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="change">
-          <.input
-            field={@form[:name]}
-            type="text"
-            label="Name"
-            placeholder="Name this resource"
-            required
-            phx-debounce="300"
-          />
+      <:content>
+        <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Resource details</h2>
+          <.form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="change">
+            <.input
+              field={@form[:name]}
+              type="text"
+              label="Name"
+              placeholder="Name this resource"
+              required
+              phx-debounce="300"
+            />
 
-          <.input
-            field={@form[:address]}
-            autocomplete="off"
-            type="text"
-            label="Address"
-            placeholder="Enter IP address, CIDR, or DNS name"
-            required
-            phx-debounce="300"
-          />
+            <.input
+              field={@form[:address]}
+              autocomplete="off"
+              type="text"
+              label="Address"
+              placeholder="Enter IP address, CIDR, or DNS name"
+              required
+              phx-debounce="300"
+            />
 
-          <.filters_form form={@form[:filters]} />
+            <.filters_form form={@form[:filters]} />
 
-          <.connections_form
-            form={@form[:connections]}
-            account={@account}
-            gateway_groups={@gateway_groups}
-          />
+            <.connections_form
+              form={@form[:connections]}
+              account={@account}
+              gateway_groups={@gateway_groups}
+            />
 
-          <.submit_button phx-disable-with="Creating Resource...">
-            Save
-          </.submit_button>
-        </.form>
-      </div>
-    </section>
+            <.submit_button phx-disable-with="Creating Resource...">
+              Save
+            </.submit_button>
+          </.form>
+        </div>
+      </:content>
+    </.section>
     """
   end
 
