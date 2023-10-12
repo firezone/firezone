@@ -32,7 +32,7 @@ fn handle_connection_state_update<C, CB>(
     tracing::trace!("peer_state");
     if state == RTCPeerConnectionState::Failed {
         let mut role_state = tunnel.role_state.lock();
-        role_state.awaiting_connection.remove(&resource_id.into());
+        role_state.awaiting_connection.remove(&resource_id);
         role_state.gateway_awaiting_connection.remove(&gateway_id);
 
         tunnel.peer_connections.lock().remove(&gateway_id.into());
@@ -99,8 +99,7 @@ where
         {
             let mut role_state = self.role_state.lock();
 
-            let Some(awaiting_connection) =
-                role_state.awaiting_connection.get_mut(&resource_id.into())
+            let Some(awaiting_connection) = role_state.awaiting_connection.get_mut(&resource_id)
             else {
                 return Err(Error::UnexpectedConnectionDetails);
             };
@@ -155,7 +154,7 @@ where
                 self.role_state
                     .lock()
                     .awaiting_connection
-                    .remove(&resource_id.into());
+                    .remove(&resource_id);
                 return Ok(Request::ReuseConnection(ReuseConnection {
                     resource_id,
                     gateway_id,
@@ -199,7 +198,7 @@ where
                     tunnel.gateway_public_keys.lock().remove(&gateway_id)
                 else {
                     let mut role_state = tunnel.role_state.lock();
-                    role_state.awaiting_connection.remove(&resource_id.into());
+                    role_state.awaiting_connection.remove(&resource_id);
                     role_state.gateway_awaiting_connection.remove(&gateway_id);
 
                     tunnel.peer_connections.lock().remove(&gateway_id.into());
@@ -276,7 +275,7 @@ where
                     .role_state
                     .lock()
                     .awaiting_connection
-                    .remove(&resource_id.into());
+                    .remove(&resource_id);
             })
         }));
 

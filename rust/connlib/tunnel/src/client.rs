@@ -5,7 +5,9 @@ use crate::{
     ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
-use connlib_shared::messages::{GatewayId, Interface as InterfaceConfig, ResourceDescription};
+use connlib_shared::messages::{
+    GatewayId, Interface as InterfaceConfig, ResourceDescription, ResourceId,
+};
 use connlib_shared::{Callbacks, DNS_SENTINEL};
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
@@ -83,7 +85,9 @@ where
     /// Clean up a connection to a resource.
     // FIXME: this cleanup connection is wrong!
     pub fn cleanup_connection(&self, id: ConnId) {
-        self.role_state.lock().awaiting_connection.remove(&id);
+        if let ConnId::Resource(r) = id {
+            self.role_state.lock().awaiting_connection.remove(&r);
+        }
         self.peer_connections.lock().remove(&id);
     }
 
@@ -119,8 +123,7 @@ where
             // and we are finding another packet to the same address (otherwise we would just use peer_connections here)
             let mut role_state = self.role_state.lock();
 
-            let conn_id = ConnId::from(resource.id());
-            if role_state.awaiting_connection.get(&conn_id).is_none() {
+            if role_state.awaiting_connection.get(&resource.id()).is_none() {
                 tracing::trace!(
                     resource_ip = %packet.destination(),
                     "resource_connection_intent",
@@ -128,7 +131,7 @@ where
 
                 role_state
                     .awaiting_connection
-                    .insert(conn_id, Default::default());
+                    .insert(resource.id(), Default::default());
                 let dev = Arc::clone(self);
 
                 let mut connected_gateway_ids: Vec<_> = role_state
@@ -149,9 +152,8 @@ where
                         let reference = {
                             let mut role_state = dev.role_state.lock();
 
-                            let Some(awaiting_connection) = role_state
-                                .awaiting_connection
-                                .get_mut(&ConnId::from(resource.id()))
+                            let Some(awaiting_connection) =
+                                role_state.awaiting_connection.get_mut(&resource.id())
                             else {
                                 break;
                             };
@@ -167,7 +169,10 @@ where
                             .await
                         {
                             // Not a deadlock because this is a different task
-                            dev.role_state.lock().awaiting_connection.remove(&conn_id);
+                            dev.role_state
+                                .lock()
+                                .awaiting_connection
+                                .remove(&resource.id());
                             tracing::error!(error = ?e, "start_resource_connection");
                             let _ = dev.callbacks.on_error(&e);
                         }
@@ -235,7 +240,7 @@ pub struct ClientState {
     /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
     waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidateInit>>,
 
-    pub awaiting_connection: HashMap<ConnId, AwaitingConnectionDetails>,
+    pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
     pub gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
 }
 
