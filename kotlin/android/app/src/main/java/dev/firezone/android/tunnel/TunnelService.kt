@@ -124,8 +124,8 @@ class TunnelService : VpnService() {
                 return fd
             }
 
-            override fun getSystemDefaultResolvers(): String {
-                return moshi.adapter<Array<String>>().toJson(DnsServersDetector(this@TunnelService).servers)
+            override fun getSystemDefaultResolvers(): Array<ByteArray> {
+                return DnsServersDetector(this@TunnelService).servers.map { it.address }.toTypedArray()
             }
 
             override fun onDisconnect(error: String?): Boolean {

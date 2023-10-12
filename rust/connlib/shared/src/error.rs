@@ -79,6 +79,8 @@ pub enum ConnlibError {
     OnRemoveRouteFailed(String),
     #[error("`on_update_resources` failed: {0}")]
     OnUpdateResourcesFailed(String),
+    #[error("`get_system_default_resolvers` failed: {0}")]
+    GetSystemDefaultResolverFailder(String),
     /// Glob for errors without a type.
     #[error("Other error: {0}")]
     Other(&'static str),
