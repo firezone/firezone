@@ -1,4 +1,7 @@
-use connlib_shared::{CallbackErrorFacade, Callbacks, Error, Result, DNS_SENTINEL};
+use connlib_shared::{
+    messages::Interface as InterfaceConfig, CallbackErrorFacade, Callbacks, Error, Result,
+    DNS_SENTINEL,
+};
 use ip_network::IpNetwork;
 use libc::{
     ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg, sockaddr,
@@ -13,8 +16,6 @@ use std::{
     sync::Arc,
 };
 use tokio::io::unix::AsyncFd;
-
-use crate::InterfaceConfig;
 
 const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 const SIOCGIFMTU: u64 = 0x0000_0000_c020_6933;
