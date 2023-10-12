@@ -3,7 +3,6 @@ pub use connlib_shared::{get_device_id, messages::ResourceDescription};
 pub use connlib_shared::{Callbacks, Error};
 pub use tracing_appender::non_blocking::WorkerGuard;
 
-use crate::control::ControlSignaler;
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use connlib_shared::control::SecureUrl;
 use connlib_shared::{control::PhoenixChannel, login_url, CallbackErrorFacade, Mode, Result};
@@ -149,7 +148,6 @@ where
                 }
             });
 
-            let control_signaler = ControlSignaler { control_signal: connection.sender_with_topic("client".to_owned()) };
             let tunnel = fatal_error!(
                 Tunnel::new(private_key, callbacks.clone()).await,
                 runtime_stopper,
@@ -158,7 +156,7 @@ where
 
             let mut control_plane = ControlPlane {
                 tunnel: Arc::new(tunnel),
-                control_signaler,
+                phoenix_channel: connection.sender_with_topic("client".to_owned()),
                 tunnel_init: Mutex::new(false),
             };
 
