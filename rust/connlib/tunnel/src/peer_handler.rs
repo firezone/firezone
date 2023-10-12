@@ -155,7 +155,7 @@ where
         Ok(())
     }
 
-    pub(crate) async fn start_peer_handler(self: &Arc<Self>, peer: Arc<Peer>) {
+    pub(crate) async fn start_peer_handler(self: Arc<Self>, peer: Arc<Peer>) {
         loop {
             let Some(device) = self.device.read().await.clone() else {
                 let err = Error::NoIface;

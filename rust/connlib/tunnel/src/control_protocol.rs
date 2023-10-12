@@ -134,8 +134,7 @@ where
             set_connection_state_with_peer(self, conn, index, conn_id)
         }
 
-        let tunnel = Arc::clone(self);
-        tokio::spawn(async move { tunnel.start_peer_handler(peer).await });
+        tokio::spawn(self.clone().start_peer_handler(peer));
 
         Ok(())
     }
