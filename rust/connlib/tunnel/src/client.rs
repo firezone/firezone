@@ -10,13 +10,16 @@ use connlib_shared::messages::{
 };
 use connlib_shared::{Callbacks, DNS_SENTINEL};
 use futures::channel::mpsc::Receiver;
+use futures::stream;
 use futures_bounded::{PushError, StreamMap};
 use ip_network::IpNetwork;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll};
 use std::time::Duration;
+use tokio::time::Instant;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 impl<C, CB> Tunnel<C, CB, ClientState>
@@ -114,8 +117,6 @@ where
 
     #[inline(always)]
     fn connection_intent(self: &Arc<Self>, packet: IpPacket<'_>) {
-        const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
-
         // We can buffer requests here but will drop them for now and let the upper layer reliability protocol handle this
 
         let Some(resource) = self.get_resource(packet.destination()) else {
@@ -133,56 +134,8 @@ where
 
         tracing::trace!(resource_ip = %packet.destination(), "resource_connection_intent");
 
-        let resources_gateways = self.resources_gateways.lock();
-
-        role_state
-            .awaiting_connection
-            .insert(resource.id(), Default::default());
-        let dev = Arc::clone(self);
-
-        let mut connected_gateway_ids: Vec<_> = role_state
-            .gateway_awaiting_connection
-            .clone()
-            .into_keys()
-            .collect();
-        connected_gateway_ids.extend(resources_gateways.values().cloned());
-        tracing::trace!(
-            gateways = ?connected_gateway_ids,
-            "connected_gateways"
-        );
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(MAX_SIGNAL_CONNECTION_DELAY);
-            loop {
-                interval.tick().await;
-                let reference = {
-                    let mut role_state = dev.role_state.lock();
-
-                    let Some(awaiting_connection) =
-                        role_state.awaiting_connection.get_mut(&resource.id())
-                    else {
-                        break;
-                    };
-                    if awaiting_connection.response_received {
-                        break;
-                    }
-                    awaiting_connection.total_attemps += 1;
-                    awaiting_connection.total_attemps
-                };
-                if let Err(e) = dev
-                    .control_signaler
-                    .signal_connection_to(&resource, &connected_gateway_ids, reference)
-                    .await
-                {
-                    // Not a deadlock because this is a different task
-                    dev.role_state
-                        .lock()
-                        .awaiting_connection
-                        .remove(&resource.id());
-                    tracing::error!(error = ?e, "start_resource_connection");
-                    let _ = dev.callbacks.on_error(&e);
-                }
-            }
-        });
+        let resource_gateways = self.resources_gateways.lock();
+        role_state.insert_new_awaiting_connection(resource, resource_gateways.values().cloned());
     }
 }
 
@@ -243,8 +196,17 @@ pub struct ClientState {
     /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
     waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidateInit>>,
 
-    pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
+    pub awaiting_connection: HashMap<
+        ResourceId,
+        (
+            AwaitingConnectionDetails,
+            ResourceDescription,
+            Vec<GatewayId>,
+        ),
+    >,
     pub gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
+
+    awaiting_connection_timers: StreamMap<ResourceId, Instant>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -256,6 +218,47 @@ pub struct AwaitingConnectionDetails {
 impl ClientState {
     pub fn is_awaiting_connection_to(&self, resource: ResourceId) -> bool {
         self.awaiting_connection.contains_key(&resource)
+    }
+
+    pub fn insert_new_awaiting_connection(
+        &mut self,
+        resource: ResourceDescription,
+        additional_gateways: impl Iterator<Item = GatewayId>,
+    ) {
+        const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
+
+        let resource_id = resource.id();
+
+        let connected_gateway_ids = self
+            .gateway_awaiting_connection
+            .clone()
+            .into_keys()
+            .chain(additional_gateways)
+            .collect();
+
+        tracing::trace!(
+            gateways = ?connected_gateway_ids,
+            "connected_gateways"
+        );
+
+        self.awaiting_connection.insert(
+            resource_id,
+            (Default::default(), resource, connected_gateway_ids),
+        );
+
+        // TODO: Handle error
+        let _ = self.awaiting_connection_timers.try_push(
+            resource_id,
+            stream::poll_fn({
+                let mut interval = tokio::time::interval(MAX_SIGNAL_CONNECTION_DELAY);
+                move |cx| interval.poll_tick(cx).map(Some)
+            }),
+        );
+    }
+
+    pub fn remove_awaiting_connection(&mut self, resource: ResourceId) {
+        self.awaiting_connection.remove(&resource);
+        // self.awaiting_connection_timers.get_mut(&resource).cancel(); FIXME: Needs cancellation support.
     }
 
     pub fn add_waiting_ice_receiver(
@@ -293,6 +296,7 @@ impl Default for ClientState {
             waiting_for_sdp_from_gatway: Default::default(),
             awaiting_connection: Default::default(),
             gateway_awaiting_connection: Default::default(),
+            awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
         }
     }
 }
@@ -302,18 +306,56 @@ impl RoleState for ClientState {
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
-            match ready!(self.active_candidate_receivers.poll_next_unpin(cx)) {
-                (conn_id, Some(Ok(c))) => {
+            match self.active_candidate_receivers.poll_next_unpin(cx) {
+                Poll::Ready((conn_id, Some(Ok(c)))) => {
                     return Poll::Ready(Event::SignalIceCandidate {
                         conn_id,
                         candidate: c,
                     })
                 }
-                (id, Some(Err(e))) => {
+                Poll::Ready((id, Some(Err(e)))) => {
                     tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}")
                 }
-                (_, None) => {}
+                Poll::Ready((_, None)) => continue,
+                Poll::Pending => {}
             }
+
+            match self.awaiting_connection_timers.poll_next_unpin(cx) {
+                Poll::Ready((resource, Some(Ok(_)))) => {
+                    let Entry::Occupied(mut entry) = self.awaiting_connection.entry(resource)
+                    else {
+                        // TODO: Remove timer here, needs cancellation support in `StreamMap`.
+
+                        continue;
+                    };
+
+                    if entry.get().0.response_received {
+                        // TODO: Remove timer here, needs cancellation support in `StreamMap`.
+
+                        // entry.remove(); Maybe?
+
+                        continue;
+                    }
+
+                    entry.get_mut().0.total_attemps += 1;
+
+                    let reference = entry.get_mut().0.total_attemps;
+
+                    return Poll::Ready(Event::ConnectionIntent {
+                        resource: entry.get().1.clone(),
+                        connected_gateway_ids: entry.get().2.clone(),
+                        reference,
+                    });
+                }
+
+                Poll::Ready((id, Some(Err(e)))) => {
+                    tracing::warn!(resource_id = %id, "Connection establishment timeout: {e}")
+                }
+                Poll::Ready((_, None)) => continue,
+                Poll::Pending => {}
+            }
+
+            return Poll::Pending;
         }
     }
 }

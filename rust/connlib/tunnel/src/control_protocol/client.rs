@@ -99,7 +99,8 @@ where
         {
             let mut role_state = self.role_state.lock();
 
-            let Some(awaiting_connection) = role_state.awaiting_connection.get_mut(&resource_id)
+            let Some((awaiting_connection, _, _)) =
+                role_state.awaiting_connection.get_mut(&resource_id)
             else {
                 return Err(Error::UnexpectedConnectionDetails);
             };

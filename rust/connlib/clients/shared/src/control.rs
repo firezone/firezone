@@ -296,6 +296,29 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     tracing::error!("Failed to signal ICE candidate: {e}")
                 }
             }
+            firezone_tunnel::Event::ConnectionIntent {
+                resource,
+                connected_gateway_ids,
+                reference,
+            } => {
+                if let Err(e) = self
+                    .control_signaler
+                    .control_signal
+                    .clone()
+                    .send_with_ref(
+                        EgressMessages::PrepareConnection {
+                            resource_id: resource.id(),
+                            connected_gateway_ids: connected_gateway_ids.to_vec(),
+                        },
+                        reference,
+                    )
+                    .await
+                {
+                    tracing::error!("Failed to prepare connection: {e}");
+
+                    // TODO: Clean up connection in `ClientState` here?
+                }
+            }
         }
     }
 }

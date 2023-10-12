@@ -7,7 +7,7 @@ use crate::CallbackHandler;
 use anyhow::Result;
 use connlib_shared::messages::ClientId;
 use connlib_shared::Error;
-use firezone_tunnel::{GatewayState, Tunnel};
+use firezone_tunnel::{Event, GatewayState, Tunnel};
 use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -189,6 +189,9 @@ impl Eventloop {
                         }),
                     );
                     continue;
+                }
+                Poll::Ready(Event::ConnectionIntent { .. }) => {
+                    unreachable!("Not used on the gateway, split the events!")
                 }
                 Poll::Pending => {}
             }

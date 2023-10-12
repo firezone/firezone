@@ -277,6 +277,11 @@ pub enum Event<TId> {
         conn_id: TId,
         candidate: RTCIceCandidateInit,
     },
+    ConnectionIntent {
+        resource: ResourceDescription,
+        connected_gateway_ids: Vec<GatewayId>,
+        reference: usize,
+    },
 }
 
 impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
