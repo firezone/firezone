@@ -133,6 +133,8 @@ where
 
         tracing::trace!(resource_ip = %packet.destination(), "resource_connection_intent");
 
+        let resources_gateways = self.resources_gateways.lock();
+
         role_state
             .awaiting_connection
             .insert(resource.id(), Default::default());
@@ -143,7 +145,7 @@ where
             .clone()
             .into_keys()
             .collect();
-        connected_gateway_ids.extend(dev.resources_gateways.lock().values().collect::<Vec<_>>());
+        connected_gateway_ids.extend(resources_gateways.values().cloned());
         tracing::trace!(
             gateways = ?connected_gateway_ids,
             "connected_gateways"
