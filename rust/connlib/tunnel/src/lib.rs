@@ -153,12 +153,6 @@ pub trait ControlSignal {
     ) -> Result<()>;
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct AwaitingConnectionDetails {
-    pub total_attemps: usize,
-    pub response_received: bool,
-}
-
 #[derive(Clone)]
 struct Device {
     config: Arc<IfaceConfig>,
@@ -199,8 +193,6 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks, TRoleState> {
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<ConnId, Arc<RTCPeerConnection>>>,
-    awaiting_connection: Mutex<HashMap<ConnId, AwaitingConnectionDetails>>,
-    gateway_awaiting_connection: Mutex<HashMap<GatewayId, Vec<IpNetwork>>>,
     resources_gateways: Mutex<HashMap<ResourceId, GatewayId>>,
     webrtc_api: API,
     resources: Arc<RwLock<ResourceTable<ResourceDescription>>>,
@@ -224,9 +216,6 @@ pub struct TunnelStats {
     dns_resources: HashMap<String, ResourceDescription>,
     network_resources: HashMap<IpNetwork, ResourceDescription>,
     gateway_public_keys: HashMap<GatewayId, String>,
-
-    awaiting_connection: HashMap<ConnId, AwaitingConnectionDetails>,
-    gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
 }
 
 impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
@@ -243,8 +232,6 @@ where
             .map(|(ip, peer)| (ip, peer.stats()))
             .collect();
         let peer_connections = self.peer_connections.lock().keys().cloned().collect();
-        let awaiting_connection = self.awaiting_connection.lock().clone();
-        let gateway_awaiting_connection = self.gateway_awaiting_connection.lock().clone();
         let resource_gateways = self.resources_gateways.lock().clone();
         let (network_resources, dns_resources) = {
             let resources = self.resources.read();
@@ -261,8 +248,6 @@ where
             public_key: Key::from(self.public_key).to_string(),
             peers_by_ip,
             peer_connections,
-            awaiting_connection,
-            gateway_awaiting_connection,
             resource_gateways,
             dns_resources,
             network_resources,
@@ -317,10 +302,8 @@ where
         let next_index = Default::default();
         let peer_connections = Default::default();
         let resources: Arc<RwLock<ResourceTable<ResourceDescription>>> = Default::default();
-        let awaiting_connection = Default::default();
         let gateway_public_keys = Default::default();
         let resources_gateways = Default::default();
-        let gateway_awaiting_connection = Default::default();
         let device = Default::default();
         let iface_handler_abort = Default::default();
 
@@ -357,8 +340,6 @@ where
             webrtc_api,
             resources,
             device,
-            awaiting_connection,
-            gateway_awaiting_connection,
             control_signaler,
             resources_gateways,
             callbacks: CallbackErrorFacade(callbacks),

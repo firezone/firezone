@@ -31,15 +31,11 @@ fn handle_connection_state_update<C, CB>(
 {
     tracing::trace!("peer_state");
     if state == RTCPeerConnectionState::Failed {
-        tunnel
-            .awaiting_connection
-            .lock()
-            .remove(&resource_id.into());
+        let mut role_state = tunnel.role_state.lock();
+        role_state.awaiting_connection.remove(&resource_id.into());
+        role_state.gateway_awaiting_connection.remove(&gateway_id);
+
         tunnel.peer_connections.lock().remove(&gateway_id.into());
-        tunnel
-            .gateway_awaiting_connection
-            .lock()
-            .remove(&gateway_id);
     }
 }
 
@@ -101,8 +97,10 @@ where
             .parse()
             .map_err(|_| Error::InvalidReference)?;
         {
-            let mut awaiting_connections = self.awaiting_connection.lock();
-            let Some(awaiting_connection) = awaiting_connections.get_mut(&resource_id.into())
+            let mut role_state = self.role_state.lock();
+
+            let Some(awaiting_connection) =
+                role_state.awaiting_connection.get_mut(&resource_id.into())
             else {
                 return Err(Error::UnexpectedConnectionDetails);
             };
@@ -121,15 +119,18 @@ where
             .lock()
             .insert(resource_id, gateway_id);
         {
-            let mut gateway_awaiting_connection = self.gateway_awaiting_connection.lock();
-            if let Some(g) = gateway_awaiting_connection.get_mut(&gateway_id) {
+            let mut role_state = self.role_state.lock();
+
+            if let Some(g) = role_state.gateway_awaiting_connection.get_mut(&gateway_id) {
                 g.extend(resource_description.ips());
                 return Ok(Request::ReuseConnection(ReuseConnection {
                     resource_id,
                     gateway_id,
                 }));
             } else {
-                gateway_awaiting_connection.insert(gateway_id, vec![]);
+                role_state
+                    .gateway_awaiting_connection
+                    .insert(gateway_id, vec![]);
             }
         }
         {
@@ -151,7 +152,10 @@ where
             };
 
             if found {
-                self.awaiting_connection.lock().remove(&resource_id.into());
+                self.role_state
+                    .lock()
+                    .awaiting_connection
+                    .remove(&resource_id.into());
                 return Ok(Request::ReuseConnection(ReuseConnection {
                     resource_id,
                     gateway_id,
@@ -194,15 +198,12 @@ where
                 let Some(gateway_public_key) =
                     tunnel.gateway_public_keys.lock().remove(&gateway_id)
                 else {
-                    tunnel
-                        .awaiting_connection
-                        .lock()
-                        .remove(&resource_id.into());
+                    let mut role_state = tunnel.role_state.lock();
+                    role_state.awaiting_connection.remove(&resource_id.into());
+                    role_state.gateway_awaiting_connection.remove(&gateway_id);
+
                     tunnel.peer_connections.lock().remove(&gateway_id.into());
-                    tunnel
-                        .gateway_awaiting_connection
-                        .lock()
-                        .remove(&gateway_id);
+
                     let e = Error::ControlProtocolError;
                     tracing::warn!(err = ?e, "channel_open");
                     let _ = tunnel.callbacks.on_error(&e);
@@ -233,8 +234,9 @@ where
                         let _ = tunnel.callbacks.on_error(&e);
                         tunnel.peer_connections.lock().remove(&gateway_id.into());
                         tunnel
-                            .gateway_awaiting_connection
+                            .role_state
                             .lock()
+                            .gateway_awaiting_connection
                             .remove(&gateway_id);
 
                         return;
@@ -242,11 +244,13 @@ where
                 };
 
                 {
+                    let mut role_state = tunnel.role_state.lock();
                     // Watch out! we need 2 locks, make sure you don't lock both at the same time anywhere else
-                    let mut gateway_awaiting_connection = tunnel.gateway_awaiting_connection.lock();
                     let mut peers_by_ip = tunnel.peers_by_ip.write();
 
-                    if let Some(awaiting_ips) = gateway_awaiting_connection.remove(&gateway_id) {
+                    if let Some(awaiting_ips) =
+                        role_state.gateway_awaiting_connection.remove(&gateway_id)
+                    {
                         for ip in awaiting_ips {
                             peer.add_allowed_ip(ip);
                             peers_by_ip.insert(ip, Arc::clone(&peer));
@@ -269,8 +273,9 @@ where
                 tokio::spawn(tunnel.clone().start_peer_handler(peer));
 
                 tunnel
-                    .awaiting_connection
+                    .role_state
                     .lock()
+                    .awaiting_connection
                     .remove(&resource_id.into());
             })
         }));

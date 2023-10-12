@@ -83,7 +83,7 @@ where
     /// Clean up a connection to a resource.
     // FIXME: this cleanup connection is wrong!
     pub fn cleanup_connection(&self, id: ConnId) {
-        self.awaiting_connection.lock().remove(&id);
+        self.role_state.lock().awaiting_connection.remove(&id);
         self.peer_connections.lock().remove(&id);
     }
 
@@ -117,20 +117,22 @@ where
             // We have awaiting connection to prevent a race condition where
             // create_peer_connection hasn't added the thing to peer_connections
             // and we are finding another packet to the same address (otherwise we would just use peer_connections here)
-            let mut awaiting_connection = self.awaiting_connection.lock();
+            let mut role_state = self.role_state.lock();
+
             let conn_id = ConnId::from(resource.id());
-            if awaiting_connection.get(&conn_id).is_none() {
+            if role_state.awaiting_connection.get(&conn_id).is_none() {
                 tracing::trace!(
                     resource_ip = %packet.destination(),
                     "resource_connection_intent",
                 );
 
-                awaiting_connection.insert(conn_id, Default::default());
+                role_state
+                    .awaiting_connection
+                    .insert(conn_id, Default::default());
                 let dev = Arc::clone(self);
 
-                let mut connected_gateway_ids: Vec<_> = dev
+                let mut connected_gateway_ids: Vec<_> = role_state
                     .gateway_awaiting_connection
-                    .lock()
                     .clone()
                     .into_keys()
                     .collect();
@@ -145,9 +147,11 @@ where
                     loop {
                         interval.tick().await;
                         let reference = {
-                            let mut awaiting_connections = dev.awaiting_connection.lock();
-                            let Some(awaiting_connection) =
-                                awaiting_connections.get_mut(&ConnId::from(resource.id()))
+                            let mut role_state = dev.role_state.lock();
+
+                            let Some(awaiting_connection) = role_state
+                                .awaiting_connection
+                                .get_mut(&ConnId::from(resource.id()))
                             else {
                                 break;
                             };
@@ -163,7 +167,7 @@ where
                             .await
                         {
                             // Not a deadlock because this is a different task
-                            dev.awaiting_connection.lock().remove(&conn_id);
+                            dev.role_state.lock().awaiting_connection.remove(&conn_id);
                             tracing::error!(error = ?e, "start_resource_connection");
                             let _ = dev.callbacks.on_error(&e);
                         }
@@ -230,6 +234,15 @@ pub struct ClientState {
     active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidateInit>,
     /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
     waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidateInit>>,
+
+    pub awaiting_connection: HashMap<ConnId, AwaitingConnectionDetails>,
+    pub gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AwaitingConnectionDetails {
+    pub total_attemps: usize,
+    pub response_received: bool,
 }
 
 impl ClientState {
@@ -266,6 +279,8 @@ impl Default for ClientState {
                 MAX_CONCURRENT_ICE_GATHERING,
             ),
             waiting_for_sdp_from_gatway: Default::default(),
+            awaiting_connection: Default::default(),
+            gateway_awaiting_connection: Default::default(),
         }
     }
 }
