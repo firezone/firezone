@@ -8,6 +8,7 @@ use connlib_shared::{
     messages::{Relay, RequestConnection, ResourceDescription, ReuseConnection},
     Callbacks, Error, Result,
 };
+use webrtc::data_channel::OnCloseHdlrFn;
 use webrtc::{
     data_channel::RTCDataChannel,
     ice_transport::{
@@ -93,16 +94,7 @@ where
             "data_channel_open",
         );
 
-        data_channel.on_close({
-            let tunnel = Arc::clone(self);
-            Box::new(move || {
-                tracing::debug!("channel_closed");
-                let tunnel = tunnel.clone();
-                Box::pin(async move {
-                    tunnel.stop_peer(index, conn_id).await;
-                })
-            })
-        });
+        data_channel.on_close(self.clone().on_dc_close_handler(index, conn_id));
 
         let peer = Arc::new(
             Peer::new(
@@ -146,6 +138,16 @@ where
         tokio::spawn(async move { tunnel.start_peer_handler(peer).await });
 
         Ok(())
+    }
+
+    pub fn on_dc_close_handler(self: Arc<Self>, index: u32, conn_id: ConnId) -> OnCloseHdlrFn {
+        Box::new(move || {
+            tracing::debug!("channel_closed");
+            let tunnel = self.clone();
+            Box::pin(async move {
+                tunnel.stop_peer(index, conn_id).await;
+            })
+        })
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
