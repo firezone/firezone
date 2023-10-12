@@ -1,17 +1,14 @@
-use chrono::{DateTime, Utc};
 use futures::channel::mpsc;
 use futures_util::SinkExt;
 use std::sync::Arc;
-use tracing::instrument;
 
 use connlib_shared::{
-    messages::{Relay, RequestConnection, ResourceDescription, ReuseConnection},
+    messages::{Relay, RequestConnection, ReuseConnection},
     Callbacks, Error, Result,
 };
 use webrtc::data_channel::OnCloseHdlrFn;
 use webrtc::peer_connection::OnPeerConnectionStateChangeHdlrFn;
 use webrtc::{
-    data_channel::RTCDataChannel,
     ice_transport::{
         ice_candidate::RTCIceCandidateInit, ice_credential_type::RTCIceCredentialType,
         ice_server::RTCIceServer,
@@ -22,7 +19,7 @@ use webrtc::{
     },
 };
 
-use crate::{peer::Peer, ConnId, ControlSignal, PeerConfig, RoleState, Tunnel};
+use crate::{ConnId, ControlSignal, RoleState, Tunnel};
 
 mod client;
 mod gateway;
@@ -42,68 +39,6 @@ where
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
-    #[instrument(level = "trace", skip(self, data_channel, peer_config))]
-    async fn handle_channel_open(
-        self: &Arc<Self>,
-        data_channel: Arc<RTCDataChannel>,
-        index: u32,
-        peer_config: PeerConfig,
-        conn_id: ConnId,
-        resources: Option<(ResourceDescription, DateTime<Utc>)>,
-    ) -> Result<()> {
-        tracing::trace!(
-            ?peer_config.ips,
-            "data_channel_open",
-        );
-
-        data_channel.on_close(self.clone().on_dc_close_handler(index, conn_id));
-
-        let peer = Arc::new(
-            Peer::new(
-                self.private_key.clone(),
-                index,
-                peer_config.clone(),
-                data_channel,
-                conn_id,
-                resources,
-            )
-            .await?,
-        );
-
-        {
-            // Watch out! we need 2 locks, make sure you don't lock both at the same time anywhere else
-            let mut gateway_awaiting_connection = self.gateway_awaiting_connection.lock();
-            let mut peers_by_ip = self.peers_by_ip.write();
-            // In the gateway this will always be none, no harm done
-            match conn_id {
-                ConnId::Gateway(gateway_id) => {
-                    if let Some(awaiting_ips) = gateway_awaiting_connection.remove(&gateway_id) {
-                        for ip in awaiting_ips {
-                            peer.add_allowed_ip(ip);
-                            peers_by_ip.insert(ip, Arc::clone(&peer));
-                        }
-                    }
-                }
-                ConnId::Client(_) => {}
-                ConnId::Resource(_) => {}
-            }
-            for ip in peer_config.ips {
-                peers_by_ip.insert(ip, Arc::clone(&peer));
-            }
-        }
-
-        if let Some(conn) = self.peer_connections.lock().get(&conn_id) {
-            conn.on_peer_connection_state_change(
-                self.clone()
-                    .on_peer_connection_state_change_handler(index, conn_id),
-            );
-        }
-
-        tokio::spawn(self.clone().start_peer_handler(peer));
-
-        Ok(())
-    }
-
     pub fn on_dc_close_handler(self: Arc<Self>, index: u32, conn_id: ConnId) -> OnCloseHdlrFn {
         Box::new(move || {
             tracing::debug!("channel_closed");

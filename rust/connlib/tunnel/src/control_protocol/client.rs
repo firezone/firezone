@@ -17,7 +17,7 @@ use webrtc::{
     },
 };
 
-use crate::{ClientState, ControlSignal, Error, PeerConfig, Request, Result, Tunnel};
+use crate::{peer::Peer, ClientState, ControlSignal, Error, PeerConfig, Request, Result, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
 fn handle_connection_state_update<C, CB>(
@@ -215,18 +215,59 @@ where
                     preshared_key: SecretKey::new(Key(p_key.to_bytes())),
                 };
 
-                if let Err(e) = tunnel
-                    .handle_channel_open(d, index, peer_config, gateway_id.into(), None)
-                    .await
+                d.on_close(tunnel.clone().on_dc_close_handler(index, gateway_id.into()));
+
+                let peer = match Peer::new(
+                    tunnel.private_key.clone(),
+                    index,
+                    peer_config.clone(),
+                    d,
+                    gateway_id.into(),
+                    None,
+                )
+                .await
                 {
-                    tracing::error!(err = ?e, "channel_open");
-                    let _ = tunnel.callbacks.on_error(&e);
-                    tunnel.peer_connections.lock().remove(&gateway_id.into());
-                    tunnel
-                        .gateway_awaiting_connection
-                        .lock()
-                        .remove(&gateway_id);
+                    Ok(peer) => Arc::new(peer),
+                    Err(e) => {
+                        tracing::error!(err = ?e, "channel_open");
+                        let _ = tunnel.callbacks.on_error(&e);
+                        tunnel.peer_connections.lock().remove(&gateway_id.into());
+                        tunnel
+                            .gateway_awaiting_connection
+                            .lock()
+                            .remove(&gateway_id);
+
+                        return;
+                    }
+                };
+
+                {
+                    // Watch out! we need 2 locks, make sure you don't lock both at the same time anywhere else
+                    let mut gateway_awaiting_connection = tunnel.gateway_awaiting_connection.lock();
+                    let mut peers_by_ip = tunnel.peers_by_ip.write();
+
+                    if let Some(awaiting_ips) = gateway_awaiting_connection.remove(&gateway_id) {
+                        for ip in awaiting_ips {
+                            peer.add_allowed_ip(ip);
+                            peers_by_ip.insert(ip, Arc::clone(&peer));
+                        }
+                    }
+
+                    for ip in peer_config.ips {
+                        peers_by_ip.insert(ip, Arc::clone(&peer));
+                    }
                 }
+
+                if let Some(conn) = tunnel.peer_connections.lock().get(&gateway_id.into()) {
+                    conn.on_peer_connection_state_change(
+                        tunnel
+                            .clone()
+                            .on_peer_connection_state_change_handler(index, gateway_id.into()),
+                    );
+                }
+
+                tokio::spawn(tunnel.clone().start_peer_handler(peer));
+
                 tunnel
                     .awaiting_connection
                     .lock()
