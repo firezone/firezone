@@ -1,4 +1,6 @@
-use connlib_shared::{CallbackErrorFacade, Callbacks, Error, Result};
+use connlib_shared::{
+    messages::Interface as InterfaceConfig, CallbackErrorFacade, Callbacks, Error, Result,
+};
 use futures::TryStreamExt;
 use ip_network::IpNetwork;
 use libc::{
@@ -14,8 +16,6 @@ use std::{
     sync::Arc,
 };
 use tokio::io::unix::AsyncFd;
-
-use crate::InterfaceConfig;
 
 const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: u64 = 0x4004_54ca;
