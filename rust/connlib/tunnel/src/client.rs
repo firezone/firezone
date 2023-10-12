@@ -127,7 +127,7 @@ where
         // and we are finding another packet to the same address (otherwise we would just use peer_connections here)
         let mut role_state = self.role_state.lock();
 
-        if role_state.awaiting_connection.get(&resource.id()).is_some() {
+        if role_state.is_awaiting_connection_to(resource.id()) {
             return;
         }
 
@@ -252,6 +252,10 @@ pub struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
+    pub fn is_awaiting_connection_to(&self, resource: ResourceId) -> bool {
+        self.awaiting_connection.contains_key(&resource)
+    }
+
     pub fn add_waiting_ice_receiver(
         &mut self,
         id: GatewayId,
