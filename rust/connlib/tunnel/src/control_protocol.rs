@@ -2,6 +2,7 @@ use boringtun::noise::Tunn;
 use chrono::{DateTime, Utc};
 use futures::channel::mpsc;
 use futures_util::SinkExt;
+use parking_lot::Mutex;
 use secrecy::ExposeSecret;
 use std::sync::Arc;
 use tracing::instrument;
@@ -104,10 +105,10 @@ where
             None,
         )?;
 
-        let peer = Arc::new(Peer::from_config(
-            tunn,
+        let peer = Arc::new(Peer::new(
+            Mutex::new(tunn),
             index,
-            &peer_config,
+            peer_config.ips.clone(),
             channel,
             conn_id,
             resources,

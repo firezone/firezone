@@ -15,8 +15,6 @@ use webrtc::data::data_channel::DataChannel;
 
 use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, ConnId};
 
-use super::PeerConfig;
-
 type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 
 pub(crate) struct Peer {
@@ -85,24 +83,6 @@ impl Peer {
             tracing::error!("Couldn't send packet to connected peer: {e}");
             let _ = callbacks.on_error(&e.into());
         }
-    }
-
-    pub(crate) fn from_config(
-        tunnel: Tunn,
-        index: u32,
-        config: &PeerConfig,
-        channel: Arc<DataChannel>,
-        conn_id: ConnId,
-        resource: Option<(ResourceDescription, DateTime<Utc>)>,
-    ) -> Self {
-        Self::new(
-            Mutex::new(tunnel),
-            index,
-            config.ips.clone(),
-            channel,
-            conn_id,
-            resource,
-        )
     }
 
     pub(crate) fn new(
