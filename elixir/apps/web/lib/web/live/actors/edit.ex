@@ -23,6 +23,44 @@ defmodule Web.Actors.Edit do
     end
   end
 
+  def render(assigns) do
+    ~H"""
+    <.breadcrumbs account={@account}>
+      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
+        <%= @actor.name %>
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors/#{@actor}/edit"}>
+        Edit
+      </.breadcrumb>
+    </.breadcrumbs>
+
+    <.section>
+      <:title>
+        Edit <%= actor_type(@actor.type) %>: <code><%= @actor.name %></code>
+      </:title>
+      <:content>
+        <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Edit User Details</h2>
+          <.flash kind={:error} flash={@flash} />
+          <.form for={@form} phx-change={:change} phx-submit={:submit}>
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <.actor_form
+                form={@form}
+                type={@actor.type}
+                actor={@actor}
+                groups={@groups}
+                subject={@subject}
+              />
+            </div>
+            <.submit_button>Save</.submit_button>
+          </.form>
+        </div>
+      </:content>
+    </.section>
+    """
+  end
+
   def handle_event("change", %{"actor" => attrs}, socket) do
     attrs = map_actor_form_memberships_attr(attrs)
 
@@ -54,43 +92,5 @@ defmodule Web.Actors.Edit do
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
-  end
-
-  def render(assigns) do
-    ~H"""
-    <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
-        <%= @actor.name %>
-      </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/#{@actor}/edit"}>
-        Edit
-      </.breadcrumb>
-    </.breadcrumbs>
-    <.header>
-      <:title>
-        Editing <%= actor_type(@actor.type) %>: <code><%= @actor.name %></code>
-      </:title>
-    </.header>
-    <!-- Update User -->
-    <section class="bg-white dark:bg-gray-900">
-      <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Edit User Details</h2>
-        <.flash kind={:error} flash={@flash} />
-        <.form for={@form} phx-change={:change} phx-submit={:submit}>
-          <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-            <.actor_form
-              form={@form}
-              type={@actor.type}
-              actor={@actor}
-              groups={@groups}
-              subject={@subject}
-            />
-          </div>
-          <.submit_button>Save</.submit_button>
-        </.form>
-      </div>
-    </section>
-    """
   end
 end

@@ -30,39 +30,39 @@ defmodule Web.Resources.Edit do
         Edit
       </.breadcrumb>
     </.breadcrumbs>
-    <.header>
+    <.section>
       <:title>
         Edit Resource
       </:title>
-    </.header>
-    <section class="bg-white dark:bg-gray-900">
-      <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Edit Resource details</h2>
+      <:content>
+        <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Edit Resource details</h2>
 
-        <.form for={@form} phx-change={:change} phx-submit={:submit} class="space-y-4 lg:space-y-6">
-          <.input
-            field={@form[:name]}
-            type="text"
-            label="Name"
-            placeholder="Name this resource"
-            required
-          />
+          <.form for={@form} phx-change={:change} phx-submit={:submit} class="space-y-4 lg:space-y-6">
+            <.input
+              field={@form[:name]}
+              type="text"
+              label="Name"
+              placeholder="Name this resource"
+              required
+            />
 
-          <.filters_form form={@form[:filters]} />
+            <.filters_form form={@form[:filters]} />
 
-          <.connections_form
-            form={@form[:connections]}
-            account={@account}
-            resource={@resource}
-            gateway_groups={@gateway_groups}
-          />
+            <.connections_form
+              form={@form[:connections]}
+              account={@account}
+              resource={@resource}
+              gateway_groups={@gateway_groups}
+            />
 
-          <.submit_button phx-disable-with="Updating Resource...">
-            Save
-          </.submit_button>
-        </.form>
-      </div>
-    </section>
+            <.submit_button phx-disable-with="Updating Resource...">
+              Save
+            </.submit_button>
+          </.form>
+        </div>
+      </:content>
+    </.section>
     """
   end
 

@@ -14,82 +14,90 @@ defmodule Web.GatewayGroups.Index do
     end
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "gateways:" <> _account_id}, socket) do
-    subject = socket.assigns.subject
-    {:ok, groups} = Gateways.list_groups(subject, preload: [:gateways, connections: [:resource]])
-    {:noreply, assign(socket, groups: groups)}
-  end
-
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/gateway_groups"}>Gateway Instance Groups</.breadcrumb>
     </.breadcrumbs>
-    <.header>
+
+    <.section>
       <:title>
-        All gateways
+        Gateways
       </:title>
-      <:actions>
+      <:action>
         <.add_button navigate={~p"/#{@account}/gateway_groups/new"}>
           Add Instance Group
         </.add_button>
-      </:actions>
-    </.header>
-    <!-- Gateways Table -->
-    <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <!--<.resource_filter />-->
-      <.table_with_groups
-        id="groups"
-        groups={@groups}
-        group_items={& &1.gateways}
-        group_id={&"group-#{&1.id}"}
-        row_id={&"gateway-#{&1.id}"}
-      >
-        <:group :let={group}>
-          <.link
-            navigate={~p"/#{@account}/gateway_groups/#{group.id}"}
-            class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
+      </:action>
+      <:content>
+        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+          <!--<.resource_filter />-->
+          <.table_with_groups
+            id="groups"
+            groups={@groups}
+            group_items={& &1.gateways}
+            group_id={&"group-#{&1.id}"}
+            row_id={&"gateway-#{&1.id}"}
           >
-            <%= group.name_prefix %>
-          </.link>
-          <%= if not Enum.empty?(group.tags), do: "(" <> Enum.join(group.tags, ", ") <> ")" %>
+            <:group :let={group}>
+              <.link
+                navigate={~p"/#{@account}/gateway_groups/#{group.id}"}
+                class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
+              >
+                <%= group.name_prefix %>
+              </.link>
+              <%= if not Enum.empty?(group.tags), do: "(" <> Enum.join(group.tags, ", ") <> ")" %>
 
-          <div class="font-light flex">
-            <span class="pr-1 inline-block">Resources:</span>
-            <.intersperse_blocks>
-              <:separator><span class="pr-1">,</span></:separator>
+              <div class="font-light flex">
+                <span class="pr-1 inline-block">Resources:</span>
+                <.intersperse_blocks>
+                  <:separator><span class="pr-1">,</span></:separator>
 
-              <:item :for={connection <- group.connections}>
-                <.link
-                  navigate={~p"/#{@account}/resources/#{connection.resource}"}
-                  class="font-medium text-blue-600 dark:text-blue-500 hover:underline inline-block"
-                  phx-no-format
-                ><%= connection.resource.name %></.link>
-              </:item>
-            </.intersperse_blocks>
-          </div>
-        </:group>
+                  <:item :for={connection <- group.connections}>
+                    <.link
+                      navigate={~p"/#{@account}/resources/#{connection.resource}"}
+                      class="font-medium text-blue-600 dark:text-blue-500 hover:underline inline-block"
+                      phx-no-format
+                    ><%= connection.resource.name %></.link>
+                  </:item>
+                </.intersperse_blocks>
+              </div>
+            </:group>
 
-        <:col :let={gateway} label="INSTANCE">
-          <.link
-            navigate={~p"/#{@account}/gateways/#{gateway.id}"}
-            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-          >
-            <%= gateway.name_suffix %>
-          </.link>
-        </:col>
-        <:col :let={gateway} label="REMOTE IP">
-          <code class="block text-xs">
-            <%= gateway.last_seen_remote_ip %>
-          </code>
-        </:col>
+            <:col :let={gateway} label="INSTANCE">
+              <.link
+                navigate={~p"/#{@account}/gateways/#{gateway.id}"}
+                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              >
+                <%= gateway.name_suffix %>
+              </.link>
+            </:col>
+            <:col :let={gateway} label="REMOTE IP">
+              <code class="block text-xs">
+                <%= gateway.last_seen_remote_ip %>
+              </code>
+            </:col>
 
-        <:col :let={gateway} label="STATUS">
-          <.connection_status schema={gateway} />
-        </:col>
-      </.table_with_groups>
-      <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/gateway_groups"} />-->
-    </div>
+            <:col :let={gateway} label="STATUS">
+              <.connection_status schema={gateway} />
+            </:col>
+            <:empty>
+              <div class="flex justify-center text-center text-slate-500 p-4">
+                <div class="w-auto">
+                  <div class="pb-4">
+                    No gateway instance groups to display
+                  </div>
+                  <.add_button navigate={~p"/#{@account}/gateway_groups/new"}>
+                    Add Instance Group
+                  </.add_button>
+                </div>
+              </div>
+            </:empty>
+          </.table_with_groups>
+          <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/gateway_groups"} />-->
+        </div>
+      </:content>
+    </.section>
     """
   end
 
@@ -126,5 +134,11 @@ defmodule Web.GatewayGroups.Index do
       </.button_group>
     </div>
     """
+  end
+
+  def handle_info(%Phoenix.Socket.Broadcast{topic: "gateways:" <> _account_id}, socket) do
+    subject = socket.assigns.subject
+    {:ok, groups} = Gateways.list_groups(subject, preload: [:gateways, connections: [:resource]])
+    {:noreply, assign(socket, groups: groups)}
   end
 end

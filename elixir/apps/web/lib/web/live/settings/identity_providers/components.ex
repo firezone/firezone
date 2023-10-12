@@ -114,4 +114,77 @@ defmodule Web.Settings.IdentityProviders.Components do
 
   def view_provider(account, %{adapter: :saml} = provider),
     do: ~p"/#{account}/settings/identity_providers/saml/#{provider}"
+
+  def sync_status(%{provider: %{provisioner: :custom}} = assigns) do
+    ~H"""
+    <div :if={not is_nil(@provider.last_synced_at)} class="flex items-center">
+      <span class="w-3 h-3 bg-green-500 rounded-full"></span>
+      <span class="ml-3">
+        Synced
+        <.link
+          navigate={~p"/#{@account}/actors?provider_id=#{@provider.id}"}
+          class="text-blue-600 dark:text-blue-500 hover:underline"
+        >
+          <% identities_count_by_provider_id = @identities_count_by_provider_id[@provider.id] || 0 %>
+          <%= identities_count_by_provider_id %>
+          <.cardinal_number
+            number={identities_count_by_provider_id}
+            one="identity"
+            other="identities"
+          />
+        </.link>
+        and
+        <.link
+          navigate={~p"/#{@account}/groups?provider_id=#{@provider.id}"}
+          class="text-blue-600 dark:text-blue-500 hover:underline"
+        >
+          <% groups_count_by_provider_id = @groups_count_by_provider_id[@provider.id] || 0 %>
+          <%= groups_count_by_provider_id %>
+          <.cardinal_number number={groups_count_by_provider_id} one="group" other="groups" />
+        </.link>
+
+        <.relative_datetime datetime={@provider.last_synced_at} />
+      </span>
+    </div>
+    <div :if={is_nil(@provider.last_synced_at)} class="flex items-center">
+      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+      <span class="ml-3">
+        Never synced
+      </span>
+    </div>
+    """
+  end
+
+  def sync_status(%{provider: %{provisioner: provisioner}} = assigns)
+      when provisioner in [:just_in_time, :manual] do
+    ~H"""
+    <div class="flex items-center">
+      <span class="w-3 h-3 bg-green-500 rounded-full"></span>
+      <span class="ml-3">
+        Created
+        <.link
+          navigate={~p"/#{@account}/actors?provider_id=#{@provider.id}"}
+          class="text-blue-600 dark:text-blue-500 hover:underline"
+        >
+          <% identities_count_by_provider_id = @identities_count_by_provider_id[@provider.id] || 0 %>
+          <%= identities_count_by_provider_id %>
+          <.cardinal_number
+            number={identities_count_by_provider_id}
+            one="identity"
+            other="identities"
+          />
+        </.link>
+        and
+        <.link
+          navigate={~p"/#{@account}/groups?provider_id=#{@provider.id}"}
+          class="text-blue-600 dark:text-blue-500 hover:underline"
+        >
+          <% groups_count_by_provider_id = @groups_count_by_provider_id[@provider.id] || 0 %>
+          <%= groups_count_by_provider_id %>
+          <.cardinal_number number={groups_count_by_provider_id} one="group" other="groups" />
+        </.link>
+      </span>
+    </div>
+    """
+  end
 end

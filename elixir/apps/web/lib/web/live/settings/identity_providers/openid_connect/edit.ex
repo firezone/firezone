@@ -19,6 +19,32 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Edit do
     end
   end
 
+  def render(assigns) do
+    ~H"""
+    <.breadcrumbs account={@account}>
+      <.breadcrumb path={~p"/#{@account}/settings/identity_providers"}>
+        Identity Providers Settings
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/settings/identity_providers/openid_connect/#{@provider}"}>
+        <%= @provider.name %>
+      </.breadcrumb>
+      <.breadcrumb path={
+        ~p"/#{@account}/settings/identity_providers/openid_connect/#{@form.data}/edit"
+      }>
+        Edit <%= # {@form.data.name} %>
+      </.breadcrumb>
+    </.breadcrumbs>
+    <.section>
+      <:title>
+        Edit Identity Provider <%= @form.data.name %>
+      </:title>
+      <:content>
+        <.provider_form account={@account} id={@form.data.id} form={@form} />
+      </:content>
+    </.section>
+    """
+  end
+
   def handle_event("change", %{"provider" => attrs}, socket) do
     changeset =
       Auth.change_provider(socket.assigns.provider, attrs)
@@ -41,28 +67,5 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Edit do
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
-  end
-
-  def render(assigns) do
-    ~H"""
-    <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/settings/identity_providers"}>
-        Identity Providers Settings
-      </.breadcrumb>
-      <.breadcrumb path={
-        ~p"/#{@account}/settings/identity_providers/openid_connect/#{@form.data}/edit"
-      }>
-        Edit <%= # {@form.data.name} %>
-      </.breadcrumb>
-    </.breadcrumbs>
-    <.header>
-      <:title>
-        Edit Identity Provider <%= @form.data.name %>
-      </:title>
-    </.header>
-    <section class="bg-white dark:bg-gray-900">
-      <.provider_form account={@account} id={@form.data.id} form={@form} />
-    </section>
-    """
   end
 end

@@ -243,7 +243,7 @@ defmodule Web.NavigationComponents do
 
   def breadcrumbs(assigns) do
     ~H"""
-    <nav class="p-4 pb-0" class="flex" aria-label="Breadcrumb">
+    <nav class="py-3 px-4" class="flex" aria-label="Breadcrumb">
       <ol class="inline-flex items-center space-x-1 md:space-x-2">
         <li class="inline-flex items-center">
           <.link

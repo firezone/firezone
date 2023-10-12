@@ -275,34 +275,51 @@ defmodule Web.FormComponents do
   end
 
   @doc """
-  Renders a button.
+  Base button type to be used directly or by the specialized button types above. e.g. edit_button, delete_button, etc.
+
+  If a navigate path is provided, an <a> tag will be used, otherwise a <button> tag will be used.
 
   ## Examples
+
+      <.button style="primary" navigate={~p"/actors/new"} icon="hero-plus">
+        Add user
+      </.button>
 
       <.button>Send!</.button>
       <.button phx-click="go" class="ml-2">Send!</.button>
   """
-  attr :type, :string, default: nil
-  attr :class, :string, default: nil
-  attr :rest, :global, include: ~w(disabled form name value navigate)
+  attr :navigate, :string,
+    required: false,
+    doc: """
+    The path to navigate to, when set an <a> tag will be used,
+    otherwise a <button> tag will be used
+    """
 
-  slot :inner_block, required: true
+  attr :class, :string, default: "", doc: "Custom classes to be added to the button"
+  attr :style, :string, default: nil, doc: "The style of the button"
+  attr :type, :string, default: nil, doc: "The button type"
+
+  attr :icon, :string,
+    default: nil,
+    required: false,
+    doc: "The icon to be displayed on the button"
+
+  attr :rest, :global, include: ~w(disabled form name value navigate)
+  slot :inner_block, required: true, doc: "The label for the button"
+
+  def button(%{navigate: _} = assigns) do
+    ~H"""
+    <.link class={button_style(@style) ++ [@class]} navigate={@navigate} {@rest}>
+      <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
+      <%= render_slot(@inner_block) %>
+    </.link>
+    """
+  end
 
   def button(assigns) do
     ~H"""
-    <button
-      type={@type}
-      class={[
-        "phx-submit-loading:opacity-75",
-        "text-white bg-primary-600 font-medium rounded-lg text-sm px-5 py-2.5 text-center",
-        "hover:bg-primary-700",
-        "focus:ring-4 focus:outline-none focus:ring-primary-300",
-        "dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800",
-        "active:text-white/80",
-        @class
-      ]}
-      {@rest}
-    >
+    <button type={@type} class={button_style(@style) ++ [@class]} {@rest}>
+      <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
       <%= render_slot(@inner_block) %>
     </button>
     """
@@ -323,13 +340,9 @@ defmodule Web.FormComponents do
 
   def submit_button(assigns) do
     ~H"""
-    <button type="submit" class={~w[
-        inline-flex items-center px-5 py-2.5 mt-4 sm:mt-6 text-sm font-medium text-center text-white
-        bg-primary-700 rounded-lg focus:ring-4 focus:ring-primary-200 dark:focus:ring-primary-900
-        hover:bg-primary-800
-      ]} {@rest}>
+    <.button style="primary" {@rest}>
       <%= render_slot(@inner_block) %>
-    </button>
+    </.button>
     """
   end
 
@@ -347,16 +360,9 @@ defmodule Web.FormComponents do
 
   def delete_button(assigns) do
     ~H"""
-    <button type="button" class={~w[
-        text-red-600 inline-flex items-center hover:text-white border border-red-600 hover:bg-red-600
-        focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5
-        text-center dark:border-red-500 dark:text-red-500 dark:hover:text-white dark:hover:bg-red-600
-        dark:focus:ring-red-900
-      ]} {@rest}>
-      <!-- XXX: Fix icon for dark mode -->
-      <!-- <.icon name="hero-trash-solid" class="text-red-600 w-5 h-5 mr-1 -ml-1" /> -->
+    <.button style="danger" icon="hero-trash-solid" {@rest}>
       <%= render_slot(@inner_block) %>
-    </button>
+    </.button>
     """
   end
 
@@ -375,18 +381,9 @@ defmodule Web.FormComponents do
 
   def add_button(assigns) do
     ~H"""
-    <.link
-      navigate={@navigate}
-      class={[
-        "flex items-center justify-center text-white bg-primary-500 hover:bg-primary-600",
-        "focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-sm px-4 py-2",
-        "dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800",
-        @class
-      ]}
-    >
-      <.icon name="hero-plus" class="h-3.5 w-3.5 mr-2" />
+    <.button style="primary" navigate={@navigate} icon="hero-plus">
       <%= render_slot(@inner_block) %>
-    </.link>
+    </.button>
     """
   end
 
@@ -404,14 +401,41 @@ defmodule Web.FormComponents do
 
   def edit_button(assigns) do
     ~H"""
-    <.link
-      navigate={@navigate}
-      class="flex items-center justify-center text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-sm px-4 py-2 dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800"
-    >
-      <.icon name="hero-pencil-solid" class="h-3.5 w-3.5 mr-2" />
+    <.button style="primary" navigate={@navigate} icon="hero-pencil-solid">
       <%= render_slot(@inner_block) %>
-    </.link>
+    </.button>
     """
+  end
+
+  defp button_style do
+    [
+      "flex items-center justify-center",
+      "px-4 py-2 rounded-lg",
+      "font-medium text-sm",
+      "focus:ring-4 focus:outline-none",
+      "phx-submit-loading:opacity-75"
+    ]
+  end
+
+  defp button_style("danger") do
+    button_style() ++
+      [
+        "text-red-600",
+        "border border-red-600",
+        "hover:text-white hover:bg-red-600 focus:ring-red-300",
+        "dark:border-red-500 dark:text-red-500 dark:hover:text-white dark:hover:bg-red-600 dark:focus:ring-red-900"
+      ]
+  end
+
+  defp button_style(_style) do
+    button_style() ++
+      [
+        "text-white",
+        "bg-primary-500",
+        "hover:bg-primary-600",
+        "focus:ring-primary-300",
+        "dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800"
+      ]
   end
 
   ### Forms ###

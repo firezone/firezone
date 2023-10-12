@@ -26,6 +26,65 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
     end
   end
 
+  def render(assigns) do
+    ~H"""
+    <.breadcrumbs account={@account}>
+      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
+        <%= @actor.name %>
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}>
+        Add Token
+      </.breadcrumb>
+    </.breadcrumbs>
+
+    <.section>
+      <:title>
+        Create <%= actor_type(@actor.type) %> Token
+      </:title>
+      <:content>
+        <div :if={is_nil(@identity)} class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Create a Token</h2>
+          <.flash kind={:error} flash={@flash} />
+          <.form for={@form} phx-change={:change} phx-submit={:submit}>
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <div>
+                <.input
+                  label="Name"
+                  field={@form[:provider_identifier]}
+                  placeholder="Name for this token"
+                  required
+                />
+              </div>
+
+              <.provider_form :if={@provider} form={@form} provider={@provider} />
+            </div>
+            <.submit_button>
+              Save
+            </.submit_button>
+          </.form>
+        </div>
+
+        <div :if={not is_nil(@identity)} class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+          <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+            <div class="text-xl mb-2">
+              Your API token (will be shown only once):
+            </div>
+
+            <.code_block id="code-sample-docker" class="w-full mw-1/2 rounded-lg" phx-no-format>
+            <%= @identity.provider_virtual_state.changes.secret %>
+          </.code_block>
+
+            <.button icon="hero-arrow-uturn-left" navigate={~p"/#{@account}/actors/#{@actor}"}>
+              Back to Actor
+            </.button>
+          </div>
+        </div>
+      </:content>
+    </.section>
+    """
+  end
+
   def handle_event("change", %{"identity" => attrs}, socket) do
     attrs = map_expires_at(attrs)
 
@@ -61,63 +120,5 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
         value -> "#{value}T00:00:00.000000Z"
       end)
     end)
-  end
-
-  def render(assigns) do
-    ~H"""
-    <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
-        <%= @actor.name %>
-      </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}>
-        Add Token
-      </.breadcrumb>
-    </.breadcrumbs>
-    <.header>
-      <:title>
-        Creating <%= actor_type(@actor.type) %> Token
-      </:title>
-    </.header>
-    <section class="bg-white dark:bg-gray-900">
-      <div :if={is_nil(@identity)} class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Create a Token</h2>
-        <.flash kind={:error} flash={@flash} />
-        <.form for={@form} phx-change={:change} phx-submit={:submit}>
-          <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-            <div>
-              <.input
-                label="Name"
-                field={@form[:provider_identifier]}
-                placeholder="Name for this token"
-                required
-              />
-            </div>
-
-            <.provider_form :if={@provider} form={@form} provider={@provider} />
-          </div>
-          <.submit_button>
-            Save
-          </.submit_button>
-        </.form>
-      </div>
-
-      <div :if={not is_nil(@identity)} class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-          <div class="text-xl mb-2">
-            Your API token (will be shown only once):
-          </div>
-
-          <.code_block id="code-sample-docker" class="w-full mw-1/2 rounded-lg" phx-no-format>
-            <%= @identity.provider_virtual_state.changes.secret %>
-          </.code_block>
-
-          <.action_button icon="hero-arrow-uturn-left" navigate={~p"/#{@account}/actors/#{@actor}"}>
-            Back to Actor
-          </.action_button>
-        </div>
-      </div>
-    </section>
-    """
   end
 end

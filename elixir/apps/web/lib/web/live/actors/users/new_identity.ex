@@ -36,6 +36,54 @@ defmodule Web.Actors.Users.NewIdentity do
     end
   end
 
+  def render(assigns) do
+    ~H"""
+    <.breadcrumbs account={@account}>
+      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
+        <%= @actor.name %>
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors/users/#{@actor}/new_identity"}>
+        Add Identity
+      </.breadcrumb>
+    </.breadcrumbs>
+    <.section>
+      <:title>
+        Create <%= actor_type(@actor.type) %> Identity
+      </:title>
+      <:content>
+        <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Create an Identity</h2>
+          <.flash kind={:error} flash={@flash} />
+          <.form for={@form} phx-change={:change} phx-submit={:submit}>
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <div>
+                <.input
+                  type="select"
+                  label="Provider"
+                  field={@form[:provider_id]}
+                  options={
+                    Enum.map(@providers, fn provider ->
+                      {"#{provider.name} (#{Web.Settings.IdentityProviders.Components.adapter_name(provider.adapter)})",
+                       provider.id}
+                    end)
+                  }
+                  placeholder="Provider"
+                  required
+                />
+              </div>
+              <.provider_form :if={@provider} form={@form} provider={@provider} />
+            </div>
+            <.submit_button>
+              Save
+            </.submit_button>
+          </.form>
+        </div>
+      </:content>
+    </.section>
+    """
+  end
+
   def handle_event("change", %{"identity" => attrs}, socket) do
     provider = Enum.find(socket.assigns.providers, &(&1.id == attrs["provider_id"]))
 
@@ -60,53 +108,5 @@ defmodule Web.Actors.Users.NewIdentity do
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
-  end
-
-  def render(assigns) do
-    ~H"""
-    <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
-        <%= @actor.name %>
-      </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/users/#{@actor}/new_identity"}>
-        Add Identity
-      </.breadcrumb>
-    </.breadcrumbs>
-    <.header>
-      <:title>
-        Creating <%= actor_type(@actor.type) %> Identity
-      </:title>
-    </.header>
-    <section class="bg-white dark:bg-gray-900">
-      <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Create an Identity</h2>
-        <.flash kind={:error} flash={@flash} />
-        <.form for={@form} phx-change={:change} phx-submit={:submit}>
-          <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-            <div>
-              <.input
-                type="select"
-                label="Provider"
-                field={@form[:provider_id]}
-                options={
-                  Enum.map(@providers, fn provider ->
-                    {"#{provider.name} (#{Web.Settings.IdentityProviders.Components.adapter_name(provider.adapter)})",
-                     provider.id}
-                  end)
-                }
-                placeholder="Provider"
-                required
-              />
-            </div>
-            <.provider_form :if={@provider} form={@form} provider={@provider} />
-          </div>
-          <.submit_button>
-            Save
-          </.submit_button>
-        </.form>
-      </div>
-    </section>
-    """
   end
 end

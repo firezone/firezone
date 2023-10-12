@@ -73,7 +73,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> authorize_conn(identity)
         |> live(~p"/#{account}/actors/#{actor}")
 
-      assert html =~ "Viewing User"
+      assert html =~ "User"
 
       table =
         lv
@@ -187,7 +187,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("a", "Create new identity")
+      |> element("a", "Create Identity")
       |> render_click()
 
       assert_redirect(lv, ~p"/#{account}/actors/users/#{actor}/new_identity")
@@ -200,7 +200,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("a", "Create new identity")
+      |> element("a", "Create Identity")
       |> render_click()
 
       assert_redirect(lv, ~p"/#{account}/actors/users/#{actor}/new_identity")
@@ -365,7 +365,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> authorize_conn(identity)
         |> live(~p"/#{account}/actors/#{actor}")
 
-      assert html =~ "Viewing Service Account"
+      assert html =~ "Service Account"
 
       assert lv
              |> element("#actor")
@@ -445,7 +445,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("a", "Create new token")
+      |> element("a:first-child", "Create Token")
       |> render_click()
 
       assert_redirect(lv, ~p"/#{account}/actors/service_accounts/#{actor}/new_identity")

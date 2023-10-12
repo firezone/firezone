@@ -88,6 +88,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                   label="Client ID"
                   autocomplete="off"
                   field={adapter_config_form[:client_id]}
+                  placeholder="Client ID from your IDP"
                   required
                 />
               </div>
@@ -97,6 +98,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                   label="Client secret"
                   autocomplete="off"
                   field={adapter_config_form[:client_secret]}
+                  placeholder="Client Secret from your IDP"
                   required
                 />
               </div>
@@ -105,6 +107,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                 <.input
                   label="Discovery URL"
                   field={adapter_config_form[:discovery_document_uri]}
+                  placeholder=".well-known URL for your IDP"
                   required
                 />
               </div>

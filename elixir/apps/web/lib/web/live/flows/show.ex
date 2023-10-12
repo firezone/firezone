@@ -28,18 +28,18 @@ defmodule Web.Flows.Show do
       </.breadcrumb>
     </.breadcrumbs>
 
-    <.page>
+    <.section>
       <:title>
         Flow for: <code><%= @flow.client.name %></code>
       </:title>
-
-      <:action
-        navigate={~p"/#{@account}/flows/#{@flow}/activities.csv"}
-        icon="hero-arrow-down-on-square"
-      >
-        Export to CSV
+      <:action>
+        <.button
+          navigate={~p"/#{@account}/flows/#{@flow}/activities.csv"}
+          icon="hero-arrow-down-on-square"
+        >
+          Export to CSV
+        </.button>
       </:action>
-
       <:content flash={@flash}>
         <.vertical_table id="flow">
           <.vertical_table_row>
@@ -57,10 +57,7 @@ defmodule Web.Flows.Show do
           <.vertical_table_row>
             <:label>Policy</:label>
             <:value>
-              <.link
-                navigate={~p"/#{@account}/policies/#{@flow.policy_id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-              >
+              <.link navigate={~p"/#{@account}/policies/#{@flow.policy_id}"} class={link_style()}>
                 <.policy_name policy={@flow.policy} />
               </.link>
             </:value>
@@ -68,10 +65,7 @@ defmodule Web.Flows.Show do
           <.vertical_table_row>
             <:label>Client</:label>
             <:value>
-              <.link
-                navigate={~p"/#{@account}/clients/#{@flow.client_id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-              >
+              <.link navigate={~p"/#{@account}/clients/#{@flow.client_id}"} class={link_style()}>
                 <%= @flow.client.name %>
               </.link>
               <div>Remote IP: <%= @flow.client_remote_ip %></div>
@@ -81,10 +75,7 @@ defmodule Web.Flows.Show do
           <.vertical_table_row>
             <:label>Gateway</:label>
             <:value>
-              <.link
-                navigate={~p"/#{@account}/gateways/#{@flow.gateway_id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-              >
+              <.link navigate={~p"/#{@account}/gateways/#{@flow.gateway_id}"} class={link_style()}>
                 <%= @flow.gateway.group.name_prefix %>-<%= @flow.gateway.name_suffix %>
               </.link>
               <div>
@@ -95,17 +86,14 @@ defmodule Web.Flows.Show do
           <.vertical_table_row>
             <:label>Resource</:label>
             <:value>
-              <.link
-                navigate={~p"/#{@account}/resources/#{@flow.resource_id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-              >
+              <.link navigate={~p"/#{@account}/resources/#{@flow.resource_id}"} class={link_style()}>
                 <%= @flow.resource.name %>
               </.link>
             </:value>
           </.vertical_table_row>
         </.vertical_table>
       </:content>
-    </.page>
+    </.section>
     """
   end
 end

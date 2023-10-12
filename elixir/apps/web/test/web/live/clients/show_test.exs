@@ -159,7 +159,7 @@ defmodule Web.Live.Clients.ShowTest do
       |> live(~p"/#{account}/clients/#{client}")
 
     assert lv
-           |> element("a", "Edit Client")
+           |> element("a", "Edit")
            |> render_click() ==
              {:error,
               {:live_redirect, %{to: ~p"/#{account}/clients/#{client}/edit", kind: :push}}}

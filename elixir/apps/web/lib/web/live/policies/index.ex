@@ -5,7 +5,8 @@ defmodule Web.Policies.Index do
   def mount(_params, _session, socket) do
     with {:ok, policies} <-
            Policies.list_policies(socket.assigns.subject, preload: [:actor_group, :resource]) do
-      {:ok, assign(socket, policies: policies)}
+      socket = assign(socket, policies: policies, page_title: "Policies")
+      {:ok, socket}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end
@@ -14,42 +15,48 @@ defmodule Web.Policies.Index do
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/policies"}>Policies</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/policies"}><%= @page_title %></.breadcrumb>
     </.breadcrumbs>
-    <.header>
-      <:title>
-        All Policies
-      </:title>
-      <:actions>
-        <.add_button navigate={~p"/#{@account}/policies/new"}>Add Policy</.add_button>
-      </:actions>
-    </.header>
-    <!-- Policies table -->
-    <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <.table id="policies" rows={@policies} row_id={&"policies-#{&1.id}"}>
-        <:col :let={policy} label="ID">
-          <.link
-            navigate={~p"/#{@account}/policies/#{policy}"}
-            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-          >
-            <%= policy.id %>
-          </.link>
-        </:col>
-        <:col :let={policy} label="GROUP">
-          <.badge>
-            <%= policy.actor_group.name %>
-          </.badge>
-        </:col>
-        <:col :let={policy} label="RESOURCE">
-          <.link
-            navigate={~p"/#{@account}/resources/#{policy.resource_id}"}
-            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-          >
-            <%= policy.resource.name %>
-          </.link>
-        </:col>
-      </.table>
-    </div>
+
+    <.section>
+      <:title><%= @page_title %></:title>
+      <:action>
+        <.add_button navigate={~p"/#{@account}/policies/new"}>
+          Add Policy
+        </.add_button>
+      </:action>
+      <:content>
+        <.table id="policies" rows={@policies} row_id={&"policies-#{&1.id}"}>
+          <:col :let={policy} label="ID">
+            <.link class={link_style()} navigate={~p"/#{@account}/policies/#{policy}"}>
+              <%= policy.id %>
+            </.link>
+          </:col>
+          <:col :let={policy} label="GROUP">
+            <.badge>
+              <%= policy.actor_group.name %>
+            </.badge>
+          </:col>
+          <:col :let={policy} label="RESOURCE">
+            <.link class={link_style()} navigate={~p"/#{@account}/resources/#{policy.resource_id}"}>
+              <%= policy.resource.name %>
+            </.link>
+          </:col>
+          <:empty>
+            <div class="flex justify-center text-center text-slate-500 p-4">
+              <div class="w-auto">
+                <div class="pb-4">
+                  No policies to display
+                </div>
+                <.add_button navigate={~p"/#{@account}/policies/new"}>
+                  Add Policy
+                </.add_button>
+              </div>
+            </div>
+          </:empty>
+        </.table>
+      </:content>
+    </.section>
     """
   end
 end

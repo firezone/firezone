@@ -167,4 +167,42 @@ defmodule Web.Actors.Components do
     </.inputs_for>
     """
   end
+
+  def option(assigns) do
+    ~H"""
+    <div>
+      <div class="flex items-center mb-4">
+        <input
+          id={"idp-option-#{@type}"}
+          type="radio"
+          name="next"
+          value={next_step_path(@type, @account)}
+          class={~w[
+            w-4 h-4 border-gray-300
+            focus:ring-2 focus:ring-blue-300
+            dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600
+          ]}
+          required
+        />
+        <label
+          for={"idp-option-#{@type}"}
+          class="block ml-2 text-lg font-medium text-gray-900 dark:text-gray-300"
+        >
+          <%= @name %>
+        </label>
+      </div>
+      <p class="ml-6 mb-6 text-sm text-gray-500 dark:text-gray-400">
+        <%= @description %>
+      </p>
+    </div>
+    """
+  end
+
+  def next_step_path(:service_account, account) do
+    ~p"/#{account}/actors/service_accounts/new"
+  end
+
+  def next_step_path(_other, account) do
+    ~p"/#{account}/actors/users/new"
+  end
 end

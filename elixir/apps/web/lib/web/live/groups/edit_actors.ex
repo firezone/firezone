@@ -24,52 +24,6 @@ defmodule Web.Groups.EditActors do
     end
   end
 
-  def handle_event("remove_actor", %{"id" => id}, socket) do
-    if id in socket.assigns.current_member_ids do
-      added_ids = socket.assigns.added_ids -- [id]
-      removed_ids = [id] ++ socket.assigns.removed_ids
-      {:noreply, assign(socket, added_ids: added_ids, removed_ids: removed_ids)}
-    else
-      added_ids = socket.assigns.added_ids -- [id]
-      {:noreply, assign(socket, added_ids: added_ids)}
-    end
-  end
-
-  def handle_event("add_actor", %{"id" => id}, socket) do
-    if id in socket.assigns.current_member_ids do
-      removed_ids = socket.assigns.removed_ids -- [id]
-      {:noreply, assign(socket, removed_ids: removed_ids)}
-    else
-      added_ids = [id] ++ socket.assigns.added_ids
-      removed_ids = socket.assigns.removed_ids -- [id]
-      {:noreply, assign(socket, added_ids: added_ids, removed_ids: removed_ids)}
-    end
-  end
-
-  def handle_event("submit", _params, socket) do
-    memberships =
-      Enum.flat_map(socket.assigns.group.memberships, fn membership ->
-        if membership.actor_id in socket.assigns.removed_ids do
-          []
-        else
-          [Map.from_struct(membership)]
-        end
-      end)
-
-    add_memberships = Enum.map(socket.assigns.added_ids, fn id -> %{actor_id: id} end)
-
-    attrs = %{memberships: memberships ++ add_memberships}
-
-    with {:ok, group} <-
-           Actors.update_group(socket.assigns.group, attrs, socket.assigns.subject) do
-      socket = redirect(socket, to: ~p"/#{socket.assigns.account}/groups/#{group}")
-      {:noreply, socket}
-    else
-      {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
-    end
-  end
-
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
@@ -81,14 +35,12 @@ defmodule Web.Groups.EditActors do
         Edit Actors
       </.breadcrumb>
     </.breadcrumbs>
-    <.header>
+
+    <.section>
       <:title>
-        Editing actors in group <code>Engineering</code>
+        Edit Actors in Group: <code>Engineering</code>
       </:title>
-    </.header>
-    <!-- Update Group -->
-    <section class="bg-white dark:bg-gray-900">
-      <div class="mx-auto pt-1">
+      <:content>
         <div class="relative overflow-x-auto">
           <.table id="actors" rows={@actors} row_id={&"actor-#{&1.id}"}>
             <:col :let={actor} label="ACTOR">
@@ -158,9 +110,55 @@ defmodule Web.Groups.EditActors do
             Save
           </.button>
         </div>
-      </div>
-    </section>
+      </:content>
+    </.section>
     """
+  end
+
+  def handle_event("remove_actor", %{"id" => id}, socket) do
+    if id in socket.assigns.current_member_ids do
+      added_ids = socket.assigns.added_ids -- [id]
+      removed_ids = [id] ++ socket.assigns.removed_ids
+      {:noreply, assign(socket, added_ids: added_ids, removed_ids: removed_ids)}
+    else
+      added_ids = socket.assigns.added_ids -- [id]
+      {:noreply, assign(socket, added_ids: added_ids)}
+    end
+  end
+
+  def handle_event("add_actor", %{"id" => id}, socket) do
+    if id in socket.assigns.current_member_ids do
+      removed_ids = socket.assigns.removed_ids -- [id]
+      {:noreply, assign(socket, removed_ids: removed_ids)}
+    else
+      added_ids = [id] ++ socket.assigns.added_ids
+      removed_ids = socket.assigns.removed_ids -- [id]
+      {:noreply, assign(socket, added_ids: added_ids, removed_ids: removed_ids)}
+    end
+  end
+
+  def handle_event("submit", _params, socket) do
+    memberships =
+      Enum.flat_map(socket.assigns.group.memberships, fn membership ->
+        if membership.actor_id in socket.assigns.removed_ids do
+          []
+        else
+          [Map.from_struct(membership)]
+        end
+      end)
+
+    add_memberships = Enum.map(socket.assigns.added_ids, fn id -> %{actor_id: id} end)
+
+    attrs = %{memberships: memberships ++ add_memberships}
+
+    with {:ok, group} <-
+           Actors.update_group(socket.assigns.group, attrs, socket.assigns.subject) do
+      socket = redirect(socket, to: ~p"/#{socket.assigns.account}/groups/#{group}")
+      {:noreply, socket}
+    else
+      {:error, changeset} ->
+        {:noreply, assign(socket, form: to_form(changeset))}
+    end
   end
 
   defp member?(current_member_ids, actor, added_ids, removed_ids) do

@@ -168,7 +168,7 @@ defmodule Web.Live.GatewayGroups.ShowTest do
       |> live(~p"/#{account}/gateway_groups/#{group}")
 
     assert lv
-           |> element("button", "Delete Gateway")
+           |> element("button", "Delete")
            |> render_click() ==
              {:error, {:redirect, %{to: ~p"/#{account}/gateway_groups"}}}
 

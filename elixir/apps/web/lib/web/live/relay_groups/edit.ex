@@ -11,6 +11,43 @@ defmodule Web.RelayGroups.Edit do
     end
   end
 
+  def render(assigns) do
+    ~H"""
+    <.breadcrumbs account={@account}>
+      <.breadcrumb path={~p"/#{@account}/relay_groups"}>Relay Instance Groups</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/relay_groups/#{@group}"}>
+        <%= @group.name %>
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/relay_groups/#{@group}/edit"}>Edit</.breadcrumb>
+    </.breadcrumbs>
+
+    <.section>
+      <:title>
+        Edit Relay Instance Group <code><%= @group.name %></code>
+      </:title>
+      <:content>
+        <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
+          <.form for={@form} phx-change={:change} phx-submit={:submit}>
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <div>
+                <.input
+                  label="Name Prefix"
+                  field={@form[:name]}
+                  placeholder="Name of this Relay Instance Group"
+                  required
+                />
+              </div>
+            </div>
+            <.submit_button>
+              Save
+            </.submit_button>
+          </.form>
+        </div>
+      </:content>
+    </.section>
+    """
+  end
+
   def handle_event("change", %{"group" => attrs}, socket) do
     changeset =
       Relays.change_group(socket.assigns.group, attrs)
@@ -28,42 +65,5 @@ defmodule Web.RelayGroups.Edit do
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
-  end
-
-  def render(assigns) do
-    ~H"""
-    <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/relay_groups"}>Relay Instance Groups</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/relay_groups/#{@group}"}>
-        <%= @group.name %>
-      </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/relay_groups/#{@group}/edit"}>Edit</.breadcrumb>
-    </.breadcrumbs>
-    <.header>
-      <:title>
-        Editing Relay Instance Group <code><%= @group.name %></code>
-      </:title>
-    </.header>
-
-    <section class="bg-white dark:bg-gray-900">
-      <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
-        <.form for={@form} phx-change={:change} phx-submit={:submit}>
-          <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-            <div>
-              <.input
-                label="Name Prefix"
-                field={@form[:name]}
-                placeholder="Name of this Relay Instance Group"
-                required
-              />
-            </div>
-          </div>
-          <.submit_button>
-            Save
-          </.submit_button>
-        </.form>
-      </div>
-    </section>
-    """
   end
 end

@@ -22,6 +22,30 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.New do
     {:ok, socket}
   end
 
+  def render(assigns) do
+    ~H"""
+    <.breadcrumbs account={@account}>
+      <.breadcrumb path={~p"/#{@account}/settings/identity_providers"}>
+        Identity Providers Settings
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/settings/identity_providers/new"}>
+        Create Identity Provider
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/settings/identity_providers/google_workspace/new"}>
+        Google Workspace
+      </.breadcrumb>
+    </.breadcrumbs>
+    <.section>
+      <:title>
+        Add a new Google Workspace Identity Provider
+      </:title>
+      <:content>
+        <.provider_form account={@account} id={@id} form={@form} />
+      </:content>
+    </.section>
+    """
+  end
+
   def handle_event("change", %{"provider" => attrs}, socket) do
     attrs = Map.put(attrs, "adapter", :google_workspace)
 
@@ -60,29 +84,5 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.New do
 
         {:noreply, assign(socket, form: to_form(%{new_changeset | errors: changeset.errors}))}
     end
-  end
-
-  def render(assigns) do
-    ~H"""
-    <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/settings/identity_providers"}>
-        Identity Providers Settings
-      </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/settings/identity_providers/new"}>
-        Create Identity Provider
-      </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/settings/identity_providers/google_workspace/new"}>
-        Google Workspace
-      </.breadcrumb>
-    </.breadcrumbs>
-    <.header>
-      <:title>
-        Add a new Google Workspace Identity Provider
-      </:title>
-    </.header>
-    <section class="bg-white dark:bg-gray-900">
-      <.provider_form account={@account} id={@id} form={@form} />
-    </section>
-    """
   end
 end
