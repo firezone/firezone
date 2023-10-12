@@ -1,6 +1,7 @@
 use std::{collections::HashMap, net::IpAddr, sync::Arc};
 
 use boringtun::noise::{Tunn, TunnResult};
+use boringtun::x25519::StaticSecret;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use connlib_shared::{
@@ -11,9 +12,11 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use parking_lot::{Mutex, RwLock};
 use pnet_packet::MutablePacket;
+use secrecy::ExposeSecret;
 use webrtc::data::data_channel::DataChannel;
+use webrtc::data_channel::RTCDataChannel;
 
-use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, ConnId};
+use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, ConnId, PeerConfig};
 
 type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 
@@ -85,16 +88,26 @@ impl Peer {
         }
     }
 
-    pub(crate) fn new(
-        tunnel: Mutex<Tunn>,
+    pub(crate) async fn new(
+        private_key: StaticSecret,
         index: u32,
-        ips: Vec<IpNetwork>,
-        channel: Arc<DataChannel>,
+        peer_config: PeerConfig,
+        channel: Arc<RTCDataChannel>,
         conn_id: ConnId,
         resource: Option<(ResourceDescription, DateTime<Utc>)>,
-    ) -> Peer {
+    ) -> Result<Peer> {
+        let channel = channel.detach().await?;
+        let tunnel = Tunn::new(
+            private_key.clone(),
+            peer_config.public_key,
+            Some(peer_config.preshared_key.expose_secret().0),
+            peer_config.persistent_keepalive,
+            index,
+            None,
+        )?;
+
         let mut allowed_ips = IpNetworkTable::new();
-        for ip in ips {
+        for ip in peer_config.ips {
             allowed_ips.insert(ip, ());
         }
         let allowed_ips = RwLock::new(allowed_ips);
@@ -103,15 +116,16 @@ impl Peer {
             resource_table.insert(r);
             RwLock::new(resource_table)
         });
-        Peer {
-            tunnel,
+
+        Ok(Peer {
+            tunnel: Mutex::new(tunnel),
             index,
             allowed_ips,
             channel,
             conn_id,
             resources,
             translated_resource_addresses: Default::default(),
-        }
+        })
     }
 
     pub(crate) fn get_translation(&self, ip: IpAddr) -> Option<ResourceDescription> {

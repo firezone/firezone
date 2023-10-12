@@ -1,9 +1,6 @@
-use boringtun::noise::Tunn;
 use chrono::{DateTime, Utc};
 use futures::channel::mpsc;
 use futures_util::SinkExt;
-use parking_lot::Mutex;
-use secrecy::ExposeSecret;
 use std::sync::Arc;
 use tracing::instrument;
 
@@ -95,24 +92,29 @@ where
             ?peer_config.ips,
             "data_channel_open",
         );
-        let channel = data_channel.detach().await?;
-        let tunn = Tunn::new(
-            self.private_key.clone(),
-            peer_config.public_key,
-            Some(peer_config.preshared_key.expose_secret().0),
-            peer_config.persistent_keepalive,
-            index,
-            None,
-        )?;
 
-        let peer = Arc::new(Peer::new(
-            Mutex::new(tunn),
-            index,
-            peer_config.ips.clone(),
-            channel,
-            conn_id,
-            resources,
-        ));
+        data_channel.on_close({
+            let tunnel = Arc::clone(self);
+            Box::new(move || {
+                tracing::debug!("channel_closed");
+                let tunnel = tunnel.clone();
+                Box::pin(async move {
+                    tunnel.stop_peer(index, conn_id).await;
+                })
+            })
+        });
+
+        let peer = Arc::new(
+            Peer::new(
+                self.private_key.clone(),
+                index,
+                peer_config.clone(),
+                data_channel,
+                conn_id,
+                resources,
+            )
+            .await?,
+        );
 
         {
             // Watch out! we need 2 locks, make sure you don't lock both at the same time anywhere else
@@ -139,17 +141,6 @@ where
         if let Some(conn) = self.peer_connections.lock().get(&conn_id) {
             set_connection_state_with_peer(self, conn, index, conn_id)
         }
-
-        data_channel.on_close({
-            let tunnel = Arc::clone(self);
-            Box::new(move || {
-                tracing::debug!("channel_closed");
-                let tunnel = tunnel.clone();
-                Box::pin(async move {
-                    tunnel.stop_peer(index, conn_id).await;
-                })
-            })
-        });
 
         let tunnel = Arc::clone(self);
         tokio::spawn(async move { tunnel.start_peer_handler(peer).await });
