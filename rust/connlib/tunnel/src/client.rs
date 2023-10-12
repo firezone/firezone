@@ -196,6 +196,7 @@ pub struct ClientState {
     /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
     waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidateInit>>,
 
+    // TODO: Make private
     pub awaiting_connection: HashMap<
         ResourceId,
         (
