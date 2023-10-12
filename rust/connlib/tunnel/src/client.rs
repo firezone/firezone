@@ -117,68 +117,71 @@ where
         const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
 
         // We can buffer requests here but will drop them for now and let the upper layer reliability protocol handle this
-        if let Some(resource) = self.get_resource(packet.destination()) {
-            // We have awaiting connection to prevent a race condition where
-            // create_peer_connection hasn't added the thing to peer_connections
-            // and we are finding another packet to the same address (otherwise we would just use peer_connections here)
-            let mut role_state = self.role_state.lock();
 
-            if role_state.awaiting_connection.get(&resource.id()).is_none() {
-                tracing::trace!(
-                    resource_ip = %packet.destination(),
-                    "resource_connection_intent",
-                );
+        let Some(resource) = self.get_resource(packet.destination()) else {
+            return;
+        };
 
-                role_state
-                    .awaiting_connection
-                    .insert(resource.id(), Default::default());
-                let dev = Arc::clone(self);
+        // We have awaiting connection to prevent a race condition where
+        // create_peer_connection hasn't added the thing to peer_connections
+        // and we are finding another packet to the same address (otherwise we would just use peer_connections here)
+        let mut role_state = self.role_state.lock();
 
-                let mut connected_gateway_ids: Vec<_> = role_state
-                    .gateway_awaiting_connection
-                    .clone()
-                    .into_keys()
-                    .collect();
-                connected_gateway_ids
-                    .extend(dev.resources_gateways.lock().values().collect::<Vec<_>>());
-                tracing::trace!(
-                    gateways = ?connected_gateway_ids,
-                    "connected_gateways"
-                );
-                tokio::spawn(async move {
-                    let mut interval = tokio::time::interval(MAX_SIGNAL_CONNECTION_DELAY);
-                    loop {
-                        interval.tick().await;
-                        let reference = {
-                            let mut role_state = dev.role_state.lock();
+        if role_state.awaiting_connection.get(&resource.id()).is_none() {
+            tracing::trace!(
+                resource_ip = %packet.destination(),
+                "resource_connection_intent",
+            );
 
-                            let Some(awaiting_connection) =
-                                role_state.awaiting_connection.get_mut(&resource.id())
-                            else {
-                                break;
-                            };
-                            if awaiting_connection.response_received {
-                                break;
-                            }
-                            awaiting_connection.total_attemps += 1;
-                            awaiting_connection.total_attemps
+            role_state
+                .awaiting_connection
+                .insert(resource.id(), Default::default());
+            let dev = Arc::clone(self);
+
+            let mut connected_gateway_ids: Vec<_> = role_state
+                .gateway_awaiting_connection
+                .clone()
+                .into_keys()
+                .collect();
+            connected_gateway_ids
+                .extend(dev.resources_gateways.lock().values().collect::<Vec<_>>());
+            tracing::trace!(
+                gateways = ?connected_gateway_ids,
+                "connected_gateways"
+            );
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(MAX_SIGNAL_CONNECTION_DELAY);
+                loop {
+                    interval.tick().await;
+                    let reference = {
+                        let mut role_state = dev.role_state.lock();
+
+                        let Some(awaiting_connection) =
+                            role_state.awaiting_connection.get_mut(&resource.id())
+                        else {
+                            break;
                         };
-                        if let Err(e) = dev
-                            .control_signaler
-                            .signal_connection_to(&resource, &connected_gateway_ids, reference)
-                            .await
-                        {
-                            // Not a deadlock because this is a different task
-                            dev.role_state
-                                .lock()
-                                .awaiting_connection
-                                .remove(&resource.id());
-                            tracing::error!(error = ?e, "start_resource_connection");
-                            let _ = dev.callbacks.on_error(&e);
+                        if awaiting_connection.response_received {
+                            break;
                         }
+                        awaiting_connection.total_attemps += 1;
+                        awaiting_connection.total_attemps
+                    };
+                    if let Err(e) = dev
+                        .control_signaler
+                        .signal_connection_to(&resource, &connected_gateway_ids, reference)
+                        .await
+                    {
+                        // Not a deadlock because this is a different task
+                        dev.role_state
+                            .lock()
+                            .awaiting_connection
+                            .remove(&resource.id());
+                        tracing::error!(error = ?e, "start_resource_connection");
+                        let _ = dev.callbacks.on_error(&e);
                     }
-                });
-            }
+                }
+            });
         }
     }
 }
