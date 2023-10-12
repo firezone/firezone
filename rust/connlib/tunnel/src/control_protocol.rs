@@ -9,6 +9,7 @@ use connlib_shared::{
     Callbacks, Error, Result,
 };
 use webrtc::data_channel::OnCloseHdlrFn;
+use webrtc::peer_connection::OnPeerConnectionStateChangeHdlrFn;
 use webrtc::{
     data_channel::RTCDataChannel,
     ice_transport::{
@@ -33,45 +34,6 @@ const ICE_CANDIDATE_BUFFER: usize = 100;
 pub enum Request {
     NewConnection(RequestConnection),
     ReuseConnection(ReuseConnection),
-}
-
-#[tracing::instrument(level = "trace", skip(tunnel))]
-async fn handle_connection_state_update_with_peer<C, CB, TRoleState>(
-    tunnel: &Arc<Tunnel<C, CB, TRoleState>>,
-    state: RTCPeerConnectionState,
-    index: u32,
-    conn_id: ConnId,
-) where
-    C: ControlSignal + Clone + Send + Sync + 'static,
-    CB: Callbacks + 'static,
-    TRoleState: RoleState,
-{
-    tracing::trace!(?state, "peer_state_update");
-    if state == RTCPeerConnectionState::Failed {
-        tunnel.stop_peer(index, conn_id).await;
-    }
-}
-
-#[tracing::instrument(level = "trace", skip(tunnel))]
-fn set_connection_state_with_peer<C, CB, TRoleState>(
-    tunnel: &Arc<Tunnel<C, CB, TRoleState>>,
-    peer_connection: &Arc<RTCPeerConnection>,
-    index: u32,
-    conn_id: ConnId,
-) where
-    C: ControlSignal + Clone + Send + Sync + 'static,
-    CB: Callbacks + 'static,
-    TRoleState: RoleState,
-{
-    let tunnel = Arc::clone(tunnel);
-    peer_connection.on_peer_connection_state_change(Box::new(
-        move |state: RTCPeerConnectionState| {
-            let tunnel = Arc::clone(&tunnel);
-            Box::pin(async move {
-                handle_connection_state_update_with_peer(&tunnel, state, index, conn_id).await
-            })
-        },
-    ));
 }
 
 impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
@@ -131,7 +93,10 @@ where
         }
 
         if let Some(conn) = self.peer_connections.lock().get(&conn_id) {
-            set_connection_state_with_peer(self, conn, index, conn_id)
+            conn.on_peer_connection_state_change(
+                self.clone()
+                    .on_peer_connection_state_change_handler(index, conn_id),
+            );
         }
 
         tokio::spawn(self.clone().start_peer_handler(peer));
@@ -145,6 +110,22 @@ where
             let tunnel = self.clone();
             Box::pin(async move {
                 tunnel.stop_peer(index, conn_id).await;
+            })
+        })
+    }
+
+    pub fn on_peer_connection_state_change_handler(
+        self: Arc<Self>,
+        index: u32,
+        conn_id: ConnId,
+    ) -> OnPeerConnectionStateChangeHdlrFn {
+        Box::new(move |state| {
+            let tunnel = Arc::clone(&self);
+            Box::pin(async move {
+                tracing::trace!(?state, "peer_state_update");
+                if state == RTCPeerConnectionState::Failed {
+                    tunnel.stop_peer(index, conn_id).await;
+                }
             })
         })
     }
