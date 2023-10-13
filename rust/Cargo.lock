@@ -774,7 +774,6 @@ version = "1.20231001.0"
 dependencies = [
  "anyhow",
  "connlib-client-shared",
- "diva",
  "ip_network",
  "libc",
  "secrecy",
@@ -1104,17 +1103,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.37",
-]
-
-[[package]]
-name = "diva"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4962b19d77f25a52081b27cd0404773376bda79b395801dcb771646206a20b06"
-dependencies = [
- "libc",
- "log",
- "windows-sys 0.48.0",
 ]
 
 [[package]]
