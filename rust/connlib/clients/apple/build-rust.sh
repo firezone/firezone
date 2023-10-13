@@ -10,8 +10,7 @@ set -e
 # into our highly evolved Rust-based build system.
 for var in $(env | awk -F= '{print $1}'); do
   # standard vars
-  if [[ "$var" != "PATH" ]] \
-  && [[ "$var" != "HOME" ]] \
+  if [[ "$var" != "HOME" ]] \
   && [[ "$var" != "USER" ]] \
   && [[ "$var" != "LOGNAME" ]] \
   && [[ "$var" != "TERM" ]] \
@@ -21,8 +20,7 @@ for var in $(env | awk -F= '{print $1}'); do
   && [[ "$var" != "TMPDIR" ]] \
   && [[ "$var" != "XPC_FLAGS" ]] \
   && [[ "$var" != "XPC_SERVICE_NAME" ]] \
-  # Needed vars from Xcode
-  \ && [[ "$var" != "PLATFORM_NAME" ]] \
+  && [[ "$var" != "PLATFORM_NAME" ]] \
   && [[ "$var" != "CONFIGURATION" ]] \
   && [[ "$var" != "NATIVE_ARCH" ]] \
   && [[ "$var" != "CONNLIB_TARGET_DIR" ]]; then
@@ -40,8 +38,10 @@ if [[ -z "$PLATFORM_NAME" ]]; then
   exit 1
 fi
 
+# Use pristine path; the PATH from Xcode is polluted with stuff we don't want.
+export PATH="$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
 base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
-export PATH="$HOME/.cargo/bin:$PATH"
 export INCLUDE_PATH="$base_dir/usr/include"
 export LIBRARY_PATH="$base_dir/usr/lib"
 
