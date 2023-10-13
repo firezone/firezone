@@ -37,8 +37,6 @@ done
 # confuse rustc.
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:$HOME/.cargo/bin"
 
-printenv
-
 if [[ $1 == "clean" ]]; then
   echo "Skipping build during 'clean'"
   exit 0
@@ -51,7 +49,6 @@ fi
 
 export INCLUDE_PATH="$SDK_ROOT/usr/include"
 export LIBRARY_PATH="$SDK_ROOT/usr/lib"
-export RUSTFLAGS="-Clink-arg=-dead_strip -Clink-arg=-lSystem -Clink-arg=-L$LIBRARY_PATH -Clink-arg=-L$INCLUDE_PATH"
 
 TARGETS=""
 if [[ "$PLATFORM_NAME" = "macosx" ]]; then
