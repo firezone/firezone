@@ -1,10 +1,17 @@
 # Firezone Apple Client
 
-Firezone app clients for macOS and iOS.
+Firezone clients for macOS and iOS.
 
 ## Pre-requisites
 
-- Rust
+1. Rust: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+1. Request your Firezone email added to our Apple Developer Account
+1. Open Xcode, go to Settings -> Account and log in. Click "Download manual
+   profiles" button.
+1. Install signing keys from 1password "Engineering" vault.
+
+Automatic signing has been disabled because it doesn't easily work with our
+CI/CD pipeline.
 
 ## Building
 
