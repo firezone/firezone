@@ -28,7 +28,7 @@ for var in $(env | awk -F= '{print $1}'); do
 done
 
 # Use pristine path; the PATH from Xcode is polluted with stuff we don't want.
-export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.cargo/bin"
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:$HOME/.cargo/bin"
 
 printenv
 
@@ -45,6 +45,7 @@ fi
 base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
 export INCLUDE_PATH="$base_dir/usr/include"
 export LIBRARY_PATH="$base_dir/usr/lib"
+export RUSTFLAGS="-Clink-arg=-fuse-ld=$(brew --prefix llvm)/bin/ld64.lld -Clink-arg=-dead_strip -Clink-arg=-lSystem -Clink-arg=-L$LIBRARY_PATH -Clink-arg=-L$INCLUDE_PATH"
 
 TARGETS=""
 if [[ "$PLATFORM_NAME" = "macosx" ]]; then
