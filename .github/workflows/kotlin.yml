@@ -52,10 +52,23 @@ jobs:
           # https://github.com/gradle/gradle-build-action#overwriting-an-existing-gradle-user-home
           cache-overwrite-existing: ${{ github.ref == 'refs/heads/main' }}
       - run: touch local.properties
-      - name: Execute Gradle build
-        run: ./gradlew assembleRelease
-      - name: Run Test
-        run: ./gradlew testReleaseUnitTest
-      - name: Android Test Report
-        uses: asadmansr/android-test-report-action@v1.2.0
-        if: "!cancelled()"
+      - name: Bundle release
+        env:
+          KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
+          KEYSTORE_KEY_PASSWORD: ${{  secrets.GOOGLE_UPLOAD_KEYSTORE_KEY_PASSWORD }}
+          FIREBASE_APP_DISTRIBUTION_CREDENTIALS: ${{ secrets.FIREBASE_APP_DISTRIBUTION_CREDENTIALS }}
+        run: |
+          # Write secrets to files for Gradle to find
+          FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH=$(pwd)/firebase-credentials.json
+          KEYSTORE_PATH=$(pwd)/app/keystore.jks
+          echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH
+          echo -n "$KEYSTORE_BASE64" | base64 --decode -o $KEYSTORE_PATH
+          ./gradlew bundleRelease appDistributionUploadRelease
+      # TODO: See https://github.com/firezone/firezone/issues/2311
+      # TODO: See https://github.com/firezone/firezone/issues/2309
+      # - name: Run Test
+      #   run: ./gradlew testReleaseUnitTest
+      # - name: Android Test Report
+      #   uses: asadmansr/android-test-report-action@v1.2.0
+      #   if: "!cancelled()"

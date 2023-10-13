@@ -9,6 +9,7 @@ plugins {
     id("com.google.firebase.crashlytics")
     id("com.diffplug.spotless") version "6.22.0"
     id("kotlin-kapt")
+    id("com.google.firebase.appdistribution")
 }
 
 spotless {
@@ -50,6 +51,16 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            // Find this in the Engineering 1Password vault
+            storeFile = file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks")
+            keyAlias = "upload"
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: throw Exception("KEYSTORE_PASSWORD not set")
+            keyPassword = System.getenv("KEYSTORE_KEY_PASSWORD") ?: throw Exception("KEYSTORE_KEY_PASSWORD not set")
+        }
+    }
+
     buildTypes {
         // Debug Config
         getByName("debug") {
@@ -72,6 +83,8 @@ android {
 
         // Release Config
         getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+
             // Enables code shrinking, obfuscation, and optimization for only
             // your project's release build type. Make sure to use a build
             // variant with `isDebuggable=false`.
@@ -103,6 +116,14 @@ android {
             )
 
             resValue("string", "app_name", "\"Firezone\"")
+
+            firebaseAppDistribution {
+                serviceCredentialsFile = file(System.getenv("FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH") ?: throw Exception("FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH not set"))
+                artifactType = "AAB"
+                // releaseNotesFile = "/path/to/releasenotes.txt"
+                testers = "a@firezone.dev, gabriel@firezone.dev, jamil@firezone.dev, thomas@firezone.dev"
+                artifactPath = "app/build/outputs/bundle/release/app-release.aab"
+            }
         }
     }
 
