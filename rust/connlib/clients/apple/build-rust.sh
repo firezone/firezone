@@ -21,6 +21,7 @@ for var in $(env | awk -F= '{print $1}'); do
   && [[ "$var" != "PLATFORM_NAME" ]] \
   && [[ "$var" != "CONFIGURATION" ]] \
   && [[ "$var" != "NATIVE_ARCH" ]] \
+  && [[ "$var" != "ONLY_ACTIVE_ARCH" ]] \
   && [[ "$var" != "CONNLIB_TARGET_DIR" ]]; then
   unset $var
   fi
