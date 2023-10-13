@@ -206,7 +206,7 @@ pub struct ClientState {
 
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
 
-    pub resources_gateways: HashMap<ResourceId, GatewayId>,
+    resources_gateways: HashMap<ResourceId, GatewayId>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -216,6 +216,32 @@ pub struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
+    pub fn on_new_connection(
+        &mut self,
+        resource: ResourceId,
+        gateway: GatewayId,
+        expected_attempts: usize,
+    ) -> Result<(), ConnlibError> {
+        let (details, _, _) = self
+            .awaiting_connection
+            .get_mut(&resource)
+            .ok_or(Error::UnexpectedConnectionDetails)?;
+
+        details.response_received = true;
+
+        if details.total_attemps != expected_attempts {
+            return Err(Error::UnexpectedConnectionDetails);
+        }
+
+        self.resources_gateways.insert(resource, gateway);
+
+        Ok(())
+    }
+
+    pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
+        self.resources_gateways.get(resource).copied()
+    }
+
     pub fn is_awaiting_connection_to(&self, resource: ResourceId) -> bool {
         self.awaiting_connection.contains_key(&resource)
     }

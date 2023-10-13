@@ -93,27 +93,17 @@ where
             .ok_or(Error::InvalidReference)?
             .parse()
             .map_err(|_| Error::InvalidReference)?;
+
+        self.role_state
+            .lock()
+            .on_new_connection(resource_id, gateway_id, reference)?;
+
+        if resource_description
+            .ips()
+            .iter()
+            .any(|&ip| self.peers_by_ip.read().exact_match(ip).is_some())
         {
-            let mut role_state = self.role_state.lock();
-
-            let Some((awaiting_connection, _, _)) =
-                role_state.awaiting_connection.get_mut(&resource_id)
-            else {
-                return Err(Error::UnexpectedConnectionDetails);
-            };
-            awaiting_connection.response_received = true;
-            if awaiting_connection.total_attemps != reference
-                || resource_description
-                    .ips()
-                    .iter()
-                    .any(|&ip| self.peers_by_ip.read().exact_match(ip).is_some())
-            {
-                return Err(Error::UnexpectedConnectionDetails);
-            }
-
-            role_state
-                .resources_gateways
-                .insert(resource_id, gateway_id);
+            return Err(Error::UnexpectedConnectionDetails);
         }
 
         {
@@ -307,9 +297,7 @@ where
         let gateway_id = self
             .role_state
             .lock()
-            .resources_gateways
-            .get(&resource_id)
-            .copied()
+            .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
         let peer_connection = self
             .peer_connections
