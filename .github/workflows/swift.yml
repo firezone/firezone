@@ -8,15 +8,37 @@ env:
 
 jobs:
   build:
-    runs-on: macos-13
+    runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
-        target:
+        include:
           - sdk: macosx
+            runs-on: macos-13
+            platform: macOS
+            destination: platform=macOS
+            xcode: "14.3"
+          - sdk: iphoneos
+            runs-on: macos-13
+            platform: iOS
+            destination: generic/platform=iOS
+            xcode: "14.3"
+          - sdk: macosx
+            runs-on: macos-13
+            platform: macOS
+            destination: platform=macOS
+            xcode: "15.0"
+          - sdk: iphoneos
+            runs-on: macos-13
+            platform: iOS
+            destination: generic/platform=iOS
+            xcode: "15.0"
+          - sdk: macosx
+            runs-on: macos-14
             platform: macOS
             destination: platform=macOS
           - sdk: iphoneos
+            runs-on: macos-14
             platform: iOS
             destination: generic/platform=iOS
     permissions:
@@ -32,15 +54,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          key: ${{ matrix.target.platform }}
+          key: ${{ matrix.platform }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/cache/restore@v3
         name: Restore Swift DerivedData Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
+          key: ${{ matrix.platform }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
           restore-keys: |
-            ${{ matrix.target.platform }}-swift-
+            ${{ matrix.platform }}-swift-
       - name: Install the Apple build certificate and provisioning profile
         env:
           BUILD_CERT: ${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}
@@ -64,10 +86,10 @@ jobs:
           echo -n "$BUILD_CERT" | base64 --decode -o $BUILD_CERT_PATH
 
           # Matrix won't let us access secrets (for good reason), so use an explicit conditional here instead
-          if [ "${{ matrix.target.platform }}" = "iOS" ]; then
+          if [ "${{ matrix.platform }}" = "iOS" ]; then
             echo -n "$IOS_APP_PP" | base64 --decode -o "$PP_PATH"/app.mobileprovision
             echo -n "$IOS_NE_PP" | base64 --decode -o "$PP_PATH"/ne.mobileprovision
-          elif [ "${{ matrix.target.platform }}" = "macOS" ]; then
+          elif [ "${{ matrix.platform }}" = "macOS" ]; then
             echo -n "$MACOS_APP_PP" | base64 --decode -o "$PP_PATH"/app.provisionprofile
             echo -n "$MACOS_NE_PP" | base64 --decode -o "$PP_PATH"/ne.provisionprofile
 
@@ -87,7 +109,7 @@ jobs:
           # import certificate to keychain
           security import $BUILD_CERT_PATH -P "$BUILD_CERT_PASS" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
 
-          if [ "${{ matrix.target.platform }}" = "macOS" ]; then
+          if [ "${{ matrix.platform }}" = "macOS" ]; then
             security import $INSTALLER_CERT_PATH -P "$INSTALLER_CERT_PASS" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           fi
           security list-keychain -d user -s $KEYCHAIN_PATH
@@ -98,12 +120,10 @@ jobs:
           ONLY_ACTIVE_ARCH: no
           # Needed because `productbuild` doesn't support picking this up automatically like Xcode does
           INSTALLER_CODE_SIGN_IDENTITY: "3rd Party Mac Developer Installer: Firezone, Inc. (47R2M6779T)"
+          REQUESTED_XCODE_VERSION: ${{ matrix.xcode }}
         run: |
-          # Explicitly select Xcode version to use
-          sudo xcode-select -s /Applications/Xcode_14.3.app
-
-          # Needed by the linter built into the build process
-          brew install swift-format
+          # Set Xcode version to use if provided
+          [[ ! -z "$REQUESTED_XCODE_VERSION" ]] && sudo xcode-select -s /Applications/Xcode_$REQUESTED_XCODE_VERSION.app
 
           # Copy xcconfig templates
           cp Firezone/xcconfig/Developer.xcconfig.firezone Firezone/xcconfig/Developer.xcconfig
@@ -117,39 +137,39 @@ jobs:
 
           # Unfortunately the macOS app requires an installer package to make it into the App Store,
           # while iOS requires an ipa. The process for building each of these is slightly different.
-          if [ "${{ matrix.target.platform }}" = "iOS" ]; then
+          if [ "${{ matrix.platform }}" = "iOS" ]; then
             # Build archive
             xcodebuild archive \
-              -archivePath ~/Firezone.xcarchive \
+              -archivePath $RUNNER_TEMP/Firezone.xcarchive \
               -configuration Release \
               -scheme Firezone \
-              -sdk ${{ matrix.target.sdk }} \
-              -destination '${{ matrix.target.destination }}'
+              -sdk ${{ matrix.sdk }} \
+              -destination '${{ matrix.destination }}'
             # Export IPA
             xcodebuild \
               -exportArchive \
-              -archivePath ~/Firezone.xcarchive \
-              -exportPath ~/ \
+              -archivePath $RUNNER_TEMP/Firezone.xcarchive \
+              -exportPath $RUNNER_TEMP/ \
               -exportOptionsPlist Firezone/ExportOptions.plist
 
             # Save resulting file to use for upload
-            echo "app_bundle=~/Firezone.ipa" >> "$GITHUB_OUTPUT"
-          elif [ "${{ matrix.target.platform }}" = "macOS" ]; then
+            echo "app_bundle=$RUNNER_TEMP/Firezone.ipa" >> "$GITHUB_OUTPUT"
+          elif [ "${{ matrix.platform }}" = "macOS" ]; then
             # Build app bundle
             xcodebuild build \
               -configuration Release \
               -scheme Firezone \
-              -sdk ${{ matrix.target.sdk }} \
-              -destination '${{ matrix.target.destination }}'
+              -sdk ${{ matrix.sdk }} \
+              -destination '${{ matrix.destination }}'
             # Move it from randomized build output dir to somewhere we can find it
-            mv ~/Library/Developer/Xcode/DerivedData/Firezone-*/Build/Products/Release/Firezone.app ~/.
+            mv ~/Library/Developer/Xcode/DerivedData/Firezone-*/Build/Products/Release/Firezone.app $RUNNER_TEMP/.
             # Create signed installer pkg
             productbuild \
               --sign "${{ env.INSTALLER_CODE_SIGN_IDENTITY }}" \
-              --component ~/Firezone.app /Applications ~/Firezone.pkg
+              --component $RUNNER_TEMP/Firezone.app /Applications $RUNNER_TEMP/Firezone.pkg
 
             # Save resulting file to use for upload
-            echo "app_bundle=~/Firezone.pkg" >> "$GITHUB_OUTPUT"
+            echo "app_bundle=$RUNNER_TEMP/Firezone.pkg" >> "$GITHUB_OUTPUT"
           else
             echo "Unsupported platform"
             exit 1
@@ -169,7 +189,7 @@ jobs:
           xcrun altool \
             --upload-app \
             -f ${{ steps.build.outputs.app_bundle }} \
-            -t ${{ matrix.target.platform }} \
+            -t ${{ matrix.platform }} \
             --apiKey $API_KEY_ID \
             --apiIssuer $ISSUER_ID
       - uses: actions/cache/save@v3
@@ -179,4 +199,4 @@ jobs:
           path: ~/Library/Developer/Xcode/DerivedData
           # Swift benefits heavily from build cache, so aggressively write a new one
           # on each build on `main` and attempt to restore it in PR builds with broader restore-key.
-          key: ${{ matrix.target.platform }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
+          key: ${{ matrix.platform }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
