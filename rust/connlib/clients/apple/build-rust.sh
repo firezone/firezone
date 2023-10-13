@@ -9,7 +9,6 @@ set -e
 # Sanitize the environment to prevent Xcode's shenanigans from leaking
 # into our highly evolved Rust-based build system.
 for var in $(env | awk -F= '{print $1}'); do
-  # standard vars
   if [[ "$var" != "HOME" ]] \
   && [[ "$var" != "USER" ]] \
   && [[ "$var" != "LOGNAME" ]] \
@@ -28,6 +27,9 @@ for var in $(env | awk -F= '{print $1}'); do
   fi
 done
 
+# Use pristine path; the PATH from Xcode is polluted with stuff we don't want.
+export PATH="$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
 if [[ $1 == "clean" ]]; then
   echo "Skipping build during 'clean'"
   exit 0
@@ -37,9 +39,6 @@ if [[ -z "$PLATFORM_NAME" ]]; then
   echo "PLATFORM_NAME is not set"
   exit 1
 fi
-
-# Use pristine path; the PATH from Xcode is polluted with stuff we don't want.
-export PATH="$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
 export INCLUDE_PATH="$base_dir/usr/include"
