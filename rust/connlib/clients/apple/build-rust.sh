@@ -51,11 +51,7 @@ fi
 
 export INCLUDE_PATH="$SDK_ROOT/usr/include"
 export LIBRARY_PATH="$SDK_ROOT/usr/lib"
-export RUSTFLAGS="-Clink-arg=-fuse-ld=$(brew --prefix llvm@15)/bin/ld64.lld -Clink-arg=-dead_strip -Clink-arg=-lSystem -Clink-arg=-L$LIBRARY_PATH -Clink-arg=-L$INCLUDE_PATH"
-if [[ "$?" != "0" ]]; then
-  echo "Failed to set RUSTFLAGS: Is LLVM 15 installed?"
-  exit 1
-fi
+export RUSTFLAGS="-Clink-arg=-dead_strip -Clink-arg=-lSystem -Clink-arg=-L$LIBRARY_PATH -Clink-arg=-L$INCLUDE_PATH"
 
 TARGETS=""
 if [[ "$PLATFORM_NAME" = "macosx" ]]; then
