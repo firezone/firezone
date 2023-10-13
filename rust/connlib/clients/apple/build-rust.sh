@@ -22,12 +22,19 @@ for var in $(env | awk -F= '{print $1}'); do
   && [[ "$var" != "CONFIGURATION" ]] \
   && [[ "$var" != "NATIVE_ARCH" ]] \
   && [[ "$var" != "ONLY_ACTIVE_ARCH" ]] \
+  && [[ "$var" != "ARCHS" ]] \
+  && [[ "$var" != "SDKROOT" ]] \
+  && [[ "$var" != "OBJROOT" ]] \
+  && [[ "$var" != "SYMROOT" ]] \
+  && [[ "$var" != "SRCROOT" ]] \
+  && [[ "$var" != "TARGETED_DEVICE_FAMILY" ]] \
   && [[ "$var" != "CONNLIB_TARGET_DIR" ]]; then
   unset $var
   fi
 done
 
-# Use pristine path; the PATH from Xcode is polluted with stuff we don't want.
+# Use pristine path; the PATH from Xcode is polluted with stuff we don't want which can
+# confuse rustc.
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:$HOME/.cargo/bin"
 
 printenv
@@ -42,9 +49,8 @@ if [[ -z "$PLATFORM_NAME" ]]; then
   exit 1
 fi
 
-base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
-export INCLUDE_PATH="$base_dir/usr/include"
-export LIBRARY_PATH="$base_dir/usr/lib"
+export INCLUDE_PATH="$SDK_ROOT/usr/include"
+export LIBRARY_PATH="$SDK_ROOT/usr/lib"
 export RUSTFLAGS="-Clink-arg=-fuse-ld=$(brew --prefix llvm@15)/bin/ld64.lld -Clink-arg=-dead_strip -Clink-arg=-lSystem -Clink-arg=-L$LIBRARY_PATH -Clink-arg=-L$INCLUDE_PATH"
 if [[ "$?" != "0" ]]; then
   echo "Failed to set RUSTFLAGS: Is LLVM 15 installed?"
