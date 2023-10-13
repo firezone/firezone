@@ -59,6 +59,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
           KEYSTORE_KEY_PASSWORD: ${{  secrets.GOOGLE_UPLOAD_KEYSTORE_KEY_PASSWORD }}
           FIREBASE_APP_DISTRIBUTION_CREDENTIALS: ${{ secrets.FIREBASE_APP_DISTRIBUTION_CREDENTIALS }}
+          FIREBASE_APP_TESTERS: ${{ vars.FIREBASE_APP_TESTERS }}
         run: |
           # Write secrets to files for Gradle to find
           FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH=$(pwd)/firebase-credentials.json
