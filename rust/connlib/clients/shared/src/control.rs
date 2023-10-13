@@ -36,23 +36,27 @@ pub struct ControlPlane<CB: Callbacks> {
     pub fallback_resolver: parking_lot::Mutex<Option<TokioAsyncResolver>>,
 }
 
-fn create_resolver(upstream_dns: Vec<IpAddr>) -> Option<TokioAsyncResolver> {
-    // TODO: UNCOMMENTME
-    // if upstream_dns.is_empty() {
-    //     return None;
-    // }
+fn create_resolver(
+    upstream_dns: Vec<IpAddr>,
+    callbacks: &impl Callbacks,
+) -> Option<TokioAsyncResolver> {
+    let dns_servers = if upstream_dns.is_empty() {
+        let Ok(Some(dns_servers)) = callbacks.get_system_default_resolvers() else {
+            return None;
+        };
+        if dns_servers.is_empty() {
+            return None;
+        }
+        dns_servers
+    } else {
+        upstream_dns
+    };
 
     let mut resolver_config = ResolverConfig::new();
-    for ip in upstream_dns.iter() {
+    for ip in dns_servers.iter() {
         let name_server = NameServerConfig::new(SocketAddr::new(*ip, DNS_PORT), Protocol::Udp);
         resolver_config.add_name_server(name_server);
     }
-
-    let name_server = NameServerConfig::new(
-        SocketAddr::new("1.1.1.1".parse().unwrap(), 53),
-        Protocol::Udp,
-    );
-    resolver_config.add_name_server(name_server);
 
     Some(TokioAsyncResolver::tokio(
         resolver_config,
@@ -77,7 +81,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     return Err(e);
                 } else {
                     *init = true;
-                    *self.fallback_resolver.lock() = create_resolver(interface.upstream_dns);
+                    *self.fallback_resolver.lock() =
+                        create_resolver(interface.upstream_dns, self.tunnel.callbacks());
                     tracing::info!("Firezoned Started!");
                 }
             } else {
