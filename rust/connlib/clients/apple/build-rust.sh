@@ -15,7 +15,6 @@ for var in $(env | awk -F= '{print $1}'); do
   && [[ "$var" != "TERM" ]] \
   && [[ "$var" != "PWD" ]] \
   && [[ "$var" != "SHELL" ]] \
-  && [[ "$var" != "SHELL" ]] \
   && [[ "$var" != "TMPDIR" ]] \
   && [[ "$var" != "XPC_FLAGS" ]] \
   && [[ "$var" != "XPC_SERVICE_NAME" ]] \
@@ -28,7 +27,7 @@ for var in $(env | awk -F= '{print $1}'); do
 done
 
 # Use pristine path; the PATH from Xcode is polluted with stuff we don't want.
-export PATH="$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.cargo/bin"
 
 printenv
 
