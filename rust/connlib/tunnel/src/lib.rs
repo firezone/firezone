@@ -175,7 +175,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState> {
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<ConnId, Arc<RTCPeerConnection>>>,
-    resources_gateways: Mutex<HashMap<ResourceId, GatewayId>>,
     webrtc_api: API,
     resources: Arc<RwLock<ResourceTable<ResourceDescription>>>,
     gateway_public_keys: Mutex<HashMap<GatewayId, PublicKey>>,
@@ -193,7 +192,6 @@ pub struct TunnelStats {
     public_key: String,
     peers_by_ip: HashMap<IpNetwork, PeerStats>,
     peer_connections: Vec<ConnId>,
-    resource_gateways: HashMap<ResourceId, GatewayId>,
     dns_resources: HashMap<String, ResourceDescription>,
     network_resources: HashMap<IpNetwork, ResourceDescription>,
     gateway_public_keys: HashMap<GatewayId, String>,
@@ -212,7 +210,6 @@ where
             .map(|(ip, peer)| (ip, peer.stats()))
             .collect();
         let peer_connections = self.peer_connections.lock().keys().cloned().collect();
-        let resource_gateways = self.resources_gateways.lock().clone();
         let (network_resources, dns_resources) = {
             let resources = self.resources.read();
             (resources.network_resources(), resources.dns_resources())
@@ -228,7 +225,6 @@ where
             public_key: Key::from(self.public_key).to_string(),
             peers_by_ip,
             peer_connections,
-            resource_gateways,
             dns_resources,
             network_resources,
             gateway_public_keys,
@@ -283,7 +279,6 @@ where
         let peer_connections = Default::default();
         let resources: Arc<RwLock<ResourceTable<ResourceDescription>>> = Default::default();
         let gateway_public_keys = Default::default();
-        let resources_gateways = Default::default();
         let device = Default::default();
         let iface_handler_abort = Default::default();
 
@@ -320,7 +315,6 @@ where
             webrtc_api,
             resources,
             device,
-            resources_gateways,
             callbacks: CallbackErrorFacade(callbacks),
             iface_handler_abort,
             role_state: Default::default(),

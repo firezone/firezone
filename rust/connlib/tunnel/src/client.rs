@@ -133,8 +133,7 @@ where
 
         tracing::trace!(resource_ip = %packet.destination(), "resource_connection_intent");
 
-        let resource_gateways = self.resources_gateways.lock();
-        role_state.insert_new_awaiting_connection(resource, resource_gateways.values().cloned());
+        role_state.insert_new_awaiting_connection(resource);
     }
 }
 
@@ -206,6 +205,8 @@ pub struct ClientState {
     pub gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
 
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
+
+    pub resources_gateways: HashMap<ResourceId, GatewayId>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -219,11 +220,7 @@ impl ClientState {
         self.awaiting_connection.contains_key(&resource)
     }
 
-    pub fn insert_new_awaiting_connection(
-        &mut self,
-        resource: ResourceDescription,
-        additional_gateways: impl Iterator<Item = GatewayId>,
-    ) {
+    pub fn insert_new_awaiting_connection(&mut self, resource: ResourceDescription) {
         const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
 
         let resource_id = resource.id();
@@ -232,7 +229,7 @@ impl ClientState {
             .gateway_awaiting_connection
             .clone()
             .into_keys()
-            .chain(additional_gateways)
+            .chain(self.resources_gateways.values().cloned())
             .collect();
 
         tracing::trace!(
@@ -296,6 +293,7 @@ impl Default for ClientState {
             awaiting_connection: Default::default(),
             gateway_awaiting_connection: Default::default(),
             awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
+            resources_gateways: Default::default(),
         }
     }
 }

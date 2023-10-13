@@ -110,11 +110,12 @@ where
             {
                 return Err(Error::UnexpectedConnectionDetails);
             }
+
+            role_state
+                .resources_gateways
+                .insert(resource_id, gateway_id);
         }
 
-        self.resources_gateways
-            .lock()
-            .insert(resource_id, gateway_id);
         {
             let mut role_state = self.role_state.lock();
 
@@ -303,10 +304,12 @@ where
         rtc_sdp: RTCSessionDescription,
         gateway_public_key: PublicKey,
     ) -> Result<()> {
-        let gateway_id = *self
-            .resources_gateways
+        let gateway_id = self
+            .role_state
             .lock()
+            .resources_gateways
             .get(&resource_id)
+            .copied()
             .ok_or(Error::UnknownResource)?;
         let peer_connection = self
             .peer_connections
