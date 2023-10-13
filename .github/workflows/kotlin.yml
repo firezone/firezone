@@ -64,7 +64,7 @@ jobs:
           FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH=$(pwd)/firebase-credentials.json
           KEYSTORE_PATH=$(pwd)/app/keystore.jks
           echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH
-          echo -n "$KEYSTORE_BASE64" | base64 --decode -o $KEYSTORE_PATH
+          echo -n "$KEYSTORE_BASE64" | base64 --decode > $KEYSTORE_PATH
           ./gradlew bundleRelease appDistributionUploadRelease
       # TODO: See https://github.com/firezone/firezone/issues/2311
       # TODO: See https://github.com/firezone/firezone/issues/2309
