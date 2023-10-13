@@ -56,8 +56,8 @@ android {
             // Find this in the Engineering 1Password vault
             storeFile = file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks")
             keyAlias = "upload"
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: throw Exception("KEYSTORE_PASSWORD not set")
-            keyPassword = System.getenv("KEYSTORE_KEY_PASSWORD") ?: throw Exception("KEYSTORE_KEY_PASSWORD not set")
+            storePassword = System.getenv("KEYSTORE_PASSWORD")
+            keyPassword = System.getenv("KEYSTORE_KEY_PASSWORD")
         }
     }
 
@@ -118,7 +118,7 @@ android {
             resValue("string", "app_name", "\"Firezone\"")
 
             firebaseAppDistribution {
-                serviceCredentialsFile = file(System.getenv("FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH") ?: throw Exception("FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH not set"))
+                serviceCredentialsFile = System.getenv("FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH")
                 artifactType = "AAB"
                 // releaseNotesFile = "/path/to/releasenotes.txt"
                 testers = "a@firezone.dev, gabriel@firezone.dev, jamil@firezone.dev, thomas@firezone.dev"
