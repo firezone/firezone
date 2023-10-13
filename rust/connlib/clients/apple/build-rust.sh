@@ -45,7 +45,11 @@ fi
 base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
 export INCLUDE_PATH="$base_dir/usr/include"
 export LIBRARY_PATH="$base_dir/usr/lib"
-export RUSTFLAGS="-Clink-arg=-fuse-ld=$(brew --prefix llvm)/bin/ld64.lld -Clink-arg=-dead_strip -Clink-arg=-lSystem -Clink-arg=-L$LIBRARY_PATH -Clink-arg=-L$INCLUDE_PATH"
+export RUSTFLAGS="-Clink-arg=-fuse-ld=$(brew --prefix llvm@15)/bin/ld64.lld -Clink-arg=-dead_strip -Clink-arg=-lSystem -Clink-arg=-L$LIBRARY_PATH -Clink-arg=-L$INCLUDE_PATH"
+if [[ "$?" != "0" ]]; then
+  echo "Failed to set RUSTFLAGS: Is LLVM 15 installed?"
+  exit 1
+fi
 
 TARGETS=""
 if [[ "$PLATFORM_NAME" = "macosx" ]]; then
