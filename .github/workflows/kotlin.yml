@@ -52,7 +52,8 @@ jobs:
           # https://github.com/gradle/gradle-build-action#overwriting-an-existing-gradle-user-home
           cache-overwrite-existing: ${{ github.ref == 'refs/heads/main' }}
       - run: touch local.properties
-      - name: Bundle release
+      - name: Bundle, sign, and distribute to testers
+        # if: ${{ github.ref == 'refs/heads/main' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
