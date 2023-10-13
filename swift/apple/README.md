@@ -109,3 +109,9 @@ To cleanup both Swift and Rust build objects:
 cd swift/apple
 ./cleanup.sh all
 ```
+
+### Wiping connlib log directory
+
+```
+rm -rf $HOME/Library/Group\ Containers/47R2M6779T.group.dev.firezone.firezone/Library/Caches/logs/connlib
+```
