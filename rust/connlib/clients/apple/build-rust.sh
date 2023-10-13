@@ -30,6 +30,8 @@ done
 # Use pristine path; the PATH from Xcode is polluted with stuff we don't want.
 export PATH="$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
+printenv
+
 if [[ $1 == "clean" ]]; then
   echo "Skipping build during 'clean'"
   exit 0
