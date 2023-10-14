@@ -120,7 +120,7 @@ android {
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH")
                 artifactType = "AAB"
-                // releaseNotesFile = "/path/to/releasenotes.txt"
+                releaseNotes = "https://github.com/firezone/firezone/releases"
                 testers = System.getenv("FIREBASE_APP_TESTERS")
                 artifactPath = "app/build/outputs/bundle/release/app-release.aab"
             }

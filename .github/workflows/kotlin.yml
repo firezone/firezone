@@ -42,7 +42,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-java@v3
         with:
-          distribution: temurin
+          distribution: oracle
           java-version: 17
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
@@ -52,7 +52,17 @@ jobs:
           # https://github.com/gradle/gradle-build-action#overwriting-an-existing-gradle-user-home
           cache-overwrite-existing: ${{ github.ref == 'refs/heads/main' }}
       - run: touch local.properties
-      - name: Bundle, sign, and distribute to testers
+      - name: Bundle release
+        run: |
+          ./gradlew bundleRelease
+      # TODO: See https://github.com/firezone/firezone/issues/2311
+      # TODO: See https://github.com/firezone/firezone/issues/2309
+      - name: Run Test
+        run: ./gradlew testReleaseUnitTest
+      - name: Android Test Report
+        uses: asadmansr/android-test-report-action@v1.2.0
+        if: "!cancelled()"
+      - name: Sign and upload release
         # if: ${{ github.ref == 'refs/heads/main' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
@@ -66,11 +76,6 @@ jobs:
           KEYSTORE_PATH=$(pwd)/app/keystore.jks
           echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH
           echo -n "$KEYSTORE_BASE64" | base64 --decode > $KEYSTORE_PATH
-          ./gradlew bundleRelease appDistributionUploadRelease
-      # TODO: See https://github.com/firezone/firezone/issues/2311
-      # TODO: See https://github.com/firezone/firezone/issues/2309
-      # - name: Run Test
-      #   run: ./gradlew testReleaseUnitTest
-      # - name: Android Test Report
-      #   uses: asadmansr/android-test-report-action@v1.2.0
-      #   if: "!cancelled()"
+
+          # Upload app bundle
+          ./gradlew appDistributionUploadRelease
