@@ -60,6 +60,8 @@ jobs:
         run: |
           KEYSTORE_PATH=$(pwd)/app/keystore.jks
           echo -n "$KEYSTORE_BASE64" | base64 --decode > $KEYSTORE_PATH
+          # Make sure it's what we expect
+          sha256sum $KEYSTORE_PATH
           ./gradlew bundleRelease
       - name: Run Test
         run: |
@@ -77,4 +79,6 @@ jobs:
         run: |
           FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH=$(pwd)/firebase-credentials.json
           echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH
+          # Make sure it's what we expect
+          sha256sum $FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH
           ./gradlew appDistributionUploadRelease
