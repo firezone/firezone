@@ -26,7 +26,7 @@ jobs:
         run: ./gradlew spotlessCheck
 
   build:
-    runs-on: ubuntu-22.04-firezone-4c
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./kotlin/android
@@ -51,19 +51,7 @@ jobs:
           build-root-directory: ./kotlin/android
           # https://github.com/gradle/gradle-build-action#overwriting-an-existing-gradle-user-home
           cache-overwrite-existing: ${{ github.ref == 'refs/heads/main' }}
-      - run: touch local.properties
-      - name: Bundle release
-        run: |
-          ./gradlew bundleRelease
-      # TODO: See https://github.com/firezone/firezone/issues/2311
-      # TODO: See https://github.com/firezone/firezone/issues/2309
-      - name: Run Test
-        run: ./gradlew testReleaseUnitTest
-      - name: Android Test Report
-        uses: asadmansr/android-test-report-action@v1.2.0
-        if: "!cancelled()"
-      - name: Sign and upload release
-        # if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Write secrets to paths
         env:
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
@@ -71,11 +59,23 @@ jobs:
           FIREBASE_APP_DISTRIBUTION_CREDENTIALS: ${{ secrets.FIREBASE_APP_DISTRIBUTION_CREDENTIALS }}
           FIREBASE_APP_TESTERS: ${{ vars.FIREBASE_APP_TESTERS }}
         run: |
+          # Gradle complains if it doesn't find this :-/
+          touch local.properties
+
           # Write secrets to files for Gradle to find
           FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH=$(pwd)/firebase-credentials.json
           KEYSTORE_PATH=$(pwd)/app/keystore.jks
           echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH
           echo -n "$KEYSTORE_BASE64" | base64 --decode > $KEYSTORE_PATH
-
-          # Upload app bundle
-          ./gradlew appDistributionUploadRelease
+      - name: Bundle and sign release
+        run: ./gradlew bundleRelease
+      # TODO: See https://github.com/firezone/firezone/issues/2311
+      # TODO: See https://github.com/firezone/firezone/issues/2309
+      - name: Run Test
+        run: ./gradlew testReleaseUnitTest
+      - name: Android Test Report
+        uses: asadmansr/android-test-report-action@v1.2.0
+        if: "!cancelled()"
+      - name: Upload release
+        # if: ${{ github.ref == 'refs/heads/main' }}
+        run: ./gradlew appDistributionUploadRelease
