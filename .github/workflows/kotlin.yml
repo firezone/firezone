@@ -54,19 +54,12 @@ jobs:
       - run: touch local.properties
       - name: Bundle and sign release
         env:
-          KEYSTORE_BASE64: '${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}'
-          KEYSTORE_PASSWORD: '${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}'
-          KEYSTORE_KEY_PASSWORD: '${{ secrets.GOOGLE_UPLOAD_KEYSTORE_KEY_PASSWORD }}'
+          KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
+          KEYSTORE_KEY_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_KEY_PASSWORD }}
         run: |
           KEYSTORE_PATH=$(pwd)/app/keystore.jks
           echo -n "$KEYSTORE_BASE64" | base64 --decode > $KEYSTORE_PATH
-          # Make sure the secrets are what we expect
-          echo "keystore sha256"
-          sha256sum $KEYSTORE_PATH
-          echo "keystore password sha256"
-          echo -n "$KEYSTORE_PASSWORD" | sha256sum
-          echo "keystore key password sha256"
-          echo -n "$KEYSTORE_KEY_PASSWORD" | sha256sum
           ./gradlew bundleRelease
       - name: Run Test
         run: |
@@ -79,8 +72,8 @@ jobs:
       - name: Upload release
         # if: ${{ github.ref == 'refs/heads/main' }}
         env:
-          FIREBASE_APP_DISTRIBUTION_CREDENTIALS: '${{ secrets.FIREBASE_APP_DISTRIBUTION_CREDENTIALS }}'
-          FIREBASE_APP_TESTERS: '${{ vars.FIREBASE_APP_TESTERS }}'
+          FIREBASE_APP_DISTRIBUTION_CREDENTIALS: ${{ secrets.FIREBASE_APP_DISTRIBUTION_CREDENTIALS }}
+          FIREBASE_APP_TESTERS: ${{ vars.FIREBASE_APP_TESTERS }}
         run: |
           FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH=$(pwd)/firebase-credentials.json
           echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH
