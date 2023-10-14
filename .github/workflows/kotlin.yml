@@ -73,10 +73,8 @@ jobs:
         # if: ${{ github.ref == 'refs/heads/main' }}
         env:
           FIREBASE_APP_DISTRIBUTION_CREDENTIALS: ${{ secrets.FIREBASE_APP_DISTRIBUTION_CREDENTIALS }}
+          FIREBASE_CREDENTIALS_PATH: firebase-credentials.json
           FIREBASE_APP_TESTERS: ${{ vars.FIREBASE_APP_TESTERS }}
         run: |
-          FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH=$(pwd)/firebase-credentials.json
-          echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH
-          # Make sure it's what we expect
-          sha256sum $FIREBASE_APP_DISTRIBUTION_CREDENTIALS_PATH
+          echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_CREDENTIALS_PATH
           ./gradlew appDistributionUploadRelease
