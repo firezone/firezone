@@ -280,7 +280,7 @@ impl ClientState {
 
     pub fn remove_awaiting_connection(&mut self, resource: ResourceId) {
         self.awaiting_connection.remove(&resource);
-        // self.awaiting_connection_timers.get_mut(&resource).cancel(); FIXME: Needs cancellation support.
+        self.awaiting_connection_timers.remove(resource);
     }
 
     pub fn add_waiting_ice_receiver(
@@ -347,13 +347,13 @@ impl RoleState for ClientState {
                 Poll::Ready((resource, Some(Ok(_)))) => {
                     let Entry::Occupied(mut entry) = self.awaiting_connection.entry(resource)
                     else {
-                        // TODO: Remove timer here, needs cancellation support in `StreamMap`.
+                        self.awaiting_connection_timers.remove(resource);
 
                         continue;
                     };
 
                     if entry.get().0.response_received {
-                        // TODO: Remove timer here, needs cancellation support in `StreamMap`.
+                        self.awaiting_connection_timers.remove(resource);
 
                         // entry.remove(); Maybe?
 
