@@ -87,7 +87,7 @@ where
     /// Clean up a connection to a resource.
     // FIXME: this cleanup connection is wrong!
     pub fn cleanup_connection(&self, id: ResourceId) {
-        self.role_state.lock().awaiting_connection.remove(&id);
+        self.role_state.lock().on_connection_failed(id);
         self.peer_connections.lock().remove(&id.into());
     }
 
