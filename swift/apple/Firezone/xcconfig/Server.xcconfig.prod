@@ -1,0 +1,4 @@
+AUTH_URL_SCHEME = https
+AUTH_URL_HOST = app.firezone.dev
+CONTROL_PLANE_URL_SCHEME = wss
+CONTROL_PLANE_URL_HOST = api.firezone.dev
