@@ -147,7 +147,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 Err(err) => err,
             };
 
-            tunnel.cleanup_connection(resource_id.into());
+            tunnel.cleanup_connection(resource_id);
             tracing::error!("Error request connection details: {err}");
             let _ = tunnel.callbacks().on_error(&err);
         });
@@ -219,7 +219,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         return;
                     };
                     // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
-                    self.tunnel.cleanup_connection(resource_id.into());
+                    self.tunnel.cleanup_connection(resource_id);
                 }
                 None => {
                     tracing::error!(

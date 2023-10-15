@@ -1,7 +1,7 @@
 use crate::device_channel::{create_iface, DeviceIo};
 use crate::ip_packet::IpPacket;
 use crate::{
-    dns, tokio_util, ConnId, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
+    dns, tokio_util, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
@@ -86,11 +86,9 @@ where
 
     /// Clean up a connection to a resource.
     // FIXME: this cleanup connection is wrong!
-    pub fn cleanup_connection(&self, id: ConnId) {
-        if let ConnId::Resource(r) = id {
-            self.role_state.lock().awaiting_connection.remove(&r);
-        }
-        self.peer_connections.lock().remove(&id);
+    pub fn cleanup_connection(&self, id: ResourceId) {
+        self.role_state.lock().awaiting_connection.remove(&id);
+        self.peer_connections.lock().remove(&id.into());
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
