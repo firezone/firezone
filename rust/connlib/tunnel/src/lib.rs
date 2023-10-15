@@ -338,9 +338,7 @@ where
             move |ip| !resources.read().values().any(|res_ip| res_ip.contains(ip))
         }));
 
-        setting_engine.set_interface_filter(Box::new({
-            |name| !name.contains("utun") && name != "tun-firezone"
-        }));
+        setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
 
         let webrtc_api = APIBuilder::new()
             .with_media_engine(media_engine)
