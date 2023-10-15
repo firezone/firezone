@@ -13,7 +13,3 @@ AUTH_URL_SCHEME = http
 AUTH_URL_HOST = localhost:8080
 CONTROL_PLANE_URL_SCHEME = ws
 CONTROL_PLANE_URL_HOST = localhost:8081
-
-// Connlib configuration
-CONNLIB_SOURCE_DIR = $(PROJECT_DIR)/../../rust/connlib/clients/apple
-CONNLIB_TARGET_DIR = $(PROJECT_DIR)/../../rust/target
