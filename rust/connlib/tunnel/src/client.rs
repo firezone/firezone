@@ -238,6 +238,11 @@ impl ClientState {
         Ok(())
     }
 
+    pub fn on_connection_failed(&mut self, resource: ResourceId, gateway: GatewayId) {
+        self.awaiting_connection.remove(&resource);
+        self.gateway_awaiting_connection.remove(&gateway);
+    }
+
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
         self.resources_gateways.get(resource).copied()
     }
