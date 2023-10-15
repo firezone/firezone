@@ -45,6 +45,10 @@ firezone-ctl restart phoenix
 
 ## Base firewall template
 
+**Note**: This template assumes your interface doesn't change on reboot. See
+[this issue](https://github.com/firezone/firezone/issues/1865) for more
+information.
+
 ```bash
 #!/usr/sbin/nft -f
 
