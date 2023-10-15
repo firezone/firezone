@@ -30,10 +30,7 @@ fn handle_connection_state_update<CB>(
 {
     tracing::trace!("peer_state");
     if state == RTCPeerConnectionState::Failed {
-        tunnel
-            .role_state
-            .lock()
-            .on_connection_failed(resource_id, gateway_id);
+        tunnel.role_state.lock().on_connection_failed(resource_id);
         tunnel.peer_connections.lock().remove(&gateway_id.into());
     }
 }
