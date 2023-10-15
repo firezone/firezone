@@ -101,7 +101,6 @@
 		05CF1CF6290B1CEE00CF4755 /* FirezoneNetworkExtension_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FirezoneNetworkExtension_iOS.entitlements; sourceTree = "<group>"; };
 		05CF1D03290B1DCD00CF4755 /* FirezoneNetworkExtensionmacOS.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FirezoneNetworkExtensionmacOS.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
-		6F68E44B2A588522003C7D08 /* AllConfigs.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = AllConfigs.xcconfig; path = xcconfig/AllConfigs.xcconfig; sourceTree = "<group>"; };
 		6FA39A032A6A7248000F0157 /* NetworkResource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkResource.swift; sourceTree = "<group>"; };
 		6FE454EA2A5BFABA006549B1 /* Adapter.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Adapter.swift; sourceTree = "<group>"; };
 		6FE455082A5D110D006549B1 /* CallbackHandler.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CallbackHandler.swift; sourceTree = "<group>"; };
@@ -117,6 +116,7 @@
 		8DCC022728D512AE007E12D2 /* Firezone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Firezone.entitlements; sourceTree = "<group>"; };
 		8DCC022928D512AE007E12D2 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		8DD2C4C3297B37BA00F984BF /* FirezoneKit */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = FirezoneKit; sourceTree = "<group>"; };
+		8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = config.xcconfig; path = xcconfig/config.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -219,7 +219,7 @@
 		8DCC021B28D512AC007E12D2 /* Firezone */ = {
 			isa = PBXGroup;
 			children = (
-				6F68E44B2A588522003C7D08 /* AllConfigs.xcconfig */,
+				8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */,
 				05E1505F28FF398000170F82 /* Application */,
 				8DCC022528D512AE007E12D2 /* Assets.xcassets */,
 				8DCC022728D512AE007E12D2 /* Firezone.entitlements */,
@@ -731,7 +731,7 @@
 		};
 		8DCC024128D512AE007E12D2 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 6F68E44B2A588522003C7D08 /* AllConfigs.xcconfig */;
+			baseConfigurationReference = 8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -794,7 +794,7 @@
 		};
 		8DCC024228D512AE007E12D2 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 6F68E44B2A588522003C7D08 /* AllConfigs.xcconfig */;
+			baseConfigurationReference = 8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -882,8 +882,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_ID)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "b32a5853-699d-4f19-85d3-5b13b1ac5dbb";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "70055d90-0252-4ee5-a60c-4d6f3840ee62";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = $(IOS_PROVISIONING_PROFILE_IDENTIFIER);
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = $(MACOS_PROVISIONING_PROFILE_IDENTIFIER);
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos macosx";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -932,8 +932,8 @@
 				PRODUCT_MODULE_NAME = "$(PRODUCT_NAME:c99extidentifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "b32a5853-699d-4f19-85d3-5b13b1ac5dbb";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "70055d90-0252-4ee5-a60c-4d6f3840ee62";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = $(IOS_PROVISIONING_PROFILE_IDENTIFIER);
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = $(MACOS_PROVISIONING_PROFILE_IDENTIFIER);
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos macosx";
 				SWIFT_EMIT_LOC_STRINGS = YES;

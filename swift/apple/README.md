@@ -27,11 +27,11 @@ CI/CD pipeline.
    cd swift/apple
    ```
 
-1. Rename and populate xcconfig files:
+1. Copy an appropriate xcconfig and edit as necessary:
 
    ```bash
-   cp Firezone/xcconfig/Developer.xcconfig.firezone Firezone/xcconfig/Developer.xcconfig
-   vim Firezone/xcconfig/Developer.xcconfig
+   cp Firezone/xcconfig/dev.xcconfig Firezone/xcconfig/config.xcconfig
+   vim Firezone/xcconfig/config.xcconfig
    ```
 
    ```bash
@@ -45,7 +45,7 @@ CI/CD pipeline.
 open Firezone.xcodeproj
 ```
 
-Build the Firezone target
+1. Build the Firezone target
 
 ## Debugging
 

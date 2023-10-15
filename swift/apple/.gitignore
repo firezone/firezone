@@ -5,6 +5,5 @@ DerivedData/
 xcuserdata/
 **/*.xcuserstate
 
-Firezone/xcconfig/Developer.xcconfig
-Firezone/xcconfig/Server.xcconfig
+Firezone/xcconfig/config.xcconfig
 FirezoneNetworkExtension/Connlib
