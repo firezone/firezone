@@ -117,7 +117,7 @@ defmodule FzHttpWeb.WireguardConfigView do
   end
 
   defp field_empty?(nil), do: true
-  defp field_empty?(0), do: true
+  defp field_empty?(0), do: false
   defp field_empty?([]), do: true
 
   defp field_empty?(field) when is_binary(field) do
