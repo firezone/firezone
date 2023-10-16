@@ -5,7 +5,7 @@
 #        Increment this for breaking API changes (e.g. once a quarter)
 # PATCH: Increment this for each backwards-compatible release
 # See discussion here: https://github.com/firezone/firezone/issues/2041
-version = 2.0.0
+version = 1.20231001.0
 
 .PHONY: version
 
