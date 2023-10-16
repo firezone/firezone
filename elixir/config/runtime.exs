@@ -28,6 +28,10 @@ if config_env() == :prod do
     path: external_url_path
   } = URI.parse(external_url)
 
+  config :domain, Domain.Tokens,
+    key_base: compile_config!(:tokens_key_base),
+    salt: compile_config!(:tokens_salt)
+
   config :domain, Domain.Clients, upstream_dns: compile_config!(:clients_upstream_dns)
 
   config :domain, Domain.Gateways,

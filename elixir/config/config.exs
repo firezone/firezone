@@ -29,6 +29,10 @@ config :domain, Domain.Repo,
   migration_timestamps: [type: :timestamptz],
   start_apps_before_migration: [:ssl, :logger_json]
 
+config :domain, Domain.Tokens,
+  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2",
+  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+
 config :domain, Domain.Clients, upstream_dns: ["1.1.1.1"]
 
 config :domain, Domain.Gateways,

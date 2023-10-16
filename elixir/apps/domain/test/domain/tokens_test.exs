@@ -141,10 +141,11 @@ defmodule Domain.TokensTest do
     end
   end
 
-  describe "verify_token/3" do
+  describe "verify_token/4" do
     test "returns :ok when token context and secret are valid", %{account: account} do
       token = Fixtures.Tokens.create_token(account: account)
-      assert verify_token(account, token.context, token.secret) == :ok
+      encoded_token = encode_token!(token)
+      assert verify_token(account.id, token.context, encoded_token) == :ok
     end
 
     test "returns :ok when token context, secret and UA/IP whitelists are valid", %{
@@ -160,7 +161,9 @@ defmodule Domain.TokensTest do
           remote_ip: remote_ip
         )
 
-      assert verify_token(account, token.context, token.secret,
+      encoded_token = encode_token!(token)
+
+      assert verify_token(account.id, token.context, encoded_token,
                user_agents_whitelist: [token.user_agent],
                remote_ips_whitelist: [token.remote_ip]
              ) == :ok
@@ -170,8 +173,9 @@ defmodule Domain.TokensTest do
       user_agent = Fixtures.Tokens.user_agent() <> to_string(System.unique_integer([:positive]))
 
       token = Fixtures.Tokens.create_token(account: account)
+      encoded_token = encode_token!(token)
 
-      assert verify_token(account, token.context, token.secret,
+      assert verify_token(account.id, token.context, encoded_token,
                user_agents_whitelist: [user_agent]
              ) ==
                {:error, :invalid_or_expired_token}
@@ -181,19 +185,41 @@ defmodule Domain.TokensTest do
       remote_ip = Fixtures.Tokens.remote_ip()
 
       token = Fixtures.Tokens.create_token(account: account)
+      encoded_token = encode_token!(token)
 
-      assert verify_token(account, token.context, token.secret, remote_ips_whitelist: [remote_ip]) ==
+      assert verify_token(account.id, token.context, encoded_token,
+               remote_ips_whitelist: [remote_ip]
+             ) ==
                {:error, :invalid_or_expired_token}
     end
 
     test "returns :error secret is invalid", %{account: account} do
       token = Fixtures.Tokens.create_token(account: account)
-      assert verify_token(account, token.context, "bar") == {:error, :invalid_or_expired_token}
+      encoded_token = encode_token!(%{token | secret: "bar"})
+
+      assert verify_token(account.id, token.context, encoded_token) ==
+               {:error, :invalid_or_expired_token}
+    end
+
+    test "returns :error account_id is invalid", %{account: account} do
+      token = Fixtures.Tokens.create_token(account: account)
+      encoded_token = encode_token!(%{token | account_id: Ecto.UUID.generate()})
+
+      assert verify_token(account.id, token.context, encoded_token) ==
+               {:error, :invalid_or_expired_token}
+    end
+
+    test "returns :error signed token is invalid", %{account: account} do
+      token = Fixtures.Tokens.create_token(account: account)
+      assert verify_token(account.id, token.context, "bar") == {:error, :invalid_or_expired_token}
     end
 
     test "returns :error context is invalid", %{account: account} do
       token = Fixtures.Tokens.create_token(account: account)
-      assert verify_token(account, :client, token.secret) == {:error, :invalid_or_expired_token}
+      encoded_token = encode_token!(token)
+
+      assert verify_token(account.id, :client, encoded_token) ==
+               {:error, :invalid_or_expired_token}
     end
   end
 

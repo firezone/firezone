@@ -80,6 +80,8 @@ defmodule Domain.Config.Definitions do
        All secrets should be a **base64-encoded string**.
        """,
        [
+         :tokens_key_base,
+         :tokens_salt,
          :auth_token_key_base,
          :auth_token_salt,
          :relays_auth_token_key_base,
@@ -355,6 +357,22 @@ defmodule Domain.Config.Definitions do
   ##############################################
   ## Secrets
   ##############################################
+
+  @doc """
+  Secret which is used to encode and sign tokens.
+  """
+  defconfig(:tokens_key_base, :string,
+    sensitive: true,
+    changeset: &Domain.Validator.validate_base64/2
+  )
+
+  @doc """
+  Salt which is used to encode and sign tokens.
+  """
+  defconfig(:tokens_salt, :string,
+    sensitive: true,
+    changeset: &Domain.Validator.validate_base64/2
+  )
 
   @doc """
   Secret which is used to encode and sign auth tokens.
