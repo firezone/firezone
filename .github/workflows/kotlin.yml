@@ -37,8 +37,7 @@ jobs:
           workspaces: ./rust
           key: ubuntu-22.04-${{ runner.arch }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         working-directory: ./rust
       - uses: actions/setup-java@v3
         with:

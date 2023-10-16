@@ -32,8 +32,7 @@ jobs:
           workspaces: ./rust
           save-if: ${{ github.ref == 'refs/heads/main' }}
           key: ${{ matrix.runs-on }}-${{ runner.arch }}
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
       - run: cargo fmt -- --check
       - run: |
           cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
@@ -68,8 +67,7 @@ jobs:
           key: ${{ matrix.runs-on }}-${{ runner.arch }}
           workspaces: ./rust
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --all-features ${{ matrix.packages }}
 
   smoke-test-relay:
@@ -84,6 +82,5 @@ jobs:
           workspaces: ./rust
           key: ubuntu-22.04-${{ runner.arch }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
       - run: ./run_smoke_test.sh
