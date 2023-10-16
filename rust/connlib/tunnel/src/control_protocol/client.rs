@@ -203,30 +203,14 @@ where
 
                 d.on_close(tunnel.clone().on_dc_close_handler(index, gateway_id.into()));
 
-                let peer = match Peer::new(
+                let peer = Arc::new(Peer::new(
                     tunnel.private_key.clone(),
                     index,
                     peer_config.clone(),
-                    d,
+                    d.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us"),
                     gateway_id.into(),
                     None,
-                )
-                .await
-                {
-                    Ok(peer) => Arc::new(peer),
-                    Err(e) => {
-                        tracing::error!(err = ?e, "channel_open");
-                        let _ = tunnel.callbacks.on_error(&e);
-                        tunnel.peer_connections.lock().remove(&gateway_id.into());
-                        tunnel
-                            .role_state
-                            .lock()
-                            .gateway_awaiting_connection
-                            .remove(&gateway_id);
-
-                        return;
-                    }
-                };
+                ));
 
                 {
                     let mut role_state = tunnel.role_state.lock();

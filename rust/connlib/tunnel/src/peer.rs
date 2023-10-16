@@ -14,7 +14,6 @@ use parking_lot::{Mutex, RwLock};
 use pnet_packet::MutablePacket;
 use secrecy::ExposeSecret;
 use webrtc::data::data_channel::DataChannel;
-use webrtc::data_channel::RTCDataChannel;
 
 use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, ConnId, PeerConfig};
 
@@ -88,15 +87,14 @@ impl Peer {
         }
     }
 
-    pub(crate) async fn new(
+    pub(crate) fn new(
         private_key: StaticSecret,
         index: u32,
         peer_config: PeerConfig,
-        channel: Arc<RTCDataChannel>,
+        channel: Arc<DataChannel>,
         conn_id: ConnId,
         resource: Option<(ResourceDescription, DateTime<Utc>)>,
-    ) -> Result<Peer> {
-        let channel = channel.detach().await?;
+    ) -> Peer {
         let tunnel = Tunn::new(
             private_key.clone(),
             peer_config.public_key,
@@ -118,7 +116,7 @@ impl Peer {
             RwLock::new(resource_table)
         });
 
-        Ok(Peer {
+        Peer {
             tunnel: Mutex::new(tunnel),
             index,
             allowed_ips,
@@ -126,7 +124,7 @@ impl Peer {
             conn_id,
             resources,
             translated_resource_addresses: Default::default(),
-        })
+        }
     }
 
     pub(crate) fn get_translation(&self, ip: IpAddr) -> Option<ResourceDescription> {

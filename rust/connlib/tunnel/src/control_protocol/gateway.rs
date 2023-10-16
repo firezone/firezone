@@ -111,33 +111,14 @@ where
                         data_channel
                             .on_close(tunnel.clone().on_dc_close_handler(index, client_id.into()));
 
-                        let peer = match Peer::new(
+                        let peer = Arc::new(Peer::new(
                             tunnel.private_key.clone(),
                             index,
                             peer_config.clone(),
-                            data_channel,
+                            data_channel.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us"),
                             client_id.into(),
                             Some((resource, expires_at)),
-                        )
-                        .await
-                        {
-                            Ok(peer) => Arc::new(peer),
-                            Err(e) => {
-                                let _ = tunnel.callbacks.on_error(&e);
-                                tracing::error!(err = ?e, "channel_open");
-                                // Note: handle_channel_open can only error out before insert to peers_by_ip
-                                // otherwise we would need to clean that up too!
-                                let conn = tunnel.peer_connections.lock().remove(&client_id.into());
-                                if let Some(conn) = conn {
-                                    if let Err(e) = conn.close().await {
-                                        tracing::error!(error = ?e, "webrtc_close_channel");
-                                        let _ = tunnel.callbacks().on_error(&e.into());
-                                    }
-                                };
-
-                                return;
-                            }
-                        };
+                        ));
 
                         let mut peers_by_ip = tunnel.peers_by_ip.write();
 
