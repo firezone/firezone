@@ -13,12 +13,12 @@ jobs:
       matrix:
         runs-on:
           # We only need to run static analysis checks per OS family
-          - ubuntu-latest
+          - ubuntu-22.04
           - macos-13
           - windows-2022
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
-          - runs-on: ubuntu-latest
+          - runs-on: ubuntu-22.04
             packages: # Intentionally blank as a package catch-all linter
           - runs-on: macos-13
             packages: -p connlib-client-apple
@@ -33,6 +33,7 @@ jobs:
         with:
           workspaces: ./rust
           save-if: ${{ github.ref == 'refs/heads/main' }}
+          key: ${{ matrix.runs-on }}
       - run: cargo fmt -- --check
       - run: |
           cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
@@ -72,7 +73,7 @@ jobs:
       - run: cargo test --all-features ${{ matrix.packages }}
 
   smoke-test-relay:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./rust/relay
@@ -83,5 +84,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
+          key: ubuntu-22.04
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ./run_smoke_test.sh

@@ -54,15 +54,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          key: ${{ matrix.platform }}
+          key: ${{ matrix.runs-on }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/cache/restore@v3
         name: Restore Swift DerivedData Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ matrix.platform }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
+          key: ${{ matrix.runs-on }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
           restore-keys: |
-            ${{ matrix.platform }}-swift-
+            ${{ matrix.runs-on }}-swift-
       - name: Install the Apple build certificate and provisioning profile
         env:
           BUILD_CERT: ${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}

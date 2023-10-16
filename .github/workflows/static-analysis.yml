@@ -4,7 +4,7 @@ on:
 
 jobs:
   version-check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - name: Update toolchain
@@ -12,6 +12,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
+          key: ubuntu-22.04
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Check version is up to date
         run: |
@@ -26,7 +27,7 @@ jobs:
             exit 1
           fi
   global-linter:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4

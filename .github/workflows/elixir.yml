@@ -81,7 +81,7 @@ jobs:
           reporter: java-junit
 
   type-check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
@@ -149,7 +149,7 @@ jobs:
         run: mix dialyzer --format dialyxir
 
   static-analysis:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
@@ -209,7 +209,7 @@ jobs:
         run: mix deps.unlock --check-unused
 
   migrations-and-seed-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
