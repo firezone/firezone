@@ -4,6 +4,7 @@ defmodule Domain.Tokens.Token.Changeset do
   alias Domain.Tokens.Token
 
   @create_attrs ~w[context secret user_agent remote_ip expires_at]a
+  @update_attrs ~w[expires_at]a
   @required_attrs @create_attrs
 
   def create(%Accounts.Account{} = account, attrs) do
@@ -35,10 +36,10 @@ defmodule Domain.Tokens.Token.Changeset do
     |> validate_required(~w[secret_salt secret_hash]a)
   end
 
-  def refresh(%Token{} = token, attrs) do
+  def update(%Token{} = token, attrs) do
     token
-    |> cast(attrs, ~w[expires_at]a)
-    |> validate_required(~w[expires_at]a)
+    |> cast(attrs, @update_attrs)
+    |> validate_required(@update_attrs)
     |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
   end
 

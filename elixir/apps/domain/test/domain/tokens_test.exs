@@ -223,7 +223,7 @@ defmodule Domain.TokensTest do
     end
   end
 
-  describe "refresh_token/2" do
+  describe "update_token/2" do
     setup %{account: account} do
       token = Fixtures.Tokens.create_token(account: account)
 
@@ -231,7 +231,7 @@ defmodule Domain.TokensTest do
     end
 
     test "no-op on empty attrs", %{token: token} do
-      assert {:ok, refreshed_token} = refresh_token(token, %{})
+      assert {:ok, refreshed_token} = update_token(token, %{})
       assert refreshed_token.expires_at == token.expires_at
     end
 
@@ -240,7 +240,7 @@ defmodule Domain.TokensTest do
         expires_at: DateTime.utc_now()
       }
 
-      assert {:error, changeset} = refresh_token(token, attrs)
+      assert {:error, changeset} = update_token(token, attrs)
 
       assert %{
                expires_at: ["must be greater than" <> _]
@@ -252,18 +252,18 @@ defmodule Domain.TokensTest do
         expires_at: DateTime.utc_now() |> DateTime.add(1, :day)
       }
 
-      assert {:ok, token} = refresh_token(token, attrs)
+      assert {:ok, token} = update_token(token, attrs)
       assert token == %{token | expires_at: attrs.expires_at}
     end
 
     test "does not extend expiration of expired tokens", %{token: token} do
       token = Fixtures.Tokens.expire_token(token)
-      assert refresh_token(token, %{}) == {:error, :not_found}
+      assert update_token(token, %{}) == {:error, :not_found}
     end
 
     test "does not extend expiration of deleted tokens", %{token: token} do
       token = Fixtures.Tokens.delete_token(token)
-      assert refresh_token(token, %{}) == {:error, :not_found}
+      assert update_token(token, %{}) == {:error, :not_found}
     end
   end
 

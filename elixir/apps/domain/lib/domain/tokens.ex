@@ -19,14 +19,10 @@ defmodule Domain.Tokens do
     |> Repo.insert()
   end
 
-  @doc """
-  Allows to extend token lifetime by updating token's `expires_at` field.
-  """
-  # TODO: update_token
-  def refresh_token(%Token{} = token, attrs) do
+  def update_token(%Token{} = token, attrs) do
     Token.Query.by_id(token.id)
     |> Token.Query.not_expired()
-    |> Repo.fetch_and_update(with: &Token.Changeset.refresh(&1, attrs))
+    |> Repo.fetch_and_update(with: &Token.Changeset.update(&1, attrs))
   end
 
   @doc """
