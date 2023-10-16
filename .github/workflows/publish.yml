@@ -1,4 +1,4 @@
-name: Release
+name: Publish
 on:
   # FIXME: Remove before merge
   pull_request:
@@ -22,7 +22,7 @@ jobs:
       # Needed to upload artifacts to a release
       contents: write
       # Needed to login to GCP
-      id-token: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
