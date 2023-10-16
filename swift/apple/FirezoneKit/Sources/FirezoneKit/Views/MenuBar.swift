@@ -315,6 +315,7 @@
       case .signedOut:
         signInMenuItem.title = "Sign In"
         signInMenuItem.target = self
+        signInMenuItem.isEnabled = true
         signOutMenuItem.isHidden = true
       case .signedIn(_, let actorName):
         signInMenuItem.title = actorName.isEmpty ? "Signed in" : "Signed in as \(actorName)"
