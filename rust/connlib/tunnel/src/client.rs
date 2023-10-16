@@ -280,10 +280,6 @@ impl ClientState {
         self.gateway_awaiting_connection.remove(&gateway);
     }
 
-    pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
-        self.resources_gateways.get(resource).copied()
-    }
-
     pub fn on_connection_intent(&mut self, destination: IpAddr) {
         if self.is_awaiting_connection_to(destination) {
             return;
@@ -322,6 +318,10 @@ impl ClientState {
                 move |cx| interval.poll_tick(cx).map(Some)
             }),
         );
+    }
+
+    pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
+        self.resources_gateways.get(resource).copied()
     }
 
     pub fn add_waiting_ice_receiver(
