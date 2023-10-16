@@ -127,7 +127,7 @@ where
 
         self.role_state
             .lock()
-            .insert_new_awaiting_connection(packet.destination());
+            .on_connection_intent(packet.destination());
     }
 }
 
@@ -303,7 +303,7 @@ impl ClientState {
         self.awaiting_connection.contains_key(&resource.id())
     }
 
-    pub fn insert_new_awaiting_connection(&mut self, destination: IpAddr) {
+    pub fn on_connection_intent(&mut self, destination: IpAddr) {
         if self.is_awaiting_connection_to(destination) {
             return;
         }
