@@ -191,8 +191,8 @@ pub struct ClientState {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AwaitingConnectionDetails {
-    pub total_attemps: usize,
-    pub response_received: bool,
+    total_attemps: usize,
+    response_received: bool,
 }
 
 impl ClientState {
