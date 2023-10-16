@@ -321,9 +321,15 @@ enum TunnelAuthStatus {
     switch self {
     case .tunnelUninitialized, .accountNotSetup:
       return nil
-    case .signedOut(_, let accountId):
+    case .signedOut(let authBaseURL, let accountId):
+      guard authBaseURL == AppInfoPlistConstants.authBaseURL else {
+        return nil
+      }
       return accountId
-    case .signedIn(_, let accountId, _):
+    case .signedIn(let authBaseURL, let accountId, _):
+      guard authBaseURL == AppInfoPlistConstants.authBaseURL else {
+        return nil
+      }
       return accountId
     }
   }
