@@ -46,11 +46,9 @@ jobs:
             ghcr.io/firezone/${{ matrix.image_name }}:latest
         run: |
           docker pull $SRC_IMAGE
-          docker run --rm -a stdout $SRC_IMAGE /bin/sh -c "echo 'Image seems ok!'"
-
           # Re-tag and push to GHCR for public distribution
           IFS=$'\n' read -r -a tags <<< "$DST_IMAGES"
           for tag in "${tags[@]}"; do
             docker tag $SRC_IMAGE $tag
-            docker push $tag
           done
+          docker push --all-tags ghcr.io/firezone/${{ matrix.image_name }}
