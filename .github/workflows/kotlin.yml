@@ -32,14 +32,12 @@ jobs:
         working-directory: ./kotlin/android
     steps:
       - uses: actions/checkout@v4
-      - name: Update toolchain
-        run: rustup show
-        working-directory: ./rust
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
           key: ubuntu-22.04-${{ runner.arch }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-java@v3
         with:
           distribution: temurin
