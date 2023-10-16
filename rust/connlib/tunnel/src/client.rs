@@ -284,14 +284,6 @@ impl ClientState {
         self.resources_gateways.get(resource).copied()
     }
 
-    pub fn is_awaiting_connection_to(&self, destination: IpAddr) -> bool {
-        let Some(resource) = self.get_resource_by_destination(destination) else {
-            return false;
-        };
-
-        self.awaiting_connection.contains_key(&resource.id())
-    }
-
     pub fn on_connection_intent(&mut self, destination: IpAddr) {
         if self.is_awaiting_connection_to(destination) {
             return;
@@ -360,6 +352,14 @@ impl ClientState {
                 tracing::warn!(%id, "Replaced old ICE candidate receiver with new one")
             }
         }
+    }
+
+    fn is_awaiting_connection_to(&self, destination: IpAddr) -> bool {
+        let Some(resource) = self.get_resource_by_destination(destination) else {
+            return false;
+        };
+
+        self.awaiting_connection.contains_key(&resource.id())
     }
 
     fn is_connected_to(
