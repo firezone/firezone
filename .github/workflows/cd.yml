@@ -141,7 +141,7 @@ jobs:
           - package: firezone-gateway
             target: aarch64-unknown-linux-musl
     env:
-      BINARY_DEST_PATH: ${{ matrix.package }}-${{ env.VERSION }}-${{ matrix.target }}
+      BINARY_DEST_PATH: ${{ matrix.package }}-${{ matrix.target }}
     steps:
       - uses: actions/checkout@v4
       - name: Update toolchain
@@ -157,15 +157,15 @@ jobs:
         env:
           CARGO_OUTPUT_FILE: target/release/${{ matrix.package }}
         run: |
+          dest="$BINARY_DEST_PATH-$VERSION"
           rustup target add ${{ matrix.target }}
           cross build --release -p ${{ matrix.package }} --target ${{ matrix.target }}
-          mv $CARGO_OUTPUT_FILE $BINARY_DEST_PATH
-          sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
+          mv $CARGO_OUTPUT_FILE $dest
+          sha256sum $dest > $dest.sha256sum.txt
       - name: Push binaries
         uses: softprops/action-gh-release@v1
         with:
           name: ${{ needs.update-release-draft.steps.update-release-draft.outputs.name }}
           draft: true
           files: |
-            rust/${{ env.BINARY_DEST_PATH }}
-            rust/${{ env.BINARY_DEST_PATH }}.sha256sum.txt
+            rust/${{ env.BINARY_DEST_PATH }}*
