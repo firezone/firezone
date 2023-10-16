@@ -1,5 +1,4 @@
 use crate::device_channel::{create_iface, DeviceIo};
-use crate::ip_packet::IpPacket;
 use crate::peer::Peer;
 use crate::resource_table::ResourceTable;
 use crate::{
@@ -116,19 +115,6 @@ where
 
         Ok(())
     }
-
-    #[inline(always)]
-    fn connection_intent(self: &Arc<Self>, packet: IpPacket<'_>) {
-        // We can buffer requests here but will drop them for now and let the upper layer reliability protocol handle this
-
-        // We have awaiting connection to prevent a race condition where
-        // create_peer_connection hasn't added the thing to peer_connections
-        // and we are finding another packet to the same address (otherwise we would just use peer_connections here)
-
-        self.role_state
-            .lock()
-            .on_connection_intent(packet.destination());
-    }
 }
 
 /// Reads IP packets from the [`Device`] and handles them accordingly.
@@ -160,7 +146,10 @@ where
         let dest = packet.destination();
 
         let Some(peer) = tunnel.peer_by_ip(dest) else {
-            tunnel.connection_intent(packet.as_immutable());
+            tunnel
+                .role_state
+                .lock()
+                .on_connection_intent(packet.destination());
             continue;
         };
 
