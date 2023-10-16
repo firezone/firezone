@@ -48,7 +48,7 @@ jobs:
       - name: Install Dependencies
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependenciee
+      - name: Compile Dependencies
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: mix deps.compile --skip-umbrella-children
       - uses: actions/cache/save@v3
