@@ -13,12 +13,12 @@ struct AppInfoPlistConstants {
     guard let urlScheme = (infoPlistDictionary?["AuthURLScheme"] as? String), !urlScheme.isEmpty
     else {
       fatalError(
-        "AuthURLScheme missing in app's Info.plist. Please define AUTH_URL_SCHEME in Server.xcconfig."
+        "AuthURLScheme missing in app's Info.plist. Please define AUTH_URL_SCHEME in config.xcconfig."
       )
     }
     guard let urlHost = (infoPlistDictionary?["AuthURLHost"] as? String), !urlHost.isEmpty else {
       fatalError(
-        "AuthURLHost missing in app's Info.plist. Please define AUTH_URL_HOST in Server.xcconfig.")
+        "AuthURLHost missing in app's Info.plist. Please define AUTH_URL_HOST in config.xcconfig.")
     }
     let urlString = "\(urlScheme)://\(urlHost)/"
     guard let url = URL(string: urlString) else {
@@ -33,13 +33,13 @@ struct AppInfoPlistConstants {
       !urlScheme.isEmpty
     else {
       fatalError(
-        "ControlPlaneURLScheme missing in app's Info.plist. Please define CONTROL_PLANE_URL_SCHEME in Server.xcconfig."
+        "ControlPlaneURLScheme missing in app's Info.plist. Please define CONTROL_PLANE_URL_SCHEME in config.xcconfig."
       )
     }
     guard let urlHost = (infoPlistDictionary?["ControlPlaneURLHost"] as? String), !urlHost.isEmpty
     else {
       fatalError(
-        "ControlPlaneURLHost missing in app's Info.plist. Please define CONTROL_PLANE_URL_HOST in Server.xcconfig."
+        "ControlPlaneURLHost missing in app's Info.plist. Please define CONTROL_PLANE_URL_HOST in config.xcconfig."
       )
     }
     let urlString = "\(urlScheme)://\(urlHost)/"

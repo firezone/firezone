@@ -16,7 +16,7 @@
 		</dict>
 	</array>
 	<key>AppGroupIdentifier</key>
-	<string>${APP_GROUP_ID}</string>
+	<string>$(APP_GROUP_ID)</string>
 	<key>AuthURLScheme</key>
 	<string>$(AUTH_URL_SCHEME)</string>
 	<key>AuthURLHost</key>
