@@ -56,7 +56,7 @@ public actor Keychain {
           kSecClass: kSecClassGenericPassword,
           kSecAttrLabel: "Firezone access token (\(tokenAttributes.actorName))",
           kSecAttrDescription: "Firezone access token",
-          kSecAttrService: tokenAttributes.authURLString,
+          kSecAttrService: Self.serviceAttribute(authURLString: tokenAttributes.authURLString),
           // The UUID uniquifies this item in the keychain
           kSecAttrAccount: "\(tokenAttributes.actorName): \(UUID().uuidString)",
           kSecValueData: token.data(using: .utf8) as Any,
@@ -72,7 +72,7 @@ public actor Keychain {
           kSecClass: kSecClassGenericPassword,
           kSecAttrLabel: "Firezone access token (\(tokenAttributes.actorName))",
           kSecAttrDescription: "Firezone access token",
-          kSecAttrService: tokenAttributes.authURLString,
+          kSecAttrService: Self.serviceAttribute(authURLString: tokenAttributes.authURLString),
           // The UUID uniquifies this item in the keychain
           kSecAttrAccount: "\(tokenAttributes.actorName): \(UUID().uuidString)",
           kSecValueData: token.data(using: .utf8) as Any,
@@ -100,7 +100,7 @@ public actor Keychain {
         let checkForStaleItemsQuery =
           [
             kSecClass: kSecClassGenericPassword,
-            kSecAttrService: tokenAttributes.authURLString,
+            kSecAttrService: Self.serviceAttribute(authURLString: tokenAttributes.authURLString),
             kSecMatchLimit: kSecMatchLimitAll,
             kSecReturnPersistentRef: true,
           ] as [CFString: Any]
@@ -159,7 +159,7 @@ public actor Keychain {
       ]
       var access: SecAccess?
       let ret = SecStatus(
-        SecAccessCreate("Firezone Token" as CFString, trustedApps as CFArray, &access))
+        SecAccessCreate("Firezone Access Token" as CFString, trustedApps as CFArray, &access))
       guard ret.isSuccess else {
         throw KeychainError.appleSecError(call: "SecAccessCreate", status: ret)
       }
@@ -216,8 +216,9 @@ public actor Keychain {
                   account
                     .startIndex..<(account.lastIndex(of: ":")
                     ?? account.endIndex)])
+              let authURLString = Self.authURLString(serviceAttribute: service) ?? service
               let attributes = TokenAttributes(
-                authURLString: service,
+                authURLString: authURLString,
                 actorName: actorName)
               continuation.resume(returning: attributes)
               return
@@ -250,8 +251,7 @@ public actor Keychain {
         let query =
           [
             kSecClass: kSecClassGenericPassword,
-            kSecAttrDescription: "Firezone access token",
-            kSecAttrService: authURLString,
+            kSecAttrService: Self.serviceAttribute(authURLString: authURLString),
             kSecReturnPersistentRef: true,
           ] as [CFString: Any]
         var result: CFTypeRef?
@@ -263,6 +263,31 @@ public actor Keychain {
         }
       }
     }
+  }
+
+  private static func appBundleId() -> String {
+    var bundleId = Bundle.main.bundleIdentifier ?? "app"
+    let tunnelSuffix = ".network-extension"
+    if bundleId.hasSuffix(tunnelSuffix) {
+      bundleId.removeLast(tunnelSuffix.count)
+    }
+    return bundleId
+  }
+
+  private static func serviceAttribute(authURLString: String) -> String {
+    "\(appBundleId()):\(authURLString)"
+  }
+
+  private static func authURLString(serviceAttribute: String) -> String? {
+    guard let dividerIndex = serviceAttribute.firstIndex(of: ":") else {
+      return nil
+    }
+    let appId = serviceAttribute[serviceAttribute.startIndex..<dividerIndex]
+    guard appId == appBundleId() else {
+      return nil
+    }
+    let urlStartIndex = serviceAttribute.index(after: dividerIndex)
+    return String(serviceAttribute[urlStartIndex..<serviceAttribute.endIndex])
   }
 
   private func securityError(_ status: OSStatus) -> Error {
