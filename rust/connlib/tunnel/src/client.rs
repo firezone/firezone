@@ -179,7 +179,7 @@ pub struct ClientState {
     waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidateInit>>,
 
     // TODO: Make private
-    pub awaiting_connection: HashMap<ResourceId, (AwaitingConnectionDetails, Vec<GatewayId>)>,
+    pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
     pub gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
 
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
@@ -189,10 +189,11 @@ pub struct ClientState {
     resources: ResourceTable<ResourceDescription>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AwaitingConnectionDetails {
     total_attemps: usize,
     response_received: bool,
+    gateways: Vec<GatewayId>,
 }
 
 impl ClientState {
@@ -212,7 +213,7 @@ impl ClientState {
             .get_by_id(&resource)
             .ok_or(Error::UnknownResource)?;
 
-        let (details, _) = self
+        let details = self
             .awaiting_connection
             .get_mut(&resource)
             .ok_or(Error::UnexpectedConnectionDetails)?;
@@ -326,8 +327,14 @@ impl ClientState {
             }
         }
 
-        self.awaiting_connection
-            .insert(resource_id, (Default::default(), connected_gateway_ids));
+        self.awaiting_connection.insert(
+            resource_id,
+            AwaitingConnectionDetails {
+                total_attemps: 0,
+                response_received: false,
+                gateways: connected_gateway_ids,
+            },
+        );
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
@@ -436,7 +443,7 @@ impl RoleState for ClientState {
                         continue;
                     };
 
-                    if entry.get().0.response_received {
+                    if entry.get().response_received {
                         self.awaiting_connection_timers.remove(resource);
 
                         // entry.remove(); Maybe?
@@ -444,9 +451,9 @@ impl RoleState for ClientState {
                         continue;
                     }
 
-                    entry.get_mut().0.total_attemps += 1;
+                    entry.get_mut().total_attemps += 1;
 
-                    let reference = entry.get_mut().0.total_attemps;
+                    let reference = entry.get_mut().total_attemps;
 
                     return Poll::Ready(Event::ConnectionIntent {
                         resource: self
@@ -454,7 +461,7 @@ impl RoleState for ClientState {
                             .get_by_id(&resource)
                             .expect("inconsistent internal state")
                             .clone(),
-                        connected_gateway_ids: entry.get().1.clone(),
+                        connected_gateway_ids: entry.get().gateways.clone(),
                         reference,
                     });
                 }
