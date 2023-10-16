@@ -33,7 +33,7 @@ jobs:
         with:
           workspaces: ./rust
           save-if: ${{ github.ref == 'refs/heads/main' }}
-          key: ${{ matrix.runs-on }}
+          key: ${{ matrix.runs-on }}-${{ runner.arch }}
       - run: cargo fmt -- --check
       - run: |
           cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
@@ -67,7 +67,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           # Prevents runner.os caches from conflicting
-          key: ${{ matrix.runs-on }}
+          key: ${{ matrix.runs-on }}-${{ runner.arch }}
           workspaces: ./rust
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo test --all-features ${{ matrix.packages }}
@@ -84,6 +84,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          key: ubuntu-22.04
+          key: ${{ ubuntu-22.04 }}-runner.arch
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ./run_smoke_test.sh
