@@ -1,7 +1,5 @@
 name: Publish
 on:
-  # FIXME: Remove before merge
-  pull_request:
   release:
     types:
       - published
@@ -37,9 +35,7 @@ jobs:
           password: ${{secrets.GITHUB_TOKEN}}
       - name: Pull and push
         env:
-          # FIXME: Remove before merge
-          SRC_IMAGE: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
-          # SRC_IMAGE: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+          SRC_IMAGE: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
           DST_IMAGES: |
             ghcr.io/firezone/${{ matrix.image_name }}:${{ github.sha }}
             ghcr.io/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
