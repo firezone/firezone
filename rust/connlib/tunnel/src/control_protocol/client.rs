@@ -85,28 +85,15 @@ where
             .parse()
             .map_err(|_| Error::InvalidReference)?;
 
-        let resource_description = self.role_state.lock().on_new_connection(
-            resource_id,
-            gateway_id,
-            reference,
-            &self.peers_by_ip.read(),
-        )?;
+        let (resource_description, existing_connection) = self
+            .role_state
+            .lock()
+            .on_new_connection(resource_id, gateway_id, reference, &self.peers_by_ip.read())?;
 
-        {
-            let mut role_state = self.role_state.lock();
-
-            if let Some(g) = role_state.gateway_awaiting_connection.get_mut(&gateway_id) {
-                g.extend(resource_description.ips());
-                return Ok(Request::ReuseConnection(ReuseConnection {
-                    resource_id,
-                    gateway_id,
-                }));
-            } else {
-                role_state
-                    .gateway_awaiting_connection
-                    .insert(gateway_id, vec![]);
-            }
+        if let Some(connection) = existing_connection {
+            return Ok(Request::ReuseConnection(connection));
         }
+
         {
             let found = {
                 let mut peers_by_ip = self.peers_by_ip.write();

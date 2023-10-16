@@ -9,7 +9,7 @@ use crate::{
 use boringtun::x25519::PublicKey;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
-    GatewayId, Interface as InterfaceConfig, ResourceDescription, ResourceId,
+    GatewayId, Interface as InterfaceConfig, ResourceDescription, ResourceId, ReuseConnection,
 };
 use connlib_shared::{Callbacks, DNS_SENTINEL};
 use futures::channel::mpsc::Receiver;
@@ -218,7 +218,7 @@ impl ClientState {
         gateway: GatewayId,
         expected_attempts: usize,
         connected_peers: &IpNetworkTable<Arc<Peer>>,
-    ) -> Result<ResourceDescription, ConnlibError> {
+    ) -> Result<(ResourceDescription, Option<ReuseConnection>), ConnlibError> {
         if self.is_connected_to(resource, connected_peers) {
             return Err(Error::UnexpectedConnectionDetails);
         }
@@ -241,7 +241,22 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        Ok(desc.clone())
+        match self.gateway_awaiting_connection.entry(gateway) {
+            Entry::Occupied(mut occupied) => {
+                occupied.get_mut().extend(desc.ips());
+                Ok((
+                    desc.clone(),
+                    Some(ReuseConnection {
+                        resource_id: resource,
+                        gateway_id: gateway,
+                    }),
+                ))
+            }
+            Entry::Vacant(vacant) => {
+                vacant.insert(vec![]);
+                Ok((desc.clone(), None))
+            }
+        }
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
