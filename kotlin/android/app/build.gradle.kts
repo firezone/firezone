@@ -121,7 +121,7 @@ android {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
                 artifactType = "AAB"
                 releaseNotes = "https://github.com/firezone/firezone/releases"
-                testers = System.getenv("FIREBASE_APP_TESTERS")
+                groups = "firezone-engineering"
                 artifactPath = "app/build/outputs/bundle/release/app-release.aab"
             }
         }
