@@ -8,7 +8,7 @@ on:
 
 env:
   # mark:automatic-version
-  VERSION: "0.20231001.0"
+  VERSION: "2.0.0"
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -146,13 +146,12 @@ jobs:
       BINARY_DEST_PATH: ${{ matrix.package }}-${{ matrix.target }}
     steps:
       - uses: actions/checkout@v4
-      - name: Update toolchain
-        run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
           key: ubuntu-22.04-${{ runner.arch }}
           workspaces: ./rust
           save-if: false
+      - uses: dtolnay/rust-toolchain@stable
       - name: Setup cross-rs
         run: cargo install cross --git https://github.com/cross-rs/cross
       - name: Build release binaries
