@@ -8,6 +8,8 @@ jobs:
     defaults:
       run:
         working-directory: ./elixir
+    permissions:
+      checks: write
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -46,7 +48,7 @@ jobs:
       - name: Install Dependencies
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
+      - name: Compile Dependenciee
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: mix deps.compile --skip-umbrella-children
       - uses: actions/cache/save@v3
