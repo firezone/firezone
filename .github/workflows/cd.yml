@@ -148,7 +148,7 @@ jobs:
           mv $CARGO_OUTPUT_FILE $BINARY_DEST_PATH
           sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
       - name: Push binaries
-        uses: softprops/action-gh-release
+        uses: softprops/action-gh-release@v1
         with:
           name: ${{ jobs.update-release-draft.steps.update-release-draft.outputs.name }}
           draft: true
