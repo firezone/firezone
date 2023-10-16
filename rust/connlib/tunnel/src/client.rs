@@ -309,17 +309,25 @@ impl ClientState {
             "connected_gateways"
         );
 
-        self.awaiting_connection
-            .insert(resource_id, (Default::default(), connected_gateway_ids));
-
-        // TODO: Handle error
-        let _ = self.awaiting_connection_timers.try_push(
+        match self.awaiting_connection_timers.try_push(
             resource_id,
             stream::poll_fn({
                 let mut interval = tokio::time::interval(MAX_SIGNAL_CONNECTION_DELAY);
                 move |cx| interval.poll_tick(cx).map(Some)
             }),
-        );
+        ) {
+            Ok(()) => {}
+            Err(PushError::BeyondCapacity(_)) => {
+                tracing::warn!(%resource_id, "Too many concurrent connection attempts");
+                return;
+            }
+            Err(PushError::Replaced(_)) => {
+                // The timers are equivalent for our purpose so we don't really care about this one.
+            }
+        }
+
+        self.awaiting_connection
+            .insert(resource_id, (Default::default(), connected_gateway_ids));
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
