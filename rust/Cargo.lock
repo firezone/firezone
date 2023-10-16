@@ -1338,7 +1338,7 @@ dependencies = [
 [[package]]
 name = "futures-bounded"
 version = "0.2.0"
-source = "git+https://github.com/libp2p/rust-libp2p?branch=feat/stream-map#1e4ad64558159dfc94b50daf701b3ee7315553b9"
+source = "git+https://github.com/libp2p/rust-libp2p?branch=feat/stream-map#0c0349221f3daa697ae871ab6dba5c1f84e84b10"
 dependencies = [
  "futures-timer",
  "futures-util",
