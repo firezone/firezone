@@ -297,11 +297,11 @@ where
             .get(&gateway_id.into())
             .ok_or(Error::UnknownResource)?
             .clone();
+        peer_connection.set_remote_description(rtc_sdp).await?;
+
         self.gateway_public_keys
             .lock()
             .insert(gateway_id, gateway_public_key);
-
-        peer_connection.set_remote_description(rtc_sdp).await?;
         self.role_state
             .lock()
             .activate_ice_candidate_receiver(gateway_id);
