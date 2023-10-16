@@ -1,0 +1,52 @@
+name: Release
+on:
+  release:
+    types:
+      - published
+
+env:
+  # mark:automatic-version
+  VERSION: "1.20231001.0"
+
+jobs:
+  push-release-images:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - image_name: relay
+          - image_name: gateway
+    permissions:
+      # Needed to upload artifacts to a release
+      contents: write
+      # Needed to login to GCP
+      id-token: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
+        with:
+          project: firezone-staging
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{github.actor}}
+          password: ${{secrets.GITHUB_TOKEN}}
+      - name: Pull and push
+        env:
+          SRC_IMAGE: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+          DST_IMAGES: |
+            ghcr.io/firezone/${{ matrix.image_name }}:${{ github.sha }}
+            ghcr.io/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
+            ghcr.io/firezone/${{ matrix.image_name }}:latest
+        run: |
+          docker pull $SRC_IMAGE
+          docker run --rm -it $SRC_IMAGE /bin/sh -c "echo 'Image seems ok!'"
+
+          # Re-tag and push to GHCR for public distribution
+          IFS=$'\n' read -r -a tags <<< "$DST_IMAGES"
+          for tag in "${tags[@]}"; do
+            docker tag $SRC_IMAGE $tag
+            docker push $tag
+          done
