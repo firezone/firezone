@@ -42,7 +42,7 @@ jobs:
           path: |
             elixir/deps
             elixir/_build/${{ env.MIX_ENV }}
-          key: ubuntu-22.04-${{ runner.arch }}-${{ ${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
+          key: ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - name: Install Dependencies
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: mix deps.get --only $MIX_ENV
