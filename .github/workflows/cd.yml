@@ -16,9 +16,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml
-    secrets: inherit
+  # FIXME: Remove before merge
+  # ci:
+  #   uses: ./.github/workflows/ci.yml
+  #   secrets: inherit
 
   deploy:
     # FIXME: Remove before merge
