@@ -1,3 +1,4 @@
+use async_compression::tokio::bufread::GzipEncoder;
 use std::path::PathBuf;
 use std::{io, sync::Arc};
 
@@ -15,6 +16,8 @@ use connlib_shared::{
 
 use async_trait::async_trait;
 use firezone_tunnel::{ClientState, ControlSignal, Request, Tunnel};
+use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
+use tokio::io::BufReader;
 use tokio::sync::Mutex;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
@@ -301,10 +304,13 @@ async fn upload(path: PathBuf, url: Url) -> io::Result<()> {
     tracing::info!(path = %path.display(), %url, "Uploading log file");
 
     let file = tokio::fs::File::open(&path).await?;
+
     let response = reqwest::Client::new()
         .put(url)
+        .header(CONTENT_TYPE, "text/plain")
+        .header(CONTENT_ENCODING, "gzip")
         .body(reqwest::Body::wrap_stream(FramedRead::new(
-            file,
+            GzipEncoder::new(BufReader::new(file)),
             BytesCodec::default(),
         )))
         .send()
