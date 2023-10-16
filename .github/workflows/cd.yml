@@ -102,7 +102,7 @@ jobs:
           status: ${{ job.status }}
           notify_when: "failure"
 
-  update_release_draft:
+  update-release-draft:
     needs: deploy
     runs-on: ubuntu-22.04
     permissions:
@@ -112,7 +112,90 @@ jobs:
       pull-requests: write
     steps:
       - uses: release-drafter/release-drafter@v5
+        id: update-release-draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           version: ${{ env.VERSION }}
+
+  push-release-binaries:
+    needs: update-release-draft
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: ./rust
+    strategy:
+      matrix:
+        include:
+          - package: relay
+          - package: gateway
+    env:
+      BINARY_DEST_PATH: ${{ matrix.package }}-${ env.VERSION }}-linux-x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ubuntu-22.04-${{ runner.arch }}
+          workspaces: ./rust
+          save-if: false
+      - name: Build release binaries
+        env:
+          CARGO_OUTPUT_FILE: target/release/${{ matrix.package }}
+        run: |
+          cargo build --release -p ${{ matrix.package }}
+          mv $CARGO_OUTPUT_FILE $BINARY_DEST_PATH
+          sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
+      - name: Push binaries
+        uses: softprops/action-gh-release
+        with:
+          name: ${{ jobs.update-release-draft.steps.update-release-draft.outputs.name }}
+          draft: true
+          files: |
+            rust/${{ env.BINARY_DEST_PATH }}
+            rust/${{ env.BINARY_DEST_PATH }}.sha256sum.txt
+
+  push-release-images:
+    needs: update-release-draft
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - image_name: relay
+          - image_name: gateway
+    permissions:
+      # Needed to upload artifacts to a release
+      contents: write
+      # Needed to login to GCP
+      id-token: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
+        with:
+          project: firezone-staging
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{github.actor}}
+          password: ${{secrets.GITHUB_TOKEN}}
+      - name: Pull and push
+        env:
+          SRC_IMAGE: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+          DST_IMAGE_TAGS: |
+            ghcr.io/firezone/${{ matrix.image_name }}:${{ github.sha }}
+            ghcr.io/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
+            ghcr.io/firezone/${{ matrix.image_name }}:latest
+        run: |
+            docker pull $SRC_IMAGE
+            # TODO: Better smoke test
+            docker run --rm -it $SRC_IMAGE /bin/sh -c "echo 'Image seems ok!'"
+
+            # Re-tag and push to GHCR for public distribution
+            IFS=$'\n' read -r -a tags <<< "$DST_IMAGE_TAGS"
+            for tag in "${tags[@]}"; do
+              docker tag $SRC_IMAGE $tag
+              docker push $tag
+            done

@@ -174,3 +174,6 @@ jobs:
       - name: Show httpbin logs
         if: "!cancelled()"
         run: docker compose logs httpbin
+
+ push-release-artifacts:
+   needs: integration-tests
