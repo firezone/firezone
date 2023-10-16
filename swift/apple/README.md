@@ -34,11 +34,6 @@ CI/CD pipeline.
    vim Firezone/xcconfig/config.xcconfig
    ```
 
-   ```bash
-   cp Firezone/xcconfig/Server.xcconfig.template Firezone/xcconfig/Server.xcconfig
-   vim Firezone/xcconfig/Server.xcconfig
-   ```
-
 1. Open project in Xcode:
 
 ```bash
