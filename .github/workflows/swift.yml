@@ -48,14 +48,12 @@ jobs:
         working-directory: ./swift/apple
     steps:
       - uses: actions/checkout@v4
-      - name: Update toolchain
-        run: rustup show
-        working-directory: ./rust
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
           key: ${{ matrix.runs-on }}-${{ runner.arch }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache/restore@v3
         name: Restore Swift DerivedData Cache
         with:
