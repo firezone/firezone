@@ -324,11 +324,6 @@ impl ClientState {
         );
     }
 
-    pub fn remove_awaiting_connection(&mut self, resource: ResourceId) {
-        self.awaiting_connection.remove(&resource);
-        self.awaiting_connection_timers.remove(resource);
-    }
-
     pub fn add_waiting_ice_receiver(
         &mut self,
         id: GatewayId,
