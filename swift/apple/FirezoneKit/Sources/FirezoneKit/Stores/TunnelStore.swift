@@ -61,7 +61,13 @@ final class TunnelStore: ObservableObject {
           protocolConfiguration: tunnel.protocolConfiguration as? NETunnelProviderProtocol)
       } else {
         let tunnel = NETunnelProviderManager()
-        tunnel.localizedDescription = "Firezone"
+        tunnel.localizedDescription = {
+          #if DEBUG
+            return "Firezone (\(Bundle.main.bundleIdentifier ?? ""))"
+          #else
+            return "Firezone"
+          #endif
+        }()
         tunnel.protocolConfiguration = TunnelAuthStatus.accountNotSetup.toProtocolConfiguration()
         try await tunnel.saveToPreferences()
         Self.logger.log("\(#function): Tunnel created")
