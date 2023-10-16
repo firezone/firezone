@@ -176,7 +176,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState> {
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<ConnId, Arc<RTCPeerConnection>>>,
     webrtc_api: API,
-    gateway_public_keys: Mutex<HashMap<GatewayId, PublicKey>>,
     callbacks: CallbackErrorFacade<CB>,
     iface_handler_abort: Mutex<Option<AbortHandle>>,
 
@@ -191,7 +190,6 @@ pub struct TunnelStats {
     public_key: String,
     peers_by_ip: HashMap<IpNetwork, PeerStats>,
     peer_connections: Vec<ConnId>,
-    gateway_public_keys: HashMap<GatewayId, String>,
 }
 
 impl<CB, TRoleState> Tunnel<CB, TRoleState>
@@ -208,17 +206,10 @@ where
             .collect();
         let peer_connections = self.peer_connections.lock().keys().cloned().collect();
 
-        let gateway_public_keys = self
-            .gateway_public_keys
-            .lock()
-            .iter()
-            .map(|(&id, &k)| (id, Key::from(k).to_string()))
-            .collect();
         TunnelStats {
             public_key: Key::from(self.public_key).to_string(),
             peers_by_ip,
             peer_connections,
-            gateway_public_keys,
         }
     }
 
@@ -269,7 +260,6 @@ where
         let next_index = Default::default();
         let peer_connections = Default::default();
         let resources: Arc<RwLock<ResourceTable<ResourceDescription>>> = Default::default();
-        let gateway_public_keys = Default::default();
         let device = Default::default();
         let iface_handler_abort = Default::default();
 
@@ -296,7 +286,6 @@ where
             .build();
 
         Ok(Self {
-            gateway_public_keys,
             rate_limiter,
             private_key,
             peer_connections,

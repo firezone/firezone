@@ -175,19 +175,24 @@ where
             Box::pin(async move {
                 tracing::trace!("new_data_channel_opened");
                 let index = tunnel.next_index();
-                let Some(gateway_public_key) =
-                    tunnel.gateway_public_keys.lock().remove(&gateway_id)
-                else {
+                let gateway_public_key = {
                     let mut role_state = tunnel.role_state.lock();
-                    role_state.awaiting_connection.remove(&resource_id);
-                    role_state.gateway_awaiting_connection.remove(&gateway_id);
 
-                    tunnel.peer_connections.lock().remove(&gateway_id.into());
+                    let Some(gateway_public_key) =
+                        role_state.gateway_public_keys.remove(&gateway_id)
+                    else {
+                        role_state.awaiting_connection.remove(&resource_id);
+                        role_state.gateway_awaiting_connection.remove(&gateway_id);
 
-                    let e = Error::ControlProtocolError;
-                    tracing::warn!(err = ?e, "channel_open");
-                    let _ = tunnel.callbacks.on_error(&e);
-                    return;
+                        tunnel.peer_connections.lock().remove(&gateway_id.into());
+
+                        let e = Error::ControlProtocolError;
+                        tracing::warn!(err = ?e, "channel_open");
+                        let _ = tunnel.callbacks.on_error(&e);
+                        return;
+                    };
+
+                    gateway_public_key
                 };
                 let peer_config = PeerConfig {
                     persistent_keepalive: None,
@@ -299,12 +304,9 @@ where
             .clone();
         peer_connection.set_remote_description(rtc_sdp).await?;
 
-        self.gateway_public_keys
-            .lock()
-            .insert(gateway_id, gateway_public_key);
         self.role_state
             .lock()
-            .activate_ice_candidate_receiver(gateway_id);
+            .activate_ice_candidate_receiver(gateway_id, gateway_public_key);
 
         Ok(())
     }

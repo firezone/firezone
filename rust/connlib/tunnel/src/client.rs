@@ -5,6 +5,7 @@ use crate::{
     dns, tokio_util, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
+use boringtun::x25519::PublicKey;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
     GatewayId, Interface as InterfaceConfig, ResourceDescription, ResourceId,
@@ -197,6 +198,7 @@ pub struct ClientState {
 
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
 
+    pub gateway_public_keys: HashMap<GatewayId, PublicKey>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
     resources: ResourceTable<ResourceDescription>,
 }
@@ -302,10 +304,11 @@ impl ClientState {
         self.waiting_for_sdp_from_gatway.insert(id, receiver);
     }
 
-    pub fn activate_ice_candidate_receiver(&mut self, id: GatewayId) {
+    pub fn activate_ice_candidate_receiver(&mut self, id: GatewayId, key: PublicKey) {
         let Some(receiver) = self.waiting_for_sdp_from_gatway.remove(&id) else {
             return;
         };
+        self.gateway_public_keys.insert(id, key);
 
         match self.active_candidate_receivers.try_push(id, receiver) {
             Ok(()) => {}
@@ -337,6 +340,7 @@ impl Default for ClientState {
             awaiting_connection: Default::default(),
             gateway_awaiting_connection: Default::default(),
             awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
+            gateway_public_keys: Default::default(),
             resources_gateways: Default::default(),
             resources: Default::default(),
         }
