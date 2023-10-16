@@ -20,7 +20,7 @@ jobs:
           - image_name: gateway
     permissions:
       # Needed to upload artifacts to a release
-      contents: write
+      packages: write
       # Needed to login to GCP
       id-token: write
     steps:
