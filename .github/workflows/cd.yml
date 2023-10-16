@@ -1,12 +1,14 @@
 name: Continuous Delivery
 on:
+  # FIXME: Remove before merge
+  pull_request:
   push:
     branches:
       - main
 
 env:
   # mark:automatic-version
-  VERSION: "1.20231001.0"
+  VERSION: "0.20231001.0"
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -19,6 +21,8 @@ jobs:
     secrets: inherit
 
   deploy:
+    # FIXME: Remove before merge
+    if: false
     runs-on: ubuntu-22.04
     # if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
@@ -103,7 +107,8 @@ jobs:
           notify_when: "failure"
 
   update-release-draft:
-    needs: deploy
+    # FIXME: Remove before merge
+    # needs: deploy
     runs-on: ubuntu-22.04
     permissions:
       # write permission is required to create a github release

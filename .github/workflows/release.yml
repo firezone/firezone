@@ -1,12 +1,14 @@
 name: Release
 on:
+  # FIXME: Remove before merge
+  pull_request:
   release:
     types:
       - published
 
 env:
   # mark:automatic-version
-  VERSION: "1.20231001.0"
+  VERSION: "0.20231001.0"
 
 jobs:
   push-release-images:
