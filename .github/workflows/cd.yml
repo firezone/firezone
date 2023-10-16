@@ -128,15 +128,19 @@ jobs:
       matrix:
         include:
           - package: relay
+            bin_name: relay
             target: x86_64-unknown-linux-musl
           - package: relay
+            bin_name: relay
             target: aarch64-unknown-linux-musl
           - package: firezone-gateway
+            bin_name: gateway
             target: x86_64-unknown-linux-musl
           - package: firezone-gateway
+            bin_name: gateway
             target: aarch64-unknown-linux-musl
     env:
-      BINARY_DEST_PATH: ${{ matrix.package }}-${{ matrix.target }}
+      BINARY_DEST_PATH: ${{ matrix.bin_name }}-${{ matrix.target }}
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
