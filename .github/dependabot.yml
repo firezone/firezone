@@ -8,19 +8,19 @@ updates:
   - package-ecosystem: "mix" # See documentation for possible values
     directory: "elixir/" # Location of package manifests
     schedule:
-      interval: "weekly"
+      interval: "daily"
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
   - package-ecosystem: "cargo"
     directory: "rust/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
     groups:
       otel:
         patterns:
@@ -34,9 +34,9 @@ updates:
   - package-ecosystem: "gradle"
     directory: "rust/connlib/clients/android/connlib"
     schedule:
-      interval: "weekly"
+      interval: "daily"
   - package-ecosystem: "gradle"
     directory: "kotlin/android"
     schedule:
-      interval: "weekly"
+      interval: "daily"
   # TODO: Apple package ecosystem
