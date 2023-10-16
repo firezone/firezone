@@ -189,13 +189,13 @@ jobs:
             ghcr.io/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
             ghcr.io/firezone/${{ matrix.image_name }}:latest
         run: |
-            docker pull $SRC_IMAGE
-            # TODO: Better smoke test
-            docker run --rm -it $SRC_IMAGE /bin/sh -c "echo 'Image seems ok!'"
+          docker pull $SRC_IMAGE
+          # TODO: Better smoke test
+          docker run --rm -it $SRC_IMAGE /bin/sh -c "echo 'Image seems ok!'"
 
-            # Re-tag and push to GHCR for public distribution
-            IFS=$'\n' read -r -a tags <<< "$DST_IMAGE_TAGS"
-            for tag in "${tags[@]}"; do
-              docker tag $SRC_IMAGE $tag
-              docker push $tag
-            done
+          # Re-tag and push to GHCR for public distribution
+          IFS=$'\n' read -r -a tags <<< "$DST_IMAGE_TAGS"
+          for tag in "${tags[@]}"; do
+            docker tag $SRC_IMAGE $tag
+            docker push $tag
+          done
