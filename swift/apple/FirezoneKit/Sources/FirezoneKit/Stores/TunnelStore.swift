@@ -56,6 +56,7 @@ final class TunnelStore: ObservableObject {
       if let tunnel = managers.first {
         Self.logger.log("\(#function): Tunnel already exists")
         self.tunnel = tunnel
+        self.status = tunnel.connection.status
         self.tunnelAuthStatus = TunnelAuthStatus(
           protocolConfiguration: tunnel.protocolConfiguration as? NETunnelProviderProtocol)
       } else {
