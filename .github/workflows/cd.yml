@@ -19,7 +19,7 @@ jobs:
     secrets: inherit
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     # if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write
@@ -104,7 +104,7 @@ jobs:
 
   update_release_draft:
     needs: deploy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       # write permission is required to create a github release
       contents: write
