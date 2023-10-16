@@ -6,7 +6,7 @@
 version: 2
 updates:
   - package-ecosystem: "mix" # See documentation for possible values
-    directory: "/" # Location of package manifests
+    directory: "elixir/" # Location of package manifests
     schedule:
       interval: "weekly"
   - package-ecosystem: "pip"
@@ -14,10 +14,6 @@ updates:
     schedule:
       interval: "weekly"
   - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-  - package-ecosystem: "bundler"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -35,12 +31,12 @@ updates:
           - "tracing-stackdriver"
         update-types:
           - "minor"
-  - package-ecosystem: "maven"
-    directory: "rust/connlib/clients/android"
+  - package-ecosystem: "gradle"
+    directory: "rust/connlib/clients/android/connlib"
     schedule:
       interval: "weekly"
-  - package-ecosystem: "maven"
-    directory: "kotlin/"
+  - package-ecosystem: "gradle"
+    directory: "kotlin/android"
     schedule:
       interval: "weekly"
   # TODO: Apple package ecosystem
