@@ -156,10 +156,9 @@ jobs:
         run: cargo install cross --git https://github.com/cross-rs/cross
       - name: Build release binaries
         env:
-          CARGO_OUTPUT_FILE: target/release/${{ matrix.package }}
+          CARGO_OUTPUT_FILE: target/${{ matrix.target }}/release/${{ matrix.package }}
         run: |
           dest="$BINARY_DEST_PATH-$VERSION"
-          rustup target add ${{ matrix.target }}
           cross build --release -p ${{ matrix.package }} --target ${{ matrix.target }}
           mv $CARGO_OUTPUT_FILE $dest
           sha256sum $dest > $dest.sha256sum.txt
