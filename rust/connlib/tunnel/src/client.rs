@@ -118,30 +118,18 @@ where
     fn connection_intent(self: &Arc<Self>, packet: IpPacket<'_>) {
         // We can buffer requests here but will drop them for now and let the upper layer reliability protocol handle this
 
-        let Some(resource) = self.get_resource(packet.destination()) else {
-            return;
-        };
-
         // We have awaiting connection to prevent a race condition where
         // create_peer_connection hasn't added the thing to peer_connections
         // and we are finding another packet to the same address (otherwise we would just use peer_connections here)
         let mut role_state = self.role_state.lock();
 
-        if role_state.is_awaiting_connection_to(resource.id()) {
+        if role_state.is_awaiting_connection_to(packet.destination()) {
             return;
         }
 
         tracing::trace!(resource_ip = %packet.destination(), "resource_connection_intent");
 
-        role_state.insert_new_awaiting_connection(resource);
-    }
-
-    fn get_resource(&self, addr: IpAddr) -> Option<ResourceDescription> {
-        let resources = &self.role_state.lock().resources;
-        match addr {
-            IpAddr::V4(ipv4) => resources.get_by_ip(ipv4).cloned(),
-            IpAddr::V6(ipv6) => resources.get_by_ip(ipv6).cloned(),
-        }
+        role_state.insert_new_awaiting_connection(packet.destination());
     }
 }
 
@@ -204,14 +192,7 @@ pub struct ClientState {
     waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidateInit>>,
 
     // TODO: Make private
-    pub awaiting_connection: HashMap<
-        ResourceId,
-        (
-            AwaitingConnectionDetails,
-            ResourceDescription,
-            Vec<GatewayId>,
-        ),
-    >,
+    pub awaiting_connection: HashMap<ResourceId, (AwaitingConnectionDetails, Vec<GatewayId>)>,
     pub gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
 
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
@@ -238,7 +219,7 @@ impl ClientState {
             .get_by_id(&resource)
             .ok_or(Error::UnknownResource)?;
 
-        let (details, _, _) = self
+        let (details, _) = self
             .awaiting_connection
             .get_mut(&resource)
             .ok_or(Error::UnexpectedConnectionDetails)?;
@@ -266,11 +247,19 @@ impl ClientState {
         self.resources_gateways.get(resource).copied()
     }
 
-    pub fn is_awaiting_connection_to(&self, resource: ResourceId) -> bool {
-        self.awaiting_connection.contains_key(&resource)
+    pub fn is_awaiting_connection_to(&self, destination: IpAddr) -> bool {
+        let Some(resource) = self.get_resource_by_destination(destination) else {
+            return false;
+        };
+
+        self.awaiting_connection.contains_key(&resource.id())
     }
 
-    pub fn insert_new_awaiting_connection(&mut self, resource: ResourceDescription) {
+    pub fn insert_new_awaiting_connection(&mut self, destination: IpAddr) {
+        let Some(resource) = self.get_resource_by_destination(destination) else {
+            return;
+        };
+
         const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
 
         let resource_id = resource.id();
@@ -287,10 +276,8 @@ impl ClientState {
             "connected_gateways"
         );
 
-        self.awaiting_connection.insert(
-            resource_id,
-            (Default::default(), resource, connected_gateway_ids),
-        );
+        self.awaiting_connection
+            .insert(resource_id, (Default::default(), connected_gateway_ids));
 
         // TODO: Handle error
         let _ = self.awaiting_connection_timers.try_push(
@@ -328,6 +315,13 @@ impl ClientState {
             Err(PushError::Replaced(_)) => {
                 tracing::warn!(%id, "Replaced old ICE candidate receiver with new one")
             }
+        }
+    }
+
+    fn get_resource_by_destination(&self, destination: IpAddr) -> Option<&ResourceDescription> {
+        match destination {
+            IpAddr::V4(ipv4) => self.resources.get_by_ip(ipv4),
+            IpAddr::V6(ipv6) => self.resources.get_by_ip(ipv6),
         }
     }
 }
@@ -390,8 +384,12 @@ impl RoleState for ClientState {
                     let reference = entry.get_mut().0.total_attemps;
 
                     return Poll::Ready(Event::ConnectionIntent {
-                        resource: entry.get().1.clone(),
-                        connected_gateway_ids: entry.get().2.clone(),
+                        resource: self
+                            .resources
+                            .get_by_id(&resource)
+                            .expect("inconsistent internal state")
+                            .clone(),
+                        connected_gateway_ids: entry.get().1.clone(),
                         reference,
                     });
                 }
