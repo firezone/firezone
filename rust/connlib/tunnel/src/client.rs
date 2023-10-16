@@ -259,6 +259,7 @@ impl ClientState {
 
         if found {
             self.awaiting_connection.remove(&resource);
+            self.awaiting_connection_timers.remove(resource);
 
             return Ok((
                 desc.clone(),
@@ -278,6 +279,7 @@ impl ClientState {
             return;
         };
         self.gateway_awaiting_connection.remove(&gateway);
+        self.awaiting_connection_timers.remove(resource);
     }
 
     pub fn on_connection_intent(&mut self, destination: IpAddr) {
