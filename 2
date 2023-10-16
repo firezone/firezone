@@ -70,6 +70,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install toolchain
         uses: actions-rs/toolchain@v1
+        working-directory: ./rust
       - run: cargo test --all-features ${{ matrix.packages }}
 
   smoke-test-relay:
@@ -86,4 +87,5 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install toolchain
         uses: actions-rs/toolchain@v1
+        working-directory: ./rust
       - run: ./run_smoke_test.sh
