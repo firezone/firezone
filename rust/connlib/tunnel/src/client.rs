@@ -1,5 +1,6 @@
 use crate::device_channel::{create_iface, DeviceIo};
 use crate::ip_packet::IpPacket;
+use crate::peer::Peer;
 use crate::resource_table::ResourceTable;
 use crate::{
     dns, tokio_util, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
@@ -15,6 +16,7 @@ use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{PushError, StreamMap};
 use ip_network::IpNetwork;
+use ip_network_table::IpNetworkTable;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io;
@@ -210,6 +212,21 @@ pub struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
+    pub(crate) fn is_connected_to(
+        &self,
+        resource: ResourceId,
+        connected_peers: &IpNetworkTable<Arc<Peer>>,
+    ) -> bool {
+        let Some(resource) = self.resources.get_by_id(&resource) else {
+            return false;
+        };
+
+        resource
+            .ips()
+            .iter()
+            .any(|ip| connected_peers.exact_match(*ip).is_some())
+    }
+
     pub fn on_new_connection(
         &mut self,
         resource: ResourceId,
