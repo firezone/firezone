@@ -85,15 +85,12 @@ where
             .parse()
             .map_err(|_| Error::InvalidReference)?;
 
-        let resource_description = {
-            let mut role_state = self.role_state.lock();
-
-            if role_state.is_connected_to(resource_id, &self.peers_by_ip.read()) {
-                return Err(Error::UnexpectedConnectionDetails);
-            }
-
-            role_state.on_new_connection(resource_id, gateway_id, reference)?
-        };
+        let resource_description = self.role_state.lock().on_new_connection(
+            resource_id,
+            gateway_id,
+            reference,
+            &self.peers_by_ip.read(),
+        )?;
 
         {
             let mut role_state = self.role_state.lock();

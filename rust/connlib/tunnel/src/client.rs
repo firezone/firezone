@@ -212,27 +212,17 @@ pub struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn is_connected_to(
-        &self,
-        resource: ResourceId,
-        connected_peers: &IpNetworkTable<Arc<Peer>>,
-    ) -> bool {
-        let Some(resource) = self.resources.get_by_id(&resource) else {
-            return false;
-        };
-
-        resource
-            .ips()
-            .iter()
-            .any(|ip| connected_peers.exact_match(*ip).is_some())
-    }
-
-    pub fn on_new_connection(
+    pub(crate) fn on_new_connection(
         &mut self,
         resource: ResourceId,
         gateway: GatewayId,
         expected_attempts: usize,
+        connected_peers: &IpNetworkTable<Arc<Peer>>,
     ) -> Result<ResourceDescription, ConnlibError> {
+        if self.is_connected_to(resource, connected_peers) {
+            return Err(Error::UnexpectedConnectionDetails);
+        }
+
         let desc = self
             .resources
             .get_by_id(&resource)
@@ -336,6 +326,21 @@ impl ClientState {
                 tracing::warn!(%id, "Replaced old ICE candidate receiver with new one")
             }
         }
+    }
+
+    fn is_connected_to(
+        &self,
+        resource: ResourceId,
+        connected_peers: &IpNetworkTable<Arc<Peer>>,
+    ) -> bool {
+        let Some(resource) = self.resources.get_by_id(&resource) else {
+            return false;
+        };
+
+        resource
+            .ips()
+            .iter()
+            .any(|ip| connected_peers.exact_match(*ip).is_some())
     }
 
     fn get_resource_by_destination(&self, destination: IpAddr) -> Option<&ResourceDescription> {
