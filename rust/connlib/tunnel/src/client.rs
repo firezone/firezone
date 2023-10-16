@@ -1,5 +1,6 @@
 use crate::device_channel::{create_iface, DeviceIo};
 use crate::ip_packet::IpPacket;
+use crate::resource_table::ResourceTable;
 use crate::{
     dns, tokio_util, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
@@ -16,6 +17,7 @@ use ip_network::IpNetwork;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -51,9 +53,9 @@ where
         }
 
         let resource_list = {
-            let mut resources = self.resources.write();
-            resources.insert(resource_description);
-            resources.resource_list()
+            let mut role_state = self.role_state.lock();
+            role_state.resources.insert(resource_description);
+            role_state.resources.resource_list()
         };
 
         self.callbacks.on_update_resources(resource_list)?;
@@ -133,6 +135,14 @@ where
 
         role_state.insert_new_awaiting_connection(resource);
     }
+
+    fn get_resource(&self, addr: IpAddr) -> Option<ResourceDescription> {
+        let resources = &self.role_state.lock().resources;
+        match addr {
+            IpAddr::V4(ipv4) => resources.get_by_ip(ipv4).cloned(),
+            IpAddr::V6(ipv6) => resources.get_by_ip(ipv6).cloned(),
+        }
+    }
 }
 
 /// Reads IP packets from the [`Device`] and handles them accordingly.
@@ -150,7 +160,9 @@ where
             return Ok(());
         };
 
-        if let Some(dns_packet) = dns::parse(&tunnel.resources.read(), packet.as_immutable()) {
+        if let Some(dns_packet) =
+            dns::parse(&tunnel.role_state.lock().resources, packet.as_immutable())
+        {
             if let Err(e) = send_dns_packet(&device_writer, dns_packet) {
                 tracing::error!(err = %e, "failed to send DNS packet");
                 let _ = tunnel.callbacks.on_error(&e.into());
@@ -205,6 +217,7 @@ pub struct ClientState {
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
 
     resources_gateways: HashMap<ResourceId, GatewayId>,
+    resources: ResourceTable<ResourceDescription>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -219,7 +232,12 @@ impl ClientState {
         resource: ResourceId,
         gateway: GatewayId,
         expected_attempts: usize,
-    ) -> Result<(), ConnlibError> {
+    ) -> Result<ResourceDescription, ConnlibError> {
+        let desc = self
+            .resources
+            .get_by_id(&resource)
+            .ok_or(Error::UnknownResource)?;
+
         let (details, _, _) = self
             .awaiting_connection
             .get_mut(&resource)
@@ -233,7 +251,7 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        Ok(())
+        Ok(desc.clone())
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -326,6 +344,7 @@ impl Default for ClientState {
             gateway_awaiting_connection: Default::default(),
             awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
             resources_gateways: Default::default(),
+            resources: Default::default(),
         }
     }
 }

@@ -176,7 +176,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState> {
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<ConnId, Arc<RTCPeerConnection>>>,
     webrtc_api: API,
-    resources: Arc<RwLock<ResourceTable<ResourceDescription>>>,
     gateway_public_keys: Mutex<HashMap<GatewayId, PublicKey>>,
     callbacks: CallbackErrorFacade<CB>,
     iface_handler_abort: Mutex<Option<AbortHandle>>,
@@ -192,8 +191,6 @@ pub struct TunnelStats {
     public_key: String,
     peers_by_ip: HashMap<IpNetwork, PeerStats>,
     peer_connections: Vec<ConnId>,
-    dns_resources: HashMap<String, ResourceDescription>,
-    network_resources: HashMap<IpNetwork, ResourceDescription>,
     gateway_public_keys: HashMap<GatewayId, String>,
 }
 
@@ -210,10 +207,6 @@ where
             .map(|(ip, peer)| (ip, peer.stats()))
             .collect();
         let peer_connections = self.peer_connections.lock().keys().cloned().collect();
-        let (network_resources, dns_resources) = {
-            let resources = self.resources.read();
-            (resources.network_resources(), resources.dns_resources())
-        };
 
         let gateway_public_keys = self
             .gateway_public_keys
@@ -225,8 +218,6 @@ where
             public_key: Key::from(self.public_key).to_string(),
             peers_by_ip,
             peer_connections,
-            dns_resources,
-            network_resources,
             gateway_public_keys,
         }
     }
@@ -313,7 +304,6 @@ where
             peers_by_ip,
             next_index,
             webrtc_api,
-            resources,
             device,
             callbacks: CallbackErrorFacade(callbacks),
             iface_handler_abort,
@@ -449,14 +439,6 @@ where
         self.start_rate_limiter_refresh_timer();
         self.start_peers_refresh_timer();
         Ok(())
-    }
-
-    fn get_resource(&self, addr: IpAddr) -> Option<ResourceDescription> {
-        let resources = self.resources.read();
-        match addr {
-            IpAddr::V4(ipv4) => resources.get_by_ip(ipv4).cloned(),
-            IpAddr::V6(ipv6) => resources.get_by_ip(ipv6).cloned(),
-        }
     }
 
     fn next_index(&self) -> u32 {

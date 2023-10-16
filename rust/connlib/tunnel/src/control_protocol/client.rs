@@ -79,21 +79,16 @@ where
         reference: Option<Reference>,
     ) -> Result<Request> {
         tracing::trace!("request_connection");
-        let resource_description = self
-            .resources
-            .read()
-            .get_by_id(&resource_id)
-            .ok_or(Error::UnknownResource)?
-            .clone();
 
         let reference: usize = reference
             .ok_or(Error::InvalidReference)?
             .parse()
             .map_err(|_| Error::InvalidReference)?;
 
-        self.role_state
-            .lock()
-            .on_new_connection(resource_id, gateway_id, reference)?;
+        let resource_description =
+            self.role_state
+                .lock()
+                .on_new_connection(resource_id, gateway_id, reference)?;
 
         if resource_description
             .ips()
