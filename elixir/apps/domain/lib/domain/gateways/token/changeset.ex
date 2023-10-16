@@ -9,7 +9,7 @@ defmodule Domain.Gateways.Token.Changeset do
     |> change()
     |> put_change(:account_id, account.id)
     |> put_change(:value, Domain.Crypto.random_token(64))
-    |> put_hash(:value, to: :hash)
+    |> put_hash(:value, :argon2, to: :hash)
     |> assoc_constraint(:group)
     |> check_constraint(:hash, name: :hash_not_null, message: "can't be blank")
     |> put_change(:created_by, :identity)

@@ -61,15 +61,34 @@ defmodule Domain.Crypto do
   defp replace_ambiguous_characters(<<char::utf8, rest::binary>>, acc),
     do: replace_ambiguous_characters(rest, <<acc::binary, char::utf8>>)
 
-  def hash(type, value) do
-    :crypto.hash(type, value)
+  def hash(:argon2, value) when byte_size(value) > 0 do
+    Argon2.hash_pwd_salt(value)
+  end
+
+  def hash(algo, value) when byte_size(value) > 0 do
+    :crypto.hash(algo, value)
     |> Base.encode16()
     |> String.downcase()
   end
 
-  def hash(value), do: Argon2.hash_pwd_salt(value)
+  @doc """
+  Compares two secret and hash in a constant-time avoiding timing attacks.
+  """
+  def equal?(:argon2, secret, hash) when is_nil(secret) or is_nil(hash),
+    do: Argon2.no_user_verify()
 
-  def equal?(token, hash) when is_nil(token) or is_nil(hash), do: Argon2.no_user_verify()
-  def equal?(token, hash) when token == "" or hash == "", do: Argon2.no_user_verify()
-  def equal?(token, hash), do: Argon2.verify_pass(token, hash)
+  def equal?(:argon2, secret, hash) when secret == "" or hash == "",
+    do: Argon2.no_user_verify()
+
+  def equal?(:argon2, secret, hash),
+    do: Argon2.verify_pass(secret, hash)
+
+  def equal?(algo, secret, hash) when is_nil(secret) or is_nil(hash),
+    do: Plug.Crypto.secure_compare(hash(algo, "a"), "b")
+
+  def equal?(algo, secret, hash) when secret == "" or hash == "",
+    do: Plug.Crypto.secure_compare(hash(algo, "a"), "b")
+
+  def equal?(algo, secret, hash),
+    do: Plug.Crypto.secure_compare(hash(algo, secret), hash)
 end

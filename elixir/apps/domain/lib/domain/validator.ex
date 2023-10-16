@@ -298,24 +298,46 @@ defmodule Domain.Validator do
   end
 
   @doc """
-  Takes value from `value_field` and puts it's hash to `hash_field`.
+  Takes value from `value_field` and puts it's hash of a given type to `hash_field`.
   """
-  def put_hash(%Ecto.Changeset{} = changeset, value_field, to: hash_field) do
-    with {:ok, value} when is_binary(value) and value != "" <-
-           fetch_change(changeset, value_field) do
-      put_change(changeset, hash_field, Domain.Crypto.hash(value))
+  def put_hash(%Ecto.Changeset{} = changeset, value_field, type, opts) do
+    hash_field = Keyword.fetch!(opts, :to)
+    salt_field = Keyword.get(opts, :with_salt)
+
+    with {:ok, value} <- fetch_value(changeset, value_field),
+         {:ok, salt} <- fetch_salt(changeset, salt_field) do
+      put_change(changeset, hash_field, Domain.Crypto.hash(type, value <> salt))
     else
       _ -> changeset
+    end
+  end
+
+  defp fetch_value(changeset, value_field) do
+    case fetch_change(changeset, value_field) do
+      {:ok, ""} -> :error
+      {:ok, value} when is_binary(value) -> {:ok, value}
+      _other -> :error
+    end
+  end
+
+  defp fetch_salt(_changeset, nil) do
+    {:ok, ""}
+  end
+
+  defp fetch_salt(changeset, salt_field) do
+    case fetch_change(changeset, salt_field) do
+      {:ok, salt} when is_binary(salt) -> {:ok, salt}
+      :error -> {:ok, ""}
     end
   end
 
   @doc """
   Validates that value in a given `value_field` equals to hash stored in `hash_field`.
   """
-  def validate_hash(changeset, value_field, hash_field: hash_field) do
+  def validate_hash(changeset, value_field, type, hash_field: hash_field) do
     with {:data, hash} <- fetch_field(changeset, hash_field) do
       validate_change(changeset, value_field, fn value_field, token ->
-        if Domain.Crypto.equal?(token, hash) do
+        if Domain.Crypto.equal?(type, token, hash) do
           []
         else
           [{value_field, {"is invalid", [validation: :hash]}}]
