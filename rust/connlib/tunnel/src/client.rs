@@ -2,13 +2,14 @@ use crate::device_channel::{create_iface, DeviceIo};
 use crate::peer::Peer;
 use crate::resource_table::ResourceTable;
 use crate::{
-    dns, tokio_util, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
+    dns, tokio_util, Device, Event, PeerConfig, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
-use boringtun::x25519::PublicKey;
+use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
-    GatewayId, Interface as InterfaceConfig, ResourceDescription, ResourceId, ReuseConnection,
+    GatewayId, Interface as InterfaceConfig, Key, ResourceDescription, ResourceId, ReuseConnection,
+    SecretKey,
 };
 use connlib_shared::{Callbacks, DNS_SENTINEL};
 use futures::channel::mpsc::Receiver;
@@ -197,13 +198,13 @@ pub struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn on_new_connection(
+    pub(crate) fn attempt_to_reuse_connection(
         &mut self,
         resource: ResourceId,
         gateway: GatewayId,
         expected_attempts: usize,
         connected_peers: &mut IpNetworkTable<Arc<Peer>>,
-    ) -> Result<(ResourceDescription, Option<ReuseConnection>), ConnlibError> {
+    ) -> Result<Option<ReuseConnection>, ConnlibError> {
         if self.is_connected_to(resource, connected_peers) {
             return Err(Error::UnexpectedConnectionDetails);
         }
@@ -229,13 +230,10 @@ impl ClientState {
         match self.gateway_awaiting_connection.entry(gateway) {
             Entry::Occupied(mut occupied) => {
                 occupied.get_mut().extend(desc.ips());
-                return Ok((
-                    desc.clone(),
-                    Some(ReuseConnection {
-                        resource_id: resource,
-                        gateway_id: gateway,
-                    }),
-                ));
+                return Ok(Some(ReuseConnection {
+                    resource_id: resource,
+                    gateway_id: gateway,
+                }));
             }
             Entry::Vacant(vacant) => {
                 vacant.insert(vec![]);
@@ -262,16 +260,13 @@ impl ClientState {
             self.awaiting_connection.remove(&resource);
             self.awaiting_connection_timers.remove(resource);
 
-            return Ok((
-                desc.clone(),
-                Some(ReuseConnection {
-                    resource_id: resource,
-                    gateway_id: gateway,
-                }),
-            ));
+            return Ok(Some(ReuseConnection {
+                resource_id: resource,
+                gateway_id: gateway,
+            }));
         }
 
-        Ok((desc.clone(), None))
+        Ok(None)
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -335,6 +330,32 @@ impl ClientState {
                 gateways: connected_gateway_ids,
             },
         );
+    }
+
+    pub fn create_peer_config_for_new_connection(
+        &mut self,
+        resource: ResourceId,
+        gateway: GatewayId,
+        shared_key: StaticSecret,
+    ) -> Result<PeerConfig, ConnlibError> {
+        let Some(public_key) = self.gateway_public_keys.remove(&gateway) else {
+            self.awaiting_connection.remove(&resource);
+            self.gateway_awaiting_connection.remove(&gateway);
+
+            return Err(Error::ControlProtocolError);
+        };
+
+        let desc = self
+            .resources
+            .get_by_id(&resource)
+            .ok_or(Error::ControlProtocolError)?;
+
+        Ok(PeerConfig {
+            persistent_keepalive: None,
+            public_key,
+            ips: desc.ips(),
+            preshared_key: SecretKey::new(Key(shared_key.to_bytes())),
+        })
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {

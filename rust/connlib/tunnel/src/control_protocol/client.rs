@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use boringtun::x25519::{PublicKey, StaticSecret};
-use connlib_shared::messages::SecretKey;
 use connlib_shared::{
     control::Reference,
     messages::{GatewayId, Key, Relay, RequestConnection, ResourceId},
@@ -17,7 +16,7 @@ use webrtc::{
     },
 };
 
-use crate::{peer::Peer, ClientState, Error, PeerConfig, Request, Result, Tunnel};
+use crate::{peer::Peer, ClientState, Error, Request, Result, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
 fn handle_connection_state_update<CB>(
@@ -85,15 +84,12 @@ where
             .parse()
             .map_err(|_| Error::InvalidReference)?;
 
-        let (resource_description, existing_connection) =
-            self.role_state.lock().on_new_connection(
-                resource_id,
-                gateway_id,
-                reference,
-                &mut self.peers_by_ip.write(),
-            )?;
-
-        if let Some(connection) = existing_connection {
+        if let Some(connection) = self.role_state.lock().attempt_to_reuse_connection(
+            resource_id,
+            gateway_id,
+            reference,
+            &mut self.peers_by_ip.write(),
+        )? {
             return Ok(Request::ReuseConnection(connection));
         }
 
@@ -130,30 +126,16 @@ where
             Box::pin(async move {
                 tracing::trace!("new_data_channel_opened");
                 let index = tunnel.next_index();
-                let gateway_public_key = {
-                    let mut role_state = tunnel.role_state.lock();
 
-                    let Some(gateway_public_key) =
-                        role_state.gateway_public_keys.remove(&gateway_id)
-                    else {
-                        role_state.awaiting_connection.remove(&resource_id);
-                        role_state.gateway_awaiting_connection.remove(&gateway_id);
-
+                let peer_config = match tunnel.role_state.lock().create_peer_config_for_new_connection(resource_id, gateway_id, p_key) {
+                    Ok(c) => c,
+                    Err(e) => {
                         tunnel.peer_connections.lock().remove(&gateway_id.into());
 
-                        let e = Error::ControlProtocolError;
                         tracing::warn!(err = ?e, "channel_open");
                         let _ = tunnel.callbacks.on_error(&e);
                         return;
-                    };
-
-                    gateway_public_key
-                };
-                let peer_config = PeerConfig {
-                    persistent_keepalive: None,
-                    public_key: gateway_public_key,
-                    ips: resource_description.ips(),
-                    preshared_key: SecretKey::new(Key(p_key.to_bytes())),
+                    }
                 };
 
                 d.on_close(tunnel.clone().on_dc_close_handler(index, gateway_id.into()));
