@@ -124,15 +124,10 @@ where
         // We have awaiting connection to prevent a race condition where
         // create_peer_connection hasn't added the thing to peer_connections
         // and we are finding another packet to the same address (otherwise we would just use peer_connections here)
-        let mut role_state = self.role_state.lock();
 
-        if role_state.is_awaiting_connection_to(packet.destination()) {
-            return;
-        }
-
-        tracing::trace!(resource_ip = %packet.destination(), "resource_connection_intent");
-
-        role_state.insert_new_awaiting_connection(packet.destination());
+        self.role_state
+            .lock()
+            .insert_new_awaiting_connection(packet.destination());
     }
 }
 
@@ -309,6 +304,12 @@ impl ClientState {
     }
 
     pub fn insert_new_awaiting_connection(&mut self, destination: IpAddr) {
+        if self.is_awaiting_connection_to(destination) {
+            return;
+        }
+
+        tracing::trace!(resource_ip = %destination, "resource_connection_intent");
+
         let Some(resource) = self.get_resource_by_destination(destination) else {
             return;
         };
