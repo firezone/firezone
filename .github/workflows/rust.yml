@@ -84,6 +84,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
-          key: ${{ ubuntu-22.04 }}-runner.arch
+          key: ubuntu-22.04-${{ runner.arch }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ./run_smoke_test.sh
