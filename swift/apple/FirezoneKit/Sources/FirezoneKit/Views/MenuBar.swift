@@ -312,8 +312,8 @@
         signInMenuItem.title = "Initializing"
         signInMenuItem.target = nil
         signOutMenuItem.isHidden = true
-      case .signedOut:
-        signInMenuItem.title = "Sign In"
+      case .signedOut(let accountId):
+        signInMenuItem.title = ((accountId == nil) ? "Enter Account ID" : "Sign In")
         signInMenuItem.target = self
         signInMenuItem.isEnabled = true
         signOutMenuItem.isHidden = true
