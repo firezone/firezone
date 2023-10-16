@@ -4,7 +4,7 @@ use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::messages::SecretKey;
 use connlib_shared::{
     control::Reference,
-    messages::{GatewayId, Key, Relay, RequestConnection, ResourceId, ReuseConnection},
+    messages::{GatewayId, Key, Relay, RequestConnection, ResourceId},
     Callbacks,
 };
 use rand_core::OsRng;
@@ -85,44 +85,18 @@ where
             .parse()
             .map_err(|_| Error::InvalidReference)?;
 
-        let (resource_description, existing_connection) = self
-            .role_state
-            .lock()
-            .on_new_connection(resource_id, gateway_id, reference, &self.peers_by_ip.read())?;
+        let (resource_description, existing_connection) =
+            self.role_state.lock().on_new_connection(
+                resource_id,
+                gateway_id,
+                reference,
+                &mut self.peers_by_ip.write(),
+            )?;
 
         if let Some(connection) = existing_connection {
             return Ok(Request::ReuseConnection(connection));
         }
 
-        {
-            let found = {
-                let mut peers_by_ip = self.peers_by_ip.write();
-                let peer = peers_by_ip
-                    .iter()
-                    .find_map(|(_, p)| (p.conn_id == gateway_id.into()).then_some(p))
-                    .cloned();
-                if let Some(peer) = peer {
-                    for ip in resource_description.ips() {
-                        peer.add_allowed_ip(ip);
-                        peers_by_ip.insert(ip, Arc::clone(&peer));
-                    }
-                    true
-                } else {
-                    false
-                }
-            };
-
-            if found {
-                self.role_state
-                    .lock()
-                    .awaiting_connection
-                    .remove(&resource_id);
-                return Ok(Request::ReuseConnection(ReuseConnection {
-                    resource_id,
-                    gateway_id,
-                }));
-            }
-        }
         let peer_connection = {
             let (peer_connection, receiver) = self.new_peer_connection(relays).await?;
             self.role_state

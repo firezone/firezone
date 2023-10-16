@@ -217,7 +217,7 @@ impl ClientState {
         resource: ResourceId,
         gateway: GatewayId,
         expected_attempts: usize,
-        connected_peers: &IpNetworkTable<Arc<Peer>>,
+        connected_peers: &mut IpNetworkTable<Arc<Peer>>,
     ) -> Result<(ResourceDescription, Option<ReuseConnection>), ConnlibError> {
         if self.is_connected_to(resource, connected_peers) {
             return Err(Error::UnexpectedConnectionDetails);
@@ -244,19 +244,48 @@ impl ClientState {
         match self.gateway_awaiting_connection.entry(gateway) {
             Entry::Occupied(mut occupied) => {
                 occupied.get_mut().extend(desc.ips());
-                Ok((
+                return Ok((
                     desc.clone(),
                     Some(ReuseConnection {
                         resource_id: resource,
                         gateway_id: gateway,
                     }),
-                ))
+                ));
             }
             Entry::Vacant(vacant) => {
                 vacant.insert(vec![]);
-                Ok((desc.clone(), None))
             }
         }
+
+        let found = {
+            let peer = connected_peers
+                .iter()
+                .find_map(|(_, p)| (p.conn_id == gateway.into()).then_some(p))
+                .cloned();
+            if let Some(peer) = peer {
+                for ip in desc.ips() {
+                    peer.add_allowed_ip(ip);
+                    connected_peers.insert(ip, Arc::clone(&peer));
+                }
+                true
+            } else {
+                false
+            }
+        };
+
+        if found {
+            self.awaiting_connection.remove(&resource);
+
+            return Ok((
+                desc.clone(),
+                Some(ReuseConnection {
+                    resource_id: resource,
+                    gateway_id: gateway,
+                }),
+            ));
+        }
+
+        Ok((desc.clone(), None))
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
