@@ -70,6 +70,7 @@ final class TunnelStore: ObservableObject {
         }
         self.tunnel = tunnel
         self.tunnelAuthStatus = tunnel.authStatus()
+        self.status = tunnel.connection.status
       } else {
         let tunnel = NETunnelProviderManager()
         tunnel.localizedDescription = "Firezone"
