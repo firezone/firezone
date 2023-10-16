@@ -54,7 +54,6 @@ jobs:
           key: ${{ matrix.runs-on }}-${{ runner.arch }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: dtolnay/rust-toolchain@stable
-        working-directory: ./rust
       - uses: actions/cache/restore@v3
         name: Restore Swift DerivedData Cache
         with:

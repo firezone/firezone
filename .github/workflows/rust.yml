@@ -33,6 +33,8 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           key: ${{ matrix.runs-on }}-${{ runner.arch }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt,clippy
       - run: cargo fmt -- --check
       - run: |
           cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
