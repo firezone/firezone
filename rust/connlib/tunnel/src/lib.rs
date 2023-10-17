@@ -207,13 +207,22 @@ where
             if let Poll::Ready(Some((index, conn_id))) =
                 self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
             {
-                stop_peer(
-                    &mut self.peers_by_ip.write(),
-                    &mut self.peer_connections.lock(),
-                    &mut self.close_connection_tasks.lock(),
-                    index,
-                    conn_id,
-                );
+                self.peers_by_ip.write().retain(|_, p| p.index != index);
+                if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
+                    match self
+                        .close_connection_tasks
+                        .lock()
+                        .try_push((index, conn_id), async move { conn.close().await })
+                    {
+                        Ok(()) => {}
+                        Err(PushError::BeyondCapacity(_)) => {
+                            tracing::warn!("Exceeded number of connection close tasks");
+                        }
+                        Err(PushError::Replaced(_)) => {
+                            tracing::warn!(%conn_id, %index, "Duplicate connection");
+                        }
+                    };
+                }
                 continue;
             }
 
@@ -456,34 +465,6 @@ where
 
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
-    }
-}
-
-#[tracing::instrument(
-    level = "trace",
-    skip(peers_by_ip, peer_connections, close_connection_tasks)
-)]
-fn stop_peer<TId>(
-    peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId>>>,
-    peer_connections: &mut HashMap<TId, Arc<RTCPeerConnection>>,
-    close_connection_tasks: &mut FuturesMap<(u32, TId), std::result::Result<(), webrtc::Error>>,
-    index: u32,
-    conn_id: TId,
-) where
-    TId: Eq + Hash + fmt::Debug + fmt::Display + Clone + Copy + Send + Unpin + 'static,
-{
-    peers_by_ip.retain(|_, p| p.index != index);
-    let conn = peer_connections.remove(&conn_id);
-    if let Some(conn) = conn {
-        match close_connection_tasks.try_push((index, conn_id), async move { conn.close().await }) {
-            Ok(()) => {}
-            Err(PushError::BeyondCapacity(_)) => {
-                tracing::warn!("Exceeded number of connection close tasks");
-            }
-            Err(PushError::Replaced(_)) => {
-                tracing::warn!(%conn_id, %index, "Duplicate connection");
-            }
-        };
     }
 }
 
