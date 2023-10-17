@@ -330,7 +330,7 @@ where
             .with_setting_engine(setting_engine)
             .build();
 
-        let (dc_closed_sender, dc_closed_receiver) = mpsc::channel(10);
+        let (stop_peer_command_sender, stop_peer_command_receiver) = mpsc::channel(10);
 
         Ok(Self {
             rate_limiter,
@@ -345,8 +345,8 @@ where
             iface_handler_abort,
             role_state: Default::default(),
             close_connection_tasks: Mutex::new(FuturesMap::new(Duration::from_secs(30), 100)),
-            stop_peer_command_receiver: Mutex::new(dc_closed_receiver),
-            stop_peer_command_sender: dc_closed_sender,
+            stop_peer_command_receiver: Mutex::new(stop_peer_command_receiver),
+            stop_peer_command_sender,
         })
     }
 
