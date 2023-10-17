@@ -13,7 +13,7 @@ buildscript {
 
         // Should match Kotlin compiler version
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22")
-        classpath("com.google.dagger:hilt-android-gradle-plugin:2.44.1")
+        classpath("com.google.dagger:hilt-android-gradle-plugin:2.48.1")
         classpath("com.google.android.libraries.mapsplatform.secrets-gradle-plugin:secrets-gradle-plugin:2.0.1")
         classpath("androidx.navigation:navigation-safe-args-gradle-plugin:2.5.3")
         classpath("org.mozilla.rust-android-gradle:plugin:0.9.3")
