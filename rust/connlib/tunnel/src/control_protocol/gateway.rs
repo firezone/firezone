@@ -10,15 +10,14 @@ use webrtc::peer_connection::{
     RTCPeerConnection,
 };
 
-use crate::{peer::Peer, ControlSignal, GatewayState, PeerConfig, Tunnel};
+use crate::{peer::Peer, GatewayState, PeerConfig, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
-fn handle_connection_state_update<C, CB>(
-    tunnel: &Arc<Tunnel<C, CB, GatewayState>>,
+fn handle_connection_state_update<CB>(
+    tunnel: &Arc<Tunnel<CB, GatewayState>>,
     state: RTCPeerConnectionState,
     client_id: ClientId,
 ) where
-    C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
     tracing::trace!(?state, "peer_state");
@@ -28,12 +27,11 @@ fn handle_connection_state_update<C, CB>(
 }
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
-fn set_connection_state_update<C, CB>(
-    tunnel: &Arc<Tunnel<C, CB, GatewayState>>,
+fn set_connection_state_update<CB>(
+    tunnel: &Arc<Tunnel<CB, GatewayState>>,
     peer_connection: &Arc<RTCPeerConnection>,
     client_id: ClientId,
 ) where
-    C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
     let tunnel = Arc::clone(tunnel);
@@ -45,9 +43,8 @@ fn set_connection_state_update<C, CB>(
     ));
 }
 
-impl<C, CB> Tunnel<C, CB, GatewayState>
+impl<CB> Tunnel<CB, GatewayState>
 where
-    C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
     /// Accept a connection request from a client.

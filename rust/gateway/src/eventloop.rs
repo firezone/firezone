@@ -1,4 +1,3 @@
-use crate::control::ControlSignaler;
 use crate::messages::{
     AllowAccess, BroadcastClientIceCandidates, ClientIceCandidates, ConnectionReady,
     EgressMessages, IngressMessages,
@@ -18,7 +17,7 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 pub const PHOENIX_TOPIC: &str = "gateway";
 
 pub struct Eventloop {
-    tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayState>>,
+    tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
     portal: PhoenixChannel<IngressMessages, ()>,
 
     // TODO: Strongly type request reference (currently `String`)
@@ -31,7 +30,7 @@ pub struct Eventloop {
 
 impl Eventloop {
     pub(crate) fn new(
-        tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayState>>,
+        tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
         portal: PhoenixChannel<IngressMessages, ()>,
     ) -> Self {
         Self {

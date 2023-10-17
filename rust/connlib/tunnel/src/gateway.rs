@@ -1,6 +1,6 @@
 use crate::device_channel::create_iface;
 use crate::{
-    ConnId, ControlSignal, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
+    ConnId, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
 use connlib_shared::error::ConnlibError;
@@ -13,9 +13,8 @@ use std::task::{ready, Context, Poll};
 use std::time::Duration;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
-impl<C, CB> Tunnel<C, CB, GatewayState>
+impl<CB> Tunnel<CB, GatewayState>
 where
-    C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
     /// Sets the interface configuration and starts background tasks.
@@ -44,12 +43,11 @@ where
 }
 
 /// Reads IP packets from the [`Device`] and handles them accordingly.
-async fn device_handler<C, CB>(
-    tunnel: Arc<Tunnel<C, CB, GatewayState>>,
+async fn device_handler<CB>(
+    tunnel: Arc<Tunnel<CB, GatewayState>>,
     mut device: Device,
 ) -> Result<(), ConnlibError>
 where
-    C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
     let mut buf = [0u8; MAX_UDP_SIZE];

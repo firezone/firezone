@@ -151,7 +151,7 @@ where
 
             let control_signaler = ControlSignaler { control_signal: connection.sender_with_topic("client".to_owned()) };
             let tunnel = fatal_error!(
-                Tunnel::new(private_key, control_signaler.clone(), callbacks.clone()).await,
+                Tunnel::new(private_key, callbacks.clone()).await,
                 runtime_stopper,
                 &callbacks
             );

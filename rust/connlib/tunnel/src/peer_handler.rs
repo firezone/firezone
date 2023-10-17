@@ -5,13 +5,12 @@ use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
 
 use crate::{
-    device_channel::DeviceIo, index::check_packet_index, peer::Peer, ControlSignal, RoleState,
-    Tunnel, MAX_UDP_SIZE,
+    device_channel::DeviceIo, index::check_packet_index, peer::Peer, RoleState, Tunnel,
+    MAX_UDP_SIZE,
 };
 
-impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
+impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
-    C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {

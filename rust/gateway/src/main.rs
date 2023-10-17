@@ -1,4 +1,3 @@
-use crate::control::ControlSignaler;
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use crate::messages::InitGateway;
 use anyhow::{Context, Result};
@@ -15,7 +14,6 @@ use std::sync::Arc;
 use tracing_subscriber::layer;
 use url::Url;
 
-mod control;
 mod eventloop;
 mod messages;
 
@@ -30,7 +28,7 @@ async fn main() -> Result<()> {
         SecretString::new(cli.common.secret),
         get_device_id(),
     )?;
-    let tunnel = Arc::new(Tunnel::new(private_key, ControlSignaler, CallbackHandler).await?);
+    let tunnel = Arc::new(Tunnel::new(private_key, CallbackHandler).await?);
 
     tokio::spawn(backoff::future::retry_notify(
         ExponentialBackoffBuilder::default()
@@ -48,7 +46,7 @@ async fn main() -> Result<()> {
 }
 
 async fn run(
-    tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayState>>,
+    tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
     connect_url: Url,
 ) -> Result<Infallible> {
     let (portal, init) = phoenix_channel::init::<InitGateway, _, _>(

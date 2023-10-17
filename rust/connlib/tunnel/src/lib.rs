@@ -13,7 +13,6 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use serde::{Deserialize, Serialize};
 
-use async_trait::async_trait;
 use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
@@ -136,23 +135,6 @@ impl From<connlib_shared::messages::Peer> for PeerConfig {
         }
     }
 }
-
-/// Trait used for out-going signals to control plane that are **required** to be made from inside the tunnel.
-///
-/// Generally, we try to return from the functions here rather than using this callback.
-#[async_trait]
-pub trait ControlSignal {
-    /// Signals to the control plane an intent to initiate a connection to the given resource.
-    ///
-    /// Used when a packet is found to a resource we have no connection stablished but is within the list of resources available for the client.
-    async fn signal_connection_to(
-        &self,
-        resource: &ResourceDescription,
-        connected_gateway_ids: &[GatewayId],
-        reference: usize,
-    ) -> Result<()>;
-}
-
 #[derive(Clone)]
 struct Device {
     config: Arc<IfaceConfig>,
@@ -184,7 +166,7 @@ impl Device {
 // TODO: We should use newtypes for each kind of Id
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets
 /// to communicate between peers.
-pub struct Tunnel<C: ControlSignal, CB: Callbacks, TRoleState> {
+pub struct Tunnel<CB: Callbacks, TRoleState> {
     next_index: Mutex<IndexLfsr>,
     // We use a tokio Mutex here since this is only read/write during config so there's no relevant performance impact
     device: tokio::sync::RwLock<Option<Device>>,
@@ -196,7 +178,6 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks, TRoleState> {
     resources_gateways: Mutex<HashMap<ResourceId, GatewayId>>,
     webrtc_api: API,
     resources: Arc<RwLock<ResourceTable<ResourceDescription>>>,
-    control_signaler: C,
     gateway_public_keys: Mutex<HashMap<GatewayId, PublicKey>>,
     callbacks: CallbackErrorFacade<CB>,
     iface_handler_abort: Mutex<Option<AbortHandle>>,
@@ -218,9 +199,8 @@ pub struct TunnelStats {
     gateway_public_keys: HashMap<GatewayId, String>,
 }
 
-impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
+impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
-    C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
@@ -284,9 +264,8 @@ pub enum Event<TId> {
     },
 }
 
-impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
+impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
-    C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
@@ -295,12 +274,8 @@ where
     /// # Parameters
     /// - `private_key`: wireguard's private key.
     /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
-    #[tracing::instrument(level = "trace", skip(private_key, control_signaler, callbacks))]
-    pub async fn new(
-        private_key: StaticSecret,
-        control_signaler: C,
-        callbacks: CB,
-    ) -> Result<Self> {
+    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
+    pub async fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
         let public_key = (&private_key).into();
         let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
         let peers_by_ip = RwLock::new(IpNetworkTable::new());
@@ -345,7 +320,6 @@ where
             webrtc_api,
             resources,
             device,
-            control_signaler,
             resources_gateways,
             callbacks: CallbackErrorFacade(callbacks),
             iface_handler_abort,

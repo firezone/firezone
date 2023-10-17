@@ -14,39 +14,15 @@ use connlib_shared::{
     Result,
 };
 
-use async_trait::async_trait;
-use firezone_tunnel::{ClientState, ControlSignal, Request, Tunnel};
+use firezone_tunnel::{ClientState, Request, Tunnel};
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use tokio::io::BufReader;
 use tokio::sync::Mutex;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
-#[async_trait]
-impl ControlSignal for ControlSignaler {
-    async fn signal_connection_to(
-        &self,
-        resource: &ResourceDescription,
-        connected_gateway_ids: &[GatewayId],
-        reference: usize,
-    ) -> Result<()> {
-        self.control_signal
-            // It's easier if self is not mut
-            .clone()
-            .send_with_ref(
-                EgressMessages::PrepareConnection {
-                    resource_id: resource.id(),
-                    connected_gateway_ids: connected_gateway_ids.to_vec(),
-                },
-                reference,
-            )
-            .await?;
-        Ok(())
-    }
-}
-
 pub struct ControlPlane<CB: Callbacks> {
-    pub tunnel: Arc<Tunnel<ControlSignaler, CB, ClientState>>,
+    pub tunnel: Arc<Tunnel<CB, ClientState>>,
     pub control_signaler: ControlSignaler,
     pub tunnel_init: Mutex<bool>,
 }

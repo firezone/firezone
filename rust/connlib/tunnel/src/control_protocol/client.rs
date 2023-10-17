@@ -17,16 +17,15 @@ use webrtc::{
     },
 };
 
-use crate::{peer::Peer, ClientState, ControlSignal, Error, PeerConfig, Request, Result, Tunnel};
+use crate::{peer::Peer, ClientState, Error, PeerConfig, Request, Result, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
-fn handle_connection_state_update<C, CB>(
-    tunnel: &Arc<Tunnel<C, CB, ClientState>>,
+fn handle_connection_state_update<CB>(
+    tunnel: &Arc<Tunnel<CB, ClientState>>,
     state: RTCPeerConnectionState,
     gateway_id: GatewayId,
     resource_id: ResourceId,
 ) where
-    C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
     tracing::trace!("peer_state");
@@ -40,13 +39,12 @@ fn handle_connection_state_update<C, CB>(
 }
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
-fn set_connection_state_update<C, CB>(
-    tunnel: &Arc<Tunnel<C, CB, ClientState>>,
+fn set_connection_state_update<CB>(
+    tunnel: &Arc<Tunnel<CB, ClientState>>,
     peer_connection: &Arc<RTCPeerConnection>,
     gateway_id: GatewayId,
     resource_id: ResourceId,
 ) where
-    C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
     let tunnel = Arc::clone(tunnel);
@@ -60,9 +58,8 @@ fn set_connection_state_update<C, CB>(
     ));
 }
 
-impl<C, CB> Tunnel<C, CB, ClientState>
+impl<CB> Tunnel<CB, ClientState>
 where
-    C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
     /// Initiate an ice connection request.

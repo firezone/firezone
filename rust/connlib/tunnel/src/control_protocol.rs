@@ -19,7 +19,7 @@ use webrtc::{
     },
 };
 
-use crate::{ConnId, ControlSignal, RoleState, Tunnel};
+use crate::{ConnId, RoleState, Tunnel};
 
 mod client;
 mod gateway;
@@ -33,9 +33,8 @@ pub enum Request {
     ReuseConnection(ReuseConnection),
 }
 
-impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
+impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
-    C: ControlSignal + Clone + Send + Sync + 'static,
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
