@@ -50,16 +50,19 @@ jobs:
             context: rust
             build-args: |
               PACKAGE=firezone-gateway
+              BUILD_TYPE=debug
           - image_name: relay
             target: runtime
             context: rust
             build-args: |
               PACKAGE=relay
+              BUILD_TYPE=debug
           - image_name: client
             target: runtime
             context: rust
             build-args: |
               PACKAGE=firezone-headless-client
+              BUILD_TYPE=debug
           - image_name: elixir
             target: compiler
             context: elixir

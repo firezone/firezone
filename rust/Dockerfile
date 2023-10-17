@@ -11,16 +11,18 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef as builder
+ARG BUILD_TYPE=release
 COPY --from=planner /build/recipe.json .
-RUN cargo chef cook --release --recipe-path recipe.json
+RUN cargo chef cook --$BUILD_TYPE --recipe-path recipe.json
 COPY . .
 ARG PACKAGE
-RUN cargo build -p $PACKAGE --release
+RUN cargo build -p $PACKAGE --$BUILD_TYPE
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
+ARG BUILD_TYPE
 ARG PACKAGE
-COPY --from=builder /build/target/release/$PACKAGE .
+COPY --from=builder /build/target/$BUILD_TYPE/$PACKAGE .
 RUN ln -s ./${PACKAGE} ./app
 COPY ./docker-init.sh .
 ENV RUST_BACKTRACE=1
