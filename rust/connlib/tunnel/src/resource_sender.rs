@@ -13,15 +13,6 @@ where
     TRoleState: RoleState,
 {
     #[inline(always)]
-    fn update_packet(&self, packet: &mut [u8], dst_addr: IpAddr) {
-        let Some(mut pkt) = MutableIpPacket::new(packet) else {
-            return;
-        };
-        pkt.set_dst(dst_addr);
-        pkt.update_checksum();
-    }
-
-    #[inline(always)]
     fn send_packet(
         &self,
         device_io: &DeviceIo,
@@ -53,7 +44,7 @@ where
         };
 
         let (dst_addr, _dst_port) = get_resource_addr_and_port(peer, &resource, &addr, &dst)?;
-        self.update_packet(packet, dst_addr);
+        update_packet(packet, dst_addr);
         self.send_packet(device_io, packet, addr)?;
         Ok(())
     }
@@ -73,6 +64,15 @@ where
             Ok(())
         }
     }
+}
+
+#[inline(always)]
+fn update_packet(packet: &mut [u8], dst_addr: IpAddr) {
+    let Some(mut pkt) = MutableIpPacket::new(packet) else {
+        return;
+    };
+    pkt.set_dst(dst_addr);
+    pkt.update_checksum();
 }
 
 fn get_matching_version_ip(addr: &IpAddr, ip: &IpAddr) -> Option<IpAddr> {
