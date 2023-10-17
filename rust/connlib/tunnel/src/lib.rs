@@ -344,31 +344,6 @@ where
         });
     }
 
-    fn remove_expired_peers(self: &Arc<Self>) {
-        let mut peers_by_ip = self.peers_by_ip.write();
-
-        for (_, peer) in peers_by_ip.iter() {
-            peer.expire_resources();
-            if peer.is_emptied() {
-                tracing::trace!(index = peer.index, "peer_expired");
-                let conn = self.peer_connections.lock().remove(&peer.conn_id);
-                let p = peer.clone();
-
-                // We are holding a Mutex, particularly a write one, we don't want to make a blocking call
-                tokio::spawn(async move {
-                    let _ = p.shutdown().await;
-                    if let Some(conn) = conn {
-                        // TODO: it seems that even closing the stream there are messages to the relay
-                        // see where they come from.
-                        let _ = conn.close().await;
-                    }
-                });
-            }
-        }
-
-        peers_by_ip.retain(|_, p| !p.is_emptied());
-    }
-
     fn start_peers_refresh_timer(self: &Arc<Self>) {
         let tunnel = self.clone();
 
@@ -378,7 +353,10 @@ where
             let mut dst_buf = [0u8; MAX_UDP_SIZE];
 
             loop {
-                tunnel.remove_expired_peers();
+                remove_expired_peers(
+                    &mut tunnel.peers_by_ip.write(),
+                    &mut tunnel.peer_connections.lock(),
+                );
 
                 let peers: Vec<_> = tunnel
                     .peers_by_ip
@@ -437,6 +415,32 @@ where
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
+}
+
+fn remove_expired_peers(
+    peers_by_ip: &mut IpNetworkTable<Arc<Peer>>,
+    peer_connections: &mut HashMap<ConnId, Arc<RTCPeerConnection>>,
+) {
+    for (_, peer) in peers_by_ip.iter() {
+        peer.expire_resources();
+        if peer.is_emptied() {
+            tracing::trace!(index = peer.index, "peer_expired");
+            let conn = peer_connections.remove(&peer.conn_id);
+            let p = peer.clone();
+
+            // We are holding a Mutex, particularly a write one, we don't want to make a blocking call
+            tokio::spawn(async move {
+                let _ = p.shutdown().await;
+                if let Some(conn) = conn {
+                    // TODO: it seems that even closing the stream there are messages to the relay
+                    // see where they come from.
+                    let _ = conn.close().await;
+                }
+            });
+        }
+    }
+
+    peers_by_ip.retain(|_, p| !p.is_emptied());
 }
 
 /// Dedicated trait for abstracting over the different ICE states.
