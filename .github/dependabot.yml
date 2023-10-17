@@ -39,4 +39,7 @@ updates:
     directory: "kotlin/android"
     schedule:
       interval: "daily"
-  # TODO: Apple package ecosystem
+  - package-ecosystem: "swift"
+    directory: "swift/apple/FirezoneKit"
+    schedule:
+      interval: "daily"
