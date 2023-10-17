@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use boringtun::noise::{handshake::parse_handshake_anon, Packet, TunnResult};
+use boringtun::x25519::{PublicKey, StaticSecret};
 use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
 use futures_util::SinkExt;
@@ -16,18 +17,6 @@ where
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
-    #[inline(always)]
-    fn is_wireguard_packet_ok(&self, parsed_packet: &Packet, peer: &Peer<TRoleState::Id>) -> bool {
-        match &parsed_packet {
-            Packet::HandshakeInit(p) => {
-                parse_handshake_anon(&self.private_key, &self.public_key, p).is_ok()
-            }
-            Packet::HandshakeResponse(p) => check_packet_index(p.receiver_idx, peer.index),
-            Packet::PacketCookieReply(p) => check_packet_index(p.receiver_idx, peer.index),
-            Packet::PacketData(p) => check_packet_index(p.receiver_idx, peer.index),
-        }
-    }
-
     #[inline(always)]
     async fn verify_packet<'a>(
         self: &Arc<Self>,
@@ -101,7 +90,7 @@ where
         dst: &mut [u8],
     ) -> Result<()> {
         let parsed_packet = self.verify_packet(peer, src, dst).await?;
-        if !self.is_wireguard_packet_ok(&parsed_packet, peer) {
+        if !is_wireguard_packet_ok(&self.private_key, &self.public_key, &parsed_packet, peer) {
             tracing::error!("wireguard_verification");
             return Err(Error::BadPacket);
         }
@@ -182,5 +171,20 @@ where
             .clone()
             .send((peer.index, peer.conn_id))
             .await;
+    }
+}
+
+#[inline(always)]
+fn is_wireguard_packet_ok<TId>(
+    private_key: &StaticSecret,
+    public_key: &PublicKey,
+    parsed_packet: &Packet,
+    peer: &Peer<TId>,
+) -> bool {
+    match parsed_packet {
+        Packet::HandshakeInit(p) => parse_handshake_anon(private_key, public_key, p).is_ok(),
+        Packet::HandshakeResponse(p) => check_packet_index(p.receiver_idx, peer.index),
+        Packet::PacketCookieReply(p) => check_packet_index(p.receiver_idx, peer.index),
+        Packet::PacketData(p) => check_packet_index(p.receiver_idx, peer.index),
     }
 }
