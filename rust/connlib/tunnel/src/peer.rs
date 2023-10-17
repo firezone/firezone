@@ -15,16 +15,16 @@ use pnet_packet::MutablePacket;
 use secrecy::ExposeSecret;
 use webrtc::data::data_channel::DataChannel;
 
-use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, ConnId, PeerConfig};
+use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, PeerConfig};
 
 type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 
-pub(crate) struct Peer {
+pub(crate) struct Peer<TId> {
     pub tunnel: Mutex<Tunn>,
     pub index: u32,
     pub allowed_ips: RwLock<IpNetworkTable<()>>,
     pub channel: Arc<DataChannel>,
-    pub conn_id: ConnId,
+    pub conn_id: TId,
     pub resources: Option<RwLock<ResourceTable<ExpiryingResource>>>,
     // Here we store the address that we obtained for the resource that the peer corresponds to.
     // This can have the following problem:
@@ -41,25 +41,28 @@ pub(crate) struct Peer {
 // TODO: For now we only use these fields with debug
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub(crate) struct PeerStats {
+pub(crate) struct PeerStats<TId> {
     pub index: u32,
     pub allowed_ips: Vec<IpNetwork>,
-    pub conn_id: ConnId,
+    pub conn_id: TId,
     pub dns_resources: HashMap<String, ExpiryingResource>,
     pub network_resources: HashMap<IpNetwork, ExpiryingResource>,
     pub translated_resource_addresses: HashMap<IpAddr, ResourceId>,
 }
 
 #[derive(Debug)]
-pub(crate) struct EncapsulatedPacket<'a> {
+pub(crate) struct EncapsulatedPacket<'a, Id> {
     pub index: u32,
-    pub conn_id: ConnId,
+    pub conn_id: Id,
     pub channel: Arc<DataChannel>,
     pub encapsulate_result: TunnResult<'a>,
 }
 
-impl Peer {
-    pub(crate) fn stats(&self) -> PeerStats {
+impl<TId> Peer<TId>
+where
+    TId: Copy,
+{
+    pub(crate) fn stats(&self) -> PeerStats<TId> {
         let (network_resources, dns_resources) = self.resources.as_ref().map_or_else(
             || (HashMap::new(), HashMap::new()),
             |resources| {
@@ -92,9 +95,9 @@ impl Peer {
         index: u32,
         peer_config: PeerConfig,
         channel: Arc<DataChannel>,
-        conn_id: ConnId,
+        conn_id: TId,
         resource: Option<(ResourceDescription, DateTime<Utc>)>,
-    ) -> Peer {
+    ) -> Peer<TId> {
         let tunnel = Tunn::new(
             private_key.clone(),
             peer_config.public_key,
@@ -190,7 +193,7 @@ impl Peer {
         &self,
         packet: &mut MutableIpPacket<'a>,
         dst: &'a mut [u8],
-    ) -> Result<EncapsulatedPacket<'a>> {
+    ) -> Result<EncapsulatedPacket<'a, TId>> {
         if let Some(resource) = self.get_translation(packet.to_immutable().source()) {
             let ResourceDescription::Dns(resource) = resource else {
                 tracing::error!(

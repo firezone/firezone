@@ -11,7 +11,6 @@ use bytes::Bytes;
 use connlib_shared::{messages::Key, CallbackErrorFacade, Callbacks, Error};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use serde::{Deserialize, Serialize};
 
 use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
@@ -27,12 +26,13 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
+use std::hash::Hash;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 use connlib_shared::{
-    messages::{ClientId, GatewayId, ResourceDescription, ResourceId},
+    messages::{GatewayId, ResourceDescription},
     Result,
 };
 
@@ -79,41 +79,6 @@ const MAX_CONCURRENT_ICE_GATHERING: usize = 100;
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
-
-#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
-pub enum ConnId {
-    Gateway(GatewayId),
-    Client(ClientId),
-    Resource(ResourceId),
-}
-
-impl From<GatewayId> for ConnId {
-    fn from(id: GatewayId) -> Self {
-        Self::Gateway(id)
-    }
-}
-
-impl From<ClientId> for ConnId {
-    fn from(id: ClientId) -> Self {
-        Self::Client(id)
-    }
-}
-
-impl From<ResourceId> for ConnId {
-    fn from(id: ResourceId) -> Self {
-        Self::Resource(id)
-    }
-}
-
-impl fmt::Display for ConnId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ConnId::Gateway(inner) => fmt::Display::fmt(inner, f),
-            ConnId::Client(inner) => fmt::Display::fmt(inner, f),
-            ConnId::Resource(inner) => fmt::Display::fmt(inner, f),
-        }
-    }
-}
 
 /// Represent's the tunnel actual peer's config
 /// Obtained from connlib_shared's Peer
@@ -166,15 +131,15 @@ impl Device {
 // TODO: We should use newtypes for each kind of Id
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets
 /// to communicate between peers.
-pub struct Tunnel<CB: Callbacks, TRoleState> {
+pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     next_index: Mutex<IndexLfsr>,
     // We use a tokio Mutex here since this is only read/write during config so there's no relevant performance impact
     device: tokio::sync::RwLock<Option<Device>>,
     rate_limiter: Arc<RateLimiter>,
     private_key: StaticSecret,
     public_key: PublicKey,
-    peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
-    peer_connections: Mutex<HashMap<ConnId, Arc<RTCPeerConnection>>>,
+    peers_by_ip: RwLock<IpNetworkTable<Arc<Peer<TRoleState::Id>>>>,
+    peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCPeerConnection>>>,
     webrtc_api: API,
     callbacks: CallbackErrorFacade<CB>,
     iface_handler_abort: Mutex<Option<AbortHandle>>,
@@ -186,10 +151,10 @@ pub struct Tunnel<CB: Callbacks, TRoleState> {
 // TODO: For now we only use these fields with debug
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct TunnelStats {
+pub struct TunnelStats<TId> {
     public_key: String,
-    peers_by_ip: HashMap<IpNetwork, PeerStats>,
-    peer_connections: Vec<ConnId>,
+    peers_by_ip: HashMap<IpNetwork, PeerStats<TId>>,
+    peer_connections: Vec<TId>,
 }
 
 impl<CB, TRoleState> Tunnel<CB, TRoleState>
@@ -197,7 +162,7 @@ where
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
-    pub fn stats(&self) -> TunnelStats {
+    pub fn stats(&self) -> TunnelStats<TRoleState::Id> {
         let peers_by_ip = self
             .peers_by_ip
             .read()
@@ -222,7 +187,10 @@ where
     }
 }
 
-pub(crate) fn peer_by_ip(peers_by_ip: &IpNetworkTable<Arc<Peer>>, ip: IpAddr) -> Option<Arc<Peer>> {
+pub(crate) fn peer_by_ip<Id>(
+    peers_by_ip: &IpNetworkTable<Arc<Peer<Id>>>,
+    ip: IpAddr,
+) -> Option<Arc<Peer<Id>>> {
     peers_by_ip.longest_match(ip).map(|(_, peer)| peer).cloned()
 }
 
@@ -297,7 +265,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn stop_peer(&self, index: u32, conn_id: ConnId) {
+    async fn stop_peer(&self, index: u32, conn_id: TRoleState::Id) {
         self.peers_by_ip.write().retain(|_, p| p.index != index);
         let conn = self.peer_connections.lock().remove(&conn_id);
         if let Some(conn) = conn {
@@ -308,7 +276,7 @@ where
         }
     }
 
-    async fn peer_refresh(&self, peer: &Peer, dst_buf: &mut [u8; MAX_UDP_SIZE]) {
+    async fn peer_refresh(&self, peer: &Peer<TRoleState::Id>, dst_buf: &mut [u8; MAX_UDP_SIZE]) {
         let update_timers_result = peer.update_timers(&mut dst_buf[..]);
 
         match update_timers_result {
@@ -413,10 +381,12 @@ where
     }
 }
 
-fn remove_expired_peers(
-    peers_by_ip: &mut IpNetworkTable<Arc<Peer>>,
-    peer_connections: &mut HashMap<ConnId, Arc<RTCPeerConnection>>,
-) {
+fn remove_expired_peers<TId>(
+    peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId>>>,
+    peer_connections: &mut HashMap<TId, Arc<RTCPeerConnection>>,
+) where
+    TId: Eq + Hash + Copy + Send + Sync + 'static,
+{
     for (_, peer) in peers_by_ip.iter() {
         peer.expire_resources();
         if peer.is_emptied() {
@@ -444,7 +414,7 @@ fn remove_expired_peers(
 /// By design, this trait does not allow any operations apart from advancing via [`RoleState::poll_next_event`].
 /// The state should only be modified when the concrete type is known, e.g. [`ClientState`] or [`GatewayState`].
 pub trait RoleState: Default + Send + 'static {
-    type Id: fmt::Debug;
+    type Id: fmt::Debug + Eq + Hash + Copy + Send + Sync + 'static;
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
 }

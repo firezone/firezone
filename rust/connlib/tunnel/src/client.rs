@@ -93,7 +93,7 @@ where
     // FIXME: this cleanup connection is wrong!
     pub fn cleanup_connection(&self, id: ResourceId) {
         self.role_state.lock().on_connection_failed(id);
-        self.peer_connections.lock().remove(&id.into());
+        // self.peer_connections.lock().remove(&id.into());
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -203,7 +203,7 @@ impl ClientState {
         resource: ResourceId,
         gateway: GatewayId,
         expected_attempts: usize,
-        connected_peers: &mut IpNetworkTable<Arc<Peer>>,
+        connected_peers: &mut IpNetworkTable<Arc<Peer<GatewayId>>>,
     ) -> Result<Option<ReuseConnection>, ConnlibError> {
         if self.is_connected_to(resource, connected_peers) {
             return Err(Error::UnexpectedConnectionDetails);
@@ -243,7 +243,7 @@ impl ClientState {
         let found = {
             let peer = connected_peers
                 .iter()
-                .find_map(|(_, p)| (p.conn_id == gateway.into()).then_some(p))
+                .find_map(|(_, p)| (p.conn_id == gateway).then_some(p))
                 .cloned();
             if let Some(peer) = peer {
                 for ip in desc.ips() {
@@ -398,7 +398,7 @@ impl ClientState {
     fn is_connected_to(
         &self,
         resource: ResourceId,
-        connected_peers: &IpNetworkTable<Arc<Peer>>,
+        connected_peers: &IpNetworkTable<Arc<Peer<GatewayId>>>,
     ) -> bool {
         let Some(resource) = self.resources.get_by_id(&resource) else {
             return false;
