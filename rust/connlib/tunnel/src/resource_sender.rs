@@ -13,20 +13,6 @@ where
     TRoleState: RoleState,
 {
     #[inline(always)]
-    fn send_packet(
-        &self,
-        device_io: &DeviceIo,
-        packet: &mut [u8],
-        dst_addr: IpAddr,
-    ) -> std::io::Result<()> {
-        match dst_addr {
-            IpAddr::V4(_) => device_io.write4(packet)?,
-            IpAddr::V6(_) => device_io.write6(packet)?,
-        };
-        Ok(())
-    }
-
-    #[inline(always)]
     pub(crate) fn packet_allowed(
         &self,
         device_io: &DeviceIo,
@@ -39,13 +25,13 @@ where
             // and we just trust gateways.
             // In gateways this should never happen.
             tracing::trace!(target: "wire", action = "writing", to = "iface", %addr, bytes = %packet.len());
-            self.send_packet(device_io, packet, addr)?;
+            send_packet(device_io, packet, addr)?;
             return Ok(());
         };
 
         let (dst_addr, _dst_port) = get_resource_addr_and_port(peer, &resource, &addr, &dst)?;
         update_packet(packet, dst_addr);
-        self.send_packet(device_io, packet, addr)?;
+        send_packet(device_io, packet, addr)?;
         Ok(())
     }
 
@@ -64,6 +50,15 @@ where
             Ok(())
         }
     }
+}
+
+#[inline(always)]
+fn send_packet(device_io: &DeviceIo, packet: &mut [u8], dst_addr: IpAddr) -> std::io::Result<()> {
+    match dst_addr {
+        IpAddr::V4(_) => device_io.write4(packet)?,
+        IpAddr::V6(_) => device_io.write6(packet)?,
+    };
+    Ok(())
 }
 
 #[inline(always)]
