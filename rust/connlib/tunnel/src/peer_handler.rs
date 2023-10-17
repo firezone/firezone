@@ -102,10 +102,9 @@ where
             .await?
         {
             // Flush pending queue
-            while let TunnResult::WriteToNetwork(packet) = {
-                let res = peer.tunnel.lock().decapsulate(None, &[], dst);
-                res
-            } {
+            while let TunnResult::WriteToNetwork(packet) =
+                peer.tunnel.lock().decapsulate(None, &[], dst)
+            {
                 let bytes = Bytes::copy_from_slice(packet);
                 let callbacks = self.callbacks.clone();
                 let peer = peer.clone();
