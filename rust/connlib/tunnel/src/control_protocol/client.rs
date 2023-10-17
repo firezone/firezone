@@ -16,6 +16,7 @@ use webrtc::{
     },
 };
 
+use crate::control_protocol::new_peer_connection;
 use crate::{peer::Peer, ClientState, Error, Request, Result, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
@@ -94,7 +95,7 @@ where
         }
 
         let peer_connection = {
-            let (peer_connection, receiver) = self.new_peer_connection(relays).await?;
+            let (peer_connection, receiver) = new_peer_connection(&self.webrtc_api, relays).await?;
             self.role_state
                 .lock()
                 .add_waiting_ice_receiver(gateway_id, receiver);

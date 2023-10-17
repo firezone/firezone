@@ -10,6 +10,7 @@ use webrtc::peer_connection::{
     RTCPeerConnection,
 };
 
+use crate::control_protocol::new_peer_connection;
 use crate::{peer::Peer, GatewayState, PeerConfig, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
@@ -69,7 +70,7 @@ where
         expires_at: DateTime<Utc>,
         resource: ResourceDescription,
     ) -> Result<RTCSessionDescription> {
-        let (peer_connection, receiver) = self.new_peer_connection(relays).await?;
+        let (peer_connection, receiver) = new_peer_connection(&self.webrtc_api, relays).await?;
         self.role_state
             .lock()
             .add_new_ice_receiver(client_id, receiver);

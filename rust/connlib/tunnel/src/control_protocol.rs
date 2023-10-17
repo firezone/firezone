@@ -64,59 +64,6 @@ where
         })
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn new_peer_connection(
-        self: &Arc<Self>,
-        relays: Vec<Relay>,
-    ) -> Result<(Arc<RTCPeerConnection>, mpsc::Receiver<RTCIceCandidateInit>)> {
-        let config = RTCConfiguration {
-            ice_servers: relays
-                .into_iter()
-                .map(|srv| match srv {
-                    Relay::Stun(stun) => RTCIceServer {
-                        urls: vec![stun.uri],
-                        ..Default::default()
-                    },
-                    Relay::Turn(turn) => RTCIceServer {
-                        urls: vec![turn.uri],
-                        username: turn.username,
-                        credential: turn.password,
-                        // TODO: check what this is used for
-                        credential_type: RTCIceCredentialType::Password,
-                    },
-                })
-                .collect(),
-            ..Default::default()
-        };
-
-        let peer_connection = Arc::new(self.webrtc_api.new_peer_connection(config).await?);
-
-        let (ice_candidate_tx, ice_candidate_rx) = mpsc::channel(ICE_CANDIDATE_BUFFER);
-
-        peer_connection.on_ice_candidate(Box::new(move |candidate| {
-            let Some(candidate) = candidate else {
-                return Box::pin(async {});
-            };
-
-            let mut ice_candidate_tx = ice_candidate_tx.clone();
-            Box::pin(async move {
-                let ice_candidate = match candidate.to_json() {
-                    Ok(ice_candidate) => ice_candidate,
-                    Err(e) => {
-                        tracing::warn!("Failed to serialize ICE candidate to JSON: {e}",);
-                        return;
-                    }
-                };
-
-                if ice_candidate_tx.send(ice_candidate).await.is_err() {
-                    debug_assert!(false, "receiver was dropped before sender")
-                }
-            })
-        }));
-
-        Ok((peer_connection, ice_candidate_rx))
-    }
-
     pub async fn add_ice_candidate(
         &self,
         conn_id: ConnId,
@@ -131,4 +78,57 @@ where
         peer_connection.add_ice_candidate(ice_candidate).await?;
         Ok(())
     }
+}
+
+#[tracing::instrument(level = "trace", skip(webrtc))]
+pub async fn new_peer_connection(
+    webrtc: &webrtc::api::API,
+    relays: Vec<Relay>,
+) -> Result<(Arc<RTCPeerConnection>, mpsc::Receiver<RTCIceCandidateInit>)> {
+    let config = RTCConfiguration {
+        ice_servers: relays
+            .into_iter()
+            .map(|srv| match srv {
+                Relay::Stun(stun) => RTCIceServer {
+                    urls: vec![stun.uri],
+                    ..Default::default()
+                },
+                Relay::Turn(turn) => RTCIceServer {
+                    urls: vec![turn.uri],
+                    username: turn.username,
+                    credential: turn.password,
+                    // TODO: check what this is used for
+                    credential_type: RTCIceCredentialType::Password,
+                },
+            })
+            .collect(),
+        ..Default::default()
+    };
+
+    let peer_connection = Arc::new(webrtc.new_peer_connection(config).await?);
+
+    let (ice_candidate_tx, ice_candidate_rx) = mpsc::channel(ICE_CANDIDATE_BUFFER);
+
+    peer_connection.on_ice_candidate(Box::new(move |candidate| {
+        let Some(candidate) = candidate else {
+            return Box::pin(async {});
+        };
+
+        let mut ice_candidate_tx = ice_candidate_tx.clone();
+        Box::pin(async move {
+            let ice_candidate = match candidate.to_json() {
+                Ok(ice_candidate) => ice_candidate,
+                Err(e) => {
+                    tracing::warn!("Failed to serialize ICE candidate to JSON: {e}",);
+                    return;
+                }
+            };
+
+            if ice_candidate_tx.send(ice_candidate).await.is_err() {
+                debug_assert!(false, "receiver was dropped before sender")
+            }
+        })
+    }));
+
+    Ok((peer_connection, ice_candidate_rx))
 }
