@@ -8,6 +8,8 @@ jobs:
     defaults:
       run:
         working-directory: ./elixir
+    permissions:
+      checks: write
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
