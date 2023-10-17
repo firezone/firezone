@@ -39,8 +39,12 @@ updates:
     directory: "kotlin/android/"
     schedule:
       interval: "daily"
+  - package-ecosystem: "gradle"
+    directory: "kotlin/android/app/"
+    schedule:
+      interval: "daily"
   - package-ecosystem: "swift"
-    directory: "swift/apple/FirezoneKit/"
+    directory: "swift/apple/Firezone.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/"
     schedule:
       interval: "daily"
   - package-ecosystem: "npm"
@@ -49,5 +53,9 @@ updates:
       interval: "daily"
   - package-ecosystem: "npm"
     directory: "elixir/apps/web/assets/"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "terraform"
+    directory: "terraform/environments/staging/"
     schedule:
       interval: "daily"
