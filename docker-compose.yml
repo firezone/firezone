@@ -122,7 +122,7 @@ services:
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/client:main
       args:
-        PACKAGE: firezone-headless-client
+        PACKAGE: firezone-linux-client
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/client:${VERSION:-main}
     dns:
       - 100.100.111.1

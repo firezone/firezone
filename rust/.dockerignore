@@ -1,3 +1,6 @@
 target/
+!target/*/release/relay
+!target/*/release/firezone-gateway
+!target/*/release/firezone-headless-client
 connlib/clients/android/connlib/build/
 connlib/clients/android/connlib/jniLibs/

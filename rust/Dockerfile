@@ -1,4 +1,7 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1.72-slim-bookworm as chef
+# Global args to use in build commands
+ARG ALPINE_VERSION="3.18"
+
+FROM lukemathwalker/cargo-chef:latest-rust-alpine${ALPINE_VERSION} as chef
 
 # See https://github.com/LukeMathWalker/cargo-chef/issues/231.
 COPY rust-toolchain.toml rust-toolchain.toml
@@ -11,35 +14,33 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef as builder
-ARG BUILD_TYPE=release
 COPY --from=planner /build/recipe.json .
-RUN cargo chef cook --$BUILD_TYPE --recipe-path recipe.json
+RUN cargo chef cook --recipe-path recipe.json
 COPY . .
+ARG TARGET="x86_64-unknown-linux-musl"
 ARG PACKAGE
-RUN cargo build -p $PACKAGE --$BUILD_TYPE
+RUN cargo build -p ${PACKAGE} --target ${TARGET}
 
-FROM debian:bookworm-slim AS runtime
-WORKDIR /app
-ARG BUILD_TYPE
-ARG PACKAGE
-COPY --from=builder /build/target/$BUILD_TYPE/$PACKAGE .
-RUN ln -s ./${PACKAGE} ./app
-COPY ./docker-init.sh .
+# Minimal test image for GH actions
+FROM alpine:${ALPINE_VERSION} AS debug
+WORKDIR /bin
 ENV RUST_BACKTRACE=1
-ENV PATH "/app:$PATH"
-ENV PACKAGE_NAME ${PACKAGE}
-RUN apt-get -qq update \
-    && DEBIAN_FRONTEND=noninteractive \
-    apt-get -qq install \
-      iputils-ping \
-      iptables \
-      lsof \
-      iproute2 \
-      curl \
-      iperf3 \
-      ca-certificates \
-    && apt-get -qq clean \
-    && rm -rf /var/lib/apt/lists/*
-
+COPY ./docker-init.sh .
+ARG TARGET="x86_64-unknown-linux-musl"
+ARG PACKAGE
+COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .
 ENTRYPOINT ["docker-init.sh"]
-CMD ["app"]
+CMD ${PACKAGE}
+
+
+# Minimal platform-agnostic release image
+FROM alpine:${ALPINE_VERSION} AS release
+WORKDIR /bin
+ENV RUST_BACKTRACE=1
+COPY ./docker-init.sh .
+ARG TARGET
+ARG PACKAGE
+# Build first with `cross build --target ${TARGET} -p ${PACKAGE} --release`
+COPY ./target/${TARGET}/release/${PACKAGE} .
+ENTRYPOINT ["docker-init.sh"]
+CMD ${PACKAGE}

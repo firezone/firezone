@@ -45,24 +45,20 @@ jobs:
             build-args: |
               APPLICATION_NAME=web
           - image_name: gateway
-            push: ${{ github.ref == 'refs/heads/main' }}
-            target: runtime
+            target: debug
             context: rust
             build-args: |
               PACKAGE=firezone-gateway
-              BUILD_TYPE=debug
           - image_name: relay
-            target: runtime
+            target: debug
             context: rust
             build-args: |
               PACKAGE=relay
-              BUILD_TYPE=debug
           - image_name: client
-            target: runtime
+            target: debug
             context: rust
             build-args: |
               PACKAGE=firezone-headless-client
-              BUILD_TYPE=debug
           - image_name: elixir
             target: compiler
             context: elixir
