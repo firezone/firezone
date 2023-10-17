@@ -22,6 +22,10 @@ buildscript {
     }
 }
 
+plugins {
+    id("com.google.firebase.appdistribution") version "4.0.0" apply false
+}
+
 tasks.register("clean", Delete::class) {
     delete(rootProject.buildDir)
 }

@@ -1,7 +1,0 @@
-# These will get picked up by release drafter to automate our changelogs
-kind/feature: ['feat/*', 'feature/*']
-kind/chore: ['chore/*', 'ci/*']
-kind/bug: ['fix/*', 'bug/*']
-kind/docs: ['docs/*']
-kind/refactor: ['refactor/*']
-kind/security: ['sec/*', 'security/*']
