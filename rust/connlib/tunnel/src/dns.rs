@@ -54,8 +54,6 @@ impl<T> ResolveStrategy<T, DnsQueryParams> {
     }
 }
 
-impl<'a, T> ResolveStrategy<T, DnsQuery<'a>> {}
-
 // We don't need to support multiple questions/qname in a single query because
 // nobody does it and since this run with each packet we want to squeeze as much optimization
 // as we can therefore we won't do it.
