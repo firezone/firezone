@@ -51,3 +51,7 @@ updates:
     directory: "elixir/apps/web/assets/"
     schedule:
       interval: "daily"
+  - package-ecosystem: "terraform"
+    directory: "terraform/environments/staging/"
+    schedule:
+      interval: "daily"
