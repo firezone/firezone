@@ -43,7 +43,7 @@ where
         index: u32,
         conn_id: TRoleState::Id,
     ) -> OnCloseHdlrFn {
-        let sender = self.stop_peer_command_sender.lock().clone();
+        let sender = self.stop_peer_command_sender.clone();
 
         Box::new(move || {
             let mut sender = sender.clone();
@@ -60,7 +60,7 @@ where
         index: u32,
         conn_id: TRoleState::Id,
     ) -> OnPeerConnectionStateChangeHdlrFn {
-        let sender = self.stop_peer_command_sender.lock().clone();
+        let sender = self.stop_peer_command_sender.clone();
 
         Box::new(move |state| {
             let mut sender = sender.clone();

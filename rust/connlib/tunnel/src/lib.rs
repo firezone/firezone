@@ -161,7 +161,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
         Mutex<FuturesMap<(u32, TRoleState::Id), std::result::Result<(), webrtc::Error>>>,
 
     stop_peer_command_receiver: Mutex<mpsc::Receiver<(u32, TRoleState::Id)>>,
-    stop_peer_command_sender: Mutex<mpsc::Sender<(u32, TRoleState::Id)>>,
+    stop_peer_command_sender: mpsc::Sender<(u32, TRoleState::Id)>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -346,7 +346,7 @@ where
             role_state: Default::default(),
             close_connection_tasks: Mutex::new(FuturesMap::new(Duration::from_secs(30), 100)),
             stop_peer_command_receiver: Mutex::new(dc_closed_receiver),
-            stop_peer_command_sender: Mutex::new(dc_closed_sender),
+            stop_peer_command_sender: dc_closed_sender,
         })
     }
 
