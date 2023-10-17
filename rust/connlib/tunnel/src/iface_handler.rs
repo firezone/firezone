@@ -3,8 +3,9 @@ use std::{net::IpAddr, sync::Arc};
 use boringtun::noise::{errors::WireGuardError, TunnResult};
 use bytes::Bytes;
 use connlib_shared::{Callbacks, Result};
+use futures_util::SinkExt;
 
-use crate::{ip_packet::MutableIpPacket, peer::Peer, stop_peer, RoleState, Tunnel};
+use crate::{ip_packet::MutableIpPacket, peer::Peer, RoleState, Tunnel};
 
 impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
@@ -23,13 +24,11 @@ where
             TunnResult::Done => Ok(()),
             TunnResult::Err(WireGuardError::ConnectionExpired)
             | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-                stop_peer(
-                    &mut self.peers_by_ip.write(),
-                    &mut self.peer_connections.lock(),
-                    &mut self.close_connection_tasks.lock(),
-                    peer.index,
-                    peer.conn_id,
-                );
+                let _ = self
+                    .stop_peer_command_sender
+                    .clone()
+                    .send((peer.index, peer.conn_id))
+                    .await;
                 Ok(())
             }
 
@@ -48,13 +47,11 @@ where
                         webrtc::data::Error::ErrStreamClosed
                             | webrtc::data::Error::Sctp(webrtc::sctp::Error::ErrStreamClosed)
                     ) {
-                        stop_peer(
-                            &mut self.peers_by_ip.write(),
-                            &mut self.peer_connections.lock(),
-                            &mut self.close_connection_tasks.lock(),
-                            peer.index,
-                            peer.conn_id,
-                        );
+                        let _ = self
+                            .stop_peer_command_sender
+                            .clone()
+                            .send((peer.index, peer.conn_id))
+                            .await;
                     }
                     let err = e.into();
                     let _ = self.callbacks.on_error(&err);
