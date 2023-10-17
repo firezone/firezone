@@ -50,14 +50,6 @@ pub(crate) struct PeerStats<TId> {
     pub translated_resource_addresses: HashMap<IpAddr, ResourceId>,
 }
 
-#[derive(Debug)]
-pub(crate) struct EncapsulatedPacket<'a, Id> {
-    pub index: u32,
-    pub conn_id: Id,
-    pub channel: Arc<DataChannel>,
-    pub encapsulate_result: TunnResult<'a>,
-}
-
 impl<TId> Peer<TId>
 where
     TId: Copy,
@@ -193,7 +185,7 @@ where
         &self,
         packet: &mut MutableIpPacket<'a>,
         dst: &'a mut [u8],
-    ) -> Result<EncapsulatedPacket<'a, TId>> {
+    ) -> Result<TunnResult<'a>> {
         if let Some(resource) = self.get_translation(packet.to_immutable().source()) {
             let ResourceDescription::Dns(resource) = resource else {
                 tracing::error!(
@@ -209,12 +201,7 @@ where
 
             packet.update_checksum();
         }
-        Ok(EncapsulatedPacket {
-            index: self.index,
-            conn_id: self.conn_id,
-            channel: self.channel.clone(),
-            encapsulate_result: self.tunnel.lock().encapsulate(packet.packet_mut(), dst),
-        })
+        Ok(self.tunnel.lock().encapsulate(packet.packet_mut(), dst))
     }
 
     pub(crate) fn get_packet_resource(

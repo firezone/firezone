@@ -19,14 +19,11 @@ where
         dst_addr: &IpAddr,
         buf: &mut [u8],
     ) -> Result<()> {
-        let encapsulated_packet = peer.encapsulate(&mut packet, buf)?;
-
-        match encapsulated_packet.encapsulate_result {
+        match peer.encapsulate(&mut packet, buf)? {
             TunnResult::Done => Ok(()),
             TunnResult::Err(WireGuardError::ConnectionExpired)
             | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-                self.stop_peer(encapsulated_packet.index, encapsulated_packet.conn_id)
-                    .await;
+                self.stop_peer(peer.index, peer.conn_id).await;
                 Ok(())
             }
 
@@ -38,19 +35,14 @@ where
             }
             TunnResult::WriteToNetwork(packet) => {
                 tracing::trace!(target: "wire", action = "writing", from = "iface", to = %dst_addr);
-                if let Err(e) = encapsulated_packet
-                    .channel
-                    .write(&Bytes::copy_from_slice(packet))
-                    .await
-                {
+                if let Err(e) = peer.channel.write(&Bytes::copy_from_slice(packet)).await {
                     tracing::error!(?e, "webrtc_write");
                     if matches!(
                         e,
                         webrtc::data::Error::ErrStreamClosed
                             | webrtc::data::Error::Sctp(webrtc::sctp::Error::ErrStreamClosed)
                     ) {
-                        self.stop_peer(encapsulated_packet.index, encapsulated_packet.conn_id)
-                            .await;
+                        self.stop_peer(peer.index, peer.conn_id).await;
                     }
                     let err = e.into();
                     let _ = self.callbacks.on_error(&err);
