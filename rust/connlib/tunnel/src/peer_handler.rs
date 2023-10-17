@@ -5,6 +5,7 @@ use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
 use futures_util::SinkExt;
 
+use crate::resource_sender::send_to_resource;
 use crate::{
     device_channel::DeviceIo, index::check_packet_index, peer::Peer, RoleState, Tunnel,
     MAX_UDP_SIZE,
@@ -81,11 +82,11 @@ where
                 Ok(true)
             }
             TunnResult::WriteToTunnelV4(packet, addr) => {
-                self.send_to_resource(device_io, peer, addr.into(), packet)?;
+                send_to_resource(device_io, peer, addr.into(), packet)?;
                 Ok(false)
             }
             TunnResult::WriteToTunnelV6(packet, addr) => {
-                self.send_to_resource(device_io, peer, addr.into(), packet)?;
+                send_to_resource(device_io, peer, addr.into(), packet)?;
                 Ok(false)
             }
         }

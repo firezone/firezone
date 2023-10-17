@@ -3,29 +3,25 @@ use std::{
     sync::Arc,
 };
 
-use crate::{device_channel::DeviceIo, ip_packet::MutableIpPacket, peer::Peer, RoleState, Tunnel};
+use crate::{device_channel::DeviceIo, ip_packet::MutableIpPacket, peer::Peer};
 
-use connlib_shared::{messages::ResourceDescription, Callbacks, Error, Result};
+use connlib_shared::{messages::ResourceDescription, Error, Result};
 
-impl<CB, TRoleState> Tunnel<CB, TRoleState>
+pub(crate) fn send_to_resource<TId>(
+    device_io: &DeviceIo,
+    peer: &Arc<Peer<TId>>,
+    addr: IpAddr,
+    packet: &mut [u8],
+) -> Result<()>
 where
-    CB: Callbacks + 'static,
-    TRoleState: RoleState,
+    TId: Copy,
 {
-    pub(crate) fn send_to_resource(
-        &self,
-        device_io: &DeviceIo,
-        peer: &Arc<Peer<TRoleState::Id>>,
-        addr: IpAddr,
-        packet: &mut [u8],
-    ) -> Result<()> {
-        if peer.is_allowed(addr) {
-            packet_allowed(device_io, peer, addr, packet)?;
-            Ok(())
-        } else {
-            tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
-            Ok(())
-        }
+    if peer.is_allowed(addr) {
+        packet_allowed(device_io, peer, addr, packet)?;
+        Ok(())
+    } else {
+        tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
+        Ok(())
     }
 }
 
