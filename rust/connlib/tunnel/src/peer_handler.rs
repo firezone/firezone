@@ -3,9 +3,10 @@ use std::sync::Arc;
 use boringtun::noise::{handshake::parse_handshake_anon, Packet, TunnResult};
 use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
+use futures_util::SinkExt;
 
 use crate::{
-    device_channel::DeviceIo, index::check_packet_index, peer::Peer, stop_peer, RoleState, Tunnel,
+    device_channel::DeviceIo, index::check_packet_index, peer::Peer, RoleState, Tunnel,
     MAX_UDP_SIZE,
 };
 
@@ -175,12 +176,10 @@ where
             }
         }
         tracing::debug!(peer = ?peer.stats(), "peer_stopped");
-        stop_peer(
-            &mut self.peers_by_ip.write(),
-            &mut self.peer_connections.lock(),
-            &mut self.close_connection_tasks.lock(),
-            peer.index,
-            peer.conn_id,
-        );
+        let _ = self
+            .stop_peer_command_sender
+            .clone()
+            .send((peer.index, peer.conn_id))
+            .await;
     }
 }
