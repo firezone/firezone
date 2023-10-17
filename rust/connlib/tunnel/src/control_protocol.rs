@@ -43,17 +43,14 @@ where
         index: u32,
         conn_id: TRoleState::Id,
     ) -> OnCloseHdlrFn {
+        let sender = self.dc_closed_sender.lock().clone();
+
         Box::new(move || {
+            let mut sender = sender.clone();
+
             tracing::debug!("channel_closed");
-            let tunnel = self.clone();
             Box::pin(async move {
-                stop_peer(
-                    &mut tunnel.peers_by_ip.write(),
-                    &mut tunnel.peer_connections.lock(),
-                    &mut tunnel.close_connection_tasks.lock(),
-                    index,
-                    conn_id,
-                );
+                let _ = sender.send((index, conn_id)).await;
             })
         })
     }

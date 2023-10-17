@@ -29,7 +29,9 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
+use futures::channel::mpsc;
 use futures_bounded::{FuturesMap, PushError};
+use futures_util::StreamExt;
 use std::hash::Hash;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
@@ -157,6 +159,9 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     #[allow(clippy::type_complexity)]
     close_connection_tasks:
         Mutex<FuturesMap<(u32, TRoleState::Id), std::result::Result<(), webrtc::Error>>>,
+
+    dc_closed_receiver: Mutex<mpsc::Receiver<(u32, TRoleState::Id)>>,
+    dc_closed_sender: Mutex<mpsc::Sender<(u32, TRoleState::Id)>>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -197,6 +202,19 @@ where
         loop {
             if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
                 return Poll::Ready(event);
+            }
+
+            if let Poll::Ready(Some((index, conn_id))) =
+                self.dc_closed_receiver.lock().poll_next_unpin(cx)
+            {
+                stop_peer(
+                    &mut self.peers_by_ip.write(),
+                    &mut self.peer_connections.lock(),
+                    &mut self.close_connection_tasks.lock(),
+                    index,
+                    conn_id,
+                );
+                continue;
             }
 
             match self.close_connection_tasks.lock().poll_unpin(cx) {
@@ -312,6 +330,8 @@ where
             .with_setting_engine(setting_engine)
             .build();
 
+        let (dc_closed_sender, dc_closed_receiver) = mpsc::channel(10);
+
         Ok(Self {
             rate_limiter,
             private_key,
@@ -325,6 +345,8 @@ where
             iface_handler_abort,
             role_state: Default::default(),
             close_connection_tasks: Mutex::new(FuturesMap::new(Duration::from_secs(30), 100)),
+            dc_closed_receiver: Mutex::new(dc_closed_receiver),
+            dc_closed_sender: Mutex::new(dc_closed_sender),
         })
     }
 
