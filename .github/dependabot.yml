@@ -5,8 +5,8 @@
 
 version: 2
 updates:
-  - package-ecosystem: "mix" # See documentation for possible values
-    directory: "elixir/" # Location of package manifests
+  - package-ecosystem: "mix"
+    directory: "elixir/"
     schedule:
       interval: "daily"
   - package-ecosystem: "pip"
@@ -32,14 +32,22 @@ updates:
         update-types:
           - "minor"
   - package-ecosystem: "gradle"
-    directory: "rust/connlib/clients/android/connlib"
+    directory: "rust/connlib/clients/android/connlib/"
     schedule:
       interval: "daily"
   - package-ecosystem: "gradle"
-    directory: "kotlin/android"
+    directory: "kotlin/android/"
     schedule:
       interval: "daily"
   - package-ecosystem: "swift"
-    directory: "swift/apple/FirezoneKit"
+    directory: "swift/apple/FirezoneKit/"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "npm"
+    directory: "website/"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "npm"
+    directory: "elixir/apps/web/assets/"
     schedule:
       interval: "daily"
