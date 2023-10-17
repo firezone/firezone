@@ -23,7 +23,7 @@ where
             TunnResult::Done => Ok(()),
             TunnResult::Err(WireGuardError::ConnectionExpired)
             | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-                self.stop_peer(peer.index, peer.conn_id).await;
+                self.stop_peer(peer.index, peer.conn_id);
                 Ok(())
             }
 
@@ -42,7 +42,7 @@ where
                         webrtc::data::Error::ErrStreamClosed
                             | webrtc::data::Error::Sctp(webrtc::sctp::Error::ErrStreamClosed)
                     ) {
-                        self.stop_peer(peer.index, peer.conn_id).await;
+                        self.stop_peer(peer.index, peer.conn_id);
                     }
                     let err = e.into();
                     let _ = self.callbacks.on_error(&err);

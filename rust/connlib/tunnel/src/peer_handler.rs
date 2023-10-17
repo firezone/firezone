@@ -175,6 +175,6 @@ where
             }
         }
         tracing::debug!(peer = ?peer.stats(), "peer_stopped");
-        self.stop_peer(peer.index, peer.conn_id).await;
+        self.stop_peer(peer.index, peer.conn_id);
     }
 }

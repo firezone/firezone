@@ -329,7 +329,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn stop_peer(&self, index: u32, conn_id: TRoleState::Id) {
+    fn stop_peer(&self, index: u32, conn_id: TRoleState::Id) {
         self.peers_by_ip.write().retain(|_, p| p.index != index);
         let conn = self.peer_connections.lock().remove(&conn_id);
         if let Some(conn) = conn {
@@ -356,7 +356,7 @@ where
             TunnResult::Done => {}
             TunnResult::Err(WireGuardError::ConnectionExpired)
             | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-                self.stop_peer(peer.index, peer.conn_id).await;
+                self.stop_peer(peer.index, peer.conn_id);
                 let _ = peer.shutdown().await;
             }
             TunnResult::Err(e) => tracing::error!(error = ?e, "timer_error"),
