@@ -19,7 +19,7 @@ use webrtc::{
     },
 };
 
-use crate::{stop_peer, RoleState, Tunnel};
+use crate::{RoleState, Tunnel};
 
 mod client;
 mod gateway;
@@ -43,7 +43,7 @@ where
         index: u32,
         conn_id: TRoleState::Id,
     ) -> OnCloseHdlrFn {
-        let sender = self.dc_closed_sender.lock().clone();
+        let sender = self.stop_peer_command_sender.lock().clone();
 
         Box::new(move || {
             let mut sender = sender.clone();
@@ -60,18 +60,15 @@ where
         index: u32,
         conn_id: TRoleState::Id,
     ) -> OnPeerConnectionStateChangeHdlrFn {
+        let sender = self.stop_peer_command_sender.lock().clone();
+
         Box::new(move |state| {
-            let tunnel = Arc::clone(&self);
+            let mut sender = sender.clone();
+
+            tracing::trace!(?state, "peer_state_update");
             Box::pin(async move {
-                tracing::trace!(?state, "peer_state_update");
                 if state == RTCPeerConnectionState::Failed {
-                    stop_peer(
-                        &mut tunnel.peers_by_ip.write(),
-                        &mut tunnel.peer_connections.lock(),
-                        &mut tunnel.close_connection_tasks.lock(),
-                        index,
-                        conn_id,
-                    );
+                    let _ = sender.send((index, conn_id)).await;
                 }
             })
         })

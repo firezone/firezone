@@ -160,8 +160,8 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     close_connection_tasks:
         Mutex<FuturesMap<(u32, TRoleState::Id), std::result::Result<(), webrtc::Error>>>,
 
-    dc_closed_receiver: Mutex<mpsc::Receiver<(u32, TRoleState::Id)>>,
-    dc_closed_sender: Mutex<mpsc::Sender<(u32, TRoleState::Id)>>,
+    stop_peer_command_receiver: Mutex<mpsc::Receiver<(u32, TRoleState::Id)>>,
+    stop_peer_command_sender: Mutex<mpsc::Sender<(u32, TRoleState::Id)>>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -205,7 +205,7 @@ where
             }
 
             if let Poll::Ready(Some((index, conn_id))) =
-                self.dc_closed_receiver.lock().poll_next_unpin(cx)
+                self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
             {
                 stop_peer(
                     &mut self.peers_by_ip.write(),
@@ -345,8 +345,8 @@ where
             iface_handler_abort,
             role_state: Default::default(),
             close_connection_tasks: Mutex::new(FuturesMap::new(Duration::from_secs(30), 100)),
-            dc_closed_receiver: Mutex::new(dc_closed_receiver),
-            dc_closed_sender: Mutex::new(dc_closed_sender),
+            stop_peer_command_receiver: Mutex::new(dc_closed_receiver),
+            stop_peer_command_sender: Mutex::new(dc_closed_sender),
         })
     }
 
