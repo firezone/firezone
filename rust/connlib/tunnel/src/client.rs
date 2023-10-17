@@ -2,8 +2,8 @@ use crate::device_channel::{create_iface, DeviceIo};
 use crate::peer::Peer;
 use crate::resource_table::ResourceTable;
 use crate::{
-    dns, tokio_util, Device, Event, PeerConfig, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
-    MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
+    dns, peer_by_ip, tokio_util, Device, Event, PeerConfig, RoleState, Tunnel,
+    ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
@@ -146,7 +146,7 @@ where
 
         let dest = packet.destination();
 
-        let Some(peer) = tunnel.peer_by_ip(dest) else {
+        let Some(peer) = peer_by_ip(&tunnel.peers_by_ip.read(), dest) else {
             tunnel
                 .role_state
                 .lock()

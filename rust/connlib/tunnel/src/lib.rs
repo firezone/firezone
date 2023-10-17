@@ -220,14 +220,10 @@ where
     pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         self.role_state.lock().poll_next_event(cx)
     }
+}
 
-    pub(crate) fn peer_by_ip(&self, ip: IpAddr) -> Option<Arc<Peer>> {
-        self.peers_by_ip
-            .read()
-            .longest_match(ip)
-            .map(|(_, peer)| peer)
-            .cloned()
-    }
+pub(crate) fn peer_by_ip(peers_by_ip: &IpNetworkTable<Arc<Peer>>, ip: IpAddr) -> Option<Arc<Peer>> {
+    peers_by_ip.longest_match(ip).map(|(_, peer)| peer).cloned()
 }
 
 pub enum Event<TId> {
