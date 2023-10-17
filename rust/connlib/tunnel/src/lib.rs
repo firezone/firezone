@@ -31,7 +31,7 @@ use webrtc::{
 
 use futures::channel::mpsc;
 use futures_bounded::{FuturesMap, PushError};
-use futures_util::StreamExt;
+use futures_util::{SinkExt, StreamExt};
 use std::hash::Hash;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
@@ -357,13 +357,11 @@ where
             TunnResult::Done => {}
             TunnResult::Err(WireGuardError::ConnectionExpired)
             | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-                stop_peer(
-                    &mut self.peers_by_ip.write(),
-                    &mut self.peer_connections.lock(),
-                    &mut self.close_connection_tasks.lock(),
-                    peer.index,
-                    peer.conn_id,
-                );
+                let _ = self
+                    .stop_peer_command_sender
+                    .clone()
+                    .send((peer.index, peer.conn_id))
+                    .await;
                 let _ = peer.shutdown().await;
             }
             TunnResult::Err(e) => tracing::error!(error = ?e, "timer_error"),
