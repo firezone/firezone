@@ -58,7 +58,7 @@ jobs:
             target: debug
             context: rust
             build-args: |
-              PACKAGE=firezone-headless-client
+              PACKAGE=firezone-linux-client
           - image_name: elixir
             target: compiler
             context: elixir
