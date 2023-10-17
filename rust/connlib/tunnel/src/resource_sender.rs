@@ -12,29 +12,6 @@ where
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
-    #[inline(always)]
-    pub(crate) fn packet_allowed(
-        &self,
-        device_io: &DeviceIo,
-        peer: &Arc<Peer<TRoleState::Id>>,
-        addr: IpAddr,
-        packet: &mut [u8],
-    ) -> Result<()> {
-        let Some((dst, resource)) = peer.get_packet_resource(packet) else {
-            // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
-            // and we just trust gateways.
-            // In gateways this should never happen.
-            tracing::trace!(target: "wire", action = "writing", to = "iface", %addr, bytes = %packet.len());
-            send_packet(device_io, packet, addr)?;
-            return Ok(());
-        };
-
-        let (dst_addr, _dst_port) = get_resource_addr_and_port(peer, &resource, &addr, &dst)?;
-        update_packet(packet, dst_addr);
-        send_packet(device_io, packet, addr)?;
-        Ok(())
-    }
-
     pub(crate) fn send_to_resource(
         &self,
         device_io: &DeviceIo,
@@ -43,13 +20,38 @@ where
         packet: &mut [u8],
     ) -> Result<()> {
         if peer.is_allowed(addr) {
-            self.packet_allowed(device_io, peer, addr, packet)?;
+            packet_allowed(device_io, peer, addr, packet)?;
             Ok(())
         } else {
             tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
             Ok(())
         }
     }
+}
+
+#[inline(always)]
+pub(crate) fn packet_allowed<TId>(
+    device_io: &DeviceIo,
+    peer: &Arc<Peer<TId>>,
+    addr: IpAddr,
+    packet: &mut [u8],
+) -> Result<()>
+where
+    TId: Copy,
+{
+    let Some((dst, resource)) = peer.get_packet_resource(packet) else {
+        // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
+        // and we just trust gateways.
+        // In gateways this should never happen.
+        tracing::trace!(target: "wire", action = "writing", to = "iface", %addr, bytes = %packet.len());
+        send_packet(device_io, packet, addr)?;
+        return Ok(());
+    };
+
+    let (dst_addr, _dst_port) = get_resource_addr_and_port(peer, &resource, &addr, &dst)?;
+    update_packet(packet, dst_addr);
+    send_packet(device_io, packet, addr)?;
+    Ok(())
 }
 
 #[inline(always)]
