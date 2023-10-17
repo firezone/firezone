@@ -137,7 +137,7 @@ jobs:
             platform: linux/amd64
           - target: aarch64-unknown-linux-musl # E.g. AWS Graviton
             platform: linux/arm64
-          - target: armv7-unknown-linux-gnueabihf # E.g. Raspberry Pi
+          - target: armv7-unknown-linux-musleabihf # E.g. Raspberry Pi
             platform: linux/arm/v7
           - target: mips64-unknown-linux-muslabi64 # E.g. UniFi Routers
             platform: linux/mips64le
@@ -162,10 +162,10 @@ jobs:
         run: cargo install cross --git https://github.com/cross-rs/cross
       - name: Build release binaries
         env:
-          CARGO_OUTPUT_FILE: target/${{ matrix.arch.target }}/release/${{ matrix.build.package }}
+          CARGO_OUTPUT_FILE: target/${{ matrix.arch.target }}/release/${{ matrix.name.package }}
         run: |
           dest="$BINARY_DEST_PATH-$VERSION"
-          cross build --release -p ${{ matrix.build.package }} --target ${{ matrix.arch.target }}
+          cross build --release -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
           mv $CARGO_OUTPUT_FILE $dest
           sha256sum $dest > $dest.sha256sum.txt
       - name: Push binaries
