@@ -5,7 +5,7 @@ use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
 
 use crate::{
-    device_channel::DeviceIo, index::check_packet_index, peer::Peer, RoleState, Tunnel,
+    device_channel::DeviceIo, index::check_packet_index, peer::Peer, stop_peer, RoleState, Tunnel,
     MAX_UDP_SIZE,
 };
 
@@ -175,6 +175,12 @@ where
             }
         }
         tracing::debug!(peer = ?peer.stats(), "peer_stopped");
-        self.stop_peer(peer.index, peer.conn_id);
+        stop_peer(
+            &mut self.peers_by_ip.write(),
+            &mut self.peer_connections.lock(),
+            &mut self.close_connection_tasks.lock(),
+            peer.index,
+            peer.conn_id,
+        );
     }
 }

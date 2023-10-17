@@ -328,27 +328,6 @@ where
         })
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    fn stop_peer(&self, index: u32, conn_id: TRoleState::Id) {
-        self.peers_by_ip.write().retain(|_, p| p.index != index);
-        let conn = self.peer_connections.lock().remove(&conn_id);
-        if let Some(conn) = conn {
-            match self
-                .close_connection_tasks
-                .lock()
-                .try_push((index, conn_id), async move { conn.close().await })
-            {
-                Ok(()) => {}
-                Err(PushError::BeyondCapacity(_)) => {
-                    tracing::warn!("Exceeded number of connection close tasks");
-                }
-                Err(PushError::Replaced(_)) => {
-                    tracing::warn!(%conn_id, %index, "Duplicate connection");
-                }
-            };
-        }
-    }
-
     async fn peer_refresh(&self, peer: &Peer<TRoleState::Id>, dst_buf: &mut [u8; MAX_UDP_SIZE]) {
         let update_timers_result = peer.update_timers(&mut dst_buf[..]);
 
@@ -356,7 +335,13 @@ where
             TunnResult::Done => {}
             TunnResult::Err(WireGuardError::ConnectionExpired)
             | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-                self.stop_peer(peer.index, peer.conn_id);
+                stop_peer(
+                    &mut self.peers_by_ip.write(),
+                    &mut self.peer_connections.lock(),
+                    &mut self.close_connection_tasks.lock(),
+                    peer.index,
+                    peer.conn_id,
+                );
                 let _ = peer.shutdown().await;
             }
             TunnResult::Err(e) => tracing::error!(error = ?e, "timer_error"),
@@ -451,6 +436,34 @@ where
 
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
+    }
+}
+
+#[tracing::instrument(
+    level = "trace",
+    skip(peers_by_ip, peer_connections, close_connection_tasks)
+)]
+fn stop_peer<TId>(
+    peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId>>>,
+    peer_connections: &mut HashMap<TId, Arc<RTCPeerConnection>>,
+    close_connection_tasks: &mut FuturesMap<(u32, TId), std::result::Result<(), webrtc::Error>>,
+    index: u32,
+    conn_id: TId,
+) where
+    TId: Eq + Hash + fmt::Debug + fmt::Display + Clone + Copy + Send + Unpin + 'static,
+{
+    peers_by_ip.retain(|_, p| p.index != index);
+    let conn = peer_connections.remove(&conn_id);
+    if let Some(conn) = conn {
+        match close_connection_tasks.try_push((index, conn_id), async move { conn.close().await }) {
+            Ok(()) => {}
+            Err(PushError::BeyondCapacity(_)) => {
+                tracing::warn!("Exceeded number of connection close tasks");
+            }
+            Err(PushError::Replaced(_)) => {
+                tracing::warn!(%conn_id, %index, "Duplicate connection");
+            }
+        };
     }
 }
 

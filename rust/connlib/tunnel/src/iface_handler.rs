@@ -4,7 +4,7 @@ use boringtun::noise::{errors::WireGuardError, TunnResult};
 use bytes::Bytes;
 use connlib_shared::{Callbacks, Result};
 
-use crate::{ip_packet::MutableIpPacket, peer::Peer, RoleState, Tunnel};
+use crate::{ip_packet::MutableIpPacket, peer::Peer, stop_peer, RoleState, Tunnel};
 
 impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
@@ -23,7 +23,13 @@ where
             TunnResult::Done => Ok(()),
             TunnResult::Err(WireGuardError::ConnectionExpired)
             | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-                self.stop_peer(peer.index, peer.conn_id);
+                stop_peer(
+                    &mut self.peers_by_ip.write(),
+                    &mut self.peer_connections.lock(),
+                    &mut self.close_connection_tasks.lock(),
+                    peer.index,
+                    peer.conn_id,
+                );
                 Ok(())
             }
 
@@ -42,7 +48,13 @@ where
                         webrtc::data::Error::ErrStreamClosed
                             | webrtc::data::Error::Sctp(webrtc::sctp::Error::ErrStreamClosed)
                     ) {
-                        self.stop_peer(peer.index, peer.conn_id);
+                        stop_peer(
+                            &mut self.peers_by_ip.write(),
+                            &mut self.peer_connections.lock(),
+                            &mut self.close_connection_tasks.lock(),
+                            peer.index,
+                            peer.conn_id,
+                        );
                     }
                     let err = e.into();
                     let _ = self.callbacks.on_error(&err);

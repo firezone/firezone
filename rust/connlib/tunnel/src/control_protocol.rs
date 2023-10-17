@@ -19,7 +19,7 @@ use webrtc::{
     },
 };
 
-use crate::{RoleState, Tunnel};
+use crate::{stop_peer, RoleState, Tunnel};
 
 mod client;
 mod gateway;
@@ -47,7 +47,13 @@ where
             tracing::debug!("channel_closed");
             let tunnel = self.clone();
             Box::pin(async move {
-                tunnel.stop_peer(index, conn_id);
+                stop_peer(
+                    &mut tunnel.peers_by_ip.write(),
+                    &mut tunnel.peer_connections.lock(),
+                    &mut tunnel.close_connection_tasks.lock(),
+                    index,
+                    conn_id,
+                );
             })
         })
     }
@@ -62,7 +68,13 @@ where
             Box::pin(async move {
                 tracing::trace!(?state, "peer_state_update");
                 if state == RTCPeerConnectionState::Failed {
-                    tunnel.stop_peer(index, conn_id);
+                    stop_peer(
+                        &mut tunnel.peers_by_ip.write(),
+                        &mut tunnel.peer_connections.lock(),
+                        &mut tunnel.close_connection_tasks.lock(),
+                        index,
+                        conn_id,
+                    );
                 }
             })
         })
