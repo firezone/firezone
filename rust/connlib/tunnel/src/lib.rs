@@ -29,6 +29,7 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
+use futures_bounded::{FuturesMap, PushError};
 use std::hash::Hash;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
@@ -152,6 +153,10 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
 
     /// State that differs per role, i.e. clients vs gateways.
     role_state: Mutex<TRoleState>,
+
+    #[allow(clippy::type_complexity)]
+    close_connection_tasks:
+        Mutex<FuturesMap<(u32, TRoleState::Id), std::result::Result<(), webrtc::Error>>>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -189,7 +194,30 @@ where
     }
 
     pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
-        self.role_state.lock().poll_next_event(cx)
+        loop {
+            if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
+                return Poll::Ready(event);
+            }
+
+            match self.close_connection_tasks.lock().poll_unpin(cx) {
+                Poll::Ready(((_, id), Ok(Ok(())))) => {
+                    tracing::trace!(%id, "Successfully closed connection");
+                    continue;
+                }
+                Poll::Ready(((_, id), Ok(Err(e)))) => {
+                    tracing::warn!(%id, error = ?e, "Can't close peer");
+                    let _ = self.callbacks().on_error(&e.into());
+                    continue;
+                }
+                Poll::Ready(((_, id), Err(e))) => {
+                    tracing::trace!(%id, "Timeout while closing connection: {e}");
+                    continue;
+                }
+                _ => {}
+            }
+
+            return Poll::Pending;
+        }
     }
 }
 
@@ -296,6 +324,7 @@ where
             callbacks: CallbackErrorFacade(callbacks),
             iface_handler_abort,
             role_state: Default::default(),
+            close_connection_tasks: Mutex::new(FuturesMap::new(Duration::from_secs(30), 100)),
         })
     }
 
@@ -304,10 +333,19 @@ where
         self.peers_by_ip.write().retain(|_, p| p.index != index);
         let conn = self.peer_connections.lock().remove(&conn_id);
         if let Some(conn) = conn {
-            if let Err(e) = conn.close().await {
-                tracing::warn!(error = ?e, "Can't close peer");
-                let _ = self.callbacks().on_error(&e.into());
-            }
+            match self
+                .close_connection_tasks
+                .lock()
+                .try_push((index, conn_id), async move { conn.close().await })
+            {
+                Ok(()) => {}
+                Err(PushError::BeyondCapacity(_)) => {
+                    tracing::warn!("Exceeded number of connection close tasks");
+                }
+                Err(PushError::Replaced(_)) => {
+                    tracing::warn!(%conn_id, %index, "Duplicate connection");
+                }
+            };
         }
     }
 
@@ -449,7 +487,7 @@ fn remove_expired_peers<TId>(
 /// By design, this trait does not allow any operations apart from advancing via [`RoleState::poll_next_event`].
 /// The state should only be modified when the concrete type is known, e.g. [`ClientState`] or [`GatewayState`].
 pub trait RoleState: Default + Send + 'static {
-    type Id: fmt::Debug + Eq + Hash + Copy + Send + Sync + 'static;
+    type Id: fmt::Debug + fmt::Display + Eq + Hash + Copy + Unpin + Send + Sync + 'static;
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
 }
