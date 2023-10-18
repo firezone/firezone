@@ -115,7 +115,6 @@ jobs:
           REQUESTED_XCODE_VERSION: ${{ matrix.xcode }}
           # TODO: Change this to "prod" when app is released
           XCCONFIG_ENV: staging
-          CC: ${{ env.SCCACHE_PATH }}
         run: |
           # Set Xcode version to use if provided
           [[ ! -z "$REQUESTED_XCODE_VERSION" ]] && sudo xcode-select -s /Applications/Xcode_$REQUESTED_XCODE_VERSION.app
