@@ -360,7 +360,7 @@ where
 
                 for peer in peers_to_refresh {
                     let mut dst_buf = [0u8; 148];
-                    peer_refresh(
+                    refresh_peer(
                         &peer,
                         &mut dst_buf,
                         tunnel.callbacks.clone(),
@@ -414,7 +414,7 @@ where
     }
 }
 
-async fn peer_refresh<TId>(
+async fn refresh_peer<TId>(
     peer: &Peer<TId>,
     dst_buf: &mut [u8],
     callbacks: impl Callbacks,
