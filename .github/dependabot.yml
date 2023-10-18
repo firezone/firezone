@@ -8,19 +8,19 @@ updates:
   - package-ecosystem: mix
     directory: elixir/
     schedule:
-      interval: daily
+      interval: monthly
   - package-ecosystem: pip
     directory: /
     schedule:
-      interval: daily
+      interval: monthly
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: daily
+      interval: monthly
   - package-ecosystem: cargo
     directory: rust/
     schedule:
-      interval: daily
+      interval: weekly
     groups:
       otel:
         patterns:
@@ -34,11 +34,11 @@ updates:
   - package-ecosystem: gradle
     directory: rust/connlib/clients/android/connlib/
     schedule:
-      interval: daily
+      interval: monthly
   - package-ecosystem: gradle
     directory: kotlin/android/
     schedule:
-      interval: daily
+      interval: monthly
     ignore:
       # Depends on JDK version which is bundled with Android Studio (JDK 17)
       - dependency-name: org.jetbrains.kotlin:kotlin-gradle-plugin
@@ -46,20 +46,20 @@ updates:
   - package-ecosystem: gradle
     directory: kotlin/android/app/
     schedule:
-      interval: daily
+      interval: monthly
   - package-ecosystem: swift
     directory: swift/apple/FirezoneKit/
     schedule:
-      interval: daily
+      interval: monthly
   - package-ecosystem: npm
     directory: website/
     schedule:
-      interval: daily
+      interval: monthly
   - package-ecosystem: npm
     directory: elixir/apps/web/assets/
     schedule:
-      interval: daily
+      interval: monthly
   - package-ecosystem: terraform
     directory: terraform/environments/staging/
     schedule:
-      interval: daily
+      interval: monthly
