@@ -69,7 +69,6 @@ mod resource_table;
 mod tokio_util;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
-const RESET_PACKET_COUNT_INTERVAL: Duration = Duration::from_secs(1);
 const REFRESH_PEERS_TIMERS_INTERVAL: Duration = Duration::from_secs(1);
 const REFRESH_MTU_INTERVAL: Duration = Duration::from_secs(30);
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
@@ -435,8 +434,11 @@ where
     }
 }
 
+/// Constructs the interval for resetting the rate limit count.
+///
+/// As per documentation on [`RateLimiter::reset_count`], this is configured to run every second.
 fn rate_limit_reset_interval() -> Interval {
-    let mut interval = tokio::time::interval(RESET_PACKET_COUNT_INTERVAL);
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     interval
