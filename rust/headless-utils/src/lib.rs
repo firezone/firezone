@@ -21,7 +21,7 @@ where
     tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
 }
 
-/// Arguments common to all Firezone binaries.
+/// Arguments common to all Firezone CLI components.
 #[derive(Args, Clone)]
 pub struct CommonArgs {
     /// Firezone admin portal websocket URL
