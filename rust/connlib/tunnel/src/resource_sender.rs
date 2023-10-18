@@ -3,15 +3,12 @@ use std::{
     sync::Arc,
 };
 
-use crate::{
-    device_channel::DeviceIo, ip_packet::MutableIpPacket, peer::Peer, ControlSignal, Tunnel,
-};
+use crate::{device_channel::DeviceIo, ip_packet::MutableIpPacket, peer::Peer, Tunnel};
 
 use connlib_shared::{messages::ResourceDescription, Callbacks, Error, Result};
 
-impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
+impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
-    C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
     #[inline(always)]

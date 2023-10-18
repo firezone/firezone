@@ -1,6 +1,6 @@
 use crate::device_channel::create_iface;
 use crate::{
-    ControlSignal, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
+    peer_by_ip, ConnId, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
 use connlib_shared::error::ConnlibError;
@@ -13,9 +13,8 @@ use std::task::{ready, Context, Poll};
 use std::time::Duration;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
-impl<C, CB> Tunnel<C, CB, GatewayState>
+impl<CB> Tunnel<CB, GatewayState>
 where
-    C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
     /// Sets the interface configuration and starts background tasks.
@@ -35,15 +34,20 @@ where
 
         Ok(())
     }
+
+    /// Clean up a connection to a resource.
+    // FIXME: this cleanup connection is wrong!
+    pub fn cleanup_connection(&self, id: ConnId) {
+        self.peer_connections.lock().remove(&id);
+    }
 }
 
 /// Reads IP packets from the [`Device`] and handles them accordingly.
-async fn device_handler<C, CB>(
-    tunnel: Arc<Tunnel<C, CB, GatewayState>>,
+async fn device_handler<CB>(
+    tunnel: Arc<Tunnel<CB, GatewayState>>,
     mut device: Device,
 ) -> Result<(), ConnlibError>
 where
-    C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
 {
     let mut buf = [0u8; MAX_UDP_SIZE];
@@ -55,7 +59,7 @@ where
 
         let dest = packet.destination();
 
-        let Some(peer) = tunnel.peer_by_ip(dest) else {
+        let Some(peer) = peer_by_ip(&tunnel.peers_by_ip.read(), dest) else {
             continue;
         };
 
