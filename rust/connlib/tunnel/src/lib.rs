@@ -344,32 +344,6 @@ where
         })
     }
 
-    async fn peer_refresh(
-        &self,
-        peer: &Peer<TRoleState::Id>,
-        dst_buf: &mut [u8],
-        callbacks: impl Callbacks,
-        mut stop_command_sender: mpsc::Sender<(u32, <TRoleState as RoleState>::Id)>,
-    ) {
-        let update_timers_result = peer.update_timers(dst_buf);
-
-        match update_timers_result {
-            TunnResult::Done => {}
-            TunnResult::Err(WireGuardError::ConnectionExpired)
-            | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-                let _ = stop_command_sender.send((peer.index, peer.conn_id)).await;
-                let _ = peer.shutdown().await;
-            }
-            TunnResult::Err(e) => tracing::error!(error = ?e, "timer_error"),
-            TunnResult::WriteToNetwork(packet) => {
-                let bytes = Bytes::copy_from_slice(packet);
-                peer.send_infallible(bytes, &callbacks).await
-            }
-
-            _ => panic!("Unexpected result from update_timers"),
-        };
-    }
-
     fn start_peers_refresh_timer(self: &Arc<Self>) {
         let tunnel = self.clone();
 
@@ -386,14 +360,13 @@ where
 
                 for peer in peers_to_refresh {
                     let mut dst_buf = [0u8; 148];
-                    tunnel
-                        .peer_refresh(
-                            &peer,
-                            &mut dst_buf,
-                            tunnel.callbacks.clone(),
-                            tunnel.stop_peer_command_sender.clone(),
-                        )
-                        .await;
+                    peer_refresh(
+                        &peer,
+                        &mut dst_buf,
+                        tunnel.callbacks.clone(),
+                        tunnel.stop_peer_command_sender.clone(),
+                    )
+                    .await;
                 }
 
                 interval.tick().await;
@@ -439,6 +412,33 @@ where
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
+}
+
+async fn peer_refresh<TId>(
+    peer: &Peer<TId>,
+    dst_buf: &mut [u8],
+    callbacks: impl Callbacks,
+    mut stop_command_sender: mpsc::Sender<(u32, TId)>,
+) where
+    TId: Copy,
+{
+    let update_timers_result = peer.update_timers(dst_buf);
+
+    match update_timers_result {
+        TunnResult::Done => {}
+        TunnResult::Err(WireGuardError::ConnectionExpired)
+        | TunnResult::Err(WireGuardError::NoCurrentSession) => {
+            let _ = stop_command_sender.send((peer.index, peer.conn_id)).await;
+            let _ = peer.shutdown().await;
+        }
+        TunnResult::Err(e) => tracing::error!(error = ?e, "timer_error"),
+        TunnResult::WriteToNetwork(packet) => {
+            let bytes = Bytes::copy_from_slice(packet);
+            peer.send_infallible(bytes, &callbacks).await
+        }
+
+        _ => panic!("Unexpected result from update_timers"),
+    };
 }
 
 /// Constructs the interval for resetting the rate limit count.
