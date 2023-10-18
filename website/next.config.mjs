@@ -2,7 +2,6 @@
 import nextMDX from "@next/mdx";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
-import remarkRehype from "remark-rehype";
 import rehypeStringify from "rehype-stringify";
 import rehypeHighlight from "rehype-highlight";
 
@@ -41,7 +40,7 @@ const nextConfig = {
       },
     ];
   },
-  pageExtensions: ["js", "jsx", "ts", "tsx", "md", "mdx"],
+  pageExtensions: ["js", "jsx", "md", "mdx", "ts", "tsx"],
   images: {
     dangerouslyAllowSVG: true,
     remotePatterns: [
@@ -64,7 +63,7 @@ const nextConfig = {
 const withMDX = nextMDX({
   extension: /\.mdx?$/,
   options: {
-    remarkPlugins: [remarkGfm, remarkParse, remarkRehype],
+    remarkPlugins: [remarkGfm, remarkParse],
     rehypePlugins: [
       rehypeSlug,
       [
