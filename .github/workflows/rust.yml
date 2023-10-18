@@ -31,10 +31,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust-cache
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt,clippy
+      - uses: ./.github/actions/setup-rust
       - run: cargo fmt -- --check
       - run: |
           cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
@@ -64,8 +61,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust-cache
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
       - run: cargo test --all-features ${{ matrix.packages }}
 
   smoke-test-relay:
@@ -75,6 +71,5 @@ jobs:
         working-directory: ./rust/relay
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust-cache
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
       - run: ./run_smoke_test.sh

@@ -36,8 +36,7 @@ jobs:
         working-directory: ./kotlin/android
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust-cache
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
       - uses: actions/setup-java@v3
         with:
           distribution: oracle

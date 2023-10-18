@@ -45,8 +45,7 @@ jobs:
         working-directory: ./swift/apple
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust-cache
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
       - uses: actions/cache/restore@v3
         name: Restore Swift DerivedData Cache
         with:
