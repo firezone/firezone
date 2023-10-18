@@ -215,6 +215,8 @@ jobs:
             type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
           file: rust/Dockerfile
           target: release
+          tags: |
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }}:${{ github.sha }}
           outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |

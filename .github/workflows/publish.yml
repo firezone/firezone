@@ -14,6 +14,8 @@ jobs:
     strategy:
       matrix:
         include:
+          # TODO
+          # - image_name: linux-client
           - image_name: relay
           - image_name: gateway
     permissions:
