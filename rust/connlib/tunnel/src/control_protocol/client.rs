@@ -161,7 +161,7 @@ where
                     conn.on_peer_connection_state_change(
                         tunnel
                             .clone()
-                            .on_peer_connection_state_change_handler(index, gateway_id),
+                            .on_peer_connection_state_change_handler(index, gateway_id, tunnel.stop_peer_command_sender.clone()),
                     );
                 }
 
