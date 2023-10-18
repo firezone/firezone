@@ -1,5 +1,5 @@
+use crate::bounded_queue::BoundedQueue;
 use crate::device_channel::{create_iface, DeviceIo};
-use crate::event_queue::BoundedQueue;
 use crate::ip_packet::IpPacket;
 use crate::peer::Peer;
 use crate::resource_table::ResourceTable;

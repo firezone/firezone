@@ -53,11 +53,11 @@ use crate::ip_packet::MutableIpPacket;
 use connlib_shared::messages::SecretKey;
 use index::IndexLfsr;
 
+mod bounded_queue;
 mod client;
 mod control_protocol;
 mod device_channel;
 mod dns;
-mod event_queue;
 mod gateway;
 mod iface_handler;
 mod index;
