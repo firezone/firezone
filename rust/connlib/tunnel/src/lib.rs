@@ -377,21 +377,14 @@ where
             let mut dst_buf = [0u8; MAX_UDP_SIZE];
 
             loop {
-                remove_expired_peers(
-                    &mut tunnel.peers_by_ip.write(),
-                    &mut tunnel.peer_connections.lock(),
-                );
+                let peers_to_refresh = {
+                    let mut peers_by_ip = tunnel.peers_by_ip.write();
+                    let mut peer_connections = tunnel.peer_connections.lock();
 
-                let peers: Vec<_> = tunnel
-                    .peers_by_ip
-                    .read()
-                    .iter()
-                    .map(|p| p.1)
-                    .unique_by(|p| p.index)
-                    .cloned()
-                    .collect();
+                    peers_to_refresh(&mut peers_by_ip, &mut peer_connections)
+                };
 
-                for peer in peers {
+                for peer in peers_to_refresh {
                     tunnel.peer_refresh(&peer, &mut dst_buf).await;
                 }
 
@@ -439,6 +432,23 @@ where
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
+}
+
+fn peers_to_refresh<TId>(
+    peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId>>>,
+    peer_connections: &mut HashMap<TId, Arc<RTCPeerConnection>>,
+) -> Vec<Arc<Peer<TId>>>
+where
+    TId: Eq + Hash + Copy + Send + Sync + 'static,
+{
+    remove_expired_peers(peers_by_ip, peer_connections);
+
+    peers_by_ip
+        .iter()
+        .map(|p| p.1)
+        .unique_by(|p| p.index)
+        .cloned()
+        .collect()
 }
 
 fn remove_expired_peers<TId>(
