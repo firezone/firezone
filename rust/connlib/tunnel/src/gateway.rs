@@ -8,6 +8,7 @@ use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
+use futures_util::SinkExt;
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
@@ -63,10 +64,18 @@ where
         };
 
         if let Err(e) = tunnel
-            .encapsulate_and_send_to_peer(packet, peer, &dest, &mut buf)
+            .encapsulate_and_send_to_peer(packet, &peer, &dest, &mut buf)
             .await
         {
-            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}")
+            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+
+            if e.is_fatal_connection_error() {
+                let _ = tunnel
+                    .stop_peer_command_sender
+                    .clone()
+                    .send((peer.index, peer.conn_id))
+                    .await;
+            }
         }
     }
 }

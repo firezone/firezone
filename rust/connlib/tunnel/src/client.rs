@@ -18,6 +18,7 @@ use connlib_shared::{Callbacks, DNS_SENTINEL};
 use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{PushError, StreamMap};
+use futures_util::SinkExt;
 use hickory_resolver::lookup::Lookup;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
@@ -203,11 +204,20 @@ where
         };
 
         if let Err(e) = tunnel
-            .encapsulate_and_send_to_peer(packet, peer, &dest, &mut buf)
+            .encapsulate_and_send_to_peer(packet, &peer, &dest, &mut buf)
             .await
         {
+            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+
             let _ = tunnel.callbacks.on_error(&e);
-            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}")
+
+            if e.is_fatal_connection_error() {
+                let _ = tunnel
+                    .stop_peer_command_sender
+                    .clone()
+                    .send((peer.index, peer.conn_id))
+                    .await;
+            }
         }
     }
 }
