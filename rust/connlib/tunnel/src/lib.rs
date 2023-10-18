@@ -260,14 +260,27 @@ where
                 return Poll::Ready(event);
             }
 
-            if let Poll::Ready(Some((index, conn_id))) =
+            if let Poll::Ready(Some((i, conn_id))) =
                 self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
             {
-                self.peers_by_ip.write().retain(|_, p| p.index != index);
+                let mut peers = self.peers_by_ip.write();
+
+                let (maybe_network, maybe_peer) = peers
+                    .iter()
+                    .find_map(|(n, p)| (p.index == i).then_some((n, p.clone())))
+                    .unzip();
+
+                if let Some(network) = maybe_network {
+                    peers.remove(network);
+                }
+
                 if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
                     tokio::spawn({
                         let callbacks = self.callbacks.clone();
                         async move {
+                            if let Some(peer) = maybe_peer {
+                                let _ = peer.shutdown().await;
+                            }
                             if let Err(e) = conn.close().await {
                                 tracing::warn!(%conn_id, error = ?e, "Can't close peer");
                                 let _ = callbacks.on_error(&e.into());
