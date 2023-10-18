@@ -99,6 +99,7 @@ cargo {
     module = "../"
     libname = "connlib"
     targets = listOf("arm", "arm64", "x86_64")
+    targetDirectory = "../../rust/target" // Relative to the gradle's `projectDir`
 }
 
 tasks.register("copyJniSharedObjectsDebug") {
