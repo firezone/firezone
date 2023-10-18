@@ -1,9 +1,12 @@
+use crate::bounded_queue::BoundedQueue;
 use crate::device_channel::{create_iface, DeviceIo};
+use crate::ip_packet::IpPacket;
 use crate::peer::Peer;
 use crate::resource_table::ResourceTable;
 use crate::{
-    dns, peer_by_ip, tokio_util, Device, Event, PeerConfig, RoleState, Tunnel,
-    ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
+    dns, peer_by_ip, tokio_util, Device, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
+    DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
+    MAX_UDP_SIZE,
 };
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
@@ -15,6 +18,7 @@ use connlib_shared::{Callbacks, DNS_SENTINEL};
 use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{PushError, StreamMap};
+use hickory_resolver::lookup::Lookup;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use std::collections::hash_map::Entry;
@@ -62,6 +66,46 @@ where
         };
 
         self.callbacks.on_update_resources(resource_list)?;
+        Ok(())
+    }
+
+    /// Writes the response to a DNS lookup
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn write_dns_lookup_response(
+        self: &Arc<Self>,
+        response: hickory_resolver::error::ResolveResult<Lookup>,
+        query: IpPacket<'static>,
+    ) -> connlib_shared::Result<()> {
+        let Some(mut message) = dns::as_dns_message(&query) else {
+            debug_assert!(false, "The original message should be a DNS query for us to ever call write_dns_lookup_response");
+            return Ok(());
+        };
+        let response = match response.map_err(|err| err.kind().clone()) {
+            Ok(response) => message.add_answers(response.records().to_vec()),
+            Err(hickory_resolver::error::ResolveErrorKind::NoRecordsFound {
+                soa,
+                response_code,
+                ..
+            }) => {
+                if let Some(soa) = soa {
+                    message.add_name_server(soa.clone().into_record_of_rdata());
+                }
+
+                message.set_response_code(response_code)
+            }
+            Err(e) => {
+                return Err(e.into());
+            }
+        };
+
+        if let Some(pkt) = dns::build_response(query, response.to_vec()?) {
+            let Some(ref device) = *self.device.read().await else {
+                return Ok(());
+            };
+
+            send_dns_packet(&device.io, pkt)?;
+        }
+
         Ok(())
     }
 
@@ -133,15 +177,20 @@ where
             return Ok(());
         };
 
-        if let Some(dns_packet) =
-            dns::parse(&tunnel.role_state.lock().resources, packet.as_immutable())
-        {
-            if let Err(e) = send_dns_packet(&device_writer, dns_packet) {
-                tracing::error!(err = %e, "failed to send DNS packet");
-                let _ = tunnel.callbacks.on_error(&e.into());
-            }
+        match dns::parse(&tunnel.role_state.lock().resources, packet.as_immutable()) {
+            Some(dns::ResolveStrategy::LocalResponse(pkt)) => {
+                if let Err(e) = send_dns_packet(&device_writer, pkt) {
+                    tracing::error!(err = %e, "failed to send DNS packet");
+                    let _ = tunnel.callbacks.on_error(&e.into());
+                }
 
-            continue;
+                continue;
+            }
+            Some(dns::ResolveStrategy::ForwardQuery(query)) => {
+                tunnel.role_state.lock().dns_query(query);
+                continue;
+            }
+            None => {}
         }
 
         let dest = packet.destination();
@@ -166,10 +215,13 @@ where
 
 fn send_dns_packet(device_writer: &DeviceIo, packet: dns::Packet) -> io::Result<()> {
     match packet {
-        dns::Packet::Ipv4(r) => device_writer.write4(&r[..])?,
-        dns::Packet::Ipv6(r) => device_writer.write6(&r[..])?,
-    };
-
+        dns::Packet::Ipv4(r) => {
+            device_writer.write4(&r[..])?;
+        }
+        dns::Packet::Ipv6(r) => {
+            device_writer.write6(&r[..])?;
+        }
+    }
     Ok(())
 }
 
@@ -188,6 +240,7 @@ pub struct ClientState {
     pub gateway_public_keys: HashMap<GatewayId, PublicKey>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
     resources: ResourceTable<ResourceDescription>,
+    dns_queries: BoundedQueue<DnsQuery<'static>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -416,6 +469,12 @@ impl ClientState {
             IpAddr::V6(ipv6) => self.resources.get_by_ip(ipv6),
         }
     }
+
+    pub fn dns_query(&mut self, query: DnsQuery) {
+        if self.dns_queries.push_back(query.into_owned()).is_err() {
+            tracing::warn!("Too many DNS queries, dropping new ones");
+        }
+    }
 }
 
 impl Default for ClientState {
@@ -432,6 +491,7 @@ impl Default for ClientState {
             gateway_public_keys: Default::default(),
             resources_gateways: Default::default(),
             resources: Default::default(),
+            dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
         }
     }
 }
@@ -449,7 +509,8 @@ impl RoleState for ClientState {
                     })
                 }
                 Poll::Ready((id, Some(Err(e)))) => {
-                    tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}")
+                    tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}");
+                    continue;
                 }
                 Poll::Ready((_, None)) => continue,
                 Poll::Pending => {}
@@ -494,7 +555,7 @@ impl RoleState for ClientState {
                 Poll::Pending => {}
             }
 
-            return Poll::Pending;
+            return self.dns_queries.poll(cx).map(Event::DnsQuery);
         }
     }
 }

@@ -11,7 +11,10 @@ use bytes::Bytes;
 use connlib_shared::{messages::Key, CallbackErrorFacade, Callbacks, Error};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
+use ip_packet::IpPacket;
+use pnet_packet::Packet;
 
+use hickory_resolver::proto::rr::RecordType;
 use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
@@ -47,6 +50,7 @@ use crate::ip_packet::MutableIpPacket;
 use connlib_shared::messages::SecretKey;
 use index::IndexLfsr;
 
+mod bounded_queue;
 mod client;
 mod control_protocol;
 mod device_channel;
@@ -65,6 +69,8 @@ const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const RESET_PACKET_COUNT_INTERVAL: Duration = Duration::from_secs(1);
 const REFRESH_PEERS_TIMERS_INTERVAL: Duration = Duration::from_secs(1);
 const REFRESH_MTU_INTERVAL: Duration = Duration::from_secs(30);
+const DNS_QUERIES_QUEUE_SIZE: usize = 100;
+
 /// For how long we will attempt to gather ICE candidates before aborting.
 ///
 /// Chosen arbitrarily.
@@ -194,6 +200,34 @@ pub(crate) fn peer_by_ip<Id>(
     peers_by_ip.longest_match(ip).map(|(_, peer)| peer).cloned()
 }
 
+#[derive(Debug)]
+pub struct DnsQuery<'a> {
+    pub name: String,
+    pub record_type: RecordType,
+    // We could be much more efficient with this field,
+    // we only need the header to create the response.
+    pub query: IpPacket<'a>,
+}
+
+impl<'a> DnsQuery<'a> {
+    pub(crate) fn into_owned(self) -> DnsQuery<'static> {
+        let Self {
+            name,
+            record_type,
+            query,
+        } = self;
+        let buf = query.packet().to_vec();
+        let query =
+            IpPacket::owned(buf).expect("We are constructing the ip packet from an ip packet");
+
+        DnsQuery {
+            name,
+            record_type,
+            query,
+        }
+    }
+}
+
 pub enum Event<TId> {
     SignalIceCandidate {
         conn_id: TId,
@@ -204,6 +238,7 @@ pub enum Event<TId> {
         connected_gateway_ids: Vec<GatewayId>,
         reference: usize,
     },
+    DnsQuery(DnsQuery<'static>),
 }
 
 impl<CB, TRoleState> Tunnel<CB, TRoleState>
