@@ -199,6 +199,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }}
+          tags: |
+            type=sha,format=long
       - name: Build and push release Docker images by digest
         id: build
         uses: docker/build-push-action@v5
@@ -215,8 +217,6 @@ jobs:
             type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
           file: rust/Dockerfile
           target: release
-          tags: |
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }}:${{ github.sha }}
           outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
@@ -260,6 +260,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
+          tags: |
+            type=sha,format=long
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
