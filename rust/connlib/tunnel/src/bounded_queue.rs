@@ -13,11 +13,9 @@ pub(crate) struct BoundedQueue<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Error {
-    Full,
-}
+pub(crate) struct Full;
 
-impl fmt::Display for Error {
+impl fmt::Display for Full {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Queue is full")
     }
@@ -46,9 +44,9 @@ impl<T> BoundedQueue<T> {
         self.queue.len() == self.limit
     }
 
-    pub(crate) fn push_back(&mut self, x: T) -> Result<(), Error> {
+    pub(crate) fn push_back(&mut self, x: T) -> Result<(), Full> {
         if self.at_capacity() {
-            return Err(Error::Full);
+            return Err(Full);
         }
 
         self.queue.push_back(x);
