@@ -32,12 +32,11 @@ impl<T> BoundedQueue<T> {
 
     pub(crate) fn poll(&mut self, cx: &Context) -> Poll<T> {
         if let Some(front) = self.queue.pop_front() {
-            Poll::Ready(front)
-        } else {
-            self.waker = Some(cx.waker().clone());
-
-            Poll::Pending
+            return Poll::Ready(front);
         }
+
+        self.waker = Some(cx.waker().clone());
+        Poll::Pending
     }
 
     fn at_capacity(&self) -> bool {
