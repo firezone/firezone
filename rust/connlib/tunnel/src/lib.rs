@@ -3,7 +3,7 @@
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
 use boringtun::{
-    noise::{errors::WireGuardError, rate_limiter::RateLimiter, TunnResult},
+    noise::{rate_limiter::RateLimiter, TunnResult},
     x25519::{PublicKey, StaticSecret},
 };
 use bytes::Bytes;
@@ -215,11 +215,15 @@ where
 
                 for peer in peers_to_refresh {
                     let callbacks = self.callbacks.clone();
-                    let stop_command_sender = self.stop_peer_command_sender.clone();
+                    let mut stop_command_sender = self.stop_peer_command_sender.clone();
 
                     tokio::spawn(async move {
                         let mut dst_buf = [0u8; 148];
-                        refresh_peer(&peer, &mut dst_buf, callbacks, stop_command_sender).await;
+                        if let Err(e) = refresh_peer(&peer, &mut dst_buf, callbacks).await {
+                            if e.is_fatal_connection_error() {
+                                let _ = stop_command_sender.send((peer.index, peer.conn_id)).await;
+                            }
+                        }
                     });
                 }
                 continue;
@@ -421,24 +425,21 @@ async fn refresh_peer<TId>(
     peer: &Peer<TId>,
     dst_buf: &mut [u8],
     callbacks: impl Callbacks,
-    mut stop_command_sender: mpsc::Sender<(u32, TId)>,
-) where
+) -> Result<()>
+where
     TId: Copy,
 {
     match peer.update_timers(dst_buf) {
-        TunnResult::Done => {}
-        TunnResult::Err(WireGuardError::ConnectionExpired)
-        | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-            let _ = stop_command_sender.send((peer.index, peer.conn_id)).await;
-        }
-        TunnResult::Err(e) => tracing::error!(error = ?e, "timer_error"),
+        TunnResult::Done => Ok(()),
+        TunnResult::Err(e) => Err(e.into()),
         TunnResult::WriteToNetwork(packet) => {
             let bytes = Bytes::copy_from_slice(packet);
-            peer.send_infallible(bytes, &callbacks).await
-        }
+            peer.send_infallible(bytes, &callbacks).await;
 
+            Ok(())
+        }
         _ => panic!("Unexpected result from update_timers"),
-    };
+    }
 }
 
 /// Constructs the interval for resetting the rate limit count.
