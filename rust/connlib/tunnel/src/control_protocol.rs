@@ -19,7 +19,7 @@ use webrtc::{
     },
 };
 
-use crate::{ConnId, RoleState, Tunnel};
+use crate::{RoleState, Tunnel};
 
 mod client;
 mod gateway;
@@ -38,7 +38,11 @@ where
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
-    pub fn on_dc_close_handler(self: Arc<Self>, index: u32, conn_id: ConnId) -> OnCloseHdlrFn {
+    pub fn on_dc_close_handler(
+        self: Arc<Self>,
+        index: u32,
+        conn_id: TRoleState::Id,
+    ) -> OnCloseHdlrFn {
         Box::new(move || {
             tracing::debug!("channel_closed");
             let tunnel = self.clone();
@@ -51,7 +55,7 @@ where
     pub fn on_peer_connection_state_change_handler(
         self: Arc<Self>,
         index: u32,
-        conn_id: ConnId,
+        conn_id: TRoleState::Id,
     ) -> OnPeerConnectionStateChangeHdlrFn {
         Box::new(move |state| {
             let tunnel = Arc::clone(&self);
@@ -66,7 +70,7 @@ where
 
     pub async fn add_ice_candidate(
         &self,
-        conn_id: ConnId,
+        conn_id: TRoleState::Id,
         ice_candidate: RTCIceCandidateInit,
     ) -> Result<()> {
         let peer_connection = self

@@ -23,7 +23,7 @@ fn handle_connection_state_update<CB>(
 {
     tracing::trace!(?state, "peer_state");
     if state == RTCPeerConnectionState::Failed {
-        tunnel.peer_connections.lock().remove(&client_id.into());
+        tunnel.peer_connections.lock().remove(&client_id);
     }
 }
 
@@ -79,7 +79,7 @@ where
         let tunnel = Arc::clone(self);
         self.peer_connections
             .lock()
-            .insert(client_id.into(), Arc::clone(&peer_connection));
+            .insert(client_id, Arc::clone(&peer_connection));
 
         set_connection_state_update(self, &peer_connection, client_id);
 
@@ -110,14 +110,14 @@ where
                         }
 
                         data_channel
-                            .on_close(tunnel.clone().on_dc_close_handler(index, client_id.into()));
+                            .on_close(tunnel.clone().on_dc_close_handler(index, client_id));
 
                         let peer = Arc::new(Peer::new(
                             tunnel.private_key.clone(),
                             index,
                             peer_config.clone(),
                             data_channel.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us"),
-                            client_id.into(),
+                            client_id,
                             Some((resource, expires_at)),
                         ));
 
@@ -127,11 +127,11 @@ where
                             peers_by_ip.insert(ip, Arc::clone(&peer));
                         }
 
-                        if let Some(conn) = tunnel.peer_connections.lock().get(&client_id.into()) {
+                        if let Some(conn) = tunnel.peer_connections.lock().get(&client_id) {
                             conn.on_peer_connection_state_change(
                                 tunnel.clone().on_peer_connection_state_change_handler(
                                     index,
-                                    client_id.into(),
+                                    client_id,
                                 ),
                             );
                         }
@@ -165,7 +165,7 @@ where
             .peers_by_ip
             .write()
             .iter_mut()
-            .find_map(|(_, p)| (p.conn_id == client_id.into()).then_some(p))
+            .find_map(|(_, p)| (p.conn_id == client_id).then_some(p))
         {
             peer.add_resource(resource, expires_at);
         }

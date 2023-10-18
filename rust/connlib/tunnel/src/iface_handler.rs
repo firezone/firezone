@@ -15,7 +15,7 @@ where
     pub(crate) async fn encapsulate_and_send_to_peer<'a>(
         &self,
         mut packet: MutableIpPacket<'_>,
-        peer: Arc<Peer>,
+        peer: Arc<Peer<TRoleState::Id>>,
         dst_addr: &IpAddr,
         buf: &mut [u8],
     ) -> Result<()> {
