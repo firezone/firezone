@@ -207,7 +207,7 @@ where
             .await
         {
             let _ = tunnel.callbacks.on_error(&e);
-            tracing::error!(err = ?e, "failed to handle packet {e:#}")
+            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}")
         }
     }
 }

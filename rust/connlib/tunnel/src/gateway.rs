@@ -66,7 +66,7 @@ where
             .encapsulate_and_send_to_peer(packet, peer, &dest, &mut buf)
             .await
         {
-            tracing::error!(err = ?e, "failed to handle packet {e:#}")
+            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}")
         }
     }
 }

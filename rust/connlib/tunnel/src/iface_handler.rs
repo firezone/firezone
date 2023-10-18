@@ -31,13 +31,7 @@ where
                     .await;
                 Ok(())
             }
-
-            TunnResult::Err(e) => {
-                tracing::error!(resource_address = %dst_addr, error = ?e, "resource_connection");
-                let err = e.into();
-                let _ = self.callbacks.on_error(&err);
-                Err(err)
-            }
+            TunnResult::Err(e) => Err(e.into()),
             TunnResult::WriteToNetwork(packet) => {
                 tracing::trace!(target: "wire", action = "writing", from = "iface", to = %dst_addr);
                 if let Err(e) = peer.channel.write(&Bytes::copy_from_slice(packet)).await {
