@@ -87,8 +87,8 @@ dependencies:
     specifier: ^15.5.0
     version: 15.5.0(react@18.2.0)
   rehype-autolink-headings:
-    specifier: ^6.1.1
-    version: 6.1.1
+    specifier: ^7.0.0
+    version: 7.0.0
   rehype-highlight:
     specifier: ^6.0.0
     version: 6.0.0
@@ -1360,11 +1360,23 @@ packages:
       '@types/hast': 2.3.7
     dev: false
 
+  /hast-util-heading-rank@3.0.0:
+    resolution: {integrity: sha512-EJKb8oMUXVHcWZTDepnr+WNbfnXKFNf9duMesmr4S8SXTJBJ9M4Yok08pu9vxdJwdlGRhVumk9mEhkEvKGifwA==}
+    dependencies:
+      '@types/hast': 3.0.2
+    dev: false
+
   /hast-util-is-element@2.1.3:
     resolution: {integrity: sha512-O1bKah6mhgEq2WtVMk+Ta5K7pPMqsBBlmzysLdcwKVrqzZQ0CHqUPiIVspNhAG1rvxpvJjtGee17XfauZYKqVA==}
     dependencies:
       '@types/hast': 2.3.7
       '@types/unist': 2.0.9
+    dev: false
+
+  /hast-util-is-element@3.0.0:
+    resolution: {integrity: sha512-Val9mnv2IWpLbNPqc/pUem+a7Ipj2aHacCwgNfTiK0vJKl0LF+4Ba4+v1oPHFpf3bLYmreq0/l3Gud9S5OH42g==}
+    dependencies:
+      '@types/hast': 3.0.2
     dev: false
 
   /hast-util-parse-selector@2.2.5:
@@ -2889,16 +2901,15 @@ packages:
     resolution: {integrity: sha512-srw17NI0TUWHuGa5CFGGmhfNIeja30WMBfbslPNhf6JrqQlLN5gcrvig1oqPxiVaXb0oW0XRKtH6Nngs5lKCIA==}
     dev: false
 
-  /rehype-autolink-headings@6.1.1:
-    resolution: {integrity: sha512-NMYzZIsHM3sA14nC5rAFuUPIOfg+DFmf9EY1YMhaNlB7+3kK/ZlE6kqPfuxr1tsJ1XWkTrMtMoyHosU70d35mA==}
+  /rehype-autolink-headings@7.0.0:
+    resolution: {integrity: sha512-DLskejGYHQP9v7vUW85BeYIclgfMQ1IwAMx+0lm8Sr3cME2NThgy2OdTfosmuBA68fqP5o4FK+dknpUMFvlxYQ==}
     dependencies:
-      '@types/hast': 2.3.7
-      extend: 3.0.2
-      hast-util-has-property: 2.0.1
-      hast-util-heading-rank: 2.1.1
-      hast-util-is-element: 2.1.3
-      unified: 10.1.2
-      unist-util-visit: 4.1.2
+      '@types/hast': 3.0.2
+      '@ungap/structured-clone': 1.2.0
+      hast-util-heading-rank: 3.0.0
+      hast-util-is-element: 3.0.0
+      unified: 11.0.3
+      unist-util-visit: 5.0.0
     dev: false
 
   /rehype-highlight@6.0.0:
