@@ -23,7 +23,7 @@ relay="$target_directory/debug/firezone-relay"
 
 export PUBLIC_IP4_ADDR=127.0.0.1;
 export RNG_SEED=0;
-export RUST_LOG=firezone-relay=debug;
+export RUST_LOG=firezone_relay=debug;
 
 # Client and relay run in the background.
 $client 2>&1 | sed "s/^/${RED}[ client]${NC} /" &
