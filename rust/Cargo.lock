@@ -1119,6 +1119,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0870c84016d4b481be5c9f323c24f65e31e901ae618f0e80f4308fb00de1d2d"
 
 [[package]]
+name = "firezone-cli-utils"
+version = "1.20231001.0"
+dependencies = [
+ "clap",
+ "ctrlc",
+ "ip_network",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "firezone-gateway"
 version = "1.20231001.0"
 dependencies = [
@@ -1129,10 +1141,10 @@ dependencies = [
  "chrono",
  "clap",
  "connlib-shared",
+ "firezone-cli-utils",
  "firezone-tunnel",
  "futures",
  "futures-bounded 0.1.0",
- "headless-utils",
  "phoenix-channel",
  "secrecy",
  "serde",
@@ -1152,7 +1164,7 @@ dependencies = [
  "anyhow",
  "clap",
  "connlib-client-shared",
- "headless-utils",
+ "firezone-cli-utils",
  "secrecy",
  "tracing",
  "tracing-subscriber",
@@ -1462,18 +1474,6 @@ name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
-
-[[package]]
-name = "headless-utils"
-version = "1.20231001.0"
-dependencies = [
- "clap",
- "ctrlc",
- "ip_network",
- "tracing",
- "tracing-subscriber",
- "url",
-]
 
 [[package]]
 name = "heck"

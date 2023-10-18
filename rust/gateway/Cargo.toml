@@ -17,7 +17,7 @@ connlib-shared = { workspace = true }
 firezone-tunnel = { workspace = true }
 futures = "0.3.28"
 futures-bounded = "0.1.0"
-headless-utils = { workspace = true }
+firezone-cli-utils = { workspace = true }
 phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
