@@ -31,7 +31,7 @@ fn handle_connection_state_update<CB>(
     tracing::trace!("peer_state");
     if state == RTCPeerConnectionState::Failed {
         tunnel.role_state.lock().on_connection_failed(resource_id);
-        tunnel.peer_connections.lock().remove(&gateway_id.into());
+        tunnel.peer_connections.lock().remove(&gateway_id);
     }
 }
 
@@ -101,7 +101,7 @@ where
                 .add_waiting_ice_receiver(gateway_id, receiver);
             let peer_connection = Arc::new(peer_connection);
             let mut peer_connections = self.peer_connections.lock();
-            peer_connections.insert(gateway_id.into(), Arc::clone(&peer_connection));
+            peer_connections.insert(gateway_id, Arc::clone(&peer_connection));
             peer_connection
         };
 
@@ -131,7 +131,7 @@ where
                 let peer_config = match tunnel.role_state.lock().create_peer_config_for_new_connection(resource_id, gateway_id, p_key) {
                     Ok(c) => c,
                     Err(e) => {
-                        tunnel.peer_connections.lock().remove(&gateway_id.into());
+                        tunnel.peer_connections.lock().remove(&gateway_id);
 
                         tracing::warn!(err = ?e, "channel_open");
                         let _ = tunnel.callbacks.on_error(&e);
@@ -139,14 +139,14 @@ where
                     }
                 };
 
-                d.on_close(tunnel.clone().on_dc_close_handler(index, gateway_id.into()));
+                d.on_close(tunnel.clone().on_dc_close_handler(index, gateway_id));
 
                 let peer = Arc::new(Peer::new(
                     tunnel.private_key.clone(),
                     index,
                     peer_config.clone(),
                     d.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us"),
-                    gateway_id.into(),
+                    gateway_id,
                     None,
                 ));
 
@@ -169,11 +169,11 @@ where
                     }
                 }
 
-                if let Some(conn) = tunnel.peer_connections.lock().get(&gateway_id.into()) {
+                if let Some(conn) = tunnel.peer_connections.lock().get(&gateway_id) {
                     conn.on_peer_connection_state_change(
                         tunnel
                             .clone()
-                            .on_peer_connection_state_change_handler(index, gateway_id.into()),
+                            .on_peer_connection_state_change_handler(index, gateway_id),
                     );
                 }
 
@@ -221,7 +221,7 @@ where
         let peer_connection = self
             .peer_connections
             .lock()
-            .get(&gateway_id.into())
+            .get(&gateway_id)
             .ok_or(Error::UnknownResource)?
             .clone();
         peer_connection.set_remote_description(rtc_sdp).await?;

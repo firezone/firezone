@@ -15,7 +15,7 @@ where
     TRoleState: RoleState,
 {
     #[inline(always)]
-    fn is_wireguard_packet_ok(&self, parsed_packet: &Packet, peer: &Peer) -> bool {
+    fn is_wireguard_packet_ok(&self, parsed_packet: &Packet, peer: &Peer<TRoleState::Id>) -> bool {
         match &parsed_packet {
             Packet::HandshakeInit(p) => {
                 parse_handshake_anon(&self.private_key, &self.public_key, p).is_ok()
@@ -29,7 +29,7 @@ where
     #[inline(always)]
     async fn verify_packet<'a>(
         self: &Arc<Self>,
-        peer: &Arc<Peer>,
+        peer: &Arc<Peer<TRoleState::Id>>,
         src: &'a [u8],
         dst: &'a mut [u8],
     ) -> Result<Packet<'a>> {
@@ -63,7 +63,7 @@ where
     #[inline(always)]
     async fn handle_decapsulated_packet<'a>(
         self: &Arc<Self>,
-        peer: &Arc<Peer>,
+        peer: &Arc<Peer<TRoleState::Id>>,
         device_io: &DeviceIo,
         decapsulate_result: TunnResult<'a>,
     ) -> Result<bool> {
@@ -93,7 +93,7 @@ where
     #[inline(always)]
     pub(crate) async fn handle_peer_packet(
         self: &Arc<Self>,
-        peer: &Arc<Peer>,
+        peer: &Arc<Peer<TRoleState::Id>>,
         device_writer: &DeviceIo,
         src: &[u8],
         dst: &mut [u8],
@@ -127,7 +127,7 @@ where
 
     async fn peer_handler(
         self: &Arc<Self>,
-        peer: &Arc<Peer>,
+        peer: &Arc<Peer<TRoleState::Id>>,
         device_io: DeviceIo,
     ) -> std::io::Result<()> {
         let mut src_buf = [0u8; MAX_UDP_SIZE];
@@ -154,7 +154,7 @@ where
         Ok(())
     }
 
-    pub(crate) async fn start_peer_handler(self: Arc<Self>, peer: Arc<Peer>) {
+    pub(crate) async fn start_peer_handler(self: Arc<Self>, peer: Arc<Peer<TRoleState::Id>>) {
         loop {
             let Some(device) = self.device.read().await.clone() else {
                 let err = Error::NoIface;

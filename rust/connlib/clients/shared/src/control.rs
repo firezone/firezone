@@ -200,11 +200,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }: GatewayIceCandidates,
     ) {
         for candidate in candidates {
-            if let Err(e) = self
-                .tunnel
-                .add_ice_candidate(gateway_id.into(), candidate)
-                .await
-            {
+            if let Err(e) = self.tunnel.add_ice_candidate(gateway_id, candidate).await {
                 tracing::error!(err = ?e,"add_ice_candidate");
                 let _ = self.tunnel.callbacks().on_error(&e);
             }
