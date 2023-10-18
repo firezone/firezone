@@ -157,6 +157,8 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
 
     stop_peer_command_receiver: Mutex<mpsc::Receiver<(u32, TRoleState::Id)>>,
     stop_peer_command_sender: mpsc::Sender<(u32, TRoleState::Id)>,
+
+    rate_limit_reset_interval: Mutex<Interval>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -195,6 +197,16 @@ where
 
     pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         loop {
+            if self
+                .rate_limit_reset_interval
+                .lock()
+                .poll_tick(cx)
+                .is_ready()
+            {
+                self.rate_limiter.reset_count();
+                continue;
+            }
+
             if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
                 return Poll::Ready(event);
             }
@@ -329,6 +341,7 @@ where
             role_state: Default::default(),
             stop_peer_command_receiver: Mutex::new(stop_peer_command_receiver),
             stop_peer_command_sender,
+            rate_limit_reset_interval: Mutex::new(rate_limit_reset_interval()),
         })
     }
 
@@ -354,18 +367,6 @@ where
 
             _ => panic!("Unexpected result from update_timers"),
         };
-    }
-
-    fn start_rate_limiter_refresh_timer(self: &Arc<Self>) {
-        let rate_limiter = self.rate_limiter.clone();
-        tokio::spawn(async move {
-            let mut interval = rate_limit_reset_interval();
-
-            loop {
-                rate_limiter.reset_count();
-                interval.tick().await;
-            }
-        });
     }
 
     fn start_peers_refresh_timer(self: &Arc<Self>) {
@@ -420,7 +421,6 @@ where
 
     async fn start_timers(self: &Arc<Self>) -> Result<()> {
         self.start_refresh_mtu_timer().await?;
-        self.start_rate_limiter_refresh_timer();
         self.start_peers_refresh_timer();
         Ok(())
     }
