@@ -44,7 +44,7 @@ defmodule Domain.Types.IPPort do
   def cast_address(address) do
     address
     |> String.to_charlist()
-    |> :inet.parse_address()
+    |> :inet.parse_strict_address()
   end
 
   defp cast_port(nil), do: {:ok, nil}

@@ -52,7 +52,8 @@ defmodule Web.Live.Settings.DNS.IndexTest do
 
     assert find_inputs(form) == [
              "configuration[clients_upstream_dns][0][_persistent_id]",
-             "configuration[clients_upstream_dns][0][address]"
+             "configuration[clients_upstream_dns][0][address]",
+             "configuration[clients_upstream_dns][0][type]"
            ]
   end
 
@@ -77,8 +78,10 @@ defmodule Web.Live.Settings.DNS.IndexTest do
            |> find_inputs() == [
              "configuration[clients_upstream_dns][0][_persistent_id]",
              "configuration[clients_upstream_dns][0][address]",
+             "configuration[clients_upstream_dns][0][type]",
              "configuration[clients_upstream_dns][1][_persistent_id]",
-             "configuration[clients_upstream_dns][1][address]"
+             "configuration[clients_upstream_dns][1][address]",
+             "configuration[clients_upstream_dns][1][type]"
            ]
   end
 
@@ -107,8 +110,10 @@ defmodule Web.Live.Settings.DNS.IndexTest do
            |> find_inputs() == [
              "configuration[clients_upstream_dns][0][_persistent_id]",
              "configuration[clients_upstream_dns][0][address]",
+             "configuration[clients_upstream_dns][0][type]",
              "configuration[clients_upstream_dns][1][_persistent_id]",
-             "configuration[clients_upstream_dns][1][address]"
+             "configuration[clients_upstream_dns][1][address]",
+             "configuration[clients_upstream_dns][1][type]"
            ]
 
     empty_attrs = %{
@@ -123,20 +128,23 @@ defmodule Web.Live.Settings.DNS.IndexTest do
            |> form("form")
            |> find_inputs() == [
              "configuration[clients_upstream_dns][0][_persistent_id]",
-             "configuration[clients_upstream_dns][0][address]"
+             "configuration[clients_upstream_dns][0][address]",
+             "configuration[clients_upstream_dns][0][type]"
            ]
   end
 
-  test "warns when duplicates found", %{
+  test "warns when duplicate IPv4 addresses found", %{
     account: account,
     identity: identity,
     conn: conn
   } do
-    addr = %{address: "8.8.8.8"}
+    addr1 = %{address: "8.8.8.8"}
+    addr1_dup = %{address: "8.8.8.8:53"}
+    addr2 = %{address: "1.1.1.1"}
 
     attrs = %{
       configuration: %{
-        clients_upstream_dns: %{"0" => addr}
+        clients_upstream_dns: %{"0" => addr1}
       }
     }
 
@@ -150,8 +158,16 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     |> render_submit()
 
     assert lv
-           |> form("form", %{configuration: %{clients_upstream_dns: %{"1" => addr}}})
-           |> render_change() =~ "should not contain duplicates"
+           |> form("form", %{configuration: %{clients_upstream_dns: %{"1" => addr1}}})
+           |> render_change() =~ "no duplicates allowed"
+
+    refute lv
+           |> form("form", %{configuration: %{clients_upstream_dns: %{"1" => addr2}}})
+           |> render_change() =~ "no duplicates allowed"
+
+    assert lv
+           |> form("form", %{configuration: %{clients_upstream_dns: %{"1" => addr1_dup}}})
+           |> render_change() =~ "no duplicates allowed"
   end
 
   test "does not display 'cannot be empty' error message", %{

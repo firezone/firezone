@@ -93,7 +93,7 @@ defmodule Domain.ConfigTest do
       assert fetch_resolved_configs!(account.id, [:clients_upstream_dns, :clients_upstream_dns]) ==
                %{
                  clients_upstream_dns: [
-                   %Domain.Config.Configuration.ClientsUpstreamDNS{address: "1.1.1.1"}
+                   %Domain.Config.Configuration.ClientsUpstreamDNS{type: "ip", address: "1.1.1.1"}
                  ]
                }
     end
@@ -143,7 +143,12 @@ defmodule Domain.ConfigTest do
                %{
                  clients_upstream_dns:
                    {{:db, :clients_upstream_dns},
-                    [%Domain.Config.Configuration.ClientsUpstreamDNS{address: "1.1.1.1"}]}
+                    [
+                      %Domain.Config.Configuration.ClientsUpstreamDNS{
+                        type: "ip",
+                        address: "1.1.1.1"
+                      }
+                    ]}
                }
     end
 
@@ -444,25 +449,25 @@ defmodule Domain.ConfigTest do
       config = get_account_config_by_account_id(account.id)
 
       attrs = %{
-        clients_upstream_dns: [%{address: "!!!"}]
+        clients_upstream_dns: [%{type: "ip", address: "!!!"}]
       }
 
       assert {:error, changeset} = update_config(config, attrs)
 
       assert errors_on(changeset) == %{
                clients_upstream_dns: [
-                 %{address: ["does not contain a scheme or a host", "!!! is not a valid FQDN"]}
+                 %{address: ["must be a valid IP address"]}
                ]
              }
     end
 
     test "returns error when trying to change overridden value", %{account: account} do
-      put_system_env_override(:clients_upstream_dns, [%{address: "1.2.3.4"}])
+      put_system_env_override(:clients_upstream_dns, [%{type: "ip", address: "1.2.3.4"}])
 
       config = get_account_config_by_account_id(account.id)
 
       attrs = %{
-        clients_upstream_dns: [%{address: "4.1.2.3"}]
+        clients_upstream_dns: [%{type: "ip", address: "4.1.2.3"}]
       }
 
       assert {:error, changeset} = update_config(config, attrs)
@@ -479,25 +484,35 @@ defmodule Domain.ConfigTest do
       config = get_account_config_by_account_id(account.id)
 
       attrs = %{
-        clients_upstream_dns: [%{address: "   foobar.com"}, %{address: "google.com   "}]
+        clients_upstream_dns: [
+          %{type: "ip", address: "   1.1.1.1"},
+          %{type: "ip", address: "8.8.8.8   "}
+        ]
       }
 
       assert {:ok, config} = update_config(config, attrs)
 
       assert config.clients_upstream_dns == [
-               %Domain.Config.Configuration.ClientsUpstreamDNS{address: "foobar.com"},
-               %Domain.Config.Configuration.ClientsUpstreamDNS{address: "google.com"}
+               %Domain.Config.Configuration.ClientsUpstreamDNS{type: "ip", address: "1.1.1.1"},
+               %Domain.Config.Configuration.ClientsUpstreamDNS{type: "ip", address: "8.8.8.8"}
              ]
     end
 
     test "changes database config value when it did not exist", %{account: account} do
       config = get_account_config_by_account_id(account.id)
-      attrs = %{clients_upstream_dns: [%{address: "foobar.com"}, %{address: "google.com"}]}
+
+      attrs = %{
+        clients_upstream_dns: [
+          %{type: "ip", address: "1.1.1.1"},
+          %{type: "ip", address: "8.8.8.8"}
+        ]
+      }
+
       assert {:ok, config} = update_config(config, attrs)
 
       assert config.clients_upstream_dns == [
-               %Domain.Config.Configuration.ClientsUpstreamDNS{address: "foobar.com"},
-               %Domain.Config.Configuration.ClientsUpstreamDNS{address: "google.com"}
+               %Domain.Config.Configuration.ClientsUpstreamDNS{type: "ip", address: "1.1.1.1"},
+               %Domain.Config.Configuration.ClientsUpstreamDNS{type: "ip", address: "8.8.8.8"}
              ]
     end
 
@@ -505,12 +520,19 @@ defmodule Domain.ConfigTest do
       Fixtures.Config.upsert_configuration(account: account)
 
       config = get_account_config_by_account_id(account.id)
-      attrs = %{clients_upstream_dns: [%{address: "foobar.com"}, %{address: "google.com"}]}
+
+      attrs = %{
+        clients_upstream_dns: [
+          %{type: "ip", address: "8.8.8.8"},
+          %{type: "ip", address: "8.8.4.4"}
+        ]
+      }
+
       assert {:ok, config} = update_config(config, attrs)
 
       assert config.clients_upstream_dns == [
-               %Domain.Config.Configuration.ClientsUpstreamDNS{address: "foobar.com"},
-               %Domain.Config.Configuration.ClientsUpstreamDNS{address: "google.com"}
+               %Domain.Config.Configuration.ClientsUpstreamDNS{type: "ip", address: "8.8.8.8"},
+               %Domain.Config.Configuration.ClientsUpstreamDNS{type: "ip", address: "8.8.4.4"}
              ]
     end
   end

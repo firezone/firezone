@@ -56,14 +56,30 @@ defmodule Web.Settings.DNS do
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>
                 <.inputs_for :let={dns} field={@form[:clients_upstream_dns]}>
-                  <div class="mb-4">
-                    <.input label="Address" field={dns[:address]} placeholder="DNS Server Address" />
+                  <div class="flex gap-4 items-start mb-2">
+                    <div class="w-1/4">
+                      <.input
+                        type="select"
+                        label="Type"
+                        field={dns[:type]}
+                        placeholder="Type"
+                        options={[
+                          [key: "IP", value: "ip"],
+                          [key: "DNS over TLS", value: "dns_over_tls", disabled: true],
+                          [key: "DNS over HTTPS", value: "dns_over_https", disabled: true]
+                        ]}
+                        value={dns[:type].value}
+                      />
+                    </div>
+                    <div class="w-3/4">
+                      <.input label="Address" field={dns[:address]} placeholder="DNS Server Address" />
+                    </div>
                   </div>
                 </.inputs_for>
+                <.error :for={msg <- @errors} data-validation-error-for="clients_upstream_dns">
+                  <%= msg %>
+                </.error>
               </div>
-              <.error :for={msg <- @errors} data-validation-error-for="clients_upstream_dns">
-                <%= msg %>
-              </.error>
               <.submit_button>
                 Save
               </.submit_button>

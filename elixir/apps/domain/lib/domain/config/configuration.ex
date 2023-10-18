@@ -4,6 +4,7 @@ defmodule Domain.Config.Configuration do
 
   schema "configurations" do
     embeds_many :clients_upstream_dns, ClientsUpstreamDNS, on_replace: :delete, primary_key: false do
+      field :type, :string
       field :address, :string
     end
 

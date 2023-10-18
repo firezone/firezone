@@ -13,6 +13,7 @@ defmodule Domain.Config.Configuration.Changeset do
         :clients_upstream_dns,
         with: &clients_upstream_dns_changeset/2
       )
+      |> validate_unique_dns()
 
     Enum.reduce(@fields, changeset, fn field, changeset ->
       config_changeset(changeset, field)
@@ -24,17 +25,69 @@ defmodule Domain.Config.Configuration.Changeset do
         dns_config \\ %Domain.Config.Configuration.ClientsUpstreamDNS{},
         attrs
       ) do
-    Ecto.Changeset.cast(
-      dns_config,
-      attrs,
-      [:address]
-    )
-    |> validate_required(:address)
+    Ecto.Changeset.cast(dns_config, attrs, [:type, :address])
+    |> validate_required([:type, :address])
     |> trim_change(:address)
-    |> Domain.Validator.validate_one_of(:address, [
-      &Domain.Validator.validate_fqdn/2,
-      &Domain.Validator.validate_uri(&1, &2, schemes: ["https"])
-    ])
+    |> validate_address()
+  end
+
+  defp validate_address(changeset) do
+    {_origin, type} = fetch_field(changeset, :type)
+
+    validate_change(changeset, :address, fn :address, address ->
+      case type do
+        "ip" ->
+          case Domain.Types.IPPort.cast(address) do
+            {:ok, _ip} ->
+              []
+
+            {:error, _reason} ->
+              [address: "must be a valid IP address"]
+          end
+
+        "dns_over_tls" ->
+          [address: "DNS over TLS is not supported yet"]
+
+        "dns_over_http" ->
+          [address: "DNS over HTTP is not supported yet"]
+
+        _other ->
+          [address: "Invalid Type"]
+      end
+    end)
+  end
+
+  defp normalize_dns_address(address) do
+    case Domain.Types.IPPort.cast(address) do
+      {:ok, ip} ->
+        port = ip.port || 53
+        %{ip | port: port} |> to_string()
+
+      {:error, _reason} ->
+        address
+
+      :error ->
+        address
+    end
+  end
+
+  defp validate_unique_dns(changeset) do
+    duplicates =
+      apply_changes(changeset)
+      |> Map.get(:clients_upstream_dns)
+      |> Enum.map(fn dns ->
+        normalize_dns_address(dns.address)
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.group_by(& &1)
+      |> Enum.filter(fn {_, values} -> length(values) > 1 end)
+      |> Enum.map(fn {key, _} -> key end)
+
+    if length(duplicates) > 0 do
+      add_error(changeset, :clients_upstream_dns, "no duplicates allowed")
+    else
+      changeset
+    end
   end
 
   defp ensure_no_overridden_changes(changeset, account_id) do
