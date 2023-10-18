@@ -80,7 +80,7 @@ pub enum ConnlibError {
     #[error("`on_update_resources` failed: {0}")]
     OnUpdateResourcesFailed(String),
     #[error("`get_system_default_resolvers` failed: {0}")]
-    GetSystemDefaultResolverFailder(String),
+    GetSystemDefaultResolverFailed(String),
     /// Glob for errors without a type.
     #[error("Other error: {0}")]
     Other(&'static str),

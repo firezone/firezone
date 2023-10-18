@@ -99,6 +99,6 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
     ) -> std::result::Result<Option<Vec<IpAddr>>, Self::Error> {
         self.0
             .get_system_default_resolvers()
-            .map_err(|err| Error::GetSystemDefaultResolverFailder(err.to_string()))
+            .map_err(|err| Error::GetSystemDefaultResolverFailed(err.to_string()))
     }
 }
