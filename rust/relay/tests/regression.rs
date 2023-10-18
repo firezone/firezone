@@ -1,9 +1,9 @@
 use bytecodec::{DecodeExt, EncodeExt};
-use firezone_relay::{
+use rand::rngs::mock::StepRng;
+use relay::{
     AddressFamily, Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData,
     ClientMessage, Command, IpStack, Refresh, Server,
 };
-use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
 use std::collections::HashMap;
 use std::iter;
@@ -21,7 +21,7 @@ use Output::{CreateAllocation, FreeAllocation, Wake};
 
 #[proptest]
 fn can_answer_stun_request_from_ip4_address(
-    #[strategy(firezone_relay::proptest::binding())] request: Binding,
+    #[strategy(relay::proptest::binding())] request: Binding,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
 ) {
@@ -41,13 +41,13 @@ fn can_answer_stun_request_from_ip4_address(
 
 #[proptest]
 fn deallocate_once_time_expired(
-    #[strategy(firezone_relay::proptest::transaction_id())] transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] lifetime: Lifetime,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
+    #[strategy(relay::proptest::transaction_id())] transaction_id: TransactionId,
+    #[strategy(relay::proptest::allocation_lifetime())] lifetime: Lifetime,
+    #[strategy(relay::proptest::username_salt())] username_salt: String,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
-    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+    #[strategy(relay::proptest::now())] now: SystemTime,
+    #[strategy(relay::proptest::nonce())] nonce: Uuid,
 ) {
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret();
@@ -82,12 +82,12 @@ fn deallocate_once_time_expired(
 
 #[proptest]
 fn unauthenticated_allocate_triggers_authentication(
-    #[strategy(firezone_relay::proptest::transaction_id())] transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] lifetime: Lifetime,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
+    #[strategy(relay::proptest::transaction_id())] transaction_id: TransactionId,
+    #[strategy(relay::proptest::allocation_lifetime())] lifetime: Lifetime,
+    #[strategy(relay::proptest::username_salt())] username_salt: String,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
+    #[strategy(relay::proptest::now())] now: SystemTime,
 ) {
     // Nonces are generated randomly and we control the randomness in the test, thus this is deterministic.
     let first_nonce = Uuid::from_u128(0x0);
@@ -132,15 +132,15 @@ fn unauthenticated_allocate_triggers_authentication(
 
 #[proptest]
 fn when_refreshed_in_time_allocation_does_not_expire(
-    #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::transaction_id())] refresh_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] allocate_lifetime: Lifetime,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] refresh_lifetime: Lifetime,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
+    #[strategy(relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(relay::proptest::transaction_id())] refresh_transaction_id: TransactionId,
+    #[strategy(relay::proptest::allocation_lifetime())] allocate_lifetime: Lifetime,
+    #[strategy(relay::proptest::allocation_lifetime())] refresh_lifetime: Lifetime,
+    #[strategy(relay::proptest::username_salt())] username_salt: String,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
-    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+    #[strategy(relay::proptest::now())] now: SystemTime,
+    #[strategy(relay::proptest::nonce())] nonce: Uuid,
 ) {
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret().to_owned();
@@ -209,14 +209,14 @@ fn when_refreshed_in_time_allocation_does_not_expire(
 }
 #[proptest]
 fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
-    #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::transaction_id())] refresh_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] allocate_lifetime: Lifetime,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
+    #[strategy(relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(relay::proptest::transaction_id())] refresh_transaction_id: TransactionId,
+    #[strategy(relay::proptest::allocation_lifetime())] allocate_lifetime: Lifetime,
+    #[strategy(relay::proptest::username_salt())] username_salt: String,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
-    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+    #[strategy(relay::proptest::now())] now: SystemTime,
+    #[strategy(relay::proptest::nonce())] nonce: Uuid,
 ) {
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret().to_owned();
@@ -288,19 +288,18 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
 
 #[proptest]
 fn ping_pong_relay(
-    #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::transaction_id())]
-    channel_bind_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] lifetime: Lifetime,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
-    #[strategy(firezone_relay::proptest::channel_number())] channel: ChannelNumber,
+    #[strategy(relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(relay::proptest::transaction_id())] channel_bind_transaction_id: TransactionId,
+    #[strategy(relay::proptest::allocation_lifetime())] lifetime: Lifetime,
+    #[strategy(relay::proptest::username_salt())] username_salt: String,
+    #[strategy(relay::proptest::channel_number())] channel: ChannelNumber,
     source: SocketAddrV4,
     peer: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
+    #[strategy(relay::proptest::now())] now: SystemTime,
     peer_to_client_ping: [u8; 32],
     client_to_peer_ping: [u8; 32],
-    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+    #[strategy(relay::proptest::nonce())] nonce: Uuid,
 ) {
     let _ = env_logger::try_init();
 
@@ -378,14 +377,14 @@ fn ping_pong_relay(
 
 #[proptest]
 fn can_make_ipv6_allocation(
-    #[strategy(firezone_relay::proptest::transaction_id())] transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] lifetime: Lifetime,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
+    #[strategy(relay::proptest::transaction_id())] transaction_id: TransactionId,
+    #[strategy(relay::proptest::allocation_lifetime())] lifetime: Lifetime,
+    #[strategy(relay::proptest::username_salt())] username_salt: String,
     source: SocketAddrV4,
     public_relay_ip4_addr: Ipv4Addr,
     public_relay_ip6_addr: Ipv6Addr,
-    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
-    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+    #[strategy(relay::proptest::now())] now: SystemTime,
+    #[strategy(relay::proptest::nonce())] nonce: Uuid,
 ) {
     let mut server =
         TestServer::new((public_relay_ip4_addr, public_relay_ip6_addr)).with_nonce(nonce);
