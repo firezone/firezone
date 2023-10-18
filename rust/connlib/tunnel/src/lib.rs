@@ -349,6 +349,7 @@ where
         peer: &Peer<TRoleState::Id>,
         dst_buf: &mut [u8],
         callbacks: impl Callbacks,
+        mut stop_command_sender: mpsc::Sender<(u32, <TRoleState as RoleState>::Id)>,
     ) {
         let update_timers_result = peer.update_timers(dst_buf);
 
@@ -356,11 +357,7 @@ where
             TunnResult::Done => {}
             TunnResult::Err(WireGuardError::ConnectionExpired)
             | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-                let _ = self
-                    .stop_peer_command_sender
-                    .clone()
-                    .send((peer.index, peer.conn_id))
-                    .await;
+                let _ = stop_command_sender.send((peer.index, peer.conn_id)).await;
                 let _ = peer.shutdown().await;
             }
             TunnResult::Err(e) => tracing::error!(error = ?e, "timer_error"),
@@ -390,7 +387,12 @@ where
                 for peer in peers_to_refresh {
                     let mut dst_buf = [0u8; 148];
                     tunnel
-                        .peer_refresh(&peer, &mut dst_buf, tunnel.callbacks.clone())
+                        .peer_refresh(
+                            &peer,
+                            &mut dst_buf,
+                            tunnel.callbacks.clone(),
+                            tunnel.stop_peer_command_sender.clone(),
+                        )
                         .await;
                 }
 
