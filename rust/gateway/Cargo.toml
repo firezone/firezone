@@ -21,7 +21,7 @@ headless-utils = { workspace = true }
 phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
-tokio = { version = "1.32", default-features = false, features = ["sync", "macros"] }
+tokio = { version = "1.33", default-features = false, features = ["sync", "macros"] }
 tokio-tungstenite = { version = "0.20", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
 tracing-subscriber = "0.3.17"

@@ -17,6 +17,7 @@ jobs:
     uses: ./.github/workflows/rust.yml
   kotlin:
     uses: ./.github/workflows/kotlin.yml
+    secrets: inherit
   swift:
     uses: ./.github/workflows/swift.yml
     secrets: inherit

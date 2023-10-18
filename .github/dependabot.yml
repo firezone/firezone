@@ -5,42 +5,59 @@
 
 version: 2
 updates:
-  - package-ecosystem: "mix" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: mix
+    directory: elixir/
     schedule:
-      interval: "weekly"
-  - package-ecosystem: "pip"
-    directory: "/"
+      interval: daily
+  - package-ecosystem: pip
+    directory: /
     schedule:
-      interval: "weekly"
-  - package-ecosystem: "github-actions"
-    directory: "/"
+      interval: daily
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
-  - package-ecosystem: "bundler"
-    directory: "/"
+      interval: daily
+  - package-ecosystem: cargo
+    directory: rust/
     schedule:
-      interval: "weekly"
-  - package-ecosystem: "cargo"
-    directory: "rust/"
-    schedule:
-      interval: "weekly"
+      interval: daily
     groups:
       otel:
         patterns:
-          - "opentelemetry"
-          - "opentelemetry_api"
-          - "opentelemetry-otlp"
-          - "tracing-opentelemetry"
-          - "tracing-stackdriver"
+          - opentelemetry
+          - opentelemetry_api
+          - opentelemetry-otlp
+          - tracing-opentelemetry
+          - tracing-stackdriver
         update-types:
-          - "minor"
-  - package-ecosystem: "maven"
-    directory: "rust/connlib/clients/android"
+          - minor
+  - package-ecosystem: gradle
+    directory: rust/connlib/clients/android/connlib/
     schedule:
-      interval: "weekly"
-  - package-ecosystem: "maven"
-    directory: "kotlin/"
+      interval: daily
+  - package-ecosystem: gradle
+    directory: kotlin/android/
     schedule:
-      interval: "weekly"
-  # TODO: Apple package ecosystem
+      interval: daily
+    # Requires using a newer Java runtime
+    ignore: org.jetbrains.kotlin:kotlin-gradle-plugin
+  - package-ecosystem: gradle
+    directory: kotlin/android/app/
+    schedule:
+      interval: daily
+  - package-ecosystem: swift
+    directory: swift/apple/FirezoneKit/
+    schedule:
+      interval: daily
+  - package-ecosystem: npm
+    directory: website/
+    schedule:
+      interval: daily
+  - package-ecosystem: npm
+    directory: elixir/apps/web/assets/
+    schedule:
+      interval: daily
+  - package-ecosystem: terraform
+    directory: terraform/environments/staging/
+    schedule:
+      interval: daily

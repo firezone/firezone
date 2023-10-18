@@ -14,7 +14,7 @@ hex = "0.4.3"
 hex-literal = "0.4.1"
 rand = "0.8.5"
 stun_codec = "0.3.3"
-tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread", "net", "time"] }
+tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread", "net", "time"] }
 tracing = { workspace = true, features = ["log"] }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json", "fmt"] }
 tracing-stackdriver = { version = "0.8.0", features = ["opentelemetry"] }
@@ -34,7 +34,7 @@ derive_more = { version = "0.99.17", features = ["from"] }
 uuid = { version = "1.4.1", features = ["v4"] }
 phoenix-channel = { path = "../phoenix-channel" }
 url = "2.4.1"
-serde = { version = "1.0.188", features = ["derive"] }
+serde = { version = "1.0.189", features = ["derive"] }
 trackable = "1.3.0"
 socket2 = "0.5.4"
 axum = { version = "0.6.20", default-features = false, features = ["http1", "tokio"] }

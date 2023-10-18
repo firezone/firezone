@@ -9,7 +9,7 @@ mock = ["connlib-shared/mock"]
 
 [dependencies]
 anyhow = "1.0.75"
-tokio = { version = "1.32", default-features = false, features = ["sync", "rt"] }
+tokio = { version = "1.33", default-features = false, features = ["sync", "rt"] }
 tokio-util = "0.7.9"
 secrecy = { workspace = true }
 tracing = { workspace = true }
@@ -23,7 +23,7 @@ serde = { version = "1.0", default-features = false, features = ["std", "derive"
 backoff = { workspace = true }
 webrtc = "0.8"
 url = { version = "2.4.1", features = ["serde"] }
-time = { version = "0.3.29", features = ["formatting"] }
+time = { version = "0.3.30", features = ["formatting"] }
 reqwest = { version = "0.11.22", default-features = false, features = ["stream", "rustls-tls"] }
 tokio-tungstenite = { version = "0.20", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 async-compression = { version = "0.4.3", features = ["tokio", "gzip"] }

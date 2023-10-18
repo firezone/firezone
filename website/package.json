@@ -17,7 +17,7 @@
     "@types/mdx": "^2.0.5",
     "@types/node": "20.2.3",
     "@types/react": "18.2.6",
-    "@types/react-dom": "18.2.4",
+    "@types/react-dom": "18.2.13",
     "@types/react-syntax-highlighter": "^15.5.7",
     "asciinema-player": "^3.5.0",
     "autoprefixer": "10.4.14",
@@ -26,14 +26,14 @@
     "flowbite-react": "^0.4.11",
     "highlight.js": "^11.8.0",
     "md5": "^2.3.0",
-    "next": "13.4.4",
+    "next": "13.5.5",
     "next-hubspot": "^1.1.6",
     "next-sitemap": "^4.1.8",
     "postcss": "8.4.31",
     "posthog-js": "^1.75.2",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "react-fast-marquee": "^1.6.0",
+    "react-fast-marquee": "^1.6.2",
     "react-icons": "^4.10.1",
     "react-markdown": "^8.0.7",
     "react-syntax-highlighter": "^15.5.0",
@@ -43,12 +43,12 @@
     "rehype-stringify": "^9.0.3",
     "remark-gfm": "^3.0.1",
     "remark-parse": "^10.0.2",
-    "remark-rehype": "^10.1.0",
+    "remark-rehype": "^11.0.0",
     "tailwindcss": "3.3.2"
   },
   "devDependencies": {
     "flowbite-typography": "^1.0.3",
-    "hastscript": "^7.2.0",
+    "hastscript": "^8.0.0",
     "typescript": "5.0.4"
   }
 }

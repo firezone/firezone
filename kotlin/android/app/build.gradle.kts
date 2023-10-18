@@ -1,14 +1,13 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    id("dagger.hilt.android.plugin")
+    id("com.google.dagger.hilt.android")
     id("kotlin-parcelize")
-    id("androidx.navigation.safeargs")
-    id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
     id("com.diffplug.spotless") version "6.22.0"
     id("kotlin-kapt")
+    id("com.google.firebase.appdistribution")
 }
 
 spotless {
@@ -50,6 +49,16 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            // Find this in the Engineering 1Password vault
+            storeFile = file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks")
+            keyAlias = "upload"
+            storePassword = System.getenv("KEYSTORE_PASSWORD")
+            keyPassword = System.getenv("KEYSTORE_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         // Debug Config
         getByName("debug") {
@@ -72,6 +81,8 @@ android {
 
         // Release Config
         getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+
             // Enables code shrinking, obfuscation, and optimization for only
             // your project's release build type. Make sure to use a build
             // variant with `isDebuggable=false`.
@@ -103,6 +114,14 @@ android {
             )
 
             resValue("string", "app_name", "\"Firezone\"")
+
+            firebaseAppDistribution {
+                serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
+                artifactType = "AAB"
+                releaseNotes = "https://github.com/firezone/firezone/releases"
+                groups = "firezone-engineering"
+                artifactPath = "app/build/outputs/bundle/release/app-release.aab"
+            }
         }
     }
 
@@ -145,24 +164,24 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:2.5.3")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.44.1")
+    implementation("com.google.dagger:hilt-android:2.48.1")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.core:core-ktx:$coreVersion")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
     kapt("androidx.hilt:hilt-compiler:1.0.0")
-    kapt("com.google.dagger:hilt-android-compiler:2.44.1")
+    kapt("com.google.dagger:hilt-android-compiler")
 
     // Retrofit 2
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-moshi:2.9.0")
 
     // OkHttp
-    implementation("com.squareup.okhttp3:okhttp:4.10.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.9.1")
 
     // Moshi
-    implementation("com.squareup.moshi:moshi-kotlin:1.12.0")
-    implementation("com.squareup.moshi:moshi:1.12.0")
+    implementation("com.squareup.moshi:moshi-kotlin:1.15.0")
+    implementation("com.squareup.moshi:moshi:1.15.0")
 
     // Gson
     implementation("com.google.code.gson:gson:2.9.0")
@@ -176,7 +195,7 @@ dependencies {
     implementation("androidx.browser:browser:1.5.0")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:32.2.2"))
+    implementation(platform("com.google.firebase:firebase-bom:32.3.1"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
