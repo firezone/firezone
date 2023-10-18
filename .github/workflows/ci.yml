@@ -55,12 +55,12 @@ jobs:
             target: runtime
             context: rust
             build-args: |
-              PACKAGE=firezone-relay
+              PACKAGE=relay
           - image_name: client
             target: runtime
             context: rust
             build-args: |
-              PACKAGE=firezone-linux-client
+              PACKAGE=firezone-headless-client
           - image_name: elixir
             target: compiler
             context: elixir
