@@ -308,7 +308,7 @@ defmodule Web.AuthTest do
         endpoint: Web.Endpoint,
         assigns: %{__changed__: %{}, flash: %{}, account: context.account},
         private: %{
-          __temp__: %{},
+          live_temp: %{},
           connect_info: %{
             user_agent: context.admin_subject.context.user_agent,
             peer_data: %{address: {100, 64, 100, 58}}
@@ -375,7 +375,7 @@ defmodule Web.AuthTest do
         endpoint: Web.Endpoint,
         assigns: %{__changed__: %{}, flash: %{}},
         private: %{
-          __temp__: %{},
+          live_temp: %{},
           connect_info: %{
             user_agent: context.admin_subject.context.user_agent,
             peer_data: %{address: {100, 64, 100, 58}}
