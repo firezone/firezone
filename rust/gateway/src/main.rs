@@ -24,8 +24,8 @@ async fn main() -> Result<()> {
 
     let (connect_url, private_key) = login_url(
         Mode::Gateway,
-        cli.common.url,
-        SecretString::new(cli.common.secret),
+        cli.common.portal_url,
+        SecretString::new(cli.common.portal_token),
         get_device_id(),
     )?;
     let tunnel = Arc::new(Tunnel::new(private_key, CallbackHandler).await?);

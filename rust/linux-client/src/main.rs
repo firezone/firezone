@@ -14,8 +14,8 @@ fn main() -> Result<()> {
     let device_id = get_device_id();
 
     let mut session = Session::connect(
-        cli.common.url,
-        SecretString::from(cli.common.secret),
+        cli.common.portal_url,
+        SecretString::from(cli.common.portal_token),
         device_id,
         CallbackHandler { handle },
     )
