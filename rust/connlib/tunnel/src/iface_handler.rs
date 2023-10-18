@@ -47,9 +47,7 @@ where
                             .send((peer.index, peer.conn_id))
                             .await;
                     }
-                    let err = e.into();
-                    let _ = self.callbacks.on_error(&err);
-                    return Err(err);
+                    return Err(e.into());
                 }
 
                 Ok(())
