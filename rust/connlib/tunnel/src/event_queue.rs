@@ -6,7 +6,7 @@ use std::{
 
 // Simple bounded queue for one-time events
 #[derive(Debug, Clone)]
-pub(crate) struct EventQueue<T> {
+pub(crate) struct BoundedQueue<T> {
     queue: VecDeque<T>,
     limit: usize,
     waker: Option<Waker>,
@@ -23,9 +23,9 @@ impl fmt::Display for Error {
     }
 }
 
-impl<T> EventQueue<T> {
-    pub(crate) fn with_capacity(cap: usize) -> EventQueue<T> {
-        EventQueue {
+impl<T> BoundedQueue<T> {
+    pub(crate) fn with_capacity(cap: usize) -> BoundedQueue<T> {
+        BoundedQueue {
             queue: VecDeque::with_capacity(cap),
             limit: cap,
             waker: None,

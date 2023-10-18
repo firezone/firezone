@@ -1,5 +1,5 @@
 use crate::device_channel::{create_iface, DeviceIo};
-use crate::event_queue::EventQueue;
+use crate::event_queue::BoundedQueue;
 use crate::ip_packet::IpPacket;
 use crate::peer::Peer;
 use crate::resource_table::ResourceTable;
@@ -244,7 +244,7 @@ pub struct ClientState {
     pub gateway_public_keys: HashMap<GatewayId, PublicKey>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
     resources: ResourceTable<ResourceDescription>,
-    dns_queries: EventQueue<DnsQuery<'static>>,
+    dns_queries: BoundedQueue<DnsQuery<'static>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -495,7 +495,7 @@ impl Default for ClientState {
             gateway_public_keys: Default::default(),
             resources_gateways: Default::default(),
             resources: Default::default(),
-            dns_queries: EventQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
+            dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
         }
     }
 }
