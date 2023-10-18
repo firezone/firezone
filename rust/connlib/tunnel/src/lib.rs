@@ -158,6 +158,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     stop_peer_command_sender: mpsc::Sender<(u32, TRoleState::Id)>,
 
     rate_limit_reset_interval: Mutex<Interval>,
+    peer_refresh_interval: Mutex<Interval>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -203,6 +204,26 @@ where
                 .is_ready()
             {
                 self.rate_limiter.reset_count();
+                continue;
+            }
+
+            if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
+                let peers_to_refresh = {
+                    let mut peers_by_ip = self.peers_by_ip.write();
+                    let mut peer_connections = self.peer_connections.lock();
+
+                    peers_to_refresh(&mut peers_by_ip, &mut peer_connections)
+                };
+
+                for peer in peers_to_refresh {
+                    let callbacks = self.callbacks.clone();
+                    let stop_command_sender = self.stop_peer_command_sender.clone();
+
+                    tokio::spawn(async move {
+                        let mut dst_buf = [0u8; 148];
+                        refresh_peer(&peer, &mut dst_buf, callbacks, stop_command_sender).await;
+                    });
+                }
                 continue;
             }
 
@@ -341,42 +362,8 @@ where
             stop_peer_command_receiver: Mutex::new(stop_peer_command_receiver),
             stop_peer_command_sender,
             rate_limit_reset_interval: Mutex::new(rate_limit_reset_interval()),
+            peer_refresh_interval: Mutex::new(peer_refresh_interval()),
         })
-    }
-
-    fn start_peers_refresh_timer(self: &Arc<Self>) {
-        let tunnel = self.clone();
-
-        tokio::spawn(async move {
-            let mut interval = peer_refresh_interval();
-
-            loop {
-                let peers_to_refresh = {
-                    let mut peers_by_ip = tunnel.peers_by_ip.write();
-                    let mut peer_connections = tunnel.peer_connections.lock();
-
-                    peers_to_refresh(&mut peers_by_ip, &mut peer_connections)
-                };
-
-                for peer in peers_to_refresh {
-                    tokio::spawn({
-                        let tunnel = tunnel.clone();
-                        async move {
-                            let mut dst_buf = [0u8; 148];
-                            refresh_peer(
-                                &peer,
-                                &mut dst_buf,
-                                tunnel.callbacks.clone(),
-                                tunnel.stop_peer_command_sender.clone(),
-                            )
-                            .await;
-                        }
-                    });
-                }
-
-                interval.tick().await;
-            }
-        });
     }
 
     async fn start_refresh_mtu_timer(self: &Arc<Self>) -> Result<()> {
@@ -406,7 +393,6 @@ where
 
     async fn start_timers(self: &Arc<Self>) -> Result<()> {
         self.start_refresh_mtu_timer().await?;
-        self.start_peers_refresh_timer();
         Ok(())
     }
 
