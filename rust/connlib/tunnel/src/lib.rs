@@ -359,14 +359,19 @@ where
                 };
 
                 for peer in peers_to_refresh {
-                    let mut dst_buf = [0u8; 148];
-                    refresh_peer(
-                        &peer,
-                        &mut dst_buf,
-                        tunnel.callbacks.clone(),
-                        tunnel.stop_peer_command_sender.clone(),
-                    )
-                    .await;
+                    tokio::spawn({
+                        let tunnel = tunnel.clone();
+                        async move {
+                            let mut dst_buf = [0u8; 148];
+                            refresh_peer(
+                                &peer,
+                                &mut dst_buf,
+                                tunnel.callbacks.clone(),
+                                tunnel.stop_peer_command_sender.clone(),
+                            )
+                            .await;
+                        }
+                    });
                 }
 
                 interval.tick().await;
