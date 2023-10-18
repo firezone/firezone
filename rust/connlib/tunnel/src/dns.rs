@@ -79,8 +79,9 @@ pub(crate) fn parse<'a>(
         }
     };
     let response = build_dns_with_answer(message, question.qname(), question.qtype(), &resource)?;
-    let response = build_response(packet, response);
-    response.map(ResolveStrategy::LocalResponse)
+    Some(ResolveStrategy::LocalResponse(build_response(
+        packet, response,
+    )?))
 }
 
 pub(crate) fn build_response(
