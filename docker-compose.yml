@@ -209,7 +209,7 @@ services:
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/relay:main
       args:
-        PACKAGE: relay
+        PACKAGE: firezone-relay
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep relay"]

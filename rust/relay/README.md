@@ -16,7 +16,7 @@ Relaying of data through other means such as DATA frames is not supported.
 
 ## Building
 
-You can build the server using: `cargo build --release --bin relay`
+You can build the server using: `cargo build --release --bin firezone-relay`
 
 ## Running
 

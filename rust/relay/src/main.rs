@@ -1,5 +1,9 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
+use firezone_relay::{
+    AddressFamily, Allocation, AllocationId, Command, IpStack, Server, Sleep, SocketAddrExt,
+    UdpSocket,
+};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
 use opentelemetry::{sdk, KeyValue};
@@ -7,10 +11,6 @@ use opentelemetry_otlp::WithExportConfig;
 use phoenix_channel::{Error, Event, PhoenixChannel, SecureUrl};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use relay::{
-    AddressFamily, Allocation, AllocationId, Command, IpStack, Server, Sleep, SocketAddrExt,
-    UdpSocket,
-};
 use secrecy::{Secret, SecretString};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -123,7 +123,7 @@ async fn main() -> Result<()> {
 
     let mut eventloop = Eventloop::new(server, channel, public_addr)?;
 
-    tokio::spawn(relay::health_check::serve(args.health_check_addr));
+    tokio::spawn(firezone_relay::health_check::serve(args.health_check_addr));
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
