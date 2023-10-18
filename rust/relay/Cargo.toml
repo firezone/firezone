@@ -1,5 +1,5 @@
 [package]
-name = "firezone-relay"
+name = "relay"
 # mark:automatic-version
 version = "1.20231001.0"
 edition = "2021"
