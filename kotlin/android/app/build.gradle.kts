@@ -166,7 +166,7 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:2.5.3")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.48")
+    implementation("com.google.dagger:hilt-android:2.48.1")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.core:core-ktx:$coreVersion")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
