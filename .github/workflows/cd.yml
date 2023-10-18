@@ -170,7 +170,7 @@ jobs:
         run: |
           dest="$BINARY_DEST_PATH-$VERSION"
           cross build --release -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
-          mv $CARGO_OUTPUT_FILE $dest
+          cp $CARGO_OUTPUT_FILE $dest
           sha256sum $dest > $dest.sha256sum.txt
       - name: Push binaries
         uses: softprops/action-gh-release@v1
