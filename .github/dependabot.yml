@@ -39,8 +39,10 @@ updates:
     directory: kotlin/android/
     schedule:
       interval: daily
-    # Requires using a newer Java runtime
-    ignore: org.jetbrains.kotlin:kotlin-gradle-plugin
+    ignore:
+      # Depends on JDK version which is bundled with Android Studio (JDK 17)
+      - dependency-name: org.jetbrains.kotlin:kotlin-gradle-plugin
+      - dependency-name: org.jetbrains.kotlin.android
   - package-ecosystem: gradle
     directory: kotlin/android/app/
     schedule:
