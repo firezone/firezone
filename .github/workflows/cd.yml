@@ -125,6 +125,8 @@ jobs:
           version: ${{ env.VERSION }}
 
   build-push-release-artifacts:
+    permissions:
+      id-token: write
     needs: update-release-draft
     runs-on: ubuntu-22.04
     defaults:
@@ -225,6 +227,8 @@ jobs:
           retention-days: 1
 
   merge-release-artifacts:
+    permissions:
+      id-token: write
     needs: build-push-release-artifacts
     runs-on: ubuntu-22.04
     strategy:
