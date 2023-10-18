@@ -30,11 +30,8 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
+use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
-use std::{
-    fmt::Display,
-    task::{Context, Poll},
-};
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 use connlib_shared::{
@@ -114,7 +111,7 @@ impl From<ResourceId> for ConnId {
     }
 }
 
-impl Display for ConnId {
+impl fmt::Display for ConnId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ConnId::Gateway(inner) => fmt::Display::fmt(inner, f),
