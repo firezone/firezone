@@ -34,6 +34,7 @@ use futures_util::{SinkExt, StreamExt};
 use std::hash::Hash;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
+use tokio::time::Interval;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 use connlib_shared::{
@@ -359,8 +360,8 @@ where
     fn start_rate_limiter_refresh_timer(self: &Arc<Self>) {
         let rate_limiter = self.rate_limiter.clone();
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(RESET_PACKET_COUNT_INTERVAL);
-            interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+            let mut interval = rate_limit_reset_interval();
+
             loop {
                 rate_limiter.reset_count();
                 interval.tick().await;
@@ -432,6 +433,13 @@ where
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
+}
+
+fn rate_limit_reset_interval() -> Interval {
+    let mut interval = tokio::time::interval(RESET_PACKET_COUNT_INTERVAL);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    interval
 }
 
 fn peers_to_refresh<TId>(
