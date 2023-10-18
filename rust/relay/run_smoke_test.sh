@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-cargo build --package relay --bin firezone-relay --example client --example gateway
+cargo build --bin firezone-relay --example client --example gateway
 
 cleanup() {
   pkill -P $$ || true # Kill all child-processes of the current process.
