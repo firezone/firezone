@@ -32,7 +32,6 @@ COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .
 ENTRYPOINT ["docker-init.sh"]
 CMD ${PACKAGE}
 
-
 # Minimal platform-agnostic release image
 FROM alpine:${ALPINE_VERSION} AS release
 WORKDIR /bin

@@ -206,6 +206,7 @@ jobs:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
             PACKAGE=${{ matrix.name.package }}
+            TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
             type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
