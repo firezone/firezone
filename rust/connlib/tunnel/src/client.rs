@@ -183,9 +183,12 @@ where
                     tracing::error!(err = %e, "failed to send DNS packet");
                     let _ = tunnel.callbacks.on_error(&e.into());
                 }
+
+                continue;
             }
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
                 tunnel.role_state.lock().dns_query(query);
+                continue;
             }
             None => {}
         }
