@@ -42,6 +42,10 @@ jobs:
           RUSTDOCFLAGS: "-D warnings"
       - run: |
           cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
+      - name: Run sccache stat for check
+        shell: bash
+        run: ${SCCACHE_PATH} --show-stats
+
   test:
     strategy:
       fail-fast: false
@@ -66,6 +70,9 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.3
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --all-features ${{ matrix.packages }}
+      - name: Run sccache stat for check
+        shell: bash
+        run: ${SCCACHE_PATH} --show-stats
 
   smoke-test-relay:
     runs-on: ubuntu-22.04
@@ -77,3 +84,6 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.3
       - uses: dtolnay/rust-toolchain@stable
       - run: ./run_smoke_test.sh
+      - name: Run sccache stat for check
+        shell: bash
+        run: ${SCCACHE_PATH} --show-stats
