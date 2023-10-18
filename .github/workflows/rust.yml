@@ -6,10 +6,9 @@ defaults:
   run:
     working-directory: ./rust
 
-env:
-  SCCACHE_GCS_BUCKET: "firezone-sccache"
-  SCCACHE_GCS_RW_MODE: "READ_WRITE"
-  RUSTC_WRAPPER: "sccache"
+permissions:
+  contents: 'read'
+  id-token: 'write'
 
 jobs:
   static-analysis:
@@ -32,11 +31,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
-      - uses: google-github-actions/auth@v1
-        with:
-          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
-          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
-      - uses: mozilla-actions/sccache-action@v0.0.3
+      - uses: ./.github/actions/setup-rust-cache
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt,clippy
@@ -72,11 +67,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
-      - uses: google-github-actions/auth@v1
-        with:
-          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
-          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
-      - uses: mozilla-actions/sccache-action@v0.0.3
+      - uses: ./.github/actions/setup-rust-cache
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --all-features ${{ matrix.packages }}
       - name: Run sccache stat for check
@@ -90,11 +81,7 @@ jobs:
         working-directory: ./rust/relay
     steps:
       - uses: actions/checkout@v4
-      - uses: google-github-actions/auth@v1
-        with:
-          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
-          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
-      - uses: mozilla-actions/sccache-action@v0.0.3
+      - uses: ./.github/actions/setup-rust-cache
       - uses: dtolnay/rust-toolchain@stable
       - run: ./run_smoke_test.sh
       - name: Run sccache stat for check
