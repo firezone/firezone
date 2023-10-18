@@ -33,3 +33,6 @@ runs:
     - run: rustup target add ${{ inputs.targets }}
       if: inputs.targets != ''
       shell: bash
+    - name: Start sccache
+      run: $SCCACHE_PATH --start-server
+      shell: bash
