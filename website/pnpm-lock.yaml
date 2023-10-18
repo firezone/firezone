@@ -27,8 +27,8 @@ dependencies:
     specifier: 18.2.6
     version: 18.2.6
   '@types/react-dom':
-    specifier: 18.2.4
-    version: 18.2.4
+    specifier: 18.2.13
+    version: 18.2.13
   '@types/react-syntax-highlighter':
     specifier: ^15.5.7
     version: 15.5.7
@@ -648,8 +648,8 @@ packages:
     resolution: {integrity: sha512-JCB8C6SnDoQf0cNycqd/35A7MjcnK+ZTqE7judS6o7utxUCg6imJg3QK2qzHKszlTjcj2cn+NwMB2i96ubpj7w==}
     dev: false
 
-  /@types/react-dom@18.2.4:
-    resolution: {integrity: sha512-G2mHoTMTL4yoydITgOGwWdWMVd8sNgyEP85xVmMKAPUBwQWm9wBPQUmvbeF4V3WBY1P7mmL4BkjQ0SqUpf1snw==}
+  /@types/react-dom@18.2.13:
+    resolution: {integrity: sha512-eJIUv7rPP+EC45uNYp/ThhSpE16k22VJUknt5OLoH9tbXoi8bMhwLf5xRuWMywamNbWzhrSmU7IBJfPup1+3fw==}
     dependencies:
       '@types/react': 18.2.6
     dev: false
