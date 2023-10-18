@@ -21,11 +21,12 @@ connlib-shared = { workspace = true }
 libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
-domain = "0.8"
+domain = "0.9"
 boringtun = { workspace = true }
 chrono = { workspace = true }
 pnet_packet = { version = "0.34" }
 futures-bounded = { git = "https://github.com/libp2p/rust-libp2p", branch = "feat/stream-map" }
+hickory-resolver = { workspace = true }
 
 # TODO: research replacing for https://github.com/algesten/str0m
 webrtc = { version = "0.8" }

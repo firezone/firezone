@@ -52,7 +52,7 @@ defmodule Domain.MixProject do
       {:phoenix_pubsub, "~> 2.0"},
 
       # Auth-related deps
-      {:plug_crypto, "~> 1.2"},
+      {:plug_crypto, "~> 2.0"},
       {:openid_connect, github: "firezone/openid_connect", branch: "master"},
       {:argon2_elixir, "~> 3.0"},
 
