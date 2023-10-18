@@ -203,10 +203,7 @@ where
             continue;
         };
 
-        if let Err(e) = tunnel
-            .encapsulate_and_send_to_peer(packet, &peer, &dest, &mut buf)
-            .await
-        {
+        if let Err(e) = peer.send(packet, dest, &mut buf).await {
             tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
 
             let _ = tunnel.callbacks.on_error(&e);

@@ -181,11 +181,13 @@ where
         self.translated_resource_addresses.write().insert(addr, id);
     }
 
-    pub(crate) fn encapsulate<'a>(
+    /// Sends the given packet to this peer by encapsulating it in a wireguard packet.
+    pub(crate) async fn send<'a>(
         &self,
-        packet: &mut MutableIpPacket<'a>,
-        dst: &'a mut [u8],
-    ) -> Result<TunnResult<'a>> {
+        mut packet: MutableIpPacket<'a>,
+        dest: IpAddr,
+        buf: &mut [u8],
+    ) -> Result<()> {
         if let Some(resource) = self.get_translation(packet.to_immutable().source()) {
             let ResourceDescription::Dns(resource) = resource else {
                 tracing::error!(
@@ -201,7 +203,18 @@ where
 
             packet.update_checksum();
         }
-        Ok(self.tunnel.lock().encapsulate(packet.packet_mut(), dst))
+        let packet = match self.tunnel.lock().encapsulate(packet.packet_mut(), buf) {
+            TunnResult::Done => return Ok(()),
+            TunnResult::Err(e) => return Err(e.into()),
+            TunnResult::WriteToNetwork(b) => b,
+            _ => panic!("Unexpected result from `encapsulate`"),
+        };
+
+        tracing::trace!(target: "wire", action = "writing", from = "iface", to = %dest);
+
+        self.channel.write(&Bytes::copy_from_slice(packet)).await?;
+
+        Ok(())
     }
 
     pub(crate) fn get_packet_resource(

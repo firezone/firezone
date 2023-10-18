@@ -59,7 +59,6 @@ mod control_protocol;
 mod device_channel;
 mod dns;
 mod gateway;
-mod iface_handler;
 mod index;
 mod ip_packet;
 mod peer;
