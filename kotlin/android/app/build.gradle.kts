@@ -1,13 +1,14 @@
 plugins {
     id("com.android.application")
-    id("kotlin-android")
     id("com.google.dagger.hilt.android")
-    id("kotlin-parcelize")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
     id("com.diffplug.spotless") version "6.22.0"
-    id("kotlin-kapt")
     id("com.google.firebase.appdistribution")
+    id("kotlin-parcelize")
+
+    kotlin("android")
+    kotlin("kapt")
 }
 
 spotless {
@@ -168,8 +169,7 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.core:core-ktx:$coreVersion")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
-    kapt("androidx.hilt:hilt-compiler:1.0.0")
-    kapt("com.google.dagger:hilt-android-compiler")
+    kapt("com.google.dagger:hilt-android-compiler:2.44")
 
     // Retrofit 2
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
