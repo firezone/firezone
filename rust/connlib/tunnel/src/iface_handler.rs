@@ -55,10 +55,10 @@ where
                     }
                     let err = e.into();
                     let _ = self.callbacks.on_error(&err);
-                    Err(err)
-                } else {
-                    Ok(())
+                    return Err(err);
                 }
+
+                Ok(())
             }
             _ => panic!("Unexpected result from encapsulate"),
         }
