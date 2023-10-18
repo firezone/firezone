@@ -413,9 +413,7 @@ async fn refresh_peer<TId>(
 ) where
     TId: Copy,
 {
-    let update_timers_result = peer.update_timers(dst_buf);
-
-    match update_timers_result {
+    match peer.update_timers(dst_buf) {
         TunnResult::Done => {}
         TunnResult::Err(WireGuardError::ConnectionExpired)
         | TunnResult::Err(WireGuardError::NoCurrentSession) => {
