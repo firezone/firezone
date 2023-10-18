@@ -104,8 +104,7 @@ where
             let Some(ref device) = *self.device.read().await else {
                 return Ok(());
             };
-            let device_writer = device.io.clone();
-            send_dns_packet(&device_writer, pkt)?;
+            send_dns_packet(&device.io, pkt)?;
         }
 
         Ok(())
