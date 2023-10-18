@@ -56,11 +56,7 @@ defmodule Web.AcceptanceCase do
 
   defp start_session(headless?, metadata) do
     capabilities =
-      [
-        metadata: metadata,
-        window_size: [width: 1280, height: 720]
-      ]
-      |> Wallaby.Chrome.default_capabilities()
+      Wallaby.Chrome.default_capabilities()
       |> update_in(
         [:chromeOptions, :args],
         fn args ->
@@ -75,7 +71,7 @@ defmodule Web.AcceptanceCase do
         end
       )
 
-    Wallaby.start_session(capabilities: capabilities)
+    Wallaby.start_session(capabilities: capabilities, metadata: metadata)
   end
 
   def take_screenshot(name) do
