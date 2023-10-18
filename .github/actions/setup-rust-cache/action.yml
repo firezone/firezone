@@ -8,10 +8,9 @@ runs:
       with:
         workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
         service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
-    - uses: mozilla-actions/sccache-action@v0.0.3
-      env:
-        SCCACHE_GCS_BUCKET: "firezone-sccache"
-        SCCACHE_GCS_RW_MODE: "READ_WRITE"
     - run: |
         echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+        echo "SCCACHE_GCS_BUCKET=firezone-sccache" >> $GITHUB_ENV
+        echo "SCCACHE_GCS_RW_MODE=READ_WRITE" >> $GITHUB_ENV
       shell: bash
+    - uses: mozilla-actions/sccache-action@v0.0.3

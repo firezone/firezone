@@ -2,10 +2,6 @@ name: Swift
 on:
   workflow_call:
 
-permissions:
-  contents: 'read'
-  id-token: 'write'
-
 jobs:
   build:
     runs-on: ${{ matrix.runs-on }}
@@ -43,6 +39,7 @@ jobs:
             destination: generic/platform=iOS
     permissions:
       contents: read
+      id-token: 'write'
     defaults:
       run:
         working-directory: ./swift/apple
