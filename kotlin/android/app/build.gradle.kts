@@ -1,13 +1,15 @@
 plugins {
     id("com.android.application")
-    id("kotlin-android")
     id("com.google.dagger.hilt.android")
-    id("kotlin-parcelize")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
     id("com.diffplug.spotless") version "6.22.0"
-    id("kotlin-kapt")
     id("com.google.firebase.appdistribution")
+    id("kotlin-parcelize")
+    id("androidx.navigation.safeargs")
+
+    kotlin("android")
+    kotlin("kapt")
 }
 
 spotless {
@@ -54,8 +56,8 @@ android {
             // Find this in the Engineering 1Password vault
             storeFile = file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks")
             keyAlias = "upload"
-            storePassword = System.getenv("KEYSTORE_PASSWORD")
-            keyPassword = System.getenv("KEYSTORE_KEY_PASSWORD")
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+            keyPassword = System.getenv("KEYSTORE_KEY_PASSWORD") ?: ""
         }
     }
 
@@ -169,7 +171,7 @@ dependencies {
     implementation("androidx.core:core-ktx:$coreVersion")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
     kapt("androidx.hilt:hilt-compiler:1.0.0")
-    kapt("com.google.dagger:hilt-android-compiler")
+    kapt("com.google.dagger:hilt-android-compiler:2.48.1")
 
     // Retrofit 2
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
@@ -184,7 +186,7 @@ dependencies {
     implementation("com.squareup.moshi:moshi:1.15.0")
 
     // Gson
-    implementation("com.google.code.gson:gson:2.9.0")
+    implementation("com.google.code.gson:gson:2.10.1")
 
     // Security
     implementation("androidx.security:security-crypto:1.1.0-alpha05")
