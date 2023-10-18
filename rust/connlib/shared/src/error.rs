@@ -79,6 +79,8 @@ pub enum ConnlibError {
     OnRemoveRouteFailed(String),
     #[error("`on_update_resources` failed: {0}")]
     OnUpdateResourcesFailed(String),
+    #[error("`get_system_default_resolvers` failed: {0}")]
+    GetSystemDefaultResolverFailed(String),
     /// Glob for errors without a type.
     #[error("Other error: {0}")]
     Other(&'static str),
@@ -126,6 +128,13 @@ pub enum ConnlibError {
     /// Any parse error
     #[error("parse error")]
     ParseError,
+    /// DNS lookup error
+    #[error("Error with the DNS fallback lookup")]
+    DNSFallback(#[from] hickory_resolver::error::ResolveError),
+    #[error("Error with the DNS fallback lookup")]
+    DNSFallbackKind(#[from] hickory_resolver::error::ResolveErrorKind),
+    #[error("DNS proto error")]
+    DnsProtoError(#[from] hickory_resolver::proto::error::ProtoError),
 }
 
 impl ConnlibError {
