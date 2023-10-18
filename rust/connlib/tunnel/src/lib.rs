@@ -344,7 +344,12 @@ where
         })
     }
 
-    async fn peer_refresh(&self, peer: &Peer<TRoleState::Id>, dst_buf: &mut [u8]) {
+    async fn peer_refresh(
+        &self,
+        peer: &Peer<TRoleState::Id>,
+        dst_buf: &mut [u8],
+        callbacks: impl Callbacks,
+    ) {
         let update_timers_result = peer.update_timers(dst_buf);
 
         match update_timers_result {
@@ -361,7 +366,7 @@ where
             TunnResult::Err(e) => tracing::error!(error = ?e, "timer_error"),
             TunnResult::WriteToNetwork(packet) => {
                 let bytes = Bytes::copy_from_slice(packet);
-                peer.send_infallible(bytes, &self.callbacks).await
+                peer.send_infallible(bytes, &callbacks).await
             }
 
             _ => panic!("Unexpected result from update_timers"),
@@ -384,7 +389,9 @@ where
 
                 for peer in peers_to_refresh {
                     let mut dst_buf = [0u8; 148];
-                    tunnel.peer_refresh(&peer, &mut dst_buf).await;
+                    tunnel
+                        .peer_refresh(&peer, &mut dst_buf, tunnel.callbacks.clone())
+                        .await;
                 }
 
                 interval.tick().await;
