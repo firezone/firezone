@@ -473,7 +473,7 @@ impl ClientState {
     }
 
     pub fn dns_query(&mut self, query: DnsQuery) {
-        if self.dns_queries.push_back(query.owned()).is_err() {
+        if self.dns_queries.push_back(query.into_owned()).is_err() {
             tracing::warn!("Too many DNS queries, dropping new ones");
         }
     }

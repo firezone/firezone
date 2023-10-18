@@ -245,7 +245,7 @@ pub struct DnsQuery<'a> {
 }
 
 impl<'a> DnsQuery<'a> {
-    pub(crate) fn owned(self) -> DnsQuery<'static> {
+    pub(crate) fn into_owned(self) -> DnsQuery<'static> {
         let Self {
             name,
             record_type,
