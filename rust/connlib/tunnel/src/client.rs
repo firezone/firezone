@@ -177,22 +177,17 @@ where
             return Ok(());
         };
 
-        if let Some(dns_packet) =
-            dns::parse(&tunnel.role_state.lock().resources, packet.as_immutable())
-        {
-            match dns_packet {
-                dns::ResolveStrategy::LocalResponse(pkt) => {
-                    if let Err(e) = send_dns_packet(&device_writer, pkt) {
-                        tracing::error!(err = %e, "failed to send DNS packet");
-                        let _ = tunnel.callbacks.on_error(&e.into());
-                    }
-                }
-                dns::ResolveStrategy::ForwardQuery(query) => {
-                    tunnel.role_state.lock().dns_query(query);
+        match dns::parse(&tunnel.role_state.lock().resources, packet.as_immutable()) {
+            Some(dns::ResolveStrategy::LocalResponse(pkt)) => {
+                if let Err(e) = send_dns_packet(&device_writer, pkt) {
+                    tracing::error!(err = %e, "failed to send DNS packet");
+                    let _ = tunnel.callbacks.on_error(&e.into());
                 }
             }
-
-            continue;
+            Some(dns::ResolveStrategy::ForwardQuery(query)) => {
+                tunnel.role_state.lock().dns_query(query);
+            }
+            None => continue,
         }
 
         let dest = packet.destination();
