@@ -99,6 +99,8 @@ cargo {
     module = "../"
     libname = "connlib"
     targets = listOf("arm", "arm64", "x86_64")
+    targetDirectory = "../../../../target"
+    targetIncludes = arrayOf("connlib.dylib")
 }
 
 tasks.register("copyJniSharedObjectsDebug") {

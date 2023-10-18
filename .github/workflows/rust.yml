@@ -6,6 +6,10 @@ defaults:
   run:
     working-directory: ./rust
 
+permissions:
+  contents: 'read'
+  id-token: 'write'
+
 jobs:
   static-analysis:
     strategy:
@@ -27,14 +31,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ./rust
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt,clippy
+      - uses: ./.github/actions/setup-rust
       - run: cargo fmt -- --check
       - run: |
           cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
@@ -42,6 +39,7 @@ jobs:
           RUSTDOCFLAGS: "-D warnings"
       - run: |
           cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
+
   test:
     strategy:
       fail-fast: false
@@ -63,13 +61,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
-        with:
-          # Prevents runner.os caches from conflicting
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}
-          workspaces: ./rust
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
       - run: cargo test --all-features ${{ matrix.packages }}
 
   smoke-test-relay:
@@ -79,10 +71,5 @@ jobs:
         working-directory: ./rust/relay
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ./rust
-          key: ubuntu-22.04-${{ runner.arch }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
       - run: ./run_smoke_test.sh

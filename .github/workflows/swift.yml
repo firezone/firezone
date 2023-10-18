@@ -39,17 +39,15 @@ jobs:
             destination: generic/platform=iOS
     permissions:
       contents: read
+      id-token: 'write'
     defaults:
       run:
         working-directory: ./swift/apple
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/setup-rust
         with:
-          workspaces: ./rust
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: dtolnay/rust-toolchain@stable
+          targets: aarch64-apple-darwin aarch64-apple-ios
       - uses: actions/cache/restore@v3
         name: Restore Swift DerivedData Cache
         with:

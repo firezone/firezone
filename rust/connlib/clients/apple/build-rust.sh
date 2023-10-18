@@ -28,6 +28,9 @@ for var in $(env | awk -F= '{print $1}'); do
   && [[ "$var" != "SYMROOT" ]] \
   && [[ "$var" != "SRCROOT" ]] \
   && [[ "$var" != "TARGETED_DEVICE_FAMILY" ]] \
+  && [[ "$var" != "RUSTC_WRAPPER" ]] \
+  && [[ "$var" != "SCCACHE_GCS_BUCKET" ]] \
+  && [[ "$var" != "SCCACHE_GCS_RW_MODE" ]] \
   && [[ "$var" != "CONNLIB_TARGET_DIR" ]]; then
   unset $var
   fi

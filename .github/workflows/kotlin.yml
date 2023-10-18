@@ -2,6 +2,10 @@ name: Kotlin
 on:
   workflow_call:
 
+permissions:
+  contents: 'read'
+  id-token: 'write'
+
 jobs:
   static-analysis:
     runs-on: ubuntu-22.04
@@ -32,12 +36,9 @@ jobs:
         working-directory: ./kotlin/android
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/setup-rust
         with:
-          workspaces: ./rust
-          key: ubuntu-22.04-${{ runner.arch }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: dtolnay/rust-toolchain@stable
+          targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android
       - uses: actions/setup-java@v3
         with:
           distribution: oracle
