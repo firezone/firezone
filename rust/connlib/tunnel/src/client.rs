@@ -187,7 +187,7 @@ where
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
                 tunnel.role_state.lock().dns_query(query);
             }
-            None => continue,
+            None => {}
         }
 
         let dest = packet.destination();
