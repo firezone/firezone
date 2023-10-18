@@ -127,7 +127,7 @@ where
                     }
                 };
 
-                d.on_close(tunnel.clone().on_dc_close_handler(index, gateway_id));
+                d.on_close(tunnel.clone().on_dc_close_handler(index, gateway_id, tunnel.stop_peer_command_sender.clone()));
 
                 let peer = Arc::new(Peer::new(
                     tunnel.private_key.clone(),

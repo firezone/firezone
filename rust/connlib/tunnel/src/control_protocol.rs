@@ -42,11 +42,10 @@ where
         self: Arc<Self>,
         index: u32,
         conn_id: TRoleState::Id,
+        stop_command_sender: mpsc::Sender<(u32, <TRoleState as RoleState>::Id)>,
     ) -> OnCloseHdlrFn {
-        let sender = self.stop_peer_command_sender.clone();
-
         Box::new(move || {
-            let mut sender = sender.clone();
+            let mut sender = stop_command_sender.clone();
 
             tracing::debug!("channel_closed");
             Box::pin(async move {
