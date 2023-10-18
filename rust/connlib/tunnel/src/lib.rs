@@ -15,12 +15,12 @@ use ip_packet::IpPacket;
 use pnet_packet::Packet;
 use serde::{Deserialize, Serialize};
 
+use hickory_resolver::proto::rr::RecordType;
 use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
 use resource_table::ResourceTable;
 use tokio::{task::AbortHandle, time::MissedTickBehavior};
-use trust_dns_resolver::proto::rr::RecordType;
 use webrtc::{
     api::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine,

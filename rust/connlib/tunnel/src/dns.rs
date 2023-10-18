@@ -6,11 +6,11 @@ use domain::base::{
     iana::{Class, Rcode, Rtype},
     Dname, Message, MessageBuilder, ParsedDname, Question, ToDname,
 };
+use hickory_resolver::proto::op::Message as TrustDnsMessage;
+use hickory_resolver::proto::rr::RecordType;
 use itertools::Itertools;
 use pnet_packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, PacketSize};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use trust_dns_resolver::proto::op::Message as TrustDnsMessage;
-use trust_dns_resolver::proto::rr::RecordType;
 
 const DNS_TTL: u32 = 300;
 const UDP_HEADER_SIZE: usize = 8;

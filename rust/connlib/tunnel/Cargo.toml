@@ -26,7 +26,7 @@ boringtun = { workspace = true }
 chrono = { workspace = true }
 pnet_packet = { version = "0.34" }
 futures-bounded = { git = "https://github.com/libp2p/rust-libp2p", branch = "feat/stream-map" }
-trust-dns-resolver = { workspace = true, features = ["tokio-runtime"] }
+hickory-resolver = { workspace = true }
 
 # TODO: research replacing for https://github.com/algesten/str0m
 webrtc = { version = "0.8" }

@@ -18,6 +18,7 @@ use connlib_shared::{Callbacks, DNS_SENTINEL};
 use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{PushError, StreamMap};
+use hickory_resolver::lookup::Lookup;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use std::collections::hash_map::Entry;
@@ -28,7 +29,6 @@ use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 use tokio::time::Instant;
-use trust_dns_resolver::lookup::Lookup;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 impl<CB> Tunnel<CB, ClientState>
@@ -73,7 +73,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn write_dns_lookup_response(
         self: &Arc<Self>,
-        response: trust_dns_resolver::error::ResolveResult<Lookup>,
+        response: hickory_resolver::error::ResolveResult<Lookup>,
         query: IpPacket<'static>,
     ) -> connlib_shared::Result<()> {
         let Some(mut message) = dns::as_dns_message(&query) else {
@@ -83,7 +83,7 @@ where
         let response = match response {
             Ok(response) => message.add_answers(response.records().to_vec()),
             Err(err) => {
-                if let trust_dns_resolver::error::ResolveErrorKind::NoRecordsFound {
+                if let hickory_resolver::error::ResolveErrorKind::NoRecordsFound {
                     soa,
                     response_code,
                     ..

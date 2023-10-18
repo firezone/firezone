@@ -18,10 +18,10 @@ use connlib_shared::{
 use firezone_tunnel::{ClientState, Request, Tunnel};
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use tokio::io::BufReader;
+use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
+use hickory_resolver::TokioAsyncResolver;
 use tokio::sync::Mutex;
 use tokio_util::codec::{BytesCodec, FramedRead};
-use trust_dns_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
-use trust_dns_resolver::TokioAsyncResolver;
 use url::Url;
 
 const DNS_PORT: u16 = 53;

@@ -130,9 +130,9 @@ pub enum ConnlibError {
     ParseError,
     /// DNS lookup error
     #[error("Error with the DNS fallback lookup")]
-    DNSFallback(#[from] trust_dns_resolver::error::ResolveError),
+    DNSFallback(#[from] hickory_resolver::error::ResolveError),
     #[error("DNS proto error")]
-    DnsProtoError(#[from] trust_dns_resolver::proto::error::ProtoError),
+    DnsProtoError(#[from] hickory_resolver::proto::error::ProtoError),
 }
 
 impl ConnlibError {
