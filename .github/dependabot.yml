@@ -40,10 +40,9 @@ updates:
     schedule:
       interval: daily
     ignore:
-      # Depends on org.jetbrains.kotlin:kotlin-gradle-plugin version
-      - dependency-name: com.google.dagger.hilt.android
       # Depends on JDK version which is bundled with Android Studio (JDK 17)
       - dependency-name: org.jetbrains.kotlin:kotlin-gradle-plugin
+      - dependency-name: org.jetbrains.kotlin.android
   - package-ecosystem: gradle
     directory: kotlin/android/app/
     schedule:
