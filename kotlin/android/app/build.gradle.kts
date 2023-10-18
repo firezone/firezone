@@ -56,8 +56,8 @@ android {
             // Find this in the Engineering 1Password vault
             storeFile = file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks")
             keyAlias = "upload"
-            storePassword = System.getenv("KEYSTORE_PASSWORD")
-            keyPassword = System.getenv("KEYSTORE_KEY_PASSWORD")
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+            keyPassword = System.getenv("KEYSTORE_KEY_PASSWORD") ?: ""
         }
     }
 
