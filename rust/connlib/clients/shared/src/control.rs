@@ -16,10 +16,10 @@ use connlib_shared::{
 };
 
 use firezone_tunnel::{ClientState, Request, Tunnel};
-use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
-use tokio::io::BufReader;
 use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
+use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
+use tokio::io::BufReader;
 use tokio::sync::Mutex;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
