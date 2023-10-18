@@ -46,7 +46,7 @@ dependencies:
     version: 1.8.1
   flowbite-react:
     specifier: ^0.4.11
-    version: 0.4.11(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.3.2)
+    version: 0.4.11(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.3.3)
   highlight.js:
     specifier: ^11.9.0
     version: 11.9.0
@@ -108,13 +108,13 @@ dependencies:
     specifier: ^11.0.0
     version: 11.0.0
   tailwindcss:
-    specifier: 3.3.2
-    version: 3.3.2
+    specifier: 3.3.3
+    version: 3.3.3
 
 devDependencies:
   flowbite-typography:
     specifier: ^1.0.3
-    version: 1.0.3(tailwindcss@3.3.2)
+    version: 1.0.3(tailwindcss@3.3.3)
   hastscript:
     specifier: ^8.0.0
     version: 8.0.0
@@ -1242,7 +1242,7 @@ packages:
     dependencies:
       to-regex-range: 5.0.1
 
-  /flowbite-react@0.4.11(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.3.2):
+  /flowbite-react@0.4.11(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.3.3):
     resolution: {integrity: sha512-QB0PWB/kiogL0YQlT+X1x4Ue0D3cpd+WaiCbGsMqo2LCYySRsctHxEciRQji3JELGuc6O1OaBtK9ZUSErQkJEg==}
     peerDependencies:
       react: ^18
@@ -1256,10 +1256,10 @@ packages:
       react-icons: 4.11.0(react@18.2.0)
       react-indiana-drag-scroll: 2.2.0(react-dom@18.2.0)(react@18.2.0)
       tailwind-merge: 1.14.0
-      tailwindcss: 3.3.2
+      tailwindcss: 3.3.3
     dev: false
 
-  /flowbite-typography@1.0.3(tailwindcss@3.3.2):
+  /flowbite-typography@1.0.3(tailwindcss@3.3.3):
     resolution: {integrity: sha512-UbdQFIIOb7xx2TS+QQrqr79B6ZSkSZurxYWzV0npth6Wns3/j7KfeDJoH9QFU+Zs7zjrvejNtyzgzWLWyCrdiA==}
     peerDependencies:
       tailwindcss: '>=3.0.0 || insiders'
@@ -1267,7 +1267,7 @@ packages:
       lodash.castarray: 4.4.0
       lodash.isplainobject: 4.0.6
       lodash.merge: 4.6.2
-      tailwindcss: 3.3.2
+      tailwindcss: 3.3.3
     dev: true
 
   /flowbite@1.8.1:
@@ -3158,8 +3158,8 @@ packages:
     resolution: {integrity: sha512-3mFKyCo/MBcgyOTlrY8T7odzZFx+w+qKSMAmdFzRvqBfLlSigU6TZnlFHK0lkMwj9Bj8OYU+9yW9lmGuS0QEnQ==}
     dev: false
 
-  /tailwindcss@3.3.2:
-    resolution: {integrity: sha512-9jPkMiIBXvPc2KywkraqsUfbfj+dHDb+JPWtSJa9MLFdrPyazI7q6WX2sUrm7R9eVR7qqv3Pas7EvQFzxKnI6w==}
+  /tailwindcss@3.3.3:
+    resolution: {integrity: sha512-A0KgSkef7eE4Mf+nKJ83i75TMyq8HqY3qmFIJSWy8bNt0v1lG7jUcpGpoTFxAwYcWOphcTBLPPJg+bDfhDf52w==}
     engines: {node: '>=14.0.0'}
     hasBin: true
     dependencies:
@@ -3183,7 +3183,6 @@ packages:
       postcss-load-config: 4.0.1(postcss@8.4.31)
       postcss-nested: 6.0.1(postcss@8.4.31)
       postcss-selector-parser: 6.0.13
-      postcss-value-parser: 4.2.0
       resolve: 1.22.2
       sucrase: 3.34.0
     transitivePeerDependencies:
