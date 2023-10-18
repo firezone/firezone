@@ -344,8 +344,8 @@ where
         })
     }
 
-    async fn peer_refresh(&self, peer: &Peer<TRoleState::Id>, dst_buf: &mut [u8; MAX_UDP_SIZE]) {
-        let update_timers_result = peer.update_timers(&mut dst_buf[..]);
+    async fn peer_refresh(&self, peer: &Peer<TRoleState::Id>, dst_buf: &mut [u8]) {
+        let update_timers_result = peer.update_timers(dst_buf);
 
         match update_timers_result {
             TunnResult::Done => {}
@@ -373,7 +373,6 @@ where
 
         tokio::spawn(async move {
             let mut interval = peer_refresh_interval();
-            let mut dst_buf = [0u8; MAX_UDP_SIZE];
 
             loop {
                 let peers_to_refresh = {
@@ -384,6 +383,7 @@ where
                 };
 
                 for peer in peers_to_refresh {
+                    let mut dst_buf = [0u8; 148];
                     tunnel.peer_refresh(&peer, &mut dst_buf).await;
                 }
 
