@@ -209,9 +209,8 @@ where
             if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
                 let peers_to_refresh = {
                     let mut peers_by_ip = self.peers_by_ip.write();
-                    let mut peer_connections = self.peer_connections.lock();
 
-                    peers_to_refresh(&mut peers_by_ip, &mut peer_connections)
+                    peers_to_refresh(&mut peers_by_ip, self.stop_peer_command_sender.clone())
                 };
 
                 for peer in peers_to_refresh {
@@ -431,7 +430,6 @@ async fn refresh_peer<TId>(
         TunnResult::Err(WireGuardError::ConnectionExpired)
         | TunnResult::Err(WireGuardError::NoCurrentSession) => {
             let _ = stop_command_sender.send((peer.index, peer.conn_id)).await;
-            let _ = peer.shutdown().await;
         }
         TunnResult::Err(e) => tracing::error!(error = ?e, "timer_error"),
         TunnResult::WriteToNetwork(packet) => {
@@ -473,12 +471,12 @@ fn mtu_refresh_interval() -> Interval {
 
 fn peers_to_refresh<TId>(
     peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId>>>,
-    peer_connections: &mut HashMap<TId, Arc<RTCPeerConnection>>,
+    shutdown_sender: mpsc::Sender<(u32, TId)>,
 ) -> Vec<Arc<Peer<TId>>>
 where
     TId: Eq + Hash + Copy + Send + Sync + 'static,
 {
-    remove_expired_peers(peers_by_ip, peer_connections);
+    remove_expired_peers(peers_by_ip, shutdown_sender);
 
     peers_by_ip
         .iter()
@@ -490,25 +488,21 @@ where
 
 fn remove_expired_peers<TId>(
     peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId>>>,
-    peer_connections: &mut HashMap<TId, Arc<RTCPeerConnection>>,
+    shutdown_sender: mpsc::Sender<(u32, TId)>,
 ) where
     TId: Eq + Hash + Copy + Send + Sync + 'static,
 {
     for (_, peer) in peers_by_ip.iter() {
         peer.expire_resources();
         if peer.is_emptied() {
-            tracing::trace!(index = peer.index, "peer_expired");
-            let conn = peer_connections.remove(&peer.conn_id);
-            let p = peer.clone();
+            let index = peer.index;
+            let conn_id = peer.conn_id;
 
-            // We are holding a Mutex, particularly a write one, we don't want to make a blocking call
-            tokio::spawn(async move {
-                let _ = p.shutdown().await;
-                if let Some(conn) = conn {
-                    // TODO: it seems that even closing the stream there are messages to the relay
-                    // see where they come from.
-                    let _ = conn.close().await;
-                }
+            tracing::trace!(%index, "peer_expired");
+
+            tokio::spawn({
+                let mut sender = shutdown_sender.clone();
+                async move { sender.send((index, conn_id)).await }
             });
         }
     }
