@@ -131,6 +131,8 @@ pub enum ConnlibError {
     /// DNS lookup error
     #[error("Error with the DNS fallback lookup")]
     DNSFallback(#[from] hickory_resolver::error::ResolveError),
+    #[error("Error with the DNS fallback lookup")]
+    DNSFallbackKind(#[from] hickory_resolver::error::ResolveErrorKind),
     #[error("DNS proto error")]
     DnsProtoError(#[from] hickory_resolver::proto::error::ProtoError),
 }

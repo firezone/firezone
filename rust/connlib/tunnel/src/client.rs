@@ -80,23 +80,21 @@ where
             debug_assert!(false, "The original message should be a DNS query for us to ever call write_dns_lookup_response");
             return Ok(());
         };
-        let response = match response {
+        let response = match response.map_err(|err| err.kind().clone()) {
             Ok(response) => message.add_answers(response.records().to_vec()),
-            Err(err) => {
-                if let hickory_resolver::error::ResolveErrorKind::NoRecordsFound {
-                    soa,
-                    response_code,
-                    ..
-                } = err.kind()
-                {
-                    if let Some(soa) = soa {
-                        message.add_name_server(soa.clone().into_record_of_rdata());
-                    }
-
-                    message.set_response_code(*response_code)
-                } else {
-                    return Err(err.into());
+            Err(hickory_resolver::error::ResolveErrorKind::NoRecordsFound {
+                soa,
+                response_code,
+                ..
+            }) => {
+                if let Some(soa) = soa {
+                    message.add_name_server(soa.clone().into_record_of_rdata());
                 }
+
+                message.set_response_code(response_code)
+            }
+            Err(e) => {
+                return Err(e.into());
             }
         };
 
@@ -104,6 +102,7 @@ where
             let Some(ref device) = *self.device.read().await else {
                 return Ok(());
             };
+
             send_dns_packet(&device.io, pkt)?;
         }
 
