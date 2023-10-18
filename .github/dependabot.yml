@@ -39,6 +39,8 @@ updates:
     directory: "kotlin/android/"
     schedule:
       interval: "daily"
+    # Requires using a newer Java runtime
+    ignore: "org.jetbrains.kotlin:kotlin-gradle-plugin"
   - package-ecosystem: "gradle"
     directory: "kotlin/android/app/"
     schedule:
