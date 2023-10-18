@@ -162,8 +162,9 @@ jobs:
           workspaces: ./rust
           save-if: false
       - uses: dtolnay/rust-toolchain@stable
-      - name: Setup cross-rs
-        run: cargo install cross --git https://github.com/cross-rs/cross
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cross
       - name: Build release binaries
         env:
           CARGO_OUTPUT_FILE: target/${{ matrix.arch.target }}/release/${{ matrix.name.package }}
