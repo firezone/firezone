@@ -133,11 +133,7 @@ where
         self.allowed_ips.write().insert(ip, ());
     }
 
-    pub(crate) async fn update_timers<'a>(
-        &self,
-        dst: &'a mut [u8],
-        callbacks: impl Callbacks,
-    ) -> Result<()> {
+    pub(crate) async fn update_timers<'a>(&self, dst: &'a mut [u8]) -> Result<()> {
         let packet = match self.tunnel.lock().update_timers(dst) {
             TunnResult::Done => return Ok(()),
             TunnResult::Err(e) => return Err(e.into()),
@@ -146,10 +142,7 @@ where
         };
 
         let bytes = Bytes::copy_from_slice(packet);
-        if let Err(e) = self.channel.write(&bytes).await {
-            tracing::error!("Couldn't send packet to connected peer: {e}");
-            let _ = callbacks.on_error(&e.into());
-        }
+        self.channel.write(&bytes).await?;
 
         Ok(())
     }

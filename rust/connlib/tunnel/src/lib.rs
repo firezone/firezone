@@ -218,7 +218,10 @@ where
 
                     tokio::spawn(async move {
                         let mut dst_buf = [0u8; 148];
-                        if let Err(e) = peer.update_timers(&mut dst_buf, callbacks).await {
+                        if let Err(e) = peer.update_timers(&mut dst_buf).await {
+                            tracing::error!("Failed to update timers for peer: {e}");
+                            let _ = callbacks.on_error(&e);
+
                             if e.is_fatal_connection_error() {
                                 let _ = stop_command_sender.send((peer.index, peer.conn_id)).await;
                             }
