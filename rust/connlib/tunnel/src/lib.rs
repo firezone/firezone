@@ -252,9 +252,8 @@ impl<'a> DnsQuery<'a> {
             query,
         } = self;
         let buf = query.packet().to_vec();
-        let Some(query) = IpPacket::owned(buf) else {
-            unreachable!("We are constructing the ip packet from an ip packet")
-        };
+        let query =
+            IpPacket::owned(buf).expect("We are constructing the ip packet from an ip packet");
 
         DnsQuery {
             name,

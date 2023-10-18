@@ -513,7 +513,8 @@ impl RoleState for ClientState {
                     })
                 }
                 Poll::Ready((id, Some(Err(e)))) => {
-                    tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}")
+                    tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}");
+                    continue;
                 }
                 Poll::Ready((_, None)) => continue,
                 Poll::Pending => {}
