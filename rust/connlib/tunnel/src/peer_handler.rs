@@ -5,13 +5,12 @@ use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
 
 use crate::{
-    device_channel::DeviceIo, index::check_packet_index, peer::Peer, ControlSignal, RoleState,
-    Tunnel, MAX_UDP_SIZE,
+    device_channel::DeviceIo, index::check_packet_index, peer::Peer, RoleState, Tunnel,
+    MAX_UDP_SIZE,
 };
 
-impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
+impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
-    C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
@@ -155,7 +154,7 @@ where
         Ok(())
     }
 
-    pub(crate) async fn start_peer_handler(self: &Arc<Self>, peer: Arc<Peer>) {
+    pub(crate) async fn start_peer_handler(self: Arc<Self>, peer: Arc<Peer>) {
         loop {
             let Some(device) = self.device.read().await.clone() else {
                 let err = Error::NoIface;

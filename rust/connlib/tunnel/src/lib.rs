@@ -13,7 +13,6 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use serde::{Deserialize, Serialize};
 
-use async_trait::async_trait;
 use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
@@ -136,29 +135,6 @@ impl From<connlib_shared::messages::Peer> for PeerConfig {
         }
     }
 }
-
-/// Trait used for out-going signals to control plane that are **required** to be made from inside the tunnel.
-///
-/// Generally, we try to return from the functions here rather than using this callback.
-#[async_trait]
-pub trait ControlSignal {
-    /// Signals to the control plane an intent to initiate a connection to the given resource.
-    ///
-    /// Used when a packet is found to a resource we have no connection stablished but is within the list of resources available for the client.
-    async fn signal_connection_to(
-        &self,
-        resource: &ResourceDescription,
-        connected_gateway_ids: &[GatewayId],
-        reference: usize,
-    ) -> Result<()>;
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct AwaitingConnectionDetails {
-    pub total_attemps: usize,
-    pub response_received: bool,
-}
-
 #[derive(Clone)]
 struct Device {
     config: Arc<IfaceConfig>,
@@ -190,7 +166,7 @@ impl Device {
 // TODO: We should use newtypes for each kind of Id
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets
 /// to communicate between peers.
-pub struct Tunnel<C: ControlSignal, CB: Callbacks, TRoleState> {
+pub struct Tunnel<CB: Callbacks, TRoleState> {
     next_index: Mutex<IndexLfsr>,
     // We use a tokio Mutex here since this is only read/write during config so there's no relevant performance impact
     device: tokio::sync::RwLock<Option<Device>>,
@@ -199,13 +175,7 @@ pub struct Tunnel<C: ControlSignal, CB: Callbacks, TRoleState> {
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<Arc<Peer>>>,
     peer_connections: Mutex<HashMap<ConnId, Arc<RTCPeerConnection>>>,
-    awaiting_connection: Mutex<HashMap<ConnId, AwaitingConnectionDetails>>,
-    gateway_awaiting_connection: Mutex<HashMap<GatewayId, Vec<IpNetwork>>>,
-    resources_gateways: Mutex<HashMap<ResourceId, GatewayId>>,
     webrtc_api: API,
-    resources: Arc<RwLock<ResourceTable<ResourceDescription>>>,
-    control_signaler: C,
-    gateway_public_keys: Mutex<HashMap<GatewayId, PublicKey>>,
     callbacks: CallbackErrorFacade<CB>,
     iface_handler_abort: Mutex<Option<AbortHandle>>,
 
@@ -220,18 +190,10 @@ pub struct TunnelStats {
     public_key: String,
     peers_by_ip: HashMap<IpNetwork, PeerStats>,
     peer_connections: Vec<ConnId>,
-    resource_gateways: HashMap<ResourceId, GatewayId>,
-    dns_resources: HashMap<String, ResourceDescription>,
-    network_resources: HashMap<IpNetwork, ResourceDescription>,
-    gateway_public_keys: HashMap<GatewayId, String>,
-
-    awaiting_connection: HashMap<ConnId, AwaitingConnectionDetails>,
-    gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
 }
 
-impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
+impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
-    C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
@@ -243,30 +205,11 @@ where
             .map(|(ip, peer)| (ip, peer.stats()))
             .collect();
         let peer_connections = self.peer_connections.lock().keys().cloned().collect();
-        let awaiting_connection = self.awaiting_connection.lock().clone();
-        let gateway_awaiting_connection = self.gateway_awaiting_connection.lock().clone();
-        let resource_gateways = self.resources_gateways.lock().clone();
-        let (network_resources, dns_resources) = {
-            let resources = self.resources.read();
-            (resources.network_resources(), resources.dns_resources())
-        };
 
-        let gateway_public_keys = self
-            .gateway_public_keys
-            .lock()
-            .iter()
-            .map(|(&id, &k)| (id, Key::from(k).to_string()))
-            .collect();
         TunnelStats {
             public_key: Key::from(self.public_key).to_string(),
             peers_by_ip,
             peer_connections,
-            awaiting_connection,
-            gateway_awaiting_connection,
-            resource_gateways,
-            dns_resources,
-            network_resources,
-            gateway_public_keys,
         }
     }
 
@@ -277,14 +220,10 @@ where
     pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         self.role_state.lock().poll_next_event(cx)
     }
+}
 
-    pub(crate) fn peer_by_ip(&self, ip: IpAddr) -> Option<Arc<Peer>> {
-        self.peers_by_ip
-            .read()
-            .longest_match(ip)
-            .map(|(_, peer)| peer)
-            .cloned()
-    }
+pub(crate) fn peer_by_ip(peers_by_ip: &IpNetworkTable<Arc<Peer>>, ip: IpAddr) -> Option<Arc<Peer>> {
+    peers_by_ip.longest_match(ip).map(|(_, peer)| peer).cloned()
 }
 
 pub enum Event<TId> {
@@ -292,11 +231,15 @@ pub enum Event<TId> {
         conn_id: TId,
         candidate: RTCIceCandidateInit,
     },
+    ConnectionIntent {
+        resource: ResourceDescription,
+        connected_gateway_ids: Vec<GatewayId>,
+        reference: usize,
+    },
 }
 
-impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
+impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
-    C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
@@ -305,22 +248,14 @@ where
     /// # Parameters
     /// - `private_key`: wireguard's private key.
     /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
-    #[tracing::instrument(level = "trace", skip(private_key, control_signaler, callbacks))]
-    pub async fn new(
-        private_key: StaticSecret,
-        control_signaler: C,
-        callbacks: CB,
-    ) -> Result<Self> {
+    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
+    pub async fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
         let public_key = (&private_key).into();
         let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
         let peers_by_ip = RwLock::new(IpNetworkTable::new());
         let next_index = Default::default();
         let peer_connections = Default::default();
         let resources: Arc<RwLock<ResourceTable<ResourceDescription>>> = Default::default();
-        let awaiting_connection = Default::default();
-        let gateway_public_keys = Default::default();
-        let resources_gateways = Default::default();
-        let gateway_awaiting_connection = Default::default();
         let device = Default::default();
         let iface_handler_abort = Default::default();
 
@@ -347,7 +282,6 @@ where
             .build();
 
         Ok(Self {
-            gateway_public_keys,
             rate_limiter,
             private_key,
             peer_connections,
@@ -355,12 +289,7 @@ where
             peers_by_ip,
             next_index,
             webrtc_api,
-            resources,
             device,
-            awaiting_connection,
-            gateway_awaiting_connection,
-            control_signaler,
-            resources_gateways,
             callbacks: CallbackErrorFacade(callbacks),
             iface_handler_abort,
             role_state: Default::default(),
@@ -411,31 +340,6 @@ where
         });
     }
 
-    fn remove_expired_peers(self: &Arc<Self>) {
-        let mut peers_by_ip = self.peers_by_ip.write();
-
-        for (_, peer) in peers_by_ip.iter() {
-            peer.expire_resources();
-            if peer.is_emptied() {
-                tracing::trace!(index = peer.index, "peer_expired");
-                let conn = self.peer_connections.lock().remove(&peer.conn_id);
-                let p = peer.clone();
-
-                // We are holding a Mutex, particularly a write one, we don't want to make a blocking call
-                tokio::spawn(async move {
-                    let _ = p.shutdown().await;
-                    if let Some(conn) = conn {
-                        // TODO: it seems that even closing the stream there are messages to the relay
-                        // see where they come from.
-                        let _ = conn.close().await;
-                    }
-                });
-            }
-        }
-
-        peers_by_ip.retain(|_, p| !p.is_emptied());
-    }
-
     fn start_peers_refresh_timer(self: &Arc<Self>) {
         let tunnel = self.clone();
 
@@ -445,7 +349,10 @@ where
             let mut dst_buf = [0u8; MAX_UDP_SIZE];
 
             loop {
-                tunnel.remove_expired_peers();
+                remove_expired_peers(
+                    &mut tunnel.peers_by_ip.write(),
+                    &mut tunnel.peer_connections.lock(),
+                );
 
                 let peers: Vec<_> = tunnel
                     .peers_by_ip
@@ -497,14 +404,6 @@ where
         Ok(())
     }
 
-    fn get_resource(&self, addr: IpAddr) -> Option<ResourceDescription> {
-        let resources = self.resources.read();
-        match addr {
-            IpAddr::V4(ipv4) => resources.get_by_ip(ipv4).cloned(),
-            IpAddr::V6(ipv6) => resources.get_by_ip(ipv6).cloned(),
-        }
-    }
-
     fn next_index(&self) -> u32 {
         self.next_index.lock().next()
     }
@@ -512,6 +411,32 @@ where
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
+}
+
+fn remove_expired_peers(
+    peers_by_ip: &mut IpNetworkTable<Arc<Peer>>,
+    peer_connections: &mut HashMap<ConnId, Arc<RTCPeerConnection>>,
+) {
+    for (_, peer) in peers_by_ip.iter() {
+        peer.expire_resources();
+        if peer.is_emptied() {
+            tracing::trace!(index = peer.index, "peer_expired");
+            let conn = peer_connections.remove(&peer.conn_id);
+            let p = peer.clone();
+
+            // We are holding a Mutex, particularly a write one, we don't want to make a blocking call
+            tokio::spawn(async move {
+                let _ = p.shutdown().await;
+                if let Some(conn) = conn {
+                    // TODO: it seems that even closing the stream there are messages to the relay
+                    // see where they come from.
+                    let _ = conn.close().await;
+                }
+            });
+        }
+    }
+
+    peers_by_ip.retain(|_, p| !p.is_emptied());
 }
 
 /// Dedicated trait for abstracting over the different ICE states.

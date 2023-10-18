@@ -14,46 +14,17 @@ use connlib_shared::{
     Result,
 };
 
-use async_trait::async_trait;
-use firezone_tunnel::{ClientState, ControlSignal, Request, Tunnel};
+use firezone_tunnel::{ClientState, Request, Tunnel};
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use tokio::io::BufReader;
 use tokio::sync::Mutex;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
-#[async_trait]
-impl ControlSignal for ControlSignaler {
-    async fn signal_connection_to(
-        &self,
-        resource: &ResourceDescription,
-        connected_gateway_ids: &[GatewayId],
-        reference: usize,
-    ) -> Result<()> {
-        self.control_signal
-            // It's easier if self is not mut
-            .clone()
-            .send_with_ref(
-                EgressMessages::PrepareConnection {
-                    resource_id: resource.id(),
-                    connected_gateway_ids: connected_gateway_ids.to_vec(),
-                },
-                reference,
-            )
-            .await?;
-        Ok(())
-    }
-}
-
 pub struct ControlPlane<CB: Callbacks> {
-    pub tunnel: Arc<Tunnel<ControlSignaler, CB, ClientState>>,
-    pub control_signaler: ControlSignaler,
+    pub tunnel: Arc<Tunnel<CB, ClientState>>,
+    pub phoenix_channel: PhoenixSenderWithTopic,
     pub tunnel_init: Mutex<bool>,
-}
-
-#[derive(Clone)]
-pub struct ControlSignaler {
-    pub control_signal: PhoenixSenderWithTopic,
 }
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
@@ -139,7 +110,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         reference: Option<Reference>,
     ) {
         let tunnel = Arc::clone(&self.tunnel);
-        let mut control_signaler = self.control_signaler.clone();
+        let mut control_signaler = self.phoenix_channel.clone();
         tokio::spawn(async move {
             let err = match tunnel
                 .request_connection(resource_id, gateway_id, relays, reference)
@@ -147,7 +118,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             {
                 Ok(Request::NewConnection(connection_request)) => {
                     if let Err(err) = control_signaler
-                        .control_signal
                         // TODO: create a reference number and keep track for the response
                         .send_with_ref(
                             EgressMessages::RequestConnection(connection_request),
@@ -162,7 +132,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 }
                 Ok(Request::ReuseConnection(connection_request)) => {
                     if let Err(err) = control_signaler
-                        .control_signal
                         // TODO: create a reference number and keep track for the response
                         .send_with_ref(
                             EgressMessages::ReuseConnection(connection_request),
@@ -178,7 +147,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 Err(err) => err,
             };
 
-            tunnel.cleanup_connection(resource_id.into());
+            tunnel.cleanup_connection(resource_id);
             tracing::error!("Error request connection details: {err}");
             let _ = tunnel.callbacks().on_error(&err);
         });
@@ -250,7 +219,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         return;
                     };
                     // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
-                    self.tunnel.cleanup_connection(resource_id.into());
+                    self.tunnel.cleanup_connection(resource_id);
                 }
                 None => {
                     tracing::error!(
@@ -273,8 +242,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         tracing::info!("Requesting log upload URL from portal");
 
         let _ = self
-            .control_signaler
-            .control_signal
+            .phoenix_channel
             .send(EgressMessages::CreateLogSink {})
             .await;
     }
@@ -283,8 +251,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         match event {
             firezone_tunnel::Event::SignalIceCandidate { conn_id, candidate } => {
                 if let Err(e) = self
-                    .control_signaler
-                    .control_signal
+                    .phoenix_channel
                     .send(EgressMessages::BroadcastIceCandidates(
                         BroadcastGatewayIceCandidates {
                             gateway_ids: vec![conn_id],
@@ -294,6 +261,28 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     .await
                 {
                     tracing::error!("Failed to signal ICE candidate: {e}")
+                }
+            }
+            firezone_tunnel::Event::ConnectionIntent {
+                resource,
+                connected_gateway_ids,
+                reference,
+            } => {
+                if let Err(e) = self
+                    .phoenix_channel
+                    .clone()
+                    .send_with_ref(
+                        EgressMessages::PrepareConnection {
+                            resource_id: resource.id(),
+                            connected_gateway_ids: connected_gateway_ids.to_vec(),
+                        },
+                        reference,
+                    )
+                    .await
+                {
+                    tracing::error!("Failed to prepare connection: {e}");
+
+                    // TODO: Clean up connection in `ClientState` here?
                 }
             }
         }

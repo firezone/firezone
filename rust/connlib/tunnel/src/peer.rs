@@ -1,6 +1,7 @@
 use std::{collections::HashMap, net::IpAddr, sync::Arc};
 
 use boringtun::noise::{Tunn, TunnResult};
+use boringtun::x25519::StaticSecret;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use connlib_shared::{
@@ -11,11 +12,10 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use parking_lot::{Mutex, RwLock};
 use pnet_packet::MutablePacket;
+use secrecy::ExposeSecret;
 use webrtc::data::data_channel::DataChannel;
 
-use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, ConnId};
-
-use super::PeerConfig;
+use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, ConnId, PeerConfig};
 
 type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 
@@ -87,34 +87,26 @@ impl Peer {
         }
     }
 
-    pub(crate) fn from_config(
-        tunnel: Tunn,
-        index: u32,
-        config: &PeerConfig,
-        channel: Arc<DataChannel>,
-        conn_id: ConnId,
-        resource: Option<(ResourceDescription, DateTime<Utc>)>,
-    ) -> Self {
-        Self::new(
-            Mutex::new(tunnel),
-            index,
-            config.ips.clone(),
-            channel,
-            conn_id,
-            resource,
-        )
-    }
-
     pub(crate) fn new(
-        tunnel: Mutex<Tunn>,
+        private_key: StaticSecret,
         index: u32,
-        ips: Vec<IpNetwork>,
+        peer_config: PeerConfig,
         channel: Arc<DataChannel>,
         conn_id: ConnId,
         resource: Option<(ResourceDescription, DateTime<Utc>)>,
     ) -> Peer {
+        let tunnel = Tunn::new(
+            private_key.clone(),
+            peer_config.public_key,
+            Some(peer_config.preshared_key.expose_secret().0),
+            peer_config.persistent_keepalive,
+            index,
+            None,
+        )
+        .expect("never actually fails"); // See https://github.com/cloudflare/boringtun/pull/366.
+
         let mut allowed_ips = IpNetworkTable::new();
-        for ip in ips {
+        for ip in peer_config.ips {
             allowed_ips.insert(ip, ());
         }
         let allowed_ips = RwLock::new(allowed_ips);
@@ -123,8 +115,9 @@ impl Peer {
             resource_table.insert(r);
             RwLock::new(resource_table)
         });
+
         Peer {
-            tunnel,
+            tunnel: Mutex::new(tunnel),
             index,
             allowed_ips,
             channel,
