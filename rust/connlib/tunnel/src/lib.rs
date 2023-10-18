@@ -217,8 +217,7 @@ where
                     let mut stop_command_sender = self.stop_peer_command_sender.clone();
 
                     tokio::spawn(async move {
-                        let mut dst_buf = [0u8; 148];
-                        if let Err(e) = peer.update_timers(&mut dst_buf).await {
+                        if let Err(e) = peer.update_timers().await {
                             tracing::error!("Failed to update timers for peer: {e}");
                             let _ = callbacks.on_error(&e);
 

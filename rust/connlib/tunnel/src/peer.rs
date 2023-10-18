@@ -133,8 +133,10 @@ where
         self.allowed_ips.write().insert(ip, ());
     }
 
-    pub(crate) async fn update_timers<'a>(&self, dst: &'a mut [u8]) -> Result<()> {
-        let packet = match self.tunnel.lock().update_timers(dst) {
+    pub(crate) async fn update_timers<'a>(&self) -> Result<()> {
+        let mut buf = [0u8; 148];
+
+        let packet = match self.tunnel.lock().update_timers(&mut buf) {
             TunnResult::Done => return Ok(()),
             TunnResult::Err(e) => return Err(e.into()),
             TunnResult::WriteToNetwork(b) => b,
