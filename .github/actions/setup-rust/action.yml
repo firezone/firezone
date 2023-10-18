@@ -1,5 +1,9 @@
 name: "Setup Rust"
 description: "Sets up the correct Rust version and caching via sccache and a GCP backend"
+inputs:
+  targets:
+    description: "Additional targets to install"
+    required: false
 runs:
   using: "composite"
   steps:
@@ -25,3 +29,5 @@ runs:
       with:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt,clippy
+    - run: rustup target add ${{ inputs.targets }}
+      shell: bash

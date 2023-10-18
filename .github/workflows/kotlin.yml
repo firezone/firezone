@@ -37,6 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
+        with:
+          targets: armv7-linux-androideabi
       - uses: actions/setup-java@v3
         with:
           distribution: oracle

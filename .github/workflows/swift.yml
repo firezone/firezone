@@ -46,6 +46,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
+        with:
+          targets: |
+            aarch64-apple-darwin
+            aarch64-apple-ios
       - uses: actions/cache/restore@v3
         name: Restore Swift DerivedData Cache
         with:
