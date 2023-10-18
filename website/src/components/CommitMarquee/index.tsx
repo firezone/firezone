@@ -29,7 +29,7 @@ export default function CommitMarquee({ xmlFeed }: { xmlFeed: string }) {
         gradient
         pauseOnHover
         gradientWidth={100}
-        gradientColor={[248, 247, 247]}
+        gradientColor={"#f8f7f7"}
       >
         {xml.feed.entry.map((entry: any) => (
           <div
