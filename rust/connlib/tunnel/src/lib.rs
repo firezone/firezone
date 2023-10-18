@@ -30,7 +30,6 @@ use webrtc::{
 };
 
 use futures::channel::mpsc;
-use futures_bounded::{FuturesMap, PushError};
 use futures_util::{SinkExt, StreamExt};
 use std::hash::Hash;
 use std::task::{Context, Poll};
@@ -156,10 +155,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     /// State that differs per role, i.e. clients vs gateways.
     role_state: Mutex<TRoleState>,
 
-    #[allow(clippy::type_complexity)]
-    close_connection_tasks:
-        Mutex<FuturesMap<(u32, TRoleState::Id), std::result::Result<(), webrtc::Error>>>,
-
     stop_peer_command_receiver: Mutex<mpsc::Receiver<(u32, TRoleState::Id)>>,
     stop_peer_command_sender: mpsc::Sender<(u32, TRoleState::Id)>,
 }
@@ -209,38 +204,17 @@ where
             {
                 self.peers_by_ip.write().retain(|_, p| p.index != index);
                 if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
-                    match self
-                        .close_connection_tasks
-                        .lock()
-                        .try_push((index, conn_id), async move { conn.close().await })
-                    {
-                        Ok(()) => {}
-                        Err(PushError::BeyondCapacity(_)) => {
-                            tracing::warn!("Exceeded number of connection close tasks");
+                    tokio::spawn({
+                        let callbacks = self.callbacks.clone();
+                        async move {
+                            if let Err(e) = conn.close().await {
+                                tracing::warn!(%conn_id, error = ?e, "Can't close peer");
+                                let _ = callbacks.on_error(&e.into());
+                            }
                         }
-                        Err(PushError::Replaced(_)) => {
-                            tracing::warn!(%conn_id, %index, "Duplicate connection");
-                        }
-                    };
+                    });
                 }
                 continue;
-            }
-
-            match self.close_connection_tasks.lock().poll_unpin(cx) {
-                Poll::Ready(((_, id), Ok(Ok(())))) => {
-                    tracing::trace!(%id, "Successfully closed connection");
-                    continue;
-                }
-                Poll::Ready(((_, id), Ok(Err(e)))) => {
-                    tracing::warn!(%id, error = ?e, "Can't close peer");
-                    let _ = self.callbacks().on_error(&e.into());
-                    continue;
-                }
-                Poll::Ready(((_, id), Err(e))) => {
-                    tracing::trace!(%id, "Timeout while closing connection: {e}");
-                    continue;
-                }
-                _ => {}
             }
 
             return Poll::Pending;
@@ -353,7 +327,6 @@ where
             callbacks: CallbackErrorFacade(callbacks),
             iface_handler_abort,
             role_state: Default::default(),
-            close_connection_tasks: Mutex::new(FuturesMap::new(Duration::from_secs(30), 100)),
             stop_peer_command_receiver: Mutex::new(stop_peer_command_receiver),
             stop_peer_command_sender,
         })
