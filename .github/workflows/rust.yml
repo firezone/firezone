@@ -6,6 +6,10 @@ defaults:
   run:
     working-directory: ./rust
 
+env:
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
+
 jobs:
   static-analysis:
     strategy:
@@ -27,11 +31,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ./rust
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}
+      - uses: mozilla-actions/sccache-action@v0.0.3
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt,clippy
@@ -63,12 +63,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
-        with:
-          # Prevents runner.os caches from conflicting
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}
-          workspaces: ./rust
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: mozilla-actions/sccache-action@v0.0.3
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --all-features ${{ matrix.packages }}
 
@@ -79,10 +74,6 @@ jobs:
         working-directory: ./rust/relay
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ./rust
-          key: ubuntu-22.04-${{ runner.arch }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: mozilla-actions/sccache-action@v0.0.3
       - uses: dtolnay/rust-toolchain@stable
       - run: ./run_smoke_test.sh
