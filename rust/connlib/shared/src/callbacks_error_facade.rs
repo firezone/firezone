@@ -1,7 +1,7 @@
 use crate::messages::ResourceDescription;
 use crate::{Callbacks, Error, Result};
 use ip_network::IpNetwork;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 // Avoids having to map types for Windows
 type RawFd = i32;
@@ -92,5 +92,13 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         }
         // There's nothing we really want to do if `on_error` fails.
         Ok(())
+    }
+
+    fn get_system_default_resolvers(
+        &self,
+    ) -> std::result::Result<Option<Vec<IpAddr>>, Self::Error> {
+        self.0
+            .get_system_default_resolvers()
+            .map_err(|err| Error::GetSystemDefaultResolverFailed(err.to_string()))
     }
 }

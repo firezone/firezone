@@ -2,7 +2,7 @@ use crate::messages::ResourceDescription;
 use ip_network::IpNetwork;
 use std::error::Error;
 use std::fmt::{Debug, Display};
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 
 // Avoids having to map types for Windows
@@ -69,6 +69,11 @@ pub trait Callbacks: Clone + Send + Sync {
     fn on_error(&self, error: &crate::Error) -> Result<(), Self::Error> {
         tracing::warn!(error = ?error);
         Ok(())
+    }
+
+    /// Returns the system's default resolver iff split dns isn't available for platform
+    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+        Ok(None)
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {

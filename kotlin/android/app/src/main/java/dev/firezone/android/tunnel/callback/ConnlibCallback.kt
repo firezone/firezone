@@ -27,5 +27,5 @@ interface ConnlibCallback {
 
     fun onError(error: String): Boolean
 
-    fun getSystemDefaultResolvers(): String
+    fun getSystemDefaultResolvers(): Array<ByteArray>
 }

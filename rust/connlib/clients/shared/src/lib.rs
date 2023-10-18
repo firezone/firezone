@@ -158,12 +158,12 @@ where
                 tunnel: Arc::new(tunnel),
                 phoenix_channel: connection.sender_with_topic("client".to_owned()),
                 tunnel_init: Mutex::new(false),
+                fallback_resolver: parking_lot::Mutex::new(None),
             };
 
             tokio::spawn(async move {
                 let mut log_stats_interval = tokio::time::interval(Duration::from_secs(10));
                 let mut upload_logs_interval = upload_interval();
-
                 loop {
                     tokio::select! {
                         Some((msg, reference)) = control_plane_receiver.recv() => {

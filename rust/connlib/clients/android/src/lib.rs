@@ -6,13 +6,13 @@
 use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
 use ip_network::IpNetwork;
 use jni::{
-    objects::{GlobalRef, JClass, JObject, JString, JValue},
+    objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue, JValueGen},
     strings::JNIString,
     JNIEnv, JavaVM,
 };
 use secrecy::SecretString;
-use std::path::Path;
 use std::sync::OnceLock;
+use std::{net::IpAddr, path::Path};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
@@ -305,6 +305,42 @@ impl Callbacks for CallbackHandler {
             None
         })
     }
+
+    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+        self.env(|mut env| {
+            let name = "getSystemDefaultResolvers";
+            let addrs = env
+                .call_method(&self.callback_handler, name, "()[[B", &[])
+                .and_then(JValueGen::l)
+                .and_then(|arr| convert_byte_array_array(&mut env, arr.into()))
+                .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
+
+            Ok(Some(addrs.iter().filter_map(|v| to_ip(v)).collect()))
+        })
+    }
+}
+
+fn to_ip(val: &[u8]) -> Option<IpAddr> {
+    let addr: Option<[u8; 4]> = val.try_into().ok();
+    if let Some(addr) = addr {
+        return Some(addr.into());
+    }
+
+    let addr: [u8; 16] = val.try_into().ok()?;
+    Some(addr.into())
+}
+
+fn convert_byte_array_array(
+    env: &mut JNIEnv,
+    array: JObjectArray,
+) -> jni::errors::Result<Vec<Vec<u8>>> {
+    let len = env.get_array_length(&array)?;
+    let mut result = Vec::with_capacity(len as usize);
+    for i in 0..len {
+        let arr: JByteArray<'_> = env.get_object_array_element(&array, i)?.into();
+        result.push(env.convert_byte_array(arr)?);
+    }
+    Ok(result)
 }
 
 fn throw(env: &mut JNIEnv, class: &str, msg: impl Into<JNIString>) {

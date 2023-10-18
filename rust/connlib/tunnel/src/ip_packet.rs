@@ -185,12 +185,22 @@ pub(crate) enum Version {
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum IpPacket<'a> {
+pub enum IpPacket<'a> {
     Ipv4Packet(Ipv4Packet<'a>),
     Ipv6Packet(Ipv6Packet<'a>),
 }
 
 impl<'a> IpPacket<'a> {
+    pub(crate) fn owned(data: Vec<u8>) -> Option<IpPacket<'static>> {
+        let packet = match data[0] >> 4 {
+            4 => Ipv4Packet::owned(data)?.into(),
+            6 => Ipv6Packet::owned(data)?.into(),
+            _ => return None,
+        };
+
+        Some(packet)
+    }
+
     pub(crate) fn version(&self) -> Version {
         match self {
             IpPacket::Ipv4Packet(_) => Version::Ipv4,

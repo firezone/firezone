@@ -40,36 +40,23 @@ class DnsServersDetector(
 ) {
     //region - public //////////////////////////////////////////////////////////////////////////////
     // //////////////////////////////////////////////////////////////////////////////////////////////
-    val servers: Array<String>
+    val servers: Set<InetAddress>
         /**
          * Returns android DNS servers used for current connected network
          * @return Dns servers array
          */
         get() {
-            // use connectivity manager
-            serversMethodConnectivityManager?.run {
-                if (isNotEmpty()) {
-                    return this
-                }
-            }
-
-            // detect android DNS servers by executing getprop string command in a separate process
-            // This method fortunately works in Oreo too but many people may want to avoid exec
-            // so it's used only as a failsafe scenario
-            serversMethodExec?.run {
-                if (isNotEmpty()) {
-                    return this
-                }
-            }
-
-            // Fall back on factory DNS servers
-            return FACTORY_DNS_SERVERS
+            return serversMethodConnectivityManager
+                ?.takeIf { it.isNotEmpty() }
+                ?: serversMethodExec
+                    ?.takeIf { it.isNotEmpty() }
+                ?: FACTORY_DNS_SERVERS
         }
 
     //endregion
     //region - private /////////////////////////////////////////////////////////////////////////////
     // //////////////////////////////////////////////////////////////////////////////////////////////
-    private val serversMethodConnectivityManager: Array<String>?
+    private val serversMethodConnectivityManager: Set<InetAddress>?
         /**
          * Detect android DNS servers by using connectivity manager
          *
@@ -81,8 +68,8 @@ class DnsServersDetector(
             // This code only works on LOLLIPOP and higher
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 try {
-                    val priorityServersArrayList = ArrayList<String>()
-                    val serversArrayList = ArrayList<String>()
+                    val priorityServers: MutableSet<InetAddress> = HashSet(10)
+                    val servers: MutableSet<InetAddress> = HashSet(10)
                     val connectivityManager =
                         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager?
                     if (connectivityManager != null) {
@@ -93,37 +80,20 @@ class DnsServersDetector(
                             val networkInfo = connectivityManager.getNetworkInfo(network)
                             if (networkInfo!!.isConnected) {
                                 val linkProperties = connectivityManager.getLinkProperties(network)
-                                val dnsServersList = linkProperties!!.dnsServers
+                                val dnsServersList = linkProperties!!.dnsServers.toSet()
 
                                 // Prioritize the DNS servers for link which have a default route
                                 if (linkPropertiesHasDefaultRoute(linkProperties)) {
-                                    for (element in dnsServersList) {
-                                        val dnsHost = element.hostAddress
-                                        dnsHost?.let {
-                                            priorityServersArrayList.add(it)
-                                        }
-                                    }
+                                    priorityServers += dnsServersList
                                 } else {
-                                    for (element in dnsServersList) {
-                                        val dnsHost = element.hostAddress
-                                        dnsHost?.let {
-                                            serversArrayList.add(it)
-                                        }
-                                    }
+                                    servers += dnsServersList
                                 }
                             }
                         }
                     }
 
                     // Append secondary arrays only if priority is empty
-                    if (priorityServersArrayList.isEmpty()) {
-                        priorityServersArrayList.addAll(serversArrayList)
-                    }
-
-                    // Stop here if we have at least one DNS server
-                    if (priorityServersArrayList.size > 0) {
-                        return priorityServersArrayList.toTypedArray()
-                    }
+                    return priorityServers.takeIf { it.isNotEmpty() } ?: servers
                 } catch (ex: Exception) {
                     Log.d(
                         TAG,
@@ -133,10 +103,9 @@ class DnsServersDetector(
                 }
             }
 
-            // Failure
             return null
         }
-    private val serversMethodExec: Array<String>?
+    private val serversMethodExec: Set<InetAddress>?
         /**
          * Detect android DNS servers by executing getprop string command in a separate process
          *
@@ -152,15 +121,11 @@ class DnsServersDetector(
                 val process = Runtime.getRuntime().exec("getprop")
                 val inputStream = process.inputStream
                 val lineNumberReader = LineNumberReader(InputStreamReader(inputStream))
-                val serversSet = methodExecParseProps(lineNumberReader)
-                if (serversSet.isNotEmpty()) {
-                    return serversSet.toTypedArray()
-                }
+                return methodExecParseProps(lineNumberReader)
             } catch (ex: Exception) {
                 Log.d(TAG, "Exception in getServersMethodExec", ex)
             }
 
-            // Failed
             return null
         }
 
@@ -171,9 +136,9 @@ class DnsServersDetector(
      * @throws Exception
      */
     @Throws(Exception::class)
-    private fun methodExecParseProps(lineNumberReader: BufferedReader): Set<String> {
+    private fun methodExecParseProps(lineNumberReader: BufferedReader): Set<InetAddress> {
         var line: String
-        val serversSet: MutableSet<String> = HashSet(10)
+        val serversSet: MutableSet<InetAddress> = HashSet(10)
         while (lineNumberReader.readLine().also { line = it } != null) {
             val split = line.indexOf(METHOD_EXEC_PROP_DELIM)
             if (split == -1) {
@@ -196,11 +161,10 @@ class DnsServersDetector(
                 property.endsWith(".dns2") || property.endsWith(".dns3") ||
                 property.endsWith(".dns4")
             ) {
-                InetAddress.getByName(value).hostAddress?.takeIf { it.isNotEmpty() }?.let {
-                    serversSet.add(it)
-                }
+                serversSet.add(InetAddress.getByName(value))
             }
         }
+
         return serversSet
     }
 
@@ -226,9 +190,9 @@ class DnsServersDetector(
          * Can be set to null if you want caller to fail in this situation.
          */
         private val FACTORY_DNS_SERVERS =
-            arrayOf(
-                "8.8.8.8",
-                "8.8.4.4",
+            setOf(
+                InetAddress.getByName("8.8.8.8"),
+                InetAddress.getByName("8.8.4.4"),
             )
 
         /**
