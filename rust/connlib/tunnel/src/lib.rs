@@ -397,10 +397,6 @@ where
         })
     }
 
-    async fn start_timers(self: &Arc<Self>) -> Result<()> {
-        Ok(())
-    }
-
     fn next_index(&self) -> u32 {
         self.next_index.lock().next()
     }
