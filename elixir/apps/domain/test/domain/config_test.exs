@@ -93,7 +93,18 @@ defmodule Domain.ConfigTest do
       assert fetch_resolved_configs!(account.id, [:clients_upstream_dns, :clients_upstream_dns]) ==
                %{
                  clients_upstream_dns: [
-                   %Domain.Config.Configuration.ClientsUpstreamDNS{type: "ip", address: "1.1.1.1"}
+                   %Domain.Config.Configuration.ClientsUpstreamDNS{
+                     type: "ip",
+                     address: "1.1.1.1"
+                   },
+                   %Domain.Config.Configuration.ClientsUpstreamDNS{
+                     type: "ip",
+                     address: "2606:4700:4700::1111"
+                   },
+                   %Domain.Config.Configuration.ClientsUpstreamDNS{
+                     type: "ip",
+                     address: "8.8.8.8:853"
+                   }
                  ]
                }
     end
@@ -147,6 +158,14 @@ defmodule Domain.ConfigTest do
                       %Domain.Config.Configuration.ClientsUpstreamDNS{
                         type: "ip",
                         address: "1.1.1.1"
+                      },
+                      %Domain.Config.Configuration.ClientsUpstreamDNS{
+                        type: "ip",
+                        address: "2606:4700:4700::1111"
+                      },
+                      %Domain.Config.Configuration.ClientsUpstreamDNS{
+                        type: "ip",
+                        address: "8.8.8.8:853"
                       }
                     ]}
                }
