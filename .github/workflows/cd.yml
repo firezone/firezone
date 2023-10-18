@@ -127,6 +127,7 @@ jobs:
   build-push-release-artifacts:
     permissions:
       id-token: write
+      contents: write
     needs: update-release-draft
     runs-on: ubuntu-22.04
     defaults:
