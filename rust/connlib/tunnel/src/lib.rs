@@ -366,9 +366,11 @@ where
         })
     }
 
-    async fn start_refresh_mtu_timer(self: &Arc<Self>) -> Result<()> {
+    async fn start_refresh_mtu_timer(
+        self: &Arc<Self>,
+        callbacks: impl Callbacks + 'static,
+    ) -> Result<()> {
         let dev = self.clone();
-        let callbacks = self.callbacks().clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(REFRESH_MTU_INTERVAL);
             interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -378,12 +380,12 @@ where
                 let Some(device) = dev.device.read().await.clone() else {
                     let err = Error::ControlProtocolError;
                     tracing::error!(?err, "get_iface_config");
-                    let _ = callbacks.0.on_error(&err);
+                    let _ = callbacks.on_error(&err);
                     continue;
                 };
                 if let Err(e) = device.config.refresh_mtu().await {
                     tracing::error!(error = ?e, "refresh_mtu");
-                    let _ = callbacks.0.on_error(&e);
+                    let _ = callbacks.on_error(&e);
                 }
             }
         });
@@ -392,7 +394,7 @@ where
     }
 
     async fn start_timers(self: &Arc<Self>) -> Result<()> {
-        self.start_refresh_mtu_timer().await?;
+        self.start_refresh_mtu_timer(self.callbacks.clone()).await?;
         Ok(())
     }
 
