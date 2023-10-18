@@ -6,6 +6,10 @@ buildscript {
         maven(url = "https://jitpack.io")
         maven(url = "https://plugins.gradle.org/m2/")
     }
+
+    dependencies {
+        classpath("androidx.navigation:navigation-safe-args-gradle-plugin:2.7.4")
+    }
 }
 
 plugins {

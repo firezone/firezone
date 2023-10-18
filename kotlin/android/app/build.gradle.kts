@@ -6,6 +6,7 @@ plugins {
     id("com.diffplug.spotless") version "6.22.0"
     id("com.google.firebase.appdistribution")
     id("kotlin-parcelize")
+    id("androidx.navigation.safeargs")
 
     kotlin("android")
     kotlin("kapt")
@@ -169,6 +170,7 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.core:core-ktx:$coreVersion")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
+    kapt("androidx.hilt:hilt-compiler:1.0.0")
     kapt("com.google.dagger:hilt-android-compiler:2.44")
 
     // Retrofit 2
