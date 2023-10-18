@@ -68,7 +68,7 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(((client, _), Ok(Err(e)))) => {
-                    self.tunnel.cleanup_connection(client.into());
+                    self.tunnel.cleanup_connection(client);
                     tracing::debug!(%client, "Connection request failed: {:#}", anyhow::Error::new(e));
 
                     continue;
@@ -161,7 +161,7 @@ impl Eventloop {
                         if self
                             .add_ice_candidate_tasks
                             .try_push(async move {
-                                tunnel.add_ice_candidate(client_id.into(), candidate).await
+                                tunnel.add_ice_candidate(client_id, candidate).await
                             })
                             .is_err()
                         {
