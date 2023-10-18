@@ -22,8 +22,9 @@ where
     ) -> Result<()> {
         match peer.encapsulate(&mut packet, buf)? {
             TunnResult::Done => Ok(()),
-            TunnResult::Err(WireGuardError::ConnectionExpired)
-            | TunnResult::Err(WireGuardError::NoCurrentSession) => {
+            TunnResult::Err(
+                WireGuardError::ConnectionExpired | WireGuardError::NoCurrentSession,
+            ) => {
                 let _ = self
                     .stop_peer_command_sender
                     .clone()
