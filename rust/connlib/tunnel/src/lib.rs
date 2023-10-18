@@ -382,10 +382,16 @@ where
                     let _ = callbacks.on_error(&err);
                     continue;
                 };
-                if let Err(e) = device.config.refresh_mtu().await {
-                    tracing::error!(error = ?e, "refresh_mtu");
-                    let _ = callbacks.on_error(&e);
-                }
+                tokio::spawn({
+                    let callbacks = callbacks.clone();
+
+                    async move {
+                        if let Err(e) = device.config.refresh_mtu().await {
+                            tracing::error!(error = ?e, "refresh_mtu");
+                            let _ = callbacks.on_error(&e);
+                        }
+                    }
+                });
             }
         });
 
