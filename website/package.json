@@ -24,7 +24,7 @@
     "fast-xml-parser": "^4.3.2",
     "flowbite": "^1.8.1",
     "flowbite-react": "^0.4.11",
-    "highlight.js": "^11.8.0",
+    "highlight.js": "^11.9.0",
     "md5": "^2.3.0",
     "next": "13.5.5",
     "next-hubspot": "^1.1.6",
