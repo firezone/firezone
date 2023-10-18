@@ -1,5 +1,5 @@
 [package]
-name = "firezone-headless-client"
+name = "firezone-linux-client"
 # mark:automatic-version
 version = "1.20231001.0"
 edition = "2021"
