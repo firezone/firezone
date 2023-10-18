@@ -158,6 +158,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
 
     rate_limit_reset_interval: Mutex<Interval>,
     peer_refresh_interval: Mutex<Interval>,
+    mtu_refresh_interval: Mutex<Interval>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -224,6 +225,36 @@ where
                     });
                 }
                 continue;
+            }
+
+            if self.mtu_refresh_interval.lock().poll_tick(cx).is_ready() {
+                // We use `try_read` to acquire a lock on the device because we are within a synchronous context here and cannot use `.await`.
+                // The device is only updated during `add_route` and `set_interface` which would be extremely unlucky to hit at the same time as this timer.
+                // Even if we hit this, we just wait for the next tick to update the MTU.
+                let device = match self.device.try_read().map(|d| d.clone()) {
+                    Ok(Some(device)) => device,
+                    Ok(None) => {
+                        let err = Error::ControlProtocolError;
+                        tracing::error!(?err, "get_iface_config");
+                        let _ = self.callbacks.on_error(&err);
+                        continue;
+                    }
+                    Err(_) => {
+                        tracing::debug!("Unlucky! Somebody is updating the device just as we are about to update its MTU, trying again on the next tick ...");
+                        continue;
+                    }
+                };
+
+                tokio::spawn({
+                    let callbacks = self.callbacks.clone();
+
+                    async move {
+                        if let Err(e) = device.config.refresh_mtu().await {
+                            tracing::error!(error = ?e, "refresh_mtu");
+                            let _ = callbacks.on_error(&e);
+                        }
+                    }
+                });
             }
 
             if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
@@ -362,44 +393,11 @@ where
             stop_peer_command_sender,
             rate_limit_reset_interval: Mutex::new(rate_limit_reset_interval()),
             peer_refresh_interval: Mutex::new(peer_refresh_interval()),
+            mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
         })
     }
 
-    async fn start_refresh_mtu_timer(
-        self: &Arc<Self>,
-        callbacks: impl Callbacks + 'static,
-    ) -> Result<()> {
-        let dev = self.clone();
-        tokio::spawn(async move {
-            let mut interval = mtu_refresh_interval();
-
-            loop {
-                interval.tick().await;
-
-                let Some(device) = dev.device.read().await.clone() else {
-                    let err = Error::ControlProtocolError;
-                    tracing::error!(?err, "get_iface_config");
-                    let _ = callbacks.on_error(&err);
-                    continue;
-                };
-                tokio::spawn({
-                    let callbacks = callbacks.clone();
-
-                    async move {
-                        if let Err(e) = device.config.refresh_mtu().await {
-                            tracing::error!(error = ?e, "refresh_mtu");
-                            let _ = callbacks.on_error(&e);
-                        }
-                    }
-                });
-            }
-        });
-
-        Ok(())
-    }
-
     async fn start_timers(self: &Arc<Self>) -> Result<()> {
-        self.start_refresh_mtu_timer(self.callbacks.clone()).await?;
         Ok(())
     }
 
