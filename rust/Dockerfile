@@ -12,7 +12,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef as builder
 COPY --from=planner /build/recipe.json .
-RUN cargo chef cook --release --recipe-path recipe.json
+RUN cargo chef cook --all-targets --release --recipe-path recipe.json
 COPY . .
 ARG PACKAGE
 RUN cargo build -p $PACKAGE --release

@@ -5,59 +5,62 @@
 
 version: 2
 updates:
-  - package-ecosystem: "mix"
-    directory: "elixir/"
+  - package-ecosystem: mix
+    directory: elixir/
     schedule:
-      interval: "daily"
-  - package-ecosystem: "pip"
-    directory: "/"
+      interval: daily
+  - package-ecosystem: pip
+    directory: /
     schedule:
-      interval: "daily"
-  - package-ecosystem: "github-actions"
-    directory: "/"
+      interval: daily
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "daily"
-  - package-ecosystem: "cargo"
-    directory: "rust/"
+      interval: daily
+  - package-ecosystem: cargo
+    directory: rust/
     schedule:
-      interval: "daily"
+      interval: daily
     groups:
       otel:
         patterns:
-          - "opentelemetry"
-          - "opentelemetry_api"
-          - "opentelemetry-otlp"
-          - "tracing-opentelemetry"
-          - "tracing-stackdriver"
+          - opentelemetry
+          - opentelemetry_api
+          - opentelemetry-otlp
+          - tracing-opentelemetry
+          - tracing-stackdriver
         update-types:
-          - "minor"
-  - package-ecosystem: "gradle"
-    directory: "rust/connlib/clients/android/connlib/"
+          - minor
+  - package-ecosystem: gradle
+    directory: rust/connlib/clients/android/connlib/
     schedule:
-      interval: "daily"
-  - package-ecosystem: "gradle"
-    directory: "kotlin/android/"
+      interval: daily
+  - package-ecosystem: gradle
+    directory: kotlin/android/
     schedule:
-      interval: "daily"
-    # Requires using a newer Java runtime
-    ignore: "org.jetbrains.kotlin:kotlin-gradle-plugin"
-  - package-ecosystem: "gradle"
-    directory: "kotlin/android/app/"
+      interval: daily
+    ignore:
+      # Depends on org.jetbrains.kotlin:kotlin-gradle-plugin version
+      - dependency-name: com.google.dagger.hilt.android
+      # Depends on JDK version which is bundled with Android Studio (JDK 17)
+      - dependency-name: org.jetbrains.kotlin:kotlin-gradle-plugin
+  - package-ecosystem: gradle
+    directory: kotlin/android/app/
     schedule:
-      interval: "daily"
-  - package-ecosystem: "swift"
-    directory: "swift/apple/Firezone.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/"
+      interval: daily
+  - package-ecosystem: swift
+    directory: swift/apple/FirezoneKit/
     schedule:
-      interval: "daily"
-  - package-ecosystem: "npm"
-    directory: "website/"
+      interval: daily
+  - package-ecosystem: npm
+    directory: website/
     schedule:
-      interval: "daily"
-  - package-ecosystem: "npm"
-    directory: "elixir/apps/web/assets/"
+      interval: daily
+  - package-ecosystem: npm
+    directory: elixir/apps/web/assets/
     schedule:
-      interval: "daily"
-  - package-ecosystem: "terraform"
-    directory: "terraform/environments/staging/"
+      interval: daily
+  - package-ecosystem: terraform
+    directory: terraform/environments/staging/
     schedule:
-      interval: "daily"
+      interval: daily
