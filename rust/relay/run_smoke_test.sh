@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-cargo build --package relay --bin relay --example client --example gateway
+cargo build --package firezone-relay --bin firezone-relay --example client --example gateway
 
 cleanup() {
   pkill -P $$ || true # Kill all child-processes of the current process.
@@ -19,11 +19,11 @@ NC=$(echo -e '\033[0m')
 target_directory=$(cargo metadata --format-version 1 | jq -r '.target_directory')
 client="$target_directory/debug/examples/client"
 gateway="$target_directory/debug/examples/gateway"
-relay="$target_directory/debug/relay"
+relay="$target_directory/debug/firezone-relay"
 
 export PUBLIC_IP4_ADDR=127.0.0.1;
 export RNG_SEED=0;
-export RUST_LOG=relay=debug;
+export RUST_LOG=firezone-relay=debug;
 
 # Client and relay run in the background.
 $client 2>&1 | sed "s/^/${RED}[ client]${NC} /" &
