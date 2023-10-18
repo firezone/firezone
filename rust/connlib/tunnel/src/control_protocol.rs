@@ -38,22 +38,6 @@ where
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
-    pub fn on_dc_close_handler(
-        self: Arc<Self>,
-        index: u32,
-        conn_id: TRoleState::Id,
-        stop_command_sender: mpsc::Sender<(u32, <TRoleState as RoleState>::Id)>,
-    ) -> OnCloseHdlrFn {
-        Box::new(move || {
-            let mut sender = stop_command_sender.clone();
-
-            tracing::debug!("channel_closed");
-            Box::pin(async move {
-                let _ = sender.send((index, conn_id)).await;
-            })
-        })
-    }
-
     pub fn on_peer_connection_state_change_handler(
         self: Arc<Self>,
         index: u32,
@@ -87,6 +71,24 @@ where
         peer_connection.add_ice_candidate(ice_candidate).await?;
         Ok(())
     }
+}
+
+pub fn on_dc_close_handler<TId>(
+    index: u32,
+    conn_id: TId,
+    stop_command_sender: mpsc::Sender<(u32, TId)>,
+) -> OnCloseHdlrFn
+where
+    TId: Copy + Send + Sync + 'static,
+{
+    Box::new(move || {
+        let mut sender = stop_command_sender.clone();
+
+        tracing::debug!("channel_closed");
+        Box::pin(async move {
+            let _ = sender.send((index, conn_id)).await;
+        })
+    })
 }
 
 #[tracing::instrument(level = "trace", skip(webrtc))]

@@ -16,7 +16,7 @@ use webrtc::{
     },
 };
 
-use crate::control_protocol::new_peer_connection;
+use crate::control_protocol::{new_peer_connection, on_dc_close_handler};
 use crate::{peer::Peer, ClientState, Error, Request, Result, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
@@ -127,7 +127,7 @@ where
                     }
                 };
 
-                d.on_close(tunnel.clone().on_dc_close_handler(index, gateway_id, tunnel.stop_peer_command_sender.clone()));
+                d.on_close(on_dc_close_handler(index, gateway_id, tunnel.stop_peer_command_sender.clone()));
 
                 let peer = Arc::new(Peer::new(
                     tunnel.private_key.clone(),
