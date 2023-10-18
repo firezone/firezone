@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use std::io;
 use std::net::IpAddr;
 use std::sync::Arc;
-use std::task::{Context, Poll, Waker};
+use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::Instant;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
@@ -245,7 +245,6 @@ pub struct ClientState {
     resources_gateways: HashMap<ResourceId, GatewayId>,
     resources: ResourceTable<ResourceDescription>,
     dns_queries: EventQueue<DnsQuery<'static>>,
-    waker: Option<Waker>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -476,9 +475,8 @@ impl ClientState {
     }
 
     pub fn dns_query(&mut self, query: DnsQuery) {
-        self.dns_queries.push_back(query.owned());
-        if let Some(ref waker) = self.waker {
-            waker.wake_by_ref();
+        if self.dns_queries.push_back(query.owned()).is_err() {
+            tracing::warn!("Too many DNS queries, dropping new ones");
         }
     }
 }
@@ -498,7 +496,6 @@ impl Default for ClientState {
             resources_gateways: Default::default(),
             resources: Default::default(),
             dns_queries: EventQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
-            waker: None,
         }
     }
 }
@@ -507,10 +504,6 @@ impl RoleState for ClientState {
     type Id = GatewayId;
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
-        let waker = cx.waker();
-        if !self.waker.as_ref().is_some_and(|w| w.will_wake(waker)) {
-            self.waker = Some(waker.clone());
-        }
         loop {
             match self.active_candidate_receivers.poll_next_unpin(cx) {
                 Poll::Ready((conn_id, Some(Ok(c)))) => {
@@ -565,11 +558,7 @@ impl RoleState for ClientState {
                 Poll::Pending => {}
             }
 
-            if let Some(dns_query) = self.dns_queries.pop_front() {
-                return Poll::Ready(Event::DnsQuery(dns_query));
-            }
-
-            return Poll::Pending;
+            return self.dns_queries.poll(cx).map(Event::DnsQuery);
         }
     }
 }
