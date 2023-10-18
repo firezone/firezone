@@ -28,7 +28,7 @@ pnet_packet = { version = "0.34" }
 futures-bounded = { git = "https://github.com/libp2p/rust-libp2p", branch = "feat/stream-map" }
 
 # TODO: research replacing for https://github.com/algesten/str0m
-webrtc = { version = "0.8" }
+webrtc = { workspace = true }
 
 # Needed for Android logging until tracing is fixed
 log = "0.4"
