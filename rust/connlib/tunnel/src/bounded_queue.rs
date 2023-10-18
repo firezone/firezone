@@ -36,9 +36,7 @@ impl<T> BoundedQueue<T> {
         if let Some(front) = self.queue.pop_front() {
             Poll::Ready(front)
         } else {
-            if !self.waker.as_ref().is_some_and(|w| w.will_wake(cx.waker())) {
-                self.waker = Some(cx.waker().clone());
-            }
+            self.waker = Some(cx.waker().clone());
 
             Poll::Pending
         }
