@@ -69,7 +69,6 @@ mod resource_table;
 mod tokio_util;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
-const REFRESH_MTU_INTERVAL: Duration = Duration::from_secs(30);
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
 
 /// For how long we will attempt to gather ICE candidates before aborting.
@@ -372,8 +371,8 @@ where
     ) -> Result<()> {
         let dev = self.clone();
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(REFRESH_MTU_INTERVAL);
-            interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+            let mut interval = mtu_refresh_interval();
+
             loop {
                 interval.tick().await;
 
@@ -449,6 +448,14 @@ fn rate_limit_reset_interval() -> Interval {
 /// On each tick, we remove expired peers from our map, update wireguard timers and send packets, if any.
 fn peer_refresh_interval() -> Interval {
     let mut interval = tokio::time::interval(Duration::from_secs(1));
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    interval
+}
+
+/// Constructs the interval for refreshing the MTU of our TUN device.
+fn mtu_refresh_interval() -> Interval {
+    let mut interval = tokio::time::interval(Duration::from_secs(30));
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     interval
