@@ -133,8 +133,25 @@ where
         self.allowed_ips.write().insert(ip, ());
     }
 
-    pub(crate) fn update_timers<'a>(&self, dst: &'a mut [u8]) -> TunnResult<'a> {
-        self.tunnel.lock().update_timers(dst)
+    pub(crate) async fn update_timers<'a>(
+        &self,
+        dst: &'a mut [u8],
+        callbacks: impl Callbacks,
+    ) -> Result<()> {
+        let packet = match self.tunnel.lock().update_timers(dst) {
+            TunnResult::Done => return Ok(()),
+            TunnResult::Err(e) => return Err(e.into()),
+            TunnResult::WriteToNetwork(b) => b,
+            _ => panic!("Unexpected result from update_timers"),
+        };
+
+        let bytes = Bytes::copy_from_slice(packet);
+        if let Err(e) = self.channel.write(&bytes).await {
+            tracing::error!("Couldn't send packet to connected peer: {e}");
+            let _ = callbacks.on_error(&e.into());
+        }
+
+        Ok(())
     }
 
     pub(crate) async fn shutdown(&self) -> Result<()> {

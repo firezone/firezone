@@ -3,10 +3,9 @@
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
 use boringtun::{
-    noise::{rate_limiter::RateLimiter, TunnResult},
+    noise::rate_limiter::RateLimiter,
     x25519::{PublicKey, StaticSecret},
 };
-use bytes::Bytes;
 
 use connlib_shared::{messages::Key, CallbackErrorFacade, Callbacks, Error};
 use ip_network::IpNetwork;
@@ -219,7 +218,7 @@ where
 
                     tokio::spawn(async move {
                         let mut dst_buf = [0u8; 148];
-                        if let Err(e) = refresh_peer(&peer, &mut dst_buf, callbacks).await {
+                        if let Err(e) = peer.update_timers(&mut dst_buf, callbacks).await {
                             if e.is_fatal_connection_error() {
                                 let _ = stop_command_sender.send((peer.index, peer.conn_id)).await;
                             }
@@ -418,27 +417,6 @@ where
 
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
-    }
-}
-
-async fn refresh_peer<TId>(
-    peer: &Peer<TId>,
-    dst_buf: &mut [u8],
-    callbacks: impl Callbacks,
-) -> Result<()>
-where
-    TId: Copy,
-{
-    match peer.update_timers(dst_buf) {
-        TunnResult::Done => Ok(()),
-        TunnResult::Err(e) => Err(e.into()),
-        TunnResult::WriteToNetwork(packet) => {
-            let bytes = Bytes::copy_from_slice(packet);
-            peer.send_infallible(bytes, &callbacks).await;
-
-            Ok(())
-        }
-        _ => panic!("Unexpected result from update_timers"),
     }
 }
 
