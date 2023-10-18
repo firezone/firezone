@@ -29,7 +29,7 @@ futures-bounded = { git = "https://github.com/libp2p/rust-libp2p", branch = "fea
 hickory-resolver = { workspace = true }
 
 # TODO: research replacing for https://github.com/algesten/str0m
-webrtc = { version = "0.8" }
+webrtc = { workspace = true }
 
 # Needed for Android logging until tracing is fixed
 log = "0.4"
