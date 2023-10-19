@@ -110,7 +110,7 @@ jobs:
   update-release-draft:
     # FIXME
     # needs: deploy
-    runs-on: ubuntu-22.04-firezone-4c
+    runs-on: ubuntu-22.04
     permissions:
       # write permission is required to create a github release
       contents: write
@@ -129,7 +129,7 @@ jobs:
       id-token: write
       contents: write
     needs: update-release-draft
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-firezone-4c
     defaults:
       run:
         working-directory: ./rust
