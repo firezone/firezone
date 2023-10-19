@@ -54,7 +54,7 @@ jobs:
             target: debug
             context: rust
             build-args: |
-              PACKAGE=relay
+              PACKAGE=firezone-relay
           - image_name: client
             target: debug
             context: rust

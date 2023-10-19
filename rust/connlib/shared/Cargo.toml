@@ -29,9 +29,10 @@ tokio-tungstenite = { version = "0.20", default-features = false, features = ["c
 tracing = { workspace = true }
 tracing-appender = "0.2"
 url = { version = "2.4.1", default-features = false }
-uuid = { version = "1.4", default-features = false, features = ["std", "v4", "serde"] }
-webrtc = { version = "0.8" }
+uuid = { version = "1.5", default-features = false, features = ["std", "v4", "serde"] }
+webrtc = { workspace = true }
 ring = "0.17"
+hickory-resolver = { workspace = true }
 
 # Needed for Android logging until tracing is working
 log = "0.4"

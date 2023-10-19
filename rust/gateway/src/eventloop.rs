@@ -1,4 +1,3 @@
-use crate::control::ControlSignaler;
 use crate::messages::{
     AllowAccess, BroadcastClientIceCandidates, ClientIceCandidates, ConnectionReady,
     EgressMessages, IngressMessages,
@@ -7,7 +6,7 @@ use crate::CallbackHandler;
 use anyhow::Result;
 use connlib_shared::messages::ClientId;
 use connlib_shared::Error;
-use firezone_tunnel::{GatewayState, Tunnel};
+use firezone_tunnel::{Event, GatewayState, Tunnel};
 use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -18,7 +17,7 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 pub const PHOENIX_TOPIC: &str = "gateway";
 
 pub struct Eventloop {
-    tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayState>>,
+    tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
     portal: PhoenixChannel<IngressMessages, ()>,
 
     // TODO: Strongly type request reference (currently `String`)
@@ -31,7 +30,7 @@ pub struct Eventloop {
 
 impl Eventloop {
     pub(crate) fn new(
-        tunnel: Arc<Tunnel<ControlSignaler, CallbackHandler, GatewayState>>,
+        tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
         portal: PhoenixChannel<IngressMessages, ()>,
     ) -> Self {
         Self {
@@ -69,7 +68,7 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(((client, _), Ok(Err(e)))) => {
-                    self.tunnel.cleanup_connection(client.into());
+                    self.tunnel.cleanup_connection(client);
                     tracing::debug!(%client, "Connection request failed: {:#}", anyhow::Error::new(e));
 
                     continue;
@@ -162,7 +161,7 @@ impl Eventloop {
                         if self
                             .add_ice_candidate_tasks
                             .try_push(async move {
-                                tunnel.add_ice_candidate(client_id.into(), candidate).await
+                                tunnel.add_ice_candidate(client_id, candidate).await
                             })
                             .is_err()
                         {
@@ -190,6 +189,10 @@ impl Eventloop {
                     );
                     continue;
                 }
+                Poll::Ready(Event::ConnectionIntent { .. }) => {
+                    unreachable!("Not used on the gateway, split the events!")
+                }
+                Poll::Ready(_) => continue,
                 Poll::Pending => {}
             }
 

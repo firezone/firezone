@@ -1,5 +1,5 @@
 [package]
-name = "relay"
+name = "firezone-relay"
 # mark:automatic-version
 version = "1.20231001.0"
 edition = "2021"
@@ -31,7 +31,7 @@ once_cell = "1.17.1"
 proptest = { version = "1.3.1", optional = true }
 test-strategy = "0.3.1"
 derive_more = { version = "0.99.17", features = ["from"] }
-uuid = { version = "1.4.1", features = ["v4"] }
+uuid = { version = "1.5.0", features = ["v4"] }
 phoenix-channel = { path = "../phoenix-channel" }
 url = "2.4.1"
 serde = { version = "1.0.189", features = ["derive"] }
@@ -40,7 +40,7 @@ socket2 = "0.5.4"
 axum = { version = "0.6.20", default-features = false, features = ["http1", "tokio"] }
 
 [dev-dependencies]
-webrtc = { version = "0.8" }
+webrtc = { workspace = true }
 redis = { version = "0.23.3", default-features = false, features = ["tokio-comp"] }
 difference = "2.0.0"
 

@@ -3,16 +3,14 @@ use std::{
     sync::Arc,
 };
 
-use crate::{
-    device_channel::DeviceIo, ip_packet::MutableIpPacket, peer::Peer, ControlSignal, Tunnel,
-};
+use crate::{device_channel::DeviceIo, ip_packet::MutableIpPacket, peer::Peer, RoleState, Tunnel};
 
 use connlib_shared::{messages::ResourceDescription, Callbacks, Error, Result};
 
-impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
+impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
-    C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
+    TRoleState: RoleState,
 {
     #[inline(always)]
     fn update_packet(&self, packet: &mut [u8], dst_addr: IpAddr) {
@@ -41,7 +39,7 @@ where
     pub(crate) fn packet_allowed(
         &self,
         device_io: &DeviceIo,
-        peer: &Arc<Peer>,
+        peer: &Arc<Peer<TRoleState::Id>>,
         addr: IpAddr,
         packet: &mut [u8],
     ) -> Result<()> {
@@ -63,7 +61,7 @@ where
     pub(crate) fn send_to_resource(
         &self,
         device_io: &DeviceIo,
-        peer: &Arc<Peer>,
+        peer: &Arc<Peer<TRoleState::Id>>,
         addr: IpAddr,
         packet: &mut [u8],
     ) -> Result<()> {
@@ -81,12 +79,15 @@ fn get_matching_version_ip(addr: &IpAddr, ip: &IpAddr) -> Option<IpAddr> {
     ((addr.is_ipv4() && ip.is_ipv4()) || (addr.is_ipv6() && ip.is_ipv6())).then_some(*ip)
 }
 
-fn get_resource_addr_and_port(
-    peer: &Arc<Peer>,
+fn get_resource_addr_and_port<TId>(
+    peer: &Arc<Peer<TId>>,
     resource: &ResourceDescription,
     addr: &IpAddr,
     dst: &IpAddr,
-) -> Result<(IpAddr, Option<u16>)> {
+) -> Result<(IpAddr, Option<u16>)>
+where
+    TId: Copy,
+{
     match resource {
         ResourceDescription::Dns(r) => {
             let mut address = r.address.split(':');

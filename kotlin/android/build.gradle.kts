@@ -6,6 +6,10 @@ buildscript {
         maven(url = "https://jitpack.io")
         maven(url = "https://plugins.gradle.org/m2/")
     }
+
+    dependencies {
+        classpath("androidx.navigation:navigation-safe-args-gradle-plugin:2.7.4")
+    }
 }
 
 plugins {
@@ -13,7 +17,7 @@ plugins {
     id("com.android.application") version "8.1.2" apply false
     id("com.android.library") version "8.1.2" apply false
     id("com.google.firebase.appdistribution") version "4.0.0" apply false
-    id("com.google.dagger.hilt.android") version "2.44" apply false
+    id("com.google.dagger.hilt.android") version "2.48" apply false
     id("com.google.gms.google-services") version "4.4.0" apply false
     id("org.mozilla.rust-android-gradle.rust-android") version "0.9.3" apply false
     id("com.google.firebase.crashlytics") version "2.9.9" apply false

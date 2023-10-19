@@ -4,11 +4,10 @@ use boringtun::noise::{errors::WireGuardError, TunnResult};
 use bytes::Bytes;
 use connlib_shared::{Callbacks, Result};
 
-use crate::{ip_packet::MutableIpPacket, peer::Peer, ControlSignal, RoleState, Tunnel};
+use crate::{ip_packet::MutableIpPacket, peer::Peer, RoleState, Tunnel};
 
-impl<C, CB, TRoleState> Tunnel<C, CB, TRoleState>
+impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
-    C: ControlSignal + Send + Sync + 'static,
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
@@ -16,7 +15,7 @@ where
     pub(crate) async fn encapsulate_and_send_to_peer<'a>(
         &self,
         mut packet: MutableIpPacket<'_>,
-        peer: Arc<Peer>,
+        peer: Arc<Peer<TRoleState::Id>>,
         dst_addr: &IpAddr,
         buf: &mut [u8],
     ) -> Result<()> {

@@ -3,7 +3,6 @@ pub use connlib_shared::{get_device_id, messages::ResourceDescription};
 pub use connlib_shared::{Callbacks, Error};
 pub use tracing_appender::non_blocking::WorkerGuard;
 
-use crate::control::ControlSignaler;
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use connlib_shared::control::SecureUrl;
 use connlib_shared::{control::PhoenixChannel, login_url, CallbackErrorFacade, Mode, Result};
@@ -149,23 +148,22 @@ where
                 }
             });
 
-            let control_signaler = ControlSignaler { control_signal: connection.sender_with_topic("client".to_owned()) };
             let tunnel = fatal_error!(
-                Tunnel::new(private_key, control_signaler.clone(), callbacks.clone()).await,
+                Tunnel::new(private_key, callbacks.clone()).await,
                 runtime_stopper,
                 &callbacks
             );
 
             let mut control_plane = ControlPlane {
                 tunnel: Arc::new(tunnel),
-                control_signaler,
+                phoenix_channel: connection.sender_with_topic("client".to_owned()),
                 tunnel_init: Mutex::new(false),
+                fallback_resolver: parking_lot::Mutex::new(None),
             };
 
             tokio::spawn(async move {
                 let mut log_stats_interval = tokio::time::interval(Duration::from_secs(10));
                 let mut upload_logs_interval = upload_interval();
-
                 loop {
                     tokio::select! {
                         Some((msg, reference)) = control_plane_receiver.recv() => {
