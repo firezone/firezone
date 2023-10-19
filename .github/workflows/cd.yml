@@ -258,9 +258,12 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
+          ls -alR
+          cat *
+          echo -n '${{ env.DOCKER_METADATA_OUTPUT_JSON }}' > metadata.json
           docker buildx imagetools create \
             -t ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }} \
-            $(printf '-f %s ' *)
+            -f metadata.json
       - name: Inspect and push images
         run: |
           docker buildx imagetools inspect ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
