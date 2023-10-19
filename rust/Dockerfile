@@ -17,19 +17,19 @@ FROM chef as builder
 COPY --from=planner /build/recipe.json .
 RUN cargo chef cook --recipe-path recipe.json
 COPY . .
-ARG TARGET="x86_64-unknown-linux-musl"
+ARG TARGET
 ARG PACKAGE
-RUN cargo build -p ${PACKAGE} --target ${TARGET}
+RUN cargo build -p ${PACKAGE} $([ -v "${TARGET}" ] && "--target ${TARGET}")
 
 # Minimal test image for GH actions
 FROM alpine:${ALPINE_VERSION} AS debug
 WORKDIR /bin
 ENV RUST_BACKTRACE=1
 COPY ./docker-init.sh .
-ARG TARGET="x86_64-unknown-linux-musl"
+ARG TARGET
 ARG PACKAGE
 # Needed only by gateway for masquerading
-RUN ([ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables) || true
+RUN \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables || true
 COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .
 ENTRYPOINT ["docker-init.sh"]
 CMD ${PACKAGE}
@@ -42,7 +42,7 @@ COPY ./docker-init.sh .
 ARG TARGET
 ARG PACKAGE
 # Needed only by gateway for masquerading
-RUN ([ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables) || true
+RUN \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables || true
 # Build first with `cross build --target ${TARGET} -p ${PACKAGE} --release`
 COPY ./target/${TARGET}/release/${PACKAGE} .
 ENTRYPOINT ["docker-init.sh"]

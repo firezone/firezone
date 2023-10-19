@@ -217,9 +217,9 @@ jobs:
           outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
-          mkdir -p /tmp/digests
+          mkdir -p /tmp/digests/${{ matrix.name.artifact }}
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${{ matrix.name.artifact }}-${digest#sha256:}"
+          touch "/tmp/digests/${{ matrix.name.artifact }}/${digest#sha256:}"
       - name: Upload digest
         uses: actions/upload-artifact@v3
         with:
@@ -262,10 +262,10 @@ jobs:
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}
       - name: Create manifest list and push
-        working-directory: /tmp/digests
+        working-directory: /tmp/digests/${{ matrix.image_name }}
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}@sha256:%s ' ${{ matrix.image_name }}-*)
+          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}@sha256:%s ' *)
           docker buildx imagetools create $tags $sources
       - name: Inspect and push images
         run: |
