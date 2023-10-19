@@ -11,3 +11,11 @@ variable "slack_alerts_auth_token" {
   type        = string
   description = "Slack auth token for the infra alerts channel"
 }
+
+variable "api_host" {
+  type = string
+}
+
+variable "web_host" {
+  type = string
+}

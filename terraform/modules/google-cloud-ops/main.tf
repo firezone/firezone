@@ -37,7 +37,7 @@ resource "google_monitoring_uptime_check_config" "api-https" {
 
     labels = {
       project_id = var.project_id
-      host       = module.api.host
+      host       = var.api_host
     }
   }
 
@@ -79,7 +79,7 @@ resource "google_monitoring_uptime_check_config" "web-https" {
 
     labels = {
       project_id = var.project_id
-      host       = module.web.host
+      host       = var.web_host
     }
   }
 

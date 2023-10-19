@@ -717,4 +717,7 @@ module "ops" {
 
   slack_alerts_auth_token = var.slack_alerts_auth_token
   slack_alerts_channel    = var.slack_alerts_channel
+
+  api_host = module.api.host
+  web_host = module.web.host
 }

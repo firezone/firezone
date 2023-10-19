@@ -16,7 +16,7 @@ resource "google_dns_record_set" "dns-caa" {
 # Website
 
 # Vercel doesn't support IPv6
-# resource "google_dns_record_set" "website-ipv5" {
+# resource "google_dns_record_set" "website-ipv6" {
 #   project      = module.google-cloud-project.project.project_id
 #   managed_zone = module.google-cloud-dns.zone_name
 
