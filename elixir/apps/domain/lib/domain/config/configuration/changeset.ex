@@ -1,6 +1,7 @@
 defmodule Domain.Config.Configuration.Changeset do
   use Domain, :changeset
   import Domain.Config, only: [config_changeset: 2]
+  alias Domain.Config.ClientsUpstreamDNS
 
   @fields ~w[clients_upstream_dns logo]a
 
@@ -9,10 +10,7 @@ defmodule Domain.Config.Configuration.Changeset do
       configuration
       |> cast(attrs, [])
       |> cast_embed(:logo)
-      |> cast_embed(
-        :clients_upstream_dns,
-        with: &clients_upstream_dns_changeset/2
-      )
+      |> cast_embed(:clients_upstream_dns)
       |> validate_unique_dns()
 
     Enum.reduce(@fields, changeset, fn field, changeset ->
@@ -21,62 +19,12 @@ defmodule Domain.Config.Configuration.Changeset do
     |> ensure_no_overridden_changes(configuration.account_id)
   end
 
-  def clients_upstream_dns_changeset(
-        dns_config \\ %Domain.Config.Configuration.ClientsUpstreamDNS{},
-        attrs
-      ) do
-    Ecto.Changeset.cast(dns_config, attrs, [:type, :address])
-    |> validate_required([:type, :address])
-    |> trim_change(:address)
-    |> validate_address()
-  end
-
-  defp validate_address(changeset) do
-    {_origin, type} = fetch_field(changeset, :type)
-
-    validate_change(changeset, :address, fn :address, address ->
-      case type do
-        "ip" ->
-          case Domain.Types.IPPort.cast(address) do
-            {:ok, _ip} ->
-              []
-
-            {:error, _reason} ->
-              [address: "must be a valid IP address"]
-          end
-
-        "dns_over_tls" ->
-          [address: "DNS over TLS is not supported yet"]
-
-        "dns_over_http" ->
-          [address: "DNS over HTTP is not supported yet"]
-
-        _other ->
-          [address: "Invalid Type"]
-      end
-    end)
-  end
-
-  defp normalize_dns_address(address) do
-    case Domain.Types.IPPort.cast(address) do
-      {:ok, ip} ->
-        port = ip.port || 53
-        %{ip | port: port} |> to_string()
-
-      {:error, _reason} ->
-        address
-
-      :error ->
-        address
-    end
-  end
-
   defp validate_unique_dns(changeset) do
     duplicates =
       apply_changes(changeset)
       |> Map.get(:clients_upstream_dns)
       |> Enum.map(fn dns ->
-        normalize_dns_address(dns.address)
+        ClientsUpstreamDNS.normalize_dns_address(dns)
       end)
       |> Enum.reject(&is_nil/1)
       |> Enum.group_by(& &1)

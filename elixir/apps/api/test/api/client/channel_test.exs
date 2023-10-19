@@ -138,7 +138,7 @@ defmodule API.Client.ChannelTest do
                ipv4: client.ipv4,
                ipv6: client.ipv6,
                upstream_dns: [
-                 %Domain.Config.Configuration.ClientsUpstreamDNS{type: "ip", address: "1.1.1.1"}
+                 %Domain.Config.ClientsUpstreamDNS{type: "ip", address: "1.1.1.1"}
                ]
              }
     end
