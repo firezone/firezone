@@ -108,8 +108,17 @@ resource "google_storage_bucket" "sccache" {
   uniform_bucket_level_access = true
 }
 
-resource "google_storage_bucket_access_control" "public_rule" {
-  bucket = google_storage_bucket.sccache.name
-  role   = "READER"
-  entity = "allUsers"
+data "google_iam_policy" "public-sccache" {
+  binding {
+    role = "roles/storage.objectViewer"
+
+    members = [
+      "allUsers"
+    ]
+  }
+}
+
+resource "google_storage_bucket_iam_policy" "editor" {
+  bucket      = google_storage_bucket.sccache.name
+  policy_data = data.google_iam_policy.public-sccache.policy_data
 }
