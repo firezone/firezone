@@ -1119,6 +1119,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0870c84016d4b481be5c9f323c24f65e31e901ae618f0e80f4308fb00de1d2d"
 
 [[package]]
+name = "firezone-cli-utils"
+version = "1.20231001.0"
+dependencies = [
+ "clap",
+ "ctrlc",
+ "ip_network",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "firezone-gateway"
 version = "1.20231001.0"
 dependencies = [
@@ -1129,10 +1141,10 @@ dependencies = [
  "chrono",
  "clap",
  "connlib-shared",
+ "firezone-cli-utils",
  "firezone-tunnel",
  "futures",
  "futures-bounded 0.1.0",
- "headless-utils",
  "phoenix-channel",
  "secrecy",
  "serde",
@@ -1146,16 +1158,58 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-headless-client"
+name = "firezone-linux-client"
 version = "1.20231001.0"
 dependencies = [
  "anyhow",
  "clap",
  "connlib-client-shared",
- "headless-utils",
+ "firezone-cli-utils",
  "secrecy",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "firezone-relay"
+version = "1.20231001.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "base64 0.21.4",
+ "bytecodec",
+ "bytes",
+ "clap",
+ "derive_more",
+ "difference",
+ "env_logger",
+ "futures",
+ "hex",
+ "hex-literal",
+ "once_cell",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_api",
+ "phoenix-channel",
+ "proptest",
+ "rand",
+ "redis",
+ "secrecy",
+ "serde",
+ "sha2",
+ "socket2 0.5.4",
+ "stun_codec",
+ "test-strategy",
+ "tokio",
+ "tracing",
+ "tracing-core",
+ "tracing-opentelemetry 0.21.0",
+ "tracing-stackdriver",
+ "tracing-subscriber",
+ "trackable 1.3.0",
+ "url",
+ "uuid",
+ "webrtc",
 ]
 
 [[package]]
@@ -1420,18 +1474,6 @@ name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
-
-[[package]]
-name = "headless-utils"
-version = "1.20231001.0"
-dependencies = [
- "clap",
- "ctrlc",
- "ip_network",
- "tracing",
- "tracing-subscriber",
- "url",
-]
 
 [[package]]
 name = "heck"
@@ -2797,48 +2839,6 @@ name = "regex-syntax"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
-
-[[package]]
-name = "relay"
-version = "1.20231001.0"
-dependencies = [
- "anyhow",
- "axum",
- "base64 0.21.4",
- "bytecodec",
- "bytes",
- "clap",
- "derive_more",
- "difference",
- "env_logger",
- "futures",
- "hex",
- "hex-literal",
- "once_cell",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_api",
- "phoenix-channel",
- "proptest",
- "rand",
- "redis",
- "secrecy",
- "serde",
- "sha2",
- "socket2 0.5.4",
- "stun_codec",
- "test-strategy",
- "tokio",
- "tracing",
- "tracing-core",
- "tracing-opentelemetry 0.21.0",
- "tracing-stackdriver",
- "tracing-subscriber",
- "trackable 1.3.0",
- "url",
- "uuid",
- "webrtc",
-]
 
 [[package]]
 name = "reqwest"

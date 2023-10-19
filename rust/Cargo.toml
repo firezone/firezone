@@ -6,8 +6,8 @@ members = [
   "connlib/shared",
   "connlib/tunnel",
   "gateway",
-  "headless-client",
-  "headless-utils",
+  "linux-client",
+  "firezone-cli-utils",
   "phoenix-channel",
   "relay",
 ]
@@ -29,8 +29,8 @@ connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}
 connlib-client-shared = { path = "connlib/clients/shared"}
 firezone-gateway = { path = "gateway"}
-firezone-headless-client = { path = "headless-client"}
-headless-utils = { path = "headless-utils"}
+firezone-linux-client = { path = "linux-client"}
+firezone-cli-utils = { path = "firezone-cli-utils"}
 connlib-shared = { path = "connlib/shared"}
 firezone-tunnel = { path = "connlib/tunnel"}
 phoenix-channel = { path = "phoenix-channel"}
