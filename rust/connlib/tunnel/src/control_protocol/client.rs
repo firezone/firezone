@@ -16,24 +16,10 @@ use webrtc::{
     },
 };
 
-use crate::control_protocol::new_peer_connection;
+use crate::control_protocol::{
+    new_peer_connection, on_dc_close_handler, on_peer_connection_state_change_handler,
+};
 use crate::{peer::Peer, ClientState, Error, Request, Result, Tunnel};
-
-#[tracing::instrument(level = "trace", skip(tunnel))]
-fn handle_connection_state_update<CB>(
-    tunnel: &Arc<Tunnel<CB, ClientState>>,
-    state: RTCPeerConnectionState,
-    gateway_id: GatewayId,
-    resource_id: ResourceId,
-) where
-    CB: Callbacks + 'static,
-{
-    tracing::trace!("peer_state");
-    if state == RTCPeerConnectionState::Failed {
-        tunnel.role_state.lock().on_connection_failed(resource_id);
-        tunnel.peer_connections.lock().remove(&gateway_id);
-    }
-}
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
 fn set_connection_state_update<CB>(
@@ -49,7 +35,11 @@ fn set_connection_state_update<CB>(
         move |state: RTCPeerConnectionState| {
             let tunnel = Arc::clone(&tunnel);
             Box::pin(async move {
-                handle_connection_state_update(&tunnel, state, gateway_id, resource_id)
+                tracing::trace!("peer_state");
+                if state == RTCPeerConnectionState::Failed {
+                    tunnel.role_state.lock().on_connection_failed(resource_id);
+                    tunnel.peer_connections.lock().remove(&gateway_id);
+                }
             })
         },
     ));
@@ -139,7 +129,7 @@ where
                     }
                 };
 
-                d.on_close(tunnel.clone().on_dc_close_handler(index, gateway_id));
+                d.on_close(on_dc_close_handler(index, gateway_id, tunnel.stop_peer_command_sender.clone()));
 
                 let peer = Arc::new(Peer::new(
                     tunnel.private_key.clone(),
@@ -171,9 +161,7 @@ where
 
                 if let Some(conn) = tunnel.peer_connections.lock().get(&gateway_id) {
                     conn.on_peer_connection_state_change(
-                        tunnel
-                            .clone()
-                            .on_peer_connection_state_change_handler(index, gateway_id),
+                            on_peer_connection_state_change_handler(index, gateway_id, tunnel.stop_peer_command_sender.clone()),
                     );
                 }
 

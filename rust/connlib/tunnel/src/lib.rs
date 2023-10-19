@@ -3,10 +3,9 @@
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
 use boringtun::{
-    noise::{errors::WireGuardError, rate_limiter::RateLimiter, TunnResult},
+    noise::rate_limiter::RateLimiter,
     x25519::{PublicKey, StaticSecret},
 };
-use bytes::Bytes;
 
 use connlib_shared::{messages::Key, CallbackErrorFacade, Callbacks, Error};
 use ip_network::IpNetwork;
@@ -29,9 +28,12 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
+use futures::channel::mpsc;
+use futures_util::{SinkExt, StreamExt};
 use std::hash::Hash;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
+use tokio::time::Interval;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 use connlib_shared::{
@@ -56,19 +58,14 @@ mod control_protocol;
 mod device_channel;
 mod dns;
 mod gateway;
-mod iface_handler;
 mod index;
 mod ip_packet;
 mod peer;
 mod peer_handler;
-mod resource_sender;
 mod resource_table;
 mod tokio_util;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
-const RESET_PACKET_COUNT_INTERVAL: Duration = Duration::from_secs(1);
-const REFRESH_PEERS_TIMERS_INTERVAL: Duration = Duration::from_secs(1);
-const REFRESH_MTU_INTERVAL: Duration = Duration::from_secs(30);
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
 
 /// For how long we will attempt to gather ICE candidates before aborting.
@@ -152,6 +149,13 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
 
     /// State that differs per role, i.e. clients vs gateways.
     role_state: Mutex<TRoleState>,
+
+    stop_peer_command_receiver: Mutex<mpsc::Receiver<(u32, TRoleState::Id)>>,
+    stop_peer_command_sender: mpsc::Sender<(u32, TRoleState::Id)>,
+
+    rate_limit_reset_interval: Mutex<Interval>,
+    peer_refresh_interval: Mutex<Interval>,
+    mtu_refresh_interval: Mutex<Interval>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -189,7 +193,109 @@ where
     }
 
     pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
-        self.role_state.lock().poll_next_event(cx)
+        loop {
+            if self
+                .rate_limit_reset_interval
+                .lock()
+                .poll_tick(cx)
+                .is_ready()
+            {
+                self.rate_limiter.reset_count();
+                continue;
+            }
+
+            if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
+                let peers_to_refresh = {
+                    let mut peers_by_ip = self.peers_by_ip.write();
+
+                    peers_to_refresh(&mut peers_by_ip, self.stop_peer_command_sender.clone())
+                };
+
+                for peer in peers_to_refresh {
+                    let callbacks = self.callbacks.clone();
+                    let mut stop_command_sender = self.stop_peer_command_sender.clone();
+
+                    tokio::spawn(async move {
+                        if let Err(e) = peer.update_timers().await {
+                            tracing::error!("Failed to update timers for peer: {e}");
+                            let _ = callbacks.on_error(&e);
+
+                            if e.is_fatal_connection_error() {
+                                let _ = stop_command_sender.send((peer.index, peer.conn_id)).await;
+                            }
+                        }
+                    });
+                }
+                continue;
+            }
+
+            if self.mtu_refresh_interval.lock().poll_tick(cx).is_ready() {
+                // We use `try_read` to acquire a lock on the device because we are within a synchronous context here and cannot use `.await`.
+                // The device is only updated during `add_route` and `set_interface` which would be extremely unlucky to hit at the same time as this timer.
+                // Even if we hit this, we just wait for the next tick to update the MTU.
+                let device = match self.device.try_read().map(|d| d.clone()) {
+                    Ok(Some(device)) => device,
+                    Ok(None) => {
+                        let err = Error::ControlProtocolError;
+                        tracing::error!(?err, "get_iface_config");
+                        let _ = self.callbacks.on_error(&err);
+                        continue;
+                    }
+                    Err(_) => {
+                        tracing::debug!("Unlucky! Somebody is updating the device just as we are about to update its MTU, trying again on the next tick ...");
+                        continue;
+                    }
+                };
+
+                tokio::spawn({
+                    let callbacks = self.callbacks.clone();
+
+                    async move {
+                        if let Err(e) = device.config.refresh_mtu().await {
+                            tracing::error!(error = ?e, "refresh_mtu");
+                            let _ = callbacks.on_error(&e);
+                        }
+                    }
+                });
+            }
+
+            if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
+                return Poll::Ready(event);
+            }
+
+            if let Poll::Ready(Some((i, conn_id))) =
+                self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
+            {
+                let mut peers = self.peers_by_ip.write();
+
+                let (maybe_network, maybe_peer) = peers
+                    .iter()
+                    .find_map(|(n, p)| (p.index == i).then_some((n, p.clone())))
+                    .unzip();
+
+                if let Some(network) = maybe_network {
+                    peers.remove(network);
+                }
+
+                if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
+                    tokio::spawn({
+                        let callbacks = self.callbacks.clone();
+                        async move {
+                            if let Some(peer) = maybe_peer {
+                                let _ = peer.shutdown().await;
+                            }
+                            if let Err(e) = conn.close().await {
+                                tracing::warn!(%conn_id, error = ?e, "Can't close peer");
+                                let _ = callbacks.on_error(&e.into());
+                            }
+                        }
+                    });
+                }
+                continue;
+            }
+
+            return Poll::Pending;
+        }
     }
 }
 
@@ -284,6 +390,8 @@ where
             .with_setting_engine(setting_engine)
             .build();
 
+        let (stop_peer_command_sender, stop_peer_command_receiver) = mpsc::channel(10);
+
         Ok(Self {
             rate_limiter,
             private_key,
@@ -296,115 +404,12 @@ where
             callbacks: CallbackErrorFacade(callbacks),
             iface_handler_abort,
             role_state: Default::default(),
+            stop_peer_command_receiver: Mutex::new(stop_peer_command_receiver),
+            stop_peer_command_sender,
+            rate_limit_reset_interval: Mutex::new(rate_limit_reset_interval()),
+            peer_refresh_interval: Mutex::new(peer_refresh_interval()),
+            mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
         })
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn stop_peer(&self, index: u32, conn_id: TRoleState::Id) {
-        self.peers_by_ip.write().retain(|_, p| p.index != index);
-        let conn = self.peer_connections.lock().remove(&conn_id);
-        if let Some(conn) = conn {
-            if let Err(e) = conn.close().await {
-                tracing::warn!(error = ?e, "Can't close peer");
-                let _ = self.callbacks().on_error(&e.into());
-            }
-        }
-    }
-
-    async fn peer_refresh(&self, peer: &Peer<TRoleState::Id>, dst_buf: &mut [u8; MAX_UDP_SIZE]) {
-        let update_timers_result = peer.update_timers(&mut dst_buf[..]);
-
-        match update_timers_result {
-            TunnResult::Done => {}
-            TunnResult::Err(WireGuardError::ConnectionExpired)
-            | TunnResult::Err(WireGuardError::NoCurrentSession) => {
-                self.stop_peer(peer.index, peer.conn_id).await;
-                let _ = peer.shutdown().await;
-            }
-            TunnResult::Err(e) => tracing::error!(error = ?e, "timer_error"),
-            TunnResult::WriteToNetwork(packet) => {
-                let bytes = Bytes::copy_from_slice(packet);
-                peer.send_infallible(bytes, &self.callbacks).await
-            }
-
-            _ => panic!("Unexpected result from update_timers"),
-        };
-    }
-
-    fn start_rate_limiter_refresh_timer(self: &Arc<Self>) {
-        let rate_limiter = self.rate_limiter.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(RESET_PACKET_COUNT_INTERVAL);
-            interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-            loop {
-                rate_limiter.reset_count();
-                interval.tick().await;
-            }
-        });
-    }
-
-    fn start_peers_refresh_timer(self: &Arc<Self>) {
-        let tunnel = self.clone();
-
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(REFRESH_PEERS_TIMERS_INTERVAL);
-            interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-            let mut dst_buf = [0u8; MAX_UDP_SIZE];
-
-            loop {
-                remove_expired_peers(
-                    &mut tunnel.peers_by_ip.write(),
-                    &mut tunnel.peer_connections.lock(),
-                );
-
-                let peers: Vec<_> = tunnel
-                    .peers_by_ip
-                    .read()
-                    .iter()
-                    .map(|p| p.1)
-                    .unique_by(|p| p.index)
-                    .cloned()
-                    .collect();
-
-                for peer in peers {
-                    tunnel.peer_refresh(&peer, &mut dst_buf).await;
-                }
-
-                interval.tick().await;
-            }
-        });
-    }
-
-    async fn start_refresh_mtu_timer(self: &Arc<Self>) -> Result<()> {
-        let dev = self.clone();
-        let callbacks = self.callbacks().clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(REFRESH_MTU_INTERVAL);
-            interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-            loop {
-                interval.tick().await;
-
-                let Some(device) = dev.device.read().await.clone() else {
-                    let err = Error::ControlProtocolError;
-                    tracing::error!(?err, "get_iface_config");
-                    let _ = callbacks.0.on_error(&err);
-                    continue;
-                };
-                if let Err(e) = device.config.refresh_mtu().await {
-                    tracing::error!(error = ?e, "refresh_mtu");
-                    let _ = callbacks.0.on_error(&e);
-                }
-            }
-        });
-
-        Ok(())
-    }
-
-    async fn start_timers(self: &Arc<Self>) -> Result<()> {
-        self.start_refresh_mtu_timer().await?;
-        self.start_rate_limiter_refresh_timer();
-        self.start_peers_refresh_timer();
-        Ok(())
     }
 
     fn next_index(&self) -> u32 {
@@ -416,27 +421,68 @@ where
     }
 }
 
+/// Constructs the interval for resetting the rate limit count.
+///
+/// As per documentation on [`RateLimiter::reset_count`], this is configured to run every second.
+fn rate_limit_reset_interval() -> Interval {
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    interval
+}
+
+/// Constructs the interval for "refreshing" peers.
+///
+/// On each tick, we remove expired peers from our map, update wireguard timers and send packets, if any.
+fn peer_refresh_interval() -> Interval {
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    interval
+}
+
+/// Constructs the interval for refreshing the MTU of our TUN device.
+fn mtu_refresh_interval() -> Interval {
+    let mut interval = tokio::time::interval(Duration::from_secs(30));
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    interval
+}
+
+fn peers_to_refresh<TId>(
+    peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId>>>,
+    shutdown_sender: mpsc::Sender<(u32, TId)>,
+) -> Vec<Arc<Peer<TId>>>
+where
+    TId: Eq + Hash + Copy + Send + Sync + 'static,
+{
+    remove_expired_peers(peers_by_ip, shutdown_sender);
+
+    peers_by_ip
+        .iter()
+        .map(|p| p.1)
+        .unique_by(|p| p.index)
+        .cloned()
+        .collect()
+}
+
 fn remove_expired_peers<TId>(
     peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId>>>,
-    peer_connections: &mut HashMap<TId, Arc<RTCPeerConnection>>,
+    shutdown_sender: mpsc::Sender<(u32, TId)>,
 ) where
     TId: Eq + Hash + Copy + Send + Sync + 'static,
 {
     for (_, peer) in peers_by_ip.iter() {
         peer.expire_resources();
         if peer.is_emptied() {
-            tracing::trace!(index = peer.index, "peer_expired");
-            let conn = peer_connections.remove(&peer.conn_id);
-            let p = peer.clone();
+            let index = peer.index;
+            let conn_id = peer.conn_id;
 
-            // We are holding a Mutex, particularly a write one, we don't want to make a blocking call
-            tokio::spawn(async move {
-                let _ = p.shutdown().await;
-                if let Some(conn) = conn {
-                    // TODO: it seems that even closing the stream there are messages to the relay
-                    // see where they come from.
-                    let _ = conn.close().await;
-                }
+            tracing::trace!(%index, "peer_expired");
+
+            tokio::spawn({
+                let mut sender = shutdown_sender.clone();
+                async move { sender.send((index, conn_id)).await }
             });
         }
     }
@@ -449,7 +495,7 @@ fn remove_expired_peers<TId>(
 /// By design, this trait does not allow any operations apart from advancing via [`RoleState::poll_next_event`].
 /// The state should only be modified when the concrete type is known, e.g. [`ClientState`] or [`GatewayState`].
 pub trait RoleState: Default + Send + 'static {
-    type Id: fmt::Debug + Eq + Hash + Copy + Send + Sync + 'static;
+    type Id: fmt::Debug + fmt::Display + Eq + Hash + Copy + Unpin + Send + Sync + 'static;
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
 }

@@ -22,10 +22,10 @@ type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 pub(crate) struct Peer<TId> {
     pub tunnel: Mutex<Tunn>,
     pub index: u32,
-    pub allowed_ips: RwLock<IpNetworkTable<()>>,
+    allowed_ips: RwLock<IpNetworkTable<()>>,
     pub channel: Arc<DataChannel>,
     pub conn_id: TId,
-    pub resources: Option<RwLock<ResourceTable<ExpiryingResource>>>,
+    resources: Option<RwLock<ResourceTable<ExpiryingResource>>>,
     // Here we store the address that we obtained for the resource that the peer corresponds to.
     // This can have the following problem:
     // 1. Peer sends packet to address.com and it resolves to 1.1.1.1
@@ -35,7 +35,7 @@ pub(crate) struct Peer<TId> {
     // so, TODO: store multiple ips and expire them.
     // Note that this case is quite an unlikely edge case so I wouldn't prioritize this fix
     // TODO: Also check if there's any case where we want to talk to ipv4 and ipv6 from the same peer.
-    pub translated_resource_addresses: RwLock<HashMap<IpAddr, ResourceId>>,
+    translated_resource_addresses: RwLock<HashMap<IpAddr, ResourceId>>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -48,14 +48,6 @@ pub(crate) struct PeerStats<TId> {
     pub dns_resources: HashMap<String, ExpiryingResource>,
     pub network_resources: HashMap<IpNetwork, ExpiryingResource>,
     pub translated_resource_addresses: HashMap<IpAddr, ResourceId>,
-}
-
-#[derive(Debug)]
-pub(crate) struct EncapsulatedPacket<'a, Id> {
-    pub index: u32,
-    pub conn_id: Id,
-    pub channel: Arc<DataChannel>,
-    pub encapsulate_result: TunnResult<'a>,
 }
 
 impl<TId> Peer<TId>
@@ -130,7 +122,7 @@ where
         }
     }
 
-    pub(crate) fn get_translation(&self, ip: IpAddr) -> Option<ResourceDescription> {
+    fn get_translation(&self, ip: IpAddr) -> Option<ResourceDescription> {
         let id = self.translated_resource_addresses.read().get(&ip).cloned();
         self.resources.as_ref().and_then(|resources| {
             id.and_then(|id| resources.read().get_by_id(&id).map(|r| r.0.clone()))
@@ -141,8 +133,25 @@ where
         self.allowed_ips.write().insert(ip, ());
     }
 
-    pub(crate) fn update_timers<'a>(&self, dst: &'a mut [u8]) -> TunnResult<'a> {
-        self.tunnel.lock().update_timers(dst)
+    pub(crate) async fn update_timers<'a>(&self) -> Result<()> {
+        /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
+        ///
+        /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
+        const MAX_SCRATCH_SPACE: usize = 148;
+
+        let mut buf = [0u8; MAX_SCRATCH_SPACE];
+
+        let packet = match self.tunnel.lock().update_timers(&mut buf) {
+            TunnResult::Done => return Ok(()),
+            TunnResult::Err(e) => return Err(e.into()),
+            TunnResult::WriteToNetwork(b) => b,
+            _ => panic!("Unexpected result from update_timers"),
+        };
+
+        let bytes = Bytes::copy_from_slice(packet);
+        self.channel.write(&bytes).await?;
+
+        Ok(())
     }
 
     pub(crate) async fn shutdown(&self) -> Result<()> {
@@ -189,11 +198,13 @@ where
         self.translated_resource_addresses.write().insert(addr, id);
     }
 
-    pub(crate) fn encapsulate<'a>(
+    /// Sends the given packet to this peer by encapsulating it in a wireguard packet.
+    pub(crate) async fn send<'a>(
         &self,
-        packet: &mut MutableIpPacket<'a>,
-        dst: &'a mut [u8],
-    ) -> Result<EncapsulatedPacket<'a, TId>> {
+        mut packet: MutableIpPacket<'a>,
+        dest: IpAddr,
+        buf: &mut [u8],
+    ) -> Result<()> {
         if let Some(resource) = self.get_translation(packet.to_immutable().source()) {
             let ResourceDescription::Dns(resource) = resource else {
                 tracing::error!(
@@ -209,12 +220,18 @@ where
 
             packet.update_checksum();
         }
-        Ok(EncapsulatedPacket {
-            index: self.index,
-            conn_id: self.conn_id,
-            channel: self.channel.clone(),
-            encapsulate_result: self.tunnel.lock().encapsulate(packet.packet_mut(), dst),
-        })
+        let packet = match self.tunnel.lock().encapsulate(packet.packet_mut(), buf) {
+            TunnResult::Done => return Ok(()),
+            TunnResult::Err(e) => return Err(e.into()),
+            TunnResult::WriteToNetwork(b) => b,
+            _ => panic!("Unexpected result from `encapsulate`"),
+        };
+
+        tracing::trace!(target: "wire", action = "writing", from = "iface", to = %dest);
+
+        self.channel.write(&Bytes::copy_from_slice(packet)).await?;
+
+        Ok(())
     }
 
     pub(crate) fn get_packet_resource(
