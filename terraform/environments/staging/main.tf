@@ -823,3 +823,12 @@ resource "google_compute_firewall" "relays-ssh-ipv6" {
   source_ranges = ["::/0"]
   target_tags   = module.relays[0].target_tags
 }
+
+module "ops" {
+  source = "../../modules/google-cloud-ops"
+
+  project_id = module.google-cloud-project.project.project_id
+
+  slack_alerts_auth_token = var.slack_alerts_auth_token
+  slack_alerts_channel    = var.slack_alerts_channel
+}
