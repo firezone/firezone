@@ -156,12 +156,9 @@ jobs:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.target }}
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/setup-rust
         with:
-          key: ubuntu-22.04-${{ runner.arch }}
-          workspaces: ./rust
-          save-if: false
-      - uses: dtolnay/rust-toolchain@stable
+          targets: aarch64-unknown-linux-musl armv7-unknown-linux-musleabihf
       - uses: taiki-e/install-action@v2
         with:
           tool: cross
