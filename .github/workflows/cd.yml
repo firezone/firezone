@@ -199,7 +199,7 @@ jobs:
           images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }}
           tags: |
             type=raw,value=${{ github.sha }}
-            type=sha
+            type=raw,value=${{ env.VERSION }}
       - name: Build and push release Docker images by digest
         id: build
         uses: docker/build-push-action@v5
@@ -261,11 +261,14 @@ jobs:
           images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
           tags: |
             type=raw,value=${{ github.sha }}
-            type=sha
+            type=raw,value=${{ env.VERSION }}
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create -t ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+          echo -n "$DOCKER_METADATA_OUTPUT_JSON" > image.json
+          docker buildx imagetools create \
+            -t ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }} \
+            -f image.json
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+          docker buildx imagetools inspect ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
