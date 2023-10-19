@@ -38,36 +38,6 @@ where
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
-    pub fn on_dc_close_handler(
-        self: Arc<Self>,
-        index: u32,
-        conn_id: TRoleState::Id,
-    ) -> OnCloseHdlrFn {
-        Box::new(move || {
-            tracing::debug!("channel_closed");
-            let tunnel = self.clone();
-            Box::pin(async move {
-                tunnel.stop_peer(index, conn_id).await;
-            })
-        })
-    }
-
-    pub fn on_peer_connection_state_change_handler(
-        self: Arc<Self>,
-        index: u32,
-        conn_id: TRoleState::Id,
-    ) -> OnPeerConnectionStateChangeHdlrFn {
-        Box::new(move |state| {
-            let tunnel = Arc::clone(&self);
-            Box::pin(async move {
-                tracing::trace!(?state, "peer_state_update");
-                if state == RTCPeerConnectionState::Failed {
-                    tunnel.stop_peer(index, conn_id).await;
-                }
-            })
-        })
-    }
-
     pub async fn add_ice_candidate(
         &self,
         conn_id: TRoleState::Id,
@@ -82,6 +52,44 @@ where
         peer_connection.add_ice_candidate(ice_candidate).await?;
         Ok(())
     }
+}
+
+pub fn on_peer_connection_state_change_handler<TId>(
+    index: u32,
+    conn_id: TId,
+    stop_command_sender: mpsc::Sender<(u32, TId)>,
+) -> OnPeerConnectionStateChangeHdlrFn
+where
+    TId: Copy + Send + Sync + 'static,
+{
+    Box::new(move |state| {
+        let mut sender = stop_command_sender.clone();
+
+        tracing::trace!(?state, "peer_state_update");
+        Box::pin(async move {
+            if state == RTCPeerConnectionState::Failed {
+                let _ = sender.send((index, conn_id)).await;
+            }
+        })
+    })
+}
+
+pub fn on_dc_close_handler<TId>(
+    index: u32,
+    conn_id: TId,
+    stop_command_sender: mpsc::Sender<(u32, TId)>,
+) -> OnCloseHdlrFn
+where
+    TId: Copy + Send + Sync + 'static,
+{
+    Box::new(move || {
+        let mut sender = stop_command_sender.clone();
+
+        tracing::debug!("channel_closed");
+        Box::pin(async move {
+            let _ = sender.send((index, conn_id)).await;
+        })
+    })
 }
 
 #[tracing::instrument(level = "trace", skip(webrtc))]
