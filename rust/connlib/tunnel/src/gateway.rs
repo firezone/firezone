@@ -8,6 +8,7 @@ use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
+use futures_util::SinkExt;
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
@@ -24,9 +25,8 @@ where
         config: &InterfaceConfig,
     ) -> connlib_shared::Result<()> {
         let device = create_iface(config, self.callbacks()).await?;
-        *self.device.write().await = Some(device.clone());
 
-        self.start_timers().await?;
+        *self.device.write().await = Some(device.clone());
         *self.iface_handler_abort.lock() =
             Some(tokio::spawn(device_handler(Arc::clone(self), device)).abort_handle());
 
@@ -63,11 +63,16 @@ where
             continue;
         };
 
-        if let Err(e) = tunnel
-            .encapsulate_and_send_to_peer(packet, peer, &dest, &mut buf)
-            .await
-        {
-            tracing::error!(err = ?e, "failed to handle packet {e:#}")
+        if let Err(e) = peer.send(packet, dest, &mut buf).await {
+            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+
+            if e.is_fatal_connection_error() {
+                let _ = tunnel
+                    .stop_peer_command_sender
+                    .clone()
+                    .send((peer.index, peer.conn_id))
+                    .await;
+            }
         }
     }
 }
