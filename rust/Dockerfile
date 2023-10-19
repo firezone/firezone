@@ -29,7 +29,7 @@ COPY ./docker-init.sh .
 ARG TARGET
 ARG PACKAGE
 # Needed only by gateway for masquerading
-RUN \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables || true
+RUN \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables
 COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .
 ENTRYPOINT ["docker-init.sh"]
 CMD ${PACKAGE}
@@ -42,7 +42,7 @@ COPY ./docker-init.sh .
 ARG TARGET
 ARG PACKAGE
 # Needed only by gateway for masquerading
-RUN \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables || true
+RUN \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables
 # Build first with `cross build --target ${TARGET} -p ${PACKAGE} --release`
 COPY ./target/${TARGET}/release/${PACKAGE} .
 ENTRYPOINT ["docker-init.sh"]

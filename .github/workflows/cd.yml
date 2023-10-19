@@ -203,6 +203,8 @@ jobs:
       - name: Build and push release Docker images by digest
         id: build
         uses: docker/build-push-action@v5
+        env:
+          IMAGE_NAME: ${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}
         with:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
@@ -210,11 +212,11 @@ jobs:
             TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
+            type=registry,ref=${{ env.IMAGE_NAME }}:main
           cache-to: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
+            type=registry,ref=${{ env.IMAGE_NAME }}:main
           target: release
-          outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.artifact }}
@@ -262,12 +264,12 @@ jobs:
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}
       - name: Create manifest list and push
+        env:
+          IMAGE_NAME: ${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}
         working-directory: /tmp/digests/${{ matrix.image_name }}
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}@sha256:%s ' *)
+          sources=$(printf '${{ env.IMAGE_NAME }}@sha256:%s ' *)
+          echo "$sources"
           docker buildx imagetools create $tags $sources
-      - name: Inspect and push images
-        run: |
-          docker buildx imagetools inspect ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
-          docker push --all-tags ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
+          docker buildx imagetools inspect "$IMAGE_NAME"
