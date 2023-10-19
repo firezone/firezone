@@ -115,7 +115,7 @@ services:
     environment:
       PORTAL_URL: "ws://api:8081/"
       PORTAL_TOKEN: "SFMyNTY.g2gDaAN3CGlkZW50aXR5bQAAACQ3ZGE3ZDFjZC0xMTFjLTQ0YTctYjVhYy00MDI3YjlkMjMwZTVtAAAAIBn8Xu1jtFlxZxp4ZvAz0f0QEN2PZThA-7awHMPxn_tHbgYAbLRvQokBYgHhM38.pM-prhb7uvvCVKf51-tAUMEtMzLPZk1n3nLsY44dGFA"
-      RUST_LOG: firezone_headless_client=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
+      RUST_LOG: firezone_linux_client=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
     build:
       context: rust
       dockerfile: Dockerfile
