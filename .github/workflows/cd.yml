@@ -129,7 +129,8 @@ jobs:
       id-token: write
       contents: write
     needs: update-release-draft
-    runs-on: ubuntu-22.04
+    # FIXME
+    runs-on: ubuntu-22.04-firezone-16c
     defaults:
       run:
         working-directory: ./rust
