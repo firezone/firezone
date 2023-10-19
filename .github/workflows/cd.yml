@@ -1,7 +1,5 @@
 name: Continuous Delivery
 on:
-  # FIXME
-  pull_request:
   push:
     branches:
       - main
@@ -16,20 +14,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # FIXME
-  # ci:
-  #   uses: ./.github/workflows/ci.yml
-  #   secrets: inherit
+  ci:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
 
   deploy:
     runs-on: ubuntu-22.04
     # if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write
-    # FIXME
-    if: false
-    # needs:
-    #   - ci
+    needs:
+      - ci
     env:
       TF_CLOUD_ORGANIZATION: "firezone"
       TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
@@ -108,8 +103,7 @@ jobs:
           notify_when: "failure"
 
   update-release-draft:
-    # FIXME
-    # needs: deploy
+    needs: deploy
     runs-on: ubuntu-22.04
     permissions:
       # write permission is required to create a github release
@@ -129,8 +123,7 @@ jobs:
       id-token: write
       contents: write
     needs: update-release-draft
-    # FIXME
-    runs-on: ubuntu-22.04-firezone-16c
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./rust
