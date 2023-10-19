@@ -204,7 +204,6 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          labels: ${{ steps.meta.outputs.labels }}
           platforms: ${{ matrix.arch.platform }}
           build-args: |
             PACKAGE=${{ matrix.name.package }}
@@ -214,14 +213,12 @@ jobs:
             type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
           cache-to: |
             type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
-          file: rust/Dockerfile
           target: release
           outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
+          touch "/tmp/digests/${{ steps.build.outputs.digest }}"
       - name: Upload digest
         uses: actions/upload-artifact@v3
         with:
@@ -266,9 +263,11 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:%s ' *)
+          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}@%s ' *)
+          echo "$tags"
+          echo "$sources"
+          docker buildx imagetools create $tags $sources
       - name: Inspect and push images
         run: |
           docker buildx imagetools inspect ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}

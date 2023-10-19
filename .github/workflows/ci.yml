@@ -122,6 +122,7 @@ jobs:
     env:
       VERSION: ${{ github.sha }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           # TODO: Add more NAT type tests here
