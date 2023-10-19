@@ -219,7 +219,7 @@ jobs:
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
+          touch "/tmp/digests/${{ matrix.name.artifact }}-${digest#sha256:}"
       - name: Upload digest
         uses: actions/upload-artifact@v3
         with:
@@ -265,9 +265,7 @@ jobs:
         working-directory: /tmp/digests
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}@sha256:%s ' *)
-          echo "$tags"
-          echo "$sources"
+          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}@sha256:%s ' ${{ matrix.image_name }}-*)
           docker buildx imagetools create $tags $sources
       - name: Inspect and push images
         run: |
