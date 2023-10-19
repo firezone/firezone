@@ -52,7 +52,6 @@ resource "google_artifact_registry_repository" "cache" {
     }
   }
 
-
   depends_on = [
     google_project_service.artifactregistry
   ]
@@ -78,7 +77,7 @@ resource "google_artifact_registry_repository_iam_policy" "policy" {
   policy_data = data.google_iam_policy.caches_policy.policy_data
 }
 
-# sscache is used by Rust CI jobs
+# sccache is used by Rust CI jobs
 resource "google_storage_bucket" "sccache" {
   project = module.google-cloud-project.project.project_id
   name    = "${module.google-cloud-project.project.project_id}-sccache"
