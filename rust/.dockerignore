@@ -1,5 +1,5 @@
 target/
-!target/*/release/relay
+!target/*/release/firezone-relay
 !target/*/release/firezone-gateway
 !target/*/release/firezone-linux-client
 connlib/clients/android/connlib/build/
