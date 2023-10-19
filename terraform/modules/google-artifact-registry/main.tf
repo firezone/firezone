@@ -38,24 +38,17 @@ resource "google_artifact_registry_repository" "firezone" {
     }
   }
 
-  cleanup_policies {
-    id     = "gc-untagged"
-    action = "DELETE"
+  dynamic "cleanup_policies" {
+    for_each = var.store_untagged_artifacts_for != null ? [1] : []
 
-    condition {
-      tag_state  = "UNTAGGED"
-      older_than = "${90 * 24 * 60 * 60}s"
-    }
-  }
+    content {
+      id     = "gc-untagged"
+      action = "DELETE"
 
-  cleanup_policies {
-    id     = "gc-cache"
-    action = "DELETE"
-
-    condition {
-      tag_state             = "ANY"
-      package_name_prefixes = ["cache/"]
-      older_than            = "${30 * 24 * 60 * 60}s"
+      condition {
+        tag_state  = "UNTAGGED"
+        older_than = var.store_untagged_artifacts_for
+      }
     }
   }
 

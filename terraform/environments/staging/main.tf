@@ -63,7 +63,8 @@ module "google-artifact-registry" {
 
   immutable_tags = false
 
-  store_tagged_artifacts_for = "${90 * 24 * 60 * 60}s"
+  store_tagged_artifacts_for   = "${90 * 24 * 60 * 60}s"
+  store_untagged_artifacts_for = "${90 * 24 * 60 * 60}s"
 
   writers = local.ci_iam_members
 }
