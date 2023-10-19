@@ -20,17 +20,17 @@ resource "google_compute_network" "vpc_network" {
 
 ## Router and Cloud NAT are required for instances without external IP address
 resource "google_compute_router" "default" {
-  project = module.google-cloud-project.project.project_id
+  project = var.project_id
 
-  name    = module.google-cloud-vpc.name
-  network = module.google-cloud-vpc.self_link
+  name    = google_compute_network.vpc_network.name
+  network = google_compute_network.vpc_network.self_link
   region  = var.nat_region
 }
 
 resource "google_compute_router_nat" "application" {
-  project = module.google-cloud-project.project.project_id
+  project = var.project_id
 
-  name   = module.google-cloud-vpc.name
+  name   = google_compute_network.vpc_network.name
   region = var.nat_region
 
   router = google_compute_router.default.name
