@@ -134,6 +134,7 @@ jobs:
       run:
         working-directory: ./rust
     strategy:
+      fail-fast: false
       matrix:
         arch:
           - target: x86_64-unknown-linux-musl
