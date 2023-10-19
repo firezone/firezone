@@ -110,7 +110,7 @@ jobs:
   update-release-draft:
     # FIXME
     # needs: deploy
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-firezone-4c
     permissions:
       # write permission is required to create a github release
       contents: write
@@ -236,6 +236,7 @@ jobs:
     needs: build-push-release-artifacts
     runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         include:
           - image_name: relay
@@ -269,6 +270,7 @@ jobs:
           docker buildx imagetools create \
             -t ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }} \
             -f image.json
-      - name: Inspect image
+      - name: Inspect and push images
         run: |
           docker buildx imagetools inspect ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
+          docker push --all-tags ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
