@@ -255,15 +255,20 @@ jobs:
           path: /tmp/digests
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
+          tags: |
+            type=raw,value=${{ github.sha }}
+            type=raw,value=${{ env.VERSION }}
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          ls -alR
-          cat *
-          echo -n '${{ env.DOCKER_METADATA_OUTPUT_JSON }}' > metadata.json
           docker buildx imagetools create \
-            -t ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }} \
-            -f metadata.json
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:%s ' *)
       - name: Inspect and push images
         run: |
           docker buildx imagetools inspect ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
