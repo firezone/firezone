@@ -5,7 +5,6 @@ locals {
   application_labels = merge({
     managed_by  = "terraform"
     application = local.application_name
-    version     = local.application_version
   }, var.application_labels)
 
   google_health_check_ip_ranges = [
@@ -166,6 +165,7 @@ resource "google_compute_instance_template" "application" {
 
   labels = merge({
     container-vm = data.google_compute_image.coreos.name
+    version      = local.application_version
   }, local.application_labels)
 
   scheduling {
