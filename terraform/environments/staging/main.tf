@@ -11,6 +11,12 @@ locals {
   availability_zone = "us-east1-d"
 
   tld = "firez.one"
+
+  # This is GitHub Actions service account configured manually
+  # in the project github-iam-387915
+  ci_iam_members = [
+    "serviceAccount:github-actions@github-iam-387915.iam.gserviceaccount.com"
+  ]
 }
 
 terraform {
@@ -59,11 +65,7 @@ module "google-artifact-registry" {
 
   store_tagged_artifacts_for = "${90 * 24 * 60 * 60}s"
 
-  writers = [
-    # This is GitHub Actions service account configured manually
-    # in the project github-iam-387915
-    "serviceAccount:github-actions@github-iam-387915.iam.gserviceaccount.com"
-  ]
+  writers = local.ci_iam_members
 }
 
 # Create a VPC
@@ -191,12 +193,6 @@ resource "random_password" "cookie_encryption_salt" {
   length  = 32
   special = false
 }
-
-# # Deploy nginx to the compute for HTTPS termination
-# # module "nginx" {
-# #   source = "../../modules/nginx"
-# #   project_id = module.google-cloud-project.project.project_id
-# # }
 
 # Create VPC subnet for the application instances,
 # we want all apps to be in the same VPC in order for Erlang clustering to work
