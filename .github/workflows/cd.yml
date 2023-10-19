@@ -199,6 +199,9 @@ jobs:
           tags: |
             type=raw,value=${{ github.sha }}
             type=sha
+      - run: |
+          ls -alR
+          pwd
       - name: Build and push release Docker images by digest
         id: build
         uses: docker/build-push-action@v5

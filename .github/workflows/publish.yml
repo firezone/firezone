@@ -9,13 +9,17 @@ env:
   VERSION: "1.20231001.0"
 
 jobs:
+  # TODO
+  # deploy-production:
+
   push-release-images:
+    # needs: deploy-production
     runs-on: ubuntu-22.04
     strategy:
       matrix:
         include:
           # TODO
-          # - image_name: linux-client
+          # - image_name: client
           - image_name: relay
           - image_name: gateway
     permissions:
