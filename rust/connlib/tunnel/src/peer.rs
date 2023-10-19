@@ -122,7 +122,7 @@ where
         }
     }
 
-    pub(crate) fn get_translation(&self, ip: IpAddr) -> Option<ResourceDescription> {
+    fn get_translation(&self, ip: IpAddr) -> Option<ResourceDescription> {
         let id = self.translated_resource_addresses.read().get(&ip).cloned();
         self.resources.as_ref().and_then(|resources| {
             id.and_then(|id| resources.read().get_by_id(&id).map(|r| r.0.clone()))

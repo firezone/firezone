@@ -62,7 +62,6 @@ mod index;
 mod ip_packet;
 mod peer;
 mod peer_handler;
-mod resource_sender;
 mod resource_table;
 mod tokio_util;
 
