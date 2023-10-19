@@ -22,10 +22,10 @@ type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 pub(crate) struct Peer<TId> {
     pub tunnel: Mutex<Tunn>,
     pub index: u32,
-    pub allowed_ips: RwLock<IpNetworkTable<()>>,
+    allowed_ips: RwLock<IpNetworkTable<()>>,
     pub channel: Arc<DataChannel>,
     pub conn_id: TId,
-    pub resources: Option<RwLock<ResourceTable<ExpiryingResource>>>,
+    resources: Option<RwLock<ResourceTable<ExpiryingResource>>>,
     // Here we store the address that we obtained for the resource that the peer corresponds to.
     // This can have the following problem:
     // 1. Peer sends packet to address.com and it resolves to 1.1.1.1
@@ -35,7 +35,7 @@ pub(crate) struct Peer<TId> {
     // so, TODO: store multiple ips and expire them.
     // Note that this case is quite an unlikely edge case so I wouldn't prioritize this fix
     // TODO: Also check if there's any case where we want to talk to ipv4 and ipv6 from the same peer.
-    pub translated_resource_addresses: RwLock<HashMap<IpAddr, ResourceId>>,
+    translated_resource_addresses: RwLock<HashMap<IpAddr, ResourceId>>,
 }
 
 // TODO: For now we only use these fields with debug
