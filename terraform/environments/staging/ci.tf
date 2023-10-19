@@ -53,7 +53,7 @@ resource "google_artifact_registry_repository" "cache" {
   }
 
   depends_on = [
-    google_project_service.artifactregistry
+    module.google-artifact-registry
   ]
 }
 
