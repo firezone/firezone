@@ -200,9 +200,6 @@ jobs:
           tags: |
             type=raw,value=${{ github.sha }}
             type=sha
-      - run: |
-          ls -alR
-          pwd
       - name: Build and push release Docker images by digest
         id: build
         uses: docker/build-push-action@v5
@@ -212,7 +209,7 @@ jobs:
           build-args: |
             PACKAGE=${{ matrix.name.package }}
             TARGET=${{ matrix.arch.target }}
-          context: rust
+          context: .
           cache-from: |
             type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
           cache-to: |
