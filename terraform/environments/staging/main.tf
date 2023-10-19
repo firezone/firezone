@@ -245,7 +245,7 @@ resource "google_storage_bucket" "client-logs" {
 
   lifecycle_rule {
     condition {
-      age = 3
+      age = 30
     }
 
     action {
