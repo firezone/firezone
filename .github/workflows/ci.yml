@@ -100,19 +100,19 @@ jobs:
           build-args: ${{ matrix.build-args }}
           context: ${{ matrix.context }}/
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
-            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.image_name }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone-staging-cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone-staging-cache/${{ matrix.image_name }}:main
           # This will write the cache on main even if integration tests fail,
           # but it'll just be corrected on the next successful build.
           cache-to: |
-            type=registry,ref=${{steps.login.outputs.registry}}/firezone/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{steps.login.outputs.registry}}/firezone-staging-cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }}
           file: ${{ matrix.context }}/Dockerfile
           push: true
           target: ${{ matrix.target }}
           tags: |
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.BRANCH_TAG }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+            ${{ steps.login.outputs.registry }}/firezone-staging/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}
+            ${{ steps.login.outputs.registry }}/firezone-staging/${{ matrix.image_name }}:${{ env.BRANCH_TAG }}
+            ${{ steps.login.outputs.registry }}/firezone-staging/${{ matrix.image_name }}:${{ github.sha }}
 
   integration-tests:
     needs: build-images

@@ -1,10 +1,10 @@
 # Docker layer caching
 resource "google_artifact_registry_repository" "cache" {
   provider = google-beta
-  project  = google_artifact_registry_repository.firezone.project
+  project  = module.google-cloud-project.project.project_id
 
   location      = local.region
-  repository_id = "firezone"
+  repository_id = "${module.google-cloud-project.project.project_id}-cache"
   description   = "Repository for storing Docker images in the ${module.google-cloud-project.name}."
 
   format = "DOCKER"
