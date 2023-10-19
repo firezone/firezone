@@ -4,7 +4,7 @@ resource "google_artifact_registry_repository" "cache" {
   project  = module.google-cloud-project.project.project_id
 
   location      = local.region
-  repository_id = "${module.google-cloud-project.project.project_id}-cache"
+  repository_id = "cache"
   description   = "Repository for storing Docker images in the ${module.google-cloud-project.name}."
 
   format = "DOCKER"

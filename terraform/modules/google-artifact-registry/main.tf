@@ -10,7 +10,7 @@ resource "google_artifact_registry_repository" "firezone" {
   project  = var.project_id
 
   location      = var.region
-  repository_id = var.project_id
+  repository_id = "firezone"
   description   = "Repository for storing Docker images in the ${var.project_name}."
 
   format = "DOCKER"
