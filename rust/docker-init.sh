@@ -3,12 +3,12 @@
 if [ "${ENABLE_MASQUERADE}" = "1" ]; then
   IFACE="tun-firezone"
   # TODO: Can we get away with not installing iptables? Nearly 20 MB.
-  iptables -A FORWARD -i $IFACE -j ACCEPT
-  iptables -A FORWARD -o $IFACE -j ACCEPT
-  iptables -t nat -A POSTROUTING -o eth+ -j MASQUERADE
-  ip6tables -A FORWARD -i $IFACE -j ACCEPT
-  ip6tables -A FORWARD -o $IFACE -j ACCEPT
-  ip6tables -t nat -A POSTROUTING -o eth+ -j MASQUERADE
+  iptables-nft -A FORWARD -i $IFACE -j ACCEPT
+  iptables-nft -A FORWARD -o $IFACE -j ACCEPT
+  iptables-nft -t nat -A POSTROUTING -o eth+ -j MASQUERADE
+  ip6tables-nft -A FORWARD -i $IFACE -j ACCEPT
+  ip6tables-nft -A FORWARD -o $IFACE -j ACCEPT
+  ip6tables-nft -t nat -A POSTROUTING -o eth+ -j MASQUERADE
 fi
 
 if [ "${LISTEN_ADDRESS_DISCOVERY_METHOD}" = "gce_metadata" ]; then
