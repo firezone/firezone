@@ -134,7 +134,12 @@ where
     }
 
     pub(crate) async fn update_timers<'a>(&self) -> Result<()> {
-        let mut buf = [0u8; 148];
+        /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
+        ///
+        /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
+        const MAX_SCRATCH_SPACE: usize = 148;
+
+        let mut buf = [0u8; MAX_SCRATCH_SPACE];
 
         let packet = match self.tunnel.lock().update_timers(&mut buf) {
             TunnResult::Done => return Ok(()),
