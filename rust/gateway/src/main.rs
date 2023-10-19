@@ -4,9 +4,9 @@ use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_shared::{get_device_id, get_user_agent, login_url, Callbacks, Mode};
+use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use firezone_tunnel::{GatewayState, Tunnel};
 use futures::{future, TryFutureExt};
-use headless_utils::{setup_global_subscriber, CommonArgs};
 use phoenix_channel::SecureUrl;
 use secrecy::{Secret, SecretString};
 use std::convert::Infallible;
@@ -24,8 +24,8 @@ async fn main() -> Result<()> {
 
     let (connect_url, private_key) = login_url(
         Mode::Gateway,
-        cli.common.url,
-        SecretString::new(cli.common.secret),
+        cli.common.portal_url,
+        SecretString::new(cli.common.portal_token),
         get_device_id(),
     )?;
     let tunnel = Arc::new(Tunnel::new(private_key, CallbackHandler).await?);
