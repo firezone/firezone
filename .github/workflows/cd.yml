@@ -148,7 +148,7 @@ jobs:
         name:
           - package: firezone-linux-client
             artifact: client
-          - package: relay
+          - package: firezone-relay
             artifact: relay
           - package: firezone-gateway
             artifact: gateway
