@@ -72,6 +72,8 @@ module "google-cloud-vpc" {
 
   project_id = module.google-cloud-project.project.project_id
   name       = module.google-cloud-project.project.project_id
+
+  nat_region = local.region
 }
 
 # Enable Google Cloud Storage for the project
