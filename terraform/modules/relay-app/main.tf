@@ -136,7 +136,7 @@ resource "google_compute_subnetwork" "subnetwork" {
 
   project = var.project_id
 
-  name   = "relays-${each.key}"
+  name   = "relays-${each.key}x"
   region = each.key
 
   network = google_compute_network.network.self_link
