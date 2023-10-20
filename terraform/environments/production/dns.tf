@@ -237,23 +237,6 @@ resource "google_dns_record_set" "twilio-verification" {
 
 # Google Workspace
 
-resource "google_dns_record_set" "google-verification" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  name = module.google-cloud-dns.dns_name
-  type = "TXT"
-  ttl  = 3600
-
-  rrdatas = [
-    # TODO: only keep the last one needed
-    "google-site-verification=hbBLPfTlejIaxyFTPZN0RaIk6Y6qhQTG2yma7I06Emo",
-    "google-site-verification=oAugt2Arr7OyWaqJ0bkytkmIE-VQ8D_IFa-rdNiqa8s",
-    "google-site-verification=VDl82gbqVHJW6un8Mcki6qDhL_OGK6G8ByOB6qhaVbg",
-    "protonmail-verification=775efd155d2dec59fc6341d6bbfec288038f1917",
-  ]
-}
-
 resource "google_dns_record_set" "google-mail" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
@@ -275,7 +258,6 @@ resource "google_dns_record_set" "google-dmark" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
-
   name = "_dmarc.${module.google-cloud-dns.dns_name}"
   type = "TXT"
   ttl  = 3600
@@ -294,7 +276,12 @@ resource "google_dns_record_set" "google-spf" {
   ttl  = 3600
 
   rrdatas = [
-    "\"v=spf1 mx include:23723443.spf07.hubspotemail.net include:sendgrid.net include:_spf.google.com ~all\""
+    "\"v=spf1 mx include:23723443.spf07.hubspotemail.net include:sendgrid.net include:_spf.google.com ~all\"",
+    # TODO: only keep the last one needed
+    "google-site-verification=hbBLPfTlejIaxyFTPZN0RaIk6Y6qhQTG2yma7I06Emo",
+    "google-site-verification=oAugt2Arr7OyWaqJ0bkytkmIE-VQ8D_IFa-rdNiqa8s",
+    "google-site-verification=VDl82gbqVHJW6un8Mcki6qDhL_OGK6G8ByOB6qhaVbg",
+    "protonmail-verification=775efd155d2dec59fc6341d6bbfec288038f1917",
   ]
 }
 
@@ -302,7 +289,7 @@ resource "google_dns_record_set" "google-dkim" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
-  name = "20190728104345pm._domainkey.${module.google-cloud-dns.dns_name}"
+  name = "google._domainkey.${module.google-cloud-dns.dns_name}"
   type = "TXT"
   ttl  = 3600
 
@@ -313,19 +300,6 @@ resource "google_dns_record_set" "google-dkim" {
 
 ## ext. domain email server
 ## TODO: get rid off this
-resource "google_dns_record_set" "google-ext-verification" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  name = "ext.${module.google-cloud-dns.dns_name}"
-  type = "TXT"
-  ttl  = 3600
-
-  rrdatas = [
-    "google-site-verification=xlFwz_eC6ksZ1dAJKwNzFISlZRpFRQ2mggo851altmI"
-  ]
-}
-
 resource "google_dns_record_set" "google-ext-mail" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
@@ -354,7 +328,8 @@ resource "google_dns_record_set" "google-ext-dmark" {
   ttl  = 3600
 
   rrdatas = [
-    "\"v=DMARC1;\" \"p=reject;\" \"rua=mailto:dmarc-reports@firezone.dev;\" \"pct=100;\" \"adkim=s;\" \"aspf=s\""
+    "\"v=DMARC1;\" \"p=reject;\" \"rua=mailto:dmarc-reports@firezone.dev;\" \"pct=100;\" \"adkim=s;\" \"aspf=s\"",
+    "google-site-verification=xlFwz_eC6ksZ1dAJKwNzFISlZRpFRQ2mggo851altmI"
   ]
 }
 
@@ -375,7 +350,7 @@ resource "google_dns_record_set" "google-ext-dkim" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
-  name = "20190728104345pm._domainkey.ext.${module.google-cloud-dns.dns_name}"
+  name = "google._domainkey.ext.${module.google-cloud-dns.dns_name}"
   type = "TXT"
   ttl  = 3600
 
