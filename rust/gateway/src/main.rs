@@ -11,6 +11,7 @@ use phoenix_channel::SecureUrl;
 use secrecy::{Secret, SecretString};
 use std::convert::Infallible;
 use std::sync::Arc;
+use tokio_tungstenite::tungstenite;
 use tracing_subscriber::layer;
 use url::Url;
 
@@ -34,7 +35,7 @@ async fn main() -> Result<()> {
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(None)
             .build(),
-        move || run(tunnel.clone(), connect_url.clone()).map_err(backoff::Error::transient),
+        move || run(tunnel.clone(), connect_url.clone()).map_err(to_backoff),
         |error, t| {
             tracing::warn!(retry_in = ?t, "Error connecting to portal: {error:#}");
         },
@@ -67,6 +68,16 @@ async fn run(
     future::poll_fn(|cx| eventloop.poll(cx)).await
 }
 
+/// Maps our [`anyhow::Error`] to either a permanent or transient [`backoff`] error.
+fn to_backoff(e: anyhow::Error) -> backoff::Error<anyhow::Error> {
+    // As per HTTP spec, retrying client-errors without modifying the request is pointless. Thus we abort the backoff.
+    if e.chain().any(is_client_error) {
+        return backoff::Error::permanent(e);
+    }
+
+    backoff::Error::transient(e)
+}
+
 #[derive(Clone)]
 struct CallbackHandler;
 
@@ -79,4 +90,13 @@ impl Callbacks for CallbackHandler {
 struct Cli {
     #[command(flatten)]
     common: CommonArgs,
+}
+
+/// Checks whether the given [`std::error::Error`] is in-fact an HTTP error with a 4xx status code.
+fn is_client_error(e: &(dyn std::error::Error + 'static)) -> bool {
+    let Some(tungstenite::Error::Http(r)) = e.downcast_ref() else {
+        return false;
+    };
+
+    r.status().is_client_error()
 }
