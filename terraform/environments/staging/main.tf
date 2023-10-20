@@ -610,10 +610,10 @@ resource "google_project_iam_custom_role" "erlang-discovery" {
 }
 
 resource "google_project_iam_member" "application" {
-  for_each = toset([
-    module.api.service_account.email,
-    module.web.service_account.email,
-  ])
+  for_each = {
+    api = module.api.service_account.email
+    web = module.web.service_account.email
+  }
 
   project = module.google-cloud-project.project.project_id
 
