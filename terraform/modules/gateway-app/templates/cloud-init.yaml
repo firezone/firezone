@@ -107,16 +107,11 @@ write_files:
       TimeoutStartSec=0
       Restart=always
       ExecStartPre=/usr/bin/docker pull ${container_image}
-      ExecStart=/usr/bin/docker run --rm -u 2000 --name=${container_name} --cap-add NET_ADMIN --device "/dev/net/tun:/dev/net/tun" --network host --env-file /etc/firezone-gateway/.env ${container_image}
+      ExecStart=/usr/bin/docker run --rm -u 2000 --name=${container_name} --cap-add NET_ADMIN --device "/dev/net/tun:/dev/net/tun" --sysctl net.ipv4.ip_forward=1 --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv6.conf.all.disable_ipv6=0 --sysctl net.ipv6.conf.all.forwarding=1 --sysctl net.ipv6.conf.default.forwarding=1 --network host --env-file /etc/firezone-gateway/.env ${container_image}
       ExecStop=/usr/bin/docker stop gateway
       ExecStopPost=/usr/bin/docker rm gateway
 
 runcmd:
-  - sudo sysctl -w net.ipv4.ip_forward=1
-  - sudo sysctl -w net.ipv4.conf.all.src_valid_mark=1
-  - sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0
-  - sudo sysctl -w net.ipv6.conf.all.forwarding=1
-  - sudo sysctl -w net.ipv6.conf.default.forwarding=1
   - sudo apt update
   - sudo apt install apt-transport-https ca-certificates curl gnupg2 software-properties-common
   - curl -fsSL https://download.docker.com/linux/debian/gpg | sudo apt-key add -
