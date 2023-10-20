@@ -3,5 +3,13 @@ output "service_account" {
 }
 
 output "target_tags" {
-  value = ["app-${local.application_name}"]
+  value = local.application_tags
+}
+
+output "instance_template" {
+  value = google_compute_instance_template.application
+}
+
+output "instance_group" {
+  value = google_compute_region_instance_group_manager.application
 }
