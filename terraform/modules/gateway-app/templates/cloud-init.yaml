@@ -1,0 +1,93 @@
+#cloud-config
+
+users:
+  - name: cloudservice
+    uid: 2000
+
+write_files:
+  - path: /etc/otelcol-contrib/config.yaml
+    permissions: "0644"
+    owner: root
+    content: |
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: localhost:4317
+      exporters:
+        googlecloud:
+          log:
+            default_log_name: opentelemetry.io/collector-exported-log
+      processors:
+        memory_limiter:
+          check_interval: 1s
+          limit_percentage: 65
+          spike_limit_percentage: 20
+        batch:
+        resourcedetection:
+          detectors: [gcp]
+          timeout: 10s
+        transform:
+          # Several metrics labels are reserved on Google Cloud. We need to prefix them with `exported_` to prevent the exporter from failing.
+          # See https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/googlecloudexporter/README.md#preventing-metric-label-collisions for example.
+          metric_statements:
+          - context: datapoint
+            statements:
+            - set(attributes["exported_location"], attributes["location"])
+            - delete_key(attributes, "location")
+            - set(attributes["exported_cluster"], attributes["cluster"])
+            - delete_key(attributes, "cluster")
+            - set(attributes["exported_namespace"], attributes["namespace"])
+            - delete_key(attributes, "namespace")
+            - set(attributes["exported_job"], attributes["job"])
+            - delete_key(attributes, "job")
+            - set(attributes["exported_instance"], attributes["instance"])
+            - delete_key(attributes, "instance")
+            - set(attributes["exported_project_id"], attributes["project_id"])
+            - delete_key(attributes, "project_id")
+            - set(attributes["exported_service_name"], attributes["service_name"])
+            - delete_key(attributes, "service_name")
+            - set(attributes["exported_service_namespace"], attributes["service_namespace"])
+            - delete_key(attributes, "service_namespace")
+            - set(attributes["exported_service_instance_id"], attributes["service_instance_id"])
+            - delete_key(attributes, "service_instance_id")
+            - set(attributes["exported_instrumentation_source"], attributes["instrumentation_source"])
+            - delete_key(attributes, "instrumentation_source")
+            - set(attributes["exported_instrumentation_version"], attributes["instrumentation_version"])
+            - delete_key(attributes, "instrumentation_version")
+      service:
+        telemetry:
+          logs:
+            level: "debug"
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [googlecloud]
+          metrics:
+            receivers: [otlp]
+            processors: [memory_limiter, batch, transform]
+            exporters: [googlecloud]
+          logs:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [googlecloud]
+
+  - path: /etc/systemd/system/otel-collector.service
+    permissions: "0644"
+    owner: root
+    content: |
+      [Unit]
+      Description=Start an OpenTelemetry collector docker container
+
+      [Service]
+      TimeoutStartSec=0
+      Restart=always
+      ExecStartPre=/usr/bin/docker pull otel/opentelemetry-collector-contrib:0.85.0
+      ExecStart=/usr/bin/docker run --rm -u 2000 --name=otel-collector --network host --volume /etc/otelcol-contrib/:/etc/otelcol-contrib/ otel/opentelemetry-collector-contrib:0.85.0
+      ExecStop=/usr/bin/docker stop otel-collector
+      ExecStopPost=/usr/bin/docker rm otel-collector
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl start otel-collector.service
