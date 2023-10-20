@@ -13,7 +13,17 @@ variable "relay_image_tag" {
   description = "Image tag for the relay service"
 }
 
+variable "gateway_image_tag" {
+  type        = string
+  description = "Image tag for the gateway service"
+}
+
 variable "relay_portal_token" {
+  type    = string
+  default = null
+}
+
+variable "gateway_portal_token" {
   type    = string
   default = null
 }

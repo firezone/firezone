@@ -7,7 +7,11 @@ variable "project_id" {
 ## Compute
 ################################################################################
 
-variable "instances" {
+variable "compute_network" {
+  type = string
+}
+
+variable "compute_instances" {
   type = map(object({
     type     = string
     replicas = number
