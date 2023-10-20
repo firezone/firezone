@@ -1,4 +1,4 @@
-use std::net::IpAddr;
+use std::{collections::HashSet, net::IpAddr};
 
 use firezone_tunnel::RTCSessionDescription;
 use serde::{Deserialize, Serialize};
@@ -141,7 +141,7 @@ impl From<ReplyMessages> for Messages {
 pub enum EgressMessages {
     PrepareConnection {
         resource_id: ResourceId,
-        connected_gateway_ids: Vec<GatewayId>,
+        connected_gateway_ids: HashSet<GatewayId>,
     },
     CreateLogSink {},
     RequestConnection(RequestConnection),
@@ -151,6 +151,8 @@ pub enum EgressMessages {
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashSet;
+
     use connlib_shared::{
         control::PhoenixMessage,
         messages::{
@@ -256,7 +258,7 @@ mod test {
             "client",
             EgressMessages::PrepareConnection {
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
-                connected_gateway_ids: vec![],
+                connected_gateway_ids: HashSet::new(),
             },
             None,
         );

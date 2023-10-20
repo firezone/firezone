@@ -135,6 +135,9 @@ pub enum ConnlibError {
     DNSFallbackKind(#[from] hickory_resolver::error::ResolveErrorKind),
     #[error("DNS proto error")]
     DnsProtoError(#[from] hickory_resolver::proto::error::ProtoError),
+    /// Connection is still being stablished, retry later
+    #[error("Pending connection")]
+    PendingConnection,
 }
 
 impl ConnlibError {
