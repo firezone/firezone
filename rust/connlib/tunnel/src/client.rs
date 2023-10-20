@@ -253,7 +253,7 @@ pub struct ClientState {
 pub struct AwaitingConnectionDetails {
     total_attemps: usize,
     response_received: bool,
-    gateways: Vec<GatewayId>,
+    gateways: HashSet<GatewayId>,
 }
 
 impl ClientState {
