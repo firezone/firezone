@@ -20,7 +20,7 @@ variable "compute_region" {
 }
 
 variable "compute_region_zones" {
-  type        = string
+  type        = list(string)
   description = "List of zones in the region defined in `compute_region` where replicas should be deployed."
 }
 

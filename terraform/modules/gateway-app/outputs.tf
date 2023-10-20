@@ -5,7 +5,3 @@ output "service_account" {
 output "target_tags" {
   value = ["app-${local.application_name}"]
 }
-
-output "instances" {
-  value = var.compute_instances
-}
