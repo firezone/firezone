@@ -3,12 +3,14 @@ use crate::{
     peer_by_ip, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
+use chrono::{DateTime, Utc};
 use connlib_shared::error::ConnlibError;
-use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
+use connlib_shared::messages::{ClientId, Interface as InterfaceConfig, ResourceDescription};
 use connlib_shared::Callbacks;
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
 use futures_util::SinkExt;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
@@ -80,6 +82,7 @@ where
 /// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
     candidate_receivers: StreamMap<ClientId, RTCIceCandidateInit>,
+    extra_resources_for_client: HashMap<ClientId, Vec<(ResourceDescription, DateTime<Utc>)>>,
 }
 
 impl GatewayState {
@@ -94,6 +97,27 @@ impl GatewayState {
             }
         }
     }
+
+    pub fn add_awaiting_client_resource(
+        &mut self,
+        client_id: ClientId,
+        resource: ResourceDescription,
+        expires_at: DateTime<Utc>,
+    ) {
+        self.extra_resources_for_client
+            .entry(client_id)
+            .or_default()
+            .push((resource, expires_at));
+    }
+
+    pub fn remove_awaiting_client_resources(
+        &mut self,
+        client_id: &ClientId,
+    ) -> Vec<(ResourceDescription, DateTime<Utc>)> {
+        self.extra_resources_for_client
+            .remove(client_id)
+            .unwrap_or_default()
+    }
 }
 
 impl Default for GatewayState {
@@ -103,6 +127,7 @@ impl Default for GatewayState {
                 Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
                 MAX_CONCURRENT_ICE_GATHERING,
             ),
+            extra_resources_for_client: Default::default(),
         }
     }
 }
