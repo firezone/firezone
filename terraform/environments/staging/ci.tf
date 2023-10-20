@@ -108,19 +108,16 @@ resource "google_storage_bucket" "sccache" {
   uniform_bucket_level_access = true
 }
 
-data "google_iam_policy" "public-sccache" {
-  binding {
-    role    = "roles/storage.objectViewer"
-    members = ["allUsers"]
-  }
-
-  binding {
-    role    = "roles/storage.objectWriter"
-    members = local.ci_iam_members
-  }
+resource "google_storage_bucket_iam_member" "public-sccache" {
+  bucket = google_storage_bucket.default.name
+  role   = "roles/storage.objectViewer"
+  member = "allUsers"
 }
 
-resource "google_storage_bucket_iam_policy" "editor" {
-  bucket      = google_storage_bucket.sccache.name
-  policy_data = data.google_iam_policy.public-sccache.policy_data
+resource "google_storage_bucket_iam_member" "public-sccache" {
+  for_each = local.ci_iam_members
+
+  bucket = google_storage_bucket.default.name
+  role   = "roles/storage.objectWriter"
+  member = each.key
 }
