@@ -1,29 +1,10 @@
 #cloud-config
 
-packages:
-  - apt-transport-https
-  - ca-certificates
-  - curl
-  - gnupg-agent
-  - software-properties-common
-  - docker.io
-
 users:
   - name: cloudservice
     uid: 2000
 
-groups:
-  - docker
-
-system_info:
-  default_user:
-    groups: [docker]
-
 write_files:
-  - path: /etc/sysctl.d/enabled_ipv4_forwarding.conf
-    content: |
-      net.ipv4.conf.all.forwarding=1
-
   - path: /etc/otelcol-contrib/config.yaml
     permissions: "0644"
     owner: root
@@ -102,8 +83,8 @@ write_files:
       [Service]
       TimeoutStartSec=0
       Restart=always
-      ExecStartPre=/usr/bin/docker pull otel/opentelemetry-collector-contrib:0.85.0
-      ExecStart=/usr/bin/docker run --rm -u 2000 --name=otel-collector --network host --volume /etc/otelcol-contrib/:/etc/otelcol-contrib/ otel/opentelemetry-collector-contrib:0.85.0
+      ExecStartPre=/usr/bin/docker pull otel/opentelemetry-collector-contrib:0.87.0
+      ExecStart=/usr/bin/docker run --rm -u 2000 --name=otel-collector --network host --volume /etc/otelcol-contrib/:/etc/otelcol-contrib/ otel/opentelemetry-collector-contrib:0.87.0
       ExecStop=/usr/bin/docker stop otel-collector
       ExecStopPost=/usr/bin/docker rm otel-collector
 
@@ -131,8 +112,6 @@ write_files:
       ExecStopPost=/usr/bin/docker rm gateway
 
 runcmd:
-  - sudo systemctl enable docker.service
-  - sudo systemctl enable containerd.service
   - sudo systemctl daemon-reload
   - sudo systemctl start otel-collector.service
   - sudo systemctl start gateway.service

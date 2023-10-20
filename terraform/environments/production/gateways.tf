@@ -34,7 +34,7 @@ resource "google_compute_subnetwork" "gateways" {
 module "gateways" {
   count = var.gateway_portal_token != null ? 1 : 0
 
-  source     = "../../modules/gateway-app"
+  source     = "../../modules/gateway-google-cloud-compute"
   project_id = module.google-cloud-project.project.project_id
 
   compute_network    = google_compute_network.gateways.self_link
