@@ -50,8 +50,8 @@ locals {
 
 # Fetch most recent COS image
 data "google_compute_image" "coreos" {
-  family  = "debian-12"
-  project = "debian-cloud"
+  family  = "ubuntu-2004-lts"
+  project = "ubuntu-os-cloud"
 }
 
 # Create IAM role for the application instances
