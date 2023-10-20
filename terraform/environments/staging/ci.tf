@@ -110,11 +110,13 @@ resource "google_storage_bucket" "sccache" {
 
 data "google_iam_policy" "public-sccache" {
   binding {
-    role = "roles/storage.objectViewer"
+    role    = "roles/storage.objectViewer"
+    members = ["allUsers"]
+  }
 
-    members = [
-      "allUsers"
-    ]
+  binding {
+    role    = "roles/storage.objectWriter"
+    members = local.ci_iam_members
   }
 }
 
