@@ -294,7 +294,7 @@ resource "google_dns_record_set" "google-dkim" {
   ttl  = 3600
 
   rrdatas = [
-    "\"v=DKIM1;\" \"k=rsa;\" \"p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAi1bjDNWHAhpLro2nw6WJ4Ye+JyA0gsMLHx1g+oS\" \"uGC6V0zo0Ftdt/tgvieaWbArClrz7Ce8986mih1P6iEESehTSarDrLlHPstIEI6UnjP7sAuIZtRsIrUI4NJM0Jg96uS4ezxIza3bzNxk3atMp0laCt+\" \"tbCeGLCPt4r9aygWIT/CRuNHZUm3CVwemN0celflXZF+FEg+mEJrkekasNtVJJ//XAdimvwe9CWOF/VoC+ZP0ocac3CFzng7NzSqYnCiaAZqJ3Pss0ueq0K/kqUxy8vh25Kd\" \"gyvdHSWdgnMFD251I/TBueScPZoUmo3ueYqwKxmW1J1uCkVx4NQ1xK2QIDAQAB"
+    "\"v=DKIM1;\" \"k=rsa;\" \"p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAi1bjDNWHAhpLro2nw6WJ4Ye+JyA0gsMLHx1g+oS\" \"uGC6V0zo0Ftdt/tgvieaWbArClrz7Ce8986mih1P6iEESehTSarDrLlHPstIEI6UnjP7sAuIZtRsIrUI4NJM0Jg96uS4ezxIza3bzNxk3atMp0laCt+\" \"tbCeGLCPt4r9aygWIT/CRuNHZUm3CVwemN0celflXZF+FEg+mEJrkekasNtVJJ//XAdimvwe9CWOF/VoC+ZP0ocac3CFzng7NzSqYnCiaAZqJ3Pss0ueq0K/kqUxy8vh25Kd\" \"gyvdHSWdgnMFD251I/TBueScPZoUmo3ueYqwKxmW1J1uCkVx4NQ1xK2QIDAQAB\""
   ]
 }
 
@@ -355,7 +355,7 @@ resource "google_dns_record_set" "google-ext-dkim" {
   ttl  = 3600
 
   rrdatas = [
-    "\"v=DKIM1;\" \"k=rsa;\" \"p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAubhkd+M9O2fILLpfRzCN5vhd81uSfaCbfeQ5Uf/BsBnuJ8AYOsyW\" \"bzy3UYU1y2JnJi1D8U+o1idcTPC1wB1okBHUnohI1O9hRDHb5NzV4NTxK0D36ESbgGzv94xu1n1GfxoO/wWga69eu/unz79/SRdVEida09bF0eXg9q\" \"5dtyIPI9NvYGtKAvLIABYHkutlUA2dNggraVTXldTlccMWmtd9uzemBg0bpN6zxygSLM9PSsEf0WEJJYvUXrEIQI4o9Ujh1/PqIgRpdqRAbmyhO3BobGNm5qmn3i1ZxWF0L\" \"T8zC3QShMPO+BagJlDav1ZNxBtih+vqqeyJvm8gwPXHiQIDAQAB"
+    "\"v=DKIM1;\" \"k=rsa;\" \"p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAubhkd+M9O2fILLpfRzCN5vhd81uSfaCbfeQ5Uf/BsBnuJ8AYOsyW\" \"bzy3UYU1y2JnJi1D8U+o1idcTPC1wB1okBHUnohI1O9hRDHb5NzV4NTxK0D36ESbgGzv94xu1n1GfxoO/wWga69eu/unz79/SRdVEida09bF0eXg9q\" \"5dtyIPI9NvYGtKAvLIABYHkutlUA2dNggraVTXldTlccMWmtd9uzemBg0bpN6zxygSLM9PSsEf0WEJJYvUXrEIQI4o9Ujh1/PqIgRpdqRAbmyhO3BobGNm5qmn3i1ZxWF0L\" \"T8zC3QShMPO+BagJlDav1ZNxBtih+vqqeyJvm8gwPXHiQIDAQAB\""
   ]
 }
 
