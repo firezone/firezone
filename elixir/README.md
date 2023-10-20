@@ -298,10 +298,10 @@ iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)1> {:ok, account} = Doma
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)2> {:ok, magic_link_provider} = Domain.Auth.create_provider(account, %{name: "Magic Link", adapter: :email, adapter_config: %{}})
 {:ok, ...}
 
-iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)3> {:ok, actor} = Domain.Actors.create_actor(magic_link_provider, "a@firezone.dev", %{type: :account_admin_user, name: "Andrii Dryga"})
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)3> {:ok, actor} = Domain.Actors.create_actor(account, %{type: :account_admin_user, name: "Andrii Dryga"})
 {:ok, ...}
 
-iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)4> identity = hd(actor.identities)
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)4> {:ok, identity} = Domain.Auth.upsert_identity(actor, magic_link_provider, %{provider_identifier: "a@firezone.dev"})
 ...
 
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)5> {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity)
