@@ -294,6 +294,11 @@ resource "google_compute_health_check" "port" {
       response     = lookup(http_health_check.value, "response", null)
     }
   }
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.servicenetworking,
+  ]
 }
 
 # Use template to deploy zonal instance group
@@ -374,6 +379,19 @@ resource "google_compute_security_policy" "default" {
 
     description = "default allow rule"
   }
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.pubsub,
+    google_project_service.bigquery,
+    google_project_service.container,
+    google_project_service.stackdriver,
+    google_project_service.logging,
+    google_project_service.monitoring,
+    google_project_service.cloudprofiler,
+    google_project_service.cloudtrace,
+    google_project_service.servicenetworking,
+  ]
 }
 
 # Expose the application ports via HTTP(S) load balancer with a managed SSL certificate and a static IP address
@@ -432,6 +450,19 @@ resource "google_compute_ssl_policy" "application" {
 
   min_tls_version = "TLS_1_2"
   profile         = "MODERN"
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.pubsub,
+    google_project_service.bigquery,
+    google_project_service.container,
+    google_project_service.stackdriver,
+    google_project_service.logging,
+    google_project_service.monitoring,
+    google_project_service.cloudprofiler,
+    google_project_service.cloudtrace,
+    google_project_service.servicenetworking,
+  ]
 }
 
 ## Create a managed SSL certificate
@@ -447,6 +478,11 @@ resource "google_compute_managed_ssl_certificate" "default" {
       var.application_dns_tld,
     ]
   }
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.servicenetworking,
+  ]
 }
 
 ## Create URL map for the application
@@ -455,6 +491,11 @@ resource "google_compute_url_map" "default" {
 
   name            = local.application_name
   default_service = google_compute_backend_service.default["http"].self_link
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.servicenetworking,
+  ]
 }
 
 # Set up HTTP(s) proxies and redirect HTTP to HTTPS
@@ -468,6 +509,11 @@ resource "google_compute_url_map" "https_redirect" {
     redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
     strip_query            = false
   }
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.servicenetworking,
+  ]
 }
 
 resource "google_compute_target_http_proxy" "default" {
@@ -498,6 +544,11 @@ resource "google_compute_global_address" "ipv4" {
   name = "${local.application_name}-ipv4"
 
   ip_version = "IPV4"
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.servicenetworking,
+  ]
 }
 
 resource "google_compute_global_forwarding_rule" "http" {
@@ -533,6 +584,11 @@ resource "google_compute_global_address" "ipv6" {
   name = "${local.application_name}-ipv6"
 
   ip_version = "IPV6"
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.servicenetworking,
+  ]
 }
 
 resource "google_compute_global_forwarding_rule" "http_ipv6" {
@@ -609,6 +665,11 @@ resource "google_compute_firewall" "http-health-checks" {
       ports    = [allow.value.port]
     }
   }
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.servicenetworking,
+  ]
 }
 
 # Allow outbound traffic
@@ -625,6 +686,11 @@ resource "google_compute_firewall" "egress-ipv4" {
   allow {
     protocol = "all"
   }
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.servicenetworking,
+  ]
 }
 
 resource "google_compute_firewall" "egress-ipv6" {
@@ -640,6 +706,11 @@ resource "google_compute_firewall" "egress-ipv6" {
   allow {
     protocol = "all"
   }
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.servicenetworking,
+  ]
 }
 
 # Create DNS records for the application
@@ -655,6 +726,11 @@ resource "google_dns_record_set" "application-ipv4" {
   rrdatas = [
     google_compute_global_address.ipv4.address
   ]
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.servicenetworking,
+  ]
 }
 
 resource "google_dns_record_set" "application-ipv6" {
@@ -668,5 +744,10 @@ resource "google_dns_record_set" "application-ipv6" {
 
   rrdatas = [
     google_compute_global_address.ipv6.address
+  ]
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.servicenetworking,
   ]
 }
