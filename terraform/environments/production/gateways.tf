@@ -155,7 +155,7 @@ resource "google_compute_firewall" "gateways-ssh-ipv4" {
   project = module.google-cloud-project.project.project_id
 
   name    = "gateways-ssh-ipv4"
-  network = module.google-cloud-vpc.self_link
+  network = google_compute_network.gateways.self_link
 
   allow {
     protocol = "tcp"
