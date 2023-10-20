@@ -186,7 +186,7 @@ resource "google_dns_record_set" "postmark-dkim" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
-  name = "20230606183724pm._domainkey.${module.google-cloud-dns.dns_name}"
+  name = "20231019190050pm._domainkey.${module.google-cloud-dns.dns_name}"
   type = "TXT"
   ttl  = 3600
 
