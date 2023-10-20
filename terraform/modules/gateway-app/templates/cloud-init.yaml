@@ -92,8 +92,8 @@ write_files:
     permissions: "0644"
     owner: root
     content: |
-      %{ for env in container_environment ~}
-      ${env.key}=${env.value}
+      %{ for key, value in container_environment ~}
+      ${key}=${value}
       %{ endfor ~}
 
   - path: /etc/systemd/system/otel-collector.service
@@ -112,6 +112,12 @@ write_files:
       ExecStopPost=/usr/bin/docker rm gateway
 
 runcmd:
+  - sudo apt update
+  - sudo apt install apt-transport-https ca-certificates curl gnupg2 software-properties-common
+  - curl -fsSL https://download.docker.com/linux/debian/gpg | sudo apt-key add -
+  - sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable"
+  - sudo apt update
+  - sudo apt install docker-ce
   - systemctl daemon-reload
   - systemctl start otel-collector.service
   - systemctl start gateway.service
