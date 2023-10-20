@@ -4,7 +4,11 @@ defmodule Domain.Fixtures.Config do
 
   def configuration_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
-      clients_upstream_dns: [%{address: "1.1.1.1"}]
+      clients_upstream_dns: [
+        %{protocol: "ip_port", address: "1.1.1.1"},
+        %{protocol: "ip_port", address: "2606:4700:4700::1111"},
+        %{protocol: "ip_port", address: "8.8.8.8:853"}
+      ]
     })
   end
 
