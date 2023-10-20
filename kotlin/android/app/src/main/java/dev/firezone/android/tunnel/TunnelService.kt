@@ -180,11 +180,9 @@ class TunnelService : VpnService() {
 
             Log.d("Connlib", "connect(): accountId: ${config.accountId}")
             if (tunnelRepository.getState() == Tunnel.State.Up) {
-                Log.d(TAG, "connect(): shouldReconnect")
                 shouldReconnect = true
                 disconnect()
             } else if (config.accountId != null && config.token != null) {
-                Log.d("Connlib", "connect(): Attempting to establish TunnelSession...")
                 onTunnelStateUpdate(Tunnel.State.Connecting)
                 updateStatusNotification("Status: Connecting...")
 
@@ -197,20 +195,16 @@ class TunnelService : VpnService() {
                         logFilter = BuildConfig.CONNLIB_LOG_FILTER_STRING,
                         callback = callback,
                     )
-                Log.d(TAG, "connect(): connlib session started! sessionPtr: $sessionPtr")
             }
-            Log.d(TAG, "connect(): end of connect: 1")
         } catch (exception: Exception) {
             Log.e(TAG, "connect(): " + exception.message.toString())
         }
-        Log.d(TAG, "connect(): end of connect: 2")
     }
 
     private fun disconnect() {
         Log.d(TAG, "disconnect(): Attempting to disconnect session")
         try {
             sessionPtr?.let {
-                Log.d(TAG, "calling TunnelSession.disconnect")
                 TunnelSession.disconnect(it)
             }
         } catch (exception: Exception) {
@@ -220,7 +214,6 @@ class TunnelService : VpnService() {
         onTunnelStateUpdate(Tunnel.State.Down)
 
         if (shouldReconnect) {
-            Log.d(TAG, "disconnect(): shouldReconnect")
             shouldReconnect = false
             connect()
         } else {
@@ -229,7 +222,6 @@ class TunnelService : VpnService() {
     }
 
     private fun onDisconnect() {
-        Log.d(TAG, "onDisconnect(): state: closed")
         sessionPtr = null
         tunnelRepository.clearAll()
         preferenceRepository.clearToken()
@@ -239,7 +231,6 @@ class TunnelService : VpnService() {
 
     private fun deviceId(): String {
         val deviceId = FirebaseInstallations.getInstance().id
-
         Log.d(TAG, "Device ID: $deviceId")
 
         return deviceId.toString()

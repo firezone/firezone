@@ -77,16 +77,14 @@ internal class SessionViewModel
         }
 
         fun disconnect() {
-            Log.d("SessionViewModel", "disconnect: ")
             tunnelManager.disconnect()
         }
 
         private fun onDisconnect() {
-            Log.d("SessionViewModel", "onDisconnect: ")
+            // no-op
         }
 
         private fun onClosed() {
-            Log.d("SessionViewModel", "onClosed: ")
             tunnelManager.removeListener(tunnelListener)
             actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
         }

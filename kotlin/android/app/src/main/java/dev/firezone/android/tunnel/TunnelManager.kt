@@ -8,7 +8,6 @@ import android.util.Log
 import dev.firezone.android.core.data.PreferenceRepository
 import dev.firezone.android.tunnel.callback.TunnelListener
 import dev.firezone.android.tunnel.data.TunnelRepository
-import dev.firezone.android.tunnel.model.Tunnel
 import java.lang.ref.WeakReference
 import javax.inject.Inject
 import javax.inject.Singleton
