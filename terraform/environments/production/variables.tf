@@ -21,7 +21,7 @@ variable "relay_portal_token" {
 variable "slack_alerts_channel" {
   type        = string
   description = "Slack channel which will receive monitoring alerts"
-  default     = "#feed-infra"
+  default     = "#feed-production"
 }
 
 variable "slack_alerts_auth_token" {
