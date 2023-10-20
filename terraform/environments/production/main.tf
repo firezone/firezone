@@ -33,7 +33,7 @@ provider "google-beta" {}
 module "google-cloud-project" {
   source = "../../modules/google-cloud-project"
 
-  id                 = "firezone-production"
+  id                 = "firezone-prod"
   name               = "Production Environment"
   organization_id    = "335836213177"
   billing_account_id = "01DFC9-3D6951-579BE1"
