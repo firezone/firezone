@@ -229,7 +229,11 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 };
 
                 tokio::spawn(async move {
-                    if let Err(e) = upload(path, url).await {
+                    if let Err(e) = upload(path.clone(), url).await {
+                        tracing::warn!("Failed to upload log file: {e}");
+                        return;
+                    }
+                    if let Err(e) = tokio::fs::remove_file(&path).await {
                         tracing::warn!("Failed to upload log file: {e}")
                     }
                 });
@@ -309,7 +313,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     .send_with_ref(
                         EgressMessages::PrepareConnection {
                             resource_id: resource.id(),
-                            connected_gateway_ids: connected_gateway_ids.to_vec(),
+                            connected_gateway_ids,
                         },
                         reference,
                     )

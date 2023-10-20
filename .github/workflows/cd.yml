@@ -18,7 +18,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     secrets: inherit
 
-  deploy:
+  deploy-staging:
     runs-on: ubuntu-22.04
     # if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
@@ -102,8 +102,8 @@ jobs:
           status: ${{ job.status }}
           notify_when: "failure"
 
-  update_release_draft:
-    needs: deploy
+  update-release-draft:
+    needs: deploy-staging
     runs-on: ubuntu-22.04
     permissions:
       # write permission is required to create a github release
@@ -112,7 +112,156 @@ jobs:
       pull-requests: write
     steps:
       - uses: release-drafter/release-drafter@v5
+        id: update-release-draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          prerelease: true
           version: ${{ env.VERSION }}
+
+  build-push-release-artifacts:
+    permissions:
+      id-token: write
+      contents: write
+    needs: update-release-draft
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: ./rust
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - target: x86_64-unknown-linux-musl
+            platform: linux/amd64
+          - target: aarch64-unknown-linux-musl # E.g. AWS Graviton
+            platform: linux/arm64
+          - target: armv7-unknown-linux-musleabihf # E.g. Raspberry Pi
+            platform: linux/arm/v7
+          # Requires ring v0.17 which a number of our dependencies don't yet support
+          # - target: mips64-unknown-linux-muslabi64 # E.g. UniFi Routers
+          #   platform: linux/mips64le
+        name:
+          - package: firezone-linux-client
+            artifact: client
+          - package: firezone-relay
+            artifact: relay
+          - package: firezone-gateway
+            artifact: gateway
+    env:
+      BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: aarch64-unknown-linux-musl armv7-unknown-linux-musleabihf
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+      - name: Build release binaries
+        env:
+          CARGO_OUTPUT_FILE: target/${{ matrix.arch.target }}/release/${{ matrix.name.package }}
+        run: |
+          dest="$BINARY_DEST_PATH-$VERSION"
+          cross build --release -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+          mv $CARGO_OUTPUT_FILE $dest
+          cp $dest ${{ matrix.name.package }}
+          sha256sum $dest > $dest.sha256sum.txt
+      - name: Push binaries
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ needs.update-release-draft.steps.update-release-draft.outputs.name }}
+          draft: true
+          files: |
+            rust/${{ env.BINARY_DEST_PATH }}*
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          # We are overriding the default buildkit version being used by Buildx. We need buildkit >= 12.0 and currently BuildX
+          # supports v0.11.6 https://github.com/docker/buildx/blob/b8739d74417f86aa8fc9aafb830a8ba656bdef0e/Dockerfile#L9.
+          # We should for any updates on buildx and on the setup-buildx-action itself.
+          driver-opts: |
+            image=moby/buildkit:v0.12.0
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
+        with:
+          project: firezone-staging
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }}
+          tags: |
+            type=raw,value=${{ github.sha }}
+            type=raw,value=${{ env.VERSION }}
+      - name: Build and push release Docker images by digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          platforms: ${{ matrix.arch.platform }}
+          build-args: |
+            PACKAGE=${{ matrix.name.package }}
+            TARGET=${{ matrix.arch.target }}
+          context: rust
+          cache-from: |
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
+          cache-to: |
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
+          target: release
+          outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }},push-by-digest=true,name-canonical=true,push=true
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests/${{ matrix.name.artifact }}
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${{ matrix.name.artifact }}/${digest#sha256:}"
+      - name: Upload digest
+        uses: actions/upload-artifact@v3
+        with:
+          name: digests
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-release-artifacts:
+    permissions:
+      id-token: write
+    needs: build-push-release-artifacts
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image_name: relay
+          - image_name: gateway
+          - image_name: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
+        with:
+          project: firezone-staging
+      - name: Download digests
+        uses: actions/download-artifact@v3
+        with:
+          name: digests
+          path: /tmp/digests
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
+          tags: |
+            type=raw,value=${{ github.sha }}
+            type=raw,value=${{ env.VERSION }}
+      - name: Create manifest list and push
+        working-directory: /tmp/digests/${{ matrix.image_name }}
+        run: |
+          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}@sha256:%s ' *)
+          echo "$sources"
+          docker buildx imagetools create $tags $sources
+          docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}"

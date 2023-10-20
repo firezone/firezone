@@ -7,14 +7,29 @@ variable "project_id" {
 ## Compute
 ################################################################################
 
-variable "instances" {
-  type = map(object({
-    type     = string
-    replicas = number
-    zones    = list(string)
-  }))
+variable "compute_network" {
+  type = string
+}
 
-  description = "List deployment locations for the application."
+variable "compute_subnetwork" {
+  type = string
+}
+
+variable "compute_region" {
+  type = string
+}
+
+variable "compute_instance_availability_zones" {
+  type        = list(string)
+  description = "List of zones in the region defined in `compute_region` where replicas should be deployed."
+}
+
+variable "compute_instance_replicas" {
+  type = string
+}
+
+variable "compute_instance_type" {
+  type = string
 }
 
 ################################################################################

@@ -96,6 +96,90 @@ resource "google_monitoring_uptime_check_config" "web-https" {
   checker_type = "STATIC_IP_CHECKERS"
 }
 
+resource "google_monitoring_alert_policy" "api-downtime" {
+  project = var.project_id
+
+  display_name = "API service is DOWN!"
+  combiner     = "OR"
+
+  notification_channels = [
+    google_monitoring_notification_channel.slack.name
+  ]
+
+  conditions {
+    display_name = "Uptime Health Check on api-https"
+
+    condition_threshold {
+      filter     = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${reverse(split("/", google_monitoring_uptime_check_config.api-https.id))[0]}\""
+      comparison = "COMPARISON_GT"
+
+      threshold_value = 1
+      duration        = "0s"
+
+      trigger {
+        count = 1
+      }
+
+      aggregations {
+        alignment_period     = "60s"
+        cross_series_reducer = "REDUCE_COUNT_FALSE"
+        per_series_aligner   = "ALIGN_NEXT_OLDER"
+
+        group_by_fields = [
+          "resource.label.project_id",
+          "resource.label.host"
+        ]
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "28800s"
+  }
+}
+
+resource "google_monitoring_alert_policy" "web-downtime" {
+  project = var.project_id
+
+  display_name = "Portal service is DOWN!"
+  combiner     = "OR"
+
+  notification_channels = [
+    google_monitoring_notification_channel.slack.name
+  ]
+
+  conditions {
+    display_name = "Uptime Health Check on web-https"
+
+    condition_threshold {
+      filter     = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${reverse(split("/", google_monitoring_uptime_check_config.web-https.id))[0]}\""
+      comparison = "COMPARISON_GT"
+
+      threshold_value = 1
+      duration        = "0s"
+
+      trigger {
+        count = 1
+      }
+
+      aggregations {
+        alignment_period     = "60s"
+        cross_series_reducer = "REDUCE_COUNT_FALSE"
+        per_series_aligner   = "ALIGN_NEXT_OLDER"
+
+        group_by_fields = [
+          "resource.label.project_id",
+          "resource.label.host"
+        ]
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "28800s"
+  }
+}
+
 resource "google_monitoring_alert_policy" "instances_high_cpu_policy" {
   project = var.project_id
 
