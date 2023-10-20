@@ -7,7 +7,10 @@ defmodule API.Client.ChannelTest do
 
     Fixtures.Config.upsert_configuration(
       account: account,
-      clients_upstream_dns: [%{type: "ip", address: "1.1.1.1"}]
+      clients_upstream_dns: [
+        %{protocol: "ip_port", address: "1.1.1.1"},
+        %{protocol: "ip_port", address: "8.8.8.8:53"}
+      ]
     )
 
     actor_group = Fixtures.Actors.create_group(account: account)
@@ -138,7 +141,14 @@ defmodule API.Client.ChannelTest do
                ipv4: client.ipv4,
                ipv6: client.ipv6,
                upstream_dns: [
-                 %Domain.Config.ClientsUpstreamDNS{type: "ip", address: "1.1.1.1"}
+                 %Domain.Config.Configuration.ClientsUpstreamDNS{
+                   protocol: :ip_port,
+                   address: "1.1.1.1:53"
+                 },
+                 %Domain.Config.Configuration.ClientsUpstreamDNS{
+                   protocol: :ip_port,
+                   address: "8.8.8.8:53"
+                 }
                ]
              }
     end

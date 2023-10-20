@@ -53,7 +53,7 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     assert find_inputs(form) == [
              "configuration[clients_upstream_dns][0][_persistent_id]",
              "configuration[clients_upstream_dns][0][address]",
-             "configuration[clients_upstream_dns][0][type]"
+             "configuration[clients_upstream_dns][0][protocol]"
            ]
   end
 
@@ -78,10 +78,10 @@ defmodule Web.Live.Settings.DNS.IndexTest do
            |> find_inputs() == [
              "configuration[clients_upstream_dns][0][_persistent_id]",
              "configuration[clients_upstream_dns][0][address]",
-             "configuration[clients_upstream_dns][0][type]",
+             "configuration[clients_upstream_dns][0][protocol]",
              "configuration[clients_upstream_dns][1][_persistent_id]",
              "configuration[clients_upstream_dns][1][address]",
-             "configuration[clients_upstream_dns][1][type]"
+             "configuration[clients_upstream_dns][1][protocol]"
            ]
   end
 
@@ -110,10 +110,10 @@ defmodule Web.Live.Settings.DNS.IndexTest do
            |> find_inputs() == [
              "configuration[clients_upstream_dns][0][_persistent_id]",
              "configuration[clients_upstream_dns][0][address]",
-             "configuration[clients_upstream_dns][0][type]",
+             "configuration[clients_upstream_dns][0][protocol]",
              "configuration[clients_upstream_dns][1][_persistent_id]",
              "configuration[clients_upstream_dns][1][address]",
-             "configuration[clients_upstream_dns][1][type]"
+             "configuration[clients_upstream_dns][1][protocol]"
            ]
 
     empty_attrs = %{
@@ -129,7 +129,7 @@ defmodule Web.Live.Settings.DNS.IndexTest do
            |> find_inputs() == [
              "configuration[clients_upstream_dns][0][_persistent_id]",
              "configuration[clients_upstream_dns][0][address]",
-             "configuration[clients_upstream_dns][0][type]"
+             "configuration[clients_upstream_dns][0][protocol]"
            ]
   end
 

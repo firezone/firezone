@@ -1,7 +1,7 @@
 defmodule Domain.Config.Configuration.Changeset do
   use Domain, :changeset
   import Domain.Config, only: [config_changeset: 2]
-  alias Domain.Config.ClientsUpstreamDNS
+  alias Domain.Config.Configuration.ClientsUpstreamDNS
 
   @fields ~w[clients_upstream_dns logo]a
 
@@ -20,18 +20,15 @@ defmodule Domain.Config.Configuration.Changeset do
   end
 
   defp validate_unique_dns(changeset) do
-    duplicates =
+    dns_addrs =
       apply_changes(changeset)
       |> Map.get(:clients_upstream_dns)
-      |> Enum.map(fn dns ->
-        ClientsUpstreamDNS.normalize_dns_address(dns)
-      end)
+      |> Enum.map(&ClientsUpstreamDNS.normalize_dns_address/1)
       |> Enum.reject(&is_nil/1)
-      |> Enum.group_by(& &1)
-      |> Enum.filter(fn {_, values} -> length(values) > 1 end)
-      |> Enum.map(fn {key, _} -> key end)
 
-    if length(duplicates) > 0 do
+    duplicates = dns_addrs -- Enum.uniq(dns_addrs)
+
+    if duplicates != [] do
       add_error(changeset, :clients_upstream_dns, "no duplicates allowed")
     else
       changeset

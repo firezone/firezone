@@ -1,10 +1,15 @@
 defmodule API.Client.Views.Interface do
   alias Domain.Clients
+  alias Domain.Config.Configuration.ClientsUpstreamDNS
 
   def render(%Clients.Client{} = client) do
     upstream_dns =
       Clients.fetch_client_config!(client)
       |> Keyword.fetch!(:upstream_dns)
+      |> Enum.map(fn dns_config ->
+        addr = ClientsUpstreamDNS.normalize_dns_address(dns_config)
+        %{dns_config | address: addr}
+      end)
 
     %{
       upstream_dns: upstream_dns,

@@ -93,16 +93,16 @@ defmodule Domain.ConfigTest do
       assert fetch_resolved_configs!(account.id, [:clients_upstream_dns, :clients_upstream_dns]) ==
                %{
                  clients_upstream_dns: [
-                   %Domain.Config.ClientsUpstreamDNS{
-                     type: "ip",
+                   %Domain.Config.Configuration.ClientsUpstreamDNS{
+                     protocol: :ip_port,
                      address: "1.1.1.1"
                    },
-                   %Domain.Config.ClientsUpstreamDNS{
-                     type: "ip",
+                   %Domain.Config.Configuration.ClientsUpstreamDNS{
+                     protocol: :ip_port,
                      address: "2606:4700:4700::1111"
                    },
-                   %Domain.Config.ClientsUpstreamDNS{
-                     type: "ip",
+                   %Domain.Config.Configuration.ClientsUpstreamDNS{
+                     protocol: :ip_port,
                      address: "8.8.8.8:853"
                    }
                  ]
@@ -155,16 +155,16 @@ defmodule Domain.ConfigTest do
                  clients_upstream_dns:
                    {{:db, :clients_upstream_dns},
                     [
-                      %Domain.Config.ClientsUpstreamDNS{
-                        type: "ip",
+                      %Domain.Config.Configuration.ClientsUpstreamDNS{
+                        protocol: :ip_port,
                         address: "1.1.1.1"
                       },
-                      %Domain.Config.ClientsUpstreamDNS{
-                        type: "ip",
+                      %Domain.Config.Configuration.ClientsUpstreamDNS{
+                        protocol: :ip_port,
                         address: "2606:4700:4700::1111"
                       },
-                      %Domain.Config.ClientsUpstreamDNS{
-                        type: "ip",
+                      %Domain.Config.Configuration.ClientsUpstreamDNS{
+                        protocol: :ip_port,
                         address: "8.8.8.8:853"
                       }
                     ]}
@@ -468,7 +468,7 @@ defmodule Domain.ConfigTest do
       config = get_account_config_by_account_id(account.id)
 
       attrs = %{
-        clients_upstream_dns: [%{type: "ip", address: "!!!"}]
+        clients_upstream_dns: [%{protocol: "ip_port", address: "!!!"}]
       }
 
       assert {:error, changeset} = update_config(config, attrs)
@@ -481,12 +481,12 @@ defmodule Domain.ConfigTest do
     end
 
     test "returns error when trying to change overridden value", %{account: account} do
-      put_system_env_override(:clients_upstream_dns, [%{type: "ip", address: "1.2.3.4"}])
+      put_system_env_override(:clients_upstream_dns, [%{protocol: "ip_port", address: "1.2.3.4"}])
 
       config = get_account_config_by_account_id(account.id)
 
       attrs = %{
-        clients_upstream_dns: [%{type: "ip", address: "4.1.2.3"}]
+        clients_upstream_dns: [%{protocol: "ip_port", address: "4.1.2.3"}]
       }
 
       assert {:error, changeset} = update_config(config, attrs)
@@ -504,16 +504,22 @@ defmodule Domain.ConfigTest do
 
       attrs = %{
         clients_upstream_dns: [
-          %{type: "ip", address: "   1.1.1.1"},
-          %{type: "ip", address: "8.8.8.8   "}
+          %{protocol: "ip_port", address: "   1.1.1.1"},
+          %{protocol: "ip_port", address: "8.8.8.8   "}
         ]
       }
 
       assert {:ok, config} = update_config(config, attrs)
 
       assert config.clients_upstream_dns == [
-               %Domain.Config.ClientsUpstreamDNS{type: "ip", address: "1.1.1.1"},
-               %Domain.Config.ClientsUpstreamDNS{type: "ip", address: "8.8.8.8"}
+               %Domain.Config.Configuration.ClientsUpstreamDNS{
+                 protocol: :ip_port,
+                 address: "1.1.1.1"
+               },
+               %Domain.Config.Configuration.ClientsUpstreamDNS{
+                 protocol: :ip_port,
+                 address: "8.8.8.8"
+               }
              ]
     end
 
@@ -522,16 +528,22 @@ defmodule Domain.ConfigTest do
 
       attrs = %{
         clients_upstream_dns: [
-          %{type: "ip", address: "1.1.1.1"},
-          %{type: "ip", address: "8.8.8.8"}
+          %{protocol: "ip_port", address: "1.1.1.1"},
+          %{protocol: "ip_port", address: "8.8.8.8"}
         ]
       }
 
       assert {:ok, config} = update_config(config, attrs)
 
       assert config.clients_upstream_dns == [
-               %Domain.Config.ClientsUpstreamDNS{type: "ip", address: "1.1.1.1"},
-               %Domain.Config.ClientsUpstreamDNS{type: "ip", address: "8.8.8.8"}
+               %Domain.Config.Configuration.ClientsUpstreamDNS{
+                 protocol: :ip_port,
+                 address: "1.1.1.1"
+               },
+               %Domain.Config.Configuration.ClientsUpstreamDNS{
+                 protocol: :ip_port,
+                 address: "8.8.8.8"
+               }
              ]
     end
 
@@ -542,16 +554,22 @@ defmodule Domain.ConfigTest do
 
       attrs = %{
         clients_upstream_dns: [
-          %{type: "ip", address: "8.8.8.8"},
-          %{type: "ip", address: "8.8.4.4"}
+          %{protocol: "ip_port", address: "8.8.8.8"},
+          %{protocol: "ip_port", address: "8.8.4.4"}
         ]
       }
 
       assert {:ok, config} = update_config(config, attrs)
 
       assert config.clients_upstream_dns == [
-               %Domain.Config.ClientsUpstreamDNS{type: "ip", address: "8.8.8.8"},
-               %Domain.Config.ClientsUpstreamDNS{type: "ip", address: "8.8.4.4"}
+               %Domain.Config.Configuration.ClientsUpstreamDNS{
+                 protocol: :ip_port,
+                 address: "8.8.8.8"
+               },
+               %Domain.Config.Configuration.ClientsUpstreamDNS{
+                 protocol: :ip_port,
+                 address: "8.8.4.4"
+               }
              ]
     end
   end

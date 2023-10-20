@@ -88,4 +88,11 @@ defmodule Domain.Types.IPPort do
     ip = ip |> :inet.ntoa() |> List.to_string()
     "[#{ip}]:#{port}"
   end
+
+  def put_default_port(ip_port, default_port) do
+    port = ip_port.port || default_port
+    %{ip_port | port: port}
+  end
+
+  def default_dns_port, do: 53
 end

@@ -1,6 +1,7 @@
 defmodule Web.Settings.DNS do
   use Web, :live_view
   alias Domain.Config
+  alias Domain.Config.Configuration.ClientsUpstreamDNS
 
   def mount(_params, _session, socket) do
     {:ok, config} = Config.fetch_account_config(socket.assigns.subject)
@@ -60,15 +61,11 @@ defmodule Web.Settings.DNS do
                     <div class="w-1/4">
                       <.input
                         type="select"
-                        label="Type"
-                        field={dns[:type]}
-                        placeholder="Type"
-                        options={[
-                          [key: "IP", value: "ip"],
-                          [key: "DNS over TLS", value: "dns_over_tls", disabled: true],
-                          [key: "DNS over HTTPS", value: "dns_over_https", disabled: true]
-                        ]}
-                        value={dns[:type].value}
+                        label="Protocol"
+                        field={dns[:protocol]}
+                        placeholder="Protocol"
+                        options={dns_options()}
+                        value={dns[:protocol].value}
                       />
                     </div>
                     <div class="w-3/4">
@@ -172,5 +169,22 @@ defmodule Web.Settings.DNS do
       :clients_upstream_dns,
       existing_servers ++ [%{address: ""}]
     )
+  end
+
+  defp dns_options do
+    options = [
+      [key: "IP", value: "ip_port"],
+      [key: "DNS over TLS", value: "dns_over_tls"],
+      [key: "DNS over HTTPS", value: "dns_over_https"]
+    ]
+
+    supported = Enum.map(ClientsUpstreamDNS.supported_protocols(), &to_string/1)
+
+    Enum.map(options, fn option ->
+      case option[:value] in supported do
+        true -> option
+        false -> option ++ [disabled: true]
+      end
+    end)
   end
 end
