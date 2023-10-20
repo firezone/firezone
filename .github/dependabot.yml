@@ -63,3 +63,7 @@ updates:
     directory: terraform/environments/staging/
     schedule:
       interval: monthly
+  - package-ecosystem: terraform
+    directory: terraform/environments/production/
+    schedule:
+      interval: monthly

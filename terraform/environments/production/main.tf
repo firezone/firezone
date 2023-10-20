@@ -10,13 +10,7 @@ locals {
   region            = "us-east1"
   availability_zone = "us-east1-d"
 
-  tld = "firez.one"
-
-  # This is GitHub Actions service account configured manually
-  # in the project github-iam-387915
-  ci_iam_members = [
-    "serviceAccount:github-actions@github-iam-387915.iam.gserviceaccount.com"
-  ]
+  tld = "firezone.dev"
 }
 
 terraform {
@@ -25,7 +19,7 @@ terraform {
     hostname     = "app.terraform.io"
 
     workspaces {
-      name = "staging"
+      name = "production"
     }
   }
 }
@@ -39,8 +33,8 @@ provider "google-beta" {}
 module "google-cloud-project" {
   source = "../../modules/google-cloud-project"
 
-  id                 = "firezone-staging"
-  name               = "Staging Environment"
+  id                 = "firezone-production"
+  name               = "Production Environment"
   organization_id    = "335836213177"
   billing_account_id = "01DFC9-3D6951-579BE1"
 }
@@ -61,12 +55,13 @@ module "google-artifact-registry" {
 
   region = local.region
 
-  immutable_tags = false
+  immutable_tags = true
 
-  store_tagged_artifacts_for   = "${90 * 24 * 60 * 60}s"
-  store_untagged_artifacts_for = "${90 * 24 * 60 * 60}s"
-
-  writers = local.ci_iam_members
+  writers = [
+    # This is GitHub Actions service account configured manually
+    # in the project github-iam-387915
+    "serviceAccount:github-actions@github-iam-387915.iam.gserviceaccount.com"
+  ]
 }
 
 # Create a VPC
@@ -110,8 +105,8 @@ module "google-cloud-sql" {
 
   database_name = module.google-cloud-project.project.project_id
 
-  database_highly_available = false
-  database_backups_enabled  = false
+  database_highly_available = true
+  database_backups_enabled  = true
 
   database_read_replica_locations = []
 
@@ -213,19 +208,18 @@ resource "google_compute_subnetwork" "apps" {
   private_ip_google_access = true
 }
 
-# Deploy the web app to the GCE
-resource "random_password" "web_db_password" {
+# Create SQL user and database
+resource "random_password" "firezone_db_password" {
   length = 16
 }
 
-# TODO: raname it to "firezone"
-resource "google_sql_user" "web" {
+resource "google_sql_user" "firezone" {
   project = module.google-cloud-project.project.project_id
 
   instance = module.google-cloud-sql.master_instance_name
 
-  name     = "web"
-  password = random_password.web_db_password.result
+  name     = "firezone"
+  password = random_password.firezone_db_password.result
 }
 
 resource "google_sql_database" "firezone" {
@@ -235,7 +229,7 @@ resource "google_sql_database" "firezone" {
   instance = module.google-cloud-sql.master_instance_name
 }
 
-
+# Create bucket for client logs
 resource "google_storage_bucket" "client-logs" {
   project = module.google-cloud-project.project.project_id
   name    = "${module.google-cloud-project.project.project_id}-client-logs"
@@ -294,11 +288,11 @@ locals {
     },
     {
       name  = "DATABASE_USER"
-      value = google_sql_user.web.name
+      value = google_sql_user.firezone.name
     },
     {
       name  = "DATABASE_PASSWORD"
-      value = google_sql_user.web.password
+      value = google_sql_user.firezone.password
     },
     # Secrets
     {
@@ -397,7 +391,7 @@ locals {
     },
     {
       name  = "OUTBOUND_EMAIL_FROM"
-      value = "support@firez.one"
+      value = "support@firezone.dev"
     },
     {
       name  = "OUTBOUND_EMAIL_ADAPTER_OPTS"
@@ -714,111 +708,6 @@ module "relays" {
 
   portal_websocket_url = "wss://api.${local.tld}"
   portal_token         = var.relay_portal_token
-}
-
-# Enable SSH on staging
-resource "google_compute_firewall" "ssh-ipv4" {
-  project = module.google-cloud-project.project.project_id
-
-  name    = "staging-ssh-ipv4"
-  network = module.google-cloud-vpc.self_link
-
-  allow {
-    protocol = "tcp"
-    ports    = [22]
-  }
-
-  allow {
-    protocol = "udp"
-    ports    = [22]
-  }
-
-  allow {
-    protocol = "sctp"
-    ports    = [22]
-  }
-
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = concat(module.web.target_tags, module.api.target_tags)
-}
-
-resource "google_compute_firewall" "ssh-ipv6" {
-  project = module.google-cloud-project.project.project_id
-
-  name    = "staging-ssh-ipv6"
-  network = module.google-cloud-vpc.self_link
-
-  allow {
-    protocol = "tcp"
-    ports    = [22]
-  }
-
-  allow {
-    protocol = "udp"
-    ports    = [22]
-  }
-
-  allow {
-    protocol = "sctp"
-    ports    = [22]
-  }
-
-  source_ranges = ["::/0"]
-  target_tags   = concat(module.web.target_tags, module.api.target_tags)
-}
-
-resource "google_compute_firewall" "relays-ssh-ipv4" {
-  count = length(module.relays) > 0 ? 1 : 0
-
-  project = module.google-cloud-project.project.project_id
-
-  name    = "staging-relays-ssh-ipv4"
-  network = module.relays[0].network
-
-  allow {
-    protocol = "tcp"
-    ports    = [22]
-  }
-
-  allow {
-    protocol = "udp"
-    ports    = [22]
-  }
-
-  allow {
-    protocol = "sctp"
-    ports    = [22]
-  }
-
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = module.relays[0].target_tags
-}
-
-resource "google_compute_firewall" "relays-ssh-ipv6" {
-  count = length(module.relays) > 0 ? 1 : 0
-
-  project = module.google-cloud-project.project.project_id
-
-  name    = "staging-relays-ssh-ipv6"
-  network = module.relays[0].network
-
-  allow {
-    protocol = "tcp"
-    ports    = [22]
-  }
-
-  allow {
-    protocol = "udp"
-    ports    = [22]
-  }
-
-  allow {
-    protocol = "sctp"
-    ports    = [22]
-  }
-
-  source_ranges = ["::/0"]
-  target_tags   = module.relays[0].target_tags
 }
 
 module "ops" {

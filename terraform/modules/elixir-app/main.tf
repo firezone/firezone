@@ -5,10 +5,8 @@ locals {
   application_labels = merge({
     managed_by = "terraform"
 
-    # Note: this labels are used to fetch a release name for Erlang Cluster,
-    # and filter then by version
+    # Note: this labels are used to fetch a release name for Erlang Cluster
     application = local.application_name
-    version     = local.application_version
   }, var.application_labels)
 
   application_environment_variables = concat([
@@ -149,7 +147,11 @@ resource "google_compute_instance_template" "application" {
 
   labels = merge({
     container-vm = data.google_compute_image.coreos.name
+
+    # This variable can be used by Erlang Cluster not to join nodes of older versions
+    version = local.application_version
   }, local.application_labels)
+
 
   scheduling {
     automatic_restart   = true
