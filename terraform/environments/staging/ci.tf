@@ -108,16 +108,16 @@ resource "google_storage_bucket" "sccache" {
   uniform_bucket_level_access = true
 }
 
-resource "google_storage_bucket_iam_member" "public-sccache" {
-  bucket = google_storage_bucket.default.name
-  role   = "roles/storage.objectViewer"
-  member = "allUsers"
-}
+# resource "google_storage_bucket_iam_member" "public-sccache" {
+#   bucket = google_storage_bucket.default.name
+#   role   = "roles/storage.objectViewer"
+#   member = "allUsers"
+# }
 
-resource "google_storage_bucket_iam_member" "public-sccache" {
+resource "google_storage_bucket_iam_member" "github-actions-sccache-access" {
   for_each = local.ci_iam_members
 
   bucket = google_storage_bucket.default.name
-  role   = "roles/storage.objectWriter"
+  role   = "roles/storage.objectAdmin"
   member = each.key
 }
