@@ -296,7 +296,7 @@ resource "google_compute_region_instance_group_manager" "application" {
     minimal_action = "RESTART"
 
     max_unavailable_fixed = 1
-    max_surge_fixed       = max(length(each.value.zones), each.value.replicas - 1)
+    max_surge_fixed       = max(1, var.compute_instance_replicas - 1)
   }
 
   timeouts {
