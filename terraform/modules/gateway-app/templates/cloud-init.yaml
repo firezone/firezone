@@ -1,10 +1,29 @@
 #cloud-config
 
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg-agent
+  - software-properties-common
+  - docker.io
+
 users:
   - name: cloudservice
     uid: 2000
 
+groups:
+  - docker
+
+system_info:
+  default_user:
+    groups: [docker]
+
 write_files:
+  - path: /etc/sysctl.d/enabled_ipv4_forwarding.conf
+    content: |
+      net.ipv4.conf.all.forwarding=1
+
   - path: /etc/otelcol-contrib/config.yaml
     permissions: "0644"
     owner: root
@@ -112,14 +131,6 @@ write_files:
       ExecStopPost=/usr/bin/docker rm gateway
 
 runcmd:
-  - sudo apt update
-  - sudo apt install apt-transport-https ca-certificates curl gnupg2 software-properties-common -y
-  - curl -fsSL https://download.docker.com/linux/debian/gpg | sudo apt-key add -
-  - sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable"
-  - sudo apt update
-  - sudo apt install docker.io -y
-  - sudo usermod -aG docker $USER
-  - sudo newgrp docker
   - sudo systemctl enable docker.service
   - sudo systemctl enable containerd.service
   - sudo systemctl daemon-reload
