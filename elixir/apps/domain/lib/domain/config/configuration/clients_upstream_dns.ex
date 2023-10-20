@@ -33,8 +33,8 @@ defmodule Domain.Config.Configuration.ClientsUpstreamDNS do
       changeset
     else
       case fetch_field(changeset, :protocol) do
-        {_, :ip_port} -> validate_ip_port(changeset)
-        {_, _} -> changeset
+        {_changes_or_data, :ip_port} -> validate_ip_port(changeset)
+        :error -> changeset
       end
     end
   end
@@ -50,7 +50,7 @@ defmodule Domain.Config.Configuration.ClientsUpstreamDNS do
 
   def normalize_dns_address(%__MODULE__{protocol: :ip_port, address: address}) do
     case IPPort.cast(address) do
-      {:ok, ip} -> IPPort.put_default_port(ip, IPPort.default_dns_port()) |> to_string()
+      {:ok, ip} -> IPPort.put_default_port(ip, default_dns_port()) |> to_string()
       _ -> address
     end
   end
@@ -58,4 +58,6 @@ defmodule Domain.Config.Configuration.ClientsUpstreamDNS do
   def normalize_dns_address(%__MODULE__{protocol: _, address: address}) do
     address
   end
+
+  def default_dns_port, do: 53
 end

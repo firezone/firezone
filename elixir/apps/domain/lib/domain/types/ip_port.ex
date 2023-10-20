@@ -93,6 +93,4 @@ defmodule Domain.Types.IPPort do
     port = ip_port.port || default_port
     %{ip_port | port: port}
   end
-
-  def default_dns_port, do: 53
 end
