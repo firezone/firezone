@@ -8,85 +8,22 @@
     <fragment
         android:id="@+id/splashFragment"
         android:name="dev.firezone.android.features.splash.ui.SplashFragment"
-        tools:layout="@layout/fragment_splash">
-
-        <action
-            android:id="@+id/navigateToSettingsFragment"
-            app:destination="@id/settingsFragment"
-            app:enterAnim="@anim/fade_in"
-            app:exitAnim="@anim/fade_out"
-            app:popEnterAnim="@anim/fade_in"
-            app:popExitAnim="@anim/fade_out" />
-
-        <action
-            android:id="@+id/navigateToSignInFragment"
-            app:destination="@id/signInFragment"
-            app:enterAnim="@anim/fade_in"
-            app:exitAnim="@anim/fade_out"
-            app:popEnterAnim="@anim/fade_in"
-            app:popExitAnim="@anim/fade_out" />
-
-        <action
-            android:id="@+id/navigateToSessionFragment"
-            app:destination="@id/sessionFragment"
-            app:enterAnim="@anim/fade_in"
-            app:exitAnim="@anim/fade_out"
-            app:popEnterAnim="@anim/fade_in"
-            app:popExitAnim="@anim/fade_out" />
-
-    </fragment>
+        tools:layout="@layout/fragment_splash" />
 
     <fragment
         android:id="@+id/settingsFragment"
-        android:name="dev.firezone.android.features.settings.ui.SettingsFragment"
-        tools:layout="@layout/fragment_settings">
-
-        <action
-            android:id="@+id/navigateToSignInFragment"
-            app:destination="@id/signInFragment"
-            app:enterAnim="@anim/fade_in"
-            app:exitAnim="@anim/fade_out"
-            app:popEnterAnim="@anim/fade_in"
-            app:popExitAnim="@anim/fade_out" />
-    </fragment>
+        android:name="dev.firezone.android.features.settings.ui.SetupFragment"
+        tools:layout="@layout/fragment_setup" />
 
     <fragment
         android:id="@+id/signInFragment"
         android:name="dev.firezone.android.features.signin.ui.SignInFragment"
-        tools:layout="@layout/fragment_sign_in">
+        tools:layout="@layout/fragment_sign_in" />
 
-        <action
-            android:id="@+id/navigateToSessionFragment"
-            app:destination="@id/sessionFragment"
-            app:enterAnim="@anim/fade_in"
-            app:exitAnim="@anim/fade_out"
-            app:popEnterAnim="@anim/fade_in"
-            app:popExitAnim="@anim/fade_out" />
-
-        <action
-            android:id="@+id/navigateToSettingsFragment"
-            app:destination="@id/settingsFragment"
-            app:enterAnim="@anim/fade_in"
-            app:exitAnim="@anim/fade_out"
-            app:popEnterAnim="@anim/fade_in"
-            app:popExitAnim="@anim/fade_out" />
-
-    </fragment>
-
-    <fragment
-        android:id="@+id/sessionFragment"
-        android:name="dev.firezone.android.features.session.ui.SessionFragment"
-        tools:layout="@layout/fragment_session">
-
-        <action
-            android:id="@+id/navigateToSignInFragment"
-            app:destination="@id/signInFragment"
-            app:enterAnim="@anim/fade_in"
-            app:exitAnim="@anim/fade_out"
-            app:popEnterAnim="@anim/fade_in"
-            app:popExitAnim="@anim/fade_out" />
-
-    </fragment>
+    <activity
+        android:id="@+id/sessionActivity"
+        android:name="dev.firezone.android.features.session.ui.SessionActivity"
+        tools:layout="@layout/activity_session" />
 
     <activity
         android:id="@+id/vpnPermissionActivity"

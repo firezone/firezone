@@ -11,7 +11,6 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.databinding.FragmentSignInBinding
 import dev.firezone.android.features.auth.ui.AuthActivity
-import dev.firezone.android.features.splash.ui.SplashFragmentDirections
 
 @AndroidEntryPoint
 internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
@@ -37,10 +36,11 @@ internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
                         AuthActivity::class.java,
                     ),
                 )
+                requireActivity().finish()
             }
             btSettings.setOnClickListener {
                 findNavController().navigate(
-                    SplashFragmentDirections.navigateToSettingsFragment(),
+                    R.id.splashFragment,
                 )
             }
         }

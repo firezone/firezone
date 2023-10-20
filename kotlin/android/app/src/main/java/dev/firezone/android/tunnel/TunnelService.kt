@@ -16,6 +16,7 @@ import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.R
+import dev.firezone.android.core.data.PreferenceRepository
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.tunnel.callback.ConnlibCallback
@@ -39,9 +40,14 @@ class TunnelService : VpnService() {
     internal lateinit var tunnelRepository: TunnelRepository
 
     @Inject
+    internal lateinit var preferenceRepository: PreferenceRepository
+
+    @Inject
     internal lateinit var moshi: Moshi
 
     private var sessionPtr: Long? = null
+
+    private var shouldReconnect: Boolean = false
 
     private val activeTunnel: Tunnel?
         get() = tunnelRepository.get()
@@ -129,9 +135,12 @@ class TunnelService : VpnService() {
             }
 
             override fun onDisconnect(error: String?): Boolean {
-                Log.d(TAG, "onDisconnect $error")
+                Log.d(TAG, "callback: onDisconnect $error")
 
-                onTunnelStateUpdate(Tunnel.State.Down)
+                if (error != null && error != "null") {
+                    onDisconnect()
+                }
+
                 return true
             }
         }
@@ -169,11 +178,16 @@ class TunnelService : VpnService() {
         try {
             val config = getConfigUseCase.sync()
 
-            Log.d("Connlib", "accountId: ${config.accountId}")
-            Log.d("Connlib", "token: ${config.token}")
+            Log.d("Connlib", "connect(): accountId: ${config.accountId}")
+            if (tunnelRepository.getState() == Tunnel.State.Up) {
+                Log.d(TAG, "connect(): shouldReconnect")
+                shouldReconnect = true
+                disconnect()
+            } else if (config.accountId != null && config.token != null) {
+                Log.d("Connlib", "connect(): Attempting to establish TunnelSession...")
+                onTunnelStateUpdate(Tunnel.State.Connecting)
+                updateStatusNotification("Status: Connecting...")
 
-            if (config.accountId != null && config.token != null) {
-                Log.d("Connlib", "Attempting to establish TunnelSession...")
                 sessionPtr =
                     TunnelSession.connect(
                         controlPlaneUrl = BuildConfig.CONTROL_PLANE_URL,
@@ -183,19 +197,17 @@ class TunnelService : VpnService() {
                         logFilter = BuildConfig.CONNLIB_LOG_FILTER_STRING,
                         callback = callback,
                     )
-                Log.d(TAG, "connlib session started! sessionPtr: $sessionPtr")
-
-                onTunnelStateUpdate(Tunnel.State.Connecting)
-
-                updateStatusNotification("Status: Connecting...")
+                Log.d(TAG, "connect(): connlib session started! sessionPtr: $sessionPtr")
             }
+            Log.d(TAG, "connect(): end of connect: 1")
         } catch (exception: Exception) {
-            Log.e(TAG, exception.message.toString())
+            Log.e(TAG, "connect(): " + exception.message.toString())
         }
+        Log.d(TAG, "connect(): end of connect: 2")
     }
 
     private fun disconnect() {
-        Log.d(TAG, "Attempting to disconnect session")
+        Log.d(TAG, "disconnect(): Attempting to disconnect session")
         try {
             sessionPtr?.let {
                 Log.d(TAG, "calling TunnelSession.disconnect")
@@ -204,6 +216,24 @@ class TunnelService : VpnService() {
         } catch (exception: Exception) {
             Log.e(TAG, exception.message.toString())
         }
+
+        onTunnelStateUpdate(Tunnel.State.Down)
+
+        if (shouldReconnect) {
+            Log.d(TAG, "disconnect(): shouldReconnect")
+            shouldReconnect = false
+            connect()
+        } else {
+            onDisconnect()
+        }
+    }
+
+    private fun onDisconnect() {
+        Log.d(TAG, "onDisconnect(): state: closed")
+        sessionPtr = null
+        tunnelRepository.clearAll()
+        preferenceRepository.clearToken()
+        onTunnelStateUpdate(Tunnel.State.Closed)
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 

@@ -1,21 +1,20 @@
 <resources>
 	<string name="app_short_name">firezone</string>
 
-	<!-- Settings Fragment -->
-	<string name="settings_fragment_header_title">Login URL</string>
-	<string name="settings_fragment_input_hint">account-id</string>
-	<string name="settings_fragment_button_text">Save</string>
+	<!-- Settings -->
+	<string name="account_id">account-id</string>
+	<string name="save">Save</string>
 
-	<!-- Sign In Fragment -->
-	<string name="sign_in_fragment_button_text">Sign In</string>
-	<string name="sign_in_settings_button_text">Settings</string>
-	<string name="sign_in_fragment_sign_status_text">Signed Out</string>
+	<!-- Sign In -->
+	<string name="sign_in">Sign In</string>
+	<string name="settings">Settings</string>
+	<string name="signed_out">Signed Out</string>
 
-	<!-- Sign Out Activity -->
+	<!-- Sign Out -->
 	<string name="resources">Resources</string>
-	<string name="sign_out_activity_button_text">Sign Out</string>
+	<string name="sign_out">Sign Out</string>
 
-	<!-- Auth Activity -->
+	<!-- Auth -->
 	<string name="launching_auth_flow">Launching Auth Flow…</string>
 
 	<!-- Error Dialog -->

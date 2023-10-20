@@ -3,11 +3,9 @@ package dev.firezone.android.features.session.ui
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
-import android.view.View
+import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
-import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -17,41 +15,38 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.core.utils.ClipboardUtils
-import dev.firezone.android.databinding.FragmentSessionBinding
+import dev.firezone.android.databinding.ActivitySessionBinding
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-internal class SessionFragment : Fragment(R.layout.fragment_session) {
-    private lateinit var binding: FragmentSessionBinding
+internal class SessionActivity : AppCompatActivity() {
+    private lateinit var binding: ActivitySessionBinding
     private val viewModel: SessionViewModel by viewModels()
 
     private val resourcesAdapter: ResourcesAdapter =
         ResourcesAdapter { resource ->
-            ClipboardUtils.copyToClipboard(requireContext(), resource.name, resource.address)
+            ClipboardUtils.copyToClipboard(this@SessionActivity, resource.name, resource.address)
         }
 
-    override fun onViewCreated(
-        view: View,
-        savedInstanceState: Bundle?,
-    ) {
-        super.onViewCreated(view, savedInstanceState)
-        binding = FragmentSessionBinding.bind(view)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivitySessionBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
         setupViews()
         setupObservers()
-        Log.d("SessionFragment", "Starting session...")
         viewModel.startSession()
     }
 
     private fun setupViews() {
         binding.btSignOut.setOnClickListener {
-            viewModel.onDisconnect()
+            viewModel.disconnect()
         }
 
-        val layoutManager = LinearLayoutManager(requireContext())
+        val layoutManager = LinearLayoutManager(this@SessionActivity)
         val dividerItemDecoration =
             DividerItemDecoration(
-                requireContext(),
+                this@SessionActivity,
                 layoutManager.orientation,
             )
         binding.resourcesList.addItemDecoration(dividerItemDecoration)
@@ -60,15 +55,13 @@ internal class SessionFragment : Fragment(R.layout.fragment_session) {
     }
 
     private fun setupObservers() {
-        viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
+        viewModel.actionLiveData.observe(this@SessionActivity) { action ->
             when (action) {
-                SessionViewModel.ViewAction.NavigateToSignInFragment -> {
-                    requireActivity().run {
-                        startActivity(
-                            Intent(this, MainActivity::class.java),
-                        )
-                        finish()
-                    }
+                SessionViewModel.ViewAction.NavigateToSignIn -> {
+                    startActivity(
+                        Intent(this, MainActivity::class.java),
+                    )
+                    finish()
                 }
                 SessionViewModel.ViewAction.ShowError -> showError()
             }
@@ -86,7 +79,7 @@ internal class SessionFragment : Fragment(R.layout.fragment_session) {
     }
 
     private fun showError() {
-        AlertDialog.Builder(requireContext())
+        AlertDialog.Builder(this@SessionActivity)
             .setTitle(R.string.error_dialog_title)
             .setMessage(R.string.error_dialog_message)
             .setPositiveButton(

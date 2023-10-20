@@ -39,7 +39,7 @@ internal class AuthViewModel
 
                     actionMutableLiveData.postValue(
                         if (authFlowLaunched || config.token != null) {
-                            ViewAction.NavigateToSignInFragment
+                            ViewAction.NavigateToSignIn
                         } else {
                             authFlowLaunched = true
                             ViewAction.LaunchAuthFlow(
@@ -59,7 +59,7 @@ internal class AuthViewModel
         internal sealed class ViewAction {
             data class LaunchAuthFlow(val url: String) : ViewAction()
 
-            object NavigateToSignInFragment : ViewAction()
+            object NavigateToSignIn : ViewAction()
 
             object ShowError : ViewAction()
         }

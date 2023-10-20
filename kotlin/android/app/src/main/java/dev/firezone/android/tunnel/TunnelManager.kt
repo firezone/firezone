@@ -24,10 +24,17 @@ internal class TunnelManager
         private val listeners: MutableSet<WeakReference<TunnelListener>> = mutableSetOf()
 
         private val tunnelRepositoryListener =
-            SharedPreferences.OnSharedPreferenceChangeListener { _, s ->
-                if (s == TunnelRepository.RESOURCES_KEY) {
-                    listeners.forEach {
-                        it.get()?.onResourcesUpdate(tunnelRepository.getResources())
+            SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                when (key) {
+                    TunnelRepository.STATE_KEY -> {
+                        listeners.forEach {
+                            it.get()?.onTunnelStateUpdate(tunnelRepository.getState())
+                        }
+                    }
+                    TunnelRepository.RESOURCES_KEY -> {
+                        listeners.forEach {
+                            it.get()?.onResourcesUpdate(tunnelRepository.getResources())
+                        }
                     }
                 }
             }
@@ -43,7 +50,6 @@ internal class TunnelManager
             }
 
             tunnelRepository.addListener(tunnelRepositoryListener)
-            tunnelRepository.setState(Tunnel.State.Connecting)
         }
 
         fun removeListener(listener: TunnelListener) {
@@ -65,6 +71,7 @@ internal class TunnelManager
 
         fun disconnect() {
             stopVPNService()
+            clearSessionData()
         }
 
         private fun startVPNService() {
@@ -77,8 +84,11 @@ internal class TunnelManager
             val intent = Intent(appContext, TunnelService::class.java)
             intent.action = TunnelService.ACTION_DISCONNECT
             appContext.startService(intent)
-            tunnelRepository.clearAll()
+        }
+
+        private fun clearSessionData() {
             preferenceRepository.clearToken()
+            tunnelRepository.clearAll()
         }
 
         internal companion object {

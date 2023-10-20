@@ -10,19 +10,19 @@ import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
-import dev.firezone.android.databinding.FragmentSettingsBinding
+import dev.firezone.android.databinding.FragmentSetupBinding
 
 @AndroidEntryPoint
-internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
-    private lateinit var binding: FragmentSettingsBinding
-    private val viewModel: SettingsViewModel by viewModels()
+internal class SetupFragment : Fragment(R.layout.fragment_setup) {
+    private lateinit var binding: FragmentSetupBinding
+    private val viewModel: SetupViewModel by viewModels()
 
     override fun onViewCreated(
         view: View,
         savedInstanceState: Bundle?,
     ) {
         super.onViewCreated(view, savedInstanceState)
-        binding = FragmentSettingsBinding.bind(view)
+        binding = FragmentSetupBinding.bind(view)
 
         setupViews()
         setupStateObservers()
@@ -43,11 +43,11 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
             when (action) {
-                is SettingsViewModel.ViewAction.NavigateToSignInFragment ->
+                is SetupViewModel.ViewAction.NavigateToSignIn ->
                     findNavController().navigate(
                         R.id.signInFragment,
                     )
-                is SettingsViewModel.ViewAction.FillAccountId -> {
+                is SetupViewModel.ViewAction.FillAccountId -> {
                     binding.etInput.apply {
                         setText(action.value)
                         isCursorVisible = false
@@ -59,7 +59,7 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
 
     private fun setupViews() {
         binding.ilUrlInput.apply {
-            prefixText = SettingsViewModel.AUTH_URL
+            prefixText = SetupViewModel.AUTH_URL
         }
 
         binding.etInput.apply {

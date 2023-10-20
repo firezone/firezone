@@ -3,6 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:padding="@dimen/spacing_medium">
 
     <androidx.appcompat.widget.LinearLayoutCompat
@@ -32,33 +33,27 @@
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/ilUrlInput"
-        android:layout_width="0dp"
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/tvSignStatus"
+        style="@style/AppTheme.Base.H5"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        app:errorEnabled="true"
-        android:hint="@string/enter_team_id"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
+        android:text="@string/resources"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toBottomOf="@+id/llContainer" />
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/etInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/settings_fragment_input_hint"
-            android:importantForAutofill="no"
-            android:inputType="text" />
-
-    </com.google.android.material.textfield.TextInputLayout>
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/resourcesList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toBottomOf="@id/tvSignStatus"
+        app:layout_constraintBottom_toTopOf="@id/btSignOut" />
 
     <com.google.android.material.button.MaterialButton
-        android:id="@+id/btLogin"
+        android:id="@+id/btSignOut"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:enabled="false"
-        android:text="@string/settings_fragment_button_text"
+        android:text="@string/sign_out"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
