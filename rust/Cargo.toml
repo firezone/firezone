@@ -19,7 +19,7 @@ boringtun = { version = "0.6", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 swift-bridge = "0.1.52"
 backoff = { version = "0.4", features = ["tokio"] }
-tracing = { version = "0.1.39" }
+tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
 hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
