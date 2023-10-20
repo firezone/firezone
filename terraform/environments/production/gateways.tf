@@ -40,8 +40,11 @@ module "gateways" {
   compute_network    = google_compute_network.gateways.self_link
   compute_subnetwork = google_compute_subnetwork.gateways.self_link
 
-  compute_region       = local.gateways_region
-  compute_region_zones = local.gateways_zones
+  compute_instance_type = "n1-standard-1"
+  compute_region        = local.gateways_region
+  compute_region_zones  = local.gateways_zones
+
+  compute_instance_replicas = 2
 
   container_registry = module.google-artifact-registry.url
 
