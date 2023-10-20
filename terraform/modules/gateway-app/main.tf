@@ -50,8 +50,8 @@ locals {
 
 # Fetch most recent COS image
 data "google_compute_image" "coreos" {
-  family  = "cos-109-lts"
-  project = "cos-cloud"
+  family  = "ubuntu-2004-lts"
+  project = "ubuntu-os-cloud"
 }
 
 # Create IAM role for the application instances
@@ -117,49 +117,17 @@ resource "google_project_iam_member" "cloudtrace" {
   member = "serviceAccount:${google_service_account.application.email}"
 }
 
-# Create network
-resource "google_compute_network" "network" {
-  project = var.project_id
-  name    = "relays"
-
-  routing_mode = "GLOBAL"
-
-  auto_create_subnetworks = false
-
-  depends_on = [
-    google_project_service.compute
-  ]
-}
-
-resource "google_compute_subnetwork" "subnetwork" {
-  for_each = var.instances
-
-  project = var.project_id
-
-  name   = "relays-${each.key}"
-  region = each.key
-
-  network = google_compute_network.network.self_link
-
-  stack_type               = "IPV4_IPV6"
-  ip_cidr_range            = "10.${129 + index(keys(var.instances), each.key)}.0.0/24"
-  ipv6_access_type         = "EXTERNAL"
-  private_ip_google_access = true
-}
-
 # Deploy app
 resource "google_compute_instance_template" "application" {
-  for_each = var.instances
-
   project = var.project_id
 
-  name_prefix = "${local.application_name}-${each.key}-"
+  name_prefix = "${local.application_name}-"
 
   description = "This template is used to create ${local.application_name} instances."
 
-  machine_type = each.value.type
+  machine_type = var.compute_instance_type
 
-  can_ip_forward = false
+  can_ip_forward = true
 
   tags = ["app-${local.application_name}"]
 
@@ -181,7 +149,7 @@ resource "google_compute_instance_template" "application" {
   }
 
   network_interface {
-    subnetwork = google_compute_subnetwork.subnetwork[each.key].self_link
+    subnetwork = var.compute_subnetwork
 
     stack_type = "IPV4_IPV6"
 
@@ -217,21 +185,11 @@ resource "google_compute_instance_template" "application" {
   }
 
   metadata = {
-    gce-container-declaration = yamlencode({
-      spec = {
-        containers = [{
-          name  = local.application_name != null ? local.application_name : var.image
-          image = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
-          env   = local.environment_variables
-        }]
-
-        volumes = []
-
-        restartPolicy = "Always"
-      }
+    user-data = templatefile("${path.module}/templates/cloud-init.yaml", {
+      container_name        = local.application_name != null ? local.application_name : var.image
+      container_image       = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
+      container_environment = local.environment_variables
     })
-
-    user-data = templatefile("${path.module}/templates/cloud-init.yaml", {})
 
     google-logging-enabled       = "true"
     google-logging-use-fluentbit = "true"
@@ -264,73 +222,71 @@ resource "google_compute_instance_template" "application" {
   }
 }
 
-# Create health checks for the application ports
-resource "google_compute_health_check" "port" {
-  project = var.project_id
+# # Create health checks for the application ports
+# resource "google_compute_health_check" "port" {
+#   project = var.project_id
 
-  name = "${local.application_name}-${var.health_check.name}"
+#   name = "${local.application_name}-${var.health_check.name}"
 
-  check_interval_sec  = var.health_check.check_interval_sec != null ? var.health_check.check_interval_sec : 5
-  timeout_sec         = var.health_check.timeout_sec != null ? var.health_check.timeout_sec : 5
-  healthy_threshold   = var.health_check.healthy_threshold != null ? var.health_check.healthy_threshold : 2
-  unhealthy_threshold = var.health_check.unhealthy_threshold != null ? var.health_check.unhealthy_threshold : 2
+#   check_interval_sec  = var.health_check.check_interval_sec != null ? var.health_check.check_interval_sec : 5
+#   timeout_sec         = var.health_check.timeout_sec != null ? var.health_check.timeout_sec : 5
+#   healthy_threshold   = var.health_check.healthy_threshold != null ? var.health_check.healthy_threshold : 2
+#   unhealthy_threshold = var.health_check.unhealthy_threshold != null ? var.health_check.unhealthy_threshold : 2
 
-  log_config {
-    enable = false
-  }
+#   log_config {
+#     enable = false
+#   }
 
-  http_health_check {
-    port = var.health_check.port
+#   http_health_check {
+#     port = var.health_check.port
 
-    host         = var.health_check.http_health_check.host
-    request_path = var.health_check.http_health_check.request_path
-    response     = var.health_check.http_health_check.response
-  }
+#     host         = var.health_check.http_health_check.host
+#     request_path = var.health_check.http_health_check.request_path
+#     response     = var.health_check.http_health_check.response
+#   }
 
-  lifecycle {
-    create_before_destroy = true
-  }
-}
+#   lifecycle {
+#     create_before_destroy = true
+#   }
+# }
 
 # Use template to deploy zonal instance group
 resource "google_compute_region_instance_group_manager" "application" {
-  for_each = var.instances
-
   project = var.project_id
 
-  name = "${local.application_name}-group-${each.key}"
+  name = "${local.application_name}-${var.compute_region}"
 
   base_instance_name = local.application_name
 
-  region                    = each.key
-  distribution_policy_zones = each.value.zones
+  region                    = var.compute_region
+  distribution_policy_zones = var.compute_instance_availability_zones
 
-  target_size = each.value.replicas
+  target_size = var.compute_instance_replicas
 
   wait_for_instances        = true
   wait_for_instances_status = "STABLE"
 
   version {
-    instance_template = google_compute_instance_template.application[each.key].self_link
+    instance_template = google_compute_instance_template.application.self_link
   }
 
-  named_port {
-    name = "stun"
-    port = 3478
-  }
+  # named_port {
+  #   name = "stun"
+  #   port = 3478
+  # }
 
-  auto_healing_policies {
-    initial_delay_sec = var.health_check.initial_delay_sec
+  # auto_healing_policies {
+  #   initial_delay_sec = var.health_check.initial_delay_sec
 
-    health_check = google_compute_health_check.port.self_link
-  }
+  #   health_check = google_compute_health_check.port.self_link
+  # }
 
   update_policy {
     type           = "PROACTIVE"
-    minimal_action = "RESTART"
+    minimal_action = "REPLACE"
 
     max_unavailable_fixed = 1
-    max_surge_fixed       = max(length(each.value.zones), each.value.replicas - 1)
+    max_surge_fixed       = max(1, var.compute_instance_replicas - 1)
   }
 
   timeouts {
@@ -344,123 +300,18 @@ resource "google_compute_region_instance_group_manager" "application" {
   ]
 }
 
-# TODO: Rate limit requests to the relays by source IP address
+# ## Open metrics port for the health checks
+# resource "google_compute_firewall" "http-health-checks" {
+#   project = var.project_id
 
-# Open ports for the web
-resource "google_compute_firewall" "stun-turn-ipv4" {
-  project = var.project_id
+#   name    = "${local.application_name}-healthcheck"
+#   network = var.compute_network
 
-  name    = "${local.application_name}-firewall-lb-to-instances-ipv4"
-  network = google_compute_network.network.self_link
+#   source_ranges = local.google_health_check_ip_ranges
+#   target_tags   = ["app-${local.application_name}"]
 
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["app-${local.application_name}"]
-
-  allow {
-    protocol = "tcp"
-    ports    = ["3478", "49152-65535"]
-  }
-
-  allow {
-    protocol = "udp"
-    ports    = ["3478", "49152-65535"]
-  }
-}
-
-resource "google_compute_firewall" "stun-turn-ipv6" {
-  project = var.project_id
-
-  name    = "${local.application_name}-firewall-lb-to-instances-ipv6"
-  network = google_compute_network.network.self_link
-
-  source_ranges = ["::/0"]
-  target_tags   = ["app-${local.application_name}"]
-
-  allow {
-    protocol = "tcp"
-    ports    = ["3478", "49152-65535"]
-  }
-
-  allow {
-    protocol = "udp"
-    ports    = ["3478", "49152-65535"]
-  }
-}
-
-## Open metrics port for the health checks
-resource "google_compute_firewall" "http-health-checks" {
-  project = var.project_id
-
-  name    = "${local.application_name}-healthcheck"
-  network = google_compute_network.network.self_link
-
-  source_ranges = local.google_health_check_ip_ranges
-  target_tags   = ["app-${local.application_name}"]
-
-  allow {
-    protocol = var.health_check.protocol
-    ports    = [var.health_check.port]
-  }
-}
-
-# Allow inbound traffic
-resource "google_compute_firewall" "ingress-ipv4" {
-  project = var.project_id
-
-  name      = "${local.application_name}-ingress-ipv4"
-  network   = google_compute_network.network.self_link
-  direction = "INGRESS"
-
-  target_tags   = ["app-${local.application_name}"]
-  source_ranges = ["0.0.0.0/0"]
-
-  allow {
-    protocol = "udp"
-  }
-}
-
-resource "google_compute_firewall" "ingress-ipv6" {
-  project = var.project_id
-
-  name      = "${local.application_name}-ingress-ipv6"
-  network   = google_compute_network.network.self_link
-  direction = "INGRESS"
-
-  target_tags   = ["app-${local.application_name}"]
-  source_ranges = ["::/0"]
-
-  allow {
-    protocol = "udp"
-  }
-}
-
-# Allow outbound traffic
-resource "google_compute_firewall" "egress-ipv4" {
-  project = var.project_id
-
-  name      = "${local.application_name}-egress-ipv4"
-  network   = google_compute_network.network.self_link
-  direction = "EGRESS"
-
-  target_tags        = ["app-${local.application_name}"]
-  destination_ranges = ["0.0.0.0/0"]
-
-  allow {
-    protocol = "udp"
-  }
-}
-
-resource "google_compute_firewall" "egress-ipv6" {
-  project = var.project_id
-
-  name      = "${local.application_name}-egress-ipv6"
-  network   = google_compute_network.network.self_link
-  direction = "EGRESS"
-
-  target_tags        = ["app-${local.application_name}"]
-  destination_ranges = ["::/0"]
-
-  allow {
-    protocol = "udp"
-  }
-}
+#   allow {
+#     protocol = var.health_check.protocol
+#     ports    = [var.health_check.port]
+#   }
+# }
