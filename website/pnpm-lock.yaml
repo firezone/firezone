@@ -7,7 +7,7 @@ settings:
 dependencies:
   '@docsearch/react':
     specifier: ^3.5.2
-    version: 3.5.2(@algolia/client-search@4.20.0)(@types/react@18.2.6)(react-dom@18.2.0)(react@18.2.0)(search-insights@2.9.0)
+    version: 3.5.2(@algolia/client-search@4.20.0)(@types/react@18.2.30)(react-dom@18.2.0)(react@18.2.0)(search-insights@2.9.0)
   '@mdx-js/loader':
     specifier: ^2.3.0
     version: 2.3.0(webpack@5.89.0)
@@ -24,8 +24,8 @@ dependencies:
     specifier: 20.2.3
     version: 20.2.3
   '@types/react':
-    specifier: 18.2.6
-    version: 18.2.6
+    specifier: 18.2.30
+    version: 18.2.30
   '@types/react-dom':
     specifier: 18.2.13
     version: 18.2.13
@@ -82,7 +82,7 @@ dependencies:
     version: 4.11.0(react@18.2.0)
   react-markdown:
     specifier: ^8.0.7
-    version: 8.0.7(@types/react@18.2.6)(react@18.2.0)
+    version: 8.0.7(@types/react@18.2.30)(react@18.2.0)
   react-syntax-highlighter:
     specifier: ^15.5.0
     version: 15.5.0(react@18.2.0)
@@ -274,7 +274,7 @@ packages:
     resolution: {integrity: sha512-SPiDHaWKQZpwR2siD0KQUwlStvIAnEyK6tAE2h2Wuoq8ue9skzhlyVQ1ddzOxX6khULnAALDiR/isSF3bnuciA==}
     dev: false
 
-  /@docsearch/react@3.5.2(@algolia/client-search@4.20.0)(@types/react@18.2.6)(react-dom@18.2.0)(react@18.2.0)(search-insights@2.9.0):
+  /@docsearch/react@3.5.2(@algolia/client-search@4.20.0)(@types/react@18.2.30)(react-dom@18.2.0)(react@18.2.0)(search-insights@2.9.0):
     resolution: {integrity: sha512-9Ahcrs5z2jq/DcAvYtvlqEBHImbm4YJI8M9y0x6Tqg598P40HTEkX7hsMcIuThI+hTFxRGZ9hll0Wygm2yEjng==}
     peerDependencies:
       '@types/react': '>= 16.8.0 < 19.0.0'
@@ -294,7 +294,7 @@ packages:
       '@algolia/autocomplete-core': 1.9.3(@algolia/client-search@4.20.0)(algoliasearch@4.20.0)(search-insights@2.9.0)
       '@algolia/autocomplete-preset-algolia': 1.9.3(@algolia/client-search@4.20.0)(algoliasearch@4.20.0)
       '@docsearch/css': 3.5.2
-      '@types/react': 18.2.6
+      '@types/react': 18.2.30
       algoliasearch: 4.20.0
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
@@ -418,7 +418,7 @@ packages:
       react: '>=16'
     dependencies:
       '@types/mdx': 2.0.9
-      '@types/react': 18.2.6
+      '@types/react': 18.2.30
       react: 18.2.0
     dev: false
 
@@ -637,17 +637,17 @@ packages:
   /@types/react-dom@18.2.13:
     resolution: {integrity: sha512-eJIUv7rPP+EC45uNYp/ThhSpE16k22VJUknt5OLoH9tbXoi8bMhwLf5xRuWMywamNbWzhrSmU7IBJfPup1+3fw==}
     dependencies:
-      '@types/react': 18.2.6
+      '@types/react': 18.2.30
     dev: false
 
   /@types/react-syntax-highlighter@15.5.9:
     resolution: {integrity: sha512-ven8zRSVMNkqt8ySJ2eEW5ugbfl/V/Z9S1c9UNhGqwkwVZNV5akk10rYDALxgwS25cLmN+/Q5UxlGj9CJmZ6Ew==}
     dependencies:
-      '@types/react': 18.2.6
+      '@types/react': 18.2.30
     dev: false
 
-  /@types/react@18.2.6:
-    resolution: {integrity: sha512-wRZClXn//zxCFW+ye/D2qY65UsYP1Fpex2YXorHc8awoNamkMZSvBxwxdYVInsHOZZd2Ppq8isnSzJL5Mpf8OA==}
+  /@types/react@18.2.30:
+    resolution: {integrity: sha512-OfqdJnDsSo4UNw0bqAjFCuBpLYQM7wvZidz0hVxHRjrEkzRlvZL1pJVyOSY55HMiKvRNEo9DUBRuEl7FNlJ/Vg==}
     dependencies:
       '@types/prop-types': 15.7.9
       '@types/scheduler': 0.16.5
@@ -2831,7 +2831,7 @@ packages:
     resolution: {integrity: sha512-xWGDIW6x921xtzPkhiULtthJHoJvBbF3q26fzloPCK0hsvxtPVelvftw3zjbHWSkR2km9Z+4uxbDDK/6Zw9B8w==}
     dev: false
 
-  /react-markdown@8.0.7(@types/react@18.2.6)(react@18.2.0):
+  /react-markdown@8.0.7(@types/react@18.2.30)(react@18.2.0):
     resolution: {integrity: sha512-bvWbzG4MtOU62XqBx3Xx+zB2raaFFsq4mYiAzfjXJMEz2sixgeAfraA3tvzULF02ZdOMUOKTBFFaZJDDrq+BJQ==}
     peerDependencies:
       '@types/react': '>=16'
@@ -2839,7 +2839,7 @@ packages:
     dependencies:
       '@types/hast': 2.3.7
       '@types/prop-types': 15.7.9
-      '@types/react': 18.2.6
+      '@types/react': 18.2.30
       '@types/unist': 2.0.9
       comma-separated-tokens: 2.0.3
       hast-util-whitespace: 2.0.1
