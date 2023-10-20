@@ -11,16 +11,25 @@ variable "compute_network" {
   type = string
 }
 
-variable "compute_instances" {
-  type = map(object({
-    type     = string
-    replicas = number
-    zones    = list(string)
+variable "compute_subnetwork" {
+  type = string
+}
 
-    ip_cidr_range = string
-  }))
+variable "compute_region" {
+  type = string
+}
 
-  description = "List deployment locations for the application."
+variable "compute_region_zones" {
+  type        = string
+  description = "List of zones in the region defined in `compute_region` where replicas should be deployed."
+}
+
+variable "compute_instance_replicas" {
+  type = string
+}
+
+variable "compute_instance_type" {
+  type = string
 }
 
 ################################################################################

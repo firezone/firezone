@@ -1,4 +1,9 @@
 # Deploy our dogfood gateways
+locals {
+  gateways_region = "n1-standard-1"
+  gateways_zones  = ["us-central1-b"]
+}
+
 resource "google_compute_network" "gateways" {
   project = module.google-cloud-project.project.project_id
   name    = "gateways"
@@ -12,24 +17,31 @@ resource "google_compute_network" "gateways" {
   ]
 }
 
+resource "google_compute_subnetwork" "gateways" {
+  project = module.google-cloud-project.project.project_id
+
+  name   = "gateways"
+  region = local.gateways_region
+
+  network = google_compute_network.gateways.self_link
+
+  stack_type               = "IPV4_IPV6"
+  ip_cidr_range            = "10.101.0.0/24"
+  ipv6_access_type         = "EXTERNAL"
+  private_ip_google_access = true
+}
+
 module "gateways" {
   count = var.gateway_portal_token != null ? 1 : 0
 
   source     = "../../modules/gateway-app"
   project_id = module.google-cloud-project.project.project_id
 
-  compute_network = "projects/${module.google-cloud-project.project.project_id}/global/networks/default"
+  compute_network    = google_compute_network.gateways.self_link
+  compute_subnetwork = google_compute_subnetwork.gateways.self_link
 
-  compute_instances = {
-    "us-central1" = {
-      type     = "n1-standard-1"
-      replicas = 2
-      zones    = ["us-central1-b"]
-
-      network       = google_compute_network.gateways.self_link
-      ip_cidr_range = "10.200.0.0/24"
-    }
-  }
+  compute_region       = local.gateways_region
+  compute_region_zones = local.gateways_zones
 
   container_registry = module.google-artifact-registry.url
 

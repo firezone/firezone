@@ -117,33 +117,15 @@ resource "google_project_iam_member" "cloudtrace" {
   member = "serviceAccount:${google_service_account.application.email}"
 }
 
-resource "google_compute_subnetwork" "gateways" {
-  for_each = var.compute_instances
-
-  project = var.project_id
-
-  name   = "gateways-${each.key}"
-  region = each.key
-
-  network = var.compute_network
-
-  stack_type               = "IPV4_IPV6"
-  ip_cidr_range            = each.value.ip_cidr_range
-  ipv6_access_type         = "EXTERNAL"
-  private_ip_google_access = true
-}
-
 # Deploy app
 resource "google_compute_instance_template" "application" {
-  for_each = var.compute_instances
-
   project = var.project_id
 
-  name_prefix = "${local.application_name}-${each.key}-"
+  name_prefix = "${local.application_name}-"
 
   description = "This template is used to create ${local.application_name} instances."
 
-  machine_type = each.value.type
+  machine_type = var.compute_instance_type
 
   can_ip_forward = true
 
@@ -167,7 +149,7 @@ resource "google_compute_instance_template" "application" {
   }
 
   network_interface {
-    subnetwork = google_compute_subnetwork.gateways[each.key].self_link
+    subnetwork = var.compute_subnetwork
 
     stack_type = "IPV4_IPV6"
 
@@ -280,24 +262,22 @@ resource "google_compute_instance_template" "application" {
 
 # Use template to deploy zonal instance group
 resource "google_compute_region_instance_group_manager" "application" {
-  for_each = var.compute_instances
-
   project = var.project_id
 
-  name = "${local.application_name}-group-${each.key}"
+  name = "${local.application_name}-${var.compute_region}"
 
   base_instance_name = local.application_name
 
-  region                    = each.key
-  distribution_policy_zones = each.value.zones
+  region                    = var.compute_region
+  distribution_policy_zones = var.compute_region_zones
 
-  target_size = each.value.replicas
+  target_size = var.compute_instance_replicas
 
   wait_for_instances        = true
   wait_for_instances_status = "STABLE"
 
   version {
-    instance_template = google_compute_instance_template.application[each.key].self_link
+    instance_template = google_compute_instance_template.application.self_link
   }
 
   # named_port {
@@ -335,7 +315,7 @@ resource "google_compute_region_instance_group_manager" "application" {
 #   project = var.project_id
 
 #   name    = "${local.application_name}-healthcheck"
-#   network = google_compute_network.network.self_link
+#   network = var.compute_network
 
 #   source_ranges = local.google_health_check_ip_ranges
 #   target_tags   = ["app-${local.application_name}"]
