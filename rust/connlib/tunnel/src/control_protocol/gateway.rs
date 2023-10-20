@@ -130,10 +130,6 @@ where
                             for ip in peer_config.ips {
                                 peers_by_ip.insert(ip, Arc::clone(&peer));
                             }
-
-                            for (resource, expires_at) in tunnel.role_state.lock().remove_awaiting_client_resources(&client_id) {
-                                peer.add_resource(resource, expires_at);
-                            }
                         }
 
                         if let Some(conn) = tunnel.peer_connections.lock().get(&client_id) {
@@ -170,21 +166,13 @@ where
         client_id: ClientId,
         expires_at: DateTime<Utc>,
     ) {
-        // We need to hold the write mutex for peers_by_ip.
-        // this is needed because otherwise the peer can be created while
-        // we call add_awaiting_client_resource. Creating a race condition
-        // where the resources are never added to the peer
-        let mut peers_by_ip = self.peers_by_ip.write();
-        if let Some(peer) = peers_by_ip
+        if let Some(peer) = self
+            .peers_by_ip
+            .write()
             .iter_mut()
             .find_map(|(_, p)| (p.conn_id == client_id).then_some(p))
         {
             peer.add_resource(resource, expires_at);
-        } else {
-            // Holding two mutexes here
-            self.role_state
-                .lock()
-                .add_awaiting_client_resource(client_id, resource, expires_at);
-        };
+        }
     }
 }

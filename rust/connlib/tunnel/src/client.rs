@@ -23,7 +23,7 @@ use hickory_resolver::lookup::Lookup;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -239,7 +239,7 @@ pub struct ClientState {
 
     // TODO: Make private
     pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
-    pub gateway_awaiting_connection: HashMap<GatewayId, Vec<IpNetwork>>,
+    pub gateway_awaiting_connection: HashSet<GatewayId>,
 
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
 
@@ -284,47 +284,32 @@ impl ClientState {
             return Err(Error::UnexpectedConnectionDetails);
         }
 
-        self.resources_gateways.insert(resource, gateway);
-
-        let found = {
-            let peer = connected_peers
-                .iter()
-                .find_map(|(_, p)| (p.conn_id == gateway).then_some(p))
-                .cloned();
-            if let Some(peer) = peer {
-                for ip in desc.ips() {
-                    tracing::trace!("deleteme: adding {ip}");
-                    peer.add_allowed_ip(ip);
-                    connected_peers.insert(ip, Arc::clone(&peer));
-                }
-                true
-            } else {
-                false
-            }
-        };
-
-        if found {
+        if self.gateway_awaiting_connection.contains(&gateway) {
             self.awaiting_connection.remove(&resource);
             self.awaiting_connection_timers.remove(resource);
+            return Err(Error::PendingConnection);
+        }
 
-            Ok(Some(ReuseConnection {
+        self.resources_gateways.insert(resource, gateway);
+
+        let peer = connected_peers
+            .iter()
+            .find_map(|(_, p)| (p.conn_id == gateway).then_some(p))
+            .cloned();
+        if let Some(peer) = peer {
+            for ip in desc.ips() {
+                peer.add_allowed_ip(ip);
+                connected_peers.insert(ip, Arc::clone(&peer));
+            }
+            self.awaiting_connection.remove(&resource);
+            self.awaiting_connection_timers.remove(resource);
+            return Ok(Some(ReuseConnection {
                 resource_id: resource,
                 gateway_id: gateway,
-            }))
-        } else {
-            let entry = self.gateway_awaiting_connection.entry(gateway).or_default();
-            let is_new = entry.is_empty();
-            entry.extend(desc.ips());
-
-            if is_new {
-                Ok(None)
-            } else {
-                Ok(Some(ReuseConnection {
-                    resource_id: resource,
-                    gateway_id: gateway,
-                }))
-            }
+            }));
         }
+
+        Ok(None)
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -351,17 +336,14 @@ impl ClientState {
 
         let resource_id = resource.id();
 
-        let connected_gateway_ids = self
+        let gateways = self
             .gateway_awaiting_connection
-            .clone()
-            .into_keys()
-            .chain(self.resources_gateways.values().cloned())
+            .iter()
+            .chain(self.resources_gateways.values())
+            .copied()
             .collect();
 
-        tracing::trace!(
-            gateways = ?connected_gateway_ids,
-            "connected_gateways"
-        );
+        tracing::trace!(?gateways, "connected_gateways");
 
         match self.awaiting_connection_timers.try_push(
             resource_id,
@@ -385,7 +367,7 @@ impl ClientState {
             AwaitingConnectionDetails {
                 total_attemps: 0,
                 response_received: false,
-                gateways: connected_gateway_ids,
+                gateways,
             },
         );
     }
