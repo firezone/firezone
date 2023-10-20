@@ -269,7 +269,7 @@ resource "google_compute_region_instance_group_manager" "application" {
   base_instance_name = local.application_name
 
   region                    = var.compute_region
-  distribution_policy_zones = var.compute_region_zones
+  distribution_policy_zones = var.compute_instance_availability_zones
 
   target_size = var.compute_instance_replicas
 
