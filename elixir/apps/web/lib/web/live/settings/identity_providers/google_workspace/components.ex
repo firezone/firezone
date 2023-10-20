@@ -7,7 +7,17 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
       <.form for={@form} phx-change={:change} phx-submit={:submit}>
         <div class="mb-4">
           <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">
-            Step 1. Configure OAuth consent screen
+            Step 1. Enable Admin SDK API
+          </h2>
+          Please visit following link and enable Admin SDK API for your Google Workspace account:
+          <a href="https://console.cloud.google.com/apis/library/admin.googleapis.com" target="_blank">
+            https://console.cloud.google.com/apis/library/admin.googleapis.com
+          </a>
+        </div>
+
+        <div class="mb-4">
+          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">
+            Step 2. Configure OAuth consent screen
           </h2>
           Please make sure that following scopes are added to the OAuth application permissions:
           <.code_block
@@ -30,7 +40,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
 
         <div class="mb-4">
           <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">
-            Step 2: Create OAuth client
+            Step 3: Create OAuth client
           </h2>
           Please make sure that OAuth client has following redirect URL's whitelisted:
           <.code_block
@@ -52,7 +62,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
 
         <div class="mb-4">
           <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">
-            3. Configure client
+            Step 4. Configure client
           </h2>
 
           <.base_error form={@form} field={:base} />
