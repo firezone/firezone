@@ -286,19 +286,6 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        match self.gateway_awaiting_connection.entry(gateway) {
-            Entry::Occupied(mut occupied) => {
-                occupied.get_mut().extend(desc.ips());
-                return Ok(Some(ReuseConnection {
-                    resource_id: resource,
-                    gateway_id: gateway,
-                }));
-            }
-            Entry::Vacant(vacant) => {
-                vacant.insert(vec![]);
-            }
-        }
-
         let found = {
             let peer = connected_peers
                 .iter()
@@ -306,6 +293,7 @@ impl ClientState {
                 .cloned();
             if let Some(peer) = peer {
                 for ip in desc.ips() {
+                    tracing::trace!("deleteme: adding {ip}");
                     peer.add_allowed_ip(ip);
                     connected_peers.insert(ip, Arc::clone(&peer));
                 }
@@ -319,13 +307,24 @@ impl ClientState {
             self.awaiting_connection.remove(&resource);
             self.awaiting_connection_timers.remove(resource);
 
-            return Ok(Some(ReuseConnection {
+            Ok(Some(ReuseConnection {
                 resource_id: resource,
                 gateway_id: gateway,
-            }));
-        }
+            }))
+        } else {
+            let entry = self.gateway_awaiting_connection.entry(gateway).or_default();
+            let is_new = entry.is_empty();
+            entry.extend(desc.ips());
 
-        Ok(None)
+            if is_new {
+                Ok(None)
+            } else {
+                Ok(Some(ReuseConnection {
+                    resource_id: resource,
+                    gateway_id: gateway,
+                }))
+            }
+        }
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
