@@ -454,9 +454,9 @@ defmodule Domain.Config.Definitions do
   defconfig(
     :clients_upstream_dns,
     {:json_array, {:embed, Domain.Config.Configuration.ClientsUpstreamDNS},
-     validate_unique: true},
+     validate_unique: false},
     default: [],
-    changeset: {Domain.Config.Configuration.Changeset, :clients_upstream_dns_changeset, []}
+    changeset: {Domain.Config.Configuration.ClientsUpstreamDNS, :changeset, []}
   )
 
   ##############################################
