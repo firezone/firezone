@@ -283,7 +283,7 @@ resource "google_compute_region_instance_group_manager" "application" {
 
   update_policy {
     type           = "PROACTIVE"
-    minimal_action = "RESTART"
+    minimal_action = "REPLACE"
 
     max_unavailable_fixed = 1
     max_surge_fixed       = max(1, var.compute_instance_replicas - 1)

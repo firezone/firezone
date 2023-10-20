@@ -120,6 +120,8 @@ runcmd:
   - sudo apt install docker.io
   - sudo usermod -aG docker $USER
   - sudo newgrp docker
+  - sudo systemctl enable docker.service
+  - sudo systemctl enable containerd.service
   - sudo systemctl daemon-reload
   - sudo systemctl start otel-collector.service
   - sudo systemctl start gateway.service
