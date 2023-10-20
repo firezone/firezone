@@ -365,6 +365,8 @@ resource "google_compute_security_policy" "default" {
 
   name = local.application_name
 
+  type = "CLOUD_ARMOR"
+
   rule {
     action   = "allow"
     priority = "2147483647"
@@ -379,6 +381,8 @@ resource "google_compute_security_policy" "default" {
 
     description = "default allow rule"
   }
+
+  # TODO: Configure more WAF rules
 
   depends_on = [
     google_project_service.compute,
