@@ -5,7 +5,6 @@ locals {
   application_labels = merge({
     managed_by  = "terraform"
     application = local.application_name
-    version     = local.application_version
   }, var.application_labels)
 
   google_health_check_ip_ranges = [
@@ -143,7 +142,7 @@ resource "google_compute_subnetwork" "subnetwork" {
   network = google_compute_network.network.self_link
 
   stack_type               = "IPV4_IPV6"
-  ip_cidr_range            = "10.128.0.0/20"
+  ip_cidr_range            = "10.${129 + index(keys(var.instances), each.key)}.0.0/24"
   ipv6_access_type         = "EXTERNAL"
   private_ip_google_access = true
 }
@@ -166,6 +165,7 @@ resource "google_compute_instance_template" "application" {
 
   labels = merge({
     container-vm = data.google_compute_image.coreos.name
+    version      = local.application_version
   }, local.application_labels)
 
   scheduling {

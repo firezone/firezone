@@ -21,7 +21,13 @@ variable "immutable_tags" {
 }
 
 variable "store_tagged_artifacts_for" {
-  description = "Sets the maximum lifetime of artifacts, eg. `30d`. Keep empty to set to `null` to never delete them."
+  description = "Sets the maximum lifetime of artifacts, eg. `300s`. Keep empty to set to `null` to never delete them."
+  type        = string
+  default     = null
+}
+
+variable "store_untagged_artifacts_for" {
+  description = "Sets the maximum lifetime of artifacts, eg. `300s`. Keep empty to set to `null` to never delete them."
   type        = string
   default     = null
 }

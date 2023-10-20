@@ -1,5 +1,5 @@
 resource "google_monitoring_notification_channel" "slack" {
-  project = module.google-cloud-project.project.project_id
+  project = var.project_id
 
   display_name = "Slack: #alerts-infra"
   type         = "slack"
@@ -14,7 +14,7 @@ resource "google_monitoring_notification_channel" "slack" {
 }
 
 resource "google_monitoring_uptime_check_config" "api-https" {
-  project = module.google-cloud-project.project.project_id
+  project = var.project_id
 
   display_name = "api-https"
   timeout      = "60s"
@@ -36,8 +36,8 @@ resource "google_monitoring_uptime_check_config" "api-https" {
     type = "uptime_url"
 
     labels = {
-      project_id = module.google-cloud-project.project.project_id
-      host       = module.api.host
+      project_id = var.project_id
+      host       = var.api_host
     }
   }
 
@@ -55,7 +55,7 @@ resource "google_monitoring_uptime_check_config" "api-https" {
 }
 
 resource "google_monitoring_uptime_check_config" "web-https" {
-  project = module.google-cloud-project.project.project_id
+  project = var.project_id
 
   display_name = "web-https"
   timeout      = "60s"
@@ -78,8 +78,8 @@ resource "google_monitoring_uptime_check_config" "web-https" {
     type = "uptime_url"
 
     labels = {
-      project_id = module.google-cloud-project.project.project_id
-      host       = module.web.host
+      project_id = var.project_id
+      host       = var.web_host
     }
   }
 
@@ -97,7 +97,7 @@ resource "google_monitoring_uptime_check_config" "web-https" {
 }
 
 resource "google_monitoring_alert_policy" "instances_high_cpu_policy" {
-  project = module.google-cloud-project.project.project_id
+  project = var.project_id
 
   display_name = "High Instance CPU utilization"
   combiner     = "OR"
@@ -134,7 +134,7 @@ resource "google_monitoring_alert_policy" "instances_high_cpu_policy" {
 }
 
 resource "google_monitoring_alert_policy" "sql_high_cpu_policy" {
-  project = module.google-cloud-project.project.project_id
+  project = var.project_id
 
   display_name = "High Cloud SQL CPU utilization"
   combiner     = "OR"
@@ -171,7 +171,7 @@ resource "google_monitoring_alert_policy" "sql_high_cpu_policy" {
 }
 
 resource "google_monitoring_alert_policy" "sql_disk_utiliziation_policy" {
-  project = module.google-cloud-project.project.project_id
+  project = var.project_id
 
   display_name = "High Cloud SQL Disk utilization"
   combiner     = "OR"
