@@ -734,7 +734,7 @@ dependencies = [
  "parking_lot",
  "rand",
  "rand_core",
- "ring 0.17.4",
+ "ring 0.17.5",
  "rtnetlink",
  "secrecy",
  "serde",
@@ -2919,9 +2919,9 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.17.4"
+version = "0.17.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fce3045ffa7c981a6ee93f640b538952e155f1ae3a1a02b84547fc7a56b7059a"
+checksum = "fb0205304757e5d899b9c2e448b867ffd03ae7f988002e47cd24954391394d0b"
 dependencies = [
  "cc",
  "getrandom",
@@ -3406,7 +3406,7 @@ dependencies = [
  "lazy_static",
  "md-5",
  "rand",
- "ring 0.17.4",
+ "ring 0.17.5",
  "subtle",
  "thiserror",
  "tokio",
@@ -3585,18 +3585,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.49"
+version = "1.0.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1177e8c6d7ede7afde3585fd2513e611227efd6481bd78d2e82ba1ce16557ed4"
+checksum = "f9a7210f5c9a7156bb50aa36aed4c95afb51df0df00713949448cf9e97d382d2"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.49"
+version = "1.0.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10712f02019e9288794769fba95cd6847df9874d49d871d062172f9dd41bc4cc"
+checksum = "266b2e40bc00e5a6c09c3584011e08b06f123c00362c92b975ba9843aaaa14b8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3810,9 +3810,9 @@ checksum = "b6bc1c9ce2b5135ac7f93c72918fc37feb872bdc6a5533a8b85eb4b86bfdae52"
 
 [[package]]
 name = "tracing"
-version = "0.1.39"
+version = "0.1.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee2ef2af84856a50c1d430afce2fdded0a4ec7eda868db86409b4543df0797f9"
+checksum = "c3523ab5a71916ccf420eebdf5521fcef02141234bbc0b8a49f2fdc4544364ef"
 dependencies = [
  "log",
  "pin-project-lite",
@@ -4034,7 +4034,7 @@ dependencies = [
  "log",
  "md-5",
  "rand",
- "ring 0.17.4",
+ "ring 0.17.5",
  "stun",
  "thiserror",
  "tokio",
@@ -4314,7 +4314,7 @@ dependencies = [
  "rand",
  "rcgen",
  "regex",
- "ring 0.17.4",
+ "ring 0.17.5",
  "rtcp",
  "rtp",
  "rustls",
@@ -4374,7 +4374,7 @@ dependencies = [
  "rand",
  "rand_core",
  "rcgen",
- "ring 0.17.4",
+ "ring 0.17.5",
  "rustls",
  "sec1",
  "serde",
