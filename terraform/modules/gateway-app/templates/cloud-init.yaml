@@ -96,7 +96,7 @@ write_files:
       ${key}=${value}
       %{ endfor ~}
 
-  - path: /etc/systemd/system/otel-collector.service
+  - path: /etc/systemd/system/gateway.service
     permissions: "0644"
     owner: root
     content: |
