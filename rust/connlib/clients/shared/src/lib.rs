@@ -260,9 +260,9 @@ fn upload_interval() -> Interval {
 
 /// Parses an interval from the _compile-time_ env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS`.
 ///
-/// If not present or parsing as u64 fails, we fall back to a default interval of 1 hour.
+/// If not present or parsing as u64 fails, we fall back to a default interval of 5 minutes.
 fn upload_interval_duration_from_env_or_default() -> Duration {
-    const DEFAULT: Duration = Duration::from_secs(60 * 60);
+    const DEFAULT: Duration = Duration::from_secs(60 * 5);
 
     let Some(interval) = option_env!("CONNLIB_LOG_UPLOAD_INTERVAL_SECS") else {
         tracing::warn!(interval = ?DEFAULT, "Env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS` was not set during compile-time, falling back to default");

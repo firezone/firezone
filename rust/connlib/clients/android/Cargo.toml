@@ -6,7 +6,7 @@ edition = "2021"
 
 [lib]
 name = "connlib"
-crate-type = ["cdylib"]
+crate-type = ["lib", "cdylib"]
 doc = false
 
 [features]

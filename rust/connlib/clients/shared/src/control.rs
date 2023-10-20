@@ -229,8 +229,10 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 };
 
                 tokio::spawn(async move {
-                    if let Err(e) = upload(path, url).await {
+                    if let Err(e) = upload(path.clone(), url).await {
                         tracing::warn!("Failed to upload log file: {e}")
+                    } else if let Err(e) = tokio::fs::remove_file(&path.clone()).await {
+                        tracing::warn!("Failed to remove log file: {e}")
                     }
                 });
             }
