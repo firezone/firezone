@@ -92,8 +92,8 @@ write_files:
     permissions: "0644"
     owner: root
     content: |
-      %{ for key, value in container_environment ~}
-      ${key}=${value}
+      %{ for env in container_environment ~}
+      ${env.name}=${env.value}
       %{ endfor ~}
 
   - path: /etc/systemd/system/gateway.service
