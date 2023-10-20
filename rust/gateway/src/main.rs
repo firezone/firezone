@@ -10,7 +10,9 @@ use futures::{future, TryFutureExt};
 use phoenix_channel::SecureUrl;
 use secrecy::{Secret, SecretString};
 use std::convert::Infallible;
+use std::pin::pin;
 use std::sync::Arc;
+use tokio::signal::ctrl_c;
 use tokio_tungstenite::tungstenite;
 use tracing_subscriber::layer;
 use url::Url;
@@ -31,7 +33,7 @@ async fn main() -> Result<()> {
     )?;
     let tunnel = Arc::new(Tunnel::new(private_key, CallbackHandler).await?);
 
-    tokio::spawn(backoff::future::retry_notify(
+    let task = pin!(backoff::future::retry_notify(
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(None)
             .build(),
@@ -40,8 +42,11 @@ async fn main() -> Result<()> {
             tracing::warn!(retry_in = ?t, "Error connecting to portal: {error:#}");
         },
     ));
+    let ctrl_c = pin!(ctrl_c().map_err(anyhow::Error::new));
 
-    tokio::signal::ctrl_c().await?;
+    future::try_select(task, ctrl_c)
+        .await
+        .map_err(|e| e.factor_first().0)?;
 
     Ok(())
 }
@@ -65,7 +70,9 @@ async fn run(
 
     let mut eventloop = Eventloop::new(tunnel, portal);
 
-    future::poll_fn(|cx| eventloop.poll(cx)).await
+    future::poll_fn(|cx| eventloop.poll(cx))
+        .await
+        .context("Eventloop failed")
 }
 
 /// Maps our [`anyhow::Error`] to either a permanent or transient [`backoff`] error.
