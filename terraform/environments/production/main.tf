@@ -710,6 +710,32 @@ module "relays" {
   portal_token         = var.relay_portal_token
 }
 
+resource "google_compute_firewall" "iap-ssh" {
+  project = module.google-cloud-project.project.project_id
+
+  name    = "staging-iap-ssh"
+  network = module.relays[0].network
+
+  allow {
+    protocol = "tcp"
+    ports    = [22]
+  }
+
+  allow {
+    protocol = "udp"
+    ports    = [22]
+  }
+
+  allow {
+    protocol = "sctp"
+    ports    = [22]
+  }
+
+  # Only allows connections using IAP
+  source_ranges = ["35.235.240.0/20"]
+  target_tags   = concat(module.web.target_tags, module.api.target_tags, module.relays[0] ? module.relays[0].target_tags : [])
+}
+
 module "ops" {
   source = "../../modules/google-cloud-ops"
 
