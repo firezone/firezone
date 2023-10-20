@@ -19,8 +19,8 @@ variable "compute_region" {
   type = string
 }
 
-variable "compute_region_zones" {
-  type        = string
+variable "compute_instance_availability_zones" {
+  type        = list(string)
   description = "List of zones in the region defined in `compute_region` where replicas should be deployed."
 }
 

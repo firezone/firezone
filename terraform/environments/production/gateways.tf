@@ -1,6 +1,6 @@
 # Deploy our dogfood gateways
 locals {
-  gateways_region = "n1-standard-1"
+  gateways_region = "us-central1"
   gateways_zones  = ["us-central1-b"]
 }
 
@@ -40,9 +40,9 @@ module "gateways" {
   compute_network    = google_compute_network.gateways.self_link
   compute_subnetwork = google_compute_subnetwork.gateways.self_link
 
-  compute_instance_type = "n1-standard-1"
-  compute_region        = local.gateways_region
-  compute_region_zones  = local.gateways_zones
+  compute_instance_type               = "n1-standard-1"
+  compute_region                      = local.gateways_region
+  compute_instance_availability_zones = local.gateways_zones
 
   compute_instance_replicas = 2
 
@@ -155,7 +155,7 @@ resource "google_compute_firewall" "gateways-ssh-ipv4" {
   project = module.google-cloud-project.project.project_id
 
   name    = "gateways-ssh-ipv4"
-  network = module.google-cloud-vpc.self_link
+  network = google_compute_network.gateways.self_link
 
   allow {
     protocol = "tcp"
