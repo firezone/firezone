@@ -734,7 +734,7 @@ dependencies = [
  "parking_lot",
  "rand",
  "rand_core",
- "ring 0.17.4",
+ "ring 0.17.5",
  "rtnetlink",
  "secrecy",
  "serde",
@@ -2919,9 +2919,9 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.17.4"
+version = "0.17.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fce3045ffa7c981a6ee93f640b538952e155f1ae3a1a02b84547fc7a56b7059a"
+checksum = "fb0205304757e5d899b9c2e448b867ffd03ae7f988002e47cd24954391394d0b"
 dependencies = [
  "cc",
  "getrandom",
@@ -3406,7 +3406,7 @@ dependencies = [
  "lazy_static",
  "md-5",
  "rand",
- "ring 0.17.4",
+ "ring 0.17.5",
  "subtle",
  "thiserror",
  "tokio",
@@ -4034,7 +4034,7 @@ dependencies = [
  "log",
  "md-5",
  "rand",
- "ring 0.17.4",
+ "ring 0.17.5",
  "stun",
  "thiserror",
  "tokio",
@@ -4314,7 +4314,7 @@ dependencies = [
  "rand",
  "rcgen",
  "regex",
- "ring 0.17.4",
+ "ring 0.17.5",
  "rtcp",
  "rtp",
  "rustls",
@@ -4374,7 +4374,7 @@ dependencies = [
  "rand",
  "rand_core",
  "rcgen",
- "ring 0.17.4",
+ "ring 0.17.5",
  "rustls",
  "sec1",
  "serde",
