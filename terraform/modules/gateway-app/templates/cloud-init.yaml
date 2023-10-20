@@ -88,6 +88,30 @@ write_files:
       ExecStop=/usr/bin/docker stop otel-collector
       ExecStopPost=/usr/bin/docker rm otel-collector
 
+  - path: /etc/firezone-gateway/.env
+    permissions: "0644"
+    owner: root
+    content: |
+      %{ for env in container_environment ~}
+      ${env.key}=${env.value}
+      %{ endfor ~}
+
+  - path: /etc/systemd/system/otel-collector.service
+    permissions: "0644"
+    owner: root
+    content: |
+      [Unit]
+      Description=Start an Firezone Gateway container
+
+      [Service]
+      TimeoutStartSec=0
+      Restart=always
+      ExecStartPre=/usr/bin/docker pull ${container_image}
+      ExecStart=/usr/bin/docker run --rm -u 2000 --name=${container_name} --network host --env-file /etc/firezone-gateway/.env ${container_image}
+      ExecStop=/usr/bin/docker stop gateway
+      ExecStopPost=/usr/bin/docker rm gateway
+
 runcmd:
   - systemctl daemon-reload
   - systemctl start otel-collector.service
+  - systemctl start gateway.service

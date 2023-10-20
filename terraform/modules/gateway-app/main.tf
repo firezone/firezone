@@ -50,8 +50,8 @@ locals {
 
 # Fetch most recent COS image
 data "google_compute_image" "coreos" {
-  family  = "cos-109-lts"
-  project = "cos-cloud"
+  family  = "debian-12"
+  project = "debian-cloud"
 }
 
 # Create IAM role for the application instances
@@ -185,21 +185,11 @@ resource "google_compute_instance_template" "application" {
   }
 
   metadata = {
-    gce-container-declaration = yamlencode({
-      spec = {
-        containers = [{
-          name  = local.application_name != null ? local.application_name : var.image
-          image = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
-          env   = local.environment_variables
-        }]
-
-        volumes = []
-
-        restartPolicy = "Always"
-      }
+    user-data = templatefile("${path.module}/templates/cloud-init.yaml", {
+      container_name        = local.application_name != null ? local.application_name : var.image
+      container_image       = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
+      container_environment = local.environment_variables
     })
-
-    user-data = templatefile("${path.module}/templates/cloud-init.yaml", {})
 
     google-logging-enabled       = "true"
     google-logging-use-fluentbit = "true"
