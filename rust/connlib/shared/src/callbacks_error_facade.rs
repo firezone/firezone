@@ -2,6 +2,7 @@ use crate::messages::ResourceDescription;
 use crate::{Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::path::PathBuf;
 
 // Avoids having to map types for Windows
 type RawFd = i32;
@@ -92,6 +93,10 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         }
         // There's nothing we really want to do if `on_error` fails.
         Ok(())
+    }
+
+    fn roll_log_file(&self) -> Option<PathBuf> {
+        self.0.roll_log_file()
     }
 
     fn get_system_default_resolvers(
