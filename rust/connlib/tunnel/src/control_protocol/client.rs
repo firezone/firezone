@@ -141,22 +141,13 @@ where
                 ));
 
                 {
-                    let mut role_state = tunnel.role_state.lock();
-                    // Watch out! we need 2 locks, make sure you don't lock both at the same time anywhere else
                     let mut peers_by_ip = tunnel.peers_by_ip.write();
-
-                    if let Some(awaiting_ips) =
-                        role_state.gateway_awaiting_connection.remove(&gateway_id)
-                    {
-                        for ip in awaiting_ips {
-                            peer.add_allowed_ip(ip);
-                            peers_by_ip.insert(ip, Arc::clone(&peer));
-                        }
-                    }
 
                     for ip in peer_config.ips {
                         peers_by_ip.insert(ip, Arc::clone(&peer));
                     }
+
+                    tunnel.role_state.lock().gateway_awaiting_connection.remove(&gateway_id);
                 }
 
                 if let Some(conn) = tunnel.peer_connections.lock().get(&gateway_id) {

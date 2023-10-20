@@ -30,9 +30,9 @@ use webrtc::{
 
 use futures::channel::mpsc;
 use futures_util::{SinkExt, StreamExt};
-use std::hash::Hash;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
+use std::{collections::HashSet, hash::Hash};
 use tokio::time::Interval;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
@@ -341,7 +341,7 @@ pub enum Event<TId> {
     },
     ConnectionIntent {
         resource: ResourceDescription,
-        connected_gateway_ids: Vec<GatewayId>,
+        connected_gateway_ids: HashSet<GatewayId>,
         reference: usize,
     },
     DnsQuery(DnsQuery<'static>),

@@ -123,10 +123,13 @@ where
                             Some((resource, expires_at)),
                         ));
 
-                        let mut peers_by_ip = tunnel.peers_by_ip.write();
+                        // Holding two mutexes here
+                        {
+                            let mut peers_by_ip = tunnel.peers_by_ip.write();
 
-                        for ip in peer_config.ips {
-                            peers_by_ip.insert(ip, Arc::clone(&peer));
+                            for ip in peer_config.ips {
+                                peers_by_ip.insert(ip, Arc::clone(&peer));
+                            }
                         }
 
                         if let Some(conn) = tunnel.peer_connections.lock().get(&client_id) {
