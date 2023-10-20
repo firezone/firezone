@@ -16,6 +16,8 @@ variable "compute_instances" {
     type     = string
     replicas = number
     zones    = list(string)
+
+    ip_cidr_range = string
   }))
 
   description = "List deployment locations for the application."

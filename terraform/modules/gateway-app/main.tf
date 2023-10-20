@@ -117,9 +117,25 @@ resource "google_project_iam_member" "cloudtrace" {
   member = "serviceAccount:${google_service_account.application.email}"
 }
 
+resource "google_compute_subnetwork" "gateways" {
+  for_each = var.compute_instances
+
+  project = var.project_id
+
+  name   = "gateways-${each.key}"
+  region = each.key
+
+  network = var.compute_network
+
+  stack_type               = "IPV4_IPV6"
+  ip_cidr_range            = each.value.ip_cidr_range
+  ipv6_access_type         = "EXTERNAL"
+  private_ip_google_access = true
+}
+
 # Deploy app
 resource "google_compute_instance_template" "application" {
-  for_each = var.instances
+  for_each = var.compute_instances
 
   project = var.project_id
 
@@ -151,7 +167,7 @@ resource "google_compute_instance_template" "application" {
   }
 
   network_interface {
-    network = var.compute_network
+    subnetwork = google_compute_subnetwork.gateways[each.key].self_link
 
     stack_type = "IPV4_IPV6"
 
@@ -329,65 +345,3 @@ resource "google_compute_region_instance_group_manager" "application" {
 #     ports    = [var.health_check.port]
 #   }
 # }
-
-# Allow inbound traffic
-# resource "google_compute_firewall" "ingress-ipv4" {
-#   project = var.project_id
-
-#   name      = "${local.application_name}-ingress-ipv4"
-#   network   = google_compute_network.network.self_link
-#   direction = "INGRESS"
-
-#   target_tags   = ["app-${local.application_name}"]
-#   source_ranges = ["0.0.0.0/0"]
-
-#   allow {
-#     protocol = "udp"
-#   }
-# }
-
-# resource "google_compute_firewall" "ingress-ipv6" {
-#   project = var.project_id
-
-#   name      = "${local.application_name}-ingress-ipv6"
-#   network   = google_compute_network.network.self_link
-#   direction = "INGRESS"
-
-#   target_tags   = ["app-${local.application_name}"]
-#   source_ranges = ["::/0"]
-
-#   allow {
-#     protocol = "udp"
-#   }
-# }
-
-# Allow outbound traffic
-resource "google_compute_firewall" "egress-ipv4" {
-  project = var.project_id
-
-  name      = "${local.application_name}-egress-ipv4"
-  network   = google_compute_network.network.self_link
-  direction = "EGRESS"
-
-  target_tags        = ["app-${local.application_name}"]
-  destination_ranges = ["0.0.0.0/0"]
-
-  allow {
-    protocol = "udp"
-  }
-}
-
-resource "google_compute_firewall" "egress-ipv6" {
-  project = var.project_id
-
-  name      = "${local.application_name}-egress-ipv6"
-  network   = google_compute_network.network.self_link
-  direction = "EGRESS"
-
-  target_tags        = ["app-${local.application_name}"]
-  destination_ranges = ["::/0"]
-
-  allow {
-    protocol = "udp"
-  }
-}
