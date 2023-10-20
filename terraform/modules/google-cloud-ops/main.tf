@@ -110,7 +110,7 @@ resource "google_monitoring_alert_policy" "api-downtime" {
     display_name = "Uptime Health Check on api-https"
 
     condition_threshold {
-      filter     = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${google_monitoring_uptime_check_config.api-https.id}\""
+      filter     = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${reverse(split("/", google_monitoring_uptime_check_config.api-https.id))[0]}\""
       comparison = "COMPARISON_GT"
 
       threshold_value = 1
@@ -152,7 +152,7 @@ resource "google_monitoring_alert_policy" "web-downtime" {
     display_name = "Uptime Health Check on web-https"
 
     condition_threshold {
-      filter     = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${google_monitoring_uptime_check_config.web-https.id}\""
+      filter     = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${reverse(split("/", google_monitoring_uptime_check_config.web-https.id))[0]}\""
       comparison = "COMPARISON_GT"
 
       threshold_value = 1
