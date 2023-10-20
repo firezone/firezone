@@ -84,6 +84,7 @@ if [[ $CONFIGURATION == "Release" ]]; then
   CONFIGURATION_ARGS="--release"
 else
   echo "${MESSAGE} for Debug"
+  export CONNLIB_LOG_UPLOAD_INTERVAL_SECS=300
 fi
 
 if [[ -n "$CONNLIB_TARGET_DIR" ]]; then
