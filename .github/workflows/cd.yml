@@ -18,7 +18,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     secrets: inherit
 
-  deploy:
+  deploy-staging:
     runs-on: ubuntu-22.04
     # if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
@@ -103,7 +103,7 @@ jobs:
           notify_when: "failure"
 
   update-release-draft:
-    needs: deploy
+    needs: deploy-staging
     runs-on: ubuntu-22.04
     permissions:
       # write permission is required to create a github release
@@ -163,7 +163,8 @@ jobs:
         run: |
           dest="$BINARY_DEST_PATH-$VERSION"
           cross build --release -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
-          cp $CARGO_OUTPUT_FILE $dest
+          mv $CARGO_OUTPUT_FILE $dest
+          cp $dest ${{ matrix.name.package }}
           sha256sum $dest > $dest.sha256sum.txt
       - name: Push binaries
         uses: softprops/action-gh-release@v1

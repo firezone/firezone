@@ -1,5 +1,6 @@
 # Global args to use in build commands
 ARG ALPINE_VERSION="3.18"
+ARG PACKAGE
 
 FROM lukemathwalker/cargo-chef:latest-rust-alpine${ALPINE_VERSION} as chef
 
@@ -26,24 +27,26 @@ FROM alpine:${ALPINE_VERSION} AS debug
 WORKDIR /bin
 ENV RUST_BACKTRACE=1
 COPY ./docker-init.sh .
-ARG TARGET
 ARG PACKAGE
 # Needed only by gateway for masquerading
 RUN \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables || true
+ARG TARGET
 COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .
 ENTRYPOINT ["docker-init.sh"]
-CMD ${PACKAGE}
+ENV PACKAGE=${PACKAGE}
+CMD $PACKAGE
 
 # Minimal platform-agnostic release image
 FROM alpine:${ALPINE_VERSION} AS release
 WORKDIR /bin
 ENV RUST_BACKTRACE=1
 COPY ./docker-init.sh .
-ARG TARGET
 ARG PACKAGE
 # Needed only by gateway for masquerading
 RUN \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables || true
-# Build first with `cross build --target ${TARGET} -p ${PACKAGE} --release`
-COPY ./target/${TARGET}/release/${PACKAGE} .
+ARG TARGET
+# Build first with `cross build --target ${TARGET} -p ${PACKAGE} --release && mv /target/${TARGET}/release/${PACKAGE} .`
+COPY ${PACKAGE} .
 ENTRYPOINT ["docker-init.sh"]
-CMD ${PACKAGE}
+ENV PACKAGE=${PACKAGE}
+CMD $PACKAGE

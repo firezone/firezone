@@ -1,6 +1,3 @@
 target/
-!target/*/release/firezone-relay
-!target/*/release/firezone-gateway
-!target/*/release/firezone-linux-client
 connlib/clients/android/connlib/build/
 connlib/clients/android/connlib/jniLibs/

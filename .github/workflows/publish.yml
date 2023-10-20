@@ -9,11 +9,113 @@ env:
   VERSION: "1.20231001.0"
 
 jobs:
-  # TODO
-  # deploy-production:
+  push-prod:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # TODO
+          - image_name: relay
+          - image_name: api
+          - image_name: gateway
+          - image_name: web
+    permissions:
+      # Needed to upload artifacts to a release
+      packages: write
+      # Needed to login to GCP
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to staging registry
+        uses: ./.github/actions/gcp-docker-login
+        id: login-staging
+        with:
+          project: firezone-staging
+      - name: Login to production registry
+        uses: ./.github/actions/gcp-docker-login
+        id: login-production
+        with:
+          project: firezone-prod
+      - name: Pull and push images
+        env:
+          SRC_IMAGE: ${{ steps.login-staging.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+          DST_IMAGES: |
+            ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+            ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
+            ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}:latest
+        run: |
+          docker pull $SRC_IMAGE
+          # Re-tag and push to GHCR for public distribution
+          IFS=$'\n' read -r -a tags <<< "$DST_IMAGES"
+          for tag in "${tags[@]}"; do
+            docker tag $SRC_IMAGE $tag
+          done
+          docker push --all-tags ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}
 
-  push-release-images:
-    # needs: deploy-production
+  deploy-prod:
+    needs: push-prod
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      TF_CLOUD_ORGANIZATION: "firezone"
+      TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
+      TF_WORKSPACE: "production"
+    steps:
+      - name: Get Terraform Version
+        run: |
+          TERRAFORM_VERSION=$(cat .tool-versions | grep terraform | awk '{ print $NF; }')
+          echo "TERRAFORM_VERSION=${TERRAFORM_VERSION}" >> $GITHUB_ENV
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+      - name: Upload Configuration
+        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.4
+        id: apply-upload
+        with:
+          workspace: ${{ env.TF_WORKSPACE }}
+          # Subdirectory is set in the project settings:
+          # https://app.terraform.io/app/firezone/workspaces/production/settings/general
+          directory: "./"
+      - name: Create Plan Run
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.4
+        id: apply-run
+        env:
+          TF_VAR_api_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
+          TF_VAR_web_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
+          TF_VAR_relay_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
+        with:
+          workspace: ${{ env.TF_WORKSPACE }}
+          configuration_version:
+            ${{ steps.apply-upload.outputs.configuration_version_id }}
+      - name: Apply
+        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.0.4
+        if: fromJSON(steps.apply-run.outputs.payload).data.attributes.actions.IsConfirmable
+        id: apply
+        with:
+          run: ${{ steps.apply-run.outputs.run_id }}
+          comment: "Apply Run from GitHub Actions CI ${{ github.sha }}"
+      - name: Report Status
+        if: failure()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_USERNAME: "GitHub Actions"
+          SLACK_COLOR: "#ff0000"
+          MSG_MINIMAL: "ref,actions url"
+          SLACK_TITLE: "Deployment Failed"
+          SLACK_MESSAGE:
+            "Automatic deployment to ${{ env.TF_WORKSPACE }} failed"
+        with:
+          status: ${{ job.status }}
+          notify_when: "failure"
+
+  publish-release-images:
+    needs: deploy-production
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
