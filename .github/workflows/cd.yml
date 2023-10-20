@@ -116,6 +116,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          prerelease: true
           version: ${{ env.VERSION }}
 
   build-push-release-artifacts:
