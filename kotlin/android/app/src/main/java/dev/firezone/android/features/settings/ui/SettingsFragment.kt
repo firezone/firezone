@@ -10,19 +10,19 @@ import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
-import dev.firezone.android.databinding.FragmentSetupBinding
+import dev.firezone.android.databinding.FragmentSettingsBinding
 
 @AndroidEntryPoint
-internal class SetupFragment : Fragment(R.layout.fragment_setup) {
-    private lateinit var binding: FragmentSetupBinding
-    private val viewModel: SetupViewModel by viewModels()
+internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
+    private lateinit var binding: FragmentSettingsBinding
+    private val viewModel: SettingsViewModel by viewModels()
 
     override fun onViewCreated(
         view: View,
         savedInstanceState: Bundle?,
     ) {
         super.onViewCreated(view, savedInstanceState)
-        binding = FragmentSetupBinding.bind(view)
+        binding = FragmentSettingsBinding.bind(view)
 
         setupViews()
         setupStateObservers()
@@ -43,11 +43,11 @@ internal class SetupFragment : Fragment(R.layout.fragment_setup) {
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
             when (action) {
-                is SetupViewModel.ViewAction.NavigateToSignIn ->
+                is SettingsViewModel.ViewAction.NavigateToSignIn ->
                     findNavController().navigate(
                         R.id.signInFragment,
                     )
-                is SetupViewModel.ViewAction.FillAccountId -> {
+                is SettingsViewModel.ViewAction.FillAccountId -> {
                     binding.etInput.apply {
                         setText(action.value)
                         isCursorVisible = false
@@ -59,7 +59,7 @@ internal class SetupFragment : Fragment(R.layout.fragment_setup) {
 
     private fun setupViews() {
         binding.ilUrlInput.apply {
-            prefixText = SetupViewModel.AUTH_URL
+            prefixText = SettingsViewModel.AUTH_URL
         }
 
         binding.etInput.apply {

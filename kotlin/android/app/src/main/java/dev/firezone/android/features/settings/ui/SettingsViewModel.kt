@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-internal class SetupViewModel
+internal class SettingsViewModel
     @Inject
     constructor(
         private val getConfigUseCase: GetConfigUseCase,
