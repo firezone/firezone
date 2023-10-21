@@ -44,7 +44,7 @@ defmodule Domain.Types.IPPort do
   def cast_address(address) do
     address
     |> String.to_charlist()
-    |> :inet.parse_address()
+    |> :inet.parse_strict_address()
   end
 
   defp cast_port(nil), do: {:ok, nil}
@@ -87,5 +87,10 @@ defmodule Domain.Types.IPPort do
   def to_string(%__MODULE__{type: :ipv6, address: ip, port: port}) do
     ip = ip |> :inet.ntoa() |> List.to_string()
     "[#{ip}]:#{port}"
+  end
+
+  def put_default_port(ip_port, default_port) do
+    port = ip_port.port || default_port
+    %{ip_port | port: port}
   end
 end

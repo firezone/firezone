@@ -1,6 +1,7 @@
 defmodule Domain.Config.Configuration.Changeset do
   use Domain, :changeset
   import Domain.Config, only: [config_changeset: 2]
+  alias Domain.Config.Configuration.ClientsUpstreamDNS
 
   @fields ~w[clients_upstream_dns logo]a
 
@@ -9,10 +10,8 @@ defmodule Domain.Config.Configuration.Changeset do
       configuration
       |> cast(attrs, [])
       |> cast_embed(:logo)
-      |> cast_embed(
-        :clients_upstream_dns,
-        with: &clients_upstream_dns_changeset/2
-      )
+      |> cast_embed(:clients_upstream_dns)
+      |> validate_unique_dns()
 
     Enum.reduce(@fields, changeset, fn field, changeset ->
       config_changeset(changeset, field)
@@ -20,21 +19,20 @@ defmodule Domain.Config.Configuration.Changeset do
     |> ensure_no_overridden_changes(configuration.account_id)
   end
 
-  def clients_upstream_dns_changeset(
-        dns_config \\ %Domain.Config.Configuration.ClientsUpstreamDNS{},
-        attrs
-      ) do
-    Ecto.Changeset.cast(
-      dns_config,
-      attrs,
-      [:address]
-    )
-    |> validate_required(:address)
-    |> trim_change(:address)
-    |> Domain.Validator.validate_one_of(:address, [
-      &Domain.Validator.validate_fqdn/2,
-      &Domain.Validator.validate_uri(&1, &2, schemes: ["https"])
-    ])
+  defp validate_unique_dns(changeset) do
+    dns_addrs =
+      apply_changes(changeset)
+      |> Map.get(:clients_upstream_dns)
+      |> Enum.map(&ClientsUpstreamDNS.normalize_dns_address/1)
+      |> Enum.reject(&is_nil/1)
+
+    duplicates = dns_addrs -- Enum.uniq(dns_addrs)
+
+    if duplicates != [] do
+      add_error(changeset, :clients_upstream_dns, "no duplicates allowed")
+    else
+      changeset
+    end
   end
 
   defp ensure_no_overridden_changes(changeset, account_id) do
