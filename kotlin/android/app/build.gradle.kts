@@ -143,6 +143,7 @@ android {
 
 dependencies {
     val coreVersion = "1.12.0"
+    val navVersion = "2.7.4"
 
     // Connlib
     implementation(project(":connlib"))
@@ -162,8 +163,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.6.1")
 
     // Navigation
-    implementation("androidx.navigation:navigation-fragment-ktx:2.5.3")
-    implementation("androidx.navigation:navigation-ui-ktx:2.5.3")
+    implementation("androidx.navigation:navigation-fragment-ktx:$navVersion")
+    implementation("androidx.navigation:navigation-ui-ktx:$navVersion")
+
+    // Safe Args
+    //
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.48.1")

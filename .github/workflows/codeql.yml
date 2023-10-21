@@ -1,0 +1,44 @@
+name: "CodeQL"
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-13') || 'ubuntu-22.04' }}
+    timeout-minutes: ${{ (matrix.language == 'swift' && 120) || 360 }}
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: 'javascript-typescript'
+            working-directory: 'website/'
+          - language: 'javascript-typescript'
+            working-directory: 'elixir/apps/web/assets/'
+          # TODO
+          # - language: 'java-kotlin'
+          #   working-directory: 'kotlin/android'
+          # - language: 'swift'
+          #   working-directory: 'swift/apple'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: ${{ matrix.language }}
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v2
+        with:
+          working-directory: ${{ matrix.working-directory }}
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          category: "/language:${{matrix.language}}"
