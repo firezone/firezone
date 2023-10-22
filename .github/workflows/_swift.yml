@@ -2,6 +2,10 @@ name: Swift
 on:
   workflow_call:
 
+env:
+  # Distributed App bundles are always tested against prod
+  APP_ENV: prod
+
 jobs:
   build:
     runs-on: ${{ matrix.runs-on }}
@@ -117,14 +121,12 @@ jobs:
           # Needed because `productbuild` doesn't support picking this up automatically like Xcode does
           INSTALLER_CODE_SIGN_IDENTITY: "3rd Party Mac Developer Installer: Firezone, Inc. (47R2M6779T)"
           REQUESTED_XCODE_VERSION: ${{ matrix.xcode }}
-          # TODO: Change this to "prod" when app is released
-          XCCONFIG_ENV: staging
         run: |
           # Set Xcode version to use if provided
           [[ ! -z "$REQUESTED_XCODE_VERSION" ]] && sudo xcode-select -s /Applications/Xcode_$REQUESTED_XCODE_VERSION.app
 
           # Copy xcconfig
-          cp Firezone/xcconfig/${{ env.XCCONFIG_ENV }}.xcconfig Firezone/xcconfig/config.xcconfig
+          cp Firezone/xcconfig/${{ env.APP_ENV }}.xcconfig Firezone/xcconfig/config.xcconfig
 
           # App Store Connect requires a new build version on each upload and it must be an integer.
           # See https://developer.apple.com/documentation/xcode/build-settings-reference#Current-Project-Version

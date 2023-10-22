@@ -1,3 +1,7 @@
+import java.util.Properties
+
+val localProperties = rootProject.file("local.properties").inputStream().use { Properties().load(it) }
+
 plugins {
     id("com.android.application")
     id("com.google.dagger.hilt.android")
@@ -49,6 +53,15 @@ android {
         versionName = "1.20231001.0"
         multiDexEnabled = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "AUTH_HOST", "\"${localProperties.getProperty("AUTH_HOST")}\"")
+        buildConfigField("String", "AUTH_SCHEME", "\"${localProperties.getProperty("AUTH_SCHEME")}\"")
+        buildConfigField("Integer", "AUTH_PORT", "${localProperties.getProperty("AUTH_PORT")}")
+        buildConfigField("String", "API_HOST", "\"${localProperties.getProperty("API_HOST")}\"")
+        buildConfigField("String", "API_SCHEME", "\"${localProperties.getProperty("API_SCHEME")}\"")
+        buildConfigField("Integer", "API_PORT", "${localProperties.getProperty("API_PORT")}")
+        buildConfigField("String", "CONNLIB_LOG_FILTER_STRING", "\"${localProperties.getProperty("CONNLIB_LOG_FILTER_STRING")}\"")
+
     }
 
     signingConfigs {
@@ -65,18 +78,6 @@ android {
         // Debug Config
         getByName("debug") {
             isDebuggable = true
-
-            buildConfigField("String", "AUTH_HOST", "\"app.firez.one\"")
-            buildConfigField("String", "AUTH_SCHEME", "\"https\"")
-            buildConfigField("Integer", "AUTH_PORT", "443")
-            buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firez.one/\"")
-
-            // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
-            buildConfigField(
-                "String",
-                "CONNLIB_LOG_FILTER_STRING",
-                "\"connlib_client_android=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn\"",
-            )
 
             resValue("string", "app_name", "\"Firezone (Dev)\"")
         }
@@ -102,18 +103,6 @@ android {
                 "proguard-rules.pro",
             )
             isDebuggable = false
-
-            buildConfigField("String", "AUTH_HOST", "\"app.firezone.dev\"")
-            buildConfigField("String", "AUTH_SCHEME", "\"https\"")
-            buildConfigField("Integer", "AUTH_PORT", "443")
-            buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firezone.dev/\"")
-
-            // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
-            buildConfigField(
-                "String",
-                "CONNLIB_LOG_FILTER_STRING",
-                "\"connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn\"",
-            )
 
             resValue("string", "app_name", "\"Firezone\"")
 

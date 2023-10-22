@@ -1,24 +1,40 @@
 # Firezone Android client
 
-## Prerequisites for developing locally
+This README contains instructions for building and testing the Android client
+locally.
 
-1. Install a recent `ruby` for your platform. Ruby is used for the mock auth
-   server.
-1. Install needed gems and start mock auth server:
+## Dev Setup
+
+1. [Install rust](https://www.rust-lang.org/tools/install)
+1. [Install Android Studio](https://developer.android.com/studio)
+1. Copy the `dev.properties` to `local.properties` and edit appropriately. You
+   may wish to use the staging.properties config for the portal.
+1. Install your JDK 17 of choice. We recommend just
+   [updating your CLI](https://stackoverflow.com/questions/43211282/using-jdk-that-is-bundled-inside-android-studio-as-java-home-on-mac)
+   environment to use the JDK bundled in Android Studio to ensure you're using
+   the same JDK on the CLI as Android Studio.
+1. Perform a test build: `./gradlew assembleDebug`
+1. [Set up a dev signing key]() and add its fingerprint to the portal's
+   [`assetlinks.json`](../../elixir/apps/web/priv/static/.well-known/assetlinks.json)
+   file. This is required for the App Links to successfully intercept the Auth
+   redirect.
+1.
+
+# Release Setup
+
+We release from GitHub CI, so this shouldn't be necessary. But if you're looking
+to test the `release` variant locally:
+
+1. Download the keystore and save to `app/.signing/keystore.jks` dir.
+1. Download firebase credentials from 1Pass `Engineering` vault and save to
+   `app/.signing/firebase.json`
+1. Now you can execute the `*Release` tasks with:
 
 ```
-cd server
-bundle install
-ruby server.rb
+export KEYSTORE_PATH="$(pwd)/app/.signing/keystore.jks"
+export FIREBASE_CREDENTIALS_PATH="$(pwd)/app/.signing/firebase.json"
+KEYSTORE_PASSWORD='keystore_password' KEYSTORE_KEY_PASSWORD='keystore_key_password' ./gradlew assembleRelease
 ```
 
-1. Add the following to a `./local.properties` file:
-
-```gradle
-sdk.dir=/path/to/your/ANDROID_HOME
-```
-
-Replace `/path/to/your/ANDROID_HOME` with the path to your locally installed
-Android SDK. On macOS this is `/Users/jamil/Library./Android/sdk`
-
-1. Perform a test build: `./gradlew build`
+You may want to clear your shell history or save these vars to a `.env` file to
+prevent them from being leaked.

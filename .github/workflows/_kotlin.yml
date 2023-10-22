@@ -6,6 +6,10 @@ permissions:
   contents: 'read'
   id-token: 'write'
 
+env:
+  # Distributed App bundles are always tested against prod
+  APP_ENV: prod
+
 jobs:
   static-analysis:
     runs-on: ubuntu-22.04
@@ -43,6 +47,7 @@ jobs:
         with:
           distribution: oracle
           java-version: 17
+      - run: cp ${{ env.APP_ENV }}.properties local.properties
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
         with:
@@ -50,7 +55,6 @@ jobs:
           build-root-directory: ./kotlin/android
           # https://github.com/gradle/gradle-build-action#overwriting-an-existing-gradle-user-home
           cache-overwrite-existing: ${{ github.ref == 'refs/heads/main' }}
-      - run: touch local.properties
       - name: Bundle and sign release
         env:
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
