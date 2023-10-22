@@ -20,7 +20,6 @@ mod ffi {
 
         #[swift_bridge(associated_to = WrappedSession)]
         fn connect(
-            portal_url: String,
             token: String,
             device_id: String,
             log_dir: String,
@@ -146,7 +145,11 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf, log_filter: String) -> file_logger::Handle {
+fn init_logging(log_dir: PathBuf) -> file_logger::Handle {
+    let log_filter = match option_env!("LOG_FILTER_STRING") {
+        Some(filter) => filter,
+        None => "connlib_client_apple=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn"
+    };
     let (file_layer, handle) = file_logger::layer(&log_dir);
 
     let _ = tracing_subscriber::registry()
@@ -162,7 +165,6 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> file_logger::Handle {
 
 impl WrappedSession {
     fn connect(
-        portal_url: String,
         token: String,
         device_id: String,
         log_dir: String,
@@ -172,7 +174,6 @@ impl WrappedSession {
         let secret = SecretString::from(token);
 
         let session = Session::connect(
-            portal_url.as_str(),
             secret,
             device_id,
             CallbackHandler {

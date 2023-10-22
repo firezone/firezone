@@ -1,7 +1,3 @@
-import java.util.Properties
-
-val localProperties = rootProject.file("local.properties").inputStream().use { Properties().load(it) }
-
 plugins {
     id("com.android.application")
     id("com.google.dagger.hilt.android")
@@ -53,15 +49,6 @@ android {
         versionName = "1.20231001.0"
         multiDexEnabled = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        buildConfigField("String", "AUTH_HOST", "\"${localProperties.getProperty("AUTH_HOST")}\"")
-        buildConfigField("String", "AUTH_SCHEME", "\"${localProperties.getProperty("AUTH_SCHEME")}\"")
-        buildConfigField("Integer", "AUTH_PORT", "${localProperties.getProperty("AUTH_PORT")}")
-        buildConfigField("String", "API_HOST", "\"${localProperties.getProperty("API_HOST")}\"")
-        buildConfigField("String", "API_SCHEME", "\"${localProperties.getProperty("API_SCHEME")}\"")
-        buildConfigField("Integer", "API_PORT", "${localProperties.getProperty("API_PORT")}")
-        buildConfigField("String", "CONNLIB_LOG_FILTER_STRING", "\"${localProperties.getProperty("CONNLIB_LOG_FILTER_STRING")}\"")
-
     }
 
     signingConfigs {
@@ -78,8 +65,9 @@ android {
         // Debug Config
         getByName("debug") {
             isDebuggable = true
-
             resValue("string", "app_name", "\"Firezone (Dev)\"")
+
+            buildConfigField("String", "AUTH_URL", "\"https://app.firez.one\"")
         }
 
         // Release Config
@@ -105,6 +93,8 @@ android {
             isDebuggable = false
 
             resValue("string", "app_name", "\"Firezone\"")
+
+            buildConfigField("String", "AUTH_URL", "\"${System.getenv("AUTH_URL") ?: "https://app.firez.one"}\"")
 
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")

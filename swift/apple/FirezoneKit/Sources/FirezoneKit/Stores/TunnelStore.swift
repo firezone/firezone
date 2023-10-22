@@ -289,7 +289,7 @@ enum TunnelAuthStatus {
     protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
       "\($0).network-extension"
     }
-    protocolConfiguration.serverAddress = AppInfoPlistConstants.controlPlaneURL.absoluteString
+    protocolConfiguration.serverAddress = AppInfoPlistConstants.authURL.absoluteString
 
     switch self {
     case .tunnelUninitialized, .accountNotSetup:

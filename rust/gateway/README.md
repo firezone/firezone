@@ -13,11 +13,11 @@ You should then find a binary in `target/release/firezone-gateway`.
 To run the gateway:
 
 ```
-firezone-gateway --portal_token <portal_token>
+firezone-gateway --token <token>
 ```
 
-where `portal_token` is the token shown when creating a gateway group in the
-Firezone admin portal.
+where `token` is the token shown when creating a gateway group in the Firezone
+admin portal.
 
 If you're running as an unprivileged user, you'll need the `CAP_NET_ADMIN`
 capability to open `/dev/net/tun`. You can add this to the gateway binary with:

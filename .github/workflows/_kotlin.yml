@@ -6,10 +6,6 @@ permissions:
   contents: 'read'
   id-token: 'write'
 
-env:
-  # Distributed App bundles are always tested against prod
-  APP_ENV: prod
-
 jobs:
   static-analysis:
     runs-on: ubuntu-22.04
@@ -47,7 +43,7 @@ jobs:
         with:
           distribution: oracle
           java-version: 17
-      - run: cp ${{ env.APP_ENV }}.properties local.properties
+      - run: touch local.properties
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
         with:
@@ -57,6 +53,9 @@ jobs:
           cache-overwrite-existing: ${{ github.ref == 'refs/heads/main' }}
       - name: Bundle and sign release
         env:
+          AUTH_URL: https://app.firezone.dev
+          LOG_FILTER_STRING: connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn
+          API_URL: wss://api.firezone.dev
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
           KEYSTORE_KEY_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_KEY_PASSWORD }}

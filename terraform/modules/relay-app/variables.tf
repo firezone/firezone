@@ -137,9 +137,3 @@ variable "portal_token" {
   type        = string
   description = "Portal token to use for authentication."
 }
-
-variable "portal_websocket_url" {
-  type        = string
-  default     = "wss://api.firezone.dev"
-  description = "URL of the control plane endpoint."
-}

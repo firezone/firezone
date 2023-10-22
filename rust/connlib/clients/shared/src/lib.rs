@@ -16,7 +16,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
 use tokio::{runtime::Runtime, sync::Mutex, time::Instant};
-use url::Url;
 
 mod control;
 pub mod file_logger;
@@ -59,12 +58,7 @@ where
     ///
     /// On a fatal error you should call `[Session::disconnect]` and start a new one.
     // TODO: token should be something like SecretString but we need to think about FFI compatibility
-    pub fn connect(
-        portal_url: impl TryInto<Url>,
-        token: SecretString,
-        device_id: String,
-        callbacks: CB,
-    ) -> Result<Self> {
+    pub fn connect(token: SecretString, device_id: String, callbacks: CB) -> Result<Self> {
         // TODO: We could use tokio::runtime::current() to get the current runtime
         // which could work with swift-rust that already runs a runtime. But IDK if that will work
         // in all platforms, a couple of new threads shouldn't bother none.
@@ -102,14 +96,7 @@ where
             }));
         }
 
-        Self::connect_inner(
-            &runtime,
-            tx,
-            portal_url.try_into().map_err(|_| Error::UriError)?,
-            token,
-            device_id,
-            this.callbacks.clone(),
-        );
+        Self::connect_inner(&runtime, tx, token, device_id, this.callbacks.clone());
         std::thread::spawn(move || {
             rx.blocking_recv();
             runtime.shutdown_background();
@@ -121,14 +108,13 @@ where
     fn connect_inner(
         runtime: &Runtime,
         runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
-        portal_url: Url,
         token: SecretString,
         device_id: String,
         callbacks: CallbackErrorFacade<CB>,
     ) {
         runtime.spawn(async move {
             let (connect_url, private_key) = fatal_error!(
-                login_url(Mode::Client, portal_url, token, device_id),
+                login_url(Mode::Client, token, device_id),
                 runtime_stopper,
                 &callbacks
             );

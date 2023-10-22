@@ -86,24 +86,13 @@ public class Adapter {
   private var displayableResources = DisplayableResources()
 
   /// Starting parameters
-  private var controlPlaneURLString: String
   private var token: String
-
-  // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
-  #if DEBUG
-    private let logFilterString =
-      "connlib_client_apple=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn"
-  #else
-    private let logFilterString =
-      "connlib_client_apple=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn"
-  #endif
 
   private let connlibLogFolderPath: String
 
   public init(
-    controlPlaneURLString: String, token: String, packetTunnelProvider: NEPacketTunnelProvider
+    token: String, packetTunnelProvider: NEPacketTunnelProvider
   ) {
-    self.controlPlaneURLString = controlPlaneURLString
     self.token = token
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler()
@@ -146,8 +135,7 @@ public class Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            self.controlPlaneURLString, self.token, self.getDeviceId(), self.connlibLogFolderPath,
-            self.logFilterString, self.callbackHandler),
+            self.token, self.getDeviceId(), self.connlibLogFolderPath, self.callbackHandler),
           onStarted: completionHandler
         )
       } catch let error {
@@ -283,9 +271,7 @@ extension Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            controlPlaneURLString, token, self.getDeviceId(), self.connlibLogFolderPath,
-            logFilterString,
-            self.callbackHandler),
+            token, self.getDeviceId(), self.connlibLogFolderPath, self.callbackHandler),
           onStarted: { error in
             if let error = error {
               self.logger.error(

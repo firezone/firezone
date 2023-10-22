@@ -708,7 +708,6 @@ module "relays" {
     }
   }
 
-  portal_websocket_url = "wss://api.${local.tld}"
   portal_token         = var.relay_portal_token
 
   depends_on = [

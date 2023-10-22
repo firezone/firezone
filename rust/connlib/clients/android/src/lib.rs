@@ -101,7 +101,12 @@ where
     tracing_subscriber::layer::Identity::new()
 }
 
-fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
+fn init_logging(log_dir: &Path) -> file_logger::Handle {
+    let log_filter = match option_env!("LOG_FILTER_STRING") {
+        Some(filter) => filter,
+        None => "connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn",
+    };
+
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to
@@ -394,20 +399,16 @@ macro_rules! string_from_jstring {
 
 fn connect(
     env: &mut JNIEnv,
-    portal_url: JString,
-    portal_token: JString,
+    token: JString,
     device_id: JString,
     log_dir: JString,
-    log_filter: JString,
     callback_handler: GlobalRef,
 ) -> Result<Session<CallbackHandler>, ConnectError> {
-    let portal_url = string_from_jstring!(env, portal_url);
-    let secret = SecretString::from(string_from_jstring!(env, portal_token));
+    let secret = SecretString::from(string_from_jstring!(env, token));
     let device_id = string_from_jstring!(env, device_id);
     let log_dir = string_from_jstring!(env, log_dir);
-    let log_filter = string_from_jstring!(env, log_filter);
 
-    let handle = init_logging(&PathBuf::from(log_dir), log_filter);
+    let handle = init_logging(&PathBuf::from(log_dir));
 
     let callback_handler = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
@@ -415,7 +416,7 @@ fn connect(
         handle,
     };
 
-    let session = Session::connect(portal_url.as_str(), secret, device_id, callback_handler)?;
+    let session = Session::connect(secret, device_id, callback_handler)?;
 
     Ok(session)
 }
@@ -428,8 +429,7 @@ fn connect(
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_connect(
     mut env: JNIEnv,
     _class: JClass,
-    portal_url: JString,
-    portal_token: JString,
+    token: JString,
     device_id: JString,
     log_dir: JString,
     log_filter: JString,
@@ -440,15 +440,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
     };
 
     let connect = catch_and_throw(&mut env, |env| {
-        connect(
-            env,
-            portal_url,
-            portal_token,
-            device_id,
-            log_dir,
-            log_filter,
-            callback_handler,
-        )
+        connect(env, token, device_id, log_dir, log_filter, callback_handler)
     });
 
     let session = match connect {

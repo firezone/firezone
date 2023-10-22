@@ -17,14 +17,8 @@
 	</array>
 	<key>AppGroupIdentifier</key>
 	<string>$(APP_GROUP_ID)</string>
-	<key>AuthURLScheme</key>
-	<string>$(AUTH_URL_SCHEME)</string>
-	<key>AuthURLHost</key>
-	<string>$(AUTH_URL_HOST)</string>
-	<key>ControlPlaneURLScheme</key>
-	<string>$(CONTROL_PLANE_URL_SCHEME)</string>
-	<key>ControlPlaneURLHost</key>
-	<string>$(CONTROL_PLANE_URL_HOST)</string>
+	<key>AuthURL</key>
+	<string>$(AUTH_URL)</string>
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>
 </dict>

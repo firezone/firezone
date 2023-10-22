@@ -74,7 +74,6 @@ module "gateways" {
     }
   }
 
-  portal_websocket_url = "wss://api.${local.tld}"
   portal_token         = var.gateway_portal_token
 }
 

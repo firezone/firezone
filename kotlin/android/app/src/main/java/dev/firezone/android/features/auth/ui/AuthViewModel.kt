@@ -43,7 +43,7 @@ internal class AuthViewModel
                         } else {
                             authFlowLaunched = true
                             ViewAction.LaunchAuthFlow(
-                                url = "$AUTH_URL${config.accountId}?client_csrf_token=$csrfToken&client_platform=android",
+                                url = "${BuildConfig.AUTH_URL}/${config.accountId}?client_csrf_token=$csrfToken&client_platform=android",
                             )
                         },
                     )
@@ -51,10 +51,6 @@ internal class AuthViewModel
             } catch (e: Exception) {
                 actionMutableLiveData.postValue(ViewAction.ShowError)
             }
-
-        companion object {
-            val AUTH_URL = "${BuildConfig.AUTH_SCHEME}://${BuildConfig.AUTH_HOST}:${BuildConfig.AUTH_PORT}/"
-        }
 
         internal sealed class ViewAction {
             data class LaunchAuthFlow(val url: String) : ViewAction()

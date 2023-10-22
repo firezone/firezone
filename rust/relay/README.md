@@ -25,11 +25,11 @@ You should then find a binary in `target/release/firezone-relay`.
 To run the relay:
 
 ```
-firezone-relay --portal_token <portal_token>
+firezone-relay --token <token>
 ```
 
-where `portal_token` is the token shown when creating a Relay in the Firezone
-admin portal.
+where `token` is the token shown when creating a Relay in the Firezone admin
+portal.
 
 For an up-to-date documentation on the available configurations options and a
 detailed help text, run `cargo run --bin relay -- --help`. All command-line
@@ -44,9 +44,9 @@ not configurable. Additionally, the relay needs to have access to the port range
 
 ### Portal Connection
 
-When given a `portal_token`, the relay will connect to the Firezone portal
-(default `wss://api.firezone.dev`) and wait for an `init` message before
-commencing relay operations.
+When given a `token`, the relay will connect to the Firezone portal (default
+`wss://api.firezone.dev`) and wait for an `init` message before commencing relay
+operations.
 
 ## Design
 

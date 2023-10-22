@@ -5,6 +5,7 @@ version = "1.20231001.0"
 edition = "2021"
 
 [dependencies]
+connlib-shared = { workspace = true }
 secrecy = { workspace = true }
 anyhow = "1.0.75"
 clap = { version = "4.4.4", features = ["derive", "env"] }

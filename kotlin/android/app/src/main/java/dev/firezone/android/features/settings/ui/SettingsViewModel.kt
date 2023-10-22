@@ -54,10 +54,6 @@ internal class SettingsViewModel
             )
         }
 
-        companion object {
-            val AUTH_URL = "${BuildConfig.AUTH_SCHEME}://${BuildConfig.AUTH_HOST}:${BuildConfig.AUTH_PORT}/"
-        }
-
         internal sealed class ViewAction {
             object NavigateToSignIn : ViewAction()
 

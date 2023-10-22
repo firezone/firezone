@@ -187,11 +187,9 @@ class TunnelService : VpnService() {
 
                 sessionPtr =
                     TunnelSession.connect(
-                        controlPlaneUrl = BuildConfig.CONTROL_PLANE_URL,
                         token = config.token,
                         deviceId = deviceId(),
                         logDir = getLogDir(),
-                        logFilter = BuildConfig.CONNLIB_LOG_FILTER_STRING,
                         callback = callback,
                     )
             }

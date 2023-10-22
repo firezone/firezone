@@ -6,7 +6,4 @@ APP_GROUP_ID[sdk=iphoneos*] = group.dev.firezone.firezone
 CODE_SIGN_STYLE = Automatic
 
 // Portal Auth
-AUTH_URL_SCHEME = http
-AUTH_URL_HOST = localhost:8080
-CONTROL_PLANE_URL_SCHEME = ws
-CONTROL_PLANE_URL_HOST = localhost:8081
+AUTH_URL = https://app.firez.one

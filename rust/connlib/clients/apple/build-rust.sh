@@ -31,6 +31,7 @@ for var in $(env | awk -F= '{print $1}'); do
   && [[ "$var" != "RUSTC_WRAPPER" ]] \
   && [[ "$var" != "SCCACHE_GCS_BUCKET" ]] \
   && [[ "$var" != "SCCACHE_GCS_RW_MODE" ]] \
+  && [[ "$var" != "LOG_FILTER_STRING" ]] \
   && [[ "$var" != "CONNLIB_TARGET_DIR" ]]; then
   unset $var
   fi

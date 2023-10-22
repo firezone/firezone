@@ -26,13 +26,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   ) {
     Self.logger.trace("\(#function)")
 
-    guard let controlPlaneURLString = protocolConfiguration.serverAddress else {
-      Self.logger.error("serverAddress is missing")
-      completionHandler(
-        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
-      return
-    }
-
     guard let tokenRef = protocolConfiguration.passwordReference else {
       Self.logger.error("passwordReference is missing")
       completionHandler(
@@ -47,8 +40,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         return
       }
 
-      let adapter = Adapter(
-        controlPlaneURLString: controlPlaneURLString, token: token, packetTunnelProvider: self)
+      let adapter = Adapter(token: token, packetTunnelProvider: self)
       self.adapter = adapter
       do {
         try adapter.start { error in
