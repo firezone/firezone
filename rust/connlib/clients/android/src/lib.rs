@@ -12,12 +12,13 @@ use jni::{
 };
 use secrecy::SecretString;
 use std::sync::OnceLock;
-use std::{net::IpAddr, path::Path};
 use std::{
+    env,
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
     path::PathBuf,
 };
+use std::{net::IpAddr, path::Path};
 use thiserror::Error;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
@@ -104,10 +105,7 @@ where
 }
 
 fn init_logging(log_dir: &Path) -> file_logger::Handle {
-    let log_filter = match option_env!("CONNLIB_LOG_FILTER_STRING") {
-        Some(filter) => filter,
-        None => DEFAULT_LOG_FILTER_STRING,
-    };
+    let log_filter = env::var("LOG_FILTER_STRING").unwrap_or(DEFAULT_LOG_FILTER_STRING.to_string());
 
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
@@ -129,8 +127,8 @@ fn init_logging(log_dir: &Path) -> file_logger::Handle {
         .expect("Logging guard should never be initialized twice");
 
     let _ = tracing_subscriber::registry()
-        .with(file_layer.with_filter(EnvFilter::new(log_filter)))
-        .with(android_layer().with_filter(EnvFilter::new(log_filter)))
+        .with(file_layer.with_filter(EnvFilter::new(&log_filter)))
+        .with(android_layer().with_filter(EnvFilter::new(&log_filter)))
         .try_init();
 
     handle

@@ -5,6 +5,7 @@ use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, 
 use ip_network::IpNetwork;
 use secrecy::SecretString;
 use std::{
+    env,
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
     path::PathBuf,
@@ -147,10 +148,7 @@ impl Callbacks for CallbackHandler {
 }
 
 fn init_logging(log_dir: PathBuf) -> file_logger::Handle {
-    let log_filter = match option_env!("CONNLIB_LOG_FILTER_STRING") {
-        Some(filter) => filter,
-        None => DEFAULT_LOG_FILTER_STRING,
-    };
+    let log_filter = env::var("LOG_FILTER_STRING").unwrap_or(DEFAULT_LOG_FILTER_STRING.to_string());
     let (file_layer, handle) = file_logger::layer(&log_dir);
 
     let _ = tracing_subscriber::registry()

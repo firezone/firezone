@@ -29,11 +29,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
 
 pub fn api_base_url() -> Url {
-    let api_url = match option_env!("API_URL") {
-        Some(url) => url,
-        None => "wss://api.firezone.dev",
-    };
-
+    let api_url = option_env!("API_URL").unwrap_or("wss://api.firezone.dev");
     match Url::parse(api_url) {
         Ok(url) => url,
         Err(e) => panic!("Invalid API_URL: {}. Error: {}", api_url, e),
