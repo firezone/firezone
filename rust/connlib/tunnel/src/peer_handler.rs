@@ -1,20 +1,16 @@
-use std::borrow::Cow;
-use std::net::{IpAddr, ToSocketAddrs};
 use std::sync::Arc;
 
 use boringtun::noise::rate_limiter::RateLimiter;
 use boringtun::noise::{handshake::parse_handshake_anon, Packet, TunnResult};
 use boringtun::x25519::{PublicKey, StaticSecret};
-use bytes::{Bytes, BytesMut};
-use connlib_shared::messages::ResourceDescription;
+use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
 use futures_util::SinkExt;
 
-use crate::ip_packet::MutableIpPacket;
 use crate::peer::WriteTo;
 use crate::{
-    device_channel, device_channel::DeviceIo, index::check_packet_index, peer::Peer, RoleState,
-    Tunnel, MAX_UDP_SIZE,
+    device_channel::DeviceIo, index::check_packet_index, peer::Peer, RoleState, Tunnel,
+    MAX_UDP_SIZE,
 };
 
 impl<CB, TRoleState> Tunnel<CB, TRoleState>
@@ -89,7 +85,7 @@ where
         self: &Arc<Self>,
         peer: &Arc<Peer<TRoleState::Id>>,
         device_writer: &DeviceIo,
-        src: &[u8],
+        mut src: &[u8],
         dst: &mut [u8],
     ) -> Result<()> {
         if let Some(cookie) = verify_packet(
@@ -104,43 +100,18 @@ where
             return Err(Error::UnderLoad);
         }
 
-        let write_to = match peer.tunnel.lock().decapsulate(None, src, dst) {
-            TunnResult::Done => return Ok(()),
-            TunnResult::Err(e) => return Err(e.into()),
-            TunnResult::WriteToNetwork(packet) => {
-                let mut bytes = BytesMut::new();
-                bytes.extend_from_slice(packet);
-
-                // Flush pending queue
-                while let TunnResult::WriteToNetwork(packet) =
-                    peer.tunnel.lock().decapsulate(None, &[], dst)
-                {
-                    bytes.extend_from_slice(packet);
+        loop {
+            match peer.decapsulate(src, dst)? {
+                Some(WriteTo::Network(bytes)) => peer.send_infallible(bytes, &self.callbacks).await,
+                Some(WriteTo::Resource(packet)) => {
+                    device_writer.write(packet)?;
                 }
-
-                WriteTo::Network(bytes.freeze())
+                None => break,
             }
-            TunnResult::WriteToTunnelV4(packet, addr) => {
-                let Some(packet) = make_packet_for_resource(peer, addr.into(), packet)? else {
-                    return Ok(());
-                };
 
-                WriteTo::Resource(packet)
-            }
-            TunnResult::WriteToTunnelV6(packet, addr) => {
-                let Some(packet) = make_packet_for_resource(peer, addr.into(), packet)? else {
-                    return Ok(());
-                };
-
-                WriteTo::Resource(packet)
-            }
-        };
-
-        match write_to {
-            WriteTo::Network(packet) => peer.send_infallible(packet, &self.callbacks).await,
-            WriteTo::Resource(packet) => {
-                device_writer.write(packet)?;
-            }
+            // Boringtun requires us to call `decapsulate` again with an empty `src` array to ensure we full process all queued messages.
+            // It would be nice to do this within `decapsulate` but the borrow-checker doesn't allow us to re-borrow `dst`.
+            src = &[];
         }
 
         Ok(())
@@ -201,106 +172,5 @@ fn is_wireguard_packet_ok(
         Packet::HandshakeResponse(p) => check_packet_index(p.receiver_idx, peer_index),
         Packet::PacketCookieReply(p) => check_packet_index(p.receiver_idx, peer_index),
         Packet::PacketData(p) => check_packet_index(p.receiver_idx, peer_index),
-    }
-}
-
-#[inline(always)]
-pub(crate) fn make_packet_for_resource<'a, TId>(
-    peer: &Arc<Peer<TId>>,
-    addr: IpAddr,
-    packet: &'a mut [u8],
-) -> Result<Option<device_channel::Packet<'a>>>
-where
-    TId: Copy,
-{
-    if !peer.is_allowed(addr) {
-        tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
-        return Ok(None);
-    }
-
-    let Some((dst, resource)) = peer.get_packet_resource(packet) else {
-        // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
-        // and we just trust gateways.
-        // In gateways this should never happen.
-        tracing::trace!(target: "wire", action = "writing", to = "iface", %addr, bytes = %packet.len());
-        let packet = make_packet(packet, addr);
-        return Ok(Some(packet));
-    };
-
-    let (dst_addr, _dst_port) = get_resource_addr_and_port(peer, &resource, &addr, &dst)?;
-    update_packet(packet, dst_addr);
-    let packet = make_packet(packet, addr);
-
-    Ok(Some(packet))
-}
-
-#[inline(always)]
-fn make_packet(packet: &mut [u8], dst_addr: IpAddr) -> device_channel::Packet<'_> {
-    match dst_addr {
-        IpAddr::V4(_) => device_channel::Packet::Ipv4(Cow::Borrowed(packet)),
-        IpAddr::V6(_) => device_channel::Packet::Ipv6(Cow::Borrowed(packet)),
-    }
-}
-
-#[inline(always)]
-fn update_packet(packet: &mut [u8], dst_addr: IpAddr) {
-    let Some(mut pkt) = MutableIpPacket::new(packet) else {
-        return;
-    };
-    pkt.set_dst(dst_addr);
-    pkt.update_checksum();
-}
-
-fn get_matching_version_ip(addr: &IpAddr, ip: &IpAddr) -> Option<IpAddr> {
-    ((addr.is_ipv4() && ip.is_ipv4()) || (addr.is_ipv6() && ip.is_ipv6())).then_some(*ip)
-}
-
-fn get_resource_addr_and_port<TId>(
-    peer: &Arc<Peer<TId>>,
-    resource: &ResourceDescription,
-    addr: &IpAddr,
-    dst: &IpAddr,
-) -> Result<(IpAddr, Option<u16>)>
-where
-    TId: Copy,
-{
-    match resource {
-        ResourceDescription::Dns(r) => {
-            let mut address = r.address.split(':');
-            let Some(dst_addr) = address.next() else {
-                tracing::error!("invalid DNS name for resource: {}", r.address);
-                return Err(Error::InvalidResource);
-            };
-            let Ok(mut dst_addr) = (dst_addr, 0).to_socket_addrs() else {
-                tracing::warn!(%addr, "Couldn't resolve name");
-                return Err(Error::InvalidResource);
-            };
-            let Some(dst_addr) = dst_addr.find_map(|d| get_matching_version_ip(addr, &d.ip()))
-            else {
-                tracing::warn!(%addr, "Couldn't resolve name addr");
-                return Err(Error::InvalidResource);
-            };
-            peer.update_translated_resource_address(r.id, dst_addr);
-            Ok((
-                dst_addr,
-                address
-                    .next()
-                    .map(str::parse::<u16>)
-                    .and_then(std::result::Result::ok),
-            ))
-        }
-        ResourceDescription::Cidr(r) => {
-            if r.address.contains(*dst) {
-                Ok((
-                    get_matching_version_ip(addr, dst).ok_or(Error::InvalidResource)?,
-                    None,
-                ))
-            } else {
-                tracing::warn!(
-                    "client tried to hijack the tunnel for range outside what it's allowed."
-                );
-                Err(Error::InvalidSource)
-            }
-        }
     }
 }

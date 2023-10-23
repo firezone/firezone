@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+use std::net::ToSocketAddrs;
 use std::{collections::HashMap, net::IpAddr, sync::Arc};
 
 use boringtun::noise::{Tunn, TunnResult};
@@ -236,6 +238,34 @@ where
         Ok(())
     }
 
+    pub(crate) fn decapsulate<'b>(
+        &self,
+        src: &[u8],
+        dst: &'b mut [u8],
+    ) -> Result<Option<WriteTo<'b>>> {
+        match self.tunnel.lock().decapsulate(None, src, dst) {
+            TunnResult::Done => Ok(None),
+            TunnResult::Err(e) => Err(e.into()),
+            TunnResult::WriteToNetwork(packet) => {
+                Ok(Some(WriteTo::Network(Bytes::copy_from_slice(packet))))
+            }
+            TunnResult::WriteToTunnelV4(packet, addr) => {
+                let Some(packet) = make_packet_for_resource(self, addr.into(), packet)? else {
+                    return Ok(None);
+                };
+
+                Ok(Some(WriteTo::Resource(packet)))
+            }
+            TunnResult::WriteToTunnelV6(packet, addr) => {
+                let Some(packet) = make_packet_for_resource(self, addr.into(), packet)? else {
+                    return Ok(None);
+                };
+
+                Ok(Some(WriteTo::Resource(packet)))
+            }
+        }
+    }
+
     pub(crate) fn get_packet_resource(
         &self,
         packet: &mut [u8],
@@ -256,4 +286,105 @@ where
 pub enum WriteTo<'a> {
     Network(Bytes),
     Resource(device_channel::Packet<'a>),
+}
+
+#[inline(always)]
+pub(crate) fn make_packet_for_resource<'a, TId>(
+    peer: &Peer<TId>,
+    addr: IpAddr,
+    packet: &'a mut [u8],
+) -> Result<Option<device_channel::Packet<'a>>>
+where
+    TId: Copy,
+{
+    if !peer.is_allowed(addr) {
+        tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
+        return Ok(None);
+    }
+
+    let Some((dst, resource)) = peer.get_packet_resource(packet) else {
+        // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
+        // and we just trust gateways.
+        // In gateways this should never happen.
+        tracing::trace!(target: "wire", action = "writing", to = "iface", %addr, bytes = %packet.len());
+        let packet = make_packet(packet, addr);
+        return Ok(Some(packet));
+    };
+
+    let (dst_addr, _dst_port) = get_resource_addr_and_port(peer, &resource, &addr, &dst)?;
+    update_packet(packet, dst_addr);
+    let packet = make_packet(packet, addr);
+
+    Ok(Some(packet))
+}
+
+#[inline(always)]
+fn make_packet(packet: &mut [u8], dst_addr: IpAddr) -> device_channel::Packet<'_> {
+    match dst_addr {
+        IpAddr::V4(_) => device_channel::Packet::Ipv4(Cow::Borrowed(packet)),
+        IpAddr::V6(_) => device_channel::Packet::Ipv6(Cow::Borrowed(packet)),
+    }
+}
+
+#[inline(always)]
+fn update_packet(packet: &mut [u8], dst_addr: IpAddr) {
+    let Some(mut pkt) = MutableIpPacket::new(packet) else {
+        return;
+    };
+    pkt.set_dst(dst_addr);
+    pkt.update_checksum();
+}
+
+fn get_matching_version_ip(addr: &IpAddr, ip: &IpAddr) -> Option<IpAddr> {
+    ((addr.is_ipv4() && ip.is_ipv4()) || (addr.is_ipv6() && ip.is_ipv6())).then_some(*ip)
+}
+
+fn get_resource_addr_and_port<TId>(
+    peer: &Peer<TId>,
+    resource: &ResourceDescription,
+    addr: &IpAddr,
+    dst: &IpAddr,
+) -> Result<(IpAddr, Option<u16>)>
+where
+    TId: Copy,
+{
+    match resource {
+        ResourceDescription::Dns(r) => {
+            let mut address = r.address.split(':');
+            let Some(dst_addr) = address.next() else {
+                tracing::error!("invalid DNS name for resource: {}", r.address);
+                return Err(Error::InvalidResource);
+            };
+            let Ok(mut dst_addr) = (dst_addr, 0).to_socket_addrs() else {
+                tracing::warn!(%addr, "Couldn't resolve name");
+                return Err(Error::InvalidResource);
+            };
+            let Some(dst_addr) = dst_addr.find_map(|d| get_matching_version_ip(addr, &d.ip()))
+            else {
+                tracing::warn!(%addr, "Couldn't resolve name addr");
+                return Err(Error::InvalidResource);
+            };
+            peer.update_translated_resource_address(r.id, dst_addr);
+            Ok((
+                dst_addr,
+                address
+                    .next()
+                    .map(str::parse::<u16>)
+                    .and_then(std::result::Result::ok),
+            ))
+        }
+        ResourceDescription::Cidr(r) => {
+            if r.address.contains(*dst) {
+                Ok((
+                    get_matching_version_ip(addr, dst).ok_or(Error::InvalidResource)?,
+                    None,
+                ))
+            } else {
+                tracing::warn!(
+                    "client tried to hijack the tunnel for range outside what it's allowed."
+                );
+                Err(Error::InvalidSource)
+            }
+        }
+    }
 }
