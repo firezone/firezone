@@ -86,41 +86,6 @@ pub(crate) fn parse<'a>(
     )?))
 }
 
-pub(crate) fn build_response(
-    original_pkt: IpPacket<'_>,
-    mut dns_answer: Vec<u8>,
-) -> Option<Packet> {
-    let version = original_pkt.version();
-    let response_len = dns_answer.len();
-    let original_dgm = original_pkt.as_udp()?;
-    let hdr_len = original_pkt.packet_size() - original_dgm.payload().len();
-    let mut res_buf = Vec::with_capacity(hdr_len + response_len);
-
-    res_buf.extend_from_slice(&original_pkt.packet()[..hdr_len]);
-    res_buf.append(&mut dns_answer);
-
-    let mut pkt = MutableIpPacket::new(&mut res_buf)?;
-    let dgm_len = UDP_HEADER_SIZE + response_len;
-    pkt.set_len(hdr_len + response_len, dgm_len);
-    pkt.swap_src_dst();
-
-    let mut dgm = MutableUdpPacket::new(pkt.payload_mut())?;
-    dgm.set_length(dgm_len as u16);
-    dgm.set_source(original_dgm.get_destination());
-    dgm.set_destination(original_dgm.get_source());
-
-    let mut pkt = MutableIpPacket::new(&mut res_buf)?;
-    let udp_checksum = pkt.to_immutable().udp_checksum(&pkt.as_immutable_udp()?);
-    pkt.as_udp()?.set_checksum(udp_checksum);
-    pkt.set_ipv4_checksum();
-    let packet = match version {
-        Version::Ipv4 => Packet::Ipv4(res_buf),
-        Version::Ipv6 => Packet::Ipv6(res_buf),
-    };
-
-    Some(packet)
-}
-
 pub(crate) fn build_response_from_resolve_result(
     original_pkt: IpPacket<'_>,
     response: hickory_resolver::error::ResolveResult<Lookup>,
@@ -151,6 +116,38 @@ pub(crate) fn build_response_from_resolve_result(
     let packet = build_response(original_pkt, response.to_vec()?);
 
     Ok(packet)
+}
+
+fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> Option<Packet> {
+    let version = original_pkt.version();
+    let response_len = dns_answer.len();
+    let original_dgm = original_pkt.as_udp()?;
+    let hdr_len = original_pkt.packet_size() - original_dgm.payload().len();
+    let mut res_buf = Vec::with_capacity(hdr_len + response_len);
+
+    res_buf.extend_from_slice(&original_pkt.packet()[..hdr_len]);
+    res_buf.append(&mut dns_answer);
+
+    let mut pkt = MutableIpPacket::new(&mut res_buf)?;
+    let dgm_len = UDP_HEADER_SIZE + response_len;
+    pkt.set_len(hdr_len + response_len, dgm_len);
+    pkt.swap_src_dst();
+
+    let mut dgm = MutableUdpPacket::new(pkt.payload_mut())?;
+    dgm.set_length(dgm_len as u16);
+    dgm.set_source(original_dgm.get_destination());
+    dgm.set_destination(original_dgm.get_source());
+
+    let mut pkt = MutableIpPacket::new(&mut res_buf)?;
+    let udp_checksum = pkt.to_immutable().udp_checksum(&pkt.as_immutable_udp()?);
+    pkt.as_udp()?.set_checksum(udp_checksum);
+    pkt.set_ipv4_checksum();
+    let packet = match version {
+        Version::Ipv4 => Packet::Ipv4(res_buf),
+        Version::Ipv6 => Packet::Ipv6(res_buf),
+    };
+
+    Some(packet)
 }
 
 fn build_dns_with_answer<N>(
