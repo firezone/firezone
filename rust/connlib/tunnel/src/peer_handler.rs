@@ -91,7 +91,7 @@ where
         src: &[u8],
         dst: &mut [u8],
     ) -> Result<()> {
-        if let Some(cookie) = self.verify_packet(peer, src).await? {
+        if let Some(cookie) = self.verify_packet(peer, src)? {
             peer.send_infallible(cookie, &self.callbacks).await;
 
             return Err(Error::UnderLoad);
@@ -141,7 +141,7 @@ where
 
     /// Consults the rate limiter for the provided buffer and checks that it parses into a valid wireguard packet.
     #[inline(always)]
-    async fn verify_packet(
+    fn verify_packet(
         self: &Arc<Self>,
         peer: &Peer<TRoleState::Id>,
         src: &[u8],
