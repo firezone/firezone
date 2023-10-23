@@ -92,9 +92,7 @@ where
             return Err(Error::BadPacket);
         }
 
-        let decapsulate_result = peer.tunnel.lock().decapsulate(None, src, dst);
-
-        let write_to = match decapsulate_result {
+        let write_to = match peer.tunnel.lock().decapsulate(None, src, dst) {
             TunnResult::Done => return Ok(()),
             TunnResult::Err(e) => {
                 tracing::error!(error = ?e, "decapsulate_packet");
