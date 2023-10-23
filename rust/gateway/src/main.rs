@@ -101,7 +101,7 @@ struct Cli {
 
 /// Checks whether the given [`std::error::Error`] is in-fact an HTTP error with a 4xx status code.
 fn is_client_error(e: &(dyn std::error::Error + 'static)) -> bool {
-    let Some(tungstenite::Error::Http(r)) = dbg!(e).downcast_ref() else {
+    let Some(tungstenite::Error::Http(r)) = e.downcast_ref() else {
         return false;
     };
 
