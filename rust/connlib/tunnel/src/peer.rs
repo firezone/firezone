@@ -11,7 +11,7 @@ use connlib_shared::{
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use parking_lot::{Mutex, RwLock};
-use pnet_packet::MutablePacket;
+use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 use webrtc::data::data_channel::DataChannel;
 
@@ -220,7 +220,7 @@ where
 
             packet.update_checksum();
         }
-        let packet = match self.tunnel.lock().encapsulate(packet.packet_mut(), buf) {
+        let packet = match self.tunnel.lock().encapsulate(packet.packet(), buf) {
             TunnResult::Done => return Ok(()),
             TunnResult::Err(e) => return Err(e.into()),
             TunnResult::WriteToNetwork(b) => b,
