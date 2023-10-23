@@ -344,28 +344,7 @@ resource "google_compute_region_instance_group_manager" "application" {
   ]
 }
 
-# Define a security policy which allows to filter traffic by IP address,
-# an edge security policy can also detect and block common types of web attacks
-resource "google_compute_security_policy" "default" {
-  project = var.project_id
-
-  name = local.application_name
-
-  rule {
-    action   = "allow"
-    priority = "2147483647"
-
-    match {
-      versioned_expr = "SRC_IPS_V1"
-
-      config {
-        src_ip_ranges = ["*"]
-      }
-    }
-
-    description = "default allow rule"
-  }
-}
+# TODO: Rate limit requests to the relays by source IP address
 
 # Open ports for the web
 resource "google_compute_firewall" "stun-turn-ipv4" {
