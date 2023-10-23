@@ -5,7 +5,7 @@ locally.
 
 ## Dev Setup
 
-1. [Install rust](https://www.rust-lang.org/tools/install)
+1. [Install Rust](https://www.rust-lang.org/tools/install)
 1. [Install Android Studio](https://developer.android.com/studio)
 1. Copy the `dev.properties` to `local.properties` and edit appropriately. You
    may wish to use the staging.properties config for the portal.
@@ -25,16 +25,14 @@ locally.
 We release from GitHub CI, so this shouldn't be necessary. But if you're looking
 to test the `release` variant locally:
 
-1. Download the keystore and save to `app/.signing/keystore.jks` dir.
-1. Download firebase credentials from 1Pass `Engineering` vault and save to
+1. Download the keystore from 1Pass and save to `app/.signing/keystore.jks` dir.
+1. Download firebase credentials from 1Pass and save to
    `app/.signing/firebase.json`
 1. Now you can execute the `*Release` tasks with:
 
-```
+```shell
 export KEYSTORE_PATH="$(pwd)/app/.signing/keystore.jks"
 export FIREBASE_CREDENTIALS_PATH="$(pwd)/app/.signing/firebase.json"
-KEYSTORE_PASSWORD='keystore_password' KEYSTORE_KEY_PASSWORD='keystore_key_password' ./gradlew assembleRelease
+HISTCONTROL=ignorespace # prevents saving the next line in shell history
+ KEYSTORE_PASSWORD='keystore_password' KEYSTORE_KEY_PASSWORD='keystore_key_password' ./gradlew assembleRelease
 ```
-
-You may want to clear your shell history or save these vars to a `.env` file to
-prevent them from being leaked.
