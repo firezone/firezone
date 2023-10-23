@@ -143,7 +143,7 @@ where
     #[inline(always)]
     async fn verify_packet(
         self: &Arc<Self>,
-        peer: &Arc<Peer<TRoleState::Id>>,
+        peer: &Peer<TRoleState::Id>,
         src: &[u8],
     ) -> Result<Option<Bytes>> {
         /// The rate-limiter emits at most a cookie packet which is only 64 bytes.
