@@ -165,7 +165,7 @@ where
                 continue;
             }
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
-                tunnel.role_state.lock().dns_query(query);
+                tunnel.role_state.lock().add_pending_dns_query(query);
                 continue;
             }
             None => {}
@@ -435,7 +435,7 @@ impl ClientState {
         }
     }
 
-    pub fn dns_query(&mut self, query: DnsQuery) {
+    pub fn add_pending_dns_query(&mut self, query: DnsQuery) {
         if self.dns_queries.push_back(query.into_owned()).is_err() {
             tracing::warn!("Too many DNS queries, dropping new ones");
         }
