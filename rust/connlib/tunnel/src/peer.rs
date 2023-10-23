@@ -80,7 +80,7 @@ where
 
     #[inline(always)]
     pub(crate) async fn send_infallible<CB: Callbacks>(&self, data: Bytes, callbacks: &CB) {
-        if let Err(e) = self.channel.write(&Bytes::copy_from_slice(&data)).await {
+        if let Err(e) = self.channel.write(&data).await {
             tracing::error!("Couldn't send packet to connected peer: {e}");
             let _ = callbacks.on_error(&e.into());
         }
