@@ -191,26 +191,8 @@ fn is_wireguard_packet_ok<TId>(
     }
 }
 
-fn send_to_resource<TId>(
-    device_io: &DeviceIo,
-    peer: &Arc<Peer<TId>>,
-    addr: IpAddr,
-    packet: &mut [u8],
-) -> Result<()>
-where
-    TId: Copy,
-{
-    if peer.is_allowed(addr) {
-        packet_allowed(device_io, peer, addr, packet)?;
-        Ok(())
-    } else {
-        tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
-        Ok(())
-    }
-}
-
 #[inline(always)]
-pub(crate) fn packet_allowed<TId>(
+pub(crate) fn send_to_resource<TId>(
     device_io: &DeviceIo,
     peer: &Arc<Peer<TId>>,
     addr: IpAddr,
@@ -219,6 +201,11 @@ pub(crate) fn packet_allowed<TId>(
 where
     TId: Copy,
 {
+    if !peer.is_allowed(addr) {
+        tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
+        return Ok(());
+    }
+
     let Some((dst, resource)) = peer.get_packet_resource(packet) else {
         // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
         // and we just trust gateways.
