@@ -1,11 +1,13 @@
 use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
 use crate::resource_table::ResourceTable;
 use crate::DnsQuery;
+use connlib_shared::error::ConnlibError;
 use connlib_shared::{messages::ResourceDescription, DNS_SENTINEL};
 use domain::base::{
     iana::{Class, Rcode, Rtype},
     Dname, Message, MessageBuilder, ParsedDname, Question, ToDname,
 };
+use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::op::Message as TrustDnsMessage;
 use hickory_resolver::proto::rr::RecordType;
 use itertools::Itertools;
@@ -117,6 +119,38 @@ pub(crate) fn build_response(
     };
 
     Some(packet)
+}
+
+pub(crate) fn build_response_from_resolve_result(
+    original_pkt: IpPacket<'_>,
+    response: hickory_resolver::error::ResolveResult<Lookup>,
+) -> Result<Option<Packet>, ConnlibError> {
+    let Some(mut message) = as_dns_message(&original_pkt) else {
+        debug_assert!(false, "The original message should be a DNS query for us to ever call write_dns_lookup_response");
+        return Ok(None);
+    };
+
+    let response = match response.map_err(|err| err.kind().clone()) {
+        Ok(response) => message.add_answers(response.records().to_vec()),
+        Err(hickory_resolver::error::ResolveErrorKind::NoRecordsFound {
+            soa,
+            response_code,
+            ..
+        }) => {
+            if let Some(soa) = soa {
+                message.add_name_server(soa.clone().into_record_of_rdata());
+            }
+
+            message.set_response_code(response_code)
+        }
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
+
+    let packet = build_response(original_pkt, response.to_vec()?);
+
+    Ok(packet)
 }
 
 fn build_dns_with_answer<N>(

@@ -77,29 +77,7 @@ where
         response: hickory_resolver::error::ResolveResult<Lookup>,
         query: IpPacket<'static>,
     ) -> connlib_shared::Result<()> {
-        let Some(mut message) = dns::as_dns_message(&query) else {
-            debug_assert!(false, "The original message should be a DNS query for us to ever call write_dns_lookup_response");
-            return Ok(());
-        };
-        let response = match response.map_err(|err| err.kind().clone()) {
-            Ok(response) => message.add_answers(response.records().to_vec()),
-            Err(hickory_resolver::error::ResolveErrorKind::NoRecordsFound {
-                soa,
-                response_code,
-                ..
-            }) => {
-                if let Some(soa) = soa {
-                    message.add_name_server(soa.clone().into_record_of_rdata());
-                }
-
-                message.set_response_code(response_code)
-            }
-            Err(e) => {
-                return Err(e.into());
-            }
-        };
-
-        if let Some(pkt) = dns::build_response(query, response.to_vec()?) {
+        if let Some(pkt) = dns::build_response_from_resolve_result(query, response)? {
             let Some(ref device) = *self.device.read().await else {
                 return Ok(());
             };
