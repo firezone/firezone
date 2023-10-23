@@ -1,5 +1,5 @@
 use crate::bounded_queue::BoundedQueue;
-use crate::device_channel::{create_iface, DeviceIo};
+use crate::device_channel::create_iface;
 use crate::ip_packet::IpPacket;
 use crate::peer::Peer;
 use crate::resource_table::ResourceTable;
@@ -24,7 +24,6 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use std::io;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -82,7 +81,7 @@ where
                 return Ok(());
             };
 
-            send_dns_packet(&device.io, pkt)?;
+            device.io.write(pkt)?;
         }
 
         Ok(())
@@ -157,7 +156,7 @@ where
 
         match dns::parse(&tunnel.role_state.lock().resources, packet.as_immutable()) {
             Some(dns::ResolveStrategy::LocalResponse(pkt)) => {
-                if let Err(e) = send_dns_packet(&device_writer, pkt) {
+                if let Err(e) = device_writer.write(pkt) {
                     tracing::error!(err = %e, "failed to send DNS packet");
                     let _ = tunnel.callbacks.on_error(&e.into());
                 }
@@ -195,18 +194,6 @@ where
             }
         }
     }
-}
-
-fn send_dns_packet(device_writer: &DeviceIo, packet: dns::Packet) -> io::Result<()> {
-    match packet {
-        dns::Packet::Ipv4(r) => {
-            device_writer.write4(&r[..])?;
-        }
-        dns::Packet::Ipv6(r) => {
-            device_writer.write6(&r[..])?;
-        }
-    }
-    Ok(())
 }
 
 /// [`Tunnel`] state specific to clients.

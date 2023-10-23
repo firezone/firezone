@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::net::{IpAddr, ToSocketAddrs};
 use std::sync::Arc;
 
@@ -10,8 +11,8 @@ use futures_util::SinkExt;
 
 use crate::ip_packet::MutableIpPacket;
 use crate::{
-    device_channel::DeviceIo, index::check_packet_index, peer::Peer, RoleState, Tunnel,
-    MAX_UDP_SIZE,
+    device_channel, device_channel::DeviceIo, index::check_packet_index, peer::Peer, RoleState,
+    Tunnel, MAX_UDP_SIZE,
 };
 
 impl<CB, TRoleState> Tunnel<CB, TRoleState>
@@ -236,8 +237,8 @@ where
 #[inline(always)]
 fn send_packet(device_io: &DeviceIo, packet: &mut [u8], dst_addr: IpAddr) -> std::io::Result<()> {
     match dst_addr {
-        IpAddr::V4(_) => device_io.write4(packet)?,
-        IpAddr::V6(_) => device_io.write6(packet)?,
+        IpAddr::V4(_) => device_io.write(device_channel::Packet::Ipv4(Cow::Borrowed(packet)))?,
+        IpAddr::V6(_) => device_io.write(device_channel::Packet::Ipv6(Cow::Borrowed(packet)))?,
     };
     Ok(())
 }
