@@ -86,11 +86,7 @@ where
         src: &[u8],
         dst: &mut [u8],
     ) -> Result<()> {
-        let parsed_packet = self.verify_packet(peer, src, dst).await?;
-        if !is_wireguard_packet_ok(&self.private_key, &self.public_key, &parsed_packet, peer) {
-            tracing::error!("wireguard_verification");
-            return Err(Error::BadPacket);
-        }
+        self.verify_packet(peer, src, dst).await?;
 
         let write_to = match peer.tunnel.lock().decapsulate(None, src, dst) {
             TunnResult::Done => return Ok(()),
@@ -145,32 +141,42 @@ where
         peer: &Arc<Peer<TRoleState::Id>>,
         src: &'a [u8],
         dst: &'a mut [u8],
-    ) -> Result<Packet<'a>> {
+    ) -> Result<()> {
         // The rate limiter initially checks mac1 and mac2, and optionally asks to send a cookie
-        match self.rate_limiter.verify_packet(
+        let packet = match self.rate_limiter.verify_packet(
             // TODO: Some(addr.ip()) webrtc doesn't expose easily the underlying data channel remote ip
             // so for now we don't use it. but we need it for rate limiter although we probably not need it since the data channel
             // will only be established to authenticated peers, so the portal could already prevent being ddos'd
             // but maybe in that cased we can drop this rate_limiter all together and just use decapsulate
             None, src, dst,
         ) {
-            Ok(packet) => Ok(packet),
+            Ok(packet) => packet,
             Err(TunnResult::WriteToNetwork(cookie)) => {
                 let bytes = Bytes::copy_from_slice(cookie);
                 peer.send_infallible(bytes, &self.callbacks).await;
-                Err(Error::UnderLoad)
+
+                return Err(Error::UnderLoad);
             }
             Err(TunnResult::Err(e)) => {
                 tracing::error!(error = ?e, "wireguard_error");
                 let err = e.into();
                 let _ = self.callbacks().on_error(&err);
-                Err(err)
+
+                return Err(err);
             }
             Err(_) => {
                 tracing::error!(error = "unexpected", "wireguard_error");
-                Err(Error::BadPacket)
+
+                return Err(Error::BadPacket);
             }
+        };
+
+        if !is_wireguard_packet_ok(&self.private_key, &self.public_key, &packet, peer) {
+            tracing::error!("wireguard_verification");
+            return Err(Error::BadPacket);
         }
+
+        Ok(())
     }
 }
 
