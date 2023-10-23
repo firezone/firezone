@@ -147,11 +147,6 @@ where
         Ok(Bytes::copy_from_slice(packet))
     }
 
-    pub(crate) async fn shutdown(&self) -> Result<()> {
-        self.channel.close().await?;
-        Ok(())
-    }
-
     pub(crate) fn is_emptied(&self) -> bool {
         self.resources.as_ref().is_some_and(|r| r.read().is_empty())
     }

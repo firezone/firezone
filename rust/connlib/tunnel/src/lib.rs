@@ -292,7 +292,7 @@ where
                         let callbacks = self.callbacks.clone();
                         async move {
                             if let Some(peer) = maybe_peer {
-                                let _ = peer.shutdown().await;
+                                let _ = peer.channel.close().await;
                             }
                             if let Err(e) = conn.close().await {
                                 tracing::warn!(%conn_id, error = ?e, "Can't close peer");
