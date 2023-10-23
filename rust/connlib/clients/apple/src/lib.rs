@@ -14,7 +14,7 @@ use std::{
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
-const DEFAULT_LOG_FILTER_STRING: &str = "connlib_client_apple=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn";
+const DEFAULT_LOG_FILTER_STRING: &str = "connlib_client_apple=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn";
 
 #[swift_bridge::bridge]
 mod ffi {
