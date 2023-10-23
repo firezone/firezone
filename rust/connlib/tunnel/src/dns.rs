@@ -111,10 +111,12 @@ pub(crate) fn build_response(
     let udp_checksum = pkt.to_immutable().udp_checksum(&pkt.as_immutable_udp()?);
     pkt.as_udp()?.set_checksum(udp_checksum);
     pkt.set_ipv4_checksum();
-    match version {
-        Version::Ipv4 => Some(Packet::Ipv4(res_buf)),
-        Version::Ipv6 => Some(Packet::Ipv6(res_buf)),
-    }
+    let packet = match version {
+        Version::Ipv4 => Packet::Ipv4(res_buf),
+        Version::Ipv6 => Packet::Ipv6(res_buf),
+    };
+
+    Some(packet)
 }
 
 fn build_dns_with_answer<N>(
