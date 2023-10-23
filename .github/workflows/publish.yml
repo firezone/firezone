@@ -3,6 +3,9 @@ on:
   release:
     types:
       - published
+  # We temporary allow to run deployments to production without publishing a release
+  # to make sure that the deployment works as expected
+  workflow_dispatch:
 
 env:
   # mark:automatic-version
@@ -115,7 +118,7 @@ jobs:
           notify_when: "failure"
 
   publish-release-images:
-    needs: deploy-production
+    needs: deploy-prod
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
