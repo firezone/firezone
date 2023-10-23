@@ -1,12 +1,13 @@
 # Global args to use in build commands
 ARG ALPINE_VERSION="3.18"
+ARG CARGO_CHEF_VERSION="0.1.62"
 
 # This image is used to prepare Cargo Chef which is used to cache dependencies
 FROM rust:1-alpine${ALPINE_VERSION} as chef
 
 RUN set -xe \
   && apk add --no-cache musl-dev  \
-  && cargo install cargo-chef
+  && cargo install cargo-chef --version=${CARGO_CHEF_VERSION}
 
 ## See https://github.com/LukeMathWalker/cargo-chef/issues/231.
 COPY rust-toolchain.toml rust-toolchain.toml
@@ -41,9 +42,16 @@ RUN cargo build -p ${PACKAGE} $([ -v "${TARGET}" ] && "--target ${TARGET}")
 # Image which is used to run the application binary
 FROM alpine:${ALPINE_VERSION} AS runtime
 
-WORKDIR /bin
+# Important!  Update this no-op ENV variable when this Dockerfile
+# is updated with the current date. It will force refresh of all
+# of the base images and things like `apk add` won't be using
+# old cached versions when the Dockerfile is built.
+ENV REFRESHED_AT=2023-10-23 \
+  LANG=C.UTF-8 \
+  TERM=xterm \
+  RUST_BACKTRACE=1
 
-ENV RUST_BACKTRACE=1
+WORKDIR /bin
 
 ## curl is needed by the entrypoint script
 RUN set -xe \
