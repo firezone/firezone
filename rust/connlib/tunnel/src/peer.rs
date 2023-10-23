@@ -15,7 +15,9 @@ use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 use webrtc::data::data_channel::DataChannel;
 
-use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, PeerConfig};
+use crate::{
+    device_channel, ip_packet::MutableIpPacket, resource_table::ResourceTable, PeerConfig,
+};
 
 type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 
@@ -249,4 +251,9 @@ where
 
         Some((dst, resource))
     }
+}
+
+pub enum WriteTo<'a> {
+    Network(Bytes),
+    Resource(device_channel::Packet<'a>),
 }

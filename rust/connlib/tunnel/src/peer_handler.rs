@@ -4,12 +4,13 @@ use std::sync::Arc;
 
 use boringtun::noise::{handshake::parse_handshake_anon, Packet, TunnResult};
 use boringtun::x25519::{PublicKey, StaticSecret};
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use connlib_shared::messages::ResourceDescription;
 use connlib_shared::{Callbacks, Error, Result};
 use futures_util::SinkExt;
 
 use crate::ip_packet::MutableIpPacket;
+use crate::peer::WriteTo;
 use crate::{
     device_channel, device_channel::DeviceIo, index::check_packet_index, peer::Peer, RoleState,
     Tunnel, MAX_UDP_SIZE,
@@ -93,35 +94,47 @@ where
 
         let decapsulate_result = peer.tunnel.lock().decapsulate(None, src, dst);
 
-        match decapsulate_result {
-            TunnResult::Done => {}
+        let write_to = match decapsulate_result {
+            TunnResult::Done => return Ok(()),
             TunnResult::Err(e) => {
                 tracing::error!(error = ?e, "decapsulate_packet");
                 let _ = self.callbacks().on_error(&e.into());
+
+                return Ok(());
             }
             TunnResult::WriteToNetwork(packet) => {
-                let bytes = Bytes::copy_from_slice(packet);
-                peer.send_infallible(bytes, &self.callbacks).await;
+                let mut bytes = BytesMut::new();
+                bytes.extend_from_slice(packet);
 
                 // Flush pending queue
                 while let TunnResult::WriteToNetwork(packet) =
                     peer.tunnel.lock().decapsulate(None, &[], dst)
                 {
-                    let bytes = Bytes::copy_from_slice(packet);
-                    let callbacks = self.callbacks.clone();
-                    let peer = peer.clone();
-                    tokio::spawn(async move { peer.send_infallible(bytes, &callbacks).await });
+                    bytes.extend_from_slice(packet);
                 }
+
+                WriteTo::Network(bytes.freeze())
             }
             TunnResult::WriteToTunnelV4(packet, addr) => {
-                if let Some(packet) = make_packet_for_resource(peer, addr.into(), packet)? {
-                    device_writer.write(packet)?;
-                }
+                let Some(packet) = make_packet_for_resource(peer, addr.into(), packet)? else {
+                    return Ok(());
+                };
+
+                WriteTo::Resource(packet)
             }
             TunnResult::WriteToTunnelV6(packet, addr) => {
-                if let Some(packet) = make_packet_for_resource(peer, addr.into(), packet)? {
-                    device_writer.write(packet)?;
-                }
+                let Some(packet) = make_packet_for_resource(peer, addr.into(), packet)? else {
+                    return Ok(());
+                };
+
+                WriteTo::Resource(packet)
+            }
+        };
+
+        match write_to {
+            WriteTo::Network(packet) => peer.send_infallible(packet, self.callbacks()).await,
+            WriteTo::Resource(packet) => {
+                device_writer.write(packet)?;
             }
         }
 
