@@ -95,14 +95,22 @@ where
             peer.index,
             src,
         )? {
-            peer.send_infallible(cookie, &self.callbacks).await;
+            if let Err(e) = peer.channel.write(&cookie).await {
+                tracing::error!("Couldn't send cookie to connected peer: {e}");
+                let _ = self.callbacks.on_error(&e.into());
+            }
 
             return Err(Error::UnderLoad);
         }
 
         loop {
             match peer.decapsulate(src, dst)? {
-                Some(WriteTo::Network(bytes)) => peer.send_infallible(bytes, &self.callbacks).await,
+                Some(WriteTo::Network(bytes)) => {
+                    if let Err(e) = peer.channel.write(&bytes).await {
+                        tracing::error!("Couldn't send packet to connected peer: {e}");
+                        let _ = self.callbacks.on_error(&e.into());
+                    }
+                }
                 Some(WriteTo::Resource(packet)) => {
                     device_writer.write(packet)?;
                 }

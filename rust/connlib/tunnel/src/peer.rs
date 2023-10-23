@@ -8,7 +8,7 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{ResourceDescription, ResourceId},
-    Callbacks, Error, Result,
+    Error, Result,
 };
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
@@ -75,14 +75,6 @@ where
             dns_resources,
             network_resources,
             translated_resource_addresses,
-        }
-    }
-
-    #[inline(always)]
-    pub(crate) async fn send_infallible<CB: Callbacks>(&self, data: Bytes, callbacks: &CB) {
-        if let Err(e) = self.channel.write(&data).await {
-            tracing::error!("Couldn't send packet to connected peer: {e}");
-            let _ = callbacks.on_error(&e.into());
         }
     }
 
