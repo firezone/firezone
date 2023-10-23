@@ -216,13 +216,23 @@ where
                     let mut stop_command_sender = self.stop_peer_command_sender.clone();
 
                     tokio::spawn(async move {
-                        if let Err(e) = peer.update_timers().await {
-                            tracing::error!("Failed to update timers for peer: {e}");
-                            let _ = callbacks.on_error(&e);
+                        let bytes = match peer.update_timers() {
+                            Ok(bytes) => bytes,
+                            Err(e) => {
+                                tracing::error!("Failed to update timers for peer: {e}");
+                                let _ = callbacks.on_error(&e);
 
-                            if e.is_fatal_connection_error() {
-                                let _ = stop_command_sender.send((peer.index, peer.conn_id)).await;
+                                if e.is_fatal_connection_error() {
+                                    let _ =
+                                        stop_command_sender.send((peer.index, peer.conn_id)).await;
+                                }
+                                return;
                             }
+                        };
+
+                        if let Err(e) = peer.channel.write(&bytes).await {
+                            tracing::error!("Failed to send packet to peer: {e}");
+                            let _ = callbacks.on_error(&e.into());
                         }
                     });
                 }

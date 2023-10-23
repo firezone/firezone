@@ -129,7 +129,7 @@ where
         self.allowed_ips.write().insert(ip, ());
     }
 
-    pub(crate) async fn update_timers<'a>(&self) -> Result<()> {
+    pub(crate) fn update_timers(&self) -> Result<Bytes> {
         /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
         ///
         /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
@@ -138,16 +138,13 @@ where
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
 
         let packet = match self.tunnel.lock().update_timers(&mut buf) {
-            TunnResult::Done => return Ok(()),
+            TunnResult::Done => return Ok(Bytes::new()),
             TunnResult::Err(e) => return Err(e.into()),
             TunnResult::WriteToNetwork(b) => b,
             _ => panic!("Unexpected result from update_timers"),
         };
 
-        let bytes = Bytes::copy_from_slice(packet);
-        self.channel.write(&bytes).await?;
-
-        Ok(())
+        Ok(Bytes::copy_from_slice(packet))
     }
 
     pub(crate) async fn shutdown(&self) -> Result<()> {
