@@ -44,9 +44,8 @@ not configurable. Additionally, the relay needs to have access to the port range
 
 ### Portal Connection
 
-When given a `token`, the relay will connect to the Firezone portal (default
-`wss://api.firezone.dev`) and wait for an `init` message before commencing relay
-operations.
+When given a `token`, the relay will connect to the Firezone portal and wait for
+an `init` message before commencing relay operations.
 
 ## Design
 

@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
-use firezone_cli_utils::api_base_url;
+use connlib_shared::api_base_url;
 use firezone_relay::{
     AddressFamily, Allocation, AllocationId, Command, IpStack, Server, Sleep, SocketAddrExt,
     UdpSocket,
@@ -105,7 +105,7 @@ async fn main() -> Result<()> {
     );
 
     let channel = if let Some(token) = args.token.as_ref() {
-        let base_url = api_base_url()?;
+        let base_url = api_base_url();
         let stamp_secret = server.auth_secret();
 
         let span = tracing::error_span!("connect_to_portal", config_url = %base_url);

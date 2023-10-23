@@ -13,6 +13,8 @@ use std::{
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
+const DEFAULT_LOG_FILTER_STRING: &str = "connlib_client_apple=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn";
+
 #[swift_bridge::bridge]
 mod ffi {
     extern "Rust" {
@@ -23,7 +25,6 @@ mod ffi {
             token: String,
             device_id: String,
             log_dir: String,
-            log_filter: String,
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
@@ -146,9 +147,9 @@ impl Callbacks for CallbackHandler {
 }
 
 fn init_logging(log_dir: PathBuf) -> file_logger::Handle {
-    let log_filter = match option_env!("LOG_FILTER_STRING") {
+    let log_filter = match option_env!("CONNLIB_LOG_FILTER_STRING") {
         Some(filter) => filter,
-        None => "connlib_client_apple=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn"
+        None => DEFAULT_LOG_FILTER_STRING,
     };
     let (file_layer, handle) = file_logger::layer(&log_dir);
 
@@ -168,7 +169,6 @@ impl WrappedSession {
         token: String,
         device_id: String,
         log_dir: String,
-        log_filter: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
         let secret = SecretString::from(token);
@@ -178,7 +178,7 @@ impl WrappedSession {
             device_id,
             CallbackHandler {
                 inner: Arc::new(callback_handler),
-                handle: init_logging(log_dir.into(), log_filter),
+                handle: init_logging(log_dir.into()),
             },
         )
         .map_err(|err| err.to_string())?;

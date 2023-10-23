@@ -22,6 +22,8 @@ use thiserror::Error;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
+const DEFAULT_LOG_FILTER_STRING: &str = "connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn";
+
 pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
@@ -102,9 +104,9 @@ where
 }
 
 fn init_logging(log_dir: &Path) -> file_logger::Handle {
-    let log_filter = match option_env!("LOG_FILTER_STRING") {
+    let log_filter = match option_env!("CONNLIB_LOG_FILTER_STRING") {
         Some(filter) => filter,
-        None => "connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn",
+        None => DEFAULT_LOG_FILTER_STRING,
     };
 
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
@@ -127,8 +129,8 @@ fn init_logging(log_dir: &Path) -> file_logger::Handle {
         .expect("Logging guard should never be initialized twice");
 
     let _ = tracing_subscriber::registry()
-        .with(file_layer.with_filter(EnvFilter::new(log_filter.clone())))
-        .with(android_layer().with_filter(EnvFilter::new(log_filter.clone())))
+        .with(file_layer.with_filter(EnvFilter::new(log_filter)))
+        .with(android_layer().with_filter(EnvFilter::new(log_filter)))
         .try_init();
 
     handle
@@ -432,7 +434,6 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
     token: JString,
     device_id: JString,
     log_dir: JString,
-    log_filter: JString,
     callback_handler: JObject,
 ) -> *const Session<CallbackHandler> {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else {
@@ -440,7 +441,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
     };
 
     let connect = catch_and_throw(&mut env, |env| {
-        connect(env, token, device_id, log_dir, log_filter, callback_handler)
+        connect(env, token, device_id, log_dir, callback_handler)
     });
 
     let session = match connect {

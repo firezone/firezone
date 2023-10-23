@@ -58,10 +58,6 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
     }
 
     private fun setupViews() {
-        binding.ilUrlInput.apply {
-            prefixText = SettingsViewModel.AUTH_URL
-        }
-
         binding.etInput.apply {
             imeOptions = EditorInfo.IME_ACTION_DONE
             setOnClickListener { isCursorVisible = true }

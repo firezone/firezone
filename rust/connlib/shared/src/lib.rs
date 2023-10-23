@@ -28,13 +28,16 @@ pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
 
-pub fn api_base_url() -> Result<Url, url::ParseError> {
+pub fn api_base_url() -> Url {
     let api_url = match option_env!("API_URL") {
         Some(url) => url,
         None => "wss://api.firezone.dev",
     };
 
-    Url::parse(api_url)
+    match Url::parse(api_url) {
+        Ok(url) => url,
+        Err(e) => panic!("Invalid API_URL: {}. Error: {}", api_url, e),
+    }
 }
 
 /// Creates a new login URL to use with the portal.
@@ -52,7 +55,6 @@ pub fn login_url(
     let external_id = sha256(device_id);
 
     let url = get_websocket_path(
-        api_base_url()?,
         token,
         match mode {
             Mode::Client => "client",
@@ -136,13 +138,13 @@ fn sha256(input: String) -> String {
 }
 
 fn get_websocket_path(
-    mut url: Url,
     secret: SecretString,
     mode: &str,
     public_key: &Key,
     external_id: &str,
     name_suffix: &str,
 ) -> Result<Url> {
+    let mut url = api_base_url();
     set_ws_scheme(&mut url)?;
 
     {
