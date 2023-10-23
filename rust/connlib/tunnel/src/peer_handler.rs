@@ -93,18 +93,31 @@ where
 
         let decapsulate_result = peer.tunnel.lock().decapsulate(None, src, dst);
 
-        if self
-            .handle_decapsulated_packet(peer, device_writer, decapsulate_result)
-            .await?
-        {
-            // Flush pending queue
-            while let TunnResult::WriteToNetwork(packet) =
-                peer.tunnel.lock().decapsulate(None, &[], dst)
-            {
+        match decapsulate_result {
+            TunnResult::Done => {}
+            TunnResult::Err(e) => {
+                tracing::error!(error = ?e, "decapsulate_packet");
+                let _ = self.callbacks().on_error(&e.into());
+            }
+            TunnResult::WriteToNetwork(packet) => {
                 let bytes = Bytes::copy_from_slice(packet);
-                let callbacks = self.callbacks.clone();
-                let peer = peer.clone();
-                tokio::spawn(async move { peer.send_infallible(bytes, &callbacks).await });
+                peer.send_infallible(bytes, &self.callbacks).await;
+
+                // Flush pending queue
+                while let TunnResult::WriteToNetwork(packet) =
+                    peer.tunnel.lock().decapsulate(None, &[], dst)
+                {
+                    let bytes = Bytes::copy_from_slice(packet);
+                    let callbacks = self.callbacks.clone();
+                    let peer = peer.clone();
+                    tokio::spawn(async move { peer.send_infallible(bytes, &callbacks).await });
+                }
+            }
+            TunnResult::WriteToTunnelV4(packet, addr) => {
+                send_to_resource(device_writer, peer, addr.into(), packet)?;
+            }
+            TunnResult::WriteToTunnelV6(packet, addr) => {
+                send_to_resource(device_writer, peer, addr.into(), packet)?;
             }
         }
 
@@ -141,36 +154,6 @@ where
             Err(_) => {
                 tracing::error!(error = "unexpected", "wireguard_error");
                 Err(Error::BadPacket)
-            }
-        }
-    }
-
-    #[inline(always)]
-    async fn handle_decapsulated_packet<'a>(
-        self: &Arc<Self>,
-        peer: &Arc<Peer<TRoleState::Id>>,
-        device_io: &DeviceIo,
-        decapsulate_result: TunnResult<'a>,
-    ) -> Result<bool> {
-        match decapsulate_result {
-            TunnResult::Done => Ok(false),
-            TunnResult::Err(e) => {
-                tracing::error!(error = ?e, "decapsulate_packet");
-                let _ = self.callbacks().on_error(&e.into());
-                Ok(false)
-            }
-            TunnResult::WriteToNetwork(packet) => {
-                let bytes = Bytes::copy_from_slice(packet);
-                peer.send_infallible(bytes, &self.callbacks).await;
-                Ok(true)
-            }
-            TunnResult::WriteToTunnelV4(packet, addr) => {
-                send_to_resource(device_io, peer, addr.into(), packet)?;
-                Ok(false)
-            }
-            TunnResult::WriteToTunnelV6(packet, addr) => {
-                send_to_resource(device_io, peer, addr.into(), packet)?;
-                Ok(false)
             }
         }
     }
