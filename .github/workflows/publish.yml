@@ -42,7 +42,7 @@ jobs:
           project: firezone-prod
       - name: Pull and push images
         env:
-          SRC_IMAGE: ${{ steps.login-staging.outputs.registry }}/firezone/${{matrix.image_name }}:${{ github.sha }}
+          SRC_IMAGE: ${{ steps.login-staging.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
           DST_IMAGES: |
             ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
             ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
