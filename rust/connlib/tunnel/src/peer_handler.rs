@@ -96,7 +96,7 @@ where
             &self.rate_limiter,
             &self.private_key,
             &self.public_key,
-            peer,
+            peer.index,
             src,
         )? {
             peer.send_infallible(cookie, &self.callbacks).await;
@@ -149,11 +149,11 @@ where
 
 /// Consults the rate limiter for the provided buffer and checks that it parses into a valid wireguard packet.
 #[inline(always)]
-fn verify_packet<TId>(
+fn verify_packet(
     rate_limiter: &RateLimiter,
     private_key: &StaticSecret,
     public_key: &PublicKey,
-    peer: &Peer<TId>,
+    peer_index: u32,
     src: &[u8],
 ) -> Result<Option<Bytes>> {
     /// The rate-limiter emits at most a cookie packet which is only 64 bytes.
@@ -181,7 +181,7 @@ fn verify_packet<TId>(
         }
     };
 
-    if !is_wireguard_packet_ok(private_key, public_key, &packet, peer) {
+    if !is_wireguard_packet_ok(private_key, public_key, &packet, peer_index) {
         tracing::error!("wireguard_verification");
         return Err(Error::BadPacket);
     }
@@ -190,17 +190,17 @@ fn verify_packet<TId>(
 }
 
 #[inline(always)]
-fn is_wireguard_packet_ok<TId>(
+fn is_wireguard_packet_ok(
     private_key: &StaticSecret,
     public_key: &PublicKey,
     parsed_packet: &Packet,
-    peer: &Peer<TId>,
+    peer_index: u32,
 ) -> bool {
     match parsed_packet {
         Packet::HandshakeInit(p) => parse_handshake_anon(private_key, public_key, p).is_ok(),
-        Packet::HandshakeResponse(p) => check_packet_index(p.receiver_idx, peer.index),
-        Packet::PacketCookieReply(p) => check_packet_index(p.receiver_idx, peer.index),
-        Packet::PacketData(p) => check_packet_index(p.receiver_idx, peer.index),
+        Packet::HandshakeResponse(p) => check_packet_index(p.receiver_idx, peer_index),
+        Packet::PacketCookieReply(p) => check_packet_index(p.receiver_idx, peer_index),
+        Packet::PacketData(p) => check_packet_index(p.receiver_idx, peer_index),
     }
 }
 
