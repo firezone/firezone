@@ -7,7 +7,8 @@ FROM rust:1-alpine${ALPINE_VERSION} as chef
 
 RUN set -xe \
   && apk add --no-cache musl-dev  \
-  && cargo install cargo-chef --version=${CARGO_CHEF_VERSION}
+  && cargo install cargo-chef --locked --version=${CARGO_CHEF_VERSION} \
+  && rm -rf $CARGO_HOME/registry/
 
 ## See https://github.com/LukeMathWalker/cargo-chef/issues/231.
 COPY rust-toolchain.toml rust-toolchain.toml
