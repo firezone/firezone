@@ -86,7 +86,7 @@ where
         src: &[u8],
         dst: &mut [u8],
     ) -> Result<()> {
-        self.verify_packet(peer, src, dst).await?;
+        self.verify_packet(peer, src).await?;
 
         let write_to = match peer.tunnel.lock().decapsulate(None, src, dst) {
             TunnResult::Done => return Ok(()),
@@ -136,19 +136,23 @@ where
     }
 
     #[inline(always)]
-    async fn verify_packet<'a>(
+    async fn verify_packet(
         self: &Arc<Self>,
         peer: &Arc<Peer<TRoleState::Id>>,
-        src: &'a [u8],
-        dst: &'a mut [u8],
+        src: &[u8],
     ) -> Result<()> {
+        /// The rate-limiter emits at most a cookie packet which is only 64 bytes.
+        const COOKIE_REPLY_SIZE: usize = 64;
+
+        let mut dst = [0u8; COOKIE_REPLY_SIZE];
+
         // The rate limiter initially checks mac1 and mac2, and optionally asks to send a cookie
         let packet = match self.rate_limiter.verify_packet(
             // TODO: Some(addr.ip()) webrtc doesn't expose easily the underlying data channel remote ip
             // so for now we don't use it. but we need it for rate limiter although we probably not need it since the data channel
             // will only be established to authenticated peers, so the portal could already prevent being ddos'd
             // but maybe in that cased we can drop this rate_limiter all together and just use decapsulate
-            None, src, dst,
+            None, src, &mut dst,
         ) {
             Ok(packet) => packet,
             Err(TunnResult::WriteToNetwork(cookie)) => {
