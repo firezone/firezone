@@ -137,7 +137,7 @@ where
         };
 
         match write_to {
-            WriteTo::Network(packet) => peer.send_infallible(packet, self.callbacks()).await,
+            WriteTo::Network(packet) => peer.send_infallible(packet, &self.callbacks).await,
             WriteTo::Resource(packet) => {
                 device_writer.write(packet)?;
             }
