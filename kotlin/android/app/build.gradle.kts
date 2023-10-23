@@ -94,7 +94,7 @@ android {
 
             resValue("string", "app_name", "\"Firezone\"")
 
-            buildConfigField("String", "AUTH_URL", "\"${System.getenv("AUTH_URL") ?: "https://app.firez.one"}\"")
+            buildConfigField("String", "AUTH_URL", "\"https://app.firezone.dev\"")
 
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")

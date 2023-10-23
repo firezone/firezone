@@ -20,12 +20,12 @@ jobs:
           java-version: 17
       - name: Validate Gradle wrapper
         uses: gradle/wrapper-validation-action@v1
+      - run: touch local.properties
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
           build-root-directory: ./kotlin/android
-      - run: touch local.properties
       - name: Run linter
         run: ./gradlew spotlessCheck
 
@@ -53,7 +53,6 @@ jobs:
           cache-overwrite-existing: ${{ github.ref == 'refs/heads/main' }}
       - name: Bundle and sign release
         env:
-          AUTH_URL: https://app.firezone.dev
           LOG_FILTER_STRING: connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn
           API_URL: wss://api.firezone.dev
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
