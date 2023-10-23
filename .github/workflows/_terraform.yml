@@ -2,6 +2,10 @@ name: Terraform
 on:
   workflow_call:
 
+env:
+  # mark:automatic-version
+  VERSION: "1.20231001.0"
+
 jobs:
   plan-deploy:
     runs-on: ubuntu-22.04
@@ -44,9 +48,7 @@ jobs:
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.4
         id: plan-run
         env:
-          TF_VAR_api_image_tag: '"${{ github.sha }}"'
-          TF_VAR_web_image_tag: '"${{ github.sha }}"'
-          TF_VAR_relay_image_tag: '"${{ github.sha }}"'
+          TF_VAR_version: '"${{ env.VERSION }}-${{ github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
           configuration_version:

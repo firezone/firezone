@@ -55,13 +55,21 @@ defmodule Domain.GoogleCloudPlatform do
     end
   end
 
-  def list_google_cloud_instances_by_label(project_id, label, value) do
+  def list_google_cloud_instances_by_labels(project_id, label_values) do
+    {label, value} = label_values
+
     aggregated_list_endpoint_url =
       fetch_config!()
       |> Keyword.fetch!(:aggregated_list_endpoint_url)
       |> String.replace("${project_id}", project_id)
 
-    filter = "labels.#{label}=#{value} AND status=RUNNING"
+    filter =
+      label_values
+      |> Enum.map(fn {label, value} -> "labels.#{label}=#{value}" end)
+      |> Enum.join(" AND ")
+
+    filter = "#{filter} AND status=RUNNING"
+
     query = URI.encode_query(%{"filter" => filter})
     url = aggregated_list_endpoint_url <> "?" <> query
 
@@ -71,17 +79,12 @@ defmodule Domain.GoogleCloudPlatform do
            Finch.request(request, __MODULE__.Finch),
          {:ok, %{"items" => items}} <- Jason.decode(response) do
       instances =
-        items
-        |> Enum.flat_map(fn
-          {_zone, %{"instances" => instances}} ->
+        Enum.flat_map(items, fn
+          {_region, %{"instances" => instances}} ->
             instances
 
-          {_zone, %{"warning" => %{"code" => "NO_RESULTS_ON_PAGE"}}} ->
+          {_region, %{"warning" => %{"code" => "NO_RESULTS_ON_PAGE"}}} ->
             []
-        end)
-        |> Enum.filter(fn
-          %{"status" => "RUNNING", "labels" => %{^label => ^value}} -> true
-          %{"status" => _status, "labels" => _labels} -> false
         end)
 
       {:ok, instances}

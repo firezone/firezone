@@ -43,16 +43,18 @@ defmodule Domain.GoogleCloudPlatformTest do
     end
   end
 
-  describe "list_google_cloud_instances_by_label/3" do
+  describe "list_google_cloud_instances_by_labels/3" do
     test "returns list of nodes in all regions when access token is not set", %{bypass: bypass} do
       GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
       GoogleCloudPlatform.mock_instances_list_endpoint(bypass)
 
       assert {:ok, nodes} =
-               list_google_cloud_instances_by_label(
+               list_google_cloud_instances_by_labels(
                  "firezone-staging",
-                 "cluster_name",
-                 "firezone"
+                 %{
+                   "cluster_name" => "firezone",
+                   "version" => "0-0-1"
+                 }
                )
 
       assert length(nodes) == 1
@@ -83,16 +85,18 @@ defmodule Domain.GoogleCloudPlatformTest do
         "http://localhost:#{bypass.port}/"
       )
 
-      assert list_google_cloud_instances_by_label("firezone-staging", "cluster_name", "firezone") ==
-               {:error, %Mint.TransportError{reason: :econnrefused}}
+      assert list_google_cloud_instances_by_labels("firezone-staging", %{
+               "cluster_name" => "firezone"
+             }) == {:error, %Mint.TransportError{reason: :econnrefused}}
 
       GoogleCloudPlatform.override_endpoint_url(
         :token_endpoint_url,
         "http://localhost:#{bypass.port}/"
       )
 
-      assert list_google_cloud_instances_by_label("firezone-staging", "cluster_name", "firezone") ==
-               {:error, %Mint.TransportError{reason: :econnrefused}}
+      assert list_google_cloud_instances_by_labels("firezone-staging", %{
+               "cluster_name" => "firezone"
+             }) == {:error, %Mint.TransportError{reason: :econnrefused}}
     end
   end
 

@@ -421,7 +421,7 @@ module "web" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "web"
-  image_tag  = var.web_image_tag
+  image_tag  = var.version
 
   scaling_horizontal_replicas = 2
 
@@ -431,7 +431,7 @@ module "web" {
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "web"
-  application_version = replace(var.web_image_tag, ".", "-")
+  application_version = replace(var.version, ".", "-")
 
   application_dns_tld = "app.${local.tld}"
 
@@ -490,7 +490,7 @@ module "api" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "api"
-  image_tag  = var.api_image_tag
+  image_tag  = var.version
 
   scaling_horizontal_replicas = 2
 
@@ -500,7 +500,7 @@ module "api" {
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "api"
-  application_version = replace(var.api_image_tag, ".", "-")
+  application_version = replace(var.version, ".", "-")
 
   application_dns_tld = "api.${local.tld}"
 
@@ -686,12 +686,12 @@ module "relays" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "relay"
-  image_tag  = var.relay_image_tag
+  image_tag  = var.version
 
   observability_log_level = "debug,firezone_relay=trace,hyper=off,h2=warn,tower=warn,wire=trace"
 
   application_name    = "relay"
-  application_version = replace(var.relay_image_tag, ".", "-")
+  application_version = replace(var.version, ".", "-")
 
   health_check = {
     name     = "health"

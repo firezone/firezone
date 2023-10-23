@@ -1,16 +1,6 @@
-variable "api_image_tag" {
+variable "version" {
   type        = string
-  description = "Image tag for the api service"
-}
-
-variable "web_image_tag" {
-  type        = string
-  description = "Image tag for the web service"
-}
-
-variable "relay_image_tag" {
-  type        = string
-  description = "Image tag for the relay service"
+  description = "Image tag for all services. Notice: we assume all services are deployed with the same version"
 }
 
 variable "relay_portal_token" {
