@@ -86,7 +86,11 @@ where
         src: &[u8],
         dst: &mut [u8],
     ) -> Result<()> {
-        self.verify_packet(peer, src).await?;
+        if let Some(cookie) = self.verify_packet(peer, src).await? {
+            peer.send_infallible(cookie, &self.callbacks).await;
+
+            return Err(Error::UnderLoad);
+        }
 
         let write_to = match peer.tunnel.lock().decapsulate(None, src, dst) {
             TunnResult::Done => return Ok(()),
@@ -135,12 +139,13 @@ where
         Ok(())
     }
 
+    /// Consults the rate limiter for the provided buffer and checks that it parses into a valid wireguard packet.
     #[inline(always)]
     async fn verify_packet(
         self: &Arc<Self>,
         peer: &Arc<Peer<TRoleState::Id>>,
         src: &[u8],
-    ) -> Result<()> {
+    ) -> Result<Option<Bytes>> {
         /// The rate-limiter emits at most a cookie packet which is only 64 bytes.
         const COOKIE_REPLY_SIZE: usize = 64;
 
@@ -156,10 +161,7 @@ where
         ) {
             Ok(packet) => packet,
             Err(TunnResult::WriteToNetwork(cookie)) => {
-                let bytes = Bytes::copy_from_slice(cookie);
-                peer.send_infallible(bytes, &self.callbacks).await;
-
-                return Err(Error::UnderLoad);
+                return Ok(Some(Bytes::copy_from_slice(cookie)));
             }
             Err(TunnResult::Err(e)) => {
                 tracing::error!(error = ?e, "wireguard_error");
@@ -180,7 +182,7 @@ where
             return Err(Error::BadPacket);
         }
 
-        Ok(())
+        Ok(None)
     }
 }
 
