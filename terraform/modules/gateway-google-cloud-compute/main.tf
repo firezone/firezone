@@ -206,6 +206,7 @@ resource "google_compute_region_instance_group_manager" "application" {
   wait_for_instances_status = "STABLE"
 
   version {
+    name              = local.application_version
     instance_template = google_compute_instance_template.application.self_link
   }
 

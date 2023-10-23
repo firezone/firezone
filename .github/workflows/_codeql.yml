@@ -1,9 +1,6 @@
 name: "CodeQL"
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_call:
 
 jobs:
   analyze:
@@ -18,10 +15,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - language: 'javascript-typescript'
-            working-directory: 'website/'
-          - language: 'javascript-typescript'
-            working-directory: 'elixir/apps/web/assets/'
+          - language: "javascript-typescript"
+            working-directory: "website/"
+          - language: "javascript-typescript"
+            working-directory: "elixir/apps/web/assets/"
           # TODO
           # - language: 'java-kotlin'
           #   working-directory: 'kotlin/android'
