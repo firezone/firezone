@@ -5,6 +5,7 @@ ARG CARGO_CHEF_VERSION="0.1.62"
 # This image is used to prepare Cargo Chef which is used to cache dependencies
 FROM rust:1-alpine${ALPINE_VERSION} as chef
 
+ARG CARGO_CHEF_VERSION
 RUN set -xe \
   && apk add --no-cache musl-dev  \
   && cargo install cargo-chef --locked --version=${CARGO_CHEF_VERSION} \
