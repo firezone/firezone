@@ -359,11 +359,13 @@ locals {
     {
       name = "ERLANG_CLUSTER_ADAPTER_CONFIG"
       value = jsonencode({
-        project_id          = module.google-cloud-project.project.project_id
-        cluster_name        = local.cluster.name
-        cluster_name_label  = "cluster_name"
-        node_name_label     = "application"
-        polling_interval_ms = 7000
+        project_id            = module.google-cloud-project.project.project_id
+        cluster_name          = local.cluster.name
+        cluster_name_label    = "cluster_name"
+        cluster_version_label = "version"
+        cluster_version       = split(".", var.version)[0]
+        node_name_label       = "application"
+        polling_interval_ms   = 7000
       })
     },
     {
@@ -469,7 +471,8 @@ module "web" {
   ], local.shared_application_environment_variables)
 
   application_labels = {
-    "cluster_name" = local.cluster.name
+    "cluster_name"    = local.cluster.name
+    "cluster_version" = split(".", var.version)[0]
   }
 }
 
@@ -538,7 +541,8 @@ module "api" {
   ], local.shared_application_environment_variables)
 
   application_labels = {
-    "cluster_name" = local.cluster.name
+    "cluster_name"    = local.cluster.name
+    "cluster_version" = split(".", var.version)[0]
   }
 
   application_token_scopes = [
