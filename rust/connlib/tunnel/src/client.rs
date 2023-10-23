@@ -180,19 +180,39 @@ where
             continue;
         };
 
-        if let Err(e) = peer.send(packet, dest, &mut buf).await {
-            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+        let bytes = match peer.encapsulate(packet, dest, &mut buf) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                on_error(&tunnel, dest, &peer, &e).await;
 
-            let _ = tunnel.callbacks.on_error(&e);
-
-            if e.is_fatal_connection_error() {
-                let _ = tunnel
-                    .stop_peer_command_sender
-                    .clone()
-                    .send((peer.index, peer.conn_id))
-                    .await;
+                continue;
             }
+        };
+
+        if let Err(e) = peer.channel.write(&bytes).await {
+            on_error(&tunnel, dest, &peer, &e.into()).await;
         }
+    }
+}
+
+async fn on_error<CB>(
+    tunnel: &Arc<Tunnel<CB, ClientState>>,
+    dest: IpAddr,
+    peer: &Arc<Peer<GatewayId>>,
+    e: &ConnlibError,
+) where
+    CB: Callbacks + 'static,
+{
+    tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+
+    let _ = tunnel.callbacks.on_error(e);
+
+    if e.is_fatal_connection_error() {
+        let _ = tunnel
+            .stop_peer_command_sender
+            .clone()
+            .send((peer.index, peer.conn_id))
+            .await;
     }
 }
 

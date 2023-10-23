@@ -1,4 +1,5 @@
 use crate::device_channel::create_iface;
+use crate::peer::Peer;
 use crate::{
     peer_by_ip, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
@@ -9,6 +10,7 @@ use connlib_shared::Callbacks;
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
 use futures_util::SinkExt;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
@@ -63,17 +65,36 @@ where
             continue;
         };
 
-        if let Err(e) = peer.send(packet, dest, &mut buf).await {
-            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
-
-            if e.is_fatal_connection_error() {
-                let _ = tunnel
-                    .stop_peer_command_sender
-                    .clone()
-                    .send((peer.index, peer.conn_id))
-                    .await;
+        let bytes = match peer.encapsulate(packet, dest, &mut buf) {
+            Ok(b) => b,
+            Err(e) => {
+                on_error(&tunnel, dest, &peer, e).await;
+                continue;
             }
+        };
+
+        if let Err(e) = peer.channel.write(&bytes).await {
+            on_error(&tunnel, dest, &peer, e.into()).await
         }
+    }
+}
+
+async fn on_error<CB>(
+    tunnel: &Tunnel<CB, GatewayState>,
+    dest: IpAddr,
+    peer: &Peer<ClientId>,
+    e: ConnlibError,
+) where
+    CB: Callbacks + 'static,
+{
+    tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+
+    if e.is_fatal_connection_error() {
+        let _ = tunnel
+            .stop_peer_command_sender
+            .clone()
+            .send((peer.index, peer.conn_id))
+            .await;
     }
 }
 

@@ -187,12 +187,12 @@ where
     }
 
     /// Sends the given packet to this peer by encapsulating it in a wireguard packet.
-    pub(crate) async fn send<'a>(
+    pub(crate) fn encapsulate(
         &self,
-        mut packet: MutableIpPacket<'a>,
+        mut packet: MutableIpPacket,
         dest: IpAddr,
         buf: &mut [u8],
-    ) -> Result<()> {
+    ) -> Result<Bytes> {
         if let Some(resource) = self.get_translation(packet.to_immutable().source()) {
             let ResourceDescription::Dns(resource) = resource else {
                 tracing::error!(
@@ -209,7 +209,7 @@ where
             packet.update_checksum();
         }
         let packet = match self.tunnel.lock().encapsulate(packet.packet(), buf) {
-            TunnResult::Done => return Ok(()),
+            TunnResult::Done => return Ok(Bytes::new()),
             TunnResult::Err(e) => return Err(e.into()),
             TunnResult::WriteToNetwork(b) => b,
             _ => panic!("Unexpected result from `encapsulate`"),
@@ -217,9 +217,7 @@ where
 
         tracing::trace!(target: "wire", action = "writing", from = "iface", to = %dest);
 
-        self.channel.write(&Bytes::copy_from_slice(packet)).await?;
-
-        Ok(())
+        Ok(Bytes::copy_from_slice(packet))
     }
 
     pub(crate) fn decapsulate<'b>(
