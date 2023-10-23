@@ -12,22 +12,22 @@ concurrency:
 
 jobs:
   elixir:
-    uses: ./.github/workflows/elixir.yml
+    uses: ./.github/workflows/_elixir.yml
   rust:
-    uses: ./.github/workflows/rust.yml
+    uses: ./.github/workflows/_rust.yml
   kotlin:
-    uses: ./.github/workflows/kotlin.yml
+    uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
   swift:
-    uses: ./.github/workflows/swift.yml
+    uses: ./.github/workflows/_swift.yml
     secrets: inherit
   static-analysis:
-    uses: ./.github/workflows/static-analysis.yml
+    uses: ./.github/workflows/_static-analysis.yml
   terraform:
-    uses: ./.github/workflows/terraform.yml
+    uses: ./.github/workflows/_terraform.yml
     secrets: inherit
   codeql:
-    uses: ./.github/workflows/codeql.yml
+    uses: ./.github/workflows/_codeql.yml
     secrets: inherit
 
   # We could build these in GCP with Cloud Build, but for now it's
