@@ -61,7 +61,7 @@ where
 
         let dest = packet.destination();
 
-        let Some(peer) = peer_by_ip(&tunnel.peers_by_ip.read(), dest) else {
+        let Some((peer, channel)) = peer_by_ip(&tunnel.peers_by_ip.read(), dest) else {
             continue;
         };
 
@@ -73,7 +73,7 @@ where
             }
         };
 
-        if let Err(e) = peer.channel.write(&bytes).await {
+        if let Err(e) = channel.write(&bytes).await {
             on_error(&tunnel, dest, &peer, e.into()).await
         }
     }

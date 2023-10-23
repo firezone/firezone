@@ -34,6 +34,7 @@ use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
 use std::{collections::HashSet, hash::Hash};
 use tokio::time::Interval;
+use webrtc::data::data_channel::DataChannel;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 use connlib_shared::{
@@ -141,7 +142,8 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     rate_limiter: Arc<RateLimiter>,
     private_key: StaticSecret,
     public_key: PublicKey,
-    peers_by_ip: RwLock<IpNetworkTable<Arc<Peer<TRoleState::Id>>>>,
+    #[allow(clippy::type_complexity)]
+    peers_by_ip: RwLock<IpNetworkTable<(Arc<Peer<TRoleState::Id>>, Arc<DataChannel>)>>,
     peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCPeerConnection>>>,
     webrtc_api: API,
     callbacks: CallbackErrorFacade<CB>,
@@ -177,7 +179,7 @@ where
             .peers_by_ip
             .read()
             .iter()
-            .map(|(ip, peer)| (ip, peer.stats()))
+            .map(|(ip, (peer, _))| (ip, peer.stats()))
             .collect();
         let peer_connections = self.peer_connections.lock().keys().cloned().collect();
 
@@ -211,7 +213,7 @@ where
                     peers_to_refresh(&mut peers_by_ip, self.stop_peer_command_sender.clone())
                 };
 
-                for peer in peers_to_refresh {
+                for (peer, channel) in peers_to_refresh {
                     let callbacks = self.callbacks.clone();
                     let mut stop_command_sender = self.stop_peer_command_sender.clone();
 
@@ -230,7 +232,7 @@ where
                             }
                         };
 
-                        if let Err(e) = peer.channel.write(&bytes).await {
+                        if let Err(e) = channel.write(&bytes).await {
                             tracing::error!("Failed to send packet to peer: {e}");
                             let _ = callbacks.on_error(&e.into());
                         }
@@ -278,9 +280,9 @@ where
             {
                 let mut peers = self.peers_by_ip.write();
 
-                let (maybe_network, maybe_peer) = peers
+                let (maybe_network, maybe_channel) = peers
                     .iter()
-                    .find_map(|(n, p)| (p.index == i).then_some((n, p.clone())))
+                    .find_map(|(n, (p, c))| (p.index == i).then_some((n, c.clone())))
                     .unzip();
 
                 if let Some(network) = maybe_network {
@@ -291,8 +293,8 @@ where
                     tokio::spawn({
                         let callbacks = self.callbacks.clone();
                         async move {
-                            if let Some(peer) = maybe_peer {
-                                let _ = peer.channel.close().await;
+                            if let Some(channel) = maybe_channel {
+                                let _ = channel.close().await;
                             }
                             if let Err(e) = conn.close().await {
                                 tracing::warn!(%conn_id, error = ?e, "Can't close peer");
@@ -310,9 +312,9 @@ where
 }
 
 pub(crate) fn peer_by_ip<Id>(
-    peers_by_ip: &IpNetworkTable<Arc<Peer<Id>>>,
+    peers_by_ip: &IpNetworkTable<(Arc<Peer<Id>>, Arc<DataChannel>)>,
     ip: IpAddr,
-) -> Option<Arc<Peer<Id>>> {
+) -> Option<(Arc<Peer<Id>>, Arc<DataChannel>)> {
     peers_by_ip.longest_match(ip).map(|(_, peer)| peer).cloned()
 }
 
@@ -460,9 +462,9 @@ fn mtu_refresh_interval() -> Interval {
 }
 
 fn peers_to_refresh<TId>(
-    peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId>>>,
+    peers_by_ip: &mut IpNetworkTable<(Arc<Peer<TId>>, Arc<DataChannel>)>,
     shutdown_sender: mpsc::Sender<(u32, TId)>,
-) -> Vec<Arc<Peer<TId>>>
+) -> Vec<(Arc<Peer<TId>>, Arc<DataChannel>)>
 where
     TId: Eq + Hash + Copy + Send + Sync + 'static,
 {
@@ -471,18 +473,18 @@ where
     peers_by_ip
         .iter()
         .map(|p| p.1)
-        .unique_by(|p| p.index)
-        .cloned()
+        .unique_by(|(p, _)| p.index)
+        .map(|(p, c)| (p.clone(), c.clone()))
         .collect()
 }
 
 fn remove_expired_peers<TId>(
-    peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId>>>,
+    peers_by_ip: &mut IpNetworkTable<(Arc<Peer<TId>>, Arc<DataChannel>)>,
     shutdown_sender: mpsc::Sender<(u32, TId)>,
 ) where
     TId: Eq + Hash + Copy + Send + Sync + 'static,
 {
-    for (_, peer) in peers_by_ip.iter() {
+    for (_, (peer, _)) in peers_by_ip.iter() {
         peer.expire_resources();
         if peer.is_emptied() {
             let index = peer.index;
@@ -497,7 +499,7 @@ fn remove_expired_peers<TId>(
         }
     }
 
-    peers_by_ip.retain(|_, p| !p.is_emptied());
+    peers_by_ip.retain(|_, (p, _)| !p.is_emptied());
 }
 
 /// Dedicated trait for abstracting over the different ICE states.

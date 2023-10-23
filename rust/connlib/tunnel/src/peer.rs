@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::net::ToSocketAddrs;
-use std::{collections::HashMap, net::IpAddr, sync::Arc};
+use std::{collections::HashMap, net::IpAddr};
 
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::StaticSecret;
@@ -15,7 +15,6 @@ use ip_network_table::IpNetworkTable;
 use parking_lot::{Mutex, RwLock};
 use pnet_packet::Packet;
 use secrecy::ExposeSecret;
-use webrtc::data::data_channel::DataChannel;
 
 use crate::{
     device_channel, ip_packet::MutableIpPacket, resource_table::ResourceTable, PeerConfig,
@@ -27,7 +26,6 @@ pub(crate) struct Peer<TId> {
     pub tunnel: Mutex<Tunn>,
     pub index: u32,
     allowed_ips: RwLock<IpNetworkTable<()>>,
-    pub channel: Arc<DataChannel>,
     pub conn_id: TId,
     resources: Option<RwLock<ResourceTable<ExpiryingResource>>>,
     // Here we store the address that we obtained for the resource that the peer corresponds to.
@@ -82,7 +80,6 @@ where
         private_key: StaticSecret,
         index: u32,
         peer_config: PeerConfig,
-        channel: Arc<DataChannel>,
         conn_id: TId,
         resource: Option<(ResourceDescription, DateTime<Utc>)>,
     ) -> Peer<TId> {
@@ -111,7 +108,6 @@ where
             tunnel: Mutex::new(tunnel),
             index,
             allowed_ips,
-            channel,
             conn_id,
             resources,
             translated_resource_addresses: Default::default(),

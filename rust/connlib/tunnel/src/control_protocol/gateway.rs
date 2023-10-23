@@ -114,11 +114,12 @@ where
                         data_channel
                             .on_close(on_dc_close_handler(index, client_id, tunnel.stop_peer_command_sender.clone()));
 
+                        let data_channel = data_channel.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us");
+
                         let peer = Arc::new(Peer::new(
                             tunnel.private_key.clone(),
                             index,
                             peer_config.clone(),
-                            data_channel.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us"),
                             client_id,
                             Some((resource, expires_at)),
                         ));
@@ -128,7 +129,7 @@ where
                             let mut peers_by_ip = tunnel.peers_by_ip.write();
 
                             for ip in peer_config.ips {
-                                peers_by_ip.insert(ip, Arc::clone(&peer));
+                                peers_by_ip.insert(ip, (Arc::clone(&peer), data_channel.clone()));
                             }
                         }
 
@@ -141,7 +142,7 @@ where
                             );
                         }
 
-                        tokio::spawn(tunnel.clone().start_peer_handler(peer));
+                        tokio::spawn(tunnel.clone().start_peer_handler(peer, data_channel));
                     })
                 }))
             })
@@ -170,7 +171,7 @@ where
             .peers_by_ip
             .write()
             .iter_mut()
-            .find_map(|(_, p)| (p.conn_id == client_id).then_some(p))
+            .find_map(|(_, (p, _))| (p.conn_id == client_id).then_some(p))
         {
             peer.add_resource(resource, expires_at);
         }

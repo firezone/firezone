@@ -6,6 +6,7 @@ use boringtun::x25519::{PublicKey, StaticSecret};
 use bytes::Bytes;
 use connlib_shared::{Callbacks, Error, Result};
 use futures_util::SinkExt;
+use webrtc::data::data_channel::DataChannel;
 
 use crate::peer::WriteTo;
 use crate::{
@@ -18,7 +19,11 @@ where
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
-    pub(crate) async fn start_peer_handler(self: Arc<Self>, peer: Arc<Peer<TRoleState::Id>>) {
+    pub(crate) async fn start_peer_handler(
+        self: Arc<Self>,
+        peer: Arc<Peer<TRoleState::Id>>,
+        channel: Arc<DataChannel>,
+    ) {
         loop {
             let Some(device) = self.device.read().await.clone() else {
                 let err = Error::NoIface;
@@ -28,7 +33,7 @@ where
             };
             let device_io = device.io;
 
-            if let Err(err) = self.peer_handler(&peer, device_io).await {
+            if let Err(err) = self.peer_handler(&peer, channel.clone(), device_io).await {
                 if err.raw_os_error() != Some(9) {
                     tracing::error!(?err);
                     let _ = self.callbacks().on_error(&err.into());
@@ -49,11 +54,12 @@ where
     async fn peer_handler(
         self: &Arc<Self>,
         peer: &Arc<Peer<TRoleState::Id>>,
+        channel: Arc<DataChannel>,
         device_io: DeviceIo,
     ) -> std::io::Result<()> {
         let mut src_buf = [0u8; MAX_UDP_SIZE];
         let mut dst_buf = [0u8; MAX_UDP_SIZE];
-        while let Ok(size) = peer.channel.read(&mut src_buf[..]).await {
+        while let Ok(size) = channel.read(&mut src_buf[..]).await {
             tracing::trace!(target: "wire", action = "read", bytes = size, from = "peer");
 
             // TODO: Double check that this can only happen on closed channel
@@ -65,7 +71,7 @@ where
             }
 
             match self
-                .handle_peer_packet(peer, &device_io, &src_buf[..size], &mut dst_buf)
+                .handle_peer_packet(peer, &channel, &device_io, &src_buf[..size], &mut dst_buf)
                 .await
             {
                 Err(Error::Io(e)) => return Err(e),
@@ -84,6 +90,7 @@ where
     pub(crate) async fn handle_peer_packet(
         self: &Arc<Self>,
         peer: &Arc<Peer<TRoleState::Id>>,
+        channel: &DataChannel,
         device_writer: &DeviceIo,
         mut src: &[u8],
         dst: &mut [u8],
@@ -95,7 +102,7 @@ where
             peer.index,
             src,
         )? {
-            if let Err(e) = peer.channel.write(&cookie).await {
+            if let Err(e) = channel.write(&cookie).await {
                 tracing::error!("Couldn't send cookie to connected peer: {e}");
                 let _ = self.callbacks.on_error(&e.into());
             }
@@ -106,7 +113,7 @@ where
         loop {
             match peer.decapsulate(src, dst)? {
                 Some(WriteTo::Network(bytes)) => {
-                    if let Err(e) = peer.channel.write(&bytes).await {
+                    if let Err(e) = channel.write(&bytes).await {
                         tracing::error!("Couldn't send packet to connected peer: {e}");
                         let _ = self.callbacks.on_error(&e.into());
                     }

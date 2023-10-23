@@ -29,6 +29,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::Instant;
+use webrtc::data::data_channel::DataChannel;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 impl<CB> Tunnel<CB, ClientState>
@@ -172,7 +173,7 @@ where
 
         let dest = packet.destination();
 
-        let Some(peer) = peer_by_ip(&tunnel.peers_by_ip.read(), dest) else {
+        let Some((peer, channel)) = peer_by_ip(&tunnel.peers_by_ip.read(), dest) else {
             tunnel
                 .role_state
                 .lock()
@@ -189,7 +190,7 @@ where
             }
         };
 
-        if let Err(e) = peer.channel.write(&bytes).await {
+        if let Err(e) = channel.write(&bytes).await {
             on_error(&tunnel, dest, &peer, &e.into()).await;
         }
     }
@@ -247,7 +248,7 @@ impl ClientState {
         resource: ResourceId,
         gateway: GatewayId,
         expected_attempts: usize,
-        connected_peers: &mut IpNetworkTable<Arc<Peer<GatewayId>>>,
+        connected_peers: &mut IpNetworkTable<(Arc<Peer<GatewayId>>, Arc<DataChannel>)>,
     ) -> Result<Option<ReuseConnection>, ConnlibError> {
         if self.is_connected_to(resource, connected_peers) {
             return Err(Error::UnexpectedConnectionDetails);
@@ -279,12 +280,11 @@ impl ClientState {
 
         let peer = connected_peers
             .iter()
-            .find_map(|(_, p)| (p.conn_id == gateway).then_some(p))
-            .cloned();
-        if let Some(peer) = peer {
+            .find_map(|(_, (p, c))| (p.conn_id == gateway).then_some((p.clone(), c.clone())));
+        if let Some((peer, channel)) = peer {
             for ip in desc.ips() {
                 peer.add_allowed_ip(ip);
-                connected_peers.insert(ip, Arc::clone(&peer));
+                connected_peers.insert(ip, (Arc::clone(&peer), channel.clone()));
             }
             self.awaiting_connection.remove(&resource);
             self.awaiting_connection_timers.remove(resource);
@@ -423,7 +423,7 @@ impl ClientState {
     fn is_connected_to(
         &self,
         resource: ResourceId,
-        connected_peers: &IpNetworkTable<Arc<Peer<GatewayId>>>,
+        connected_peers: &IpNetworkTable<(Arc<Peer<GatewayId>>, Arc<DataChannel>)>,
     ) -> bool {
         let Some(resource) = self.resources.get_by_id(&resource) else {
             return false;
