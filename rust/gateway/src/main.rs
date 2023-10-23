@@ -101,9 +101,29 @@ struct Cli {
 
 /// Checks whether the given [`std::error::Error`] is in-fact an HTTP error with a 4xx status code.
 fn is_client_error(e: &(dyn std::error::Error + 'static)) -> bool {
-    let Some(tungstenite::Error::Http(r)) = e.downcast_ref() else {
+    let Some(tungstenite::Error::Http(r)) = dbg!(e).downcast_ref() else {
         return false;
     };
 
     r.status().is_client_error()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backoff_permanent_on_client_error() {
+        let error =
+            anyhow::Error::new(phoenix_channel::Error::WebSocket(tungstenite::Error::Http(
+                tungstenite::http::Response::builder()
+                    .status(400)
+                    .body(None)
+                    .unwrap(),
+            )));
+
+        let backoff = to_backoff(error);
+
+        assert!(matches!(backoff, backoff::Error::Permanent(_)))
+    }
 }

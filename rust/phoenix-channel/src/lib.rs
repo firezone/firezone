@@ -94,7 +94,7 @@ pub struct UnexpectedEventDuringInit(String);
 pub enum Error {
     #[error("provided URI is missing a host")]
     MissingHost,
-    #[error(transparent)]
+    #[error("websocket failed")]
     WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
     #[error("failed to serialize message")]
     Serde(#[from] serde_json::Error),
