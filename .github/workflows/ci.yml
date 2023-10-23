@@ -26,6 +26,9 @@ jobs:
   terraform:
     uses: ./.github/workflows/terraform.yml
     secrets: inherit
+  codeql:
+    uses: ./.github/workflows/codeql.yml
+    secrets: inherit
 
   # We could build these in GCP with Cloud Build, but for now it's
   # less overhead to keep things in GH actions. See work on building these
