@@ -29,7 +29,7 @@ ENV RUST_BACKTRACE=1
 COPY ./docker-init.sh .
 ARG PACKAGE
 # Needed only by gateway for masquerading
-RUN \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables || true
+RUN \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables curl || true
 ARG TARGET
 COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .
 ENTRYPOINT ["docker-init.sh"]
@@ -43,7 +43,7 @@ ENV RUST_BACKTRACE=1
 COPY ./docker-init.sh .
 ARG PACKAGE
 # Needed only by gateway for masquerading
-RUN \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables || true
+RUN \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables curl || true
 ARG TARGET
 # Build first with `cross build --target ${TARGET} -p ${PACKAGE} --release && mv /target/${TARGET}/release/${PACKAGE} .`
 COPY ${PACKAGE} .
