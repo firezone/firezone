@@ -4,7 +4,9 @@ ARG ALPINE_VERSION="3.18"
 # This image is used to prepare Cargo Chef which is used to cache dependencies
 FROM rust:1-alpine${ALPINE_VERSION} as chef
 
-RUN cargo install cargo-chef
+RUN set -xe \
+  && apk add --no-cache musl-dev  \
+  && cargo install cargo-chef
 
 ## See https://github.com/LukeMathWalker/cargo-chef/issues/231.
 COPY rust-toolchain.toml rust-toolchain.toml
@@ -45,7 +47,7 @@ ENV RUST_BACKTRACE=1
 
 ## curl is needed by the entrypoint script
 RUN set -xe \
-  apk add --no-cache curl
+  && apk add --no-cache curl
 
 COPY ./docker-init.sh .
 
