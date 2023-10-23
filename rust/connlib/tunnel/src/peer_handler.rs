@@ -114,10 +114,14 @@ where
                 }
             }
             TunnResult::WriteToTunnelV4(packet, addr) => {
-                send_to_resource(device_writer, peer, addr.into(), packet)?;
+                if let Some(packet) = make_packet_for_resource(peer, addr.into(), packet)? {
+                    device_writer.write(packet)?;
+                }
             }
             TunnResult::WriteToTunnelV6(packet, addr) => {
-                send_to_resource(device_writer, peer, addr.into(), packet)?;
+                if let Some(packet) = make_packet_for_resource(peer, addr.into(), packet)? {
+                    device_writer.write(packet)?;
+                }
             }
         }
 
@@ -175,18 +179,17 @@ fn is_wireguard_packet_ok<TId>(
 }
 
 #[inline(always)]
-pub(crate) fn send_to_resource<TId>(
-    device_io: &DeviceIo,
+pub(crate) fn make_packet_for_resource<'a, TId>(
     peer: &Arc<Peer<TId>>,
     addr: IpAddr,
-    packet: &mut [u8],
-) -> Result<()>
+    packet: &'a mut [u8],
+) -> Result<Option<device_channel::Packet<'a>>>
 where
     TId: Copy,
 {
     if !peer.is_allowed(addr) {
         tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
-        return Ok(());
+        return Ok(None);
     }
 
     let Some((dst, resource)) = peer.get_packet_resource(packet) else {
@@ -194,23 +197,23 @@ where
         // and we just trust gateways.
         // In gateways this should never happen.
         tracing::trace!(target: "wire", action = "writing", to = "iface", %addr, bytes = %packet.len());
-        send_packet(device_io, packet, addr)?;
-        return Ok(());
+        let packet = make_packet(packet, addr);
+        return Ok(Some(packet));
     };
 
     let (dst_addr, _dst_port) = get_resource_addr_and_port(peer, &resource, &addr, &dst)?;
     update_packet(packet, dst_addr);
-    send_packet(device_io, packet, addr)?;
-    Ok(())
+    let packet = make_packet(packet, addr);
+
+    Ok(Some(packet))
 }
 
 #[inline(always)]
-fn send_packet(device_io: &DeviceIo, packet: &mut [u8], dst_addr: IpAddr) -> std::io::Result<()> {
+fn make_packet(packet: &mut [u8], dst_addr: IpAddr) -> device_channel::Packet<'_> {
     match dst_addr {
-        IpAddr::V4(_) => device_io.write(device_channel::Packet::Ipv4(Cow::Borrowed(packet)))?,
-        IpAddr::V6(_) => device_io.write(device_channel::Packet::Ipv6(Cow::Borrowed(packet)))?,
-    };
-    Ok(())
+        IpAddr::V4(_) => device_channel::Packet::Ipv4(Cow::Borrowed(packet)),
+        IpAddr::V6(_) => device_channel::Packet::Ipv6(Cow::Borrowed(packet)),
+    }
 }
 
 #[inline(always)]
