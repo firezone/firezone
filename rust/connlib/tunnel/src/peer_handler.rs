@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::net::{IpAddr, ToSocketAddrs};
 use std::sync::Arc;
 
+use boringtun::noise::rate_limiter::RateLimiter;
 use boringtun::noise::{handshake::parse_handshake_anon, Packet, TunnResult};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use bytes::{Bytes, BytesMut};
@@ -91,7 +92,13 @@ where
         src: &[u8],
         dst: &mut [u8],
     ) -> Result<()> {
-        if let Some(cookie) = self.verify_packet(peer, src)? {
+        if let Some(cookie) = verify_packet(
+            &self.rate_limiter,
+            &self.private_key,
+            &self.public_key,
+            peer,
+            src,
+        )? {
             peer.send_infallible(cookie, &self.callbacks).await;
 
             return Err(Error::UnderLoad);
@@ -138,46 +145,48 @@ where
 
         Ok(())
     }
+}
 
-    /// Consults the rate limiter for the provided buffer and checks that it parses into a valid wireguard packet.
-    #[inline(always)]
-    fn verify_packet(
-        self: &Arc<Self>,
-        peer: &Peer<TRoleState::Id>,
-        src: &[u8],
-    ) -> Result<Option<Bytes>> {
-        /// The rate-limiter emits at most a cookie packet which is only 64 bytes.
-        const COOKIE_REPLY_SIZE: usize = 64;
+/// Consults the rate limiter for the provided buffer and checks that it parses into a valid wireguard packet.
+#[inline(always)]
+fn verify_packet<TId>(
+    rate_limiter: &RateLimiter,
+    private_key: &StaticSecret,
+    public_key: &PublicKey,
+    peer: &Peer<TId>,
+    src: &[u8],
+) -> Result<Option<Bytes>> {
+    /// The rate-limiter emits at most a cookie packet which is only 64 bytes.
+    const COOKIE_REPLY_SIZE: usize = 64;
 
-        let mut dst = [0u8; COOKIE_REPLY_SIZE];
+    let mut dst = [0u8; COOKIE_REPLY_SIZE];
 
-        // The rate limiter initially checks mac1 and mac2, and optionally asks to send a cookie
-        let packet = match self.rate_limiter.verify_packet(
-            // TODO: Some(addr.ip()) webrtc doesn't expose easily the underlying data channel remote ip
-            // so for now we don't use it. but we need it for rate limiter although we probably not need it since the data channel
-            // will only be established to authenticated peers, so the portal could already prevent being ddos'd
-            // but maybe in that cased we can drop this rate_limiter all together and just use decapsulate
-            None, src, &mut dst,
-        ) {
-            Ok(packet) => packet,
-            Err(TunnResult::WriteToNetwork(cookie)) => {
-                return Ok(Some(Bytes::copy_from_slice(cookie)));
-            }
-            Err(TunnResult::Err(e)) => return Err(e.into()),
-            Err(_) => {
-                tracing::error!(error = "unexpected", "wireguard_error");
+    // The rate limiter initially checks mac1 and mac2, and optionally asks to send a cookie
+    let packet = match rate_limiter.verify_packet(
+        // TODO: Some(addr.ip()) webrtc doesn't expose easily the underlying data channel remote ip
+        // so for now we don't use it. but we need it for rate limiter although we probably not need it since the data channel
+        // will only be established to authenticated peers, so the portal could already prevent being ddos'd
+        // but maybe in that cased we can drop this rate_limiter all together and just use decapsulate
+        None, src, &mut dst,
+    ) {
+        Ok(packet) => packet,
+        Err(TunnResult::WriteToNetwork(cookie)) => {
+            return Ok(Some(Bytes::copy_from_slice(cookie)));
+        }
+        Err(TunnResult::Err(e)) => return Err(e.into()),
+        Err(_) => {
+            tracing::error!(error = "unexpected", "wireguard_error");
 
-                return Err(Error::BadPacket);
-            }
-        };
-
-        if !is_wireguard_packet_ok(&self.private_key, &self.public_key, &packet, peer) {
-            tracing::error!("wireguard_verification");
             return Err(Error::BadPacket);
         }
+    };
 
-        Ok(None)
+    if !is_wireguard_packet_ok(private_key, public_key, &packet, peer) {
+        tracing::error!("wireguard_verification");
+        return Err(Error::BadPacket);
     }
+
+    Ok(None)
 }
 
 #[inline(always)]
