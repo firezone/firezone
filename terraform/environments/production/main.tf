@@ -708,7 +708,7 @@ module "relays" {
     }
   }
 
-  portal_token         = var.relay_portal_token
+  portal_token = var.relay_portal_token
 
   depends_on = [
     module.api

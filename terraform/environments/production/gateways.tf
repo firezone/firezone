@@ -74,7 +74,7 @@ module "gateways" {
     }
   }
 
-  portal_token         = var.gateway_portal_token
+  portal_token = var.gateway_portal_token
 }
 
 
