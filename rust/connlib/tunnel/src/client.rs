@@ -1,7 +1,7 @@
 use crate::bounded_queue::BoundedQueue;
 use crate::device_channel::create_iface;
-use crate::ip_packet::IpPacket;
-use crate::peer::Peer;
+use crate::ip_packet::{IpPacket, MutableIpPacket};
+use crate::peer::{Peer, WriteTo};
 use crate::resource_table::ResourceTable;
 use crate::{
     dns, peer_by_ip, tokio_util, Device, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
@@ -155,65 +155,45 @@ where
             return Ok(());
         };
 
-        match dns::parse(&tunnel.role_state.lock().resources, packet.as_immutable()) {
-            Some(dns::ResolveStrategy::LocalResponse(pkt)) => {
-                if let Err(e) = device_writer.write(pkt) {
-                    tracing::error!(err = %e, "failed to send DNS packet");
-                    let _ = tunnel.callbacks.on_error(&e.into());
-                }
-
-                continue;
-            }
-            Some(dns::ResolveStrategy::ForwardQuery(query)) => {
-                tunnel.role_state.lock().add_pending_dns_query(query);
-                continue;
-            }
-            None => {}
-        }
-
         let dest = packet.destination();
+        let (peer, channel) = peer_by_ip(&tunnel.peers_by_ip.read(), dest).unzip();
 
-        let Some((peer, channel)) = peer_by_ip(&tunnel.peers_by_ip.read(), dest) else {
-            tunnel
-                .role_state
-                .lock()
-                .on_connection_intent(packet.destination());
-            continue;
+        let result = tunnel.role_state.lock().handle_new_packet(
+            packet,
+            &tunnel.peers_by_ip.read(),
+            &mut buf,
+        );
+
+        let error = match result {
+            Ok(None) => continue,
+            Ok(Some(WriteTo::Network(bytes))) => match channel
+                .expect("must have channel if we should write bytes")
+                .write(&bytes)
+                .await
+            {
+                Ok(_) => continue,
+                Err(e) => ConnlibError::IceDataError(e),
+            },
+            Ok(Some(WriteTo::Resource(packet))) => match device_writer.write(packet) {
+                Ok(_) => continue,
+                Err(e) => ConnlibError::Io(e),
+            },
+            Err(e) => e,
         };
 
-        let bytes = match peer.encapsulate(packet, dest, &mut buf) {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                on_error(&tunnel, dest, &peer, &e).await;
+        tracing::error!(resource_address = %dest, err = ?error, "failed to handle packet {error:#}");
 
-                continue;
+        let _ = tunnel.callbacks.on_error(&error);
+
+        if error.is_fatal_connection_error() {
+            if let Some(peer) = peer {
+                let _ = tunnel
+                    .stop_peer_command_sender
+                    .clone()
+                    .send((peer.index, peer.conn_id))
+                    .await;
             }
-        };
-
-        if let Err(e) = channel.write(&bytes).await {
-            on_error(&tunnel, dest, &peer, &e.into()).await;
         }
-    }
-}
-
-async fn on_error<CB>(
-    tunnel: &Arc<Tunnel<CB, ClientState>>,
-    dest: IpAddr,
-    peer: &Arc<Peer<GatewayId>>,
-    e: &ConnlibError,
-) where
-    CB: Callbacks + 'static,
-{
-    tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
-
-    let _ = tunnel.callbacks.on_error(e);
-
-    if e.is_fatal_connection_error() {
-        let _ = tunnel
-            .stop_peer_command_sender
-            .clone()
-            .send((peer.index, peer.conn_id))
-            .await;
     }
 }
 
@@ -243,6 +223,35 @@ pub struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
+    pub(crate) fn handle_new_packet<'b>(
+        &mut self,
+        packet: MutableIpPacket,
+        peers_by_ip: &IpNetworkTable<(Arc<Peer<GatewayId>>, Arc<DataChannel>)>,
+        buf: &'b mut [u8],
+    ) -> Result<Option<WriteTo<'b>>, ConnlibError> {
+        match dns::parse(&self.resources, packet.as_immutable()) {
+            Some(dns::ResolveStrategy::LocalResponse(pkt)) => {
+                return Ok(Some(WriteTo::Resource(pkt)))
+            }
+            Some(dns::ResolveStrategy::ForwardQuery(query)) => {
+                self.add_pending_dns_query(query);
+                return Ok(None);
+            }
+            None => {}
+        }
+
+        let dest = packet.destination();
+
+        let Some((peer, _)) = peer_by_ip(peers_by_ip, dest) else {
+            self.on_connection_intent(dest);
+            return Ok(None);
+        };
+
+        let bytes = peer.encapsulate(packet, dest, buf)?;
+
+        Ok(Some(WriteTo::Network(bytes)))
+    }
+
     pub(crate) fn attempt_to_reuse_connection(
         &mut self,
         resource: ResourceId,
