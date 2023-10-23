@@ -67,11 +67,16 @@ where
                 break;
             }
 
-            if let Err(Error::Io(e)) = self
+            match self
                 .handle_peer_packet(peer, &device_io, &src_buf[..size], &mut dst_buf)
                 .await
             {
-                return Err(e);
+                Err(Error::Io(e)) => return Err(e),
+                Err(other) => {
+                    tracing::error!(error = ?other, "failed to handle peer packet");
+                    let _ = self.callbacks.on_error(&other);
+                }
+                _ => {}
             }
         }
 
@@ -94,12 +99,7 @@ where
 
         let write_to = match peer.tunnel.lock().decapsulate(None, src, dst) {
             TunnResult::Done => return Ok(()),
-            TunnResult::Err(e) => {
-                tracing::error!(error = ?e, "decapsulate_packet");
-                let _ = self.callbacks().on_error(&e.into());
-
-                return Ok(());
-            }
+            TunnResult::Err(e) => return Err(e.into()),
             TunnResult::WriteToNetwork(packet) => {
                 let mut bytes = BytesMut::new();
                 bytes.extend_from_slice(packet);
@@ -163,13 +163,7 @@ where
             Err(TunnResult::WriteToNetwork(cookie)) => {
                 return Ok(Some(Bytes::copy_from_slice(cookie)));
             }
-            Err(TunnResult::Err(e)) => {
-                tracing::error!(error = ?e, "wireguard_error");
-                let err = e.into();
-                let _ = self.callbacks().on_error(&err);
-
-                return Err(err);
-            }
+            Err(TunnResult::Err(e)) => return Err(e.into()),
             Err(_) => {
                 tracing::error!(error = "unexpected", "wireguard_error");
 
