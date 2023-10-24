@@ -13,6 +13,8 @@ runs:
       with:
         workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
         service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+        export_environment_variables: true
+        create_credentials_file: true
     - run: |
         echo "SCCACHE_GCS_BUCKET=firezone-staging-sccache" >> $GITHUB_ENV
         echo "SCCACHE_GCS_RW_MODE=READ_WRITE" >> $GITHUB_ENV
