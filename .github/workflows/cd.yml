@@ -72,9 +72,7 @@ jobs:
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.4
         id: apply-run
         env:
-          TF_VAR_api_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
-          TF_VAR_web_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
-          TF_VAR_relay_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
+          TF_VAR_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
           configuration_version:

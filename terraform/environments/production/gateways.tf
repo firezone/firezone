@@ -50,12 +50,12 @@ module "gateways" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "gateway"
-  image_tag  = var.gateway_image_tag
+  image_tag  = var.image_tag
 
   observability_log_level = "debug"
 
   application_name    = "gateway"
-  application_version = replace(var.gateway_image_tag, ".", "-")
+  application_version = replace(var.image_tag, ".", "-")
 
   health_check = {
     name     = "health"
