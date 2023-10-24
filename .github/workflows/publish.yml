@@ -19,6 +19,10 @@ env:
   # mark:automatic-version
   VERSION: "1.20231001.0"
 
+concurrency:
+  group: "cd-production-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: false
+
 jobs:
   push-images-to-production-artifacts:
     if: github.ref == 'refs/heads/main'
@@ -93,10 +97,14 @@ jobs:
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.4
         id: apply-run
         env:
-          TF_VAR_api_image_tag: '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
-          TF_VAR_web_image_tag: '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
-          TF_VAR_relay_image_tag: '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
-          TF_VAR_gateway_image_tag: '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
+          TF_VAR_api_image_tag:
+            '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
+          TF_VAR_web_image_tag:
+            '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
+          TF_VAR_relay_image_tag:
+            '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
+          TF_VAR_gateway_image_tag:
+            '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
           configuration_version:
@@ -107,7 +115,8 @@ jobs:
         id: apply
         with:
           run: ${{ steps.apply-run.outputs.run_id }}
-          comment: "Apply Run from GitHub Actions CI ${{ inputs.tag || github.sha }}"
+          comment:
+            "Apply Run from GitHub Actions CI ${{ inputs.tag || github.sha }}"
 
   publish-images-to-ghcr:
     if: github.ref == 'refs/heads/main'
