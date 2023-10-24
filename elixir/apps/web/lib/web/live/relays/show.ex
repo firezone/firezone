@@ -89,10 +89,12 @@ defmodule Web.Relays.Show do
                 <%= @relay.last_seen_user_agent %>
               </:value>
             </.vertical_table_row>
+            <!--
             <.vertical_table_row>
               <:label>Deployment Method</:label>
               <:value>TODO: Docker</:value>
             </.vertical_table_row>
+            -->
           </.vertical_table>
         </div>
       </:content>

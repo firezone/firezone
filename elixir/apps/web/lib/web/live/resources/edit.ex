@@ -47,7 +47,7 @@ defmodule Web.Resources.Edit do
               required
             />
 
-            <.filters_form form={@form[:filters]} />
+            <.filters_form_beta form={@form[:filters]} />
 
             <.connections_form
               form={@form[:connections]}

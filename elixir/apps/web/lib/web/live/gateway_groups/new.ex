@@ -45,34 +45,30 @@ defmodule Web.GatewayGroups.New do
           </.form>
 
           <div :if={not is_nil(@group)}>
+            <div class="mb-4">
+              <div class="text-xl mb-4">
+                Gateway Instance Group created!
+              </div>
+              <div class="text-gray-600 mb-2">
+                The token below is used to connect Gateways to this group. <br />
+              </div>
+              <.code_block id="gateway-token" class="w-full rounded mb-2" phx-no-format><%= encode_group_token(@group) %></.code_block>
+              <div class="text-gray-600">
+                This token will not be shown again. Please copy the token and store it in a secure location.
+              </div>
+            </div>
+
+            <hr class="mb-4" />
+
             <div class="text-xl mb-2">
               Select deployment method:
             </div>
             <.tabs id="deployment-instructions">
               <:tab id="docker-instructions" label="Docker">
-                <.code_block id="code-sample-docker" class="w-full rounded-b-lg" phx-no-format>
-                  docker run -d \<br />
-                  &nbsp; --name=firezone-gateway-0 \<br />
-                  &nbsp; --restart=always \<br />
-                  &nbsp; -v /dev/net/tun:/dev/net/tun \<br />
-                  &nbsp; -e FZ_SECRET=<%= Gateways.encode_token!(hd(@group.tokens)) %> \<br />
-                  &nbsp; us-east1-docker.pkg.dev/firezone/firezone/gateway:stable
-                </.code_block>
+                <.code_block id="code-sample-docker" class="w-full rounded-b" phx-no-format><%= docker_command(encode_group_token(@group)) %></.code_block>
               </:tab>
               <:tab id="systemd-instructions" label="Systemd">
-                <.code_block id="code-sample-systemd" class="w-full rounded-b-lg" phx-no-format>
-                  [Unit]<br />
-                  Description=zigbee2mqtt<br />
-                  After=network.target<br />
-                  <br />
-                  [Service]<br />
-                  ExecStart=/usr/bin/npm start<br />
-                  WorkingDirectory=/opt/zigbee2mqtt<br />
-                  StandardOutput=inherit<br />
-                  StandardError=inherit<br />
-                  Restart=always<br />
-                  User=pi
-                </.code_block>
+                <.code_block id="code-sample-systemd" class="w-full rounded-b" phx-no-format><%= systemd_command(encode_group_token(@group)) %></.code_block>
               </:tab>
             </.tabs>
 
@@ -127,5 +123,36 @@ defmodule Web.GatewayGroups.New do
       redirect(socket, to: ~p"/#{socket.assigns.account}/gateway_groups/#{socket.assigns.group}")
 
     {:noreply, socket}
+  end
+
+  defp docker_command(secret) do
+    """
+    docker run -d \\
+      --name=firezone-gateway-0 \\
+      --restart=always \\
+      -v /dev/net/tun:/dev/net/tun \\
+      -e FZ_SECRET=#{secret} \\
+      us-east1-docker.pkg.dev/firezone/firezone/gateway:stable
+    """
+  end
+
+  defp systemd_command(_secret) do
+    """
+    [Unit]
+    Description=zigbee2mqtt
+    After=network.target
+
+    [Service]
+    ExecStart=/usr/bin/npm start
+    WorkingDirectory=/opt/zigbee2mqtt
+    StandardOutput=inherit
+    StandardError=inherit
+    Restart=always
+    User=pi
+    """
+  end
+
+  defp encode_group_token(group) do
+    Gateways.encode_token!(hd(group.tokens))
   end
 end

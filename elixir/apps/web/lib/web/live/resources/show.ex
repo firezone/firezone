@@ -148,6 +148,7 @@ defmodule Web.Resources.Show do
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
+          <!--
           <:col :let={flow} label="ACTIVITY">
             <.link
               navigate={~p"/#{@account}/flows/#{flow.id}"}
@@ -156,6 +157,7 @@ defmodule Web.Resources.Show do
               Show
             </.link>
           </:col>
+          -->
           <:empty>
             <div class="text-center text-slate-500 p-4">No authorizations to display</div>
           </:empty>

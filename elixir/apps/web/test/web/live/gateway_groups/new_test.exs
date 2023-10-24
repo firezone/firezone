@@ -140,6 +140,11 @@ defmodule Web.Live.GatewayGroups.NewTest do
       |> form("form", group: attrs)
       |> render_submit()
 
+    [{element, _attrs, [value]}] = Floki.find(html, "div#gateway-token code")
+    assert String.trim(value) != ""
+    assert element == "code"
+
+    assert html =~ "The token below is used to connect Gateways to this group."
     assert html =~ "Select deployment method"
     assert html =~ "FZ_SECRET="
     assert html =~ "docker run"

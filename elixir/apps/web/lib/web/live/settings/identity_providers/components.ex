@@ -57,7 +57,7 @@ defmodule Web.Settings.IdentityProviders.Components do
             ~p"/#{@provider.account_id}/settings/identity_providers/google_workspace/#{@provider}/redirect"
           }>
             <button class={~w[
-          text-white bg-primary-600 rounded-lg
+          text-white bg-primary-600 rounded
           font-medium text-sm
           px-2 py-1 text-center
           hover:bg-primary-700

@@ -37,7 +37,15 @@ defmodule Web.SignUp do
         actor: %{type: :account_admin_user}
       })
 
-    {:ok, assign(socket, form: to_form(changeset), account: nil)}
+    socket =
+      assign(
+        socket,
+        form: to_form(changeset),
+        account: nil,
+        signup_enabled: false
+      )
+
+    {:ok, socket}
   end
 
   def render(assigns) do
@@ -46,7 +54,7 @@ defmodule Web.SignUp do
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.logo />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded-lg shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
+        <div class="w-full col-span-6 mx-auto bg-white rounded shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
             <h1 class="text-center text-xl font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl dark:text-white">
               Welcome to Firezone
@@ -61,8 +69,9 @@ defmodule Web.SignUp do
               </:separator>
 
               <:item>
-                <.sign_up_form :if={@account == nil} flash={@flash} form={@form} />
-                <.welcome :if={@account} account={@account} />
+                <.disabled_signup_form :if={!@signup_enabled} />
+                <.sign_up_form :if={@account == nil && @signup_enabled} flash={@flash} form={@form} />
+                <.welcome :if={@account && @signup_enabled} account={@account} />
               </:item>
             </.intersperse_blocks>
           </div>
@@ -187,6 +196,34 @@ defmodule Web.SignUp do
     """
   end
 
+  def disabled_signup_form(assigns) do
+    ~H"""
+    <h3 class="text-center text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl dark:text-white">
+      Signups are not active at this time.
+    </h3>
+    <p class="text-center">
+      Contact
+      <a
+        class="text-blue-600 dark:text-blue-500 hover:underline dark:hover:underline"
+        href="mailto:sales@firezone.dev"
+      >
+        sales@firezone.dev
+      </a>
+      to create an account.
+    </p>
+    <div>
+      <p class="text-center text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl dark:text-white">
+      </p>
+      <p class="text-xs text-center">
+        By signing up you agree to our <.link
+          href="https://www.firezone.dev/terms"
+          class="text-blue-600 dark:text-blue-500 hover:underline"
+        >Terms of Use</.link>.
+      </p>
+    </div>
+    """
+  end
+
   def handle_event("validate", %{"registration" => attrs}, socket) do
     changeset =
       %Registration{}
@@ -206,7 +243,7 @@ defmodule Web.SignUp do
       |> Registration.changeset(attrs)
       |> Map.put(:action, :insert)
 
-    if changeset.valid? do
+    if changeset.valid? && socket.assigns.signup_enabled do
       registration = Ecto.Changeset.apply_changes(changeset)
 
       multi =

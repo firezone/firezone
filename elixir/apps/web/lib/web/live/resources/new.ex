@@ -51,7 +51,7 @@ defmodule Web.Resources.New do
               phx-debounce="300"
             />
 
-            <.filters_form form={@form[:filters]} />
+            <.filters_form_beta form={@form[:filters]} />
 
             <.connections_form
               form={@form[:connections]}

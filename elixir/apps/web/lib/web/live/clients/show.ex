@@ -66,10 +66,12 @@ defmodule Web.Clients.Show do
               <.relative_datetime datetime={@client.last_seen_at} />
             </:value>
           </.vertical_table_row>
+          <!--
           <.vertical_table_row>
             <:label>Transfer</:label>
             <:value>TODO</:value>
           </.vertical_table_row>
+          -->
           <.vertical_table_row>
             <:label>Last Seen Remote IP</:label>
             <:value><code><%= @client.last_seen_remote_ip %></code></:value>
@@ -116,6 +118,7 @@ defmodule Web.Clients.Show do
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
+          <!--
           <:col :let={flow} label="ACTIVITY">
             <.link
               navigate={~p"/#{@account}/flows/#{flow.id}"}
@@ -124,6 +127,7 @@ defmodule Web.Clients.Show do
               Show
             </.link>
           </:col>
+          -->
           <:empty>
             <div class="text-center text-slate-500 p-4">No authorizations to display</div>
           </:empty>

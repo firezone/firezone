@@ -67,7 +67,7 @@ defmodule Web.TableComponents do
           data-dropdown-toggle={"#{@id}-dropdown"}
           class={[
             "inline-flex items-center p-0.5 text-sm font-medium text-center",
-            "text-gray-500 hover:text-gray-800 rounded-lg focus:outline-none",
+            "text-gray-500 hover:text-gray-800 rounded focus:outline-none",
             "dark:text-gray-400 dark:hover:text-gray-100"
           ]}
           type="button"
@@ -207,6 +207,9 @@ defmodule Web.TableComponents do
   slot :action, doc: "the slot for showing user actions in the last table column"
   slot :empty, doc: "the slot for showing a message or content when there are no rows"
 
+  slot :empty_group,
+    doc: "the slot for showing a message or content when there are no items in a group"
+
   def table_with_groups(assigns) do
     assigns =
       with %{rows: %Phoenix.LiveView.LiveStream{}} <- assigns do
@@ -221,6 +224,13 @@ defmodule Web.TableComponents do
         <tr class="bg-gray-100">
           <td class="px-4 py-2" colspan={length(@col) + 1}>
             <%= render_slot(@group, group) %>
+          </td>
+        </tr>
+        <tr :if={Enum.empty?(@group_items.(group))}>
+          <td colspan={length(@col)}>
+            <div>
+              <%= render_slot(@empty_group) %>
+            </div>
           </td>
         </tr>
 

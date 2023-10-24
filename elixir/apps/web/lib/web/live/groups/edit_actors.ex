@@ -38,7 +38,7 @@ defmodule Web.Groups.EditActors do
 
     <.section>
       <:title>
-        Edit Actors in Group: <code>Engineering</code>
+        Edit Actors in Group: <code><%= @group.name %></code>
       </:title>
       <:content>
         <div class="relative overflow-x-auto">
@@ -79,11 +79,6 @@ defmodule Web.Groups.EditActors do
                 :if={member?(@current_member_ids, actor, @added_ids, @removed_ids)}
                 phx-click={:remove_actor}
                 phx-value-id={actor.id}
-                class={~w[
-                  flex items-center justify-center text-white bg-primary-500 hover:bg-primary-600
-                  focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-sm px-4 py-2
-                  dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800
-                ]}
               >
                 <.icon name="hero-minus" class="h-3.5 w-3.5 mr-2" /> Remove
               </.button>
@@ -91,11 +86,6 @@ defmodule Web.Groups.EditActors do
                 :if={not member?(@current_member_ids, actor, @added_ids, @removed_ids)}
                 phx-click={:add_actor}
                 phx-value-id={actor.id}
-                class={~w[
-                  flex items-center justify-center text-white bg-primary-500 hover:bg-primary-600
-                  focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-sm px-4 py-2
-                  dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800
-                ]}
               >
                 <.icon name="hero-plus" class="h-3.5 w-3.5 mr-2" /> Add
               </.button>

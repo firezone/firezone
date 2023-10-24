@@ -1,6 +1,7 @@
 defmodule Web.Live.SignUpTest do
   use Web.ConnCase, async: true
 
+  @tag :skip
   test "renders signup form", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
@@ -17,6 +18,7 @@ defmodule Web.Live.SignUpTest do
            ]
   end
 
+  @tag :skip
   test "creates new account", %{conn: conn} do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
@@ -39,6 +41,7 @@ defmodule Web.Live.SignUpTest do
     assert html =~ account_name
   end
 
+  @tag :skip
   test "renders changeset errors on input change", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
@@ -62,6 +65,7 @@ defmodule Web.Live.SignUpTest do
     )
   end
 
+  @tag :skip
   test "renders changeset errors on submit", %{conn: conn} do
     attrs = %{
       account: %{name: "FooBar"},
@@ -77,5 +81,12 @@ defmodule Web.Live.SignUpTest do
            |> form_validation_errors() == %{
              "registration[email]" => ["has invalid format"]
            }
+  end
+
+  test "renders 'signups disabled' message", %{conn: conn} do
+    {:ok, _lv, html} = live(conn, ~p"/sign_up")
+
+    assert html =~ "Signups are not active at this time"
+    assert html =~ "sales@firezone.dev"
   end
 end

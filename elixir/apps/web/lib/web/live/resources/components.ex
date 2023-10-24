@@ -153,6 +153,13 @@ defmodule Web.Resources.Components do
     """
   end
 
+  def filters_form_beta(assigns) do
+    ~H"""
+    <.input type="hidden" name={"#{@form.name}[all][protocol]"} value="all" />
+    <.input type="hidden" name={"#{@form.name}[all][enabled]"} value="true" />
+    """
+  end
+
   def map_connections_form_attrs(attrs) do
     Map.update(attrs, "connections", [], fn connections ->
       for {id, connection_attrs} <- connections,

@@ -87,7 +87,8 @@ defmodule Web.Live.Resources.EditTest do
       end
       |> List.flatten()
 
-    expected_inputs =
+    # TODO: BETA CHANGE remove underscore after beta
+    _expected_inputs =
       (connection_inputs ++
          [
            "resource[filters][all][enabled]",
@@ -104,6 +105,16 @@ defmodule Web.Live.Resources.EditTest do
          ])
       |> Enum.sort()
 
+    # TODO: BETA CHANGE remove the following after beta
+    expected_inputs =
+      (connection_inputs ++
+         [
+           "resource[filters][all][enabled]",
+           "resource[filters][all][protocol]",
+           "resource[name]"
+         ])
+      |> Enum.sort()
+
     assert find_inputs(form) == expected_inputs
   end
 
@@ -113,12 +124,17 @@ defmodule Web.Live.Resources.EditTest do
     resource: resource,
     conn: conn
   } do
-    attrs = %{
+    # TODO: BETA CHANGE remove underscore
+    _attrs = %{
       name: "foobar.com",
       filters: %{
         tcp: %{ports: "80, 443"},
         udp: %{ports: "100"}
       }
+    }
+
+    attrs = %{
+      name: "foobar.com"
     }
 
     {:ok, lv, _html} =
@@ -133,16 +149,18 @@ defmodule Web.Live.Resources.EditTest do
                "resource[name]" => ["should be at most 255 character(s)"]
              }
     end)
-    |> validate_change(%{resource: %{filters: %{tcp: %{ports: "a"}}}}, fn form, _html ->
-      assert form_validation_errors(form) == %{
-               "resource[filters][tcp][ports]" => ["is invalid"]
-             }
-    end)
-    |> validate_change(%{resource: %{filters: %{tcp: %{ports: "8080-90"}}}}, fn form, _html ->
-      assert form_validation_errors(form) == %{
-               "resource[filters][tcp][ports]" => ["is invalid"]
-             }
-    end)
+
+    # TODO: BETA CHANGE uncomment the following two validate_change blocks after beta
+    # |> validate_change(%{resource: %{filters: %{tcp: %{ports: "a"}}}}, fn form, _html ->
+    #  assert form_validation_errors(form) == %{
+    #           "resource[filters][tcp][ports]" => ["is invalid"]
+    #         }
+    # end)
+    # |> validate_change(%{resource: %{filters: %{tcp: %{ports: "8080-90"}}}}, fn form, _html ->
+    #  assert form_validation_errors(form) == %{
+    #           "resource[filters][tcp][ports]" => ["is invalid"]
+    #         }
+    # end)
   end
 
   test "renders changeset errors on submit", %{
@@ -188,13 +206,19 @@ defmodule Web.Live.Resources.EditTest do
     resource: resource,
     conn: conn
   } do
-    attrs = %{
+    # TODO: BETA CHANGE remove underscore after beta
+    _attrs = %{
       name: "foobar.com",
       filters: %{
         icmp: %{enabled: true},
         tcp: %{ports: "8080, 4443"},
         udp: %{ports: "4000 - 5000"}
       }
+    }
+
+    # TODO: BETA CHANGE remove after beta
+    attrs = %{
+      name: "foobar.com"
     }
 
     {:ok, lv, _html} =
@@ -210,14 +234,18 @@ defmodule Web.Live.Resources.EditTest do
     assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
     assert saved_resource.name == attrs.name
 
+    # TODO: BETA CHANGE remove after beta
+    attrs = Map.put(attrs, :filters, %{all: %{enabled: true}})
+
     saved_filters =
       for filter <- saved_resource.filters, into: %{} do
         {filter.protocol, %{ports: Enum.join(filter.ports, ", ")}}
       end
 
     assert Map.keys(saved_filters) == Map.keys(attrs.filters)
-    assert saved_filters.tcp == attrs.filters.tcp
-    assert saved_filters.udp == attrs.filters.udp
+    # TODO: BETA CHANGE uncomment the following 2 lines after beta
+    # assert saved_filters.tcp == attrs.filters.tcp
+    # assert saved_filters.udp == attrs.filters.udp
   end
 
   test "disables all filters on a resource when 'Permit All' filter is selected", %{

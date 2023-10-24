@@ -65,7 +65,7 @@ defmodule Web.Live.Resources.NewTest do
       ]
       |> List.flatten()
 
-    expected_inputs =
+    _expected_inputs =
       (connection_inputs ++
          [
            "resource[address]",
@@ -83,6 +83,17 @@ defmodule Web.Live.Resources.NewTest do
          ])
       |> Enum.sort()
 
+    # TODO: BETA CHANGE remove the following lines after beta
+    expected_inputs =
+      (connection_inputs ++
+         [
+           "resource[address]",
+           "resource[filters][all][enabled]",
+           "resource[filters][all][protocol]",
+           "resource[name]"
+         ])
+      |> Enum.sort()
+
     assert find_inputs(form) == expected_inputs
   end
 
@@ -91,13 +102,19 @@ defmodule Web.Live.Resources.NewTest do
     identity: identity,
     conn: conn
   } do
-    attrs = %{
+    _attrs = %{
       name: "foobar.com",
       address: "foobar.com",
       filters: %{
         tcp: %{ports: "80, 443", enabled: true},
         udp: %{ports: "100", enabled: true}
       }
+    }
+
+    # TODO: BETA CHANGE remove this after beta
+    attrs = %{
+      name: "foobar.com",
+      address: "foobar.com"
     }
 
     {:ok, lv, _html} =
@@ -112,16 +129,18 @@ defmodule Web.Live.Resources.NewTest do
                "resource[name]" => ["should be at most 255 character(s)"]
              }
     end)
-    |> validate_change(%{resource: %{filters: %{tcp: %{ports: "a"}}}}, fn form, _html ->
-      assert form_validation_errors(form) == %{
-               "resource[filters][tcp][ports]" => ["is invalid"]
-             }
-    end)
-    |> validate_change(%{resource: %{filters: %{tcp: %{ports: "8080-90"}}}}, fn form, _html ->
-      assert form_validation_errors(form) == %{
-               "resource[filters][tcp][ports]" => ["is invalid"]
-             }
-    end)
+
+    # TODO: BETA CHANGE uncomment after beta
+    # |> validate_change(%{resource: %{filters: %{tcp: %{ports: "a"}}}}, fn form, _html ->
+    #  assert form_validation_errors(form) == %{
+    #           "resource[filters][tcp][ports]" => ["is invalid"]
+    #         }
+    # end)
+    # |> validate_change(%{resource: %{filters: %{tcp: %{ports: "8080-90"}}}}, fn form, _html ->
+    #  assert form_validation_errors(form) == %{
+    #           "resource[filters][tcp][ports]" => ["is invalid"]
+    #         }
+    # end)
   end
 
   test "renders changeset errors for name on submit", %{
@@ -132,13 +151,20 @@ defmodule Web.Live.Resources.NewTest do
     resource = Fixtures.Resources.create_resource(account: account)
     [connection | _] = resource.connections
 
-    attrs = %{
+    _attrs = %{
       name: resource.name,
       address: "foobar.com",
       filters: %{
         tcp: %{ports: "80, 443", enabled: true},
         udp: %{ports: "100", enabled: true}
       },
+      connections: %{connection.gateway_group_id => %{enabled: true}}
+    }
+
+    # TODO: BETA CHANGE use the attrs above this after beta
+    attrs = %{
+      name: resource.name,
+      address: "foobar.com",
       connections: %{connection.gateway_group_id => %{enabled: true}}
     }
 
@@ -163,13 +189,20 @@ defmodule Web.Live.Resources.NewTest do
     resource = Fixtures.Resources.create_resource(account: account)
     [connection | _] = resource.connections
 
-    attrs = %{
+    _attrs = %{
       name: "foobar.com",
       address: resource.address,
       filters: %{
         tcp: %{ports: "80, 443", enabled: true},
         udp: %{ports: "100", enabled: true}
       },
+      connections: %{connection.gateway_group_id => %{enabled: true}}
+    }
+
+    # TODO: BETA CHANGE remove these attrs after beta
+    attrs = %{
+      name: "foobar.com",
+      address: resource.address,
       connections: %{connection.gateway_group_id => %{enabled: true}}
     }
 
@@ -194,13 +227,20 @@ defmodule Web.Live.Resources.NewTest do
     resource = Fixtures.Resources.create_resource(account: account)
     [connection | _] = resource.connections
 
-    attrs = %{
+    _attrs = %{
       name: "foobar.com",
       address: "foobar.com",
       filters: %{
         tcp: %{ports: "80, 443", enabled: true},
         udp: %{ports: "100", enabled: true}
       },
+      connections: %{connection.gateway_group_id => %{enabled: false}}
+    }
+
+    # TODO: BETA CHANGE Use that attrs above this after beta
+    attrs = %{
+      name: "foobar.com",
+      address: "foobar.com",
       connections: %{connection.gateway_group_id => %{enabled: false}}
     }
 
@@ -224,7 +264,7 @@ defmodule Web.Live.Resources.NewTest do
   } do
     gateway_group = Fixtures.Gateways.create_group(account: account)
 
-    attrs = %{
+    _attrs = %{
       name: "foobar.com",
       address: "foobar.com",
       filters: %{
@@ -232,6 +272,13 @@ defmodule Web.Live.Resources.NewTest do
         tcp: %{ports: "80, 443"},
         udp: %{ports: "4000 - 5000"}
       },
+      connections: %{gateway_group.id => %{enabled: true}}
+    }
+
+    # TODO: BETA CHANGE remove this after beta
+    attrs = %{
+      name: "foobar.com",
+      address: "foobar.com",
       connections: %{gateway_group.id => %{enabled: true}}
     }
 

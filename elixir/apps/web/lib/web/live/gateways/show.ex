@@ -49,10 +49,12 @@ defmodule Web.Gateways.Show do
             <:label>Instance Name</:label>
             <:value><%= @gateway.name_suffix %></:value>
           </.vertical_table_row>
+          <!--
           <.vertical_table_row>
             <:label>Connectivity</:label>
             <:value>TODO: Peer to Peer</:value>
           </.vertical_table_row>
+          -->
           <.vertical_table_row>
             <:label>Status</:label>
             <:value>
@@ -140,6 +142,7 @@ defmodule Web.Gateways.Show do
             </.link>
             (<%= flow.client_remote_ip %>)
           </:col>
+          <!--
           <:col :let={flow} label="ACTIVITY">
             <.link
               navigate={~p"/#{@account}/flows/#{flow.id}"}
@@ -148,6 +151,7 @@ defmodule Web.Gateways.Show do
               Show
             </.link>
           </:col>
+          -->
           <:empty>
             <div class="text-center text-slate-500 p-4">No authorizations to display</div>
           </:empty>
