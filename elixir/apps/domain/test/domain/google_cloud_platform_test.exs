@@ -73,6 +73,16 @@ defmodule Domain.GoogleCloudPlatformTest do
                  }
                }
              ] = nodes
+
+      assert_receive {:bypass_request, conn}
+
+      filters = conn.params["filter"]
+
+      assert Enum.sort(String.split(filters, " AND ")) == [
+               "labels.cluster_name=firezone",
+               "labels.version=0-0-1",
+               "status=RUNNING"
+             ]
     end
 
     test "returns error when compute endpoint is down", %{bypass: bypass} do

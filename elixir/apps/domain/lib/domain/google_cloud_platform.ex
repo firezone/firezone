@@ -62,9 +62,7 @@ defmodule Domain.GoogleCloudPlatform do
       |> String.replace("${project_id}", project_id)
 
     filter =
-      label_values
-      |> Enum.map(fn {label, value} -> "labels.#{label}=#{value}" end)
-      |> Enum.join(" AND ")
+      Enum.map_join(label_values, " AND ", fn {label, value} -> "labels.#{label}=#{value}" end)
 
     filter = "#{filter} AND status=RUNNING"
 
