@@ -27,8 +27,8 @@ concurrency:
 jobs:
   push-images-to-production-artifacts:
     if:
-      ${{ github.ref == 'refs/heads/main' && (inputs.foolproof == 'true' ||
-      github.event_name == 'release') }}
+      ${{ github.ref == 'refs/heads/main' && (github.event_name == 'release' ||
+      inputs.foolproof == true ) }}
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
