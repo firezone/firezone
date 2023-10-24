@@ -34,21 +34,18 @@ jobs:
         with:
           project: firezone-prod
       - name: Pull and push images
-        env:
-          IMAGES: |
-            relay
-            api
-            gateway
-            web
         run: |
           set -xe
+          IMAGES=(relay api gateway web)
+
           MAJOR_VERSION="${VERSION%%.*}"
           MAJOR_MINOR_VERSION="${VERSION%.*}"
 
-          IFS=$'\n' read -r -a images <<< "$IMAGES"
-          for image in "${images[@]}"; do
+          for image in "${IMAGES[@]}"; do
             SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:${{ github.sha }}
             docker pull ${SOURCE_TAG}
+
+            echo "Retagging ${image} from ${SOURCE_TAG}"
 
             docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ github.sha }}
             docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}
@@ -125,12 +122,6 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # TODO
-          # - image_name: client
-          - image_name: relay
-          - image_name: gateway
     permissions:
       # Needed to upload artifacts to a release
       packages: write
@@ -149,21 +140,18 @@ jobs:
           username: ${{github.actor}}
           password: ${{secrets.GITHUB_TOKEN}}
       - name: Pull and push
-        env:
-          IMAGES: |
-            relay
-            api
-            gateway
-            web
         run: |
           set -xe
+          IMAGES=(relay api gateway web)
+
           MAJOR_VERSION="${VERSION%%.*}"
           MAJOR_MINOR_VERSION="${VERSION%.*}"
 
-          IFS=$'\n' read -r -a images <<< "$IMAGES"
-          for image in "${images[@]}"; do
+          for image in "${IMAGES[@]}"; do
             SOURCE_TAG=${{ steps.login.outputs.registry }}/firezone/${image}:${{ github.sha }}
             docker pull ${SOURCE_TAG}
+
+            echo "Retagging ${image} from ${SOURCE_TAG}"
 
             docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ github.sha }}
             docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ env.VERSION }}
