@@ -363,7 +363,7 @@ locals {
         cluster_name          = local.cluster.name
         cluster_name_label    = "cluster_name"
         cluster_version_label = "version"
-        cluster_version       = split(".", var.version)[0]
+        cluster_version       = split(".", var.image_tag)[0]
         node_name_label       = "application"
         polling_interval_ms   = 7000
       })
@@ -423,7 +423,7 @@ module "web" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "web"
-  image_tag  = var.version
+  image_tag  = var.image_tag
 
   scaling_horizontal_replicas = 2
 
@@ -433,7 +433,7 @@ module "web" {
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "web"
-  application_version = replace(var.version, ".", "-")
+  application_version = replace(var.image_tag, ".", "-")
 
   application_dns_tld = "app.${local.tld}"
 
@@ -472,7 +472,7 @@ module "web" {
 
   application_labels = {
     "cluster_name"    = local.cluster.name
-    "cluster_version" = split(".", var.version)[0]
+    "cluster_version" = split(".", var.image_tag)[0]
   }
 }
 
@@ -493,7 +493,7 @@ module "api" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "api"
-  image_tag  = var.version
+  image_tag  = var.image_tag
 
   scaling_horizontal_replicas = 2
 
@@ -503,7 +503,7 @@ module "api" {
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "api"
-  application_version = replace(var.version, ".", "-")
+  application_version = replace(var.image_tag, ".", "-")
 
   application_dns_tld = "api.${local.tld}"
 
@@ -542,7 +542,7 @@ module "api" {
 
   application_labels = {
     "cluster_name"    = local.cluster.name
-    "cluster_version" = split(".", var.version)[0]
+    "cluster_version" = split(".", var.image_tag)[0]
   }
 
   application_token_scopes = [
@@ -690,12 +690,12 @@ module "relays" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "relay"
-  image_tag  = var.version
+  image_tag  = var.image_tag
 
   observability_log_level = "debug,firezone_relay=trace,hyper=off,h2=warn,tower=warn,wire=trace"
 
   application_name    = "relay"
-  application_version = replace(var.version, ".", "-")
+  application_version = replace(var.image_tag, ".", "-")
 
   health_check = {
     name     = "health"

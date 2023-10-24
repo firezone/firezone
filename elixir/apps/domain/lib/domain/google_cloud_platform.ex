@@ -56,8 +56,6 @@ defmodule Domain.GoogleCloudPlatform do
   end
 
   def list_google_cloud_instances_by_labels(project_id, label_values) do
-    {label, value} = label_values
-
     aggregated_list_endpoint_url =
       fetch_config!()
       |> Keyword.fetch!(:aggregated_list_endpoint_url)

@@ -1,4 +1,4 @@
-variable "version" {
+variable "image_tag" {
   type        = string
   description = "Image tag for all services. Notice: we assume all services are deployed with the same version"
 }
