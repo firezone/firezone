@@ -38,20 +38,15 @@ jobs:
           set -xe
           IMAGES=(relay api gateway web)
 
-          MAJOR_VERSION="${VERSION%%.*}"
-          MAJOR_MINOR_VERSION="${VERSION%.*}"
-
           for image in "${IMAGES[@]}"; do
-            SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:47f55da03921c55d268e6c212505550bb68c2e26
+            SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:${{ github.sha }}
             docker pull ${SOURCE_TAG}
 
             echo "Retagging ${image} from ${SOURCE_TAG}"
 
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:47f55da03921c55d268e6c212505550bb68c2e26
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ github.sha }}
             docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}-47f55da03921c55d268e6c212505550bb68c2e26
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_VERSION}
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_MINOR_VERSION}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}-${{ github.sha }}
 
             docker push --all-tags ${{ steps.login-production.outputs.registry }}/firezone/${image}
           done
@@ -88,10 +83,10 @@ jobs:
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.4
         id: apply-run
         env:
-          TF_VAR_api_image_tag: '"${{ env.VERSION }}-47f55da03921c55d268e6c212505550bb68c2e26"'
-          TF_VAR_web_image_tag: '"${{ env.VERSION }}-47f55da03921c55d268e6c212505550bb68c2e26"'
-          TF_VAR_relay_image_tag: '"${{ env.VERSION }}-47f55da03921c55d268e6c212505550bb68c2e26"'
-          TF_VAR_gateway_image_tag: '"${{ env.VERSION }}-47f55da03921c55d268e6c212505550bb68c2e26"'
+          TF_VAR_api_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
+          TF_VAR_web_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
+          TF_VAR_relay_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
+          TF_VAR_gateway_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
           configuration_version:
@@ -102,7 +97,7 @@ jobs:
         id: apply
         with:
           run: ${{ steps.apply-run.outputs.run_id }}
-          comment: "Apply Run from GitHub Actions CI 47f55da03921c55d268e6c212505550bb68c2e26"
+          comment: "Apply Run from GitHub Actions CI ${{ github.sha }}"
 
   publish-images-to-ghcr:
     needs: deploy-prod
@@ -135,12 +130,12 @@ jobs:
           MAJOR_MINOR_VERSION="${VERSION%.*}"
 
           for image in "${IMAGES[@]}"; do
-            SOURCE_TAG=${{ steps.login.outputs.registry }}/firezone/${image}:47f55da03921c55d268e6c212505550bb68c2e26
+            SOURCE_TAG=${{ steps.login.outputs.registry }}/firezone/${image}:${{ github.sha }}
             docker pull ${SOURCE_TAG}
 
             echo "Retagging ${image} from ${SOURCE_TAG}"
 
-            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:47f55da03921c55d268e6c212505550bb68c2e26
+            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ github.sha }}
             docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ env.VERSION }}
             docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:latest
             docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${MAJOR_VERSION}
