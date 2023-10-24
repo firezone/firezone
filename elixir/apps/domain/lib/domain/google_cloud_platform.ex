@@ -78,10 +78,10 @@ defmodule Domain.GoogleCloudPlatform do
          {:ok, %{"items" => items}} <- Jason.decode(response) do
       instances =
         Enum.flat_map(items, fn
-          {_region, %{"instances" => instances}} ->
+          {_zone, %{"instances" => instances}} ->
             instances
 
-          {_region, %{"warning" => %{"code" => "NO_RESULTS_ON_PAGE"}}} ->
+          {_zone, %{"warning" => %{"code" => "NO_RESULTS_ON_PAGE"}}} ->
             []
         end)
 
