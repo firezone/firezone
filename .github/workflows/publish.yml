@@ -6,13 +6,22 @@ on:
   # We temporary allow to run deployments to production without publishing a release
   # to make sure that the deployment works as expected
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to deploy (defaults to the last commit SHA)"
+        required: false
+      foolproof:
+        description: "Deploy to production bypassing releases (hotfixes only!)"
+        required: true
+        type: boolean
 
 env:
   # mark:automatic-version
   VERSION: "1.20231001.0"
 
 jobs:
-  push-images-to-prod-artifacts:
+  push-images-to-production-artifacts:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -39,20 +48,21 @@ jobs:
           IMAGES=(relay api gateway web)
 
           for image in "${IMAGES[@]}"; do
-            SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:${{ github.sha }}
+            SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
             docker pull ${SOURCE_TAG}
 
             echo "Retagging ${image} from ${SOURCE_TAG}"
 
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ github.sha }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
             docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}-${{ github.sha }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}-${{ inputs.tag || github.sha }}
 
             docker push --all-tags ${{ steps.login-production.outputs.registry }}/firezone/${image}
           done
 
-  deploy-prod:
-    needs: push-images-to-prod-artifacts
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    needs: push-images-to-production-artifacts
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -83,10 +93,10 @@ jobs:
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.4
         id: apply-run
         env:
-          TF_VAR_api_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
-          TF_VAR_web_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
-          TF_VAR_relay_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
-          TF_VAR_gateway_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
+          TF_VAR_api_image_tag: '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
+          TF_VAR_web_image_tag: '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
+          TF_VAR_relay_image_tag: '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
+          TF_VAR_gateway_image_tag: '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
           configuration_version:
@@ -97,10 +107,11 @@ jobs:
         id: apply
         with:
           run: ${{ steps.apply-run.outputs.run_id }}
-          comment: "Apply Run from GitHub Actions CI ${{ github.sha }}"
+          comment: "Apply Run from GitHub Actions CI ${{ inputs.tag || github.sha }}"
 
   publish-images-to-ghcr:
-    needs: deploy-prod
+    if: github.ref == 'refs/heads/main'
+    needs: deploy-production
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -130,12 +141,12 @@ jobs:
           MAJOR_MINOR_VERSION="${VERSION%.*}"
 
           for image in "${IMAGES[@]}"; do
-            SOURCE_TAG=${{ steps.login.outputs.registry }}/firezone/${image}:${{ github.sha }}
+            SOURCE_TAG=${{ steps.login.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
             docker pull ${SOURCE_TAG}
 
             echo "Retagging ${image} from ${SOURCE_TAG}"
 
-            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ github.sha }}
+            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ inputs.tag || github.sha }}
             docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ env.VERSION }}
             docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:latest
             docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${MAJOR_VERSION}
