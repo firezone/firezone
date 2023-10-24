@@ -6,23 +6,30 @@ on:
   # We temporary allow to run deployments to production without publishing a release
   # to make sure that the deployment works as expected
   workflow_dispatch:
+    inputs:
+      tag:
+        description:
+          "Image tag to deploy (defaults to the last commit SHA in the branch)"
+        required: false
+      foolproof:
+        description: "Deploy to production bypassing releases (hotfixes only!)"
+        required: true
+        type: boolean
 
 env:
   # mark:automatic-version
   VERSION: "1.20231001.0"
 
+concurrency:
+  group: "cd-production-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: false
+
 jobs:
-  push-prod:
+  push-images-to-production-artifacts:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # TODO
-          - image_name: relay
-          - image_name: api
-          - image_name: gateway
-          - image_name: web
     permissions:
       # Needed to upload artifacts to a release
       packages: write
@@ -41,23 +48,26 @@ jobs:
         with:
           project: firezone-prod
       - name: Pull and push images
-        env:
-          SRC_IMAGE: ${{ steps.login-staging.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
-          DST_IMAGES: |
-            ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
-            ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
-            ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}:latest
         run: |
-          docker pull $SRC_IMAGE
-          # Re-tag and push to GHCR for public distribution
-          IFS=$'\n' read -r -a tags <<< "$DST_IMAGES"
-          for tag in "${tags[@]}"; do
-            docker tag $SRC_IMAGE $tag
-          done
-          docker push --all-tags ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}
+          set -xe
+          IMAGES=(relay api gateway web)
 
-  deploy-prod:
-    needs: push-prod
+          for image in "${IMAGES[@]}"; do
+            SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
+            docker pull ${SOURCE_TAG}
+
+            echo "Retagging ${image} from ${SOURCE_TAG}"
+
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}-${{ inputs.tag || github.sha }}
+
+            docker push --all-tags ${{ steps.login-production.outputs.registry }}/firezone/${image}
+          done
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    needs: push-images-to-production-artifacts
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -88,9 +98,14 @@ jobs:
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.4
         id: apply-run
         env:
-          TF_VAR_api_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
-          TF_VAR_web_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
-          TF_VAR_relay_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
+          TF_VAR_api_image_tag:
+            '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
+          TF_VAR_web_image_tag:
+            '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
+          TF_VAR_relay_image_tag:
+            '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
+          TF_VAR_gateway_image_tag:
+            '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
           configuration_version:
@@ -101,33 +116,15 @@ jobs:
         id: apply
         with:
           run: ${{ steps.apply-run.outputs.run_id }}
-          comment: "Apply Run from GitHub Actions CI ${{ github.sha }}"
-      - name: Report Status
-        if: failure()
-        uses: rtCamp/action-slack-notify@v2
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_USERNAME: "GitHub Actions"
-          SLACK_COLOR: "#ff0000"
-          MSG_MINIMAL: "ref,actions url"
-          SLACK_TITLE: "Deployment Failed"
-          SLACK_MESSAGE:
-            "Automatic deployment to ${{ env.TF_WORKSPACE }} failed"
-        with:
-          status: ${{ job.status }}
-          notify_when: "failure"
+          comment:
+            "Apply Run from GitHub Actions CI ${{ inputs.tag || github.sha }}"
 
-  publish-release-images:
-    needs: deploy-prod
+  publish-images-to-ghcr:
+    if: github.ref == 'refs/heads/main'
+    needs: deploy-production
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # TODO
-          # - image_name: client
-          - image_name: relay
-          - image_name: gateway
     permissions:
       # Needed to upload artifacts to a release
       packages: write
@@ -146,17 +143,25 @@ jobs:
           username: ${{github.actor}}
           password: ${{secrets.GITHUB_TOKEN}}
       - name: Pull and push
-        env:
-          SRC_IMAGE: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
-          DST_IMAGES: |
-            ghcr.io/firezone/${{ matrix.image_name }}:${{ github.sha }}
-            ghcr.io/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
-            ghcr.io/firezone/${{ matrix.image_name }}:latest
         run: |
-          docker pull $SRC_IMAGE
-          # Re-tag and push to GHCR for public distribution
-          IFS=$'\n' read -r -a tags <<< "$DST_IMAGES"
-          for tag in "${tags[@]}"; do
-            docker tag $SRC_IMAGE $tag
+          set -xe
+          IMAGES=(relay api gateway web)
+
+          MAJOR_VERSION="${VERSION%%.*}"
+          MAJOR_MINOR_VERSION="${VERSION%.*}"
+
+          for image in "${IMAGES[@]}"; do
+            SOURCE_TAG=${{ steps.login.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
+            docker pull ${SOURCE_TAG}
+
+            echo "Retagging ${image} from ${SOURCE_TAG}"
+
+            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ inputs.tag || github.sha }}
+            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ env.VERSION }}
+            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ env.VERSION }}-${{ inputs.tag || github.sha }}
+            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:latest
+            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${MAJOR_VERSION}
+            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${MAJOR_MINOR_VERSION}
+
+            docker push --all-tags ghcr.io/firezone/${image}
           done
-          docker push --all-tags ghcr.io/firezone/${{ matrix.image_name }}
