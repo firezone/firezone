@@ -141,14 +141,18 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
   defp list_google_cloud_cluster_nodes(state) do
     project_id = Keyword.fetch!(state.config, :project_id)
     cluster_name = Keyword.fetch!(state.config, :cluster_name)
+    cluster_version = Keyword.fetch!(state.config, :cluster_version)
     cluster_name_label = Keyword.get(state.config, :cluster_name_label, "cluster_name")
+    cluster_version_label = Keyword.get(state.config, :cluster_name_label, "cluster_version")
     node_name_label = Keyword.get(state.config, :node_name_label, "application")
 
     with {:ok, instances} <-
-           Domain.GoogleCloudPlatform.list_google_cloud_instances_by_label(
+           Domain.GoogleCloudPlatform.list_google_cloud_instances_by_labels(
              project_id,
-             cluster_name_label,
-             cluster_name
+             %{
+               cluster_name_label => cluster_name,
+               cluster_version_label => cluster_version
+             }
            ) do
       nodes =
         instances
