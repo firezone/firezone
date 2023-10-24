@@ -1197,7 +1197,7 @@ dependencies = [
  "secrecy",
  "serde",
  "sha2",
- "socket2 0.5.4",
+ "socket2 0.5.5",
  "stun_codec",
  "test-strategy",
  "tokio",
@@ -1563,15 +1563,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hmac-sha1"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1333fad8d94b82cab989da428b0b36a3435db3870d85e971a1d6dc0a8576722"
-dependencies = [
- "sha1 0.2.0",
-]
-
-[[package]]
 name = "home"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1802,7 +1793,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b58db92f96b720de98181bbbe63c831e87005ab460c1bf306eb2622b4707997f"
 dependencies = [
- "socket2 0.5.4",
+ "socket2 0.5.5",
  "widestring",
  "windows-sys 0.48.0",
  "winreg",
@@ -3225,12 +3216,6 @@ dependencies = [
 
 [[package]]
 name = "sha1"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc30b1e1e8c40c121ca33b86c23308a090d19974ef001b4bf6e61fd1a0fb095c"
-
-[[package]]
-name = "sha1"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3bf829a2d51ab4a5ddf1352d8470c140cadc8301b2ae1789db023f01cedd6ba"
@@ -3337,9 +3322,9 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.5.4"
+version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4031e820eb552adee9295814c0ced9e5cf38ddf1e8b7d566d6de8e2538ea989e"
+checksum = "7b5fac59a5cb5dd637972e5fca70daf0523c9067fcdc4842f053dae04a18f8e9"
 dependencies = [
  "libc",
  "windows-sys 0.48.0",
@@ -3416,15 +3401,16 @@ dependencies = [
 
 [[package]]
 name = "stun_codec"
-version = "0.3.3"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1eff17d3ec0a1d210cbe5c870857c306823417f468bebde28e8c29970f6a1da4"
+checksum = "1340dadfb0e4c522135c400c872dee4f638f9b098171bebfa3e44e48f735cd4b"
 dependencies = [
  "bytecodec",
  "byteorder",
  "crc",
- "hmac-sha1",
+ "hmac",
  "md5",
+ "sha1",
  "trackable 1.3.0",
 ]
 
@@ -3671,7 +3657,7 @@ dependencies = [
  "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
- "socket2 0.5.4",
+ "socket2 0.5.5",
  "tokio-macros",
  "windows-sys 0.48.0",
 ]
@@ -4017,7 +4003,7 @@ dependencies = [
  "log",
  "rand",
  "rustls",
- "sha1 0.10.6",
+ "sha1",
  "thiserror",
  "url",
  "utf-8",
@@ -4378,7 +4364,7 @@ dependencies = [
  "rustls",
  "sec1",
  "serde",
- "sha1 0.10.6",
+ "sha1",
  "sha2",
  "subtle",
  "thiserror",
@@ -4417,7 +4403,7 @@ version = "0.6.0"
 source = "git+https://github.com/firezone/webrtc?branch=master#f4c503333ac8ee01d0ad4e8ba827baa9f83f3fe2"
 dependencies = [
  "log",
- "socket2 0.5.4",
+ "socket2 0.5.5",
  "thiserror",
  "tokio",
  "webrtc-util",
@@ -4466,7 +4452,7 @@ dependencies = [
  "log",
  "rtcp",
  "rtp",
- "sha1 0.10.6",
+ "sha1",
  "subtle",
  "thiserror",
  "tokio",
