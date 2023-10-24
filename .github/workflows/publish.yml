@@ -16,13 +16,6 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # TODO
-          - image_name: relay
-          - image_name: api
-          - image_name: gateway
-          - image_name: web
     permissions:
       # Needed to upload artifacts to a release
       packages: write
@@ -42,19 +35,29 @@ jobs:
           project: firezone-prod
       - name: Pull and push images
         env:
-          SRC_IMAGE: ${{ steps.login-staging.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
-          DST_IMAGES: |
-            ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
-            ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
-            ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}:latest
+          IMAGES: |
+            relay
+            api
+            gateway
+            web
         run: |
-          docker pull $SRC_IMAGE
-          # Re-tag and push to GHCR for public distribution
-          IFS=$'\n' read -r -a tags <<< "$DST_IMAGES"
-          for tag in "${tags[@]}"; do
-            docker tag $SRC_IMAGE $tag
+          set -xe
+          MAJOR_VERSION="${VERSION%%.*}"
+          MAJOR_MINOR_VERSION="${VERSION%.*}"
+
+          IFS=$'\n' read -r -a images <<< "$IMAGES"
+          for image in "${images[@]}"; do
+            SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:${{ github.sha }}
+            docker pull ${SOURCE_TAG}
+
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ github.sha }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}-${{ github.sha }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_VERSION}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_MINOR_VERSION}
+
+            docker push --all-tags ${{ steps.login-production.outputs.registry }}/firezone/${image}
           done
-          docker push --all-tags ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image_name }}
 
   deploy-prod:
     needs: push-prod
@@ -147,16 +150,26 @@ jobs:
           password: ${{secrets.GITHUB_TOKEN}}
       - name: Pull and push
         env:
-          SRC_IMAGE: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
-          DST_IMAGES: |
-            ghcr.io/firezone/${{ matrix.image_name }}:${{ github.sha }}
-            ghcr.io/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
-            ghcr.io/firezone/${{ matrix.image_name }}:latest
+          IMAGES: |
+            relay
+            api
+            gateway
+            web
         run: |
-          docker pull $SRC_IMAGE
-          # Re-tag and push to GHCR for public distribution
-          IFS=$'\n' read -r -a tags <<< "$DST_IMAGES"
-          for tag in "${tags[@]}"; do
-            docker tag $SRC_IMAGE $tag
+          set -xe
+          MAJOR_VERSION="${VERSION%%.*}"
+          MAJOR_MINOR_VERSION="${VERSION%.*}"
+
+          IFS=$'\n' read -r -a images <<< "$IMAGES"
+          for image in "${images[@]}"; do
+            SOURCE_TAG=${{ steps.login.outputs.registry }}/firezone/${image}:${{ github.sha }}
+            docker pull ${SOURCE_TAG}
+
+            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ github.sha }}
+            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ env.VERSION }}
+            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:latest
+            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${MAJOR_VERSION}
+            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${MAJOR_MINOR_VERSION}
+
+            docker push --all-tags ghcr.io/firezone/${image}
           done
-          docker push --all-tags ghcr.io/firezone/${{ matrix.image_name }}
