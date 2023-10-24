@@ -15,11 +15,6 @@ variable "writers" {
   type        = list(string)
 }
 
-variable "immutable_tags" {
-  description = "Whether or not to enforce immutable tags."
-  type        = bool
-}
-
 variable "store_tagged_artifacts_for" {
   description = "Sets the maximum lifetime of artifacts, eg. `300s`. Keep empty to set to `null` to never delete them."
   type        = string

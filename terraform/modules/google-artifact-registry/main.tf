@@ -16,7 +16,7 @@ resource "google_artifact_registry_repository" "firezone" {
   format = "DOCKER"
 
   docker_config {
-    immutable_tags = var.immutable_tags
+    immutable_tags = false
   }
 
   cleanup_policies {

@@ -61,8 +61,6 @@ module "google-artifact-registry" {
 
   region = local.region
 
-  immutable_tags = false
-
   store_tagged_artifacts_for   = "${90 * 24 * 60 * 60}s"
   store_untagged_artifacts_for = "${90 * 24 * 60 * 60}s"
 

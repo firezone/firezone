@@ -55,8 +55,6 @@ module "google-artifact-registry" {
 
   region = local.region
 
-  immutable_tags = true
-
   writers = [
     # This is GitHub Actions service account configured manually
     # in the project github-iam-387915
