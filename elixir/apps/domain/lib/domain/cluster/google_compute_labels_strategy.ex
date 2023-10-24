@@ -147,7 +147,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
     node_name_label = Keyword.get(state.config, :node_name_label, "application")
 
     with {:ok, instances} <-
-           Domain.GoogleCloudPlatform.list_google_cloud_instances_by_label(
+           Domain.GoogleCloudPlatform.list_google_cloud_instances_by_labels(
              project_id,
              %{
                cluster_name_label => cluster_name,
