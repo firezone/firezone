@@ -309,6 +309,7 @@ enum TunnelState {
     protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
       "\($0).network-extension"
     }
+    protocolConfiguration.serverAddress = apiURL().absoluteString
 
     switch self {
     case .tunnelUninitialized, .accountNotSetup:
@@ -320,7 +321,6 @@ enum TunnelState {
         TunnelStore.keyApiURLString: apiURL.absoluteString,
         TunnelStore.keyLogFilter: logFilter,
       ]
-      protocolConfiguration.serverAddress = apiURL.absoluteString
     case .signedIn(let authBaseURL, let accountId, let apiURL, let logFilter, let tokenReference):
       protocolConfiguration.providerConfiguration = [
         TunnelStore.keyAuthBaseURLString: authBaseURL.absoluteString,
@@ -328,7 +328,6 @@ enum TunnelState {
         TunnelStore.keyApiURLString: apiURL.absoluteString,
         TunnelStore.keyLogFilter: logFilter,
       ]
-      protocolConfiguration.serverAddress = apiURL.absoluteString
       protocolConfiguration.passwordReference = tokenReference
     }
 
