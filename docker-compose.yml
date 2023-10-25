@@ -53,7 +53,7 @@ services:
     build:
       context: elixir
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/web:main
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/web:main
       args:
         APPLICATION_NAME: web
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/web:${VERSION:-main}
@@ -121,7 +121,7 @@ services:
       context: rust
       dockerfile: Dockerfile
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/client:main
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/client:main
       args:
         PACKAGE: firezone-linux-client
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/client:${VERSION:-main}
@@ -158,7 +158,7 @@ services:
       context: rust
       dockerfile: Dockerfile
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/gateway:main
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/gateway:main
       args:
         PACKAGE: firezone-gateway
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/gateway:${VERSION:-main}
@@ -210,7 +210,7 @@ services:
       context: rust
       dockerfile: Dockerfile
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/relay:main
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
@@ -238,7 +238,7 @@ services:
     build:
       context: elixir
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/api:main
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/api:main
       args:
         APPLICATION_NAME: api
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/api:${VERSION:-main}
@@ -309,7 +309,7 @@ services:
       context: elixir
       target: compiler
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/firezone/cache/elixir:main
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/elixir:main
       args:
         APPLICATION_NAME: api
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/elixir:${VERSION:-main}

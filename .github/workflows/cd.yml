@@ -168,10 +168,7 @@ jobs:
       - name: Push binaries
         uses: softprops/action-gh-release@v1
         with:
-          name:
-            ${{
-            needs.update-release-draft.steps.update-release-draft.outputs.name
-            }}
+          name: ${{ needs.update-release-draft.steps.update-release-draft.outputs.name }}
           draft: true
           files: |
             rust/${{ env.BINARY_DEST_PATH }}*
@@ -193,9 +190,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images:
-            ${{ steps.login.outputs.registry }}/firezone/${{
-            matrix.name.artifact }}
+          images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }}
           tags: |
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}
@@ -209,14 +204,11 @@ jobs:
             TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.artifact }}:main
           cache-to: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.artifact }}:main
           target: release
-          outputs:
-            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{
-            matrix.name.artifact
-            }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact}},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.artifact }}
