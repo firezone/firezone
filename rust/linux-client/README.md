@@ -4,21 +4,37 @@ This crate houses the Firezone linux client.
 
 ## Building
 
-You can build the linux client using:
-`cargo build --release --bin firezone-linux-client`
+Assuming you have Rust installed, you can build the Linux client from a Linux
+host with:
+
+```
+cargo build --release --bin firezone-linux-client
+```
 
 You should then find a binary in `target/release/firezone-linux-client`.
 
 ## Running
 
-To run the linux client:
+To run the Linux client:
+
+1. Generate a new Service account token from the "Actors -> Service Accounts"
+   section of the admin portal and save it in your secrets manager. The Firezone
+   Linux client requires a service account at this time.
+1. Ensure the `TOKEN=<service_account_token>` environment variable is set
+   securely in your client's shell environment. The client expects this variable
+   at startup.
+1. Set `LOG_DIR` to a suitable directory for writing logs
 
 ```
-firezone-linux-client --token <token>
+export LOG_DIR=/tmp/firezone-logs
+mkdir $LOG_DIR
 ```
 
-where `token` is the token shown when creating a client group in the Firezone
-admin portal.
+1. Now, you can start the client with:
+
+```
+./firezone-linux-client
+```
 
 If you're running as an unprivileged user, you'll need the `CAP_NET_ADMIN`
 capability to open `/dev/net/tun`. You can add this to the client binary with:

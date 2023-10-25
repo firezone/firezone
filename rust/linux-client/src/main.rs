@@ -55,7 +55,7 @@ struct Cli {
     #[command(flatten)]
     common: CommonArgs,
 
-    /// File logging directory.
-    #[arg(short, long, env = "FZ_LOG_DIR")]
+    /// File logging directory. Should be a path that's writeable by the current user.
+    #[arg(short, long, env = "LOG_DIR")]
     log_dir: Option<PathBuf>,
 }
