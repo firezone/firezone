@@ -27,6 +27,7 @@ async fn main() -> Result<()> {
 
     let (connect_url, private_key) = login_url(
         Mode::Gateway,
+        cli.common.api_url,
         SecretString::new(cli.common.token),
         get_device_id(),
     )?;

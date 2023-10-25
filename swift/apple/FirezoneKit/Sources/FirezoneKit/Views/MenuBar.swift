@@ -216,7 +216,7 @@
       Task {
         do {
           try await appStore?.auth.signIn()
-        } catch FirezoneError.missingTeamId {
+        } catch FirezoneError.missingAccountId {
           openSettingsWindow()
         } catch {
           logger.error("Error signing in: \(String(describing: error))")

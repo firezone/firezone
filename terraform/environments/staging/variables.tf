@@ -3,7 +3,7 @@ variable "image_tag" {
   description = "Image tag for all services. Notice: we assume all services are deployed with the same version"
 }
 
-variable "relay_portal_token" {
+variable "relay_token" {
   type    = string
   default = null
 }

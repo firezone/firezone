@@ -68,6 +68,9 @@ android {
             resValue("string", "app_name", "\"Firezone (Dev)\"")
 
             buildConfigField("String", "AUTH_URL", "\"https://app.firez.one\"")
+            buildConfigField("String", "API_URL", "\"wss://api.firez.one\"")
+            buildConfigField("String", "LOG_FILTER_STRING", "\"connlib_client_android=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn\"")
+
         }
 
         // Release Config
@@ -95,7 +98,8 @@ android {
             resValue("string", "app_name", "\"Firezone\"")
 
             buildConfigField("String", "AUTH_URL", "\"https://app.firezone.dev\"")
-
+            buildConfigField("String", "API_URL", "\"wss://api.firezone.dev\"")
+            buildConfigField("String", "LOG_FILTER_STRING", "\"connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn\"")
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
                 artifactType = "AAB"

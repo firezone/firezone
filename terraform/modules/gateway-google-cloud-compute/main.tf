@@ -40,8 +40,12 @@ locals {
       value = "127.0.0.1:4317"
     },
     {
-      name  = "PORTAL_TOKEN"
-      value = var.portal_token
+      name  = "TOKEN"
+      value = var.token
+    },
+    {
+      name  = "API_URL"
+      value = var.api_url
     }
   ], var.application_environment_variables)
 }

@@ -17,8 +17,6 @@
 	</array>
 	<key>AppGroupIdentifier</key>
 	<string>$(APP_GROUP_ID)</string>
-	<key>AuthURL</key>
-	<string>$(AUTH_URL)</string>
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>
 </dict>

@@ -28,17 +28,10 @@ pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
 
-pub fn api_base_url() -> Url {
-    let api_url = option_env!("API_URL").unwrap_or("wss://api.firezone.dev");
-    match Url::parse(api_url) {
-        Ok(url) => url,
-        Err(e) => panic!("Invalid API_URL: {}. Error: {}", api_url, e),
-    }
-}
-
 /// Creates a new login URL to use with the portal.
 pub fn login_url(
     mode: Mode,
+    api_url: Url,
     token: SecretString,
     device_id: String,
 ) -> Result<(Url, StaticSecret)> {
@@ -51,6 +44,7 @@ pub fn login_url(
     let external_id = sha256(device_id);
 
     let url = get_websocket_path(
+        api_url,
         token,
         match mode {
             Mode::Client => "client",
@@ -134,24 +128,24 @@ fn sha256(input: String) -> String {
 }
 
 fn get_websocket_path(
+    mut api_url: Url,
     secret: SecretString,
     mode: &str,
     public_key: &Key,
     external_id: &str,
     name_suffix: &str,
 ) -> Result<Url> {
-    let mut url = api_base_url();
-    set_ws_scheme(&mut url)?;
+    set_ws_scheme(&mut api_url)?;
 
     {
-        let mut paths = url.path_segments_mut().map_err(|_| Error::UriError)?;
+        let mut paths = api_url.path_segments_mut().map_err(|_| Error::UriError)?;
         paths.pop_if_empty();
         paths.push(mode);
         paths.push("websocket");
     }
 
     {
-        let mut query_pairs = url.query_pairs_mut();
+        let mut query_pairs = api_url.query_pairs_mut();
         query_pairs.clear();
         query_pairs.append_pair("token", secret.expose_secret());
         query_pairs.append_pair("public_key", &public_key.to_string());
@@ -159,5 +153,5 @@ fn get_websocket_path(
         query_pairs.append_pair("name_suffix", name_suffix);
     }
 
-    Ok(url)
+    Ok(api_url)
 }

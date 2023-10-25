@@ -17,7 +17,7 @@ enum PacketTunnelProviderError: Error {
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
   static let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
-
+  private let keyLogFilter = "logFilter"
   private var adapter: Adapter?
 
   override func startTunnel(
@@ -25,6 +25,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     completionHandler: @escaping (Error?) -> Void
   ) {
     Self.logger.trace("\(#function)")
+
+    let tunnelProtocol = protocolConfiguration as? NETunnelProviderProtocol
+    guard let logFilter = tunnelProtocol?.providerConfiguration?[keyLogFilter] as? String else {
+      Self.logger.error("logFilter is missing")
+      completionHandler(
+        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("debugDescription"))
+      return
+    }
+    guard let apiURL = protocolConfiguration.serverAddress else {
+      Self.logger.error("serverAddress is missing")
+      completionHandler(
+        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
+      return
+    }
 
     guard let tokenRef = protocolConfiguration.passwordReference else {
       Self.logger.error("passwordReference is missing")
@@ -40,7 +54,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         return
       }
 
-      let adapter = Adapter(token: token, packetTunnelProvider: self)
+      let adapter = Adapter(
+        apiURLString: apiURL, logFilter: logFilter, token: token, packetTunnelProvider: self)
       self.adapter = adapter
       do {
         try adapter.start { error in

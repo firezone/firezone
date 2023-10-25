@@ -23,8 +23,6 @@ use thiserror::Error;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
-const DEFAULT_LOG_FILTER_STRING: &str = "connlib_client_android=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn";
-
 pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,

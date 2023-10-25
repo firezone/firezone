@@ -45,45 +45,38 @@ final class AuthStore: ObservableObject {
 
   let tunnelStore: TunnelStore
 
-  public let authBaseURL: URL
   private var cancellables = Set<AnyCancellable>()
 
   @Published private(set) var loginStatus: LoginStatus
 
   private init(tunnelStore: TunnelStore) {
     self.tunnelStore = tunnelStore
-    self.authBaseURL = AppInfoPlistConstants.authBaseURL
     self.loginStatus = .uninitialized
 
-    tunnelStore.$tunnelAuthStatus
-      .sink { [weak self] tunnelAuthStatus in
+    tunnelStore.$tunnelState
+      .sink { [weak self] tunnelState in
         guard let self = self else { return }
         Task {
-          self.loginStatus = await self.getLoginStatus(from: tunnelAuthStatus)
+          self.loginStatus = await self.getLoginStatus(from: tunnelState)
         }
       }
       .store(in: &cancellables)
   }
 
-  private func getLoginStatus(from tunnelAuthStatus: TunnelAuthStatus) async -> LoginStatus {
-    switch tunnelAuthStatus {
+  private func getLoginStatus(from tunnelState: TunnelState) async -> LoginStatus {
+    switch tunnelState {
     case .tunnelUninitialized:
       return .uninitialized
     case .accountNotSetup:
       return .signedOut(accountId: nil)
-    case .signedOut(let tunnelAuthBaseURL, let tunnelAccountId):
-      if self.authBaseURL == tunnelAuthBaseURL {
-        return .signedOut(accountId: tunnelAccountId)
-      } else {
-        return .signedOut(accountId: nil)
-      }
-    case .signedIn(let tunnelAuthBaseURL, let tunnelAccountId, let tokenReference):
-      guard self.authBaseURL == tunnelAuthBaseURL else {
-        return .signedOut(accountId: nil)
-      }
-      let tunnelPortalURLString = self.authURL(accountId: tunnelAccountId).absoluteString
+    case .signedOut(_, let tunnelAccountId, _, _):
+      return .signedOut(accountId: tunnelAccountId)
+    case .signedIn(let tunnelAuthBaseURL, let tunnelAccountId, _, _, let tokenReference):
+      let tunnelAuthURLString = self.authURL(
+        authBaseURL: tunnelAuthBaseURL, accountId: tunnelAccountId
+      ).absoluteString
       guard let tokenAttributes = await keychain.loadAttributes(tokenReference),
-        tunnelPortalURLString == tokenAttributes.authURLString
+        tunnelAuthURLString == tokenAttributes.authURLString
       else {
         return .signedOut(accountId: tunnelAccountId)
       }
@@ -94,14 +87,17 @@ final class AuthStore: ObservableObject {
   func signIn(accountId: String) async throws {
     logger.trace("\(#function)")
 
-    let portalURL = authURL(accountId: accountId)
-    let authResponse = try await auth.signIn(portalURL)
+    let authURL = authURL(authBaseURL: tunnelStore.tunnelState.authBaseURL(), accountId: accountId)
+    let authResponse = try await auth.signIn(authURL)
     let attributes = Keychain.TokenAttributes(
-      authURLString: portalURL.absoluteString, actorName: authResponse.actorName ?? "")
+      authURLString: authURL.absoluteString, actorName: authResponse.actorName ?? "")
     let tokenRef = try await keychain.store(authResponse.token, attributes)
 
-    try await tunnelStore.setAuthStatus(
-      .signedIn(authBaseURL: self.authBaseURL, accountId: accountId, tokenReference: tokenRef))
+    try await tunnelStore.setState(
+      .signedIn(
+        authBaseURL: tunnelStore.tunnelState.authBaseURL(), accountId: accountId,
+        apiURL: tunnelStore.tunnelState.apiURL(), logFilter: tunnelStore.tunnelState.logFilter(),
+        tokenReference: tokenRef))
   }
 
   func signIn() async throws {
@@ -111,7 +107,7 @@ final class AuthStore: ObservableObject {
       !accountId.isEmpty
     else {
       logger.log("No account-id found in tunnel")
-      throw FirezoneError.missingTeamId
+      throw FirezoneError.missingAccountId
     }
 
     try await signIn(accountId: accountId)
@@ -131,16 +127,23 @@ final class AuthStore: ObservableObject {
     }
   }
 
-  func tunnelAuthStatusForAccount(accountId: String) async -> TunnelAuthStatus {
-    let portalURL = authURL(accountId: accountId)
-    if let tokenRef = await keychain.searchByAuthURL(portalURL) {
-      return .signedIn(authBaseURL: authBaseURL, accountId: accountId, tokenReference: tokenRef)
+  func tunnelStateForAccount(authBaseURL: URL, accountId: String, apiURL: URL, logFilter: String)
+    async -> TunnelState
+  {
+    let authURL = authURL(authBaseURL: authBaseURL, accountId: accountId)
+    if let tokenRef = await keychain.searchByAuthURL(authURL) {
+      logger.debug("Found tokenref")
+      return .signedIn(
+        authBaseURL: authBaseURL, accountId: accountId, apiURL: apiURL, logFilter: logFilter,
+        tokenReference: tokenRef)
     } else {
-      return .signedOut(authBaseURL: authBaseURL, accountId: accountId)
+      logger.debug("signed out")
+      return .signedOut(
+        authBaseURL: authBaseURL, accountId: accountId, apiURL: apiURL, logFilter: logFilter)
     }
   }
 
-  func authURL(accountId: String) -> URL {
-    self.authBaseURL.appendingPathComponent(accountId)
+  func authURL(authBaseURL: URL, accountId: String) -> URL {
+    authBaseURL.appendingPathComponent(accountId)
   }
 }

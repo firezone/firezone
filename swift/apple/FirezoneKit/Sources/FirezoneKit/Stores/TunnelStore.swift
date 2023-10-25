@@ -20,9 +20,11 @@ final class TunnelStore: ObservableObject {
 
   static let keyAuthBaseURLString = "authBaseURLString"
   static let keyAccountId = "accountId"
+  static let keyApiURLString = "apiURLString"
+  static let keyLogFilter = "logFilter"
 
   @Published private var tunnel: NETunnelProviderManager?
-  @Published private(set) var tunnelAuthStatus: TunnelAuthStatus = TunnelAuthStatus(
+  @Published private(set) var tunnelState: TunnelState = TunnelState(
     protocolConfiguration: nil)
 
   @Published private(set) var status: NEVPNStatus {
@@ -41,7 +43,7 @@ final class TunnelStore: ObservableObject {
 
   init() {
     self.tunnel = nil
-    self.tunnelAuthStatus = TunnelAuthStatus(protocolConfiguration: nil)
+    self.tunnelState = TunnelState(protocolConfiguration: nil)
     self.status = .invalid
 
     Task {
@@ -56,16 +58,16 @@ final class TunnelStore: ObservableObject {
       if let tunnel = managers.first {
         Self.logger.log("\(#function): Tunnel already exists")
         self.tunnel = tunnel
-        self.tunnelAuthStatus = TunnelAuthStatus(
+        self.tunnelState = TunnelState(
           protocolConfiguration: tunnel.protocolConfiguration as? NETunnelProviderProtocol)
       } else {
         let tunnel = NETunnelProviderManager()
         tunnel.localizedDescription = "Firezone"
-        tunnel.protocolConfiguration = TunnelAuthStatus.accountNotSetup.toProtocolConfiguration()
+        tunnel.protocolConfiguration = TunnelState.accountNotSetup.toProtocolConfiguration()
         try await tunnel.saveToPreferences()
         Self.logger.log("\(#function): Tunnel created")
         self.tunnel = tunnel
-        self.tunnelAuthStatus = .accountNotSetup
+        self.tunnelState = .accountNotSetup
       }
       setupTunnelObservers()
       Self.logger.log("\(#function): TunnelStore initialized")
@@ -74,7 +76,7 @@ final class TunnelStore: ObservableObject {
     }
   }
 
-  func setAuthStatus(_ tunnelAuthStatus: TunnelAuthStatus) async throws {
+  func setState(_ tunnelState: TunnelState) async throws {
     guard let tunnel = tunnel else {
       fatalError("Tunnel not initialized yet")
     }
@@ -84,9 +86,9 @@ final class TunnelStore: ObservableObject {
     if wasConnected {
       stop()
     }
-    tunnel.protocolConfiguration = tunnelAuthStatus.toProtocolConfiguration()
+    tunnel.protocolConfiguration = tunnelState.toProtocolConfiguration()
     try await tunnel.saveToPreferences()
-    self.tunnelAuthStatus = tunnelAuthStatus
+    self.tunnelState = tunnelState
   }
 
   func start() async throws {
@@ -133,8 +135,13 @@ final class TunnelStore: ObservableObject {
     let session = castToSession(tunnel.connection)
     session.stopTunnel()
 
-    if case .signedIn(let authBaseURL, let accountId, let tokenReference) = self.tunnelAuthStatus {
-      try await setAuthStatus(.signedOut(authBaseURL: authBaseURL, accountId: accountId))
+    if case .signedIn(
+      let authBaseURL, let accountId, let apiURL, let logFilter, let tokenReference) = self
+      .tunnelState
+    {
+      try await setState(
+        .signedOut(
+          authBaseURL: authBaseURL, accountId: accountId, apiURL: apiURL, logFilter: logFilter))
       return tokenReference
     }
 
@@ -246,11 +253,12 @@ final class TunnelStore: ObservableObject {
   }
 }
 
-enum TunnelAuthStatus {
+enum TunnelState {
   case tunnelUninitialized
   case accountNotSetup
-  case signedOut(authBaseURL: URL, accountId: String)
-  case signedIn(authBaseURL: URL, accountId: String, tokenReference: Data)
+  case signedOut(authBaseURL: URL, accountId: String, apiURL: URL, logFilter: String)
+  case signedIn(
+    authBaseURL: URL, accountId: String, apiURL: URL, logFilter: String, tokenReference: Data)
 
   var isInitialized: Bool {
     switch self {
@@ -269,12 +277,24 @@ enum TunnelAuthStatus {
         return URL(string: urlString)
       }()
       let accountId = providerConfig?[TunnelStore.keyAccountId] as? String
+      let apiURL: URL? = {
+        guard let urlString = providerConfig?[TunnelStore.keyApiURLString] as? String else {
+          return nil
+        }
+        return URL(string: urlString)
+      }()
+      let logFilter = providerConfig?[TunnelStore.keyLogFilter] as? String
       let tokenRef = protocolConfiguration.passwordReference
-      if let authBaseURL = authBaseURL, let accountId = accountId {
+      if let authBaseURL = authBaseURL, let accountId = accountId, let apiURL = apiURL,
+        let logFilter = logFilter
+      {
         if let tokenRef = tokenRef {
-          self = .signedIn(authBaseURL: authBaseURL, accountId: accountId, tokenReference: tokenRef)
+          self = .signedIn(
+            authBaseURL: authBaseURL, accountId: accountId, apiURL: apiURL, logFilter: logFilter,
+            tokenReference: tokenRef)
         } else {
-          self = .signedOut(authBaseURL: authBaseURL, accountId: accountId)
+          self = .signedOut(
+            authBaseURL: authBaseURL, accountId: accountId, apiURL: apiURL, logFilter: logFilter)
         }
       } else {
         self = .accountNotSetup
@@ -289,35 +309,73 @@ enum TunnelAuthStatus {
     protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
       "\($0).network-extension"
     }
-    protocolConfiguration.serverAddress = AppInfoPlistConstants.authBaseURL.absoluteString
 
     switch self {
     case .tunnelUninitialized, .accountNotSetup:
       break
-    case .signedOut(let authBaseURL, let accountId):
+    case .signedOut(let authBaseURL, let accountId, let apiURL, let logFilter):
       protocolConfiguration.providerConfiguration = [
         TunnelStore.keyAuthBaseURLString: authBaseURL.absoluteString,
         TunnelStore.keyAccountId: accountId,
+        TunnelStore.keyApiURLString: apiURL.absoluteString,
+        TunnelStore.keyLogFilter: logFilter,
       ]
-    case .signedIn(let authBaseURL, let accountId, let tokenReference):
+      protocolConfiguration.serverAddress = apiURL.absoluteString
+    case .signedIn(let authBaseURL, let accountId, let apiURL, let logFilter, let tokenReference):
       protocolConfiguration.providerConfiguration = [
         TunnelStore.keyAuthBaseURLString: authBaseURL.absoluteString,
         TunnelStore.keyAccountId: accountId,
+        TunnelStore.keyApiURLString: apiURL.absoluteString,
+        TunnelStore.keyLogFilter: logFilter,
       ]
+      protocolConfiguration.serverAddress = apiURL.absoluteString
       protocolConfiguration.passwordReference = tokenReference
     }
 
     return protocolConfiguration
   }
 
-  func accountId() -> String? {
+  func authBaseURL() -> URL {
     switch self {
     case .tunnelUninitialized, .accountNotSetup:
-      return nil
-    case .signedOut(_, let accountId):
+      return Settings().authBaseURL
+    case .signedOut(let authBaseURL, _, _, _):
+      return authBaseURL
+    case .signedIn(let authBaseURL, _, _, _, _):
+      return authBaseURL
+    }
+  }
+
+  func accountId() -> String {
+    switch self {
+    case .tunnelUninitialized, .accountNotSetup:
+      return Settings().accountId
+    case .signedOut(_, let accountId, _, _):
       return accountId
-    case .signedIn(_, let accountId, _):
+    case .signedIn(_, let accountId, _, _, _):
       return accountId
+    }
+  }
+
+  func apiURL() -> URL {
+    switch self {
+    case .tunnelUninitialized, .accountNotSetup:
+      return Settings().apiURL
+    case .signedOut(_, _, let apiURL, _):
+      return apiURL
+    case .signedIn(_, _, let apiURL, _, _):
+      return apiURL
+    }
+  }
+
+  func logFilter() -> String {
+    switch self {
+    case .tunnelUninitialized, .accountNotSetup:
+      return Settings().logFilter
+    case .signedOut(_, _, _, let logFilter):
+      return logFilter
+    case .signedIn(_, _, _, let logFilter, _):
+      return logFilter
     }
   }
 }

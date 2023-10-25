@@ -32,7 +32,7 @@ resource "google_compute_subnetwork" "gateways" {
 }
 
 module "gateways" {
-  count = var.gateway_portal_token != null ? 1 : 0
+  count = var.gateway_token != null ? 1 : 0
 
   source     = "../../modules/gateway-google-cloud-compute"
   project_id = module.google-cloud-project.project.project_id
@@ -74,13 +74,14 @@ module "gateways" {
     }
   }
 
-  portal_token = var.gateway_portal_token
+  api_url = "wss://api.${local.tld}"
+  token   = var.gateway_token
 }
 
 
 # Allow inbound traffic
 # resource "google_compute_firewall" "ingress-ipv4" {
-#   count = var.gateway_portal_token != null ? 1 : 0
+#   count = var.gateway_token != null ? 1 : 0
 
 #   project = module.google-cloud-project.project.project_id
 
@@ -97,7 +98,7 @@ module "gateways" {
 # }
 
 # resource "google_compute_firewall" "ingress-ipv6" {
-#   count = var.gateway_portal_token != null ? 1 : 0
+#   count = var.gateway_token != null ? 1 : 0
 
 #   project = module.google-cloud-project.project.project_id
 
@@ -115,7 +116,7 @@ module "gateways" {
 
 # Allow outbound traffic
 resource "google_compute_firewall" "egress-ipv4" {
-  count = var.gateway_portal_token != null ? 1 : 0
+  count = var.gateway_token != null ? 1 : 0
 
   project = module.google-cloud-project.project.project_id
 
@@ -132,7 +133,7 @@ resource "google_compute_firewall" "egress-ipv4" {
 }
 
 resource "google_compute_firewall" "egress-ipv6" {
-  count = var.gateway_portal_token != null ? 1 : 0
+  count = var.gateway_token != null ? 1 : 0
 
   project = module.google-cloud-project.project.project_id
 

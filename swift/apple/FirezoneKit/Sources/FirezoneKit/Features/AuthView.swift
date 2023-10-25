@@ -19,9 +19,8 @@ final class AuthViewModel: ObservableObject {
   private var cancellables = Set<AnyCancellable>()
 
   func signInButtonTapped() async {
-    guard let accountId = authStore.tunnelStore.tunnelAuthStatus.accountId(),
-      !accountId.isEmpty
-    else {
+    let accountId = authStore.tunnelStore.tunnelState.accountId()
+    guard !accountId.isEmpty else {
       settingsUndefined()
       return
     }

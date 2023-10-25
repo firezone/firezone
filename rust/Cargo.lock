@@ -1180,7 +1180,6 @@ dependencies = [
  "bytecodec",
  "bytes",
  "clap",
- "connlib-shared",
  "derive_more",
  "difference",
  "env_logger",

@@ -86,13 +86,18 @@ public class Adapter {
   private var displayableResources = DisplayableResources()
 
   /// Starting parameters
+  private var apiURLString: String
+  private var logFilter: String
   private var token: String
 
   private let connlibLogFolderPath: String
 
   public init(
-    token: String, packetTunnelProvider: NEPacketTunnelProvider
+    apiURLString: String, logFilter: String, token: String,
+    packetTunnelProvider: NEPacketTunnelProvider
   ) {
+    self.apiURLString = apiURLString
+    self.logFilter = logFilter
     self.token = token
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler()
@@ -135,7 +140,8 @@ public class Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            self.token, self.getDeviceId(), self.connlibLogFolderPath, self.callbackHandler),
+            self.apiURLString, self.token, self.getDeviceId(), self.connlibLogFolderPath,
+            self.logFilter, self.callbackHandler),
           onStarted: completionHandler
         )
       } catch let error {
@@ -271,7 +277,8 @@ extension Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            token, self.getDeviceId(), self.connlibLogFolderPath, self.callbackHandler),
+            apiURLString, token, self.getDeviceId(), self.connlibLogFolderPath, logFilter,
+            self.callbackHandler),
           onStarted: { error in
             if let error = error {
               self.logger.error(

@@ -5,7 +5,6 @@ use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, 
 use ip_network::IpNetwork;
 use secrecy::SecretString;
 use std::{
-    env,
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
     path::PathBuf,
@@ -14,8 +13,6 @@ use std::{
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
-const DEFAULT_LOG_FILTER_STRING: &str = "connlib_client_apple=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn";
-
 #[swift_bridge::bridge]
 mod ffi {
     extern "Rust" {
@@ -23,9 +20,11 @@ mod ffi {
 
         #[swift_bridge(associated_to = WrappedSession)]
         fn connect(
+            api_url: String,
             token: String,
             device_id: String,
             log_dir: String,
+            log_filter: String,
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
@@ -147,8 +146,7 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf) -> file_logger::Handle {
-    let log_filter = env::var("LOG_FILTER_STRING").unwrap_or(DEFAULT_LOG_FILTER_STRING.to_string());
+fn init_logging(log_dir: PathBuf, log_filter: String) -> file_logger::Handle {
     let (file_layer, handle) = file_logger::layer(&log_dir);
 
     let _ = tracing_subscriber::registry()
@@ -164,19 +162,22 @@ fn init_logging(log_dir: PathBuf) -> file_logger::Handle {
 
 impl WrappedSession {
     fn connect(
+        api_url: String,
         token: String,
         device_id: String,
         log_dir: String,
+        log_filter: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
         let secret = SecretString::from(token);
 
         let session = Session::connect(
+            api_url.as_str(),
             secret,
             device_id,
             CallbackHandler {
                 inner: Arc::new(callback_handler),
-                handle: init_logging(log_dir.into()),
+                handle: init_logging(log_dir.into(), log_filter),
             },
         )
         .map_err(|err| err.to_string())?;

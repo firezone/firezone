@@ -16,6 +16,11 @@ internal class BaseUrlInterceptor(
         val originalRequest = chain.request()
         val accountId = sharedPreferences.getString(ACCOUNT_ID_KEY, "") ?: ""
         val newUrl = "${BuildConfig.AUTH_URL}/$accountId"?.toHttpUrlOrNull()
+
+        if (newUrl == null) {
+            throw IllegalStateException("Invalid AUTH_URL. Check BuildConfig?")
+        }
+
         val newRequest =
             originalRequest.newBuilder()
                 .url(newUrl!!)
