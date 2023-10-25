@@ -41,8 +41,8 @@ services:
   firezone:
     ulimits:
       nofile:
-        soft: "65536"
-        hard: "65536"
+        soft: 65536
+        hard: 65536
     image: firezone/firezone:${VERSION:-latest}
     ports:
       - ${WIREGUARD_PORT:-51820}:${WIREGUARD_PORT:-51820}/udp
