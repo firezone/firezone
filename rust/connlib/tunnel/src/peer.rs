@@ -125,7 +125,7 @@ where
         self.allowed_ips.write().insert(ip, ());
     }
 
-    pub(crate) fn update_timers(&self) -> Result<Bytes> {
+    pub(crate) fn update_timers(&self) -> Result<Option<Bytes>> {
         /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
         ///
         /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
@@ -134,13 +134,13 @@ where
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
 
         let packet = match self.tunnel.lock().update_timers(&mut buf) {
-            TunnResult::Done => return Ok(Bytes::new()),
+            TunnResult::Done => return Ok(None),
             TunnResult::Err(e) => return Err(e.into()),
             TunnResult::WriteToNetwork(b) => b,
             _ => panic!("Unexpected result from update_timers"),
         };
 
-        Ok(Bytes::copy_from_slice(packet))
+        Ok(Some(Bytes::copy_from_slice(packet)))
     }
 
     pub(crate) fn is_emptied(&self) -> bool {
@@ -188,7 +188,7 @@ where
         mut packet: MutableIpPacket,
         dest: IpAddr,
         buf: &mut [u8],
-    ) -> Result<Bytes> {
+    ) -> Result<Option<Bytes>> {
         if let Some(resource) = self.get_translation(packet.to_immutable().source()) {
             let ResourceDescription::Dns(resource) = resource else {
                 tracing::error!(
@@ -205,7 +205,7 @@ where
             packet.update_checksum();
         }
         let packet = match self.tunnel.lock().encapsulate(packet.packet(), buf) {
-            TunnResult::Done => return Ok(Bytes::new()),
+            TunnResult::Done => return Ok(None),
             TunnResult::Err(e) => return Err(e.into()),
             TunnResult::WriteToNetwork(b) => b,
             _ => panic!("Unexpected result from `encapsulate`"),
@@ -213,7 +213,7 @@ where
 
         tracing::trace!(target: "wire", action = "writing", from = "iface", to = %dest);
 
-        Ok(Bytes::copy_from_slice(packet))
+        Ok(Some(Bytes::copy_from_slice(packet)))
     }
 
     pub(crate) fn decapsulate<'b>(

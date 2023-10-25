@@ -66,7 +66,8 @@ where
         };
 
         let bytes = match peer.encapsulate(packet, dest, &mut buf) {
-            Ok(b) => b,
+            Ok(Some(b)) => b,
+            Ok(None) => continue,
             Err(e) => {
                 on_error(&tunnel, dest, &peer, e).await;
                 continue;

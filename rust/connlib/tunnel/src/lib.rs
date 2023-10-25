@@ -219,7 +219,10 @@ where
 
                     tokio::spawn(async move {
                         let bytes = match peer.update_timers() {
-                            Ok(bytes) => bytes,
+                            Ok(Some(bytes)) => bytes,
+                            Ok(None) => {
+                                return;
+                            }
                             Err(e) => {
                                 tracing::error!("Failed to update timers for peer: {e}");
                                 let _ = callbacks.on_error(&e);

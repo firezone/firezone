@@ -247,7 +247,9 @@ impl ClientState {
             return Ok(None);
         };
 
-        let bytes = peer.encapsulate(packet, dest, buf)?;
+        let Some(bytes) = peer.encapsulate(packet, dest, buf)? else {
+            return Ok(None);
+        };
 
         Ok(Some(WriteTo::Network(bytes)))
     }
