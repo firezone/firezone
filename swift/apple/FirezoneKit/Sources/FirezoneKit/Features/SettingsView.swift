@@ -106,24 +106,6 @@ public struct SettingsView: View {
       NavigationView {
         VStack(spacing: 10) {
           form
-          ExportLogsButton(isProcessing: $isExportingLogs) {
-            self.isExportingLogs = true
-            Task {
-              self.logTempZipFileURL = try await createLogZipBundle()
-              self.isPresentingExportLogShareSheet = true
-            }
-          }
-          .sheet(isPresented: $isPresentingExportLogShareSheet) {
-            if let logfileURL = self.logTempZipFileURL {
-              ShareSheetView(
-                localFileURL: logfileURL,
-                completionHandler: {
-                  self.isPresentingExportLogShareSheet = false
-                  self.isExportingLogs = false
-                  self.logTempZipFileURL = nil
-                })
-            }
-          }
           Spacer()
         }
         .toolbar {
@@ -131,7 +113,7 @@ public struct SettingsView: View {
             Button("Save") {
               self.saveButtonTapped()
             }
-            .disabled(!isAccountIdValid(model.settings.accountId))
+            .disabled(areFieldsInvalid())
           }
           ToolbarItem(placement: .navigationBarLeading) {
             Button("Cancel") {
@@ -200,54 +182,67 @@ public struct SettingsView: View {
   }
 
   private var form: some View {
+
     Form {
-      Section {
+      Section(header: Text("Required")) {
         FormTextField(
           title: "Account ID",
-          placeholder: "Enter the account id provided by your administrator",
+          placeholder: "Provided by your admin",
           text: Binding(
             get: { model.settings.accountId },
             set: { model.settings.accountId = $0 }
           )
         )
       }
-      // TODO: Place these in a hidden "Advanced" section
-      Section {
+      // TODO: Add a button to hide/show advanced settings and make hidden by default
+      Section(header: Text("Advanced")) {
         FormTextField(
           title: "Auth Base URL",
-          placeholder: "Base URL of the Firezone admin portal",
+          placeholder: "Admin portal base URL",
           text: Binding(
             get: { model.authBaseURLString },
             set: { model.authBaseURLString = $0 }
           )
         )
-      }
-      Section {
         FormTextField(
           title: "API URL",
-          placeholder: "WebSocket URL of the Firezone control plane",
+          placeholder: "Control plane WebSocket URL",
           text: Binding(
             get: { model.apiURLString },
             set: { model.apiURLString = $0 }
           )
         )
-      }
-      Section {
         FormTextField(
-          title: "Log Filter String",
-          placeholder: "A valid RUST_LOG-style log filter string",
+          title: "Log Filter",
+          placeholder: "RUST_LOG-style log filter string",
           text: Binding(
             get: { model.settings.logFilter },
             set: { model.settings.logFilter = $0 }
           )
         )
+        ExportLogsButton(isProcessing: $isExportingLogs) {
+          self.isExportingLogs = true
+          Task {
+            self.logTempZipFileURL = try await createLogZipBundle()
+            self.isPresentingExportLogShareSheet = true
+          }
+        }.sheet(isPresented: $isPresentingExportLogShareSheet) {
+          if let logfileURL = self.logTempZipFileURL {
+            ShareSheetView(
+              localFileURL: logfileURL,
+              completionHandler: {
+                self.isPresentingExportLogShareSheet = false
+                self.isExportingLogs = false
+                self.logTempZipFileURL = nil
+              })
+          }
+        }
       }
-    }
-    .navigationTitle("Settings")
-    .toolbar {
+    }.toolbar {
       ToolbarItem(placement: .primaryAction) {
       }
     }
+    .navigationTitle("Settings")
   }
 
   func saveButtonTapped() {
@@ -365,8 +360,8 @@ struct FormTextField: View {
 
   var body: some View {
     #if os(iOS)
-      HStack(spacing: 15) {
-        Spacer()
+      HStack {
+        Text(title)
         TextField(title, text: text, prompt: Text(placeholder))
           .autocorrectionDisabled()
           .multilineTextAlignment(.leading)
@@ -374,7 +369,7 @@ struct FormTextField: View {
           .frame(maxWidth: .infinity)
           .textInputAutocapitalization(.never)
       }
-    #else
+    #elseif os(macOS)
       HStack(spacing: 30) {
         Spacer()
         VStack(alignment: .leading) {

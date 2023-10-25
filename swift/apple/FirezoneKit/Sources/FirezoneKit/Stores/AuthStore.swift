@@ -73,7 +73,8 @@ final class AuthStore: ObservableObject {
       return .signedOut(accountId: tunnelAccountId)
     case .signedIn(let tunnelAuthBaseURL, let tunnelAccountId, _, _, let tokenReference):
       let tunnelAuthURLString = self.authURL(
-        authBaseURL: tunnelAuthBaseURL, accountId: tunnelAccountId
+        authBaseURL: tunnelAuthBaseURL,
+        accountId: tunnelAccountId
       ).absoluteString
       guard let tokenAttributes = await keychain.loadAttributes(tokenReference),
         tunnelAuthURLString == tokenAttributes.authURLString
