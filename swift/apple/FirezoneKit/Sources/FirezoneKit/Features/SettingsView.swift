@@ -106,6 +106,23 @@ public struct SettingsView: View {
       NavigationView {
         VStack(spacing: 10) {
           form
+          ExportLogsButton(isProcessing: $isExportingLogs) {
+            self.isExportingLogs = true
+            Task {
+              self.logTempZipFileURL = try await createLogZipBundle()
+              self.isPresentingExportLogShareSheet = true
+            }
+          }.sheet(isPresented: $isPresentingExportLogShareSheet) {
+            if let logfileURL = self.logTempZipFileURL {
+              ShareSheetView(
+                localFileURL: logfileURL,
+                completionHandler: {
+                  self.isPresentingExportLogShareSheet = false
+                  self.isExportingLogs = false
+                  self.logTempZipFileURL = nil
+                })
+            }
+          }
           Spacer()
         }
         .toolbar {
@@ -182,7 +199,6 @@ public struct SettingsView: View {
   }
 
   private var form: some View {
-
     Form {
       Section(header: Text("Required")) {
         FormTextField(
@@ -220,23 +236,6 @@ public struct SettingsView: View {
             set: { model.settings.logFilter = $0 }
           )
         )
-        ExportLogsButton(isProcessing: $isExportingLogs) {
-          self.isExportingLogs = true
-          Task {
-            self.logTempZipFileURL = try await createLogZipBundle()
-            self.isPresentingExportLogShareSheet = true
-          }
-        }.sheet(isPresented: $isPresentingExportLogShareSheet) {
-          if let logfileURL = self.logTempZipFileURL {
-            ShareSheetView(
-              localFileURL: logfileURL,
-              completionHandler: {
-                self.isPresentingExportLogShareSheet = false
-                self.isExportingLogs = false
-                self.logTempZipFileURL = nil
-              })
-          }
-        }
       }
     }.toolbar {
       ToolbarItem(placement: .primaryAction) {
