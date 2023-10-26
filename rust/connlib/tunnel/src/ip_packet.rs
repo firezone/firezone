@@ -108,6 +108,13 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
+    pub(crate) fn into_immutable(self) -> IpPacket<'a> {
+        match self {
+            Self::MutableIpv4Packet(p) => p.consume_to_immutable().into(),
+            Self::MutableIpv6Packet(p) => p.consume_to_immutable().into(),
+        }
+    }
+
     pub(crate) fn as_immutable(&self) -> IpPacket<'_> {
         match self {
             Self::MutableIpv4Packet(p) => IpPacket::Ipv4Packet(p.to_immutable()),
@@ -185,15 +192,6 @@ impl<'a> MutableIpPacket<'a> {
         match self {
             Self::MutableIpv4Packet(p) => p.set_total_length(total_len as u16),
             Self::MutableIpv6Packet(p) => p.set_payload_length(payload_len as u16),
-        }
-    }
-}
-
-impl MutableIpPacket<'static> {
-    pub(crate) fn into_immutable(self) -> IpPacket<'static> {
-        match self {
-            Self::MutableIpv4Packet(p) => p.consume_to_immutable().into(),
-            Self::MutableIpv6Packet(p) => p.consume_to_immutable().into(),
         }
     }
 }

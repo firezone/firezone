@@ -245,10 +245,11 @@ impl Peer {
             }
         };
 
-        update_packet(packet, dst_addr);
-        let packet = IpPacket::new(packet).ok_or(Error::BadPacket)?;
+        let mut packet = MutableIpPacket::new(packet).ok_or(Error::BadPacket)?;
+        packet.set_dst(dst_addr);
+        packet.update_checksum();
 
-        Ok(Some(WriteTo::Resource(packet)))
+        Ok(Some(WriteTo::Resource(packet.into_immutable())))
     }
 
     fn update_resource_address(
@@ -296,15 +297,6 @@ impl Peer {
 pub enum WriteTo<'a> {
     Network(Bytes),
     Resource(IpPacket<'a>),
-}
-
-#[inline(always)]
-fn update_packet(packet: &mut [u8], dst_addr: IpAddr) {
-    let Some(mut pkt) = MutableIpPacket::new(packet) else {
-        return;
-    };
-    pkt.set_dst(dst_addr);
-    pkt.update_checksum();
 }
 
 fn get_matching_version_ip(addr: &IpAddr, ip: &IpAddr) -> Option<IpAddr> {
