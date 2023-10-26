@@ -49,13 +49,3 @@ impl Default for IndexLfsr {
         }
     }
 }
-
-// Checks that a packet has the index we expect
-pub(crate) fn check_packet_index(recv_idx: u32, expected_idx: u32) -> bool {
-    if (recv_idx >> 8) == expected_idx {
-        true
-    } else {
-        tracing::warn!("receiver index doesn't match peer index, something fishy is going on");
-        false
-    }
-}

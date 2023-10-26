@@ -148,6 +148,7 @@ where
                     peer_config.clone(),
                     gateway_id,
                     None,
+                    tunnel.rate_limiter.clone(),
                 );
 
                 {
