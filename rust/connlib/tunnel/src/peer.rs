@@ -240,12 +240,22 @@ impl Peer {
 
         let mut packet = MutableIpPacket::new(packet).ok_or(Error::BadPacket)?;
 
-        let Some(resource) = self.get_packet_resource(packet.as_immutable()) else {
-            // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
-            // and we just trust gateways.
-            // In gateways this should never happen.
-            tracing::trace!(target: "wire", action = "writing", to = "iface", %dst, bytes = %packet.len());
-            return Ok(Some(WriteTo::Resource(packet.into_immutable())));
+        let resources = match &self.resources {
+            None => {
+                // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
+                // and we just trust gateways.
+                tracing::trace!(target: "wire", action = "writing", to = "iface", %dst, bytes = %packet.len());
+                return Ok(Some(WriteTo::Resource(packet.into_immutable())));
+            }
+            Some(resources) => resources,
+        };
+
+        let Some(resource) = resources
+            .get_by_ip(packet.destination())
+            .map(|r| r.0.clone())
+        else {
+            tracing::warn!("client tried to hijack the tunnel for resource itsn't allowed.");
+            return Ok(None);
         };
 
         let dst_addr = match resource {
@@ -303,20 +313,6 @@ impl Peer {
         self.resources
             .as_ref()
             .and_then(|resources| id.and_then(|id| resources.get_by_id(&id).map(|r| r.0.clone())))
-    }
-
-    fn get_packet_resource(&self, packet: IpPacket) -> Option<ResourceDescription> {
-        let resources = self.resources.as_ref()?;
-
-        let Some(resource) = resources
-            .get_by_ip(packet.destination())
-            .map(|r| r.0.clone())
-        else {
-            tracing::warn!("client tried to hijack the tunnel for resource itsn't allowed.");
-            return None;
-        };
-
-        Some(resource)
     }
 }
 
