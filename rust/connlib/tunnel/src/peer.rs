@@ -228,9 +228,18 @@ impl Peer {
             return Ok(None);
         }
 
-        let Some(packet) = make_packet_for_resource(self, addr, packet)? else {
-            return Ok(None);
+        let Some((dst, resource)) = self.get_packet_resource(packet) else {
+            // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
+            // and we just trust gateways.
+            // In gateways this should never happen.
+            tracing::trace!(target: "wire", action = "writing", to = "iface", %addr, bytes = %packet.len());
+            let packet = make_packet(packet, addr);
+            return Ok(Some(WriteTo::Resource(packet)));
         };
+
+        let dst_addr = get_resource_addr(self, &resource, &addr, &dst)?;
+        update_packet(packet, dst_addr);
+        let packet = make_packet(packet, addr);
 
         Ok(Some(WriteTo::Resource(packet)))
     }
@@ -255,28 +264,6 @@ impl Peer {
 pub enum WriteTo<'a> {
     Network(Bytes),
     Resource(device_channel::Packet<'a>),
-}
-
-#[inline(always)]
-pub(crate) fn make_packet_for_resource<'a>(
-    peer: &mut Peer,
-    addr: IpAddr,
-    packet: &'a mut [u8],
-) -> Result<Option<device_channel::Packet<'a>>> {
-    let Some((dst, resource)) = peer.get_packet_resource(packet) else {
-        // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
-        // and we just trust gateways.
-        // In gateways this should never happen.
-        tracing::trace!(target: "wire", action = "writing", to = "iface", %addr, bytes = %packet.len());
-        let packet = make_packet(packet, addr);
-        return Ok(Some(packet));
-    };
-
-    let dst_addr = get_resource_addr(peer, &resource, &addr, &dst)?;
-    update_packet(packet, dst_addr);
-    let packet = make_packet(packet, addr);
-
-    Ok(Some(packet))
 }
 
 #[inline(always)]
