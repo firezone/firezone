@@ -213,27 +213,21 @@ impl Peer {
         src: &[u8],
         dst: &'b mut [u8],
     ) -> Result<Option<WriteTo<'b>>> {
-        match self.tunnel.decapsulate(None, src, dst) {
-            TunnResult::Done => Ok(None),
-            TunnResult::Err(e) => Err(e.into()),
+        let (packet, addr) = match self.tunnel.decapsulate(None, src, dst) {
+            TunnResult::Done => return Ok(None),
+            TunnResult::Err(e) => return Err(e.into()),
             TunnResult::WriteToNetwork(packet) => {
-                Ok(Some(WriteTo::Network(Bytes::copy_from_slice(packet))))
+                return Ok(Some(WriteTo::Network(Bytes::copy_from_slice(packet))))
             }
-            TunnResult::WriteToTunnelV4(packet, addr) => {
-                let Some(packet) = make_packet_for_resource(self, addr.into(), packet)? else {
-                    return Ok(None);
-                };
+            TunnResult::WriteToTunnelV4(packet, addr) => (packet, addr.into()),
+            TunnResult::WriteToTunnelV6(packet, addr) => (packet, addr.into()),
+        };
 
-                Ok(Some(WriteTo::Resource(packet)))
-            }
-            TunnResult::WriteToTunnelV6(packet, addr) => {
-                let Some(packet) = make_packet_for_resource(self, addr.into(), packet)? else {
-                    return Ok(None);
-                };
+        let Some(packet) = make_packet_for_resource(self, addr, packet)? else {
+            return Ok(None);
+        };
 
-                Ok(Some(WriteTo::Resource(packet)))
-            }
-        }
+        Ok(Some(WriteTo::Resource(packet)))
     }
 
     pub(crate) fn get_packet_resource(
