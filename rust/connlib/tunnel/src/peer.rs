@@ -25,7 +25,6 @@ type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 
 pub(crate) struct Peer<TId> {
     pub tunnel: Tunn,
-    pub index: u32,
     allowed_ips: IpNetworkTable<()>,
     pub conn_id: TId,
     resources: Option<ResourceTable<ExpiryingResource>>,
@@ -45,7 +44,6 @@ pub(crate) struct Peer<TId> {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct PeerStats<TId> {
-    pub index: u32,
     pub allowed_ips: Vec<IpNetwork>,
     pub conn_id: TId,
     pub dns_resources: HashMap<String, ExpiryingResource>,
@@ -65,7 +63,6 @@ where
         let allowed_ips = self.allowed_ips.iter().map(|(ip, _)| ip).collect();
         let translated_resource_addresses = self.translated_resource_addresses.clone();
         PeerStats {
-            index: self.index,
             allowed_ips,
             conn_id: self.conn_id,
             dns_resources,
@@ -104,7 +101,6 @@ where
 
         Peer {
             tunnel,
-            index,
             allowed_ips,
             conn_id,
             resources,
