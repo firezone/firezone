@@ -211,9 +211,9 @@ impl Peer {
     pub(crate) fn decapsulate<'b>(
         &mut self,
         src: &[u8],
-        dst: &'b mut [u8],
+        buf: &'b mut [u8],
     ) -> Result<Option<WriteTo<'b>>> {
-        let (packet, addr) = match self.tunnel.decapsulate(None, src, dst) {
+        let (packet, dst) = match self.tunnel.decapsulate(None, src, buf) {
             TunnResult::Done => return Ok(None),
             TunnResult::Err(e) => return Err(e.into()),
             TunnResult::WriteToNetwork(packet) => {
@@ -223,23 +223,23 @@ impl Peer {
             TunnResult::WriteToTunnelV6(packet, addr) => (packet, IpAddr::from(addr)),
         };
 
-        if !self.is_allowed(addr) {
-            tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
+        if !self.is_allowed(dst) {
+            tracing::warn!(%dst, "Received packet from peer with an unallowed ip");
             return Ok(None);
         }
 
-        let Some((dst, resource)) = self.get_packet_resource(packet) else {
+        let Some((encoded_dst, resource)) = self.get_packet_resource(packet) else {
             // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
             // and we just trust gateways.
             // In gateways this should never happen.
-            tracing::trace!(target: "wire", action = "writing", to = "iface", %addr, bytes = %packet.len());
-            let packet = make_packet(packet, addr);
+            tracing::trace!(target: "wire", action = "writing", to = "iface", %dst, bytes = %packet.len());
+            let packet = make_packet(packet, dst);
             return Ok(Some(WriteTo::Resource(packet)));
         };
 
-        let dst_addr = get_resource_addr(self, &resource, &addr, &dst)?;
+        let dst_addr = get_resource_addr(self, &resource, &dst, &encoded_dst)?;
         update_packet(packet, dst_addr);
-        let packet = make_packet(packet, addr);
+        let packet = make_packet(packet, dst);
 
         Ok(Some(WriteTo::Resource(packet)))
     }
@@ -290,8 +290,8 @@ fn get_matching_version_ip(addr: &IpAddr, ip: &IpAddr) -> Option<IpAddr> {
 fn get_resource_addr(
     peer: &mut Peer,
     resource: &ResourceDescription,
-    addr: &IpAddr,
     dst: &IpAddr,
+    encoded_dst: &IpAddr,
 ) -> Result<IpAddr> {
     match resource {
         ResourceDescription::Dns(r) => {
@@ -301,20 +301,20 @@ fn get_resource_addr(
                 return Err(Error::InvalidResource);
             };
             let Ok(mut dst_addr) = (dst_addr, 0).to_socket_addrs() else {
-                tracing::warn!(%addr, "Couldn't resolve name");
+                tracing::warn!(%dst, "Couldn't resolve name");
                 return Err(Error::InvalidResource);
             };
-            let Some(dst_addr) = dst_addr.find_map(|d| get_matching_version_ip(addr, &d.ip()))
+            let Some(dst_addr) = dst_addr.find_map(|d| get_matching_version_ip(dst, &d.ip()))
             else {
-                tracing::warn!(%addr, "Couldn't resolve name addr");
+                tracing::warn!(%dst, "Couldn't resolve name addr");
                 return Err(Error::InvalidResource);
             };
             peer.update_translated_resource_address(dst_addr, r.id);
             Ok(dst_addr)
         }
         ResourceDescription::Cidr(r) => {
-            if r.address.contains(*dst) {
-                Ok(get_matching_version_ip(addr, dst).ok_or(Error::InvalidResource)?)
+            if r.address.contains(*encoded_dst) {
+                Ok(get_matching_version_ip(dst, encoded_dst).ok_or(Error::InvalidResource)?)
             } else {
                 tracing::warn!(
                     "client tried to hijack the tunnel for range outside what it's allowed."
