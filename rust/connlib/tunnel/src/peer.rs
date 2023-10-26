@@ -6,7 +6,7 @@ use std::{collections::HashMap, net::IpAddr};
 use boringtun::noise::rate_limiter::RateLimiter;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::StaticSecret;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{ResourceDescription, ResourceId},
@@ -220,11 +220,26 @@ where
         src: &[u8],
         dst: &'b mut [u8],
     ) -> Result<Option<WriteTo<'b>>> {
-        match self.tunnel.lock().decapsulate(None, src, dst) {
+        let mut tunnel = self.tunnel.lock();
+
+        match tunnel.decapsulate(None, src, dst) {
             TunnResult::Done => Ok(None),
             TunnResult::Err(e) => Err(e.into()),
             TunnResult::WriteToNetwork(packet) => {
-                Ok(Some(WriteTo::Network(Bytes::copy_from_slice(packet))))
+                let mut bytes = BytesMut::new();
+                bytes.extend_from_slice(packet);
+
+                // Boringtun requires us to call `decapsulate` repeatedly if it returned `WriteToNetwork`.
+                // However, for the repeated calls, we only need a buffer of at most 148 bytes which we can easily allocate on the stack.
+                let mut buf = [0u8; 148];
+
+                while let TunnResult::WriteToNetwork(packet) =
+                    tunnel.decapsulate(None, &[], &mut buf)
+                {
+                    bytes.extend_from_slice(packet);
+                }
+
+                Ok(Some(WriteTo::Network(bytes.freeze())))
             }
             TunnResult::WriteToTunnelV4(packet, addr) => {
                 let Some(packet) = make_packet_for_resource(self, addr.into(), packet)? else {
