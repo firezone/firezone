@@ -259,7 +259,13 @@ impl Peer {
         };
 
         let dst_addr = match resource {
-            ResourceDescription::Dns(r) => self.update_resource_address(&dst, r)?,
+            ResourceDescription::Dns(r) => {
+                let dst_addr = translate_addr(&r, &dst)?;
+
+                self.translated_resource_addresses.insert(dst_addr, r.id);
+
+                dst_addr
+            }
             ResourceDescription::Cidr(r) => {
                 if !r.address.contains(packet.destination()) {
                     tracing::warn!(
@@ -279,31 +285,6 @@ impl Peer {
         Ok(Some(WriteTo::Resource(packet.into_immutable())))
     }
 
-    fn update_resource_address(
-        &mut self,
-        dst: &IpAddr,
-        resource_desc: ResourceDescriptionDns,
-    ) -> Result<IpAddr> {
-        let mut address = resource_desc.address.split(':');
-        let Some(dst_addr) = address.next() else {
-            tracing::error!("invalid DNS name for resource: {}", resource_desc.address);
-            return Err(Error::InvalidResource);
-        };
-        let Ok(mut dst_addr) = (dst_addr, 0).to_socket_addrs() else {
-            tracing::warn!(%dst, "Couldn't resolve name");
-            return Err(Error::InvalidResource);
-        };
-        let Some(dst_addr) = dst_addr.find_map(|d| get_matching_version_ip(dst, &d.ip())) else {
-            tracing::warn!(%dst, "Couldn't resolve name addr");
-            return Err(Error::InvalidResource);
-        };
-
-        self.translated_resource_addresses
-            .insert(dst_addr, resource_desc.id);
-
-        Ok(dst_addr)
-    }
-
     fn is_allowed(&self, addr: IpAddr) -> bool {
         self.allowed_ips.longest_match(addr).is_some()
     }
@@ -319,6 +300,24 @@ impl Peer {
 pub enum WriteTo<'a> {
     Network(Bytes),
     Resource(IpPacket<'a>),
+}
+
+fn translate_addr(resource_desc: &ResourceDescriptionDns, dst: &IpAddr) -> Result<IpAddr> {
+    let mut address = resource_desc.address.split(':');
+    let Some(dst_addr) = address.next() else {
+        tracing::error!("invalid DNS name for resource: {}", resource_desc.address);
+        return Err(Error::InvalidResource);
+    };
+    let Ok(mut dst_addr) = (dst_addr, 0).to_socket_addrs() else {
+        tracing::warn!(%dst, "Couldn't resolve name");
+        return Err(Error::InvalidResource);
+    };
+    let Some(dst_addr) = dst_addr.find_map(|d| get_matching_version_ip(dst, &d.ip())) else {
+        tracing::warn!(%dst, "Couldn't resolve name addr");
+        return Err(Error::InvalidResource);
+    };
+
+    Ok(dst_addr)
 }
 
 fn get_matching_version_ip(addr: &IpAddr, ip: &IpAddr) -> Option<IpAddr> {
