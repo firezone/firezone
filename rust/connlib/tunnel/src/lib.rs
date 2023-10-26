@@ -17,7 +17,6 @@ use hickory_resolver::proto::rr::RecordType;
 use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
-use resource_table::ResourceTable;
 use tokio::{task::AbortHandle, time::MissedTickBehavior};
 use webrtc::{
     api::{
@@ -385,13 +384,6 @@ where
     pub async fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
         let public_key = (&private_key).into();
         let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
-        let peers_by_ip = RwLock::new(IpNetworkTable::new());
-        let next_index = Default::default();
-        let peer_connections = Default::default();
-        let resources: Arc<RwLock<ResourceTable<ResourceDescription>>> = Default::default();
-        let device = Default::default();
-        let iface_handler_abort = Default::default();
-
         // ICE
         let mut media_engine = MediaEngine::default();
 
@@ -401,10 +393,6 @@ where
         registry = register_default_interceptors(registry, &mut media_engine)?;
         let mut setting_engine = SettingEngine::default();
         setting_engine.detach_data_channels();
-        setting_engine.set_ip_filter(Box::new({
-            let resources = Arc::clone(&resources);
-            move |ip| !resources.read().values().any(|res_ip| res_ip.contains(ip))
-        }));
 
         setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
 
@@ -419,14 +407,14 @@ where
         Ok(Self {
             rate_limiter,
             private_key,
-            peer_connections,
+            peer_connections: Default::default(),
             public_key,
-            peers_by_ip,
-            next_index,
+            peers_by_ip: RwLock::new(IpNetworkTable::new()),
+            next_index: Default::default(),
             webrtc_api,
-            device,
+            device: Default::default(),
             callbacks: CallbackErrorFacade(callbacks),
-            iface_handler_abort,
+            iface_handler_abort: Default::default(),
             role_state: Default::default(),
             stop_peer_command_receiver: Mutex::new(stop_peer_command_receiver),
             stop_peer_command_sender,
