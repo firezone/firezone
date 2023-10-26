@@ -8,6 +8,7 @@ use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::StaticSecret;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
+use connlib_shared::messages::ResourceDescriptionDns;
 use connlib_shared::{
     messages::{ResourceDescription, ResourceId},
     Error, Result,
@@ -168,10 +169,6 @@ impl Peer {
         self.allowed_ips.longest_match(addr).is_some()
     }
 
-    pub(crate) fn update_translated_resource_address(&mut self, addr: IpAddr, id: ResourceId) {
-        self.translated_resource_addresses.insert(addr, id);
-    }
-
     /// Sends the given packet to this peer by encapsulating it in a wireguard packet.
     pub(crate) fn encapsulate(
         &mut self,
@@ -238,25 +235,7 @@ impl Peer {
         };
 
         let dst_addr = match resource {
-            ResourceDescription::Dns(r) => {
-                let mut address = r.address.split(':');
-                let Some(dst_addr) = address.next() else {
-                    tracing::error!("invalid DNS name for resource: {}", r.address);
-                    return Err(Error::InvalidResource);
-                };
-                let Ok(mut dst_addr) = (dst_addr, 0).to_socket_addrs() else {
-                    tracing::warn!(%dst, "Couldn't resolve name");
-                    return Err(Error::InvalidResource);
-                };
-                let Some(dst_addr) = dst_addr.find_map(|d| get_matching_version_ip(&dst, &d.ip()))
-                else {
-                    tracing::warn!(%dst, "Couldn't resolve name addr");
-                    return Err(Error::InvalidResource);
-                };
-                self.update_translated_resource_address(dst_addr, r.id);
-
-                dst_addr
-            }
+            ResourceDescription::Dns(r) => self.update_resource_address(&dst, r)?,
             ResourceDescription::Cidr(r) => {
                 if !r.address.contains(encoded_dst) {
                     tracing::warn!(
@@ -273,6 +252,31 @@ impl Peer {
         let packet = make_packet(packet, dst);
 
         Ok(Some(WriteTo::Resource(packet)))
+    }
+
+    fn update_resource_address(
+        &mut self,
+        dst: &IpAddr,
+        resource_desc: ResourceDescriptionDns,
+    ) -> Result<IpAddr> {
+        let mut address = resource_desc.address.split(':');
+        let Some(dst_addr) = address.next() else {
+            tracing::error!("invalid DNS name for resource: {}", resource_desc.address);
+            return Err(Error::InvalidResource);
+        };
+        let Ok(mut dst_addr) = (dst_addr, 0).to_socket_addrs() else {
+            tracing::warn!(%dst, "Couldn't resolve name");
+            return Err(Error::InvalidResource);
+        };
+        let Some(dst_addr) = dst_addr.find_map(|d| get_matching_version_ip(&dst, &d.ip())) else {
+            tracing::warn!(%dst, "Couldn't resolve name addr");
+            return Err(Error::InvalidResource);
+        };
+
+        self.translated_resource_addresses
+            .insert(dst_addr, resource_desc.id);
+
+        Ok(dst_addr)
     }
 
     pub(crate) fn get_packet_resource(
