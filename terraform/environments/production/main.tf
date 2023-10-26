@@ -356,7 +356,7 @@ locals {
         project_id            = module.google-cloud-project.project.project_id
         cluster_name          = local.cluster.name
         cluster_name_label    = "cluster_name"
-        cluster_version_label = "version"
+        cluster_version_label = "cluster_version"
         cluster_version       = split(".", var.image_tag)[0]
         node_name_label       = "application"
         polling_interval_ms   = 7000
