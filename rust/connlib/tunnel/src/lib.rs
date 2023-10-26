@@ -163,7 +163,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
 }
 
 pub struct ConnectedPeer<TId> {
-    inner: Arc<Peer<TId>>,
+    inner: Peer<TId>,
     channel: Arc<DataChannel>,
 }
 
