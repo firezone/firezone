@@ -258,14 +258,14 @@ impl Peer {
                 dst_addr
             }
             ResourceDescription::Cidr(r) => {
-                if r.address.contains(encoded_dst) {
-                    get_matching_version_ip(&dst, &encoded_dst).ok_or(Error::InvalidResource)?
-                } else {
+                if !r.address.contains(encoded_dst) {
                     tracing::warn!(
                         "client tried to hijack the tunnel for range outside what it's allowed."
                     );
                     return Err(Error::InvalidSource);
                 }
+
+                get_matching_version_ip(&dst, &encoded_dst).ok_or(Error::InvalidResource)?
             }
         };
 
