@@ -42,6 +42,17 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     #[inline]
+    pub(crate) fn owned(data: Vec<u8>) -> Option<MutableIpPacket<'static>> {
+        let packet = match data[0] >> 4 {
+            4 => MutableIpv4Packet::owned(data)?.into(),
+            6 => MutableIpv6Packet::owned(data)?.into(),
+            _ => return None,
+        };
+
+        Some(packet)
+    }
+
+    #[inline]
     pub(crate) fn destination(&self) -> IpAddr {
         match self {
             MutableIpPacket::MutableIpv4Packet(i) => i.get_destination().into(),
@@ -178,10 +189,13 @@ impl<'a> MutableIpPacket<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Version {
-    Ipv4,
-    Ipv6,
+impl MutableIpPacket<'static> {
+    pub(crate) fn into_immutable(self) -> IpPacket<'static> {
+        match self {
+            Self::MutableIpv4Packet(p) => p.consume_to_immutable().into(),
+            Self::MutableIpv6Packet(p) => p.consume_to_immutable().into(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -199,13 +213,6 @@ impl<'a> IpPacket<'a> {
         };
 
         Some(packet)
-    }
-
-    pub(crate) fn version(&self) -> Version {
-        match self {
-            IpPacket::Ipv4Packet(_) => Version::Ipv4,
-            IpPacket::Ipv6Packet(_) => Version::Ipv6,
-        }
     }
 
     pub(crate) fn is_icmpv6(&self) -> bool {

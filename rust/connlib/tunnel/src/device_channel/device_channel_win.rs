@@ -1,4 +1,4 @@
-use crate::device_channel::Packet;
+use crate::ip_packet::IpPacket;
 use crate::Device;
 use connlib_shared::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
 use ip_network::IpNetwork;
@@ -13,7 +13,7 @@ impl DeviceIo {
         todo!()
     }
 
-    pub fn write(&self, _: Packet<'_>) -> std::io::Result<usize> {
+    pub fn write(&self, _: IpPacket<'_>) -> std::io::Result<usize> {
         todo!()
     }
 }

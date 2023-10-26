@@ -1,5 +1,4 @@
-use crate::device_channel::Packet;
-use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
+use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket};
 use crate::resource_table::ResourceTable;
 use crate::DnsQuery;
 use connlib_shared::error::ConnlibError;
@@ -59,7 +58,7 @@ impl<T> ResolveStrategy<T, DnsQueryParams> {
 pub(crate) fn parse<'a>(
     resources: &ResourceTable<ResourceDescription>,
     packet: IpPacket<'a>,
-) -> Option<ResolveStrategy<Packet<'static>, DnsQuery<'a>>> {
+) -> Option<ResolveStrategy<IpPacket<'static>, DnsQuery<'a>>> {
     if packet.destination() != IpAddr::from(DNS_SENTINEL) {
         return None;
     }
@@ -84,7 +83,7 @@ pub(crate) fn parse<'a>(
 pub(crate) fn build_response_from_resolve_result(
     original_pkt: IpPacket<'_>,
     response: hickory_resolver::error::ResolveResult<Lookup>,
-) -> Result<Option<Packet>, ConnlibError> {
+) -> Result<Option<IpPacket>, ConnlibError> {
     let Some(mut message) = as_dns_message(&original_pkt) else {
         debug_assert!(false, "The original message should be a DNS query for us to ever call write_dns_lookup_response");
         return Ok(None);
@@ -113,8 +112,10 @@ pub(crate) fn build_response_from_resolve_result(
     Ok(packet)
 }
 
-fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> Option<Packet<'static>> {
-    let version = original_pkt.version();
+fn build_response(
+    original_pkt: IpPacket<'_>,
+    mut dns_answer: Vec<u8>,
+) -> Option<IpPacket<'static>> {
     let response_len = dns_answer.len();
     let original_dgm = original_pkt.as_udp()?;
     let hdr_len = original_pkt.packet_size() - original_dgm.payload().len();
@@ -133,16 +134,12 @@ fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> Option
     dgm.set_source(original_dgm.get_destination());
     dgm.set_destination(original_dgm.get_source());
 
-    let mut pkt = MutableIpPacket::new(&mut res_buf)?;
+    let mut pkt = MutableIpPacket::owned(res_buf)?;
     let udp_checksum = pkt.to_immutable().udp_checksum(&pkt.as_immutable_udp()?);
     pkt.as_udp()?.set_checksum(udp_checksum);
     pkt.set_ipv4_checksum();
-    let packet = match version {
-        Version::Ipv4 => Packet::Ipv4(res_buf.into()),
-        Version::Ipv6 => Packet::Ipv6(res_buf.into()),
-    };
 
-    Some(packet)
+    Some(pkt.into_immutable())
 }
 
 fn build_dns_with_answer<N>(

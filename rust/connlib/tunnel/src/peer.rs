@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use std::{collections::HashMap, net::IpAddr};
@@ -15,13 +14,13 @@ use connlib_shared::{
 };
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
+use pnet_packet::ipv4::Ipv4Packet;
+use pnet_packet::ipv6::Ipv6Packet;
 use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 
-use crate::{
-    device_channel, ip_packet::MutableIpPacket, resource_table::ResourceTable, PeerConfig,
-    MAX_UDP_SIZE,
-};
+use crate::ip_packet::IpPacket;
+use crate::{ip_packet::MutableIpPacket, resource_table::ResourceTable, PeerConfig, MAX_UDP_SIZE};
 
 type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 
@@ -230,7 +229,7 @@ impl Peer {
             // and we just trust gateways.
             // In gateways this should never happen.
             tracing::trace!(target: "wire", action = "writing", to = "iface", %dst, bytes = %packet.len());
-            let packet = make_packet(packet, dst);
+            let packet = make_packet(packet, dst).ok_or(Error::BadPacket)?;
             return Ok(Some(WriteTo::Resource(packet)));
         };
 
@@ -249,7 +248,7 @@ impl Peer {
         };
 
         update_packet(packet, dst_addr);
-        let packet = make_packet(packet, dst);
+        let packet = make_packet(packet, dst).ok_or(Error::BadPacket)?;
 
         Ok(Some(WriteTo::Resource(packet)))
     }
@@ -268,7 +267,7 @@ impl Peer {
             tracing::warn!(%dst, "Couldn't resolve name");
             return Err(Error::InvalidResource);
         };
-        let Some(dst_addr) = dst_addr.find_map(|d| get_matching_version_ip(&dst, &d.ip())) else {
+        let Some(dst_addr) = dst_addr.find_map(|d| get_matching_version_ip(dst, &d.ip())) else {
             tracing::warn!(%dst, "Couldn't resolve name addr");
             return Err(Error::InvalidResource);
         };
@@ -298,15 +297,15 @@ impl Peer {
 
 pub enum WriteTo<'a> {
     Network(Bytes),
-    Resource(device_channel::Packet<'a>),
+    Resource(IpPacket<'a>),
 }
 
 #[inline(always)]
-fn make_packet(packet: &mut [u8], dst_addr: IpAddr) -> device_channel::Packet<'_> {
-    match dst_addr {
-        IpAddr::V4(_) => device_channel::Packet::Ipv4(Cow::Borrowed(packet)),
-        IpAddr::V6(_) => device_channel::Packet::Ipv6(Cow::Borrowed(packet)),
-    }
+fn make_packet(packet: &mut [u8], dst_addr: IpAddr) -> Option<IpPacket<'_>> {
+    Some(match dst_addr {
+        IpAddr::V4(_) => IpPacket::Ipv4Packet(Ipv4Packet::new(packet)?),
+        IpAddr::V6(_) => IpPacket::Ipv6Packet(Ipv6Packet::new(packet)?),
+    })
 }
 
 #[inline(always)]

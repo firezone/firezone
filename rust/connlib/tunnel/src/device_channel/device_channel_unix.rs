@@ -5,11 +5,12 @@ use std::sync::{
 
 use connlib_shared::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
 use ip_network::IpNetwork;
+use pnet_packet::Packet;
 use tokio::io::{unix::AsyncFd, Interest};
 
 use tun::{IfaceDevice, IfaceStream};
 
-use crate::device_channel::Packet;
+use crate::ip_packet::IpPacket;
 use crate::{Device, MAX_UDP_SIZE};
 
 mod tun;
@@ -32,10 +33,10 @@ impl DeviceIo {
     // Note: write is synchronous because it's non-blocking
     // and some losiness is acceptable and increseases performance
     // since we don't block the reading loops.
-    pub fn write(&self, packet: Packet<'_>) -> std::io::Result<usize> {
+    pub fn write(&self, packet: IpPacket<'_>) -> std::io::Result<usize> {
         match packet {
-            Packet::Ipv4(msg) => self.0.get_ref().write4(&msg),
-            Packet::Ipv6(msg) => self.0.get_ref().write6(&msg),
+            IpPacket::Ipv4Packet(msg) => self.0.get_ref().write4(msg.packet()),
+            IpPacket::Ipv6Packet(msg) => self.0.get_ref().write6(msg.packet()),
         }
     }
 }
