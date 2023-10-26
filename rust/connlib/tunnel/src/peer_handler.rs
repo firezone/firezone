@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use connlib_shared::error::ConnlibError;
 use connlib_shared::{Callbacks, Error};
 use futures_util::SinkExt;
 use webrtc::data::data_channel::DataChannel;
@@ -62,23 +63,21 @@ where
                 break;
             }
 
-            match peer.decapsulate(&src_buf[..size]) {
+            let error = match peer.decapsulate(&src_buf[..size]) {
                 Ok(Some(WriteTo::Network(bytes))) => match channel.write(&bytes).await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        tracing::error!("Couldn't send packet to connected peer: {e}");
-                        let _ = self.callbacks.on_error(&e.into());
-                    }
+                    Ok(_) => continue,
+                    Err(e) => ConnlibError::IceDataError(e),
                 },
+                Err(other) => other,
                 Ok(Some(WriteTo::Resource(packet))) => {
                     device_io.write(packet)?;
+                    continue;
                 }
-                Err(other) => {
-                    tracing::error!(error = ?other, "failed to handle peer packet");
-                    let _ = self.callbacks.on_error(&other);
-                }
-                Ok(None) => {}
-            }
+                Ok(None) => continue,
+            };
+
+            tracing::error!(?error, "failed to handle peer packet");
+            let _ = self.callbacks.on_error(&error);
         }
 
         Ok(())
