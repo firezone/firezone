@@ -17,7 +17,6 @@ use hickory_resolver::proto::rr::RecordType;
 use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
-use resource_table::ResourceTable;
 use tokio::{task::AbortHandle, time::MissedTickBehavior};
 use webrtc::{
     api::{
@@ -364,7 +363,6 @@ where
         let peers_by_ip = RwLock::new(IpNetworkTable::new());
         let next_index = Default::default();
         let peer_connections = Default::default();
-        let resources: Arc<RwLock<ResourceTable<ResourceDescription>>> = Default::default();
         let device = Default::default();
         let iface_handler_abort = Default::default();
 
@@ -377,11 +375,6 @@ where
         registry = register_default_interceptors(registry, &mut media_engine)?;
         let mut setting_engine = SettingEngine::default();
         setting_engine.detach_data_channels();
-        setting_engine.set_ip_filter(Box::new({
-            let resources = Arc::clone(&resources);
-            move |ip| !resources.read().values().any(|res_ip| res_ip.contains(ip))
-        }));
-
         setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
 
         let webrtc_api = APIBuilder::new()
