@@ -237,7 +237,38 @@ impl Peer {
             return Ok(Some(WriteTo::Resource(packet)));
         };
 
-        let dst_addr = get_resource_addr(self, &resource, &dst, &encoded_dst)?;
+        let dst_addr = match resource {
+            ResourceDescription::Dns(r) => {
+                let mut address = r.address.split(':');
+                let Some(dst_addr) = address.next() else {
+                    tracing::error!("invalid DNS name for resource: {}", r.address);
+                    return Err(Error::InvalidResource);
+                };
+                let Ok(mut dst_addr) = (dst_addr, 0).to_socket_addrs() else {
+                    tracing::warn!(%dst, "Couldn't resolve name");
+                    return Err(Error::InvalidResource);
+                };
+                let Some(dst_addr) = dst_addr.find_map(|d| get_matching_version_ip(&dst, &d.ip()))
+                else {
+                    tracing::warn!(%dst, "Couldn't resolve name addr");
+                    return Err(Error::InvalidResource);
+                };
+                self.update_translated_resource_address(dst_addr, r.id);
+
+                dst_addr
+            }
+            ResourceDescription::Cidr(r) => {
+                if r.address.contains(encoded_dst) {
+                    get_matching_version_ip(&dst, &encoded_dst).ok_or(Error::InvalidResource)?
+                } else {
+                    tracing::warn!(
+                        "client tried to hijack the tunnel for range outside what it's allowed."
+                    );
+                    return Err(Error::InvalidSource);
+                }
+            }
+        };
+
         update_packet(packet, dst_addr);
         let packet = make_packet(packet, dst);
 
@@ -285,42 +316,4 @@ fn update_packet(packet: &mut [u8], dst_addr: IpAddr) {
 
 fn get_matching_version_ip(addr: &IpAddr, ip: &IpAddr) -> Option<IpAddr> {
     ((addr.is_ipv4() && ip.is_ipv4()) || (addr.is_ipv6() && ip.is_ipv6())).then_some(*ip)
-}
-
-fn get_resource_addr(
-    peer: &mut Peer,
-    resource: &ResourceDescription,
-    dst: &IpAddr,
-    encoded_dst: &IpAddr,
-) -> Result<IpAddr> {
-    match resource {
-        ResourceDescription::Dns(r) => {
-            let mut address = r.address.split(':');
-            let Some(dst_addr) = address.next() else {
-                tracing::error!("invalid DNS name for resource: {}", r.address);
-                return Err(Error::InvalidResource);
-            };
-            let Ok(mut dst_addr) = (dst_addr, 0).to_socket_addrs() else {
-                tracing::warn!(%dst, "Couldn't resolve name");
-                return Err(Error::InvalidResource);
-            };
-            let Some(dst_addr) = dst_addr.find_map(|d| get_matching_version_ip(dst, &d.ip()))
-            else {
-                tracing::warn!(%dst, "Couldn't resolve name addr");
-                return Err(Error::InvalidResource);
-            };
-            peer.update_translated_resource_address(dst_addr, r.id);
-            Ok(dst_addr)
-        }
-        ResourceDescription::Cidr(r) => {
-            if r.address.contains(*encoded_dst) {
-                Ok(get_matching_version_ip(dst, encoded_dst).ok_or(Error::InvalidResource)?)
-            } else {
-                tracing::warn!(
-                    "client tried to hijack the tunnel for range outside what it's allowed."
-                );
-                Err(Error::InvalidSource)
-            }
-        }
-    }
 }
