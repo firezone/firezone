@@ -47,7 +47,11 @@ where
             }
         }
         tracing::debug!(peer = ?peer.stats(), "peer_stopped");
-        let _ = self.stop_peer_command_sender.clone().send(peer.index).await;
+        let _ = self
+            .stop_peer_command_sender
+            .clone()
+            .send(peer.conn_id)
+            .await;
     }
 
     async fn peer_handler(

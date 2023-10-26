@@ -54,23 +54,29 @@ where
     }
 }
 
-pub fn on_peer_connection_state_change_handler(
-    index: u32,
-    stop_command_sender: mpsc::Sender<u32>,
-) -> OnPeerConnectionStateChangeHdlrFn {
+pub fn on_peer_connection_state_change_handler<TId>(
+    id: TId,
+    stop_command_sender: mpsc::Sender<TId>,
+) -> OnPeerConnectionStateChangeHdlrFn
+where
+    TId: Send + Sync + Copy + 'static,
+{
     Box::new(move |state| {
         let mut sender = stop_command_sender.clone();
 
         tracing::trace!(?state, "peer_state_update");
         Box::pin(async move {
             if state == RTCPeerConnectionState::Failed {
-                let _ = sender.send(index).await;
+                let _ = sender.send(id).await;
             }
         })
     })
 }
 
-pub fn on_dc_close_handler(index: u32, stop_command_sender: mpsc::Sender<u32>) -> OnCloseHdlrFn {
+pub fn on_dc_close_handler<TId>(index: TId, stop_command_sender: mpsc::Sender<TId>) -> OnCloseHdlrFn
+where
+    TId: Send + Sync + Copy + 'static,
+{
     Box::new(move || {
         let mut sender = stop_command_sender.clone();
 

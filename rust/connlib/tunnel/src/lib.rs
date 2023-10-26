@@ -152,8 +152,8 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     /// State that differs per role, i.e. clients vs gateways.
     role_state: Mutex<TRoleState>,
 
-    stop_peer_command_receiver: Mutex<mpsc::Receiver<u32>>,
-    stop_peer_command_sender: mpsc::Sender<u32>,
+    stop_peer_command_receiver: Mutex<mpsc::Receiver<TRoleState::Id>>,
+    stop_peer_command_sender: mpsc::Sender<TRoleState::Id>,
 
     rate_limit_reset_interval: Mutex<Interval>,
     peer_refresh_interval: Mutex<Interval>,
@@ -325,23 +325,12 @@ where
                 return Poll::Ready(event);
             }
 
-            if let Poll::Ready(Some(i)) = self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
+            if let Poll::Ready(Some(id)) =
+                self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
             {
-                let mut peers = self.peers.write();
-                let peers_by_ip = self.peers_by_ip.write();
-
-                let Some(peer_to_remove) = peers_by_ip.iter().find_map(|(_, p)| {
-                    let candidate = peers.get(p)?.inner.index;
-
-                    if candidate == i {
-                        return peers.remove(p);
-                    }
-
-                    None
-                }) else {
+                let Some(peer_to_remove) = self.peers.write().remove(&id) else {
                     continue;
                 };
-
                 self.peers_to_close.lock().push_back(peer_to_remove);
 
                 continue;

@@ -60,7 +60,7 @@ where
 
         let dest = packet.destination();
 
-        let (result, channel, peer_index) = {
+        let (result, channel, peer_id) = {
             let mut peers = tunnel.peers.write();
 
             let Some(peer) = tunnel
@@ -75,7 +75,7 @@ where
             let result = peer.inner.encapsulate(packet, dest, &mut buf);
             let channel = peer.channel.clone();
 
-            (result, channel, peer.inner.index)
+            (result, channel, peer.inner.conn_id)
         };
 
         let error = match result {
@@ -87,7 +87,7 @@ where
             Err(e) => e,
         };
 
-        on_error(&tunnel, dest, error, peer_index).await
+        on_error(&tunnel, dest, error, peer_id).await
     }
 }
 
@@ -95,18 +95,14 @@ async fn on_error<CB>(
     tunnel: &Tunnel<CB, GatewayState>,
     dest: IpAddr,
     e: ConnlibError,
-    peer_index: u32,
+    peer_id: ClientId,
 ) where
     CB: Callbacks + 'static,
 {
     tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
 
     if e.is_fatal_connection_error() {
-        let _ = tunnel
-            .stop_peer_command_sender
-            .clone()
-            .send(peer_index)
-            .await;
+        let _ = tunnel.stop_peer_command_sender.clone().send(peer_id).await;
     }
 }
 

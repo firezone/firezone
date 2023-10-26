@@ -155,7 +155,7 @@ where
         };
 
         let dest = packet.destination();
-        let (peer_index, peer_channel, maybe_write_to) = {
+        let (peer_id, peer_channel, maybe_write_to) = {
             let peers_by_ip = tunnel.peers_by_ip.read();
             let mut peers = tunnel.peers.write();
             let mut peer = peers_by_ip
@@ -177,7 +177,7 @@ where
 
             let peer = peer.expect("must have peer if we should write bytes");
 
-            (peer.inner.index, peer.channel.clone(), maybe_write_to)
+            (peer.inner.conn_id, peer.channel.clone(), maybe_write_to)
         };
 
         let error = match maybe_write_to {
@@ -197,11 +197,7 @@ where
         let _ = tunnel.callbacks.on_error(&error);
 
         if error.is_fatal_connection_error() {
-            let _ = tunnel
-                .stop_peer_command_sender
-                .clone()
-                .send(peer_index)
-                .await;
+            let _ = tunnel.stop_peer_command_sender.clone().send(peer_id).await;
         }
     }
 }
