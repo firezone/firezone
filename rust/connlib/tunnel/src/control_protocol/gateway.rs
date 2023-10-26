@@ -13,7 +13,7 @@ use webrtc::peer_connection::{
 use crate::control_protocol::{
     new_peer_connection, on_dc_close_handler, on_peer_connection_state_change_handler,
 };
-use crate::{peer::Peer, GatewayState, PeerConfig, Tunnel};
+use crate::{peer::Peer, ConnectedPeer, GatewayState, PeerConfig, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
 fn handle_connection_state_update<CB>(
@@ -114,11 +114,12 @@ where
                         data_channel
                             .on_close(on_dc_close_handler(index, client_id, tunnel.stop_peer_command_sender.clone()));
 
+                        let data_channel = data_channel.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us");
+
                         let peer = Arc::new(Peer::new(
                             tunnel.private_key.clone(),
                             index,
                             peer_config.clone(),
-                            data_channel.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us"),
                             client_id,
                             Some((resource, expires_at)),
                         ));
@@ -128,7 +129,10 @@ where
                             let mut peers_by_ip = tunnel.peers_by_ip.write();
 
                             for ip in peer_config.ips {
-                                peers_by_ip.insert(ip, Arc::clone(&peer));
+                                peers_by_ip.insert(ip, ConnectedPeer {
+                                    inner: peer.clone(),
+                                    channel: data_channel.clone(),
+                                });
                             }
                         }
 
@@ -141,7 +145,7 @@ where
                             );
                         }
 
-                        tokio::spawn(tunnel.clone().start_peer_handler(peer));
+                        tokio::spawn(tunnel.clone().start_peer_handler(peer, data_channel));
                     })
                 }))
             })
@@ -166,13 +170,13 @@ where
         client_id: ClientId,
         expires_at: DateTime<Utc>,
     ) {
-        if let Some(peer) = self
+        if let Some((_, peer)) = self
             .peers_by_ip
             .write()
             .iter_mut()
-            .find_map(|(_, p)| (p.conn_id == client_id).then_some(p))
+            .find(|(_, p)| p.inner.conn_id == client_id)
         {
-            peer.add_resource(resource, expires_at);
+            peer.inner.add_resource(resource, expires_at);
         }
     }
 }

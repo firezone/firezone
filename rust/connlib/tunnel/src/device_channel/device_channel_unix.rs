@@ -9,6 +9,7 @@ use tokio::io::{unix::AsyncFd, Interest};
 
 use tun::{IfaceDevice, IfaceStream};
 
+use crate::device_channel::Packet;
 use crate::{Device, MAX_UDP_SIZE};
 
 mod tun;
@@ -31,12 +32,11 @@ impl DeviceIo {
     // Note: write is synchronous because it's non-blocking
     // and some losiness is acceptable and increseases performance
     // since we don't block the reading loops.
-    pub fn write4(&self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.get_ref().write4(buf)
-    }
-
-    pub fn write6(&self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.get_ref().write6(buf)
+    pub fn write(&self, packet: Packet<'_>) -> std::io::Result<usize> {
+        match packet {
+            Packet::Ipv4(msg) => self.0.get_ref().write4(&msg),
+            Packet::Ipv6(msg) => self.0.get_ref().write6(&msg),
+        }
     }
 }
 
