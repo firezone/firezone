@@ -66,6 +66,7 @@ impl Peer {
         }
     }
 
+    /// Constructs a new [`Peer`] that represents a gateway on a client.
     pub(crate) fn gateway_on_client(
         private_key: StaticSecret,
         index: u32,
@@ -75,6 +76,7 @@ impl Peer {
         Self::new(private_key, index, peer_config, None, rate_limiter)
     }
 
+    /// Constructs a new [`Peer`] that represents a client on a gateway.
     pub(crate) fn client_on_gateway(
         private_key: StaticSecret,
         index: u32,
