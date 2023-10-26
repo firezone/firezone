@@ -24,7 +24,7 @@ use crate::{
 type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 
 pub(crate) struct Peer<TId> {
-    pub tunnel: Tunn,
+    tunnel: Tunn,
     allowed_ips: IpNetworkTable<()>,
     pub conn_id: TId,
     resources: Option<ResourceTable<ExpiryingResource>>,
