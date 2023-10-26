@@ -142,8 +142,8 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     rate_limiter: Arc<RateLimiter>,
     private_key: StaticSecret,
     public_key: PublicKey,
-    #[allow(clippy::type_complexity)]
-    peers_by_ip: RwLock<IpNetworkTable<ConnectedPeer<TRoleState::Id>>>,
+    peers_by_ip: RwLock<IpNetworkTable<TRoleState::Id>>,
+    peers: RwLock<HashMap<TRoleState::Id, ConnectedPeer<TRoleState::Id>>>,
     peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCPeerConnection>>>,
     webrtc_api: API,
     callbacks: CallbackErrorFacade<CB>,
@@ -182,11 +182,13 @@ where
     TRoleState: RoleState,
 {
     pub fn stats(&self) -> TunnelStats<TRoleState::Id> {
+        let peers = self.peers.read();
+
         let peers_by_ip = self
             .peers_by_ip
             .read()
             .iter()
-            .map(|(ip, peer)| (ip, peer.inner.stats()))
+            .map(|(ip, peer)| (ip, peers.get(peer).expect("state mismatch").inner.stats()))
             .collect();
         let peer_connections = self.peer_connections.lock().keys().cloned().collect();
 
@@ -205,10 +207,14 @@ where
         loop {
             {
                 let mut peers_to_close = self.peers_to_close.lock();
+                let mut peer_connections = self.peer_connections.lock();
+                let mut peers_by_ip = self.peers_by_ip.write();
 
                 while let Some(peer) = peers_to_close.pop_front() {
                     let callbacks = self.callbacks.clone();
-                    let connection = self.peer_connections.lock().remove(&peer.inner.conn_id);
+
+                    peers_by_ip.retain(|_, id| *id == peer.inner.conn_id);
+                    let connection = peer_connections.remove(&peer.inner.conn_id);
 
                     tokio::spawn(async move {
                         let _ = peer.channel.close().await;
@@ -237,13 +243,21 @@ where
 
             if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
                 let mut peers_by_ip = self.peers_by_ip.write();
+                let mut peers = self.peers.write();
                 let mut peers_to_close = self.peers_to_close.lock();
 
-                peers_to_close.extend(remove_expired_peers(&mut peers_by_ip));
+                peers_to_close.extend(remove_expired_peers_from_network_table(
+                    &mut peers,
+                    &mut peers_by_ip,
+                ));
 
                 let mut failed_peers = Vec::new();
 
-                for (network, peer) in peers_by_ip.iter().unique_by(|(_, p)| p.inner.index) {
+                for (network, peer) in peers_by_ip
+                    .iter()
+                    .flat_map(|(n, p)| Some((n, peers.get(p)?)))
+                    .unique_by(|(_, p)| p.inner.index)
+                {
                     let bytes = match peer.inner.update_timers() {
                         Ok(Some(bytes)) => bytes,
                         Ok(None) => continue,
@@ -269,7 +283,10 @@ where
                     });
                 }
 
-                peers_to_close.extend(failed_peers.into_iter().flat_map(|n| peers_by_ip.remove(n)));
+                peers_to_close.extend(failed_peers.into_iter().flat_map(|n| {
+                    let id = peers_by_ip.remove(n)?;
+                    peers.remove(&id)
+                }));
 
                 continue;
             }
@@ -310,18 +327,22 @@ where
 
             if let Poll::Ready(Some(i)) = self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
             {
-                let mut peers = self.peers_by_ip.write();
+                let mut peers = self.peers.write();
+                let peers_by_ip = self.peers_by_ip.write();
 
-                let Some(peer_to_remove) = peers
-                    .iter()
-                    .find_map(|(n, p)| (p.inner.index == i).then_some(n))
-                else {
+                let Some(peer_to_remove) = peers_by_ip.iter().find_map(|(_, p)| {
+                    let candidate = peers.get(p)?.inner.index;
+
+                    if candidate == i {
+                        return peers.remove(p);
+                    }
+
+                    None
+                }) else {
                     continue;
                 };
 
-                let peer = peers.remove(peer_to_remove).expect("just found it");
-
-                self.peers_to_close.lock().push_back(peer);
+                self.peers_to_close.lock().push_back(peer_to_remove);
 
                 continue;
             }
@@ -412,6 +433,7 @@ where
             peer_connections: Default::default(),
             public_key,
             peers_by_ip: RwLock::new(IpNetworkTable::new()),
+            peers: Default::default(),
             next_index: Default::default(),
             webrtc_api,
             device: Default::default(),
@@ -463,29 +485,33 @@ fn mtu_refresh_interval() -> Interval {
 
     interval
 }
-fn remove_expired_peers<TId>(
-    peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId>>,
-) -> impl Iterator<Item = ConnectedPeer<TId>> + '_
+fn remove_expired_peers_from_network_table<'a, TId>(
+    peers: &'a mut HashMap<TId, ConnectedPeer<TId>>,
+    peers_by_ip: &'a mut IpNetworkTable<TId>,
+) -> impl Iterator<Item = ConnectedPeer<TId>> + 'a
 where
     TId: Eq + Hash + Copy + Send + Sync + 'static,
 {
-    let expired_peers = peers_by_ip
+    let expired_peer_ids = peers
         .iter()
-        .filter_map(|(n, p)| {
+        .filter_map(|(id, p)| {
             p.inner.expire_resources();
 
             if p.inner.is_emptied() {
                 tracing::trace!(index = %p.inner.index, "peer_expired");
-                return Some(n);
+
+                return Some(*id);
             }
 
             None
         })
         .collect::<Vec<_>>();
 
-    expired_peers
+    peers_by_ip.retain(|_, p| !expired_peer_ids.contains(p));
+
+    expired_peer_ids
         .into_iter()
-        .flat_map(|n| peers_by_ip.remove(n))
+        .flat_map(|id| peers.remove(&id))
 }
 
 /// Dedicated trait for abstracting over the different ICE states.

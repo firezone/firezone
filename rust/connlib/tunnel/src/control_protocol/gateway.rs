@@ -10,7 +10,7 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use crate::control_protocol::{
     new_peer_connection, on_dc_close_handler, on_peer_connection_state_change_handler,
 };
-use crate::{peer::Peer, ConnectedPeer, GatewayState, PeerConfig, Tunnel};
+use crate::{peer::Peer, GatewayState, PeerConfig, Tunnel};
 
 impl<CB> Tunnel<CB, GatewayState>
 where
@@ -98,10 +98,7 @@ where
                             let mut peers_by_ip = tunnel.peers_by_ip.write();
 
                             for ip in peer_config.ips {
-                                peers_by_ip.insert(ip, ConnectedPeer {
-                                    inner: peer.clone(),
-                                    channel: data_channel.clone(),
-                                });
+                                peers_by_ip.insert(ip, client_id);
                             }
                         }
 
@@ -130,12 +127,7 @@ where
         client_id: ClientId,
         expires_at: DateTime<Utc>,
     ) {
-        if let Some((_, peer)) = self
-            .peers_by_ip
-            .write()
-            .iter_mut()
-            .find(|(_, p)| p.inner.conn_id == client_id)
-        {
+        if let Some(peer) = self.peers.write().get_mut(&client_id) {
             peer.inner.add_resource(resource, expires_at);
         }
     }

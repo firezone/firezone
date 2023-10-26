@@ -19,7 +19,7 @@ use webrtc::{
 use crate::control_protocol::{
     new_peer_connection, on_dc_close_handler, on_peer_connection_state_change_handler,
 };
-use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
+use crate::{peer::Peer, ClientState, Error, Request, Result, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
 fn set_connection_state_update<CB>(
@@ -79,6 +79,7 @@ where
             resource_id,
             gateway_id,
             reference,
+            &self.peers.read(),
             &mut self.peers_by_ip.write(),
         )? {
             return Ok(Request::ReuseConnection(connection));
@@ -153,13 +154,7 @@ where
                     let mut peers_by_ip = tunnel.peers_by_ip.write();
 
                     for ip in peer_config.ips {
-                        peers_by_ip.insert(
-                            ip,
-                            ConnectedPeer {
-                                inner: peer.clone(),
-                                channel: d.clone(),
-                            },
-                        );
+                        peers_by_ip.insert(ip, gateway_id);
                     }
 
                     tunnel

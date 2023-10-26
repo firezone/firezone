@@ -157,7 +157,11 @@ where
         let dest = packet.destination();
         let (peer_index, peer_channel, maybe_write_to) = {
             let peers_by_ip = tunnel.peers_by_ip.read();
-            let peer = peers_by_ip.longest_match(dest).map(|(_, peer)| peer);
+            let peers = tunnel.peers.read();
+            let peer = peers_by_ip
+                .longest_match(dest)
+                .map(|(_, peer)| peer)
+                .and_then(|id| peers.get(id));
 
             let result = tunnel
                 .role_state
@@ -263,7 +267,8 @@ impl ClientState {
         resource: ResourceId,
         gateway: GatewayId,
         expected_attempts: usize,
-        connected_peers: &mut IpNetworkTable<ConnectedPeer<GatewayId>>,
+        gateways: &HashMap<GatewayId, ConnectedPeer<GatewayId>>,
+        connected_peers: &mut IpNetworkTable<GatewayId>,
     ) -> Result<Option<ReuseConnection>, ConnlibError> {
         if self.is_connected_to(resource, connected_peers) {
             return Err(Error::UnexpectedConnectionDetails);
@@ -293,24 +298,13 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        let Some(peer) = connected_peers.iter().find_map(|(_, p)| {
-            (p.inner.conn_id == gateway).then_some(ConnectedPeer {
-                inner: p.inner.clone(),
-                channel: p.channel.clone(),
-            })
-        }) else {
+        let Some(peer) = gateways.get(&gateway) else {
             return Ok(None);
         };
 
         for ip in desc.ips() {
             peer.inner.add_allowed_ip(ip);
-            connected_peers.insert(
-                ip,
-                ConnectedPeer {
-                    inner: peer.inner.clone(),
-                    channel: peer.channel.clone(),
-                },
-            );
+            connected_peers.insert(ip, gateway);
         }
         self.awaiting_connection.remove(&resource);
         self.awaiting_connection_timers.remove(resource);
@@ -447,7 +441,7 @@ impl ClientState {
     fn is_connected_to(
         &self,
         resource: ResourceId,
-        connected_peers: &IpNetworkTable<ConnectedPeer<GatewayId>>,
+        connected_peers: &IpNetworkTable<GatewayId>,
     ) -> bool {
         let Some(resource) = self.resources.get_by_id(&resource) else {
             return false;

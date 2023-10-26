@@ -61,8 +61,14 @@ where
         let dest = packet.destination();
 
         let (result, channel, peer_index) = {
-            let peers_by_ip = tunnel.peers_by_ip.read();
-            let Some(peer) = peers_by_ip.longest_match(dest).map(|(_, peer)| peer) else {
+            let mut peers = tunnel.peers.write();
+
+            let Some(peer) = tunnel
+                .peers_by_ip
+                .read()
+                .longest_match(dest)
+                .and_then(|(_, id)| peers.get_mut(id))
+            else {
                 continue;
             };
 
