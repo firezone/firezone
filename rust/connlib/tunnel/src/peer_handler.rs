@@ -51,7 +51,6 @@ where
         device_io: DeviceIo,
     ) -> std::io::Result<()> {
         let mut src_buf = [0u8; MAX_UDP_SIZE];
-        let mut dst_buf = [0u8; MAX_UDP_SIZE];
         while let Ok(size) = channel.read(&mut src_buf[..]).await {
             tracing::trace!(target: "wire", action = "read", bytes = size, from = "peer");
 
@@ -64,7 +63,7 @@ where
             }
 
             match self
-                .handle_peer_packet(peer, &channel, &device_io, &src_buf[..size], &mut dst_buf)
+                .handle_peer_packet(peer, &channel, &device_io, &src_buf[..size])
                 .await
             {
                 Err(Error::Io(e)) => return Err(e),
@@ -86,10 +85,9 @@ where
         channel: &DataChannel,
         device_writer: &DeviceIo,
         mut src: &[u8],
-        dst: &mut [u8],
     ) -> Result<()> {
         loop {
-            match peer.decapsulate(src, dst)? {
+            match peer.decapsulate(src)? {
                 Some(WriteTo::Network(bytes)) => {
                     if let Err(e) = channel.write(&bytes).await {
                         tracing::error!("Couldn't send packet to connected peer: {e}");

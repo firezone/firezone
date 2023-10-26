@@ -218,12 +218,8 @@ impl Peer {
         Ok(Some(Bytes::copy_from_slice(packet)))
     }
 
-    pub(crate) fn decapsulate<'b>(
-        &mut self,
-        src: &[u8],
-        buf: &'b mut [u8],
-    ) -> Result<Option<WriteTo<'b>>> {
-        let (packet, dst) = match self.tunnel.decapsulate(None, src, buf) {
+    pub(crate) fn decapsulate(&mut self, src: &[u8]) -> Result<Option<WriteTo>> {
+        let (packet, dst) = match self.tunnel.decapsulate(None, src, self.buf.as_mut_slice()) {
             TunnResult::Done => return Ok(None),
             TunnResult::Err(e) => return Err(e.into()),
             TunnResult::WriteToNetwork(packet) => {
@@ -233,7 +229,7 @@ impl Peer {
             TunnResult::WriteToTunnelV6(packet, addr) => (packet, IpAddr::from(addr)),
         };
 
-        if !self.is_allowed(dst) {
+        if self.allowed_ips.longest_match(dst).is_none() {
             tracing::warn!(%dst, "Received packet from peer with an unallowed ip");
             return Ok(None);
         }
@@ -283,10 +279,6 @@ impl Peer {
         packet.update_checksum();
 
         Ok(Some(WriteTo::Resource(packet.into_immutable())))
-    }
-
-    fn is_allowed(&self, addr: IpAddr) -> bool {
-        self.allowed_ips.longest_match(addr).is_some()
     }
 
     fn get_translation(&self, ip: IpAddr) -> Option<ResourceDescription> {
