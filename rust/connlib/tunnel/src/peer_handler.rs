@@ -63,12 +63,13 @@ where
             }
 
             match peer.decapsulate(&src_buf[..size]) {
-                Ok(Some(WriteTo::Network(bytes))) => {
-                    if let Err(e) = channel.write(&bytes).await {
+                Ok(Some(WriteTo::Network(bytes))) => match channel.write(&bytes).await {
+                    Ok(_) => {}
+                    Err(e) => {
                         tracing::error!("Couldn't send packet to connected peer: {e}");
                         let _ = self.callbacks.on_error(&e.into());
                     }
-                }
+                },
                 Ok(Some(WriteTo::Resource(packet))) => {
                     device_io.write(packet)?;
                 }
