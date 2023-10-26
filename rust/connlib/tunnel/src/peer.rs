@@ -127,13 +127,6 @@ impl Peer {
         }
     }
 
-    fn get_translation(&self, ip: IpAddr) -> Option<ResourceDescription> {
-        let id = self.translated_resource_addresses.get(&ip).cloned();
-        self.resources
-            .as_ref()
-            .and_then(|resources| id.and_then(|id| resources.get_by_id(&id).map(|r| r.0.clone())))
-    }
-
     pub(crate) fn add_allowed_ip(&mut self, ip: IpNetwork) {
         self.allowed_ips.insert(ip, ());
     }
@@ -185,10 +178,6 @@ impl Peer {
         if let Some(resources) = &mut self.resources {
             resources.insert((resource, expires_at))
         }
-    }
-
-    pub(crate) fn is_allowed(&self, addr: IpAddr) -> bool {
-        self.allowed_ips.longest_match(addr).is_some()
     }
 
     /// Sends the given packet to this peer by encapsulating it in a wireguard packet.
@@ -302,10 +291,18 @@ impl Peer {
         Ok(dst_addr)
     }
 
-    pub(crate) fn get_packet_resource(
-        &self,
-        packet: &mut [u8],
-    ) -> Option<(IpAddr, ResourceDescription)> {
+    fn is_allowed(&self, addr: IpAddr) -> bool {
+        self.allowed_ips.longest_match(addr).is_some()
+    }
+
+    fn get_translation(&self, ip: IpAddr) -> Option<ResourceDescription> {
+        let id = self.translated_resource_addresses.get(&ip).cloned();
+        self.resources
+            .as_ref()
+            .and_then(|resources| id.and_then(|id| resources.get_by_id(&id).map(|r| r.0.clone())))
+    }
+
+    fn get_packet_resource(&self, packet: &mut [u8]) -> Option<(IpAddr, ResourceDescription)> {
         let resources = self.resources.as_ref()?;
 
         let dst = Tunn::dst_address(packet)?;
