@@ -219,9 +219,14 @@ impl Peer {
             TunnResult::WriteToNetwork(packet) => {
                 return Ok(Some(WriteTo::Network(Bytes::copy_from_slice(packet))))
             }
-            TunnResult::WriteToTunnelV4(packet, addr) => (packet, addr.into()),
-            TunnResult::WriteToTunnelV6(packet, addr) => (packet, addr.into()),
+            TunnResult::WriteToTunnelV4(packet, addr) => (packet, IpAddr::from(addr)),
+            TunnResult::WriteToTunnelV6(packet, addr) => (packet, IpAddr::from(addr)),
         };
+
+        if !self.is_allowed(addr) {
+            tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
+            return Ok(None);
+        }
 
         let Some(packet) = make_packet_for_resource(self, addr, packet)? else {
             return Ok(None);
@@ -258,11 +263,6 @@ pub(crate) fn make_packet_for_resource<'a>(
     addr: IpAddr,
     packet: &'a mut [u8],
 ) -> Result<Option<device_channel::Packet<'a>>> {
-    if !peer.is_allowed(addr) {
-        tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
-        return Ok(None);
-    }
-
     let Some((dst, resource)) = peer.get_packet_resource(packet) else {
         // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
         // and we just trust gateways.
