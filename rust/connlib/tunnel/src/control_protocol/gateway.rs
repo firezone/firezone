@@ -91,6 +91,7 @@ where
                             peer_config.clone(),
                             client_id,
                             Some((resource, expires_at)),
+                            tunnel.rate_limiter.clone()
                         ));
 
                         // Holding two mutexes here

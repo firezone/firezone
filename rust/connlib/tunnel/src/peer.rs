@@ -1,7 +1,9 @@
 use std::borrow::Cow;
 use std::net::ToSocketAddrs;
+use std::sync::Arc;
 use std::{collections::HashMap, net::IpAddr};
 
+use boringtun::noise::rate_limiter::RateLimiter;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::StaticSecret;
 use bytes::Bytes;
@@ -82,6 +84,7 @@ where
         peer_config: PeerConfig,
         conn_id: TId,
         resource: Option<(ResourceDescription, DateTime<Utc>)>,
+        rate_limiter: Arc<RateLimiter>,
     ) -> Peer<TId> {
         let tunnel = Tunn::new(
             private_key.clone(),
@@ -89,7 +92,7 @@ where
             Some(peer_config.preshared_key.expose_secret().0),
             peer_config.persistent_keepalive,
             index,
-            None,
+            Some(rate_limiter),
         )
         .expect("never actually fails"); // See https://github.com/cloudflare/boringtun/pull/366.
 
