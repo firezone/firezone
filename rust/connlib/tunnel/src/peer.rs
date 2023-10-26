@@ -278,7 +278,7 @@ pub(crate) fn make_packet_for_resource<'a>(
         return Ok(Some(packet));
     };
 
-    let (dst_addr, _dst_port) = get_resource_addr_and_port(peer, &resource, &addr, &dst)?;
+    let dst_addr = get_resource_addr(peer, &resource, &addr, &dst)?;
     update_packet(packet, dst_addr);
     let packet = make_packet(packet, addr);
 
@@ -306,12 +306,12 @@ fn get_matching_version_ip(addr: &IpAddr, ip: &IpAddr) -> Option<IpAddr> {
     ((addr.is_ipv4() && ip.is_ipv4()) || (addr.is_ipv6() && ip.is_ipv6())).then_some(*ip)
 }
 
-fn get_resource_addr_and_port(
+fn get_resource_addr(
     peer: &mut Peer,
     resource: &ResourceDescription,
     addr: &IpAddr,
     dst: &IpAddr,
-) -> Result<(IpAddr, Option<u16>)> {
+) -> Result<IpAddr> {
     match resource {
         ResourceDescription::Dns(r) => {
             let mut address = r.address.split(':');
@@ -329,20 +329,11 @@ fn get_resource_addr_and_port(
                 return Err(Error::InvalidResource);
             };
             peer.update_translated_resource_address(dst_addr, r.id);
-            Ok((
-                dst_addr,
-                address
-                    .next()
-                    .map(str::parse::<u16>)
-                    .and_then(std::result::Result::ok),
-            ))
+            Ok(dst_addr)
         }
         ResourceDescription::Cidr(r) => {
             if r.address.contains(*dst) {
-                Ok((
-                    get_matching_version_ip(addr, dst).ok_or(Error::InvalidResource)?,
-                    None,
-                ))
+                Ok(get_matching_version_ip(addr, dst).ok_or(Error::InvalidResource)?)
             } else {
                 tracing::warn!(
                     "client tried to hijack the tunnel for range outside what it's allowed."
