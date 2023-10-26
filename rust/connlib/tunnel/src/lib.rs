@@ -14,7 +14,6 @@ use ip_packet::IpPacket;
 use pnet_packet::Packet;
 
 use hickory_resolver::proto::rr::RecordType;
-use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
 use tokio::{task::AbortHandle, time::MissedTickBehavior};
@@ -247,15 +246,10 @@ where
             }
 
             if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let peers_by_ip = self.peers_by_ip.read();
                 let mut peers = self.peers.write();
                 let mut peers_to_close = self.peers_to_close.lock();
 
-                for (_, id) in peers_by_ip.iter().unique_by(|(_, id)| **id) {
-                    let Some(peer) = peers.get_mut(id) else {
-                        continue;
-                    };
-
+                for (id, peer) in peers.iter_mut() {
                     peer.inner.expire_resources();
 
                     if peer.inner.is_emptied() {
