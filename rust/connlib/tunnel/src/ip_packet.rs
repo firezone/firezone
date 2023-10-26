@@ -205,6 +205,16 @@ pub enum IpPacket<'a> {
 }
 
 impl<'a> IpPacket<'a> {
+    pub(crate) fn new(data: &[u8]) -> Option<IpPacket> {
+        let packet = match data[0] >> 4 {
+            4 => Ipv4Packet::new(data)?.into(),
+            6 => Ipv6Packet::new(data)?.into(),
+            _ => return None,
+        };
+
+        Some(packet)
+    }
+
     pub(crate) fn owned(data: Vec<u8>) -> Option<IpPacket<'static>> {
         let packet = match data[0] >> 4 {
             4 => Ipv4Packet::owned(data)?.into(),

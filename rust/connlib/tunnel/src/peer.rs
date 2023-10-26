@@ -14,8 +14,6 @@ use connlib_shared::{
 };
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use pnet_packet::ipv4::Ipv4Packet;
-use pnet_packet::ipv6::Ipv6Packet;
 use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 
@@ -229,7 +227,7 @@ impl Peer {
             // and we just trust gateways.
             // In gateways this should never happen.
             tracing::trace!(target: "wire", action = "writing", to = "iface", %dst, bytes = %packet.len());
-            let packet = make_packet(packet, dst).ok_or(Error::BadPacket)?;
+            let packet = IpPacket::new(packet).ok_or(Error::BadPacket)?;
             return Ok(Some(WriteTo::Resource(packet)));
         };
 
@@ -248,7 +246,7 @@ impl Peer {
         };
 
         update_packet(packet, dst_addr);
-        let packet = make_packet(packet, dst).ok_or(Error::BadPacket)?;
+        let packet = IpPacket::new(packet).ok_or(Error::BadPacket)?;
 
         Ok(Some(WriteTo::Resource(packet)))
     }
@@ -298,14 +296,6 @@ impl Peer {
 pub enum WriteTo<'a> {
     Network(Bytes),
     Resource(IpPacket<'a>),
-}
-
-#[inline(always)]
-fn make_packet(packet: &mut [u8], dst_addr: IpAddr) -> Option<IpPacket<'_>> {
-    Some(match dst_addr {
-        IpAddr::V4(_) => IpPacket::Ipv4Packet(Ipv4Packet::new(packet)?),
-        IpAddr::V6(_) => IpPacket::Ipv6Packet(Ipv6Packet::new(packet)?),
-    })
 }
 
 #[inline(always)]
