@@ -85,11 +85,11 @@ where
 
                         let data_channel = data_channel.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us");
 
-                        let peer = Peer::new(
+                        let peer = Peer::client_on_gateway(
                             tunnel.private_key.clone(),
                             index,
                             peer_config.clone(),
-                            Some((resource, expires_at)),
+                            (resource, expires_at),
                             tunnel.rate_limiter.clone()
                         );
 

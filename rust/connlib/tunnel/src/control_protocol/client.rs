@@ -142,11 +142,10 @@ where
                     "only fails if not opened or not enabled, both of which are always true for us",
                 );
 
-                let peer = Peer::new(
+                let peer = Peer::gateway_on_client(
                     tunnel.private_key.clone(),
                     index,
                     peer_config.clone(),
-                    None,
                     tunnel.rate_limiter.clone(),
                 );
 

@@ -66,7 +66,32 @@ impl Peer {
         }
     }
 
-    pub(crate) fn new(
+    pub(crate) fn gateway_on_client(
+        private_key: StaticSecret,
+        index: u32,
+        peer_config: PeerConfig,
+        rate_limiter: Arc<RateLimiter>,
+    ) -> Peer {
+        Self::new(private_key, index, peer_config, None, rate_limiter)
+    }
+
+    pub(crate) fn client_on_gateway(
+        private_key: StaticSecret,
+        index: u32,
+        peer_config: PeerConfig,
+        resources: (ResourceDescription, DateTime<Utc>),
+        rate_limiter: Arc<RateLimiter>,
+    ) -> Peer {
+        Self::new(
+            private_key,
+            index,
+            peer_config,
+            Some(resources),
+            rate_limiter,
+        )
+    }
+
+    fn new(
         private_key: StaticSecret,
         index: u32,
         peer_config: PeerConfig,
