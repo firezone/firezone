@@ -194,6 +194,13 @@ impl<'a> MutableIpPacket<'a> {
             Self::MutableIpv6Packet(p) => p.set_payload_length(payload_len as u16),
         }
     }
+
+    pub(crate) fn len(&self) -> u16 {
+        match self {
+            Self::MutableIpv4Packet(p) => p.get_total_length(),
+            Self::MutableIpv6Packet(p) => p.get_payload_length(), // TODO: Why does an IPv6 packet not have a total length?
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -203,16 +210,6 @@ pub enum IpPacket<'a> {
 }
 
 impl<'a> IpPacket<'a> {
-    pub(crate) fn new(data: &[u8]) -> Option<IpPacket> {
-        let packet = match data[0] >> 4 {
-            4 => Ipv4Packet::new(data)?.into(),
-            6 => Ipv6Packet::new(data)?.into(),
-            _ => return None,
-        };
-
-        Some(packet)
-    }
-
     pub(crate) fn owned(data: Vec<u8>) -> Option<IpPacket<'static>> {
         let packet = match data[0] >> 4 {
             4 => Ipv4Packet::owned(data)?.into(),

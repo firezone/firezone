@@ -238,30 +238,31 @@ impl Peer {
             return Ok(None);
         }
 
-        let Some((encoded_dst, resource)) = self.get_packet_resource(packet) else {
+        let mut packet = MutableIpPacket::new(packet).ok_or(Error::BadPacket)?;
+
+        let Some(resource) = self.get_packet_resource(packet.as_immutable()) else {
             // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
             // and we just trust gateways.
             // In gateways this should never happen.
             tracing::trace!(target: "wire", action = "writing", to = "iface", %dst, bytes = %packet.len());
-            let packet = IpPacket::new(packet).ok_or(Error::BadPacket)?;
-            return Ok(Some(WriteTo::Resource(packet)));
+            return Ok(Some(WriteTo::Resource(packet.into_immutable())));
         };
 
         let dst_addr = match resource {
             ResourceDescription::Dns(r) => self.update_resource_address(&dst, r)?,
             ResourceDescription::Cidr(r) => {
-                if !r.address.contains(encoded_dst) {
+                if !r.address.contains(packet.destination()) {
                     tracing::warn!(
                         "client tried to hijack the tunnel for range outside what it's allowed."
                     );
                     return Err(Error::InvalidSource);
                 }
 
-                get_matching_version_ip(&dst, &encoded_dst).ok_or(Error::InvalidResource)?
+                get_matching_version_ip(&dst, &packet.destination())
+                    .ok_or(Error::InvalidResource)?
             }
         };
 
-        let mut packet = MutableIpPacket::new(packet).ok_or(Error::BadPacket)?;
         packet.set_dst(dst_addr);
         packet.update_checksum();
 
@@ -304,17 +305,18 @@ impl Peer {
             .and_then(|resources| id.and_then(|id| resources.get_by_id(&id).map(|r| r.0.clone())))
     }
 
-    fn get_packet_resource(&self, packet: &mut [u8]) -> Option<(IpAddr, ResourceDescription)> {
+    fn get_packet_resource(&self, packet: IpPacket) -> Option<ResourceDescription> {
         let resources = self.resources.as_ref()?;
 
-        let dst = Tunn::dst_address(packet)?;
-
-        let Some(resource) = resources.get_by_ip(dst).map(|r| r.0.clone()) else {
+        let Some(resource) = resources
+            .get_by_ip(packet.destination())
+            .map(|r| r.0.clone())
+        else {
             tracing::warn!("client tried to hijack the tunnel for resource itsn't allowed.");
             return None;
         };
 
-        Some((dst, resource))
+        Some(resource)
     }
 }
 
