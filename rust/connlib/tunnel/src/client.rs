@@ -155,7 +155,7 @@ where
         };
 
         let dest = packet.destination();
-        let (peer_index, peer_conn_id, peer_channel, maybe_write_to) = {
+        let (peer_index, peer_channel, maybe_write_to) = {
             let peers_by_ip = tunnel.peers_by_ip.read();
             let peer = peers_by_ip.longest_match(dest).map(|(_, peer)| peer);
 
@@ -172,12 +172,7 @@ where
 
             let peer = peer.expect("must have peer if we should write bytes");
 
-            (
-                peer.inner.index,
-                peer.inner.conn_id,
-                peer.channel.clone(),
-                maybe_write_to,
-            )
+            (peer.inner.index, peer.channel.clone(), maybe_write_to)
         };
 
         let error = match maybe_write_to {
@@ -200,7 +195,7 @@ where
             let _ = tunnel
                 .stop_peer_command_sender
                 .clone()
-                .send((peer_index, peer_conn_id))
+                .send(peer_index)
                 .await;
         }
     }
