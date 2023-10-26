@@ -1,7 +1,6 @@
 use crate::device_channel::create_iface;
 use crate::{
     Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
-    MAX_UDP_SIZE,
 };
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
@@ -51,7 +50,6 @@ async fn device_handler<CB>(
 where
     CB: Callbacks + 'static,
 {
-    let mut buf = [0u8; MAX_UDP_SIZE];
     loop {
         let Some(packet) = device.read().await? else {
             // Reading a bad IP packet or otherwise from the device seems bad. Should we restart the tunnel or something?
@@ -72,7 +70,7 @@ where
                 continue;
             };
 
-            let result = peer.inner.encapsulate(packet, dest, &mut buf);
+            let result = peer.inner.encapsulate(packet, dest);
             let channel = peer.channel.clone();
 
             (result, channel, client)

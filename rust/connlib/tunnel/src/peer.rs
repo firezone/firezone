@@ -19,6 +19,7 @@ use secrecy::ExposeSecret;
 
 use crate::{
     device_channel, ip_packet::MutableIpPacket, resource_table::ResourceTable, PeerConfig,
+    MAX_UDP_SIZE,
 };
 
 type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
@@ -37,6 +38,8 @@ pub(crate) struct Peer {
     // Note that this case is quite an unlikely edge case so I wouldn't prioritize this fix
     // TODO: Also check if there's any case where we want to talk to ipv4 and ipv6 from the same peer.
     translated_resource_addresses: HashMap<IpAddr, ResourceId>,
+
+    buf: Box<[u8; MAX_UDP_SIZE]>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -97,6 +100,7 @@ impl Peer {
             allowed_ips,
             resources,
             translated_resource_addresses: Default::default(),
+            buf: Box::new([0u8; MAX_UDP_SIZE]),
         }
     }
 
@@ -173,7 +177,6 @@ impl Peer {
         &mut self,
         mut packet: MutableIpPacket,
         dest: IpAddr,
-        buf: &mut [u8],
     ) -> Result<Option<Bytes>> {
         if let Some(resource) = self.get_translation(packet.to_immutable().source()) {
             let ResourceDescription::Dns(resource) = resource else {
@@ -190,7 +193,10 @@ impl Peer {
 
             packet.update_checksum();
         }
-        let packet = match self.tunnel.encapsulate(packet.packet(), buf) {
+        let packet = match self
+            .tunnel
+            .encapsulate(packet.packet(), self.buf.as_mut_slice())
+        {
             TunnResult::Done => return Ok(None),
             TunnResult::Err(e) => return Err(e.into()),
             TunnResult::WriteToNetwork(b) => b,

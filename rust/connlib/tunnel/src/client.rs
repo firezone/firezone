@@ -6,7 +6,6 @@ use crate::resource_table::ResourceTable;
 use crate::{
     dns, tokio_util, ConnectedPeer, Device, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
     DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
-    MAX_UDP_SIZE,
 };
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
@@ -148,7 +147,6 @@ where
     CB: Callbacks + 'static,
 {
     let device_writer = device.io.clone();
-    let mut buf = [0u8; MAX_UDP_SIZE];
     loop {
         let Some(packet) = device.read().await? else {
             return Ok(());
@@ -164,11 +162,10 @@ where
                 .and_then(|id| Some((*id, peers.get_mut(id)?)))
                 .unzip();
 
-            let result =
-                tunnel
-                    .role_state
-                    .lock()
-                    .handle_new_packet(packet, peer.as_deref_mut(), &mut buf);
+            let result = tunnel
+                .role_state
+                .lock()
+                .handle_new_packet(packet, peer.as_deref_mut());
 
             let maybe_write_to = match result {
                 Ok(None) => continue,
@@ -234,7 +231,6 @@ impl ClientState {
         &mut self,
         packet: MutableIpPacket,
         peer: Option<&mut ConnectedPeer>,
-        buf: &'b mut [u8],
     ) -> Result<Option<WriteTo<'b>>, ConnlibError> {
         match dns::parse(&self.resources, packet.as_immutable()) {
             Some(dns::ResolveStrategy::LocalResponse(pkt)) => {
@@ -254,7 +250,7 @@ impl ClientState {
             return Ok(None);
         };
 
-        let Some(bytes) = peer.inner.encapsulate(packet, dest, buf)? else {
+        let Some(bytes) = peer.inner.encapsulate(packet, dest)? else {
             return Ok(None);
         };
 
