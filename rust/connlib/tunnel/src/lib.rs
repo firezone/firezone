@@ -28,7 +28,8 @@ use webrtc::{
 };
 
 use futures::channel::mpsc;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
+use std::collections::VecDeque;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, io, sync::Arc, time::Duration};
 use std::{collections::HashSet, hash::Hash};
@@ -157,6 +158,8 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     rate_limit_reset_interval: Mutex<Interval>,
     peer_refresh_interval: Mutex<Interval>,
     mtu_refresh_interval: Mutex<Interval>,
+
+    peers_to_close: Mutex<VecDeque<ConnectedPeer<TRoleState::Id>>>,
 }
 
 pub struct ConnectedPeer<TId> {
@@ -200,6 +203,28 @@ where
 
     pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         loop {
+            {
+                let mut peers_to_close = self.peers_to_close.lock();
+
+                while let Some(peer) = peers_to_close.pop_front() {
+                    let callbacks = self.callbacks.clone();
+                    let connection = self.peer_connections.lock().remove(&peer.inner.conn_id);
+
+                    tokio::spawn(async move {
+                        let _ = peer.channel.close().await;
+
+                        let Some(connection) = connection else {
+                            return;
+                        };
+
+                        if let Err(e) = connection.close().await {
+                            tracing::warn!(conn_id = %peer.inner.conn_id, error = ?e, "Can't close peer");
+                            let _ = callbacks.on_error(&e.into());
+                        }
+                    });
+                }
+            }
+
             if self
                 .rate_limit_reset_interval
                 .lock()
@@ -212,42 +237,40 @@ where
 
             if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
                 let mut peers_by_ip = self.peers_by_ip.write();
+                let mut peers_to_close = self.peers_to_close.lock();
 
-                for peer in
-                    peers_to_refresh(&mut peers_by_ip, self.stop_peer_command_sender.clone())
-                {
+                peers_to_close.extend(remove_expired_peers(&mut peers_by_ip));
+
+                let mut failed_peers = Vec::new();
+
+                for (network, peer) in peers_by_ip.iter().unique_by(|(_, p)| p.inner.index) {
+                    let bytes = match peer.inner.update_timers() {
+                        Ok(Some(bytes)) => bytes,
+                        Ok(None) => continue,
+                        Err(e) => {
+                            tracing::error!("Failed to update timers for peer: {e}");
+                            let _ = self.callbacks.on_error(&e);
+
+                            if e.is_fatal_connection_error() {
+                                failed_peers.push(network);
+                            }
+                            continue;
+                        }
+                    };
+
                     let callbacks = self.callbacks.clone();
-                    let mut stop_command_sender = self.stop_peer_command_sender.clone();
-
-                    let result = peer.inner.update_timers();
-                    let peer_index = peer.inner.index;
-                    let peer_conn_id = peer.inner.conn_id;
                     let peer_channel = peer.channel.clone();
 
                     tokio::spawn(async move {
-                        let bytes = match result {
-                            Ok(Some(bytes)) => bytes,
-                            Ok(None) => {
-                                return;
-                            }
-                            Err(e) => {
-                                tracing::error!("Failed to update timers for peer: {e}");
-                                let _ = callbacks.on_error(&e);
-
-                                if e.is_fatal_connection_error() {
-                                    let _ =
-                                        stop_command_sender.send((peer_index, peer_conn_id)).await;
-                                }
-                                return;
-                            }
-                        };
-
                         if let Err(e) = peer_channel.write(&bytes).await {
                             tracing::error!("Failed to send packet to peer: {e}");
                             let _ = callbacks.on_error(&e.into());
                         }
                     });
                 }
+
+                peers_to_close.extend(failed_peers.into_iter().flat_map(|n| peers_by_ip.remove(n)));
+
                 continue;
             }
 
@@ -285,7 +308,7 @@ where
                 return Poll::Ready(event);
             }
 
-            if let Poll::Ready(Some((i, conn_id))) =
+            if let Poll::Ready(Some((i, _))) =
                 self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
             {
                 let mut peers = self.peers_by_ip.write();
@@ -299,20 +322,7 @@ where
 
                 let peer = peers.remove(peer_to_remove).expect("just found it");
 
-                let channel = peer.channel.clone();
-
-                tokio::spawn(async move { channel.close().await });
-                if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
-                    tokio::spawn({
-                        let callbacks = self.callbacks.clone();
-                        async move {
-                            if let Err(e) = conn.close().await {
-                                tracing::warn!(%conn_id, error = ?e, "Can't close peer");
-                                let _ = callbacks.on_error(&e.into());
-                            }
-                        }
-                    });
-                }
+                self.peers_to_close.lock().push_back(peer);
 
                 continue;
             }
@@ -414,6 +424,7 @@ where
             rate_limit_reset_interval: Mutex::new(rate_limit_reset_interval()),
             peer_refresh_interval: Mutex::new(peer_refresh_interval()),
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
+            peers_to_close: Default::default(),
         })
     }
 
@@ -453,41 +464,29 @@ fn mtu_refresh_interval() -> Interval {
 
     interval
 }
-
-fn peers_to_refresh<TId>(
+fn remove_expired_peers<TId>(
     peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId>>,
-    shutdown_sender: mpsc::Sender<(u32, TId)>,
-) -> impl Iterator<Item = &ConnectedPeer<TId>>
+) -> impl Iterator<Item = ConnectedPeer<TId>> + '_
 where
     TId: Eq + Hash + Copy + Send + Sync + 'static,
 {
-    remove_expired_peers(peers_by_ip, shutdown_sender);
+    let expired_peers = peers_by_ip
+        .iter()
+        .filter_map(|(n, p)| {
+            p.inner.expire_resources();
 
-    peers_by_ip.iter().map(|p| p.1).unique_by(|p| p.inner.index)
-}
+            if p.inner.is_emptied() {
+                tracing::trace!(index = %p.inner.index, "peer_expired");
+                return Some(n);
+            }
 
-fn remove_expired_peers<TId>(
-    peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId>>,
-    shutdown_sender: mpsc::Sender<(u32, TId)>,
-) where
-    TId: Eq + Hash + Copy + Send + Sync + 'static,
-{
-    for (_, p) in peers_by_ip.iter() {
-        p.inner.expire_resources();
-        if p.inner.is_emptied() {
-            let index = p.inner.index;
-            let conn_id = p.inner.conn_id;
+            None
+        })
+        .collect::<Vec<_>>();
 
-            tracing::trace!(%index, "peer_expired");
-
-            tokio::spawn({
-                let mut sender = shutdown_sender.clone();
-                async move { sender.send((index, conn_id)).await }
-            });
-        }
-    }
-
-    peers_by_ip.retain(|_, p| !p.inner.is_emptied());
+    expired_peers
+        .into_iter()
+        .flat_map(|n| peers_by_ip.remove(n))
 }
 
 /// Dedicated trait for abstracting over the different ICE states.
