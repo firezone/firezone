@@ -479,7 +479,7 @@ fn remove_expired_peers_from_network_table<'a, TId>(
     peers_by_ip: &'a mut IpNetworkTable<TId>,
 ) -> impl Iterator<Item = ConnectedPeer<TId>> + 'a
 where
-    TId: Eq + Hash + Copy + Send + Sync + 'static,
+    TId: Eq + Hash + Copy + Send + Sync + fmt::Display + 'static,
 {
     let expired_peer_ids = peers
         .iter_mut()
@@ -487,7 +487,7 @@ where
             p.inner.expire_resources();
 
             if p.inner.is_emptied() {
-                tracing::trace!(index = %p.inner.index, "peer_expired");
+                tracing::trace!(id = %p.inner.conn_id, "peer_expired");
 
                 return Some(*id);
             }
