@@ -69,10 +69,9 @@ where
                         let _ = self.callbacks.on_error(&e.into());
                     }
                 }
-                Ok(Some(WriteTo::Resource(packet))) => match device_io.write(packet) {
-                    Ok(_) => {}
-                    Err(e) => return Err(e),
-                },
+                Ok(Some(WriteTo::Resource(packet))) => {
+                    device_io.write(packet)?;
+                }
                 Err(other) => {
                     tracing::error!(error = ?other, "failed to handle peer packet");
                     let _ = self.callbacks.on_error(&other);
