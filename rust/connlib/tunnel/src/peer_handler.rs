@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use connlib_shared::{Callbacks, Error, Result};
+use connlib_shared::{Callbacks, Error};
 use futures_util::SinkExt;
 use webrtc::data::data_channel::DataChannel;
 
@@ -62,41 +62,23 @@ where
                 break;
             }
 
-            match self
-                .handle_peer_packet(peer, &channel, &device_io, &src_buf[..size])
-                .await
-            {
-                Err(Error::Io(e)) => return Err(e),
+            match peer.decapsulate(&src_buf[..size]) {
+                Ok(Some(WriteTo::Network(bytes))) => {
+                    if let Err(e) = channel.write(&bytes).await {
+                        tracing::error!("Couldn't send packet to connected peer: {e}");
+                        let _ = self.callbacks.on_error(&e.into());
+                    }
+                }
+                Ok(Some(WriteTo::Resource(packet))) => match device_io.write(packet) {
+                    Ok(_) => {}
+                    Err(e) => return Err(e),
+                },
                 Err(other) => {
                     tracing::error!(error = ?other, "failed to handle peer packet");
                     let _ = self.callbacks.on_error(&other);
                 }
-                _ => {}
+                Ok(None) => {}
             }
-        }
-
-        Ok(())
-    }
-
-    #[inline(always)]
-    pub(crate) async fn handle_peer_packet(
-        self: &Arc<Self>,
-        peer: &mut Peer,
-        channel: &DataChannel,
-        device_writer: &DeviceIo,
-        src: &[u8],
-    ) -> Result<()> {
-        match peer.decapsulate(src)? {
-            Some(WriteTo::Network(bytes)) => {
-                if let Err(e) = channel.write(&bytes).await {
-                    tracing::error!("Couldn't send packet to connected peer: {e}");
-                    let _ = self.callbacks.on_error(&e.into());
-                }
-            }
-            Some(WriteTo::Resource(packet)) => {
-                device_writer.write(packet)?;
-            }
-            None => {}
         }
 
         Ok(())
