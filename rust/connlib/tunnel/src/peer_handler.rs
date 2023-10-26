@@ -47,7 +47,7 @@ where
         let _ = self
             .stop_peer_command_sender
             .clone()
-            .send((peer.index, peer.conn_id))
+            .send(peer.conn_id)
             .await;
     }
 

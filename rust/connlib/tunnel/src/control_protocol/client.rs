@@ -134,7 +134,6 @@ where
                 };
 
                 d.on_close(on_dc_close_handler(
-                    index,
                     gateway_id,
                     tunnel.stop_peer_command_sender.clone(),
                 ));
@@ -172,7 +171,6 @@ where
 
                 if let Some(conn) = tunnel.peer_connections.lock().get(&gateway_id) {
                     conn.on_peer_connection_state_change(on_peer_connection_state_change_handler(
-                        index,
                         gateway_id,
                         tunnel.stop_peer_command_sender.clone(),
                     ));

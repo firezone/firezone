@@ -50,7 +50,6 @@ where
             .insert(client_id, Arc::clone(&peer_connection));
 
         peer_connection.on_peer_connection_state_change(on_peer_connection_state_change_handler(
-            index,
             client_id,
             tunnel.stop_peer_command_sender.clone(),
         ));
@@ -82,7 +81,7 @@ where
                         }
 
                         data_channel
-                            .on_close(on_dc_close_handler(index, client_id, tunnel.stop_peer_command_sender.clone()));
+                            .on_close(on_dc_close_handler(client_id, tunnel.stop_peer_command_sender.clone()));
 
                         let data_channel = data_channel.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us");
 

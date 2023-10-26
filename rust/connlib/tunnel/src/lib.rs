@@ -151,8 +151,8 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     /// State that differs per role, i.e. clients vs gateways.
     role_state: Mutex<TRoleState>,
 
-    stop_peer_command_receiver: Mutex<mpsc::Receiver<(u32, TRoleState::Id)>>,
-    stop_peer_command_sender: mpsc::Sender<(u32, TRoleState::Id)>,
+    stop_peer_command_receiver: Mutex<mpsc::Receiver<TRoleState::Id>>,
+    stop_peer_command_sender: mpsc::Sender<TRoleState::Id>,
 
     rate_limit_reset_interval: Mutex<Interval>,
     peer_refresh_interval: Mutex<Interval>,
@@ -220,7 +220,6 @@ where
                     let mut stop_command_sender = self.stop_peer_command_sender.clone();
 
                     let result = peer.inner.update_timers();
-                    let peer_index = peer.inner.index;
                     let peer_conn_id = peer.inner.conn_id;
                     let peer_channel = peer.channel.clone();
 
@@ -235,8 +234,7 @@ where
                                 let _ = callbacks.on_error(&e);
 
                                 if e.is_fatal_connection_error() {
-                                    let _ =
-                                        stop_command_sender.send((peer_index, peer_conn_id)).await;
+                                    let _ = stop_command_sender.send(peer_conn_id).await;
                                 }
                                 return;
                             }
@@ -285,14 +283,14 @@ where
                 return Poll::Ready(event);
             }
 
-            if let Poll::Ready(Some((i, conn_id))) =
+            if let Poll::Ready(Some(conn_id)) =
                 self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
             {
                 let mut peers = self.peers_by_ip.write();
 
                 let Some(peer_to_remove) = peers
                     .iter()
-                    .find_map(|(n, p)| (p.inner.index == i).then_some(n))
+                    .find_map(|(n, p)| (p.inner.conn_id == conn_id).then_some(n))
                 else {
                     continue;
                 };
@@ -468,33 +466,35 @@ fn mtu_refresh_interval() -> Interval {
 
 fn peers_to_refresh<TId>(
     peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId>>,
-    shutdown_sender: mpsc::Sender<(u32, TId)>,
+    shutdown_sender: mpsc::Sender<TId>,
 ) -> impl Iterator<Item = &ConnectedPeer<TId>>
 where
-    TId: Eq + Hash + Copy + Send + Sync + 'static,
+    TId: Eq + Hash + Copy + Send + Sync + fmt::Display + 'static,
 {
     remove_expired_peers(peers_by_ip, shutdown_sender);
 
-    peers_by_ip.iter().map(|p| p.1).unique_by(|p| p.inner.index)
+    peers_by_ip
+        .iter()
+        .map(|p| p.1)
+        .unique_by(|p| p.inner.conn_id)
 }
 
 fn remove_expired_peers<TId>(
     peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId>>,
-    shutdown_sender: mpsc::Sender<(u32, TId)>,
+    shutdown_sender: mpsc::Sender<TId>,
 ) where
-    TId: Eq + Hash + Copy + Send + Sync + 'static,
+    TId: Eq + Hash + Copy + Send + Sync + fmt::Display + 'static,
 {
     for (_, p) in peers_by_ip.iter() {
         p.inner.expire_resources();
         if p.inner.is_emptied() {
-            let index = p.inner.index;
             let conn_id = p.inner.conn_id;
 
-            tracing::trace!(%index, "peer_expired");
+            tracing::trace!(%conn_id, "peer_expired");
 
             tokio::spawn({
                 let mut sender = shutdown_sender.clone();
-                async move { sender.send((index, conn_id)).await }
+                async move { sender.send(conn_id).await }
             });
         }
     }
