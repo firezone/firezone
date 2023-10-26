@@ -157,16 +157,17 @@ where
         let dest = packet.destination();
         let (peer_index, peer_channel, maybe_write_to) = {
             let peers_by_ip = tunnel.peers_by_ip.read();
-            let peers = tunnel.peers.read();
-            let peer = peers_by_ip
+            let mut peers = tunnel.peers.write();
+            let mut peer = peers_by_ip
                 .longest_match(dest)
                 .map(|(_, peer)| peer)
-                .and_then(|id| peers.get(id));
+                .and_then(|id| peers.get_mut(id));
 
-            let result = tunnel
-                .role_state
-                .lock()
-                .handle_new_packet(packet, peer, &mut buf);
+            let result =
+                tunnel
+                    .role_state
+                    .lock()
+                    .handle_new_packet(packet, peer.as_deref_mut(), &mut buf);
 
             let maybe_write_to = match result {
                 Ok(None) => continue,
@@ -234,7 +235,7 @@ impl ClientState {
     pub(crate) fn handle_new_packet<'b>(
         &mut self,
         packet: MutableIpPacket,
-        peer: Option<&ConnectedPeer<GatewayId>>,
+        peer: Option<&mut ConnectedPeer<GatewayId>>,
         buf: &'b mut [u8],
     ) -> Result<Option<WriteTo<'b>>, ConnlibError> {
         match dns::parse(&self.resources, packet.as_immutable()) {
@@ -267,7 +268,7 @@ impl ClientState {
         resource: ResourceId,
         gateway: GatewayId,
         expected_attempts: usize,
-        gateways: &HashMap<GatewayId, ConnectedPeer<GatewayId>>,
+        gateways: &mut HashMap<GatewayId, ConnectedPeer<GatewayId>>,
         connected_peers: &mut IpNetworkTable<GatewayId>,
     ) -> Result<Option<ReuseConnection>, ConnlibError> {
         if self.is_connected_to(resource, connected_peers) {
@@ -298,7 +299,7 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        let Some(peer) = gateways.get(&gateway) else {
+        let Some(peer) = gateways.get_mut(&gateway) else {
             return Ok(None);
         };
 

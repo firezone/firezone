@@ -85,13 +85,13 @@ where
 
                         let data_channel = data_channel.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us");
 
-                        let peer = Arc::new(Peer::new(
+                        let peer = Peer::new(
                             tunnel.private_key.clone(),
                             index,
                             peer_config.clone(),
                             client_id,
                             Some((resource, expires_at)),
-                        ));
+                        );
 
                         // Holding two mutexes here
                         {

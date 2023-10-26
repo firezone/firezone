@@ -79,7 +79,7 @@ where
             resource_id,
             gateway_id,
             reference,
-            &self.peers.read(),
+            &mut self.peers.write(),
             &mut self.peers_by_ip.write(),
         )? {
             return Ok(Request::ReuseConnection(connection));
@@ -142,13 +142,13 @@ where
                     "only fails if not opened or not enabled, both of which are always true for us",
                 );
 
-                let peer = Arc::new(Peer::new(
+                let peer = Peer::new(
                     tunnel.private_key.clone(),
                     index,
                     peer_config.clone(),
                     gateway_id,
                     None,
-                ));
+                );
 
                 {
                     let mut peers_by_ip = tunnel.peers_by_ip.write();

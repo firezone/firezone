@@ -21,7 +21,7 @@ where
 {
     pub(crate) async fn start_peer_handler(
         self: Arc<Self>,
-        peer: Arc<Peer<TRoleState::Id>>,
+        mut peer: Peer<TRoleState::Id>,
         channel: Arc<DataChannel>,
     ) {
         loop {
@@ -33,7 +33,10 @@ where
             };
             let device_io = device.io;
 
-            if let Err(err) = self.peer_handler(&peer, channel.clone(), device_io).await {
+            if let Err(err) = self
+                .peer_handler(&mut peer, channel.clone(), device_io)
+                .await
+            {
                 if err.raw_os_error() != Some(9) {
                     tracing::error!(?err);
                     let _ = self.callbacks().on_error(&err.into());
@@ -49,7 +52,7 @@ where
 
     async fn peer_handler(
         self: &Arc<Self>,
-        peer: &Arc<Peer<TRoleState::Id>>,
+        peer: &mut Peer<TRoleState::Id>,
         channel: Arc<DataChannel>,
         device_io: DeviceIo,
     ) -> std::io::Result<()> {
@@ -85,7 +88,7 @@ where
     #[inline(always)]
     pub(crate) async fn handle_peer_packet(
         self: &Arc<Self>,
-        peer: &Arc<Peer<TRoleState::Id>>,
+        peer: &mut Peer<TRoleState::Id>,
         channel: &DataChannel,
         device_writer: &DeviceIo,
         mut src: &[u8],

@@ -253,11 +253,11 @@ where
 
                 let mut failed_peers = Vec::new();
 
-                for (network, peer) in peers_by_ip
-                    .iter()
-                    .flat_map(|(n, p)| Some((n, peers.get(p)?)))
-                    .unique_by(|(_, p)| p.inner.index)
-                {
+                for (network, id) in peers_by_ip.iter().unique_by(|(_, id)| **id) {
+                    let Some(peer) = peers.get_mut(id) else {
+                        continue;
+                    };
+
                     let bytes = match peer.inner.update_timers() {
                         Ok(Some(bytes)) => bytes,
                         Ok(None) => continue,
@@ -493,7 +493,7 @@ where
     TId: Eq + Hash + Copy + Send + Sync + 'static,
 {
     let expired_peer_ids = peers
-        .iter()
+        .iter_mut()
         .filter_map(|(id, p)| {
             p.inner.expire_resources();
 
