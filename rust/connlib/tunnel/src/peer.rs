@@ -5,7 +5,7 @@ use std::{collections::HashMap, net::IpAddr};
 use boringtun::noise::rate_limiter::RateLimiter;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::StaticSecret;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::ResourceDescriptionDns;
 use connlib_shared::{
@@ -223,7 +223,21 @@ impl Peer {
             TunnResult::Done => return Ok(None),
             TunnResult::Err(e) => return Err(e.into()),
             TunnResult::WriteToNetwork(packet) => {
-                return Ok(Some(WriteTo::Network(Bytes::copy_from_slice(packet))))
+                let mut bytes = BytesMut::new();
+                bytes.extend_from_slice(packet);
+
+                // Boringtun requires us to call `decapsulate` again with an empty slice to send further queued packets.
+                // This operation only needs a buffer of 148 which is why we declare it on the stack here.
+                // We batch up all of these packets into a single buffer and return it all at once.
+                let mut buf = [0u8; 148];
+
+                while let TunnResult::WriteToNetwork(packet) =
+                    self.tunnel.decapsulate(None, &[], &mut buf)
+                {
+                    bytes.extend_from_slice(packet);
+                }
+
+                return Ok(Some(WriteTo::Network(bytes.freeze())));
             }
             TunnResult::WriteToTunnelV4(packet, addr) => (packet, IpAddr::from(addr)),
             TunnResult::WriteToTunnelV6(packet, addr) => (packet, IpAddr::from(addr)),

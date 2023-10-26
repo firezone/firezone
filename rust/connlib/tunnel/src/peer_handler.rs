@@ -84,25 +84,19 @@ where
         peer: &mut Peer,
         channel: &DataChannel,
         device_writer: &DeviceIo,
-        mut src: &[u8],
+        src: &[u8],
     ) -> Result<()> {
-        loop {
-            match peer.decapsulate(src)? {
-                Some(WriteTo::Network(bytes)) => {
-                    if let Err(e) = channel.write(&bytes).await {
-                        tracing::error!("Couldn't send packet to connected peer: {e}");
-                        let _ = self.callbacks.on_error(&e.into());
-                    }
+        match peer.decapsulate(src)? {
+            Some(WriteTo::Network(bytes)) => {
+                if let Err(e) = channel.write(&bytes).await {
+                    tracing::error!("Couldn't send packet to connected peer: {e}");
+                    let _ = self.callbacks.on_error(&e.into());
                 }
-                Some(WriteTo::Resource(packet)) => {
-                    device_writer.write(packet)?;
-                }
-                None => break,
             }
-
-            // Boringtun requires us to call `decapsulate` again with an empty `src` array to ensure we full process all queued messages.
-            // It would be nice to do this within `decapsulate` but the borrow-checker doesn't allow us to re-borrow `dst`.
-            src = &[];
+            Some(WriteTo::Resource(packet)) => {
+                device_writer.write(packet)?;
+            }
+            None => {}
         }
 
         Ok(())
