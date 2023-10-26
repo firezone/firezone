@@ -86,60 +86,81 @@ public struct SettingsView: View {
 
   public var body: some View {
     #if os(iOS)
-      ios
+      NavigationView {
+        tabView
+          .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+              Button("Save") {
+                self.saveButtonTapped()
+              }
+              .disabled(!isTeamIdValid(model.settings.accountId))
+            }
+            ToolbarItem(placement: .navigationBarLeading) {
+              Button("Cancel") {
+                self.cancelButtonTapped()
+              }
+            }
+          }
+          .navigationTitle("Settings")
+          .navigationBarTitleDisplayMode(.inline)
+      }
     #elseif os(macOS)
-      mac
+      VStack {
+        tabView
+          .padding(20)
+      }
     #else
       #error("Unsupported platform")
     #endif
   }
 
-  #if os(iOS)
-    private var ios: some View {
-      NavigationView {
-        VStack(spacing: 10) {
-          form
-          ExportLogsButton(isProcessing: $isExportingLogs) {
-            self.isExportingLogs = true
-            Task {
-              self.logTempZipFileURL = try await createLogZipBundle()
-              self.isPresentingExportLogShareSheet = true
-            }
-          }
-          .sheet(isPresented: $isPresentingExportLogShareSheet) {
-            if let logfileURL = self.logTempZipFileURL {
-              ShareSheetView(
-                localFileURL: logfileURL,
-                completionHandler: {
-                  self.isPresentingExportLogShareSheet = false
-                  self.isExportingLogs = false
-                  self.logTempZipFileURL = nil
-                })
-            }
-          }
-          Spacer()
+  private var tabView: some View {
+    TabView {
+      accountTab
+        .tabItem {
+          Image(systemName: "person.crop.circle.fill")
+          Text("Account")
         }
-        .toolbar {
-          ToolbarItem(placement: .navigationBarTrailing) {
-            Button("Save") {
-              self.saveButtonTapped()
-            }
-            .disabled(!isTeamIdValid(model.settings.accountId))
-          }
-          ToolbarItem(placement: .navigationBarLeading) {
-            Button("Cancel") {
-              self.cancelButtonTapped()
-            }
-          }
-        }
-      }
-    }
-  #endif
+        .badge(isTeamIdValid(model.settings.accountId) ? nil : "!")
 
-  #if os(macOS)
-    private var mac: some View {
-      VStack(spacing: 50) {
-        form
+      exportLogsTab
+        .tabItem {
+          Image(systemName: "doc.text")
+          Text("Logs")
+        }
+    }
+  }
+
+  private var accountTab: some View {
+    #if os(macOS)
+      VStack {
+        Spacer()
+        Form {
+          Section(
+            content: {
+              HStack(spacing: 15) {
+                Spacer()
+                Text("Account ID:")
+                TextField(
+                  "",
+                  text: Binding(
+                    get: { model.settings.accountId },
+                    set: { model.settings.accountId = $0 }
+                  ),
+                  prompt: Text("account-id")
+                )
+                .frame(maxWidth: 240)
+                .padding(10)
+                Spacer()
+              }
+            },
+            footer: {
+              Text("Your account ID is provided by your admin")
+                .foregroundStyle(.secondary)
+            }
+          )
+        }
+        Spacer()
         HStack(spacing: 30) {
           Button(
             "Cancel",
@@ -154,32 +175,73 @@ public struct SettingsView: View {
           )
           .disabled(!isTeamIdValid(model.settings.accountId))
         }
+        .padding(10)
+      }
+    #elseif os(iOS)
+      VStack {
+        Form {
+          Section(
+            content: {
+              HStack(spacing: 15) {
+                Text("Account ID")
+                  .foregroundStyle(.secondary)
+                TextField(
+                  "account-id",
+                  text: Binding(
+                    get: { model.settings.accountId },
+                    set: { model.settings.accountId = $0 }
+                  )
+                )
+              }
+            },
+            header: { Text("Account") },
+            footer: { Text("Your account ID is provided by your admin") }
+          )
+        }
+      }
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
+
+  private var exportLogsTab: some View {
+    #if os(iOS)
+      VStack {
+        Form {
+          Section(header: Text("Logs")) {
+            HStack {
+              Spacer()
+              ExportLogsButton(isProcessing: $isExportingLogs) {
+                self.isExportingLogs = true
+                Task {
+                  self.logTempZipFileURL = try await createLogZipBundle()
+                  self.isPresentingExportLogShareSheet = true
+                }
+              }.sheet(isPresented: $isPresentingExportLogShareSheet) {
+                if let logfileURL = self.logTempZipFileURL {
+                  ShareSheetView(
+                    localFileURL: logfileURL,
+                    completionHandler: {
+                      self.isPresentingExportLogShareSheet = false
+                      self.isExportingLogs = false
+                      self.logTempZipFileURL = nil
+                    })
+                }
+              }
+              Spacer()
+            }
+          }
+        }
+      }
+    #elseif os(macOS)
+      VStack {
         ExportLogsButton(isProcessing: $isExportingLogs) {
           self.exportLogsWithSavePanelOnMac()
         }
       }
-    }
-  #endif
-
-  private var form: some View {
-    Form {
-      Section {
-        FormTextField(
-          title: "Account ID:",
-          baseURLString: AppInfoPlistConstants.authBaseURL.absoluteString,
-          placeholder: "account-id",
-          text: Binding(
-            get: { model.settings.accountId },
-            set: { model.settings.accountId = $0 }
-          )
-        )
-      }
-    }
-    .navigationTitle("Settings")
-    .toolbar {
-      ToolbarItem(placement: .primaryAction) {
-      }
-    }
+    #else
+      #error("Unsupported platform")
+    #endif
   }
 
   private func isTeamIdValid(_ teamId: String) -> Bool {
@@ -302,15 +364,19 @@ struct FormTextField: View {
 
   var body: some View {
     #if os(iOS)
-      HStack(spacing: 15) {
-        Text(title)
+      VStack(spacing: 10) {
         Spacer()
-        TextField(baseURLString, text: text, prompt: Text(placeholder))
-          .autocorrectionDisabled()
-          .multilineTextAlignment(.leading)
-          .foregroundColor(.secondary)
-          .frame(maxWidth: .infinity)
-          .textInputAutocapitalization(.never)
+        HStack(spacing: 5) {
+          Text(title)
+          Spacer()
+          TextField(baseURLString, text: text, prompt: Text(placeholder))
+            .autocorrectionDisabled()
+            .multilineTextAlignment(.leading)
+            .foregroundColor(.secondary)
+            .frame(maxWidth: .infinity)
+            .textInputAutocapitalization(.never)
+        }
+        Spacer()
       }
     #else
       HStack(spacing: 30) {
