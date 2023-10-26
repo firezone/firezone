@@ -1,5 +1,4 @@
 use crate::device_channel::create_iface;
-use crate::peer::Peer;
 use crate::{
     peer_by_ip, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
@@ -61,30 +60,37 @@ where
 
         let dest = packet.destination();
 
-        let Some((peer, channel)) = peer_by_ip(&tunnel.peers_by_ip.read(), dest) else {
-            continue;
-        };
-
-        let bytes = match peer.encapsulate(packet, dest, &mut buf) {
-            Ok(Some(b)) => b,
-            Ok(None) => continue,
-            Err(e) => {
-                on_error(&tunnel, dest, &peer, e).await;
+        let (result, channel, peer_index, peer_conn_id) = {
+            let peers_by_ip = tunnel.peers_by_ip.read();
+            let Some(peer) = peer_by_ip(&peers_by_ip, dest) else {
                 continue;
-            }
+            };
+
+            let result = peer.inner.encapsulate(packet, dest, &mut buf);
+            let channel = peer.channel.clone();
+
+            (result, channel, peer.inner.index, peer.inner.conn_id)
         };
 
-        if let Err(e) = channel.write(&bytes).await {
-            on_error(&tunnel, dest, &peer, e.into()).await
-        }
+        let error = match result {
+            Ok(None) => continue,
+            Ok(Some(b)) => match channel.write(&b).await {
+                Ok(_) => continue,
+                Err(e) => ConnlibError::IceDataError(e),
+            },
+            Err(e) => e,
+        };
+
+        on_error(&tunnel, dest, error, peer_index, peer_conn_id).await
     }
 }
 
 async fn on_error<CB>(
     tunnel: &Tunnel<CB, GatewayState>,
     dest: IpAddr,
-    peer: &Peer<ClientId>,
     e: ConnlibError,
+    peer_index: u32,
+    peer_conn_id: ClientId,
 ) where
     CB: Callbacks + 'static,
 {
@@ -94,7 +100,7 @@ async fn on_error<CB>(
         let _ = tunnel
             .stop_peer_command_sender
             .clone()
-            .send((peer.index, peer.conn_id))
+            .send((peer_index, peer_conn_id))
             .await;
     }
 }
