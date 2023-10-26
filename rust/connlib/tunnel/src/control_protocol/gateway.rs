@@ -5,46 +5,12 @@ use connlib_shared::{
     messages::{ClientId, Relay, ResourceDescription},
     Callbacks, Error, Result,
 };
-use webrtc::peer_connection::{
-    peer_connection_state::RTCPeerConnectionState, sdp::session_description::RTCSessionDescription,
-    RTCPeerConnection,
-};
+use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 use crate::control_protocol::{
     new_peer_connection, on_dc_close_handler, on_peer_connection_state_change_handler,
 };
 use crate::{peer::Peer, ConnectedPeer, GatewayState, PeerConfig, Tunnel};
-
-#[tracing::instrument(level = "trace", skip(tunnel))]
-fn handle_connection_state_update<CB>(
-    tunnel: &Arc<Tunnel<CB, GatewayState>>,
-    state: RTCPeerConnectionState,
-    client_id: ClientId,
-) where
-    CB: Callbacks + 'static,
-{
-    tracing::trace!(?state, "peer_state");
-    if state == RTCPeerConnectionState::Failed {
-        tunnel.peer_connections.lock().remove(&client_id);
-    }
-}
-
-#[tracing::instrument(level = "trace", skip(tunnel))]
-fn set_connection_state_update<CB>(
-    tunnel: &Arc<Tunnel<CB, GatewayState>>,
-    peer_connection: &Arc<RTCPeerConnection>,
-    client_id: ClientId,
-) where
-    CB: Callbacks + 'static,
-{
-    let tunnel = Arc::clone(tunnel);
-    peer_connection.on_peer_connection_state_change(Box::new(
-        move |state: RTCPeerConnectionState| {
-            let tunnel = Arc::clone(&tunnel);
-            Box::pin(async move { handle_connection_state_update(&tunnel, state, client_id) })
-        },
-    ));
-}
 
 impl<CB> Tunnel<CB, GatewayState>
 where
@@ -83,7 +49,10 @@ where
             .lock()
             .insert(client_id, Arc::clone(&peer_connection));
 
-        set_connection_state_update(self, &peer_connection, client_id);
+        peer_connection.on_peer_connection_state_change(on_peer_connection_state_change_handler(
+            index,
+            tunnel.stop_peer_command_sender.clone(),
+        ));
 
         peer_connection.on_data_channel(Box::new(move |d| {
             tracing::trace!("new_data_channel");
@@ -134,14 +103,6 @@ where
                                     channel: data_channel.clone(),
                                 });
                             }
-                        }
-
-                        if let Some(conn) = tunnel.peer_connections.lock().get(&client_id) {
-                            conn.on_peer_connection_state_change(
-                                on_peer_connection_state_change_handler(
-                                    index, tunnel.stop_peer_command_sender.clone(),
-                                ),
-                            );
                         }
 
                         tokio::spawn(tunnel.clone().start_peer_handler(peer, data_channel));
