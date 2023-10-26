@@ -1,11 +1,14 @@
+use crate::device_channel::Packet;
 use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
 use crate::resource_table::ResourceTable;
 use crate::DnsQuery;
+use connlib_shared::error::ConnlibError;
 use connlib_shared::{messages::ResourceDescription, DNS_SENTINEL};
 use domain::base::{
     iana::{Class, Rcode, Rtype},
     Dname, Message, MessageBuilder, ParsedDname, Question, ToDname,
 };
+use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::op::Message as TrustDnsMessage;
 use hickory_resolver::proto::rr::RecordType;
 use itertools::Itertools;
@@ -17,12 +20,6 @@ const UDP_HEADER_SIZE: usize = 8;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
 const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
-
-#[derive(Debug, Clone)]
-pub(crate) enum Packet {
-    Ipv4(Vec<u8>),
-    Ipv6(Vec<u8>),
-}
 
 #[derive(Debug)]
 pub(crate) enum ResolveStrategy<T, U> {
@@ -62,7 +59,7 @@ impl<T> ResolveStrategy<T, DnsQueryParams> {
 pub(crate) fn parse<'a>(
     resources: &ResourceTable<ResourceDescription>,
     packet: IpPacket<'a>,
-) -> Option<ResolveStrategy<Packet, DnsQuery<'a>>> {
+) -> Option<ResolveStrategy<Packet<'static>, DnsQuery<'a>>> {
     if packet.destination() != IpAddr::from(DNS_SENTINEL) {
         return None;
     }
@@ -84,10 +81,39 @@ pub(crate) fn parse<'a>(
     )?))
 }
 
-pub(crate) fn build_response(
+pub(crate) fn build_response_from_resolve_result(
     original_pkt: IpPacket<'_>,
-    mut dns_answer: Vec<u8>,
-) -> Option<Packet> {
+    response: hickory_resolver::error::ResolveResult<Lookup>,
+) -> Result<Option<Packet>, ConnlibError> {
+    let Some(mut message) = as_dns_message(&original_pkt) else {
+        debug_assert!(false, "The original message should be a DNS query for us to ever call write_dns_lookup_response");
+        return Ok(None);
+    };
+
+    let response = match response.map_err(|err| err.kind().clone()) {
+        Ok(response) => message.add_answers(response.records().to_vec()),
+        Err(hickory_resolver::error::ResolveErrorKind::NoRecordsFound {
+            soa,
+            response_code,
+            ..
+        }) => {
+            if let Some(soa) = soa {
+                message.add_name_server(soa.clone().into_record_of_rdata());
+            }
+
+            message.set_response_code(response_code)
+        }
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
+
+    let packet = build_response(original_pkt, response.to_vec()?);
+
+    Ok(packet)
+}
+
+fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> Option<Packet<'static>> {
     let version = original_pkt.version();
     let response_len = dns_answer.len();
     let original_dgm = original_pkt.as_udp()?;
@@ -111,10 +137,12 @@ pub(crate) fn build_response(
     let udp_checksum = pkt.to_immutable().udp_checksum(&pkt.as_immutable_udp()?);
     pkt.as_udp()?.set_checksum(udp_checksum);
     pkt.set_ipv4_checksum();
-    match version {
-        Version::Ipv4 => Some(Packet::Ipv4(res_buf)),
-        Version::Ipv6 => Some(Packet::Ipv6(res_buf)),
-    }
+    let packet = match version {
+        Version::Ipv4 => Packet::Ipv4(res_buf.into()),
+        Version::Ipv6 => Packet::Ipv6(res_buf.into()),
+    };
+
+    Some(packet)
 }
 
 fn build_dns_with_answer<N>(

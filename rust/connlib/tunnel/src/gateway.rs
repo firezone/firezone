@@ -9,6 +9,7 @@ use connlib_shared::Callbacks;
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
 use futures_util::SinkExt;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
@@ -59,21 +60,48 @@ where
 
         let dest = packet.destination();
 
-        let Some(peer) = peer_by_ip(&tunnel.peers_by_ip.read(), dest) else {
-            continue;
+        let (result, channel, peer_index, peer_conn_id) = {
+            let peers_by_ip = tunnel.peers_by_ip.read();
+            let Some(peer) = peer_by_ip(&peers_by_ip, dest) else {
+                continue;
+            };
+
+            let result = peer.inner.encapsulate(packet, dest, &mut buf);
+            let channel = peer.channel.clone();
+
+            (result, channel, peer.inner.index, peer.inner.conn_id)
         };
 
-        if let Err(e) = peer.send(packet, dest, &mut buf).await {
-            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+        let error = match result {
+            Ok(None) => continue,
+            Ok(Some(b)) => match channel.write(&b).await {
+                Ok(_) => continue,
+                Err(e) => ConnlibError::IceDataError(e),
+            },
+            Err(e) => e,
+        };
 
-            if e.is_fatal_connection_error() {
-                let _ = tunnel
-                    .stop_peer_command_sender
-                    .clone()
-                    .send((peer.index, peer.conn_id))
-                    .await;
-            }
-        }
+        on_error(&tunnel, dest, error, peer_index, peer_conn_id).await
+    }
+}
+
+async fn on_error<CB>(
+    tunnel: &Tunnel<CB, GatewayState>,
+    dest: IpAddr,
+    e: ConnlibError,
+    peer_index: u32,
+    peer_conn_id: ClientId,
+) where
+    CB: Callbacks + 'static,
+{
+    tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+
+    if e.is_fatal_connection_error() {
+        let _ = tunnel
+            .stop_peer_command_sender
+            .clone()
+            .send((peer_index, peer_conn_id))
+            .await;
     }
 }
 
