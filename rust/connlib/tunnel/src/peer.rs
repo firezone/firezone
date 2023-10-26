@@ -168,7 +168,7 @@ impl Peer {
         self.allowed_ips.longest_match(addr).is_some()
     }
 
-    pub(crate) fn update_translated_resource_address(&mut self, id: ResourceId, addr: IpAddr) {
+    pub(crate) fn update_translated_resource_address(&mut self, addr: IpAddr, id: ResourceId) {
         self.translated_resource_addresses.insert(addr, id);
     }
 
@@ -328,7 +328,7 @@ fn get_resource_addr_and_port(
                 tracing::warn!(%addr, "Couldn't resolve name addr");
                 return Err(Error::InvalidResource);
             };
-            peer.update_translated_resource_address(r.id, dst_addr);
+            peer.update_translated_resource_address(dst_addr, r.id);
             Ok((
                 dst_addr,
                 address
