@@ -29,6 +29,7 @@ use webrtc::{
 
 use futures::channel::mpsc;
 use futures_util::{SinkExt, StreamExt};
+use std::collections::VecDeque;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
 use std::{collections::HashSet, hash::Hash};
@@ -157,6 +158,8 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     rate_limit_reset_interval: Mutex<Interval>,
     peer_refresh_interval: Mutex<Interval>,
     mtu_refresh_interval: Mutex<Interval>,
+
+    peers_to_stop: Mutex<VecDeque<TRoleState::Id>>,
 }
 
 pub struct ConnectedPeer<TId> {
@@ -200,6 +203,34 @@ where
 
     pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         loop {
+            if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
+                let mut peers = self.peers_by_ip.write();
+
+                let Some(peer_to_remove) = peers
+                    .iter()
+                    .find_map(|(n, p)| (p.inner.conn_id == conn_id).then_some(n))
+                else {
+                    continue;
+                };
+
+                let peer = peers.remove(peer_to_remove).expect("just found it");
+
+                let channel = peer.channel.clone();
+
+                tokio::spawn(async move { channel.close().await });
+                if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
+                    tokio::spawn({
+                        let callbacks = self.callbacks.clone();
+                        async move {
+                            if let Err(e) = conn.close().await {
+                                tracing::warn!(%conn_id, error = ?e, "Can't close peer");
+                                let _ = callbacks.on_error(&e.into());
+                            }
+                        }
+                    });
+                }
+            }
+
             if self
                 .rate_limit_reset_interval
                 .lock()
@@ -286,31 +317,7 @@ where
             if let Poll::Ready(Some(conn_id)) =
                 self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
             {
-                let mut peers = self.peers_by_ip.write();
-
-                let Some(peer_to_remove) = peers
-                    .iter()
-                    .find_map(|(n, p)| (p.inner.conn_id == conn_id).then_some(n))
-                else {
-                    continue;
-                };
-
-                let peer = peers.remove(peer_to_remove).expect("just found it");
-
-                let channel = peer.channel.clone();
-
-                tokio::spawn(async move { channel.close().await });
-                if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
-                    tokio::spawn({
-                        let callbacks = self.callbacks.clone();
-                        async move {
-                            if let Err(e) = conn.close().await {
-                                tracing::warn!(%conn_id, error = ?e, "Can't close peer");
-                                let _ = callbacks.on_error(&e.into());
-                            }
-                        }
-                    });
-                }
+                self.peers_to_stop.lock().push_back(conn_id);
 
                 continue;
             }
@@ -424,6 +431,7 @@ where
             rate_limit_reset_interval: Mutex::new(rate_limit_reset_interval()),
             peer_refresh_interval: Mutex::new(peer_refresh_interval()),
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
+            peers_to_stop: Default::default(),
         })
     }
 
