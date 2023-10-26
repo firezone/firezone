@@ -30,7 +30,7 @@ use webrtc::{
 use futures::channel::mpsc;
 use futures_util::{SinkExt, StreamExt};
 use std::task::{Context, Poll};
-use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt, io, sync::Arc, time::Duration};
 use std::{collections::HashSet, hash::Hash};
 use tokio::time::Interval;
 use webrtc::data::data_channel::DataChannel;
@@ -320,13 +320,6 @@ where
             return Poll::Pending;
         }
     }
-}
-
-pub(crate) fn peer_by_ip<Id>(
-    peers_by_ip: &IpNetworkTable<ConnectedPeer<Id>>,
-    ip: IpAddr,
-) -> Option<&ConnectedPeer<Id>> {
-    peers_by_ip.longest_match(ip).map(|(_, peer)| peer)
 }
 
 #[derive(Debug)]

@@ -4,8 +4,8 @@ use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::WriteTo;
 use crate::resource_table::ResourceTable;
 use crate::{
-    dns, peer_by_ip, tokio_util, ConnectedPeer, Device, DnsQuery, Event, PeerConfig, RoleState,
-    Tunnel, DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
+    dns, tokio_util, ConnectedPeer, Device, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
+    DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
     MAX_UDP_SIZE,
 };
 use boringtun::x25519::{PublicKey, StaticSecret};
@@ -157,7 +157,7 @@ where
         let dest = packet.destination();
         let (peer_index, peer_conn_id, peer_channel, maybe_write_to) = {
             let peers_by_ip = tunnel.peers_by_ip.read();
-            let peer = peer_by_ip(&peers_by_ip, dest);
+            let peer = peers_by_ip.longest_match(dest).map(|(_, peer)| peer);
 
             let result = tunnel
                 .role_state

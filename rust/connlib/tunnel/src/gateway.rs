@@ -1,7 +1,7 @@
 use crate::device_channel::create_iface;
 use crate::{
-    peer_by_ip, Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
-    MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
+    Device, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
+    MAX_UDP_SIZE,
 };
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
@@ -62,7 +62,7 @@ where
 
         let (result, channel, peer_index, peer_conn_id) = {
             let peers_by_ip = tunnel.peers_by_ip.read();
-            let Some(peer) = peer_by_ip(&peers_by_ip, dest) else {
+            let Some(peer) = peers_by_ip.longest_match(dest).map(|(_, peer)| peer) else {
                 continue;
             };
 
