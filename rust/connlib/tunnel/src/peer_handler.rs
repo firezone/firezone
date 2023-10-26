@@ -14,7 +14,8 @@ where
 {
     pub(crate) async fn start_peer_handler(
         self: Arc<Self>,
-        mut peer: Peer<TRoleState::Id>,
+        id: TRoleState::Id,
+        mut peer: Peer,
         channel: Arc<DataChannel>,
     ) {
         loop {
@@ -40,16 +41,12 @@ where
             }
         }
         tracing::debug!(peer = ?peer.stats(), "peer_stopped");
-        let _ = self
-            .stop_peer_command_sender
-            .clone()
-            .send(peer.conn_id)
-            .await;
+        let _ = self.stop_peer_command_sender.clone().send(id).await;
     }
 
     async fn peer_handler(
         self: &Arc<Self>,
-        peer: &mut Peer<TRoleState::Id>,
+        peer: &mut Peer,
         channel: Arc<DataChannel>,
         device_io: DeviceIo,
     ) -> std::io::Result<()> {
@@ -85,7 +82,7 @@ where
     #[inline(always)]
     pub(crate) async fn handle_peer_packet(
         self: &Arc<Self>,
-        peer: &mut Peer<TRoleState::Id>,
+        peer: &mut Peer,
         channel: &DataChannel,
         device_writer: &DeviceIo,
         mut src: &[u8],

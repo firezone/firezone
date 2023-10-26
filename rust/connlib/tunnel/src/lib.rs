@@ -143,7 +143,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     private_key: StaticSecret,
     public_key: PublicKey,
     peers_by_ip: RwLock<IpNetworkTable<TRoleState::Id>>,
-    peers: RwLock<HashMap<TRoleState::Id, ConnectedPeer<TRoleState::Id>>>,
+    peers: RwLock<HashMap<TRoleState::Id, ConnectedPeer>>,
     peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCPeerConnection>>>,
     webrtc_api: API,
     callbacks: CallbackErrorFacade<CB>,
@@ -159,11 +159,11 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     peer_refresh_interval: Mutex<Interval>,
     mtu_refresh_interval: Mutex<Interval>,
 
-    peers_to_close: Mutex<VecDeque<ConnectedPeer<TRoleState::Id>>>,
+    peers_to_close: Mutex<VecDeque<TRoleState::Id>>,
 }
 
-pub struct ConnectedPeer<TId> {
-    inner: Peer<TId>,
+pub struct ConnectedPeer {
+    inner: Peer,
     channel: Arc<DataChannel>,
 }
 
@@ -172,7 +172,7 @@ pub struct ConnectedPeer<TId> {
 #[derive(Debug, Clone)]
 pub struct TunnelStats<TId> {
     public_key: String,
-    peers_by_ip: HashMap<IpNetwork, PeerStats<TId>>,
+    peers_by_ip: HashMap<IpNetwork, PeerStats>,
     peer_connections: Vec<TId>,
 }
 
@@ -209,22 +209,27 @@ where
                 let mut peers_to_close = self.peers_to_close.lock();
                 let mut peer_connections = self.peer_connections.lock();
                 let mut peers_by_ip = self.peers_by_ip.write();
+                let mut peers = self.peers.write();
 
-                while let Some(peer) = peers_to_close.pop_front() {
+                while let Some(id) = peers_to_close.pop_front() {
+                    let Some(peer_to_close) = peers.remove(&id) else {
+                        continue;
+                    };
+
                     let callbacks = self.callbacks.clone();
 
-                    peers_by_ip.retain(|_, id| *id == peer.inner.conn_id);
-                    let connection = peer_connections.remove(&peer.inner.conn_id);
+                    peers_by_ip.retain(|_, candidate| *candidate == id);
+                    let connection = peer_connections.remove(&id);
 
                     tokio::spawn(async move {
-                        let _ = peer.channel.close().await;
+                        let _ = peer_to_close.channel.close().await;
 
                         let Some(connection) = connection else {
                             return;
                         };
 
                         if let Err(e) = connection.close().await {
-                            tracing::warn!(conn_id = %peer.inner.conn_id, error = ?e, "Can't close peer");
+                            tracing::warn!(conn_id = %id, error = ?e, "Can't close peer");
                             let _ = callbacks.on_error(&e.into());
                         }
                     });
@@ -242,31 +247,32 @@ where
             }
 
             if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let mut peers_by_ip = self.peers_by_ip.write();
+                let peers_by_ip = self.peers_by_ip.read();
                 let mut peers = self.peers.write();
                 let mut peers_to_close = self.peers_to_close.lock();
 
-                peers_to_close.extend(remove_expired_peers_from_network_table(
-                    &mut peers,
-                    &mut peers_by_ip,
-                ));
-
-                let mut failed_peers = Vec::new();
-
-                for (network, id) in peers_by_ip.iter().unique_by(|(_, id)| **id) {
+                for (_, id) in peers_by_ip.iter().unique_by(|(_, id)| **id) {
                     let Some(peer) = peers.get_mut(id) else {
                         continue;
                     };
+
+                    peer.inner.expire_resources();
+
+                    if peer.inner.is_emptied() {
+                        tracing::trace!(%id, "peer_expired");
+                        peers_to_close.push_back(*id);
+                        continue;
+                    }
 
                     let bytes = match peer.inner.update_timers() {
                         Ok(Some(bytes)) => bytes,
                         Ok(None) => continue,
                         Err(e) => {
-                            tracing::error!("Failed to update timers for peer: {e}");
+                            tracing::error!(%id, "Failed to update timers for peer: {e}");
                             let _ = self.callbacks.on_error(&e);
 
                             if e.is_fatal_connection_error() {
-                                failed_peers.push(network);
+                                peers_to_close.push_back(*id);
                             }
                             continue;
                         }
@@ -282,11 +288,6 @@ where
                         }
                     });
                 }
-
-                peers_to_close.extend(failed_peers.into_iter().flat_map(|n| {
-                    let id = peers_by_ip.remove(n)?;
-                    peers.remove(&id)
-                }));
 
                 continue;
             }
@@ -328,10 +329,7 @@ where
             if let Poll::Ready(Some(id)) =
                 self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
             {
-                let Some(peer_to_remove) = self.peers.write().remove(&id) else {
-                    continue;
-                };
-                self.peers_to_close.lock().push_back(peer_to_remove);
+                self.peers_to_close.lock().push_back(id);
 
                 continue;
             }
@@ -473,34 +471,6 @@ fn mtu_refresh_interval() -> Interval {
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     interval
-}
-fn remove_expired_peers_from_network_table<'a, TId>(
-    peers: &'a mut HashMap<TId, ConnectedPeer<TId>>,
-    peers_by_ip: &'a mut IpNetworkTable<TId>,
-) -> impl Iterator<Item = ConnectedPeer<TId>> + 'a
-where
-    TId: Eq + Hash + Copy + Send + Sync + fmt::Display + 'static,
-{
-    let expired_peer_ids = peers
-        .iter_mut()
-        .filter_map(|(id, p)| {
-            p.inner.expire_resources();
-
-            if p.inner.is_emptied() {
-                tracing::trace!(id = %p.inner.conn_id, "peer_expired");
-
-                return Some(*id);
-            }
-
-            None
-        })
-        .collect::<Vec<_>>();
-
-    peers_by_ip.retain(|_, p| !expired_peer_ids.contains(p));
-
-    expired_peer_ids
-        .into_iter()
-        .flat_map(|id| peers.remove(&id))
 }
 
 /// Dedicated trait for abstracting over the different ICE states.

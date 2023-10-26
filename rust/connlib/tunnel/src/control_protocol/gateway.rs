@@ -89,7 +89,6 @@ where
                             tunnel.private_key.clone(),
                             index,
                             peer_config.clone(),
-                            client_id,
                             Some((resource, expires_at)),
                             tunnel.rate_limiter.clone()
                         );
@@ -103,7 +102,7 @@ where
                             }
                         }
 
-                        tokio::spawn(tunnel.clone().start_peer_handler(peer, data_channel));
+                        tokio::spawn(tunnel.clone().start_peer_handler(client_id, peer, data_channel));
                     })
                 }))
             })

@@ -146,7 +146,6 @@ where
                     tunnel.private_key.clone(),
                     index,
                     peer_config.clone(),
-                    gateway_id,
                     None,
                     tunnel.rate_limiter.clone(),
                 );
@@ -172,7 +171,7 @@ where
                     ));
                 }
 
-                tokio::spawn(tunnel.clone().start_peer_handler(peer, d));
+                tokio::spawn(tunnel.clone().start_peer_handler(gateway_id, peer, d));
 
                 tunnel
                     .role_state

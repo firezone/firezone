@@ -158,10 +158,11 @@ where
         let (peer_id, peer_channel, maybe_write_to) = {
             let peers_by_ip = tunnel.peers_by_ip.read();
             let mut peers = tunnel.peers.write();
-            let mut peer = peers_by_ip
+            let (peer_id, mut peer) = peers_by_ip
                 .longest_match(dest)
                 .map(|(_, peer)| peer)
-                .and_then(|id| peers.get_mut(id));
+                .and_then(|id| Some((*id, peers.get_mut(id)?)))
+                .unzip();
 
             let result =
                 tunnel
@@ -176,8 +177,9 @@ where
             };
 
             let peer = peer.expect("must have peer if we should write bytes");
+            let peer_id = peer_id.expect("same as above");
 
-            (peer.inner.conn_id, peer.channel.clone(), maybe_write_to)
+            (peer_id, peer.channel.clone(), maybe_write_to)
         };
 
         let error = match maybe_write_to {
@@ -231,7 +233,7 @@ impl ClientState {
     pub(crate) fn handle_new_packet<'b>(
         &mut self,
         packet: MutableIpPacket,
-        peer: Option<&mut ConnectedPeer<GatewayId>>,
+        peer: Option<&mut ConnectedPeer>,
         buf: &'b mut [u8],
     ) -> Result<Option<WriteTo<'b>>, ConnlibError> {
         match dns::parse(&self.resources, packet.as_immutable()) {
@@ -264,7 +266,7 @@ impl ClientState {
         resource: ResourceId,
         gateway: GatewayId,
         expected_attempts: usize,
-        gateways: &mut HashMap<GatewayId, ConnectedPeer<GatewayId>>,
+        gateways: &mut HashMap<GatewayId, ConnectedPeer>,
         connected_peers: &mut IpNetworkTable<GatewayId>,
     ) -> Result<Option<ReuseConnection>, ConnlibError> {
         if self.is_connected_to(resource, connected_peers) {

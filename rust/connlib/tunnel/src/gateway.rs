@@ -63,11 +63,11 @@ where
         let (result, channel, peer_id) = {
             let mut peers = tunnel.peers.write();
 
-            let Some(peer) = tunnel
+            let Some((client, peer)) = tunnel
                 .peers_by_ip
                 .read()
                 .longest_match(dest)
-                .and_then(|(_, id)| peers.get_mut(id))
+                .and_then(|(_, id)| Some((*id, peers.get_mut(id)?)))
             else {
                 continue;
             };
@@ -75,7 +75,7 @@ where
             let result = peer.inner.encapsulate(packet, dest, &mut buf);
             let channel = peer.channel.clone();
 
-            (result, channel, peer.inner.conn_id)
+            (result, channel, client)
         };
 
         let error = match result {

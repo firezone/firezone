@@ -23,10 +23,9 @@ use crate::{
 
 type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 
-pub(crate) struct Peer<TId> {
+pub(crate) struct Peer {
     tunnel: Tunn,
     allowed_ips: IpNetworkTable<()>,
-    pub conn_id: TId,
     resources: Option<ResourceTable<ExpiryingResource>>,
     // Here we store the address that we obtained for the resource that the peer corresponds to.
     // This can have the following problem:
@@ -43,19 +42,15 @@ pub(crate) struct Peer<TId> {
 // TODO: For now we only use these fields with debug
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub(crate) struct PeerStats<TId> {
+pub(crate) struct PeerStats {
     pub allowed_ips: Vec<IpNetwork>,
-    pub conn_id: TId,
     pub dns_resources: HashMap<String, ExpiryingResource>,
     pub network_resources: HashMap<IpNetwork, ExpiryingResource>,
     pub translated_resource_addresses: HashMap<IpAddr, ResourceId>,
 }
 
-impl<TId> Peer<TId>
-where
-    TId: Copy,
-{
-    pub(crate) fn stats(&self) -> PeerStats<TId> {
+impl Peer {
+    pub(crate) fn stats(&self) -> PeerStats {
         let (network_resources, dns_resources) = self.resources.as_ref().map_or_else(
             || (HashMap::new(), HashMap::new()),
             |resources| (resources.network_resources(), resources.dns_resources()),
@@ -64,7 +59,6 @@ where
         let translated_resource_addresses = self.translated_resource_addresses.clone();
         PeerStats {
             allowed_ips,
-            conn_id: self.conn_id,
             dns_resources,
             network_resources,
             translated_resource_addresses,
@@ -75,10 +69,9 @@ where
         private_key: StaticSecret,
         index: u32,
         peer_config: PeerConfig,
-        conn_id: TId,
         resource: Option<(ResourceDescription, DateTime<Utc>)>,
         rate_limiter: Arc<RateLimiter>,
-    ) -> Peer<TId> {
+    ) -> Peer {
         let tunnel = Tunn::new(
             private_key.clone(),
             peer_config.public_key,
@@ -102,7 +95,6 @@ where
         Peer {
             tunnel,
             allowed_ips,
-            conn_id,
             resources,
             translated_resource_addresses: Default::default(),
         }
@@ -261,14 +253,11 @@ pub enum WriteTo<'a> {
 }
 
 #[inline(always)]
-pub(crate) fn make_packet_for_resource<'a, TId>(
-    peer: &mut Peer<TId>,
+pub(crate) fn make_packet_for_resource<'a>(
+    peer: &mut Peer,
     addr: IpAddr,
     packet: &'a mut [u8],
-) -> Result<Option<device_channel::Packet<'a>>>
-where
-    TId: Copy,
-{
+) -> Result<Option<device_channel::Packet<'a>>> {
     if !peer.is_allowed(addr) {
         tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
         return Ok(None);
@@ -311,15 +300,12 @@ fn get_matching_version_ip(addr: &IpAddr, ip: &IpAddr) -> Option<IpAddr> {
     ((addr.is_ipv4() && ip.is_ipv4()) || (addr.is_ipv6() && ip.is_ipv6())).then_some(*ip)
 }
 
-fn get_resource_addr_and_port<TId>(
-    peer: &mut Peer<TId>,
+fn get_resource_addr_and_port(
+    peer: &mut Peer,
     resource: &ResourceDescription,
     addr: &IpAddr,
     dst: &IpAddr,
-) -> Result<(IpAddr, Option<u16>)>
-where
-    TId: Copy,
-{
+) -> Result<(IpAddr, Option<u16>)> {
     match resource {
         ResourceDescription::Dns(r) => {
             let mut address = r.address.split(':');
