@@ -1,6 +1,7 @@
 /* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.splash.ui
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import androidx.fragment.app.Fragment
@@ -9,6 +10,7 @@ import androidx.navigation.fragment.findNavController
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.databinding.FragmentSplashBinding
+import dev.firezone.android.features.session.ui.SessionActivity
 
 @AndroidEntryPoint
 internal class SplashFragment : Fragment(R.layout.fragment_splash) {
@@ -37,17 +39,19 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
                     findNavController().navigate(
                         R.id.vpnPermissionActivity,
                     )
-                SplashViewModel.ViewAction.NavigateToSignInFragment ->
+                SplashViewModel.ViewAction.NavigateToSignIn ->
                     findNavController().navigate(
                         R.id.signInFragment,
                     )
-                SplashViewModel.ViewAction.NavigateToSettingsFragment ->
+                SplashViewModel.ViewAction.NavigateToSettings ->
                     findNavController().navigate(
                         R.id.settingsFragment,
                     )
-                SplashViewModel.ViewAction.NavigateToSessionFragment ->
-                    findNavController().navigate(
-                        R.id.sessionFragment,
+                SplashViewModel.ViewAction.NavigateToSession ->
+                    startActivity(
+                        Intent(requireContext(), SessionActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        },
                     )
             }
         }

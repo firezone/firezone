@@ -37,11 +37,11 @@ internal class SplashViewModel
                         }
                         .collect { user ->
                             if (user.accountId.isNullOrEmpty()) {
-                                actionMutableLiveData.postValue(ViewAction.NavigateToSettingsFragment)
+                                actionMutableLiveData.postValue(ViewAction.NavigateToSettings)
                             } else if (user.token.isNullOrBlank()) {
-                                actionMutableLiveData.postValue(ViewAction.NavigateToSignInFragment)
+                                actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
                             } else {
-                                actionMutableLiveData.postValue(ViewAction.NavigateToSessionFragment)
+                                actionMutableLiveData.postValue(ViewAction.NavigateToSession)
                             }
                         }
                 }
@@ -54,8 +54,8 @@ internal class SplashViewModel
 
         internal sealed class ViewAction {
             object NavigateToVpnPermission : ViewAction()
-            object NavigateToSettingsFragment : ViewAction()
-            object NavigateToSignInFragment : ViewAction()
-            object NavigateToSessionFragment : ViewAction()
+            object NavigateToSettings : ViewAction()
+            object NavigateToSignIn : ViewAction()
+            object NavigateToSession : ViewAction()
         }
     }

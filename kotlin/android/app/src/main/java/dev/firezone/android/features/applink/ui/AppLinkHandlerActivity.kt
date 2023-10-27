@@ -3,7 +3,6 @@ package dev.firezone.android.features.applink.ui
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -29,17 +28,14 @@ class AppLinkHandlerActivity : AppCompatActivity(R.layout.activity_app_link_hand
         viewModel.actionLiveData.observe(this) { action ->
             when (action) {
                 AppLinkViewModel.ViewAction.AuthFlowComplete -> {
-                    // TODO: Continue starting the session showing sessionFragment
-                    Log.d("AppLinkHandlerActivity", "AuthFlowComplete")
-
-                    val intent = Intent(this@AppLinkHandlerActivity, MainActivity::class.java)
-                    this@AppLinkHandlerActivity.startActivity(intent)
-                    this@AppLinkHandlerActivity.finish()
+                    startActivity(
+                        Intent(this@AppLinkHandlerActivity, MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        },
+                    )
+                    finish()
                 }
                 AppLinkViewModel.ViewAction.ShowError -> showError()
-                else -> {
-                    Log.d("AppLinkHandlerActivity", "Unhandled action: $action")
-                }
             }
         }
     }

@@ -39,7 +39,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="@dimen/spacing_small"
-        android:text="@string/sign_in_fragment_sign_status_text"
+        android:text="@string/signed_out"
         app:layout_constraintBottom_toTopOf="@+id/btSignIn"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -49,7 +49,7 @@
         android:id="@+id/btSignIn"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="@string/sign_in_fragment_button_text"
+        android:text="@string/sign_in"
         app:layout_constraintBottom_toTopOf="@+id/btSettings"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
@@ -58,7 +58,7 @@
         android:id="@+id/btSettings"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="@string/sign_in_settings_button_text"
+        android:text="@string/settings"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />

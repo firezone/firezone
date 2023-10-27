@@ -14,8 +14,9 @@ data class Tunnel(
     val resources: List<Resource> = emptyList(),
 ) : Parcelable {
     enum class State {
-        Up,
         Connecting,
+        Up,
         Down,
+        Closed,
     }
 }

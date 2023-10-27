@@ -67,7 +67,7 @@ class TunnelRepositoryImpl
 
         override fun getState(): Tunnel.State {
             val json = sharedPreferences.getString(STATE_KEY, null)
-            return json?.let { Tunnel.State.valueOf(it) } ?: Tunnel.State.Down
+            return json?.let { Tunnel.State.valueOf(it) } ?: Tunnel.State.Closed
         }
 
         override fun setResources(resources: List<Resource>) {

@@ -72,6 +72,10 @@
             android:name="dev.firezone.android.features.permission.vpn.ui.VpnPermissionActivity"
             android:exported="false" />
 
+        <activity
+            android:name="dev.firezone.android.features.session.ui.SessionActivity"
+            android:exported="false" />
+
         <service
             android:name="dev.firezone.android.tunnel.TunnelService"
             android:exported="true"
