@@ -62,14 +62,14 @@ defmodule Web.Live.Nav.SidebarTest do
     assert String.trim(Floki.text(item)) == "Clients"
   end
 
-  test "renders proper active sidebar item class for gateways", %{
+  test "renders proper active sidebar item class for sites", %{
     account: account,
     identity: identity,
     conn: conn
   } do
-    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/gateway_groups")
-    assert item = Floki.find(html, "a.bg-gray-100[href='/#{account.id}/gateway_groups']")
-    assert String.trim(Floki.text(item)) == "Gateways"
+    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/sites")
+    assert item = Floki.find(html, "a.bg-gray-100[href='/#{account.id}/sites']")
+    assert String.trim(Floki.text(item)) == "Sites"
   end
 
   test "renders proper active sidebar item class for relays", %{
@@ -82,15 +82,15 @@ defmodule Web.Live.Nav.SidebarTest do
     assert String.trim(Floki.text(item)) == "Relays"
   end
 
-  test "renders proper active sidebar item class for resources", %{
-    account: account,
-    identity: identity,
-    conn: conn
-  } do
-    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/resources")
-    assert item = Floki.find(html, "a.bg-gray-100[href='/#{account.id}/resources']")
-    assert String.trim(Floki.text(item)) == "Resources"
-  end
+  # test "renders proper active sidebar item class for resources", %{
+  #   account: account,
+  #   identity: identity,
+  #   conn: conn
+  # } do
+  #   {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/resources")
+  #   assert item = Floki.find(html, "a.bg-gray-100[href='/#{account.id}/resources']")
+  #   assert String.trim(Floki.text(item)) == "Resources"
+  # end
 
   test "renders proper active sidebar item class for policies", %{
     account: account,

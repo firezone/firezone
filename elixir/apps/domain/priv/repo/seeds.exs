@@ -319,6 +319,16 @@ IO.puts("")
     last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 111}}
   })
 
+for i <- 1..5 do
+  {:ok, _relay} =
+    Relays.upsert_relay(relay_group_token, %{
+      ipv4: {189, 172, 73, 111 + i},
+      ipv6: {0, 0, 0, 0, 0, 0, 0, i},
+      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+      last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 111}}
+    })
+end
+
 IO.puts("Created relays:")
 IO.puts("  Group #{relay_group.name}:")
 IO.puts("    IPv4: #{relay.ipv4} IPv6: #{relay.ipv6}")
@@ -327,7 +337,7 @@ IO.puts("")
 gateway_group =
   account
   |> Gateways.Group.Changeset.create(
-    %{name_prefix: "mycro-aws-gws", tags: ["aws", "in-da-cloud"], tokens: [%{}]},
+    %{name_prefix: "mycro-aws-gws", tokens: [%{}]},
     admin_subject
   )
   |> Repo.insert!()
@@ -364,6 +374,17 @@ IO.puts("")
     last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
     last_seen_remote_ip: %Postgrex.INET{address: {164, 112, 78, 62}}
   })
+
+for i <- 1..10 do
+  {:ok, _gateway} =
+    Gateways.upsert_gateway(gateway_group_token, %{
+      external_id: Ecto.UUID.generate(),
+      name_suffix: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
+      public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+      last_seen_remote_ip: %Postgrex.INET{address: {164, 112, 78, 62 + i}}
+    })
+end
 
 IO.puts("Created gateways:")
 gateway_name = "#{gateway_group.name_prefix}-#{gateway1.name_suffix}"

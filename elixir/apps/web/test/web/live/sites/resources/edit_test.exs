@@ -1,4 +1,4 @@
-defmodule Web.Live.Resources.EditTest do
+defmodule Web.Live.Sites.Resources.EditTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -7,10 +7,13 @@ defmodule Web.Live.Resources.EditTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
+    group = Fixtures.Gateways.create_group(account: account, subject: subject)
+
     resource = Fixtures.Resources.create_resource(account: account, subject: subject)
 
     %{
       account: account,
+      group: group,
       actor: actor,
       identity: identity,
       resource: resource
@@ -19,10 +22,11 @@ defmodule Web.Live.Resources.EditTest do
 
   test "redirects to sign in page for unauthorized user", %{
     account: account,
+    group: group,
     resource: resource,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/resources/#{resource}/edit") ==
+    assert live(conn, ~p"/#{account}/sites/#{group}/resources/#{resource}/edit") ==
              {:error,
               {:redirect,
                %{
@@ -33,6 +37,7 @@ defmodule Web.Live.Resources.EditTest do
 
   test "renders not found error when resource is deleted", %{
     account: account,
+    group: group,
     identity: identity,
     resource: resource,
     conn: conn
@@ -42,12 +47,13 @@ defmodule Web.Live.Resources.EditTest do
     assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/#{resource}/edit")
+      |> live(~p"/#{account}/sites/#{group}/resources/#{resource}/edit")
     end
   end
 
   test "renders breadcrumbs item", %{
     account: account,
+    group: group,
     identity: identity,
     resource: resource,
     conn: conn
@@ -55,10 +61,12 @@ defmodule Web.Live.Resources.EditTest do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/#{resource}/edit")
+      |> live(~p"/#{account}/sites/#{group}/resources/#{resource}/edit")
 
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
+    assert breadcrumbs =~ "Sites"
+    assert breadcrumbs =~ group.name_prefix
     assert breadcrumbs =~ "Resources"
     assert breadcrumbs =~ resource.name
     assert breadcrumbs =~ "Edit"
@@ -66,6 +74,7 @@ defmodule Web.Live.Resources.EditTest do
 
   test "renders form", %{
     account: account,
+    group: group,
     identity: identity,
     resource: resource,
     conn: conn
@@ -73,42 +82,28 @@ defmodule Web.Live.Resources.EditTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/#{resource}/edit")
+      |> live(~p"/#{account}/sites/#{group}/resources/#{resource}/edit")
 
     form = form(lv, "form")
 
-    connection_inputs =
-      for connection <- resource.connections do
-        [
-          "resource[connections][#{connection.gateway_group_id}][enabled]",
-          "resource[connections][#{connection.gateway_group_id}][gateway_group_id]",
-          "resource[connections][#{connection.gateway_group_id}][resource_id]"
-        ]
-      end
-      |> List.flatten()
-
-    expected_inputs =
-      (connection_inputs ++
-         [
-           "resource[filters][all][enabled]",
-           "resource[filters][all][protocol]",
-           "resource[filters][icmp][enabled]",
-           "resource[filters][icmp][protocol]",
-           "resource[filters][tcp][enabled]",
-           "resource[filters][tcp][ports]",
-           "resource[filters][tcp][protocol]",
-           "resource[filters][udp][enabled]",
-           "resource[filters][udp][ports]",
-           "resource[filters][udp][protocol]",
-           "resource[name]"
-         ])
-      |> Enum.sort()
-
-    assert find_inputs(form) == expected_inputs
+    assert find_inputs(form) == [
+             "resource[filters][all][enabled]",
+             "resource[filters][all][protocol]",
+             "resource[filters][icmp][enabled]",
+             "resource[filters][icmp][protocol]",
+             "resource[filters][tcp][enabled]",
+             "resource[filters][tcp][ports]",
+             "resource[filters][tcp][protocol]",
+             "resource[filters][udp][enabled]",
+             "resource[filters][udp][ports]",
+             "resource[filters][udp][protocol]",
+             "resource[name]"
+           ]
   end
 
   test "renders changeset errors on input change", %{
     account: account,
+    group: group,
     identity: identity,
     resource: resource,
     conn: conn
@@ -124,7 +119,7 @@ defmodule Web.Live.Resources.EditTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/#{resource}/edit")
+      |> live(~p"/#{account}/sites/#{group}/resources/#{resource}/edit")
 
     lv
     |> form("form", resource: attrs)
@@ -147,6 +142,7 @@ defmodule Web.Live.Resources.EditTest do
 
   test "renders changeset errors on submit", %{
     account: account,
+    group: group,
     identity: identity,
     resource: resource,
     conn: conn
@@ -156,7 +152,7 @@ defmodule Web.Live.Resources.EditTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/#{resource}/edit")
+      |> live(~p"/#{account}/sites/#{group}/resources/#{resource}/edit")
 
     assert lv
            |> form("form", resource: attrs)
@@ -164,24 +160,11 @@ defmodule Web.Live.Resources.EditTest do
            |> form_validation_errors() == %{
              "resource[name]" => ["should be at most 255 character(s)"]
            }
-
-    connection_attrs =
-      for connection <- resource.connections, into: %{} do
-        {connection.gateway_group_id, %{enabled: false}}
-      end
-
-    attrs = %{name: "fooobar", connections: connection_attrs}
-
-    assert lv
-           |> form("form", resource: attrs)
-           |> render_submit()
-           |> form_validation_errors() == %{
-             "connections" => ["can't be blank"]
-           }
   end
 
   test "updates a resource on valid attrs", %{
     account: account,
+    group: group,
     identity: identity,
     resource: resource,
     conn: conn
@@ -198,12 +181,14 @@ defmodule Web.Live.Resources.EditTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/#{resource}/edit")
+      |> live(~p"/#{account}/sites/#{group}/resources/#{resource}/edit")
 
     assert lv
            |> form("form", resource: attrs)
            |> render_submit() ==
-             {:error, {:live_redirect, %{to: ~p"/#{account}/resources/#{resource}", kind: :push}}}
+             {:error,
+              {:live_redirect,
+               %{to: ~p"/#{account}/sites/#{group}/resources/#{resource}", kind: :push}}}
 
     assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
     assert saved_resource.name == attrs.name
@@ -220,6 +205,7 @@ defmodule Web.Live.Resources.EditTest do
 
   test "disables all filters on a resource when 'Permit All' filter is selected", %{
     account: account,
+    group: group,
     identity: identity,
     resource: resource,
     conn: conn
@@ -233,12 +219,14 @@ defmodule Web.Live.Resources.EditTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/#{resource}/edit")
+      |> live(~p"/#{account}/sites/#{group}/resources/#{resource}/edit")
 
     assert lv
            |> form("form", resource: attrs)
            |> render_submit() ==
-             {:error, {:live_redirect, %{to: ~p"/#{account}/resources/#{resource}", kind: :push}}}
+             {:error,
+              {:live_redirect,
+               %{to: ~p"/#{account}/sites/#{group}/resources/#{resource}", kind: :push}}}
 
     assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
 

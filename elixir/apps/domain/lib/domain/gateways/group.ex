@@ -2,8 +2,8 @@ defmodule Domain.Gateways.Group do
   use Domain, :schema
 
   schema "gateway_groups" do
+    # TODO: name
     field :name_prefix, :string
-    field :tags, {:array, :string}, default: []
 
     belongs_to :account, Domain.Accounts.Account
     has_many :gateways, Domain.Gateways.Gateway, foreign_key: :group_id, where: [deleted_at: nil]

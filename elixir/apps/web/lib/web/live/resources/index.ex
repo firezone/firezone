@@ -45,7 +45,7 @@ defmodule Web.Resources.Index do
             <:col :let={resource} label="GATEWAY INSTANCE GROUP">
               <.link
                 :for={gateway_group <- resource.gateway_groups}
-                navigate={~p"/#{@account}/gateway_groups"}
+                navigate={~p"/#{@account}/sites"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
                 <.badge type="info">

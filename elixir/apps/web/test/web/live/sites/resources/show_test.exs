@@ -1,4 +1,4 @@
-defmodule Web.Live.Gateways.ShowTest do
+defmodule Web.Live.Sites.Resources.ShowTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -7,24 +7,35 @@ defmodule Web.Live.Gateways.ShowTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
-    gateway = Fixtures.Gateways.create_gateway(account: account, actor: actor, identity: identity)
+    group = Fixtures.Gateways.create_group(account: account, subject: subject)
+    gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
     gateway = Repo.preload(gateway, :group)
+
+    resource =
+      Fixtures.Resources.create_resource(
+        account: account,
+        subject: subject,
+        connections: [%{gateway_group_id: group.id}]
+      )
 
     %{
       account: account,
       actor: actor,
       identity: identity,
       subject: subject,
-      gateway: gateway
+      group: group,
+      gateway: gateway,
+      resource: resource
     }
   end
 
   test "redirects to sign in page for unauthorized user", %{
     account: account,
-    gateway: gateway,
+    group: group,
+    resource: resource,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/gateways/#{gateway}") ==
+    assert live(conn, ~p"/#{account}/sites/#{group}/resources/#{resource}") ==
              {:error,
               {:redirect,
                %{
@@ -33,97 +44,104 @@ defmodule Web.Live.Gateways.ShowTest do
                }}}
   end
 
-  test "renders not found error when gateway is deleted", %{
+  test "renders not found error when resource is deleted", %{
     account: account,
-    gateway: gateway,
+    group: group,
+    resource: resource,
     identity: identity,
     conn: conn
   } do
-    gateway = Fixtures.Gateways.delete_gateway(gateway)
+    resource = Fixtures.Resources.delete_resource(resource)
 
     assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateways/#{gateway}")
+      |> live(~p"/#{account}/sites/#{group}/resources/#{resource}")
     end
   end
 
   test "renders breadcrumbs item", %{
     account: account,
-    gateway: gateway,
+    group: group,
+    resource: resource,
     identity: identity,
     conn: conn
   } do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateways/#{gateway}")
+      |> live(~p"/#{account}/sites/#{group}/resources/#{resource}")
 
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Sites"
-    assert breadcrumbs =~ gateway.group.name_prefix
-    assert breadcrumbs =~ gateway.name_suffix
+    assert breadcrumbs =~ group.name_prefix
+    assert breadcrumbs =~ "Resources"
+    assert breadcrumbs =~ resource.name
   end
 
-  test "renders gateway details", %{
+  test "allows editing resource", %{
     account: account,
-    gateway: gateway,
+    group: group,
+    resource: resource,
     identity: identity,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateways/#{gateway}")
+      |> live(~p"/#{account}/sites/#{group}/resources/#{resource}")
 
-    table =
-      lv
-      |> element("#gateway")
-      |> render()
-      |> vertical_table_to_map()
-
-    assert table["site"] =~ gateway.group.name_prefix
-    assert table["instance name"] =~ gateway.name_suffix
-    assert table["last seen"]
-    assert table["last seen remote ip"] =~ to_string(gateway.last_seen_remote_ip)
-    assert table["status"] =~ "Offline"
-    assert table["user agent"] =~ gateway.last_seen_user_agent
-    assert table["version"] =~ gateway.last_seen_version
+    assert lv
+           |> element("a", "Edit Resource")
+           |> render_click() ==
+             {:error,
+              {:live_redirect,
+               %{
+                 to: ~p"/#{account}/sites/#{group}/resources/#{resource}/edit",
+                 kind: :push
+               }}}
   end
 
-  test "renders gateway status", %{
+  test "renders resource details", %{
     account: account,
-    gateway: gateway,
+    group: group,
+    actor: actor,
     identity: identity,
+    resource: resource,
     conn: conn
   } do
-    :ok = Domain.Gateways.connect_gateway(gateway)
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateways/#{gateway}")
+      |> live(~p"/#{account}/sites/#{group}/resources/#{resource}")
 
     table =
       lv
-      |> element("#gateway")
+      |> element("#resource")
       |> render()
       |> vertical_table_to_map()
 
-    assert table["status"] =~ "Online"
+    assert table["name"] =~ resource.name
+    assert table["address"] =~ resource.address
+    assert table["created"] =~ actor.name
+
+    for filter <- resource.filters do
+      assert String.downcase(table["traffic filtering rules"]) =~ Atom.to_string(filter.protocol)
+    end
   end
 
   test "renders logs table", %{
     account: account,
+    group: group,
     identity: identity,
-    gateway: gateway,
+    resource: resource,
     conn: conn
   } do
     flow =
       Fixtures.Flows.create_flow(
         account: account,
-        gateway: gateway
+        resource: resource
       )
 
     flow =
@@ -132,7 +150,7 @@ defmodule Web.Live.Gateways.ShowTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateways/#{gateway}")
+      |> live(~p"/#{account}/sites/#{group}/resources/#{resource}")
 
     [row] =
       lv
@@ -142,31 +160,35 @@ defmodule Web.Live.Gateways.ShowTest do
 
     assert row["authorized at"]
     assert row["expires at"]
-    assert row["remote ip"] == to_string(gateway.last_seen_remote_ip)
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
+
+    assert row["gateway (ip)"] ==
+             "#{flow.gateway.group.name_prefix}-#{flow.gateway.name_suffix} (189.172.73.153)"
 
     assert row["client, actor (ip)"] =~ flow.client.name
     assert row["client, actor (ip)"] =~ "owned by #{flow.client.actor.name}"
     assert row["client, actor (ip)"] =~ to_string(flow.client_remote_ip)
   end
 
-  test "allows deleting gateways", %{
+  test "allows deleting resource", %{
     account: account,
-    gateway: gateway,
+    group: group,
+    resource: resource,
     identity: identity,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateways/#{gateway}")
+      |> live(~p"/#{account}/sites/#{group}/resources/#{resource}")
 
     assert lv
-           |> element("button", "Delete Gateway")
+           |> element("button", "Delete Resource")
            |> render_click() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/sites/#{gateway.group}"}}}
+             {:error,
+              {:live_redirect, %{to: ~p"/#{account}/sites/#{group}?#resources", kind: :push}}}
 
-    assert Repo.get(Domain.Gateways.Gateway, gateway.id).deleted_at
+    assert Repo.get(Domain.Resources.Resource, resource.id).deleted_at
   end
 end

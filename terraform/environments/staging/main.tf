@@ -400,8 +400,10 @@ locals {
       value = "support@firez.one"
     },
     {
-      name  = "OUTBOUND_EMAIL_ADAPTER_OPTS"
-      value = "{\"api_key\":\"${var.postmark_server_api_token}\"}"
+      name = "OUTBOUND_EMAIL_ADAPTER_OPTS"
+      value = jsonencode({
+        api_key = var.postmark_server_api_token
+      })
     }
   ]
 }

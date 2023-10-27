@@ -20,9 +20,12 @@ defmodule Web.Gateways.Show do
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/gateway_groups"}>Gateway Instance Groups</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/gateway_groups/#{@gateway.group}"}>
+      <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}"}>
         <%= @gateway.group.name_prefix %>
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}?#gateways"}>
+        Gateways
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/gateways/#{@gateway}"}>
         <%= @gateway.name_suffix %>
@@ -35,10 +38,10 @@ defmodule Web.Gateways.Show do
       <:content>
         <.vertical_table id="gateway">
           <.vertical_table_row>
-            <:label>Instance Group Name</:label>
+            <:label>Site</:label>
             <:value>
               <.link
-                navigate={~p"/#{@account}/gateway_groups/#{@gateway.group}"}
+                navigate={~p"/#{@account}/sites/#{@gateway.group}"}
                 class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
               >
                 <%= @gateway.group.name_prefix %>
@@ -191,7 +194,7 @@ defmodule Web.Gateways.Show do
 
     socket =
       redirect(socket,
-        to: ~p"/#{socket.assigns.account}/gateway_groups/#{socket.assigns.gateway.group}"
+        to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.gateway.group}"
       )
 
     {:noreply, socket}
