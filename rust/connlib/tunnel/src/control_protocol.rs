@@ -25,6 +25,7 @@ mod client;
 mod gateway;
 
 const ICE_CANDIDATE_BUFFER: usize = 100;
+const MAX_RELAYS: usize = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
@@ -113,6 +114,7 @@ pub async fn new_peer_connection(
                     credential_type: RTCIceCredentialType::Password,
                 },
             })
+            .take(MAX_RELAYS)
             .collect(),
         ..Default::default()
     };
