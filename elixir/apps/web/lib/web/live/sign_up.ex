@@ -1,6 +1,6 @@
 defmodule Web.SignUp do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
-  alias Domain.{Auth, Accounts, Actors}
+  alias Domain.{Auth, Accounts, Actors, Config}
   alias Web.Registration
 
   defmodule Registration do
@@ -37,6 +37,15 @@ defmodule Web.SignUp do
         actor: %{type: :account_admin_user}
       })
 
+    socket =
+      assign(socket,
+        form: to_form(changeset),
+        account: nil,
+        sign_up_enabled: Config.sign_up_enabled?()
+      )
+
+    {:ok, socket}
+
     {:ok, assign(socket, form: to_form(changeset), account: nil)}
   end
 
@@ -61,8 +70,9 @@ defmodule Web.SignUp do
               </:separator>
 
               <:item>
-                <.sign_up_form :if={@account == nil} flash={@flash} form={@form} />
-                <.welcome :if={@account} account={@account} />
+                <.sign_up_form :if={@account == nil && @sign_up_enabled} flash={@flash} form={@form} />
+                <.welcome :if={@account && @sign_up_enabled} account={@account} />
+                <.sign_up_disabled :if={!@sign_up_enabled} />
               </:item>
             </.intersperse_blocks>
           </div>
@@ -206,7 +216,7 @@ defmodule Web.SignUp do
       |> Registration.changeset(attrs)
       |> Map.put(:action, :insert)
 
-    if changeset.valid? do
+    if changeset.valid? && socket.assigns.sign_up_enabled do
       registration = Ecto.Changeset.apply_changes(changeset)
 
       multi =
@@ -261,5 +271,28 @@ defmodule Web.SignUp do
     else
       {:noreply, assign(socket, form: to_form(changeset))}
     end
+  end
+
+  def sign_up_disabled(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <div class="text-xl text-center text-gray-900 dark:text-white">
+        Sign-ups are currently disabled.
+      </div>
+      <div class="text-center">
+        Please contact
+        <a class={link_style()} href="mailto:sales@firezone.dev?subject=Firezone Sign Up Request">
+          sales@firezone.dev
+        </a>
+        for more information.
+      </div>
+      <p class="text-xs text-center">
+        By signing up you agree to our <.link
+          href="https://www.firezone.dev/terms"
+          class="text-blue-600 dark:text-blue-500 hover:underline"
+        >Terms of Use</.link>.
+      </p>
+    </div>
+    """
   end
 end
