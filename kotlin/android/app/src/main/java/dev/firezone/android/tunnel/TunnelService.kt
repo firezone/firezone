@@ -138,7 +138,7 @@ class TunnelService : VpnService() {
 
             override fun onDisconnect(error: String?): Boolean {
                 onSessionDisconnected(
-                    error = error?.takeUnless { it == "null" }
+                    error = error?.takeUnless { it == "null" },
                 )
                 return true
             }
@@ -205,7 +205,6 @@ class TunnelService : VpnService() {
         try {
             sessionPtr?.let {
                 TunnelSession.disconnect(it)
-            }
             } ?: onSessionDisconnected(null)
         } catch (exception: Exception) {
             Log.e(TAG, exception.message.toString())
@@ -222,11 +221,11 @@ class TunnelService : VpnService() {
         } else {
             tunnelRepository.clearAll()
             preferenceRepository.clearToken()
+            onTunnelStateUpdate(Tunnel.State.Closed)
             stopForeground(STOP_FOREGROUND_REMOVE)
         }
     }
 
-    private fun onDisconnect() {
     private fun deviceId(): String {
         val deviceId = FirebaseInstallations.getInstance().id
         Log.d(TAG, "Device ID: $deviceId")

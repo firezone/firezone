@@ -70,7 +70,10 @@ internal class SessionViewModel
                 tunnelManager.addListener(tunnelListener)
 
                 val isServiceRunning = TunnelService.isRunning(context)
-                if (!isServiceRunning || tunnelRepository.getState() == Tunnel.State.Down || tunnelRepository.getState() == Tunnel.State.Closed) {
+                if (!isServiceRunning ||
+                    tunnelRepository.getState() == Tunnel.State.Down ||
+                    tunnelRepository.getState() == Tunnel.State.Closed
+                ) {
                     tunnelManager.connect()
                 } else {
                     _uiState.value =
