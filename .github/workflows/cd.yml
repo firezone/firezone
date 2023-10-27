@@ -8,11 +8,6 @@ env:
   # mark:automatic-version
   VERSION: "1.20231001.0"
 
-# Cancel old workflow runs if new code is pushed
-concurrency:
-  group: "cd-${{ github.workflow }}-${{ github.ref }}"
-  cancel-in-progress: false
-
 jobs:
   ci:
     uses: ./.github/workflows/ci.yml
@@ -23,6 +18,10 @@ jobs:
     # if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write
+    # Cancel old workflow runs if new code is pushed
+    concurrency:
+      group: "staging-deploy-${{ github.workflow }}-${{ github.ref }}"
+      cancel-in-progress: false
     needs:
       - ci
     env:
@@ -73,9 +72,7 @@ jobs:
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.4
         id: apply-run
         env:
-          TF_VAR_api_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
-          TF_VAR_web_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
-          TF_VAR_relay_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
+          TF_VAR_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
           configuration_version:
@@ -160,7 +157,8 @@ jobs:
           tool: cross
       - name: Build release binaries
         env:
-          CARGO_OUTPUT_FILE: target/${{ matrix.arch.target }}/release/${{ matrix.name.package }}
+          CARGO_OUTPUT_FILE:
+            target/${{ matrix.arch.target }}/release/${{ matrix.name.package }}
         run: |
           dest="$BINARY_DEST_PATH-$VERSION"
           cross build --release -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
@@ -206,11 +204,11 @@ jobs:
             TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.artifact }}:main
           cache-to: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.artifact }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.artifact }}:main
           target: release
-          outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact}},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.artifact }}
@@ -253,7 +251,8 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
+          images:
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
           tags: |
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}

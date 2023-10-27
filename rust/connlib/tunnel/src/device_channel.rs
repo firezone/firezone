@@ -9,3 +9,9 @@ mod device_channel;
 mod device_channel;
 
 pub(crate) use device_channel::*;
+use std::borrow::Cow;
+
+pub enum Packet<'a> {
+    Ipv4(Cow<'a, [u8]>),
+    Ipv6(Cow<'a, [u8]>),
+}

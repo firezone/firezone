@@ -15,7 +15,8 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategyTest do
         meta: %Meta{},
         config: [
           project_id: "firezone-staging",
-          cluster_name: "firezone"
+          cluster_name: "firezone",
+          cluster_version: "1"
         ]
       }
 

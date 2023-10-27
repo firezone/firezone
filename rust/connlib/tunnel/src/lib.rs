@@ -17,7 +17,6 @@ use hickory_resolver::proto::rr::RecordType;
 use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
-use resource_table::ResourceTable;
 use tokio::{task::AbortHandle, time::MissedTickBehavior};
 use webrtc::{
     api::{
@@ -34,6 +33,7 @@ use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
 use std::{collections::HashSet, hash::Hash};
 use tokio::time::Interval;
+use webrtc::data::data_channel::DataChannel;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 use connlib_shared::{
@@ -131,9 +131,7 @@ impl Device {
     }
 }
 
-// TODO: We should use newtypes for each kind of Id
-/// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets
-/// to communicate between peers.
+/// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
 pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     next_index: Mutex<IndexLfsr>,
     // We use a tokio Mutex here since this is only read/write during config so there's no relevant performance impact
@@ -141,7 +139,8 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     rate_limiter: Arc<RateLimiter>,
     private_key: StaticSecret,
     public_key: PublicKey,
-    peers_by_ip: RwLock<IpNetworkTable<Arc<Peer<TRoleState::Id>>>>,
+    #[allow(clippy::type_complexity)]
+    peers_by_ip: RwLock<IpNetworkTable<ConnectedPeer<TRoleState::Id>>>,
     peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCPeerConnection>>>,
     webrtc_api: API,
     callbacks: CallbackErrorFacade<CB>,
@@ -156,6 +155,11 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     rate_limit_reset_interval: Mutex<Interval>,
     peer_refresh_interval: Mutex<Interval>,
     mtu_refresh_interval: Mutex<Interval>,
+}
+
+pub struct ConnectedPeer<TId> {
+    inner: Arc<Peer<TId>>,
+    channel: Arc<DataChannel>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -177,7 +181,7 @@ where
             .peers_by_ip
             .read()
             .iter()
-            .map(|(ip, peer)| (ip, peer.stats()))
+            .map(|(ip, peer)| (ip, peer.inner.stats()))
             .collect();
         let peer_connections = self.peer_connections.lock().keys().cloned().collect();
 
@@ -205,24 +209,40 @@ where
             }
 
             if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let peers_to_refresh = {
-                    let mut peers_by_ip = self.peers_by_ip.write();
+                let mut peers_by_ip = self.peers_by_ip.write();
 
+                for peer in
                     peers_to_refresh(&mut peers_by_ip, self.stop_peer_command_sender.clone())
-                };
-
-                for peer in peers_to_refresh {
+                {
                     let callbacks = self.callbacks.clone();
                     let mut stop_command_sender = self.stop_peer_command_sender.clone();
 
-                    tokio::spawn(async move {
-                        if let Err(e) = peer.update_timers().await {
-                            tracing::error!("Failed to update timers for peer: {e}");
-                            let _ = callbacks.on_error(&e);
+                    let result = peer.inner.update_timers();
+                    let peer_index = peer.inner.index;
+                    let peer_conn_id = peer.inner.conn_id;
+                    let peer_channel = peer.channel.clone();
 
-                            if e.is_fatal_connection_error() {
-                                let _ = stop_command_sender.send((peer.index, peer.conn_id)).await;
+                    tokio::spawn(async move {
+                        let bytes = match result {
+                            Ok(Some(bytes)) => bytes,
+                            Ok(None) => {
+                                return;
                             }
+                            Err(e) => {
+                                tracing::error!("Failed to update timers for peer: {e}");
+                                let _ = callbacks.on_error(&e);
+
+                                if e.is_fatal_connection_error() {
+                                    let _ =
+                                        stop_command_sender.send((peer_index, peer_conn_id)).await;
+                                }
+                                return;
+                            }
+                        };
+
+                        if let Err(e) = peer_channel.write(&bytes).await {
+                            tracing::error!("Failed to send packet to peer: {e}");
+                            let _ = callbacks.on_error(&e.into());
                         }
                     });
                 }
@@ -268,22 +288,22 @@ where
             {
                 let mut peers = self.peers_by_ip.write();
 
-                let (maybe_network, maybe_peer) = peers
+                let Some(peer_to_remove) = peers
                     .iter()
-                    .find_map(|(n, p)| (p.index == i).then_some((n, p.clone())))
-                    .unzip();
+                    .find_map(|(n, p)| (p.inner.index == i).then_some(n))
+                else {
+                    continue;
+                };
 
-                if let Some(network) = maybe_network {
-                    peers.remove(network);
-                }
+                let peer = peers.remove(peer_to_remove).expect("just found it");
 
+                let channel = peer.channel.clone();
+
+                tokio::spawn(async move { channel.close().await });
                 if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
                     tokio::spawn({
                         let callbacks = self.callbacks.clone();
                         async move {
-                            if let Some(peer) = maybe_peer {
-                                let _ = peer.shutdown().await;
-                            }
                             if let Err(e) = conn.close().await {
                                 tracing::warn!(%conn_id, error = ?e, "Can't close peer");
                                 let _ = callbacks.on_error(&e.into());
@@ -291,6 +311,7 @@ where
                         }
                     });
                 }
+
                 continue;
             }
 
@@ -300,10 +321,10 @@ where
 }
 
 pub(crate) fn peer_by_ip<Id>(
-    peers_by_ip: &IpNetworkTable<Arc<Peer<Id>>>,
+    peers_by_ip: &IpNetworkTable<ConnectedPeer<Id>>,
     ip: IpAddr,
-) -> Option<Arc<Peer<Id>>> {
-    peers_by_ip.longest_match(ip).map(|(_, peer)| peer).cloned()
+) -> Option<&ConnectedPeer<Id>> {
+    peers_by_ip.longest_match(ip).map(|(_, peer)| peer)
 }
 
 #[derive(Debug)]
@@ -364,7 +385,6 @@ where
         let peers_by_ip = RwLock::new(IpNetworkTable::new());
         let next_index = Default::default();
         let peer_connections = Default::default();
-        let resources: Arc<RwLock<ResourceTable<ResourceDescription>>> = Default::default();
         let device = Default::default();
         let iface_handler_abort = Default::default();
 
@@ -377,11 +397,6 @@ where
         registry = register_default_interceptors(registry, &mut media_engine)?;
         let mut setting_engine = SettingEngine::default();
         setting_engine.detach_data_channels();
-        setting_engine.set_ip_filter(Box::new({
-            let resources = Arc::clone(&resources);
-            move |ip| !resources.read().values().any(|res_ip| res_ip.contains(ip))
-        }));
-
         setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
 
         let webrtc_api = APIBuilder::new()
@@ -450,33 +465,28 @@ fn mtu_refresh_interval() -> Interval {
 }
 
 fn peers_to_refresh<TId>(
-    peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId>>>,
+    peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId>>,
     shutdown_sender: mpsc::Sender<(u32, TId)>,
-) -> Vec<Arc<Peer<TId>>>
+) -> impl Iterator<Item = &ConnectedPeer<TId>>
 where
     TId: Eq + Hash + Copy + Send + Sync + 'static,
 {
     remove_expired_peers(peers_by_ip, shutdown_sender);
 
-    peers_by_ip
-        .iter()
-        .map(|p| p.1)
-        .unique_by(|p| p.index)
-        .cloned()
-        .collect()
+    peers_by_ip.iter().map(|p| p.1).unique_by(|p| p.inner.index)
 }
 
 fn remove_expired_peers<TId>(
-    peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId>>>,
+    peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId>>,
     shutdown_sender: mpsc::Sender<(u32, TId)>,
 ) where
     TId: Eq + Hash + Copy + Send + Sync + 'static,
 {
-    for (_, peer) in peers_by_ip.iter() {
-        peer.expire_resources();
-        if peer.is_emptied() {
-            let index = peer.index;
-            let conn_id = peer.conn_id;
+    for (_, p) in peers_by_ip.iter() {
+        p.inner.expire_resources();
+        if p.inner.is_emptied() {
+            let index = p.inner.index;
+            let conn_id = p.inner.conn_id;
 
             tracing::trace!(%index, "peer_expired");
 
@@ -487,7 +497,7 @@ fn remove_expired_peers<TId>(
         }
     }
 
-    peers_by_ip.retain(|_, p| !p.is_emptied());
+    peers_by_ip.retain(|_, p| !p.inner.is_emptied());
 }
 
 /// Dedicated trait for abstracting over the different ICE states.

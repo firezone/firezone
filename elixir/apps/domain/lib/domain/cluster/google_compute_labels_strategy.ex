@@ -18,6 +18,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
   use GenServer
   use Cluster.Strategy
   alias Cluster.Strategy.State
+  require Logger
 
   defmodule Meta do
     @type t :: %{
@@ -111,9 +112,8 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
       {:ok, nodes, state}
     else
       {:error, %{"error" => %{"code" => 401}} = reason} ->
-        Cluster.Logger.error(
-          state.topology,
-          "Invalid access token was used: #{inspect(reason)}"
+        Logger.error("Invalid access token was used: #{inspect(reason)}",
+          module: __MODULE__
         )
 
         if remaining_retry_count == 0 do
@@ -123,9 +123,8 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
         end
 
       {:error, reason} ->
-        Cluster.Logger.error(
-          state.topology,
-          "Can not fetch list of nodes or access token: #{inspect(reason)}"
+        Logger.error("Can not fetch list of nodes or access token: #{inspect(reason)}",
+          module: __MODULE__
         )
 
         if remaining_retry_count == 0 do
@@ -141,14 +140,18 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
   defp list_google_cloud_cluster_nodes(state) do
     project_id = Keyword.fetch!(state.config, :project_id)
     cluster_name = Keyword.fetch!(state.config, :cluster_name)
+    cluster_version = Keyword.fetch!(state.config, :cluster_version)
     cluster_name_label = Keyword.get(state.config, :cluster_name_label, "cluster_name")
+    cluster_version_label = Keyword.get(state.config, :cluster_version_label, "cluster_version")
     node_name_label = Keyword.get(state.config, :node_name_label, "application")
 
     with {:ok, instances} <-
-           Domain.GoogleCloudPlatform.list_google_cloud_instances_by_label(
+           Domain.GoogleCloudPlatform.list_google_cloud_instances_by_labels(
              project_id,
-             cluster_name_label,
-             cluster_name
+             %{
+               cluster_name_label => cluster_name,
+               cluster_version_label => cluster_version
+             }
            ) do
       nodes =
         instances
@@ -156,7 +159,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
           release_name = Map.fetch!(labels, node_name_label)
           zone = String.split(zone, "/") |> List.last()
           node_name = :"#{release_name}@#{name}.#{zone}.c.#{project_id}.internal"
-          Cluster.Logger.debug(state.topology, "Found node: #{inspect(node_name)}")
+          Logger.debug("Found node: #{inspect(node_name)}", module: __MODULE__)
           node_name
         end)
 

@@ -1,11 +1,11 @@
 use crate::bounded_queue::BoundedQueue;
-use crate::device_channel::{create_iface, DeviceIo};
-use crate::ip_packet::IpPacket;
-use crate::peer::Peer;
+use crate::device_channel::create_iface;
+use crate::ip_packet::{IpPacket, MutableIpPacket};
+use crate::peer::WriteTo;
 use crate::resource_table::ResourceTable;
 use crate::{
-    dns, peer_by_ip, tokio_util, Device, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
-    DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
+    dns, peer_by_ip, tokio_util, ConnectedPeer, Device, DnsQuery, Event, PeerConfig, RoleState,
+    Tunnel, DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
     MAX_UDP_SIZE,
 };
 use boringtun::x25519::{PublicKey, StaticSecret};
@@ -24,7 +24,6 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use std::io;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -77,34 +76,12 @@ where
         response: hickory_resolver::error::ResolveResult<Lookup>,
         query: IpPacket<'static>,
     ) -> connlib_shared::Result<()> {
-        let Some(mut message) = dns::as_dns_message(&query) else {
-            debug_assert!(false, "The original message should be a DNS query for us to ever call write_dns_lookup_response");
-            return Ok(());
-        };
-        let response = match response.map_err(|err| err.kind().clone()) {
-            Ok(response) => message.add_answers(response.records().to_vec()),
-            Err(hickory_resolver::error::ResolveErrorKind::NoRecordsFound {
-                soa,
-                response_code,
-                ..
-            }) => {
-                if let Some(soa) = soa {
-                    message.add_name_server(soa.clone().into_record_of_rdata());
-                }
-
-                message.set_response_code(response_code)
-            }
-            Err(e) => {
-                return Err(e.into());
-            }
-        };
-
-        if let Some(pkt) = dns::build_response(query, response.to_vec()?) {
+        if let Some(pkt) = dns::build_response_from_resolve_result(query, response)? {
             let Some(ref device) = *self.device.read().await else {
                 return Ok(());
             };
 
-            send_dns_packet(&device.io, pkt)?;
+            device.io.write(pkt)?;
         }
 
         Ok(())
@@ -177,58 +154,56 @@ where
             return Ok(());
         };
 
-        match dns::parse(&tunnel.role_state.lock().resources, packet.as_immutable()) {
-            Some(dns::ResolveStrategy::LocalResponse(pkt)) => {
-                if let Err(e) = send_dns_packet(&device_writer, pkt) {
-                    tracing::error!(err = %e, "failed to send DNS packet");
-                    let _ = tunnel.callbacks.on_error(&e.into());
-                }
-
-                continue;
-            }
-            Some(dns::ResolveStrategy::ForwardQuery(query)) => {
-                tunnel.role_state.lock().dns_query(query);
-                continue;
-            }
-            None => {}
-        }
-
         let dest = packet.destination();
+        let (peer_index, peer_conn_id, peer_channel, maybe_write_to) = {
+            let peers_by_ip = tunnel.peers_by_ip.read();
+            let peer = peer_by_ip(&peers_by_ip, dest);
 
-        let Some(peer) = peer_by_ip(&tunnel.peers_by_ip.read(), dest) else {
-            tunnel
+            let result = tunnel
                 .role_state
                 .lock()
-                .on_connection_intent(packet.destination());
-            continue;
+                .handle_new_packet(packet, peer, &mut buf);
+
+            let maybe_write_to = match result {
+                Ok(None) => continue,
+                Ok(Some(write_to)) => Ok(write_to),
+                Err(e) => Err(e),
+            };
+
+            let peer = peer.expect("must have peer if we should write bytes");
+
+            (
+                peer.inner.index,
+                peer.inner.conn_id,
+                peer.channel.clone(),
+                maybe_write_to,
+            )
         };
 
-        if let Err(e) = peer.send(packet, dest, &mut buf).await {
-            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+        let error = match maybe_write_to {
+            Ok(WriteTo::Network(bytes)) => match peer_channel.write(&bytes).await {
+                Ok(_) => continue,
+                Err(e) => ConnlibError::IceDataError(e),
+            },
+            Ok(WriteTo::Resource(packet)) => match device_writer.write(packet) {
+                Ok(_) => continue,
+                Err(e) => ConnlibError::Io(e),
+            },
+            Err(e) => e,
+        };
 
-            let _ = tunnel.callbacks.on_error(&e);
+        tracing::error!(resource_address = %dest, err = ?error, "failed to handle packet {error:#}");
 
-            if e.is_fatal_connection_error() {
-                let _ = tunnel
-                    .stop_peer_command_sender
-                    .clone()
-                    .send((peer.index, peer.conn_id))
-                    .await;
-            }
+        let _ = tunnel.callbacks.on_error(&error);
+
+        if error.is_fatal_connection_error() {
+            let _ = tunnel
+                .stop_peer_command_sender
+                .clone()
+                .send((peer_index, peer_conn_id))
+                .await;
         }
     }
-}
-
-fn send_dns_packet(device_writer: &DeviceIo, packet: dns::Packet) -> io::Result<()> {
-    match packet {
-        dns::Packet::Ipv4(r) => {
-            device_writer.write4(&r[..])?;
-        }
-        dns::Packet::Ipv6(r) => {
-            device_writer.write6(&r[..])?;
-        }
-    }
-    Ok(())
 }
 
 /// [`Tunnel`] state specific to clients.
@@ -257,12 +232,43 @@ pub struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
+    pub(crate) fn handle_new_packet<'b>(
+        &mut self,
+        packet: MutableIpPacket,
+        peer: Option<&ConnectedPeer<GatewayId>>,
+        buf: &'b mut [u8],
+    ) -> Result<Option<WriteTo<'b>>, ConnlibError> {
+        match dns::parse(&self.resources, packet.as_immutable()) {
+            Some(dns::ResolveStrategy::LocalResponse(pkt)) => {
+                return Ok(Some(WriteTo::Resource(pkt)))
+            }
+            Some(dns::ResolveStrategy::ForwardQuery(query)) => {
+                self.add_pending_dns_query(query);
+                return Ok(None);
+            }
+            None => {}
+        }
+
+        let dest = packet.destination();
+
+        let Some(peer) = peer else {
+            self.on_connection_intent(dest);
+            return Ok(None);
+        };
+
+        let Some(bytes) = peer.inner.encapsulate(packet, dest, buf)? else {
+            return Ok(None);
+        };
+
+        Ok(Some(WriteTo::Network(bytes)))
+    }
+
     pub(crate) fn attempt_to_reuse_connection(
         &mut self,
         resource: ResourceId,
         gateway: GatewayId,
         expected_attempts: usize,
-        connected_peers: &mut IpNetworkTable<Arc<Peer<GatewayId>>>,
+        connected_peers: &mut IpNetworkTable<ConnectedPeer<GatewayId>>,
     ) -> Result<Option<ReuseConnection>, ConnlibError> {
         if self.is_connected_to(resource, connected_peers) {
             return Err(Error::UnexpectedConnectionDetails);
@@ -292,24 +298,32 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        let peer = connected_peers
-            .iter()
-            .find_map(|(_, p)| (p.conn_id == gateway).then_some(p))
-            .cloned();
-        if let Some(peer) = peer {
-            for ip in desc.ips() {
-                peer.add_allowed_ip(ip);
-                connected_peers.insert(ip, Arc::clone(&peer));
-            }
-            self.awaiting_connection.remove(&resource);
-            self.awaiting_connection_timers.remove(resource);
-            return Ok(Some(ReuseConnection {
-                resource_id: resource,
-                gateway_id: gateway,
-            }));
-        }
+        let Some(peer) = connected_peers.iter().find_map(|(_, p)| {
+            (p.inner.conn_id == gateway).then_some(ConnectedPeer {
+                inner: p.inner.clone(),
+                channel: p.channel.clone(),
+            })
+        }) else {
+            return Ok(None);
+        };
 
-        Ok(None)
+        for ip in desc.ips() {
+            peer.inner.add_allowed_ip(ip);
+            connected_peers.insert(
+                ip,
+                ConnectedPeer {
+                    inner: peer.inner.clone(),
+                    channel: peer.channel.clone(),
+                },
+            );
+        }
+        self.awaiting_connection.remove(&resource);
+        self.awaiting_connection_timers.remove(resource);
+
+        Ok(Some(ReuseConnection {
+            resource_id: resource,
+            gateway_id: gateway,
+        }))
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -438,7 +452,7 @@ impl ClientState {
     fn is_connected_to(
         &self,
         resource: ResourceId,
-        connected_peers: &IpNetworkTable<Arc<Peer<GatewayId>>>,
+        connected_peers: &IpNetworkTable<ConnectedPeer<GatewayId>>,
     ) -> bool {
         let Some(resource) = self.resources.get_by_id(&resource) else {
             return false;
@@ -457,7 +471,7 @@ impl ClientState {
         }
     }
 
-    pub fn dns_query(&mut self, query: DnsQuery) {
+    pub fn add_pending_dns_query(&mut self, query: DnsQuery) {
         if self.dns_queries.push_back(query.into_owned()).is_err() {
             tracing::warn!("Too many DNS queries, dropping new ones");
         }

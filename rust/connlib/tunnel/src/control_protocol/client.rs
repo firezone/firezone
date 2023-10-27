@@ -19,7 +19,7 @@ use webrtc::{
 use crate::control_protocol::{
     new_peer_connection, on_dc_close_handler, on_peer_connection_state_change_handler,
 };
-use crate::{peer::Peer, ClientState, Error, Request, Result, Tunnel};
+use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
 fn set_connection_state_update<CB>(
@@ -118,7 +118,11 @@ where
                 tracing::trace!("new_data_channel_opened");
                 let index = tunnel.next_index();
 
-                let peer_config = match tunnel.role_state.lock().create_peer_config_for_new_connection(resource_id, gateway_id, p_key) {
+                let peer_config = match tunnel
+                    .role_state
+                    .lock()
+                    .create_peer_config_for_new_connection(resource_id, gateway_id, p_key)
+                {
                     Ok(c) => c,
                     Err(e) => {
                         tunnel.peer_connections.lock().remove(&gateway_id);
@@ -129,13 +133,19 @@ where
                     }
                 };
 
-                d.on_close(on_dc_close_handler(index, gateway_id, tunnel.stop_peer_command_sender.clone()));
+                d.on_close(on_dc_close_handler(
+                    index,
+                    gateway_id,
+                    tunnel.stop_peer_command_sender.clone(),
+                ));
+                let d = d.detach().await.expect(
+                    "only fails if not opened or not enabled, both of which are always true for us",
+                );
 
                 let peer = Arc::new(Peer::new(
                     tunnel.private_key.clone(),
                     index,
                     peer_config.clone(),
-                    d.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us"),
                     gateway_id,
                     None,
                 ));
@@ -144,19 +154,31 @@ where
                     let mut peers_by_ip = tunnel.peers_by_ip.write();
 
                     for ip in peer_config.ips {
-                        peers_by_ip.insert(ip, Arc::clone(&peer));
+                        peers_by_ip.insert(
+                            ip,
+                            ConnectedPeer {
+                                inner: peer.clone(),
+                                channel: d.clone(),
+                            },
+                        );
                     }
 
-                    tunnel.role_state.lock().gateway_awaiting_connection.remove(&gateway_id);
+                    tunnel
+                        .role_state
+                        .lock()
+                        .gateway_awaiting_connection
+                        .remove(&gateway_id);
                 }
 
                 if let Some(conn) = tunnel.peer_connections.lock().get(&gateway_id) {
-                    conn.on_peer_connection_state_change(
-                            on_peer_connection_state_change_handler(index, gateway_id, tunnel.stop_peer_command_sender.clone()),
-                    );
+                    conn.on_peer_connection_state_change(on_peer_connection_state_change_handler(
+                        index,
+                        gateway_id,
+                        tunnel.stop_peer_command_sender.clone(),
+                    ));
                 }
 
-                tokio::spawn(tunnel.clone().start_peer_handler(peer));
+                tokio::spawn(tunnel.clone().start_peer_handler(peer, d));
 
                 tunnel
                     .role_state

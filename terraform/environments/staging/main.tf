@@ -359,11 +359,13 @@ locals {
     {
       name = "ERLANG_CLUSTER_ADAPTER_CONFIG"
       value = jsonencode({
-        project_id          = module.google-cloud-project.project.project_id
-        cluster_name        = local.cluster.name
-        cluster_name_label  = "cluster_name"
-        node_name_label     = "application"
-        polling_interval_ms = 7000
+        project_id            = module.google-cloud-project.project.project_id
+        cluster_name          = local.cluster.name
+        cluster_name_label    = "cluster_name"
+        cluster_version_label = "cluster_version"
+        cluster_version       = split(".", var.image_tag)[0]
+        node_name_label       = "application"
+        polling_interval_ms   = 7000
       })
     },
     {
@@ -421,7 +423,7 @@ module "web" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "web"
-  image_tag  = var.web_image_tag
+  image_tag  = var.image_tag
 
   scaling_horizontal_replicas = 2
 
@@ -431,7 +433,7 @@ module "web" {
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "web"
-  application_version = replace(var.web_image_tag, ".", "-")
+  application_version = replace(var.image_tag, ".", "-")
 
   application_dns_tld = "app.${local.tld}"
 
@@ -469,7 +471,8 @@ module "web" {
   ], local.shared_application_environment_variables)
 
   application_labels = {
-    "cluster_name" = local.cluster.name
+    "cluster_name"    = local.cluster.name
+    "cluster_version" = split(".", var.image_tag)[0]
   }
 }
 
@@ -490,7 +493,7 @@ module "api" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "api"
-  image_tag  = var.api_image_tag
+  image_tag  = var.image_tag
 
   scaling_horizontal_replicas = 2
 
@@ -500,7 +503,7 @@ module "api" {
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "api"
-  application_version = replace(var.api_image_tag, ".", "-")
+  application_version = replace(var.image_tag, ".", "-")
 
   application_dns_tld = "api.${local.tld}"
 
@@ -538,7 +541,8 @@ module "api" {
   ], local.shared_application_environment_variables)
 
   application_labels = {
-    "cluster_name" = local.cluster.name
+    "cluster_name"    = local.cluster.name
+    "cluster_version" = split(".", var.image_tag)[0]
   }
 
   application_token_scopes = [
@@ -686,12 +690,12 @@ module "relays" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "relay"
-  image_tag  = var.relay_image_tag
+  image_tag  = var.image_tag
 
   observability_log_level = "debug,firezone_relay=trace,hyper=off,h2=warn,tower=warn,wire=trace"
 
   application_name    = "relay"
-  application_version = replace(var.relay_image_tag, ".", "-")
+  application_version = replace(var.image_tag, ".", "-")
 
   health_check = {
     name     = "health"
