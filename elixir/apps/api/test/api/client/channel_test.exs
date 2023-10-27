@@ -285,26 +285,16 @@ defmodule API.Client.ChannelTest do
       assert gateway_id == gateway.id
       assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
 
-      ipv4_stun_uri = "stun:#{relay.ipv4}:#{relay.port}"
       ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
-      ipv6_stun_uri = "stun:[#{relay.ipv6}]:#{relay.port}"
       ipv6_turn_uri = "turn:[#{relay.ipv6}]:#{relay.port}"
 
       assert [
-               %{
-                 type: :stun,
-                 uri: ^ipv4_stun_uri
-               },
                %{
                  type: :turn,
                  expires_at: expires_at_unix,
                  password: password1,
                  username: username1,
                  uri: ^ipv4_turn_uri
-               },
-               %{
-                 type: :stun,
-                 uri: ^ipv6_stun_uri
                },
                %{
                  type: :turn,
@@ -328,7 +318,7 @@ defmodule API.Client.ChannelTest do
       :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :ok, %{relays: relays}
-      assert length(relays) == 6
+      assert length(relays) == 3
     end
   end
 
