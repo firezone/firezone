@@ -34,7 +34,7 @@
     </androidx.appcompat.widget.LinearLayoutCompat>
 
     <com.google.android.material.textview.MaterialTextView
-        android:id="@+id/tvSignStatus"
+        android:id="@+id/tvSessionStatus"
         style="@style/AppTheme.Base.HeaderText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

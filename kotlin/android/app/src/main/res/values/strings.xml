@@ -15,7 +15,7 @@
 	<string name="sign_out">Sign Out</string>
 
 	<!-- Auth -->
-	<string name="launching_auth_flow">Launching Auth Flow…</string>
+	<string name="launching_auth_flow">Launching Chrome to sign in...</string>
 
 	<!-- Error Dialog -->
 	<string name="error_dialog_title">Error</string>
@@ -25,7 +25,6 @@
 	<string name="vpn_permission_description">Firezone requires the VPN permission in order to route packets from your device to protected resources in a secure manner. All communication is end-to-end encrypted; we can never decrypt or otherwise monitor your communication. Please grant the VPN permission by tapping the button below.</string>
 	<string name="request_permission">Request Permission</string>
 	<string name="enter_team_id">Enter team id</string>
-	<string name="sign_in_debug_user">Sign In (Debug User)</string>
 	<string name="signing_in_requires_chrome_browser">Signing in requires chrome browser</string>
 	<!-- Error Dialog -->
 
