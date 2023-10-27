@@ -144,10 +144,18 @@ defmodule Web.Router do
         live "/:id", Show
       end
 
-      scope "/gateway_groups", GatewayGroups do
+      scope "/sites", Sites do
         live "/", Index
         live "/new", New
+        live "/:id/new_token", NewToken
         live "/:id/edit", Edit
+
+        scope "/:gateway_group_id/resources", Resources do
+          live "/new", New
+          live "/:id/edit", Edit
+          live "/:id", Show
+        end
+
         live "/:id", Show
       end
 

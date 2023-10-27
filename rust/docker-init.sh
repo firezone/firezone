@@ -1,6 +1,6 @@
 #!/bin/sh
 
-if [ "${ENABLE_MASQUERADE}" = "1" ]; then
+if [ "${FIREZONE_ENABLE_MASQUERADE}" = "1" ]; then
   IFACE="tun-firezone"
   # TODO: Can we get away with not installing iptables? Nearly 20 MB.
   iptables-nft -A FORWARD -i $IFACE -j ACCEPT
