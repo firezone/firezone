@@ -131,9 +131,7 @@ impl Device {
     }
 }
 
-// TODO: We should use newtypes for each kind of Id
-/// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets
-/// to communicate between peers.
+/// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
 pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     next_index: Mutex<IndexLfsr>,
     // We use a tokio Mutex here since this is only read/write during config so there's no relevant performance impact
