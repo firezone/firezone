@@ -35,7 +35,7 @@ internal class SessionActivity : AppCompatActivity() {
 
         setupViews()
         setupObservers()
-        viewModel.startSession()
+        viewModel.connect(this@SessionActivity)
     }
 
     private fun setupViews() {

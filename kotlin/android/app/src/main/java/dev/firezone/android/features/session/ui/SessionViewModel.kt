@@ -1,6 +1,7 @@
 /* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -8,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.tunnel.TunnelManager
+import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.callback.TunnelListener
 import dev.firezone.android.tunnel.data.TunnelRepository
 import dev.firezone.android.tunnel.model.Resource
@@ -63,10 +65,20 @@ internal class SessionViewModel
                 }
             }
 
-        fun startSession() {
+        fun connect(context: Context) {
             viewModelScope.launch {
                 tunnelManager.addListener(tunnelListener)
-                tunnelManager.connect()
+
+                val isServiceRunning = TunnelService.isRunning(context)
+                if (!isServiceRunning || tunnelRepository.getState() == Tunnel.State.Down || tunnelRepository.getState() == Tunnel.State.Closed) {
+                    tunnelManager.connect()
+                } else {
+                    _uiState.value =
+                        _uiState.value.copy(
+                            state = tunnelRepository.getState(),
+                            resources = tunnelRepository.getResources(),
+                        )
+                }
             }
         }
 

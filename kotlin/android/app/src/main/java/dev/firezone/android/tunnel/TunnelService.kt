@@ -1,10 +1,12 @@
 /* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.tunnel
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.system.OsConstants
@@ -135,12 +137,9 @@ class TunnelService : VpnService() {
             }
 
             override fun onDisconnect(error: String?): Boolean {
-                Log.d(TAG, "callback: onDisconnect $error")
-
-                if (error != null && error != "null") {
-                    onDisconnect()
-                }
-
+                onSessionDisconnected(
+                    error = error?.takeUnless { it == "null" }
+                )
                 return true
             }
         }
@@ -207,28 +206,27 @@ class TunnelService : VpnService() {
             sessionPtr?.let {
                 TunnelSession.disconnect(it)
             }
+            } ?: onSessionDisconnected(null)
         } catch (exception: Exception) {
             Log.e(TAG, exception.message.toString())
         }
+    }
 
+    private fun onSessionDisconnected(error: String?) {
+        sessionPtr = null
         onTunnelStateUpdate(Tunnel.State.Down)
 
-        if (shouldReconnect) {
+        if (shouldReconnect && error == null) {
             shouldReconnect = false
             connect()
         } else {
-            onDisconnect()
+            tunnelRepository.clearAll()
+            preferenceRepository.clearToken()
+            stopForeground(STOP_FOREGROUND_REMOVE)
         }
     }
 
     private fun onDisconnect() {
-        sessionPtr = null
-        tunnelRepository.clearAll()
-        preferenceRepository.clearToken()
-        onTunnelStateUpdate(Tunnel.State.Closed)
-        stopForeground(STOP_FOREGROUND_REMOVE)
-    }
-
     private fun deviceId(): String {
         val deviceId = FirebaseInstallations.getInstance().id
         Log.d(TAG, "Device ID: $deviceId")
@@ -315,5 +313,16 @@ class TunnelService : VpnService() {
         private const val TAG: String = "TunnelService"
         private const val SESSION_NAME: String = "Firezone Connection"
         private const val DEFAULT_MTU: Int = 1280
+
+        @SuppressWarnings("deprecation")
+        fun isRunning(context: Context): Boolean {
+            val manager = context.getSystemService(ACTIVITY_SERVICE) as ActivityManager
+            for (service in manager.getRunningServices(Int.MAX_VALUE)) {
+                if (TunnelService::class.java.name == service.service.className) {
+                    return true
+                }
+            }
+            return false
+        }
     }
 }
