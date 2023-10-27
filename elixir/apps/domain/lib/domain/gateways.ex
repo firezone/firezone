@@ -117,7 +117,7 @@ defmodule Domain.Gateways do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       group
       |> Repo.preload(:account)
-      |> Group.Changeset.update(attrs)
+      |> Group.Changeset.update(attrs, subject)
       |> Repo.update()
     end
   end

@@ -1,4 +1,4 @@
-defmodule Web.Live.GatewayGroups.NewTest do
+defmodule Web.Live.Sites.NewTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -17,7 +17,7 @@ defmodule Web.Live.GatewayGroups.NewTest do
     account: account,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/gateway_groups/new") ==
+    assert live(conn, ~p"/#{account}/sites/new") ==
              {:error,
               {:redirect,
                %{
@@ -34,11 +34,11 @@ defmodule Web.Live.GatewayGroups.NewTest do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/new")
+      |> live(~p"/#{account}/sites/new")
 
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
-    assert breadcrumbs =~ "Gateway Instance Groups"
+    assert breadcrumbs =~ "Sites"
     assert breadcrumbs =~ "Add"
   end
 
@@ -50,7 +50,7 @@ defmodule Web.Live.GatewayGroups.NewTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/new")
+      |> live(~p"/#{account}/sites/new")
 
     form = form(lv, "form")
 
@@ -69,7 +69,7 @@ defmodule Web.Live.GatewayGroups.NewTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/new")
+      |> live(~p"/#{account}/sites/new")
 
     lv
     |> form("form", group: attrs)
@@ -78,24 +78,6 @@ defmodule Web.Live.GatewayGroups.NewTest do
                "group[name_prefix]" => ["should be at most 64 character(s)"]
              }
     end)
-  end
-
-  test "allows adding tags to gateways", %{account: account, identity: identity, conn: conn} do
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/new")
-
-    lv
-    |> element("[phx-feedback-for='group[tags]'] button", "Add")
-    |> render_click()
-
-    form = form(lv, "form")
-
-    assert find_inputs(form) == [
-             "group[name_prefix]",
-             "group[tags][]"
-           ]
   end
 
   test "renders changeset errors on submit", %{
@@ -109,7 +91,7 @@ defmodule Web.Live.GatewayGroups.NewTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/new")
+      |> live(~p"/#{account}/sites/new")
 
     assert lv
            |> form("form", group: attrs)
@@ -124,16 +106,12 @@ defmodule Web.Live.GatewayGroups.NewTest do
     identity: identity,
     conn: conn
   } do
-    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name_prefix, :tags])
+    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name_prefix])
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/new")
-
-    lv
-    |> element("[phx-feedback-for='group[tags]'] button", "Add")
-    |> render_click()
+      |> live(~p"/#{account}/sites/new")
 
     html =
       lv
@@ -141,22 +119,21 @@ defmodule Web.Live.GatewayGroups.NewTest do
       |> render_submit()
 
     assert html =~ "Select deployment method"
-    assert html =~ "FZ_SECRET="
+    assert html =~ "FIREZONE_TOKEN="
     assert html =~ "docker run"
     assert html =~ "Waiting for gateway connection..."
 
-    token = Regex.run(~r/FZ_SECRET=([^ ]+)/, html) |> List.last()
+    assert Regex.run(~r/FIREZONE_ID=([^ ]+)/, html) |> List.last()
+    token = Regex.run(~r/FIREZONE_TOKEN=([^ ]+)/, html) |> List.last() |> String.trim("&quot;")
     assert {:ok, _token} = Domain.Gateways.authorize_gateway(token)
 
     group =
       Repo.get_by(Domain.Gateways.Group, name_prefix: attrs.name_prefix)
       |> Repo.preload(:tokens)
 
-    assert group.tags == attrs.tags
-
     gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
     Domain.Gateways.connect_gateway(gateway)
 
-    assert assert_redirect(lv, ~p"/#{account}/gateway_groups/#{group}")
+    assert assert_redirect(lv, ~p"/#{account}/sites/#{group}")
   end
 end

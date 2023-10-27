@@ -122,8 +122,6 @@ defmodule Domain.Resources.Resource.Changeset do
     |> put_default_value(:name, from: :address)
     |> validate_length(:name, min: 1, max: 255)
     |> put_resource_type()
-    |> unique_constraint(:address, name: :resources_account_id_address_index)
-    |> unique_constraint(:name, name: :resources_account_id_name_index)
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)

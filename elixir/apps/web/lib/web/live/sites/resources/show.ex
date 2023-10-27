@@ -1,18 +1,20 @@
-defmodule Web.Resources.Show do
+defmodule Web.Sites.Resources.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Resources, Flows}
+  alias Domain.{Resources, Gateways, Flows}
 
-  def mount(%{"id" => id}, _session, socket) do
-    with {:ok, resource} <-
+  def mount(%{"gateway_group_id" => gateway_group_id, "id" => id}, _session, socket) do
+    with {:ok, gateway_group} <-
+           Gateways.fetch_group_by_id(gateway_group_id, socket.assigns.subject),
+         {:ok, resource} <-
            Resources.fetch_resource_by_id(id, socket.assigns.subject,
-             preload: [:gateway_groups, created_by_identity: [:actor]]
+             preload: [created_by_identity: [:actor]]
            ),
          {:ok, flows} <-
            Flows.list_flows_for(resource, socket.assigns.subject,
              preload: [client: [:actor], gateway: [:group], policy: [:resource, :actor_group]]
            ) do
-      {:ok, assign(socket, resource: resource, flows: flows)}
+      {:ok, assign(socket, gateway_group: gateway_group, resource: resource, flows: flows)}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -21,8 +23,12 @@ defmodule Web.Resources.Show do
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/resources"}>Resources</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/resources/#{@resource.id}"}>
+      <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway_group}"}>
+        <%= @gateway_group.name_prefix %>
+      </.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway_group}?#resources"}>Resources</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway_group}/resources/#{@resource.id}"}>
         <%= @resource.name %>
       </.breadcrumb>
     </.breadcrumbs>
@@ -31,7 +37,9 @@ defmodule Web.Resources.Show do
         Resource: <code><%= @resource.name %></code>
       </:title>
       <:action>
-        <.edit_button navigate={~p"/#{@account}/resources/#{@resource.id}/edit"}>
+        <.edit_button navigate={
+          ~p"/#{@account}/sites/#{@gateway_group}/resources/#{@resource.id}/edit"
+        }>
           Edit Resource
         </.edit_button>
       </:action>
@@ -79,27 +87,6 @@ defmodule Web.Resources.Show do
             </.vertical_table_row>
           </.vertical_table>
         </div>
-      </:content>
-    </.section>
-
-    <.section>
-      <:title>
-        Sites
-      </:title>
-      <:content>
-        <.table id="gateway_instance_groups" rows={@resource.gateway_groups}>
-          <:col :let={gateway_group} label="NAME">
-            <.link
-              navigate={~p"/#{@account}/sites/#{gateway_group}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-            >
-              <%= gateway_group.name_prefix %>
-            </.link>
-          </:col>
-          <:empty>
-            <div class="text-center text-slate-500 p-4">No linked gateways to display</div>
-          </:empty>
-        </.table>
       </:content>
     </.section>
 
@@ -180,7 +167,11 @@ defmodule Web.Resources.Show do
 
   def handle_event("delete", %{"id" => _resource_id}, socket) do
     {:ok, _} = Resources.delete_resource(socket.assigns.resource, socket.assigns.subject)
-    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources")}
+
+    {:noreply,
+     push_navigate(socket,
+       to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.gateway_group}?#resources"
+     )}
   end
 
   defp pretty_print_filter(filter) do

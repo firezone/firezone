@@ -5,7 +5,6 @@ defmodule Domain.Fixtures.Gateways do
   def group_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
       name_prefix: "group-#{unique_integer()}",
-      tags: ["aws", "aws-us-east-#{unique_integer()}"],
       tokens: [%{}]
     })
   end

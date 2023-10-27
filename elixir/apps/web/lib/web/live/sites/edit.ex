@@ -1,4 +1,4 @@
-defmodule Web.GatewayGroups.Edit do
+defmodule Web.Sites.Edit do
   use Web, :live_view
   alias Domain.Gateways
 
@@ -14,15 +14,15 @@ defmodule Web.GatewayGroups.Edit do
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/gateway_groups"}>Gateway Instance Groups</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/gateway_groups/#{@group}"}>
+      <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
         <%= @group.name_prefix %>
       </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/gateway_groups/#{@group}/edit"}>Edit</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@group}/edit"}>Edit</.breadcrumb>
     </.breadcrumbs>
 
     <.section>
-      <:title>Edit Gateway Instance Group: <code><%= @group.name_prefix %></code></:title>
+      <:title>Edit Site: <code><%= @group.name_prefix %></code></:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
@@ -31,12 +31,9 @@ defmodule Web.GatewayGroups.Edit do
                 <.input
                   label="Name Prefix"
                   field={@form[:name_prefix]}
-                  placeholder="Name of this Gateway Instance Group"
+                  placeholder="Name of this Site"
                   required
                 />
-              </div>
-              <div>
-                <.input label="Tags" type="taglist" field={@form[:tags]} placeholder="Tag" />
               </div>
             </div>
             <.submit_button>
@@ -47,21 +44,6 @@ defmodule Web.GatewayGroups.Edit do
       </:content>
     </.section>
     """
-  end
-
-  def handle_event("delete:group[tags]", %{"index" => index}, socket) do
-    changeset = socket.assigns.form.source
-    values = Ecto.Changeset.fetch_field!(changeset, :tags) || []
-    values = List.delete_at(values, String.to_integer(index))
-    changeset = Ecto.Changeset.put_change(changeset, :tags, values)
-    {:noreply, assign(socket, form: to_form(changeset))}
-  end
-
-  def handle_event("add:group[tags]", _params, socket) do
-    changeset = socket.assigns.form.source
-    values = Ecto.Changeset.fetch_field!(changeset, :tags) || []
-    changeset = Ecto.Changeset.put_change(changeset, :tags, values ++ [""])
-    {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("change", %{"group" => attrs}, socket) do
@@ -75,7 +57,7 @@ defmodule Web.GatewayGroups.Edit do
   def handle_event("submit", %{"group" => attrs}, socket) do
     with {:ok, group} <-
            Gateways.update_group(socket.assigns.group, attrs, socket.assigns.subject) do
-      socket = redirect(socket, to: ~p"/#{socket.assigns.account}/gateway_groups/#{group}")
+      socket = redirect(socket, to: ~p"/#{socket.assigns.account}/sites/#{group}")
       {:noreply, socket}
     else
       {:error, changeset} ->

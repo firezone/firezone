@@ -1,4 +1,4 @@
-defmodule Web.Live.GatewayGroups.ShowTest do
+defmodule Web.Live.Sites.ShowTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -26,7 +26,7 @@ defmodule Web.Live.GatewayGroups.ShowTest do
     group: group,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/gateway_groups/#{group}") ==
+    assert live(conn, ~p"/#{account}/sites/#{group}") ==
              {:error,
               {:redirect,
                %{
@@ -46,7 +46,7 @@ defmodule Web.Live.GatewayGroups.ShowTest do
     assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/#{group}")
+      |> live(~p"/#{account}/sites/#{group}")
     end
   end
 
@@ -59,11 +59,11 @@ defmodule Web.Live.GatewayGroups.ShowTest do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/#{group}")
+      |> live(~p"/#{account}/sites/#{group}")
 
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
-    assert breadcrumbs =~ "Gateway Instance Groups"
+    assert breadcrumbs =~ "Sites"
     assert breadcrumbs =~ group.name_prefix
   end
 
@@ -76,13 +76,12 @@ defmodule Web.Live.GatewayGroups.ShowTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/#{group}")
+      |> live(~p"/#{account}/sites/#{group}")
 
     assert lv
-           |> element("a", "Edit Instance Group")
+           |> element("a", "Edit Site")
            |> render_click() ==
-             {:error,
-              {:live_redirect, %{to: ~p"/#{account}/gateway_groups/#{group}/edit", kind: :push}}}
+             {:error, {:live_redirect, %{to: ~p"/#{account}/sites/#{group}/edit", kind: :push}}}
   end
 
   test "renders group details", %{
@@ -95,7 +94,7 @@ defmodule Web.Live.GatewayGroups.ShowTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/#{group}")
+      |> live(~p"/#{account}/sites/#{group}")
 
     table =
       lv
@@ -103,7 +102,7 @@ defmodule Web.Live.GatewayGroups.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["instance group name"] =~ group.name_prefix
+    assert table["name"] =~ group.name_prefix
     assert table["created"] =~ actor.name
   end
 
@@ -118,7 +117,7 @@ defmodule Web.Live.GatewayGroups.ShowTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/#{group}")
+      |> live(~p"/#{account}/sites/#{group}")
 
     lv
     |> element("#gateways")
@@ -142,7 +141,7 @@ defmodule Web.Live.GatewayGroups.ShowTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/#{group}")
+      |> live(~p"/#{account}/sites/#{group}")
 
     lv
     |> element("#gateways")
@@ -165,12 +164,12 @@ defmodule Web.Live.GatewayGroups.ShowTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/#{group}")
+      |> live(~p"/#{account}/sites/#{group}")
 
     assert lv
            |> element("button", "Delete")
            |> render_click() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/gateway_groups"}}}
+             {:error, {:redirect, %{to: ~p"/#{account}/sites"}}}
 
     assert Repo.get(Domain.Gateways.Group, group.id).deleted_at
   end

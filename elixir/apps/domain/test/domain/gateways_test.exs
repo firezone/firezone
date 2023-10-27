@@ -134,25 +134,15 @@ defmodule Domain.GatewaysTest do
 
     test "returns error on invalid attrs", %{account: account, subject: subject} do
       attrs = %{
-        name_prefix: String.duplicate("A", 65),
-        tags: Enum.map(1..129, &Integer.to_string/1)
+        name_prefix: String.duplicate("A", 65)
       }
 
       assert {:error, changeset} = create_group(attrs, subject)
 
       assert errors_on(changeset) == %{
                tokens: ["can't be blank"],
-               name_prefix: ["should be at most 64 character(s)"],
-               tags: ["should have at most 128 item(s)"]
+               name_prefix: ["should be at most 64 character(s)"]
              }
-
-      attrs = %{tags: ["A", "B", "A"]}
-      assert {:error, changeset} = create_group(attrs, subject)
-      assert "should not contain duplicates" in errors_on(changeset).tags
-
-      attrs = %{tags: [String.duplicate("A", 65)]}
-      assert {:error, changeset} = create_group(attrs, subject)
-      assert "should be at most 64 characters long" in errors_on(changeset).tags
 
       Fixtures.Gateways.create_group(account: account, name_prefix: "foo")
       attrs = %{name_prefix: "foo", tokens: [%{}]}
@@ -163,14 +153,12 @@ defmodule Domain.GatewaysTest do
     test "creates a group", %{subject: subject} do
       attrs = %{
         name_prefix: "foo",
-        tags: ["bar"],
         tokens: [%{}]
       }
 
       assert {:ok, group} = create_group(attrs, subject)
       assert group.id
       assert group.name_prefix == "foo"
-      assert group.tags == ["bar"]
 
       assert group.created_by == :identity
       assert group.created_by_identity_id == subject.identity.id
@@ -202,7 +190,7 @@ defmodule Domain.GatewaysTest do
 
       assert changeset = change_group(group, group_attrs)
       assert changeset.valid?
-      assert changeset.changes == %{name_prefix: group_attrs.name_prefix, tags: group_attrs.tags}
+      assert changeset.changes == %{name_prefix: group_attrs.name_prefix}
     end
   end
 
@@ -222,24 +210,14 @@ defmodule Domain.GatewaysTest do
       group = Fixtures.Gateways.create_group(account: account)
 
       attrs = %{
-        name_prefix: String.duplicate("A", 65),
-        tags: Enum.map(1..129, &Integer.to_string/1)
+        name_prefix: String.duplicate("A", 65)
       }
 
       assert {:error, changeset} = update_group(group, attrs, subject)
 
       assert errors_on(changeset) == %{
-               name_prefix: ["should be at most 64 character(s)"],
-               tags: ["should have at most 128 item(s)"]
+               name_prefix: ["should be at most 64 character(s)"]
              }
-
-      attrs = %{tags: ["A", "B", "A"]}
-      assert {:error, changeset} = update_group(group, attrs, subject)
-      assert "should not contain duplicates" in errors_on(changeset).tags
-
-      attrs = %{tags: [String.duplicate("A", 65)]}
-      assert {:error, changeset} = update_group(group, attrs, subject)
-      assert "should be at most 64 characters long" in errors_on(changeset).tags
 
       Fixtures.Gateways.create_group(account: account, name_prefix: "foo")
       attrs = %{name_prefix: "foo"}
@@ -251,13 +229,11 @@ defmodule Domain.GatewaysTest do
       group = Fixtures.Gateways.create_group(account: account)
 
       attrs = %{
-        name_prefix: "foo",
-        tags: ["bar"]
+        name_prefix: "foo"
       }
 
       assert {:ok, group} = update_group(group, attrs, subject)
       assert group.name_prefix == "foo"
-      assert group.tags == ["bar"]
     end
 
     test "returns error when subject has no permission to manage groups", %{

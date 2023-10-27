@@ -1,4 +1,4 @@
-defmodule Web.Live.GatewayGroups.EditTest do
+defmodule Web.Live.Sites.EditTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -21,7 +21,7 @@ defmodule Web.Live.GatewayGroups.EditTest do
     group: group,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/gateway_groups/#{group}/edit") ==
+    assert live(conn, ~p"/#{account}/sites/#{group}/edit") ==
              {:error,
               {:redirect,
                %{
@@ -41,7 +41,7 @@ defmodule Web.Live.GatewayGroups.EditTest do
     assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/#{group}/edit")
+      |> live(~p"/#{account}/sites/#{group}/edit")
     end
   end
 
@@ -54,11 +54,11 @@ defmodule Web.Live.GatewayGroups.EditTest do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/#{group}/edit")
+      |> live(~p"/#{account}/sites/#{group}/edit")
 
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
-    assert breadcrumbs =~ "Gateway Instance Groups"
+    assert breadcrumbs =~ "Sites"
     assert breadcrumbs =~ group.name_prefix
     assert breadcrumbs =~ "Edit"
   end
@@ -72,13 +72,12 @@ defmodule Web.Live.GatewayGroups.EditTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/#{group}/edit")
+      |> live(~p"/#{account}/sites/#{group}/edit")
 
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "group[name_prefix]",
-             "group[tags][]"
+             "group[name_prefix]"
            ]
   end
 
@@ -93,7 +92,7 @@ defmodule Web.Live.GatewayGroups.EditTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/#{group}/edit")
+      |> live(~p"/#{account}/sites/#{group}/edit")
 
     lv
     |> form("form", group: attrs)
@@ -121,7 +120,7 @@ defmodule Web.Live.GatewayGroups.EditTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/#{group}/edit")
+      |> live(~p"/#{account}/sites/#{group}/edit")
 
     assert lv
            |> form("form", group: attrs)
@@ -137,20 +136,19 @@ defmodule Web.Live.GatewayGroups.EditTest do
     group: group,
     conn: conn
   } do
-    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name_prefix, :tags])
+    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name_prefix])
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateway_groups/#{group}/edit")
+      |> live(~p"/#{account}/sites/#{group}/edit")
 
     assert lv
            |> form("form", group: attrs)
            |> render_submit() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/gateway_groups/#{group}"}}}
+             {:error, {:redirect, %{to: ~p"/#{account}/sites/#{group}"}}}
 
     assert group = Repo.get_by(Domain.Gateways.Group, id: group.id)
     assert group.name_prefix == attrs.name_prefix
-    assert group.tags == attrs.tags
   end
 end

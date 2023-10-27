@@ -1,4 +1,4 @@
-defmodule Web.GatewayGroups.Show do
+defmodule Web.Sites.Show do
   use Web, :live_view
   alias Domain.Gateways
 
@@ -11,6 +11,11 @@ defmodule Web.GatewayGroups.Show do
                created_by_identity: [:actor]
              ]
            ) do
+      group = %{
+        group
+        | gateways: Enum.sort_by(group.gateways, &{&1.online?, &1.name_suffix}, :desc)
+      }
+
       :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
       {:ok, assign(socket, group: group)}
     else
@@ -21,37 +26,27 @@ defmodule Web.GatewayGroups.Show do
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/gateway_groups"}>Gateway Instance Groups</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/gateway_groups/#{@group}"}>
+      <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
         <%= @group.name_prefix %>
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Gateway Instance Group: <code><%= @group.name_prefix %></code>
+        Site: <code><%= @group.name_prefix %></code>
       </:title>
       <:action>
-        <.edit_button navigate={~p"/#{@account}/gateway_groups/#{@group}/edit"}>
-          Edit Instance Group
+        <.edit_button navigate={~p"/#{@account}/sites/#{@group}/edit"}>
+          Edit Site
         </.edit_button>
       </:action>
 
       <:content>
         <.vertical_table id="group">
           <.vertical_table_row>
-            <:label>Instance Group Name</:label>
+            <:label>Name</:label>
             <:value><%= @group.name_prefix %></:value>
-          </.vertical_table_row>
-          <.vertical_table_row>
-            <:label>Tags</:label>
-            <:value>
-              <div class="flex flex-wrap">
-                <.badge :for={tag <- @group.tags} class="mb-2">
-                  <%= tag %>
-                </.badge>
-              </div>
-            </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Created</:label>
@@ -64,7 +59,47 @@ defmodule Web.GatewayGroups.Show do
     </.section>
 
     <.section>
-      <:title>Gateway Instances</:title>
+      <:title>
+        Resources
+      </:title>
+      <:action>
+        <.add_button navigate={~p"/#{@account}/sites/#{@group}/resources/new"}>
+          Create
+        </.add_button>
+      </:action>
+      <:content>
+        <div class="relative overflow-x-auto">
+          <.table
+            id="resources"
+            rows={Enum.reject(@group.connections, &is_nil(&1.resource))}
+            row_item={& &1.resource}
+          >
+            <:col :let={resource} label="NAME">
+              <.link
+                navigate={~p"/#{@account}/sites/#{@group}/resources/#{resource.id}"}
+                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              >
+                <%= resource.name %>
+              </.link>
+            </:col>
+            <:col :let={resource} label="ADDRESS">
+              <%= resource.address %>
+            </:col>
+            <:empty>
+              <div class="text-center text-slate-500 p-4">No resources to display</div>
+            </:empty>
+          </.table>
+        </div>
+      </:content>
+    </.section>
+
+    <.section>
+      <:title>Gateways</:title>
+      <:action>
+        <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
+          Deploy
+        </.add_button>
+      </:action>
       <:content>
         <div class="relative overflow-x-auto">
           <.table id="gateways" rows={@group.gateways}>
@@ -95,39 +130,13 @@ defmodule Web.GatewayGroups.Show do
       </:content>
     </.section>
 
-    <.section>
-      <:title>
-        Linked Resources
-      </:title>
-      <:content>
-        <div class="relative overflow-x-auto">
-          <.table id="resources" rows={@group.connections} row_item={& &1.resource}>
-            <:col :let={resource} label="NAME">
-              <.link
-                navigate={~p"/#{@account}/resources/#{resource.id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-              >
-                <%= resource.name %>
-              </.link>
-            </:col>
-            <:col :let={resource} label="ADDRESS">
-              <%= resource.address %>
-            </:col>
-            <:empty>
-              <div class="text-center text-slate-500 p-4">No resources to display</div>
-            </:empty>
-          </.table>
-        </div>
-      </:content>
-    </.section>
-
     <.danger_zone>
       <:action>
         <.delete_button
           phx-click="delete"
           data-confirm="Are you sure want to delete this gateway group and disconnect all it's gateways?"
         >
-          Delete Instance Group
+          Delete Site
         </.delete_button>
       </:action>
       <:content></:content>
@@ -137,7 +146,7 @@ defmodule Web.GatewayGroups.Show do
 
   def handle_info(%Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _account_id}, socket) do
     socket =
-      redirect(socket, to: ~p"/#{socket.assigns.account}/gateway_groups/#{socket.assigns.group}")
+      redirect(socket, to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.group}")
 
     {:noreply, socket}
   end
@@ -145,6 +154,6 @@ defmodule Web.GatewayGroups.Show do
   def handle_event("delete", _params, socket) do
     # TODO: make sure tokens are all deleted too!
     {:ok, _group} = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
-    {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/gateway_groups")}
+    {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/sites")}
   end
 end

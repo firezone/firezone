@@ -3,7 +3,7 @@ defmodule Domain.Gateways.Group.Changeset do
   alias Domain.{Auth, Accounts}
   alias Domain.Gateways
 
-  @fields ~w[name_prefix tags]a
+  @fields ~w[name_prefix]a
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Gateways.Group{account: account}
@@ -19,6 +19,15 @@ defmodule Domain.Gateways.Group.Changeset do
     )
   end
 
+  def update(%Gateways.Group{} = group, attrs, %Auth.Subject{} = subject) do
+    changeset(group, attrs)
+    |> cast_assoc(:tokens,
+      with: fn _token, _attrs ->
+        Gateways.Token.Changeset.create(group.account, subject)
+      end
+    )
+  end
+
   def update(%Gateways.Group{} = group, attrs) do
     changeset(group, attrs)
   end
@@ -30,15 +39,6 @@ defmodule Domain.Gateways.Group.Changeset do
     |> put_default_value(:name_prefix, &Domain.NameGenerator.generate/0)
     |> validate_required(@fields)
     |> validate_length(:name_prefix, min: 1, max: 64)
-    |> validate_length(:tags, min: 0, max: 128)
-    |> validate_no_duplicates(:tags)
-    |> validate_list_elements(:tags, fn key, value ->
-      if String.length(value) > 64 do
-        [{key, "should be at most 64 characters long"}]
-      else
-        []
-      end
-    end)
     |> unique_constraint(:name_prefix, name: :gateway_groups_account_id_name_prefix_index)
   end
 

@@ -173,7 +173,7 @@ defmodule Web.Resources.Components do
 
     ~H"""
     <fieldset class="flex flex-col gap-2">
-      <legend class="mb-2">Gateway Instance Groups</legend>
+      <legend class="mb-2">Sites</legend>
 
       <.error :for={msg <- @errors} data-validation-error-for="connections">
         <%= msg %>
@@ -205,16 +205,12 @@ defmodule Web.Resources.Components do
 
           <div class="w-64 no-grow text-gray-500">
             <.link
-              navigate={~p"/#{@account}/gateway_groups/#{gateway_group.id}"}
+              navigate={~p"/#{@account}/sites/#{gateway_group}"}
               class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
               target="_blank"
             >
               <%= gateway_group.name_prefix %>
             </.link>
-          </div>
-
-          <div>
-            <%= Enum.join(gateway_group.tags, ", ") %>
           </div>
         </div>
       </div>

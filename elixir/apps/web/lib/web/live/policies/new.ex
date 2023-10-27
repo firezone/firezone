@@ -3,7 +3,8 @@ defmodule Web.Policies.New do
   alias Domain.{Resources, Actors, Policies}
 
   def mount(_params, _session, socket) do
-    with {:ok, resources} <- Resources.list_resources(socket.assigns.subject),
+    with {:ok, resources} <-
+           Resources.list_resources(socket.assigns.subject, preload: [:gateway_groups]),
          {:ok, actor_groups} <- Actors.list_groups(socket.assigns.subject) do
       form = to_form(Policies.new_policy(%{}, socket.assigns.subject))
 
@@ -48,7 +49,16 @@ defmodule Web.Policies.New do
               field={@form[:resource_id]}
               label="Resource"
               type="select"
-              options={Enum.map(@resources, fn r -> [key: r.name, value: r.id] end)}
+              options={
+                Enum.map(@resources, fn resource ->
+                  group_names = resource.gateway_groups |> Enum.map(& &1.name_prefix)
+
+                  [
+                    key: "#{resource.name} - #{Enum.join(group_names, ",")}",
+                    value: resource.id
+                  ]
+                end)
+              }
               value={@form[:resource_id].value}
               required
             />

@@ -624,21 +624,23 @@ defmodule Domain.ResourcesTest do
       refute Map.has_key?(errors_on(changeset), :address)
     end
 
-    test "returns error on duplicate name", %{account: account, subject: subject} do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-      resource = Fixtures.Resources.create_resource(account: account, subject: subject)
-      address = Fixtures.Resources.resource_attrs().address
+    # We allow names to be duplicate because Resources are split into Sites
+    # and there is no way to create a unique constraint for many-to-many (join table) relation
+    # test "returns error on duplicate name", %{account: account, subject: subject} do
+    #   gateway = Fixtures.Gateways.create_gateway(account: account)
+    #   resource = Fixtures.Resources.create_resource(account: account, subject: subject)
+    #   address = Fixtures.Resources.resource_attrs().address
 
-      attrs = %{
-        "name" => resource.name,
-        "address" => address,
-        "type" => "dns",
-        "connections" => [%{"gateway_group_id" => gateway.group_id}]
-      }
+    #   attrs = %{
+    #     "name" => resource.name,
+    #     "address" => address,
+    #     "type" => "dns",
+    #     "connections" => [%{"gateway_group_id" => gateway.group_id}]
+    #   }
 
-      assert {:error, changeset} = create_resource(attrs, subject)
-      assert errors_on(changeset) == %{name: ["has already been taken"]}
-    end
+    #   assert {:error, changeset} = create_resource(attrs, subject)
+    #   assert errors_on(changeset) == %{name: ["has already been taken"]}
+    # end
 
     test "creates a dns resource", %{account: account, subject: subject} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
