@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use std::{collections::HashMap, net::IpAddr};
@@ -6,7 +7,7 @@ use std::{collections::HashMap, net::IpAddr};
 use boringtun::noise::rate_limiter::RateLimiter;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::StaticSecret;
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{ResourceDescription, ResourceId},
@@ -226,8 +227,7 @@ where
             TunnResult::Done => Ok(None),
             TunnResult::Err(e) => Err(e.into()),
             TunnResult::WriteToNetwork(packet) => {
-                let mut bytes = BytesMut::new();
-                bytes.extend_from_slice(packet);
+                let mut packets = VecDeque::from([Bytes::copy_from_slice(packet)]);
 
                 // Boringtun requires us to call `decapsulate` repeatedly if it returned `WriteToNetwork`.
                 // However, for the repeated calls, we only need a buffer of at most 148 bytes which we can easily allocate on the stack.
@@ -236,10 +236,10 @@ where
                 while let TunnResult::WriteToNetwork(packet) =
                     tunnel.decapsulate(None, &[], &mut buf)
                 {
-                    bytes.extend_from_slice(packet);
+                    packets.push_back(Bytes::copy_from_slice(packet));
                 }
 
-                Ok(Some(WriteTo::Network(bytes.freeze())))
+                Ok(Some(WriteTo::Network(packets)))
             }
             TunnResult::WriteToTunnelV4(packet, addr) => {
                 let Some(packet) = make_packet_for_resource(self, addr.into(), packet)? else {
@@ -276,7 +276,7 @@ where
 }
 
 pub enum WriteTo<'a> {
-    Network(Bytes),
+    Network(VecDeque<Bytes>),
     Resource(device_channel::Packet<'a>),
 }
 

@@ -90,9 +90,11 @@ where
     ) -> Result<()> {
         match peer.decapsulate(src, dst)? {
             Some(WriteTo::Network(bytes)) => {
-                if let Err(e) = channel.write(&bytes).await {
-                    tracing::error!("Couldn't send packet to connected peer: {e}");
-                    let _ = self.callbacks.on_error(&e.into());
+                for packet in bytes {
+                    if let Err(e) = channel.write(&packet).await {
+                        tracing::error!("Couldn't send packet to connected peer: {e}");
+                        let _ = self.callbacks.on_error(&e.into());
+                    }
                 }
             }
             Some(WriteTo::Resource(packet)) => {
