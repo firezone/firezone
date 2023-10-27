@@ -12,13 +12,12 @@ use jni::{
 };
 use secrecy::SecretString;
 use std::sync::OnceLock;
+use std::{net::IpAddr, path::Path};
 use std::{
-    env,
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
     path::PathBuf,
 };
-use std::{net::IpAddr, path::Path};
 use thiserror::Error;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
@@ -102,9 +101,7 @@ where
     tracing_subscriber::layer::Identity::new()
 }
 
-fn init_logging(log_dir: &Path) -> file_logger::Handle {
-    let log_filter = env::var("LOG_FILTER_STRING").unwrap_or(DEFAULT_LOG_FILTER_STRING.to_string());
-
+fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to
@@ -125,8 +122,8 @@ fn init_logging(log_dir: &Path) -> file_logger::Handle {
         .expect("Logging guard should never be initialized twice");
 
     let _ = tracing_subscriber::registry()
-        .with(file_layer.with_filter(EnvFilter::new(&log_filter)))
-        .with(android_layer().with_filter(EnvFilter::new(&log_filter)))
+        .with(file_layer.with_filter(EnvFilter::new(log_filter.clone())))
+        .with(android_layer().with_filter(EnvFilter::new(log_filter.clone())))
         .try_init();
 
     handle
@@ -397,16 +394,20 @@ macro_rules! string_from_jstring {
 
 fn connect(
     env: &mut JNIEnv,
+    api_url: JString,
     token: JString,
     device_id: JString,
     log_dir: JString,
+    log_filter: JString,
     callback_handler: GlobalRef,
 ) -> Result<Session<CallbackHandler>, ConnectError> {
+    let api_url = string_from_jstring!(env, api_url);
     let secret = SecretString::from(string_from_jstring!(env, token));
     let device_id = string_from_jstring!(env, device_id);
     let log_dir = string_from_jstring!(env, log_dir);
+    let log_filter = string_from_jstring!(env, log_filter);
 
-    let handle = init_logging(&PathBuf::from(log_dir));
+    let handle = init_logging(&PathBuf::from(log_dir), log_filter);
 
     let callback_handler = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
@@ -414,7 +415,7 @@ fn connect(
         handle,
     };
 
-    let session = Session::connect(secret, device_id, callback_handler)?;
+    let session = Session::connect(api_url.as_str(), secret, device_id, callback_handler)?;
 
     Ok(session)
 }
@@ -427,9 +428,11 @@ fn connect(
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_connect(
     mut env: JNIEnv,
     _class: JClass,
+    api_url: JString,
     token: JString,
     device_id: JString,
     log_dir: JString,
+    log_filter: JString,
     callback_handler: JObject,
 ) -> *const Session<CallbackHandler> {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else {
@@ -437,7 +440,15 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
     };
 
     let connect = catch_and_throw(&mut env, |env| {
-        connect(env, token, device_id, log_dir, callback_handler)
+        connect(
+            env,
+            api_url,
+            token,
+            device_id,
+            log_dir,
+            log_filter,
+            callback_handler,
+        )
     });
 
     let session = match connect {

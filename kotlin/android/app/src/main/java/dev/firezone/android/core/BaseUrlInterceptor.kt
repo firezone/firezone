@@ -15,10 +15,10 @@ internal class BaseUrlInterceptor(
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
         val accountId = sharedPreferences.getString(ACCOUNT_ID_KEY, "") ?: ""
-        val newUrl = "${BuildConfig.AUTH_URL}/$accountId"?.toHttpUrlOrNull()
+        val newUrl = "${BuildConfig.AUTH_BASE_URL}/$accountId"?.toHttpUrlOrNull()
 
         if (newUrl == null) {
-            throw IllegalStateException("Invalid AUTH_URL. Check BuildConfig?")
+            throw IllegalStateException("Invalid AUTH_BASE_URL. Check Settings?")
         }
 
         val newRequest =

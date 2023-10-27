@@ -73,36 +73,6 @@ pub fn get_user_agent() -> String {
     format!("{os_type}/{os_version} {lib_name}/{lib_version}")
 }
 
-/// Returns the SMBios Serial of the device or a random UUIDv4 if the SMBios is not available.
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
-pub fn get_device_id() -> String {
-    match smbioslib::table_load_from_device() {
-        Ok(data) => {
-            if let Some(uuid) =
-                data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| sys_info.uuid())
-            {
-                tracing::debug!("get_device_id() found SMBios Serial: {}", uuid);
-                return uuid.to_string();
-            }
-        }
-        Err(e) => {
-            tracing::warn!("get_device_id() couldn't load SMBios. Error: {}", e);
-        }
-    }
-
-    tracing::warn!("get_device_id() couldn't find a SMBios Serial. Using random UUIDv4 instead.");
-    uuid::Uuid::new_v4().to_string()
-}
-
-#[cfg(any(target_os = "ios", target_os = "android"))]
-pub fn get_device_id() -> String {
-    tracing::warn!(
-        "get_device_id() is not implemented for this platform. Using random UUIDv4 instead."
-    );
-
-    uuid::Uuid::new_v4().to_string()
-}
-
 fn set_ws_scheme(url: &mut Url) -> Result<()> {
     let scheme = match url.scheme() {
         "http" | "ws" => "ws",

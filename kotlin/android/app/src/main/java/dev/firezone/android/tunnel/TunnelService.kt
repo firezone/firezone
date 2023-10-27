@@ -193,7 +193,7 @@ class TunnelService : VpnService() {
                         deviceId = deviceId(),
                         logDir = getLogDir(),
                         # FIXME: use user-override
-                        logFilterString = BuildConfig.LOG_FILTER_STRING,
+                        logFilter = BuildConfig.LOG_FILTER,
                         callback = callback,
                     )
             }

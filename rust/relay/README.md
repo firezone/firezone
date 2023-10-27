@@ -22,7 +22,7 @@ You should then find a binary in `target/release/firezone-relay`.
 
 ## Running
 
-The Firezone Relay support Linux only. To run the Relay binary on your Linux
+The Firezone Relay supports Linux only. To run the Relay binary on your Linux
 host:
 
 1. Generate a new Relay token from the "Relays" section of the admin portal and

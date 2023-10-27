@@ -1,5 +1,5 @@
 //! Main connlib library for clients.
-pub use connlib_shared::{get_device_id, messages::ResourceDescription};
+pub use connlib_shared::messages::ResourceDescription;
 pub use connlib_shared::{Callbacks, Error};
 pub use tracing_appender::non_blocking::WorkerGuard;
 

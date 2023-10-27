@@ -3,7 +3,7 @@ use crate::messages::InitGateway;
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_shared::{get_device_id, get_user_agent, login_url, Callbacks, Mode};
+use connlib_shared::{get_user_agent, login_url, Callbacks, Mode};
 use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use firezone_tunnel::{GatewayState, Tunnel};
 use futures::{future, TryFutureExt};
@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
         Mode::Gateway,
         cli.common.api_url,
         SecretString::new(cli.common.token),
-        get_device_id(),
+        cli.common.firezone_id,
     )?;
     let tunnel = Arc::new(Tunnel::new(private_key, CallbackHandler).await?);
 

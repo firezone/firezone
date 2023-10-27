@@ -21,15 +21,16 @@ To run the Linux client:
    section of the admin portal and save it in your secrets manager. The Firezone
    Linux client requires a service account at this time.
 1. Ensure the `TOKEN=<service_account_token>` environment variable is set
-   securely in your client's shell environment. The client expects this variable
-   at startup.
+   securely in your client's shell environment. The client requires this
+   variable at startup.
+1. Set `FIREZONE_ID` to a unique string to identify this client in the portal,
+   e.g. `export FIREZONE_ID=$(uuidgen)`. The client requires this variable at
+   startup.
 1. Set `LOG_DIR` to a suitable directory for writing logs
-
-```
-export LOG_DIR=/tmp/firezone-logs
-mkdir $LOG_DIR
-```
-
+   ```
+   export LOG_DIR=/tmp/firezone-logs
+   mkdir $LOG_DIR
+   ```
 1. Now, you can start the client with:
 
 ```
