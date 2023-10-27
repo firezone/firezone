@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="@dimen/spacing_medium">
@@ -31,36 +32,157 @@
             android:text="@string/app_short_name" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
-
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/ilUrlInput"
-        android:layout_width="0dp"
+    <TextView
+        android:id="@+id/tvSettings"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        app:errorEnabled="true"
-        android:hint="@string/enter_account_id"
+        android:text="@string/settings_title"
+        android:textSize="32sp"
+        android:textStyle="bold"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.225" />
+    <TextView
+        android:id="@+id/tvRequiredSettings"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/required_settings_title"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.335" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/ilAccountIdInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:errorEnabled="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.42">
+
+    <com.google.android.material.textfield.TextInputEditText
+        android:id="@+id/etAccountIdInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/account_id"
+        android:importantForAutofill="no"
+        android:inputType="text" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <TextView
+        android:id="@+id/tvAdvancedSettings"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/advanced_settings_title"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.515" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/ilAuthBaseUrlInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:errorEnabled="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.615">
+
+    <com.google.android.material.textfield.TextInputEditText
+        android:id="@+id/etAuthBaseUrlInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/auth_base_url"
+        android:importantForAutofill="no"
+        android:inputType="text" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/ilApiUrlInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:errorEnabled="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.725">
 
         <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/etInput"
+            android:id="@+id/etApiUrlInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/account_id"
+            android:hint="@string/api_url"
             android:importantForAutofill="no"
             android:inputType="text" />
 
     </com.google.android.material.textfield.TextInputLayout>
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/ilLogFilterInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:errorEnabled="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.835">
 
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etLogFilterInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/log_filter"
+            android:importantForAutofill="no"
+            android:inputType="text" />
+
+    </com.google.android.material.textfield.TextInputLayout>
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btLogin"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_width="185dp"
+        android:layout_height="50dp"
+        android:layout_marginBottom="16dp"
         android:enabled="false"
         android:text="@string/save"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
         app:layout_constraintStart_toStartOf="parent" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btCancel"
+        android:layout_width="185dp"
+        android:layout_height="50dp"
+        android:layout_marginBottom="16dp"
+        android:enabled="true"
+        android:text="@android:string/cancel"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent" />
+
+
+
 
 </androidx.constraintlayout.widget.ConstraintLayout>

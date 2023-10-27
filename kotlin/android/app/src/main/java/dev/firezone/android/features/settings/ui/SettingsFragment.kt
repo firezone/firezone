@@ -48,7 +48,7 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
                         R.id.signInFragment,
                     )
                 is SettingsViewModel.ViewAction.FillAccountId -> {
-                    binding.etInput.apply {
+                    binding.etAccountIdInput.apply {
                         setText(action.value)
                         isCursorVisible = false
                     }
@@ -58,7 +58,7 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
     }
 
     private fun setupViews() {
-        binding.etInput.apply {
+        binding.etAccountIdInput.apply {
             imeOptions = EditorInfo.IME_ACTION_DONE
             setOnClickListener { isCursorVisible = true }
             doOnTextChanged { input, _, _, _ ->
