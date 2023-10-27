@@ -556,7 +556,11 @@ defmodule Domain.GatewaysTest do
         external_id: nil,
         public_key: "x",
         last_seen_user_agent: "foo",
-        last_seen_remote_ip: {256, 0, 0, 0}
+        last_seen_remote_ip: {256, 0, 0, 0},
+        last_seen_remote_ip_location_region: -1,
+        last_seen_remote_ip_location_city: -1,
+        last_seen_remote_ip_location_lat: :x,
+        last_seen_remote_ip_location_lon: :x
       }
 
       assert {:error, changeset} = upsert_gateway(token, attrs)
@@ -564,7 +568,11 @@ defmodule Domain.GatewaysTest do
       assert errors_on(changeset) == %{
                public_key: ["should be 44 character(s)", "must be a base64-encoded string"],
                external_id: ["can't be blank"],
-               last_seen_user_agent: ["is invalid"]
+               last_seen_user_agent: ["is invalid"],
+               last_seen_remote_ip_location_region: ["is invalid"],
+               last_seen_remote_ip_location_city: ["is invalid"],
+               last_seen_remote_ip_location_lat: ["is invalid"],
+               last_seen_remote_ip_location_lon: ["is invalid"]
              }
     end
 
@@ -590,6 +598,13 @@ defmodule Domain.GatewaysTest do
       assert gateway.last_seen_user_agent == attrs.last_seen_user_agent
       assert gateway.last_seen_version == "0.7.412"
       assert gateway.last_seen_at
+
+      assert gateway.last_seen_remote_ip_location_region ==
+               attrs.last_seen_remote_ip_location_region
+
+      assert gateway.last_seen_remote_ip_location_city == attrs.last_seen_remote_ip_location_city
+      assert gateway.last_seen_remote_ip_location_lat == attrs.last_seen_remote_ip_location_lat
+      assert gateway.last_seen_remote_ip_location_lon == attrs.last_seen_remote_ip_location_lon
     end
 
     test "updates gateway when it already exists", %{
@@ -601,7 +616,11 @@ defmodule Domain.GatewaysTest do
         Fixtures.Gateways.gateway_attrs(
           external_id: gateway.external_id,
           last_seen_remote_ip: {100, 64, 100, 101},
-          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411",
+          last_seen_remote_ip_location_region: "Mexico",
+          last_seen_remote_ip_location_city: "Merida",
+          last_seen_remote_ip_location_lat: 7.7758,
+          last_seen_remote_ip_location_lon: -2.4128
         )
 
       assert {:ok, updated_gateway} = upsert_gateway(token, attrs)
@@ -624,6 +643,18 @@ defmodule Domain.GatewaysTest do
 
       assert updated_gateway.ipv4 == gateway.ipv4
       assert updated_gateway.ipv6 == gateway.ipv6
+
+      assert updated_gateway.last_seen_remote_ip_location_region ==
+               attrs.last_seen_remote_ip_location_region
+
+      assert updated_gateway.last_seen_remote_ip_location_city ==
+               attrs.last_seen_remote_ip_location_city
+
+      assert updated_gateway.last_seen_remote_ip_location_lat ==
+               attrs.last_seen_remote_ip_location_lat
+
+      assert updated_gateway.last_seen_remote_ip_location_lon ==
+               attrs.last_seen_remote_ip_location_lon
     end
 
     test "does not reserve additional addresses on update", %{

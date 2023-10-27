@@ -575,7 +575,11 @@ defmodule Domain.RelaysTest do
         ipv4: "1.1.1.256",
         ipv6: "fd01::10000",
         last_seen_user_agent: "foo",
-        last_seen_remote_ip: {256, 0, 0, 0},
+        last_seen_remote_ip: -1,
+        last_seen_remote_ip_location_region: -1,
+        last_seen_remote_ip_location_city: -1,
+        last_seen_remote_ip_location_lat: :x,
+        last_seen_remote_ip_location_lon: :x,
         port: -1
       }
 
@@ -585,6 +589,11 @@ defmodule Domain.RelaysTest do
                ipv4: ["one of these fields must be present: ipv4, ipv6", "is invalid"],
                ipv6: ["one of these fields must be present: ipv4, ipv6", "is invalid"],
                last_seen_user_agent: ["is invalid"],
+               last_seen_remote_ip: ["is invalid"],
+               last_seen_remote_ip_location_region: ["is invalid"],
+               last_seen_remote_ip_location_city: ["is invalid"],
+               last_seen_remote_ip_location_lat: ["is invalid"],
+               last_seen_remote_ip_location_lon: ["is invalid"],
                port: ["must be greater than or equal to 1"]
              }
 
@@ -609,6 +618,14 @@ defmodule Domain.RelaysTest do
       assert relay.ipv6.address == attrs.ipv6
 
       assert relay.last_seen_remote_ip.address == attrs.last_seen_remote_ip
+
+      assert relay.last_seen_remote_ip_location_region ==
+               attrs.last_seen_remote_ip_location_region
+
+      assert relay.last_seen_remote_ip_location_city == attrs.last_seen_remote_ip_location_city
+      assert relay.last_seen_remote_ip_location_lat == attrs.last_seen_remote_ip_location_lat
+      assert relay.last_seen_remote_ip_location_lon == attrs.last_seen_remote_ip_location_lon
+
       assert relay.last_seen_user_agent == attrs.last_seen_user_agent
       assert relay.last_seen_version == "0.7.412"
       assert relay.last_seen_at
@@ -639,7 +656,11 @@ defmodule Domain.RelaysTest do
         Fixtures.Relays.relay_attrs(
           ipv4: relay.ipv4,
           last_seen_remote_ip: relay.ipv4,
-          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411",
+          last_seen_remote_ip_location_region: "Mexico",
+          last_seen_remote_ip_location_city: "Merida",
+          last_seen_remote_ip_location_lat: 7.7758,
+          last_seen_remote_ip_location_lon: -2.4128
         )
 
       assert {:ok, updated_relay} = upsert_relay(token, attrs)
@@ -660,6 +681,18 @@ defmodule Domain.RelaysTest do
       assert updated_relay.ipv6.address == attrs.ipv6
       assert updated_relay.ipv6 != relay.ipv6
       assert updated_relay.port == 3478
+
+      assert updated_relay.last_seen_remote_ip_location_region ==
+               attrs.last_seen_remote_ip_location_region
+
+      assert updated_relay.last_seen_remote_ip_location_city ==
+               attrs.last_seen_remote_ip_location_city
+
+      assert updated_relay.last_seen_remote_ip_location_lat ==
+               attrs.last_seen_remote_ip_location_lat
+
+      assert updated_relay.last_seen_remote_ip_location_lon ==
+               attrs.last_seen_remote_ip_location_lon
 
       assert Repo.aggregate(Domain.Network.Address, :count) == 0
     end

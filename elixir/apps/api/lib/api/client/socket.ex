@@ -23,7 +23,19 @@ defmodule API.Client.Socket do
 
       real_ip = API.Sockets.real_ip(x_headers, peer_data)
 
-      with {:ok, subject} <- Auth.sign_in(token, user_agent, real_ip),
+      {location_region, location_city, {location_lat, location_lon}} =
+        API.Sockets.load_balancer_ip_location(x_headers)
+
+      context = %Auth.Context{
+        user_agent: user_agent,
+        remote_ip: real_ip,
+        remote_ip_location_region: location_region,
+        remote_ip_location_city: location_city,
+        remote_ip_location_lat: location_lat,
+        remote_ip_location_lon: location_lon
+      }
+
+      with {:ok, subject} <- Auth.sign_in(token, context),
            {:ok, client} <- Clients.upsert_client(attrs, subject) do
         OpenTelemetry.Tracer.set_attributes(%{
           client_id: client.id,

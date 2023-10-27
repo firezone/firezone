@@ -337,6 +337,14 @@ defmodule Domain.ClientsTest do
       refute is_nil(client.ipv6)
 
       assert client.last_seen_remote_ip == %Postgrex.INET{address: subject.context.remote_ip}
+
+      assert client.last_seen_remote_ip_location_region ==
+               subject.context.remote_ip_location_region
+
+      assert client.last_seen_remote_ip_location_city == subject.context.remote_ip_location_city
+      assert client.last_seen_remote_ip_location_lat == subject.context.remote_ip_location_lat
+      assert client.last_seen_remote_ip_location_lon == subject.context.remote_ip_location_lon
+
       assert client.last_seen_user_agent == subject.context.user_agent
       assert client.last_seen_version == "0.7.412"
       assert client.last_seen_at
@@ -353,6 +361,10 @@ defmodule Domain.ClientsTest do
         | context: %Domain.Auth.Context{
             subject.context
             | remote_ip: {100, 64, 100, 101},
+              remote_ip_location_region: "Mexico",
+              remote_ip_location_city: "Merida",
+              remote_ip_location_lat: 7.7758,
+              remote_ip_location_lon: -2.4128,
               user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
           }
       }
@@ -376,6 +388,18 @@ defmodule Domain.ClientsTest do
       assert updated_client.ipv6 == client.ipv6
       assert updated_client.last_seen_at
       assert updated_client.last_seen_at != client.last_seen_at
+
+      assert updated_client.last_seen_remote_ip_location_region ==
+               subject.context.remote_ip_location_region
+
+      assert updated_client.last_seen_remote_ip_location_city ==
+               subject.context.remote_ip_location_city
+
+      assert updated_client.last_seen_remote_ip_location_lat ==
+               subject.context.remote_ip_location_lat
+
+      assert updated_client.last_seen_remote_ip_location_lon ==
+               subject.context.remote_ip_location_lon
     end
 
     test "does not reserve additional addresses on update", %{

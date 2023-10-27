@@ -14,6 +14,10 @@ defmodule Domain.Gateways.Gateway do
 
     field :last_seen_user_agent, :string
     field :last_seen_remote_ip, Domain.Types.IP
+    field :last_seen_remote_ip_location_region, :string
+    field :last_seen_remote_ip_location_city, :string
+    field :last_seen_remote_ip_location_lat, :float
+    field :last_seen_remote_ip_location_lon, :float
     field :last_seen_version, :string
     field :last_seen_at, :utc_datetime_usec
 

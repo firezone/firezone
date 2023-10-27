@@ -80,6 +80,7 @@ defmodule Domain.Auth.Identity.Changeset do
     |> put_change(:last_seen_user_agent, user_agent)
     |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: remote_ip})
     |> put_change(:last_seen_at, DateTime.utc_now())
+    |> validate_required(~w[last_seen_user_agent last_seen_remote_ip]a)
   end
 
   def delete_identity(%Identity{} = identity) do
