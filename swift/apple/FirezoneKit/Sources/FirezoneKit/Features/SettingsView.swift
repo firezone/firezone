@@ -18,46 +18,66 @@ enum SettingsViewError: Error {
 public final class SettingsViewModel: ObservableObject {
   @Dependency(\.authStore) private var authStore
 
-  @Published var settings: Settings
+  @Published var accountSettings: AccountSettings
+  @Published var advancedSettings: AdvancedSettings
 
   public var onSettingsSaved: () -> Void = unimplemented()
   private var cancellables = Set<AnyCancellable>()
 
   public init() {
-    settings = Settings()
-    load()
+    accountSettings = AccountSettings()
+    advancedSettings = AdvancedSettings.defaultValue
+    loadAccountSettings()
+    loadAdvancedSettings()
   }
 
-  func load() {
+  func loadAccountSettings() {
     Task {
       authStore.tunnelStore.$tunnelAuthStatus
         .filter { $0.isInitialized }
         .receive(on: RunLoop.main)
         .sink { [weak self] tunnelAuthStatus in
           guard let self = self else { return }
-          self.settings = Settings(accountId: tunnelAuthStatus.accountId() ?? "")
+          self.accountSettings = AccountSettings(accountId: tunnelAuthStatus.accountId() ?? "")
         }
         .store(in: &cancellables)
     }
   }
 
-  func save() {
+  func saveAccountSettings() {
     Task {
       let accountId = await authStore.loginStatus.accountId
-      if accountId == settings.accountId {
+      if accountId == accountSettings.accountId {
         // Not changed
         return
       }
       let tunnelAuthStatus: TunnelAuthStatus = await {
-        if settings.accountId.isEmpty {
+        if accountSettings.accountId.isEmpty {
           return .accountNotSetup
         } else {
-          return await authStore.tunnelAuthStatusForAccount(accountId: settings.accountId)
+          return await authStore.tunnelAuthStatusForAccount(accountId: accountSettings.accountId)
         }
       }()
       try await authStore.tunnelStore.setAuthStatus(tunnelAuthStatus)
       onSettingsSaved()
     }
+  }
+
+  func loadAdvancedSettings() {
+    let userDefaults = UserDefaults.standard
+    let defaultValue = AdvancedSettings.defaultValue
+    advancedSettings = AdvancedSettings(
+      authBaseURLString: userDefaults.authBaseURLString ?? defaultValue.authBaseURLString,
+      apiURLString: userDefaults.apiURLString ?? defaultValue.apiURLString,
+      connlibLogFilterString: userDefaults.connlibLogFilterString
+        ?? defaultValue.connlibLogFilterString)
+  }
+
+  func saveAdvancedSettings() {
+    let userDefaults = UserDefaults.standard
+    userDefaults.authBaseURLString = advancedSettings.authBaseURLString
+    userDefaults.apiURLString = advancedSettings.apiURLString
+    userDefaults.connlibLogFilterString = advancedSettings.connlibLogFilterString
   }
 }
 
@@ -87,48 +107,63 @@ public struct SettingsView: View {
   public var body: some View {
     #if os(iOS)
       NavigationView {
-        tabView
-          .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-              Button("Save") {
-                self.saveButtonTapped()
-              }
-              .disabled(!isTeamIdValid(model.settings.accountId))
+        TabView {
+          accountTab
+            .tabItem {
+              Image(systemName: "person.3.fill")
+              Text("Account")
             }
-            ToolbarItem(placement: .navigationBarLeading) {
-              Button("Cancel") {
-                self.cancelButtonTapped()
-              }
+            .badge(isTeamIdValid(model.accountSettings.accountId) ? nil : "!")
+
+          exportLogsTab
+            .tabItem {
+              Image(systemName: "doc.text")
+              Text("Logs")
+            }
+
+          advancedTab
+            .tabItem {
+              Image(systemName: "slider.horizontal.3")
+              Text("Advanced")
+            }
+        }
+        .toolbar {
+          ToolbarItem(placement: .navigationBarTrailing) {
+            Button("Save") {
+              self.saveButtonTapped()
+            }
+            .disabled(!isTeamIdValid(model.accountSettings.accountId))
+          }
+          ToolbarItem(placement: .navigationBarLeading) {
+            Button("Cancel") {
+              self.cancelButtonTapped()
             }
           }
-          .navigationTitle("Settings")
-          .navigationBarTitleDisplayMode(.inline)
+        }
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
       }
     #elseif os(macOS)
       VStack {
-        tabView
-          .padding(20)
+        TabView {
+          accountTab
+            .tabItem {
+              Text("Account")
+            }
+          exportLogsTab
+            .tabItem {
+              Text("Logs")
+            }
+          advancedTab
+            .tabItem {
+              Text("Advanced")
+            }
+        }
+        .padding(20)
       }
     #else
       #error("Unsupported platform")
     #endif
-  }
-
-  private var tabView: some View {
-    TabView {
-      accountTab
-        .tabItem {
-          Image(systemName: "person.crop.circle.fill")
-          Text("Account")
-        }
-        .badge(isTeamIdValid(model.settings.accountId) ? nil : "!")
-
-      exportLogsTab
-        .tabItem {
-          Image(systemName: "doc.text")
-          Text("Logs")
-        }
-    }
   }
 
   private var accountTab: some View {
@@ -144,8 +179,8 @@ public struct SettingsView: View {
                 TextField(
                   "",
                   text: Binding(
-                    get: { model.settings.accountId },
-                    set: { model.settings.accountId = $0 }
+                    get: { model.accountSettings.accountId },
+                    set: { model.accountSettings.accountId = $0 }
                   ),
                   prompt: Text("account-id")
                 )
@@ -173,7 +208,7 @@ public struct SettingsView: View {
               self.saveButtonTapped()
             }
           )
-          .disabled(!isTeamIdValid(model.settings.accountId))
+          .disabled(!isTeamIdValid(model.accountSettings.accountId))
         }
         .padding(10)
       }
@@ -188,8 +223,8 @@ public struct SettingsView: View {
                 TextField(
                   "account-id",
                   text: Binding(
-                    get: { model.settings.accountId },
-                    set: { model.settings.accountId = $0 }
+                    get: { model.accountSettings.accountId },
+                    set: { model.accountSettings.accountId = $0 }
                   )
                 )
               }
@@ -244,17 +279,130 @@ public struct SettingsView: View {
     #endif
   }
 
+  private var advancedTab: some View {
+    #if os(macOS)
+      VStack {
+        Spacer()
+        HStack {
+          Spacer()
+          Form {
+            TextField(
+              "Auth Base URL:",
+              text: Binding(
+                get: { model.advancedSettings.authBaseURLString },
+                set: { model.advancedSettings.authBaseURLString = $0 }
+              ),
+              prompt: Text("Admin portal base URL")
+            )
+
+            TextField(
+              "API URL:",
+              text: Binding(
+                get: { model.advancedSettings.apiURLString },
+                set: { model.advancedSettings.apiURLString = $0 }
+              ),
+              prompt: Text("Control plane WebSocket URL")
+            )
+
+            TextField(
+              "Log Filter:",
+              text: Binding(
+                get: { model.advancedSettings.connlibLogFilterString },
+                set: { model.advancedSettings.connlibLogFilterString = $0 }
+              ),
+              prompt: Text("RUST_LOG-style log filter string")
+            )
+          }
+          .padding(10)
+          Spacer()
+        }
+        Spacer()
+        HStack(spacing: 30) {
+          Button(
+            "Cancel",
+            action: {
+            })
+          Button(
+            "Save",
+            action: {
+            }
+          )
+          .disabled(
+            isAdvancedSettingsValid(
+              authBaseURLString: model.advancedSettings.authBaseURLString,
+              apiURLString: model.advancedSettings.authBaseURLString,
+              logFilter: model.advancedSettings.connlibLogFilterString
+            )
+          )
+        }
+        .padding(10)
+      }
+    #elseif os(iOS)
+      VStack {
+        Form {
+          Section(
+            content: {
+              HStack(spacing: 15) {
+                Text("Auth Base URL")
+                  .foregroundStyle(.secondary)
+                TextField(
+                  "Admin portal base URL",
+                  text: Binding(
+                    get: { model.advancedSettings.authBaseURLString },
+                    set: { model.advancedSettings.authBaseURLString = $0 }
+                  )
+                )
+              }
+              HStack(spacing: 15) {
+                Text("API URL")
+                  .foregroundStyle(.secondary)
+                TextField(
+                  "Control plane WebSocket URL",
+                  text: Binding(
+                    get: { model.advancedSettings.authBaseURLString },
+                    set: { model.advancedSettings.authBaseURLString = $0 }
+                  )
+                )
+              }
+              HStack(spacing: 15) {
+                Text("Log Filter")
+                  .foregroundStyle(.secondary)
+                TextField(
+                  "RUST_LOG-style log filter string",
+                  text: Binding(
+                    get: { model.advancedSettings.authBaseURLString },
+                    set: { model.advancedSettings.authBaseURLString = $0 }
+                  )
+                )
+              }
+            },
+            header: { Text("Advanced Settings") },
+            footer: { Text("Do not change unless you know what you're doing") }
+          )
+        }
+      }
+    #endif
+  }
+
   private func isTeamIdValid(_ teamId: String) -> Bool {
     !teamId.isEmpty && teamId.unicodeScalars.allSatisfy { teamIdAllowedCharacterSet.contains($0) }
   }
 
+  private func isAdvancedSettingsValid(
+    authBaseURLString: String, apiURLString: String, logFilter: String
+  ) -> Bool {
+    URL(string: authBaseURLString) != nil && URL(string: apiURLString) != nil && !logFilter.isEmpty
+  }
+
   func saveButtonTapped() {
-    model.save()
+    model.saveAccountSettings()
+    model.saveAdvancedSettings()
     dismiss()
   }
 
   func cancelButtonTapped() {
-    model.load()
+    model.loadAccountSettings()
+    model.loadAdvancedSettings()
     dismiss()
   }
 
