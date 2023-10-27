@@ -43,7 +43,7 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
             when (action) {
-                is SettingsViewModel.ViewAction.NavigateToSignInFragment ->
+                is SettingsViewModel.ViewAction.NavigateToSignIn ->
                     findNavController().navigate(
                         R.id.signInFragment,
                     )

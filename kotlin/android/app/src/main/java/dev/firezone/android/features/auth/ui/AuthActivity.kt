@@ -38,7 +38,7 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
         viewModel.actionLiveData.observe(this) { action ->
             when (action) {
                 is AuthViewModel.ViewAction.LaunchAuthFlow -> setupWebView(action.url)
-                is AuthViewModel.ViewAction.NavigateToSignInFragment -> {
+                is AuthViewModel.ViewAction.NavigateToSignIn -> {
                     navigateToSignIn()
                 }
                 is AuthViewModel.ViewAction.ShowError -> showError()

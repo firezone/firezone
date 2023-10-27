@@ -41,7 +41,6 @@ internal class AppLinkViewModel
                             }
                             intent.data?.getQueryParameter(QUERY_CLIENT_AUTH_TOKEN)?.let { token ->
                                 if (token.isNotBlank()) {
-                                    // TODO: Don't log auth token
                                     Log.d("AppLinkViewModel", "Found valid auth token in response")
                                     saveTokenUseCase(token).collect()
                                 } else {

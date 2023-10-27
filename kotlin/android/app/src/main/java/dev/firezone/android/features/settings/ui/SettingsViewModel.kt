@@ -40,7 +40,7 @@ internal class SettingsViewModel
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
                 saveAccountIdUseCase(input).collect {
-                    actionMutableLiveData.postValue(ViewAction.NavigateToSignInFragment)
+                    actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
                 }
             }
         }
@@ -59,7 +59,7 @@ internal class SettingsViewModel
         }
 
         internal sealed class ViewAction {
-            object NavigateToSignInFragment : ViewAction()
+            object NavigateToSignIn : ViewAction()
 
             data class FillAccountId(val value: String) : ViewAction()
         }
