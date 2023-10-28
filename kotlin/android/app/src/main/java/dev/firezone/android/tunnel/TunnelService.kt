@@ -16,7 +16,6 @@ import com.google.firebase.installations.FirebaseInstallations
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.BuildConfig
 import dev.firezone.android.R
 import dev.firezone.android.core.data.PreferenceRepository
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
