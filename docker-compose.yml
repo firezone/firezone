@@ -207,7 +207,6 @@ services:
       RUST_LOG: "debug"
       RUST_BACKTRACE: 1
       API_URL: ws://api:8081
-      FIREZONE_ID: 1BD64695-E9B0-4300-BCEB-792C55530BC0
     build:
       target: debug
       context: rust
