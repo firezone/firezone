@@ -53,8 +53,6 @@ jobs:
       - run: touch local.properties
       - name: Bundle and sign release
         env:
-          LOG_FILTER_STRING: connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn
-          API_URL: wss://api.firezone.dev
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
           KEYSTORE_KEY_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_KEY_PASSWORD }}
