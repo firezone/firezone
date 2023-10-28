@@ -7,8 +7,6 @@ locally.
 
 1. [Install Rust](https://www.rust-lang.org/tools/install)
 1. [Install Android Studio](https://developer.android.com/studio)
-1. Copy the `dev.properties` to `local.properties` and edit appropriately. You
-   may wish to use the staging.properties config for the portal.
 1. Install your JDK 17 of choice. We recommend just
    [updating your CLI](https://stackoverflow.com/questions/43211282/using-jdk-that-is-bundled-inside-android-studio-as-java-home-on-mac)
    environment to use the JDK bundled in Android Studio to ensure you're using
