@@ -35,7 +35,7 @@ export default function Page() {
             <Link href="/docs/deploy">
               <button
                 type="button"
-                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-md bg-gradient-to-br from-accent-700 to-accent-600 hover:scale-105 duration-0 transform transition"
+                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-gradient-to-br from-accent-700 to-accent-600 hover:scale-105 duration-0 transform transition"
               >
                 Deploy now
                 <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
@@ -44,7 +44,7 @@ export default function Page() {
           </div>
           <div className="flex items-center justify-center">
             <video
-              className="shadow-lg rounded-md"
+              className="shadow-lg rounded"
               width="960"
               height="540"
               loop
@@ -160,7 +160,7 @@ export default function Page() {
         <div className="gap-8 py-8 px-4 mx-auto max-w-screen-xl flex flex-col-reverse lg:grid lg:grid-cols-2 xl:gap-16 sm:py-16 lg:px-6 ">
           <div className="flex flex-col">
             <Image
-              className="rounded-md shadow-md"
+              className="rounded shadow-md"
               width={600}
               height={500}
               alt="Feature 2"
@@ -268,7 +268,7 @@ export default function Page() {
             </ActionLink>
           </div>
           <Image
-            className="rounded-md shadow-md"
+            className="rounded shadow-md"
             width={600}
             height={500}
             alt="Feature 3"
@@ -355,7 +355,7 @@ export default function Page() {
           </h3>
         </div>
         <div className="gap-4 items-center pt-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-8 sm:pt-16 lg:px-6 ">
-          <div className="bg-neutral-100 p-8 rounded-md shadow-md">
+          <div className="bg-neutral-100 p-8 rounded shadow-md">
             <div className="flex items-center space-x-2.5">
               <HiHome className="flex-shrink-0 w-5 h-5 text-primary-450" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
@@ -399,7 +399,7 @@ export default function Page() {
               Access your personal project
             </ActionLink>
           </div>
-          <div className="bg-neutral-100 p-8 rounded-md shadow-md">
+          <div className="bg-neutral-100 p-8 rounded shadow-md">
             <div className="flex items-center space-x-2.5">
               <HiRocketLaunch className="flex-shrink-0 w-5 h-5 text-primary-450" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
@@ -443,7 +443,7 @@ export default function Page() {
               Scale your secure access
             </ActionLink>
           </div>
-          <div className="bg-neutral-100 p-8 rounded-md shadow-md">
+          <div className="bg-neutral-100 p-8 rounded shadow-md">
             <div className="flex items-center space-x-2.5">
               <HiGlobeAlt className=" lex-shrink-0 w-5 h-5 text-primary-450" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
@@ -487,7 +487,7 @@ export default function Page() {
               Secure your remote workforce
             </ActionLink>
           </div>
-          <div className="bg-neutral-100 p-8 rounded-md shadow-md">
+          <div className="bg-neutral-100 p-8 rounded shadow-md">
             <div className="flex items-center space-x-2.5">
               <HiWrenchScrewdriver className=" lex-shrink-0 w-5 h-5 text-primary-450" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
@@ -557,7 +557,7 @@ export default function Page() {
           <div className="flex mt-8">
             <button
               type="button"
-              className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-md bg-gradient-to-br from-primary-500 to-primary-450 hover:scale-105 duration-0 transform transition"
+              className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-gradient-to-br from-primary-500 to-primary-450 hover:scale-105 duration-0 transform transition"
             >
               <Link href="/contact/sales">Contact sales</Link>
               <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />

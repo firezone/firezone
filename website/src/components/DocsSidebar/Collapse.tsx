@@ -22,7 +22,7 @@ export default function Collapse({
         type="button"
         className={
           text +
-          " flex items-center w-full transition duration-75 rounded-lg group hover:bg-neutral-100 "
+          " flex items-center w-full transition duration-75 rounded group hover:bg-neutral-100 "
         }
         aria-controls={ctl}
         data-collapse-toggle={ctl}

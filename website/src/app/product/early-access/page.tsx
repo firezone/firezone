@@ -41,7 +41,7 @@ export default function EarlyAccess() {
             <span className="z-0">
               <Image
                 src="/images/portal_mockup.svg"
-                className="shadow-lg rounded-lg"
+                className="shadow-lg rounded"
                 height={500}
                 width={800}
                 alt="firezone portal mockup"
