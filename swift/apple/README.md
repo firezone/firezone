@@ -30,7 +30,7 @@ CI/CD pipeline.
 1. Copy an appropriate xcconfig and edit as necessary:
 
    ```bash
-   cp Firezone/xcconfig/dev.xcconfig Firezone/xcconfig/config.xcconfig
+   cp Firezone/xcconfig/debug.xcconfig Firezone/xcconfig/config.xcconfig
    vim Firezone/xcconfig/config.xcconfig
    ```
 
