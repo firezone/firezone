@@ -112,8 +112,6 @@ jobs:
       - name: Build and sign app
         id: build
         env:
-          LOG_FILTER_STRING: connlib_client_apple=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn
-          API_URL: wss://api.firezone.dev
           # Build universal binary
           ONLY_ACTIVE_ARCH: no
           # Needed because `productbuild` doesn't support picking this up automatically like Xcode does

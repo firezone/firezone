@@ -19,32 +19,23 @@ public final class SettingsViewModel: ObservableObject {
   @Dependency(\.authStore) private var authStore
 
   @Published var settings: Settings
-  @Published var apiURLString: String
-  @Published var authBaseURLString: String
 
   public var onSettingsSaved: () -> Void = unimplemented()
   private var cancellables = Set<AnyCancellable>()
 
   public init() {
     settings = Settings()
-    apiURLString = Settings().apiURL.absoluteString
-    authBaseURLString = Settings().authBaseURL.absoluteString
     load()
   }
 
   func load() {
     Task {
-      authStore.tunnelStore.$tunnelState
+      authStore.tunnelStore.$tunnelAuthStatus
         .filter { $0.isInitialized }
         .receive(on: RunLoop.main)
-        .sink { [weak self] tunnelState in
+        .sink { [weak self] tunnelAuthStatus in
           guard let self = self else { return }
-          self.settings = Settings(
-            authBaseURL: tunnelState.authBaseURL(),
-            apiURL: tunnelState.apiURL(),
-            logFilter: tunnelState.logFilter(),
-            accountId: tunnelState.accountId()
-          )
+          self.settings = Settings(accountId: tunnelAuthStatus.accountId() ?? "")
         }
         .store(in: &cancellables)
     }
@@ -52,16 +43,19 @@ public final class SettingsViewModel: ObservableObject {
 
   func save() {
     Task {
-      let tunnelState: TunnelState = await {
-        return await authStore.tunnelStateForAccount(
-          authBaseURL: URL(string: authBaseURLString)!,
-          accountId: settings.accountId,
-          apiURL: URL(string: apiURLString)!,
-          logFilter: settings.logFilter
-        )
+      let accountId = await authStore.loginStatus.accountId
+      if accountId == settings.accountId {
+        // Not changed
+        return
+      }
+      let tunnelAuthStatus: TunnelAuthStatus = await {
+        if settings.accountId.isEmpty {
+          return .accountNotSetup
+        } else {
+          return await authStore.tunnelAuthStatusForAccount(accountId: settings.accountId)
+        }
       }()
-      // TODO: If fields have changed, warn user they'll be signed out.
-      try await authStore.tunnelStore.setState(tunnelState)
+      try await authStore.tunnelStore.setAuthStatus(tunnelAuthStatus)
       onSettingsSaved()
     }
   }
@@ -73,8 +67,7 @@ public struct SettingsView: View {
   @ObservedObject var model: SettingsViewModel
   @Environment(\.dismiss) var dismiss
 
-  // TODO: Set allowed charactersets for logFilter, authBaseURL, and apiURL
-  let accountIdAllowedCharacterSet: CharacterSet
+  let teamIdAllowedCharacterSet: CharacterSet
   @State private var isExportingLogs = false
 
   #if os(iOS)
@@ -84,7 +77,7 @@ public struct SettingsView: View {
 
   public init(model: SettingsViewModel) {
     self.model = model
-    self.accountIdAllowedCharacterSet = {
+    self.teamIdAllowedCharacterSet = {
       var pathAllowed = CharacterSet.urlPathAllowed
       pathAllowed.remove("/")
       return pathAllowed
@@ -112,7 +105,8 @@ public struct SettingsView: View {
               self.logTempZipFileURL = try await createLogZipBundle()
               self.isPresentingExportLogShareSheet = true
             }
-          }.sheet(isPresented: $isPresentingExportLogShareSheet) {
+          }
+          .sheet(isPresented: $isPresentingExportLogShareSheet) {
             if let logfileURL = self.logTempZipFileURL {
               ShareSheetView(
                 localFileURL: logfileURL,
@@ -130,7 +124,7 @@ public struct SettingsView: View {
             Button("Save") {
               self.saveButtonTapped()
             }
-            .disabled(areFieldsInvalid())
+            .disabled(!isTeamIdValid(model.settings.accountId))
           }
           ToolbarItem(placement: .navigationBarLeading) {
             Button("Cancel") {
@@ -144,9 +138,9 @@ public struct SettingsView: View {
 
   #if os(macOS)
     private var mac: some View {
-      VStack(spacing: 15) {
+      VStack(spacing: 50) {
         form
-        HStack(spacing: 15) {
+        HStack(spacing: 30) {
           Button(
             "Cancel",
             action: {
@@ -158,7 +152,7 @@ public struct SettingsView: View {
               self.saveButtonTapped()
             }
           )
-          .disabled(areFieldsInvalid())
+          .disabled(!isTeamIdValid(model.settings.accountId))
         }
         ExportLogsButton(isProcessing: $isExportingLogs) {
           self.exportLogsWithSavePanelOnMac()
@@ -167,81 +161,29 @@ public struct SettingsView: View {
     }
   #endif
 
-  private func areFieldsInvalid() -> Bool {
-    // Check if any field is empty
-    if model.settings.accountId.isEmpty
-      || model.authBaseURLString.isEmpty
-      || model.apiURLString.isEmpty
-      || model.settings.logFilter.isEmpty
-    {
-      return true
-    }
-
-    // Check if accountId contains only valid characters
-    if !model.settings.accountId.unicodeScalars.allSatisfy({
-      accountIdAllowedCharacterSet.contains($0)
-    }) {
-      return true
-    }
-
-    // Check if authBaseURLString is a valid URL
-    if URL(string: model.authBaseURLString) == nil {
-      return true
-    }
-
-    // Check if apiURLString is a valid URL
-    if URL(string: model.apiURLString) == nil {
-      return true
-    }
-
-    // If none of the above conditions are met, return false
-    return false
-  }
-
   private var form: some View {
     Form {
-      Section(header: Text("Required")) {
+      Section {
         FormTextField(
-          title: "Account ID",
-          placeholder: "Provided by your admin",
+          title: "Account ID:",
+          baseURLString: AppInfoPlistConstants.authBaseURL.absoluteString,
+          placeholder: "account-id",
           text: Binding(
             get: { model.settings.accountId },
             set: { model.settings.accountId = $0 }
           )
         )
       }
-      // TODO: Add a button to hide/show advanced settings and make hidden by default
-      Section(header: Text("Advanced")) {
-        FormTextField(
-          title: "Auth Base URL",
-          placeholder: "Admin portal base URL",
-          text: Binding(
-            get: { model.authBaseURLString },
-            set: { model.authBaseURLString = $0 }
-          )
-        )
-        FormTextField(
-          title: "API URL",
-          placeholder: "Control plane WebSocket URL",
-          text: Binding(
-            get: { model.apiURLString },
-            set: { model.apiURLString = $0 }
-          )
-        )
-        FormTextField(
-          title: "Log Filter",
-          placeholder: "RUST_LOG-style log filter string",
-          text: Binding(
-            get: { model.settings.logFilter },
-            set: { model.settings.logFilter = $0 }
-          )
-        )
-      }
-    }.toolbar {
+    }
+    .navigationTitle("Settings")
+    .toolbar {
       ToolbarItem(placement: .primaryAction) {
       }
     }
-    .navigationTitle("Settings")
+  }
+
+  private func isTeamIdValid(_ teamId: String) -> Bool {
+    !teamId.isEmpty && teamId.unicodeScalars.allSatisfy { teamIdAllowedCharacterSet.contains($0) }
   }
 
   func saveButtonTapped() {
@@ -354,29 +296,34 @@ struct ExportLogsButton: View {
 
 struct FormTextField: View {
   let title: String
+  let baseURLString: String
   let placeholder: String
   let text: Binding<String>
 
   var body: some View {
     #if os(iOS)
-      HStack {
+      HStack(spacing: 15) {
         Text(title)
-        TextField(title, text: text, prompt: Text(placeholder))
+        Spacer()
+        TextField(baseURLString, text: text, prompt: Text(placeholder))
           .autocorrectionDisabled()
           .multilineTextAlignment(.leading)
           .foregroundColor(.secondary)
           .frame(maxWidth: .infinity)
           .textInputAutocapitalization(.never)
       }
-    #elseif os(macOS)
+    #else
       HStack(spacing: 30) {
         Spacer()
         VStack(alignment: .leading) {
-          TextField(title, text: text, prompt: Text(placeholder))
+          Label(title, image: "")
+            .labelStyle(.titleOnly)
+            .multilineTextAlignment(.leading)
+          TextField(baseURLString, text: text, prompt: Text(placeholder))
             .autocorrectionDisabled()
             .multilineTextAlignment(.leading)
             .foregroundColor(.secondary)
-            .frame(minWidth: 360, maxWidth: 360)
+            .frame(maxWidth: 360)
         }
         Spacer()
       }

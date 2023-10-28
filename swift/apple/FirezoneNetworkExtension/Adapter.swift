@@ -86,18 +86,24 @@ public class Adapter {
   private var displayableResources = DisplayableResources()
 
   /// Starting parameters
-  private var apiURLString: String
-  private var logFilter: String
+  private var controlPlaneURLString: String
   private var token: String
+
+  // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
+  #if DEBUG
+    private let logFilterString =
+      "connlib_client_apple=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn"
+  #else
+    private let logFilterString =
+      "connlib_client_apple=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn"
+  #endif
 
   private let connlibLogFolderPath: String
 
   public init(
-    apiURLString: String, logFilter: String, token: String,
-    packetTunnelProvider: NEPacketTunnelProvider
+    controlPlaneURLString: String, token: String, packetTunnelProvider: NEPacketTunnelProvider
   ) {
-    self.apiURLString = apiURLString
-    self.logFilter = logFilter
+    self.controlPlaneURLString = controlPlaneURLString
     self.token = token
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler()
@@ -140,8 +146,8 @@ public class Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            self.apiURLString, self.token, self.getDeviceId(), self.connlibLogFolderPath,
-            self.logFilter, self.callbackHandler),
+            self.controlPlaneURLString, self.token, self.getDeviceId(), self.connlibLogFolderPath,
+            self.logFilterString, self.callbackHandler),
           onStarted: completionHandler
         )
       } catch let error {
@@ -277,7 +283,8 @@ extension Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            apiURLString, token, self.getDeviceId(), self.connlibLogFolderPath, logFilter,
+            controlPlaneURLString, token, self.getDeviceId(), self.connlibLogFolderPath,
+            logFilterString,
             self.callbackHandler),
           onStarted: { error in
             if let error = error {

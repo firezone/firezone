@@ -201,7 +201,6 @@ jobs:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
             PACKAGE=${{ matrix.name.package }}
-            API_URL=wss://api.firezone.dev
             TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
