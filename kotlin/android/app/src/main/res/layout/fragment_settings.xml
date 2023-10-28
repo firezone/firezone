@@ -93,7 +93,7 @@
         app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.515" />
+        app:layout_constraintVertical_bias="0.54" />
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/ilAuthBaseUrlInput"
@@ -105,7 +105,7 @@
         app:layout_constraintHorizontal_bias="0"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.615">
+        app:layout_constraintVertical_bias="0.66">
 
     <com.google.android.material.textfield.TextInputEditText
         android:id="@+id/etAuthBaseUrlInput"
@@ -126,7 +126,7 @@
         app:layout_constraintHorizontal_bias="0"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.725">
+        app:layout_constraintVertical_bias="0.78">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/etApiUrlInput"
@@ -147,7 +147,7 @@
         app:layout_constraintHorizontal_bias="0"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.835">
+        app:layout_constraintVertical_bias="0.90">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/etLogFilterInput"
@@ -159,10 +159,10 @@
 
     </com.google.android.material.textfield.TextInputLayout>
     <com.google.android.material.button.MaterialButton
-        android:id="@+id/btLogin"
-        android:layout_width="185dp"
+        android:id="@+id/btSaveSettings"
+        android:layout_width="135dp"
         android:layout_height="50dp"
-        android:layout_marginBottom="16dp"
+        android:layout_marginBottom="8dp"
         android:enabled="false"
         android:text="@string/save"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -172,9 +172,9 @@
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btCancel"
-        android:layout_width="185dp"
+        android:layout_width="135dp"
         android:layout_height="50dp"
-        android:layout_marginBottom="16dp"
+        android:layout_marginBottom="8dp"
         android:enabled="true"
         android:text="@android:string/cancel"
         app:layout_constraintBottom_toBottomOf="parent"

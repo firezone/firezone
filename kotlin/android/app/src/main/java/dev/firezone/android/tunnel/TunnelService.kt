@@ -187,13 +187,11 @@ class TunnelService : VpnService() {
 
                 sessionPtr =
                     TunnelSession.connect(
-                        // FIXME: use user-override
-                        apiUrl = BuildConfig.API_URL,
+                        apiUrl = config.apiUrl,
                         token = config.token,
                         deviceId = deviceId(),
                         logDir = getLogDir(),
-                        // FIXME: use user-override
-                        logFilter = BuildConfig.LOG_FILTER,
+                        logFilter = config.logFilter,
                         callback = callback,
                     )
             }
