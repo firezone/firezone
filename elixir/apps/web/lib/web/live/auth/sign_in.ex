@@ -40,7 +40,7 @@ defmodule Web.Auth.SignIn do
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.logo />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded-lg shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
+        <div class="w-full col-span-6 mx-auto bg-white rounded shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
             <h1 class="text-xl text-center font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl dark:text-white">
               <%= @account.name %> Admin Portal
@@ -211,7 +211,7 @@ defmodule Web.Auth.SignIn do
     ~H"""
     <a href={~p"/#{@account}/sign_in/providers/#{@provider}/redirect?#{@params}"} class={~w[
           w-full inline-flex items-center justify-center py-2.5 px-5
-          bg-white rounded-lg
+          bg-white rounded
           text-sm font-medium text-gray-900
           focus:outline-none
           border border-gray-200

@@ -15,7 +15,7 @@ defmodule Web.NavigationComponents do
             data-drawer-toggle="drawer-navigation"
             aria-controls="drawer-navigation"
             class={[
-              "p-2 mr-2 text-gray-600 rounded-lg cursor-pointer md:hidden",
+              "p-2 mr-2 text-gray-600 rounded cursor-pointer md:hidden",
               "hover:text-gray-900 hover:bg-gray-100",
               "focus:bg-gray-100 dark:focus:bg-gray-700 focus:ring-2 focus:ring-gray-100",
               "dark:focus:ring-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
@@ -155,7 +155,7 @@ defmodule Web.NavigationComponents do
       <.link navigate={@navigate} class={~w[
       flex items-center p-2
       text-base font-medium text-gray-900
-      rounded-lg
+      rounded
       #{String.starts_with?(@current_path, @navigate) && @active_class}
       hover:bg-gray-100
       dark:text-white dark:hover:bg-gray-700 group]}>
@@ -195,7 +195,7 @@ defmodule Web.NavigationComponents do
       <button
         type="button"
         class={~w[
-          flex items-center p-2 w-full group rounded-lg
+          flex items-center p-2 w-full group rounded
           text-base font-medium text-gray-900
           transition duration-75
           hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700]}
@@ -218,7 +218,7 @@ defmodule Web.NavigationComponents do
       <ul id={"dropdown-#{@id}"} class={if @dropdown_hidden, do: "hidden", else: ""}>
         <li :for={item <- @item}>
           <.link navigate={item.navigate} class={~w[
-              flex items-center p-2 pl-11 w-full group rounded-lg
+              flex items-center p-2 pl-11 w-full group rounded
               text-base font-medium text-gray-900
               #{String.starts_with?(@current_path, item.navigate) && @active_class}
               transition duration-75

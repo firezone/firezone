@@ -71,9 +71,7 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
               Your API token (will be shown only once):
             </div>
 
-            <.code_block id="code-sample-docker" class="w-full mw-1/2 rounded-lg" phx-no-format>
-            <%= @identity.provider_virtual_state.changes.secret %>
-          </.code_block>
+            <.code_block id="code-sample-docker" class="w-full mw-1/2 rounded" phx-no-format><%= @identity.provider_virtual_state.changes.secret %></.code_block>
 
             <.button icon="hero-arrow-uturn-left" navigate={~p"/#{@account}/actors/#{@actor}"}>
               Back to Actor

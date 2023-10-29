@@ -10,7 +10,11 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
             Step 1. Enable Admin SDK API
           </h2>
           Please visit following link and enable Admin SDK API for your Google Workspace account:
-          <a href="https://console.cloud.google.com/apis/library/admin.googleapis.com" target="_blank">
+          <a
+            href="https://console.cloud.google.com/apis/library/admin.googleapis.com"
+            class={link_style()}
+            target="_blank"
+          >
             https://console.cloud.google.com/apis/library/admin.googleapis.com
           </a>
         </div>
@@ -19,8 +23,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
           <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">
             Step 2. Configure OAuth consent screen
           </h2>
-          Please make sure that following scopes are added to the OAuth application permissions:
-          <.code_block
+          Please make sure that following scopes are added to the OAuth application permissions: <.code_block
             :for={
               {name, scope} <- [
                 openid: "openid",
@@ -32,18 +35,16 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               ]
             }
             id={"scope-#{name}"}
-            class="w-full mb-4 whitespace-nowrap rounded-lg"
-          >
-            <%= scope %>
-          </.code_block>
+            class="w-full mb-4 whitespace-nowrap rounded"
+            phx-no-format
+          ><%= scope %></.code_block>
         </div>
 
         <div class="mb-4">
           <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">
             Step 3: Create OAuth client
           </h2>
-          Please make sure that OAuth client has following redirect URL's whitelisted:
-          <.code_block
+          Please make sure that OAuth client has following redirect URL's whitelisted: <.code_block
             :for={
               {type, redirect_url} <- [
                 sign_in: url(~p"/#{@account}/sign_in/providers/#{@id}/handle_callback"),
@@ -54,10 +55,9 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               ]
             }
             id={"redirect_url-#{type}"}
-            class="w-full mb-4 whitespace-nowrap rounded-lg"
-          >
-            <%= redirect_url %>
-          </.code_block>
+            class="w-full mb-4 whitespace-nowrap rounded"
+            phx-no-format
+          ><%= redirect_url %></.code_block>
         </div>
 
         <div class="mb-4">
@@ -103,12 +103,9 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
           </div>
 
           <div class="flex items-center space-x-4">
-            <button
-              type="submit"
-              class="text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:outline-none focus:ring-primary-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800"
-            >
+            <.submit_button>
               Connect Identity Provider
-            </button>
+            </.submit_button>
           </div>
         </div>
       </.form>

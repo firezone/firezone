@@ -65,9 +65,11 @@ defmodule Web.CoreComponents do
       bg-gray-800
       relative
     ], @class]}>
-      <code class="block w-full no-scrollbar whitespace-nowrap overflow-x-auto rounded-b-lg" data-copy>
-        <%= render_slot(@inner_block) %>
-      </code>
+      <code
+        class="block w-full no-scrollbar whitespace-pre overflow-x-auto rounded-b"
+        data-copy
+        phx-no-format
+      ><%= render_slot(@inner_block) %></code>
       <.icon name="hero-clipboard-document" data-icon class={~w[
           absolute bottom-1 right-1
           h-5 w-5
@@ -103,7 +105,7 @@ defmodule Web.CoreComponents do
   def tabs(assigns) do
     ~H"""
     <div class="mb-4">
-      <div class="border-gray-200 dark:border-gray-700 bg-slate-50 rounded-t-lg">
+      <div class="border-gray-200 dark:border-gray-700 bg-slate-50 rounded-t">
         <ul
           class="flex flex-wrap text-sm font-medium text-center"
           id={"#{@id}-ul"}
@@ -114,7 +116,7 @@ defmodule Web.CoreComponents do
             <li class="mr-2" role="presentation">
               <button
                 class={~w[
-                inline-block p-4 border-b-2 border-transparent rounded-t-lg
+                inline-block p-4 border-b-2 border-transparent rounded-t
                 hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300
               ]}
                 id={"#{tab.id}-tab"}
@@ -133,7 +135,7 @@ defmodule Web.CoreComponents do
       <div id={@id}>
         <%= for tab <- @tab do %>
           <div
-            class="hidden rounded-b-lg bg-gray-50 dark:bg-gray-800"
+            class="hidden rounded-b bg-gray-50 dark:bg-gray-800"
             id={tab.id}
             role="tabpanel"
             aria-labelledby={"#{tab.id}-tab"}
@@ -212,7 +214,7 @@ defmodule Web.CoreComponents do
       <ul class="inline-flex items-stretch -space-x-px">
         <li>
           <a href="#" class={~w[
-              flex items-center justify-center h-full py-1.5 px-3 ml-0 text-gray-500 bg-white rounded-l-lg
+              flex items-center justify-center h-full py-1.5 px-3 ml-0 text-gray-500 bg-white rounded-l
               border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700
               dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white
             ]}>
@@ -267,7 +269,7 @@ defmodule Web.CoreComponents do
         </li>
         <li>
           <a href="#" class={~w[
-              flex items-center justify-center h-full py-1.5 px-3 leading-tight text-gray-500 bg-white rounded-r-lg
+              flex items-center justify-center h-full py-1.5 px-3 leading-tight text-gray-500 bg-white rounded-r
               border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700
               dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white
             ]}>
@@ -307,7 +309,7 @@ defmodule Web.CoreComponents do
         @kind == :success && "text-green-800 bg-green-50 dark:bg-gray-800 dark:text-green-400",
         @kind == :info && "text-yellow-800 bg-yellow-50 dark:bg-gray-800 dark:text-yellow-300",
         @kind == :error && "text-red-800 bg-red-50 dark:bg-gray-800 dark:text-red-400",
-        @style != "wide" && "mb-4 rounded-lg"
+        @style != "wide" && "mb-4 rounded"
       ]}
       role="alert"
       {@rest}

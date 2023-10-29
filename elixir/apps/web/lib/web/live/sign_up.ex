@@ -46,7 +46,7 @@ defmodule Web.SignUp do
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.logo />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded-lg shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
+        <div class="w-full col-span-6 mx-auto bg-white rounded shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
             <h1 class="text-center text-xl font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl dark:text-white">
               Welcome to Firezone

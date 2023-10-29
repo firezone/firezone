@@ -45,29 +45,10 @@ defmodule Web.RelayGroups.New do
             </div>
             <.tabs id="deployment-instructions">
               <:tab id="docker-instructions" label="Docker">
-                <.code_block id="code-sample-docker" class="w-full rounded-b-lg" phx-no-format>
-                  docker run -d \<br />
-                  &nbsp; --name=firezone-relay-0 \<br />
-                  &nbsp; --restart=always \<br />
-                  &nbsp; -v /dev/net/tun:/dev/net/tun \<br />
-                  &nbsp; -e PORTAL_TOKEN=<%= Relays.encode_token!(hd(@group.tokens)) %> \<br />
-                  &nbsp; us-east1-docker.pkg.dev/firezone/firezone/relay:stable
-                </.code_block>
+                <.code_block id="code-sample-docker" class="w-full rounded-b" phx-no-format><%= docker_command(encode_group_token(@group)) %></.code_block>
               </:tab>
               <:tab id="systemd-instructions" label="Systemd">
-                <.code_block id="code-sample-systemd" class="w-full rounded-b-lg" phx-no-format>
-                  [Unit]<br />
-                  Description=zigbee2mqtt<br />
-                  After=network.target<br />
-                  <br />
-                  [Service]<br />
-                  ExecStart=/usr/bin/npm start<br />
-                  WorkingDirectory=/opt/zigbee2mqtt<br />
-                  StandardOutput=inherit<br />
-                  StandardError=inherit<br />
-                  Restart=always<br />
-                  User=pi
-                </.code_block>
+                <.code_block id="code-sample-systemd" class="w-full rounded-b" phx-no-format><%= systemd_command(encode_group_token(@group)) %></.code_block>
               </:tab>
             </.tabs>
 
@@ -109,5 +90,36 @@ defmodule Web.RelayGroups.New do
       )
 
     {:noreply, socket}
+  end
+
+  defp docker_command(secret) do
+    """
+    docker run -d \\
+      --name=firezone-relay-0 \\
+      --restart=always \\
+      -v /dev/net/tun:/dev/net/tun \\
+      -e PORTAL_TOKEN=#{secret} \\
+      us-east1-docker.pkg.dev/firezone/firezone/relay:stable
+    """
+  end
+
+  defp systemd_command(_secret) do
+    """
+     [Unit]
+     Description=zigbee2mqtt
+     After=network.target
+
+     [Service]
+     ExecStart=/usr/bin/npm start
+     WorkingDirectory=/opt/zigbee2mqtt
+     StandardOutput=inherit
+     StandardError=inherit
+     Restart=always
+     User=pi
+    """
+  end
+
+  defp encode_group_token(group) do
+    Relays.encode_token!(hd(group.tokens))
   end
 end

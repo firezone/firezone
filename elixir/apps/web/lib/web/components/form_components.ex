@@ -100,7 +100,10 @@ defmodule Web.FormComponents do
           name={@name}
           value="true"
           checked={@checked}
-          class="rounded border-zinc-300 text-zinc-900 focus:ring-0"
+          class={[
+            "rounded border-zinc-300 text-zinc-900 focus:ring-0",
+            "checked:bg-accent-500 checked:focus:bg-accent-500 checked:hover:bg-accent-500"
+          ]}
           {@rest}
         />
         <%= @label %>
@@ -115,7 +118,7 @@ defmodule Web.FormComponents do
     <div phx-feedback-for={@name}>
       <.label for={@id}><%= @label %></.label>
       <select id={@id} name={@name} class={~w[
-          bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500
+          bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded focus:ring-blue-500
           focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600
           dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500
         ]} multiple={@multiple} {@rest}>
@@ -135,7 +138,7 @@ defmodule Web.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6",
+          "mt-2 block w-full rounded text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6",
           "phx-no-feedback:border-zinc-300 phx-no-feedback:focus:border-zinc-400",
           "min-h-[6rem] border-zinc-300 focus:border-zinc-400",
           @errors != [] && "border-rose-400 focus:border-rose-400"
@@ -166,7 +169,7 @@ defmodule Web.FormComponents do
           id={@id}
           value={value}
           class={[
-            "bg-gray-50 p-2.5 block w-full rounded-lg border text-gray-900 focus:ring-primary-600 text-sm",
+            "bg-gray-50 p-2.5 block w-full rounded border text-gray-900 focus:ring-primary-600 text-sm",
             "phx-no-feedback:border-gray-300 phx-no-feedback:focus:border-primary-600",
             "disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200 disabled:shadow-none",
             "border-gray-300 focus:border-primary-600",
@@ -216,7 +219,7 @@ defmodule Web.FormComponents do
         id={@id}
         value={Phoenix.HTML.Form.normalize_value(@type, @value)}
         class={[
-          "bg-gray-50 p-2.5 block w-full rounded-lg border text-gray-900 focus:ring-primary-600 text-sm",
+          "bg-gray-50 p-2.5 block w-full rounded border text-gray-900 focus:ring-primary-600 text-sm",
           "phx-no-feedback:border-gray-300 phx-no-feedback:focus:border-primary-600",
           "disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200 disabled:shadow-none",
           "border-gray-300 focus:border-primary-600",
@@ -243,7 +246,7 @@ defmodule Web.FormComponents do
     <div class="inline-flex rounded-md shadow-sm" role="group">
       <button type="button" class={~w[
           px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200
-          rounded-l-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
+          rounded-l hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
           focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
           dark:text-white dark:hover:text-white dark:hover:bg-gray-600
           dark:focus:ring-blue-500 dark:focus:text-white
@@ -263,7 +266,7 @@ defmodule Web.FormComponents do
       <% end %>
       <button type="button" class={~w[
           px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200
-          rounded-r-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
+          rounded-r hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
           focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
           dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500
           dark:focus:text-white
@@ -410,7 +413,7 @@ defmodule Web.FormComponents do
   defp button_style do
     [
       "flex items-center justify-center",
-      "px-4 py-2 rounded-lg",
+      "px-4 py-2 rounded",
       "font-medium text-sm",
       "focus:ring-4 focus:outline-none",
       "phx-submit-loading:opacity-75"
@@ -431,10 +434,10 @@ defmodule Web.FormComponents do
     button_style() ++
       [
         "text-white",
-        "bg-primary-500",
-        "hover:bg-primary-600",
-        "focus:ring-primary-300",
-        "dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800"
+        "bg-accent-500",
+        "hover:bg-accent-600",
+        "focus:ring-accent-300",
+        "dark:bg-accent-600 dark:hover:bg-accent-700 dark:focus:ring-accent-800"
       ]
   end
 

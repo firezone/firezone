@@ -26,7 +26,7 @@ defmodule Web.Groups.Edit do
     </.breadcrumbs>
     <.section>
       <:title>
-        Edit Group: <code>Engineering</code>
+        Edit Group: <code><%= @group.name %></code>
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
