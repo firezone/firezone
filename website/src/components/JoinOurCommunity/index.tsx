@@ -14,7 +14,7 @@ export default function JoinOurCommunity() {
         </h3>
       </div>
       <div className="gap-4 items-center pt-4 px-4 mx-auto max-w-screen-lg lg:grid lg:grid-cols-3 xl:gap-8 sm:pt-8 lg:px-6 ">
-        <div className="py-8 rounded-md shadow-md text-center bg-white">
+        <div className="py-8 rounded shadow text-center bg-white">
           <HiUserGroup className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 " />
           <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 ">
             30+
@@ -22,14 +22,14 @@ export default function JoinOurCommunity() {
           <p className="mb-8 text-xl font-semibold">Contributors</p>
           <button
             type="button"
-            className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-md hover:scale-105 duration-0 transform transition bg-gradient-to-br from-accent-700 to-accent-600"
+            className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded hover:scale-105 duration-0 transform transition bg-gradient-to-br from-accent-700 to-accent-600"
           >
             <Link href="https://github.com/firezone/firezone/fork">
               Fork us on GitHub
             </Link>
           </button>
         </div>
-        <div className="py-8 rounded-md shadow-md text-center bg-white">
+        <div className="py-8 rounded shadow-md text-center bg-white">
           <HiStar className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 " />
           <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 ">
             4,300+
@@ -37,14 +37,14 @@ export default function JoinOurCommunity() {
           <p className="mb-8 text-xl font-semibold">GitHub stars</p>
           <button
             type="button"
-            className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-md hover:scale-105 duration-0 transform transition bg-gradient-to-br from-accent-700 to-accent-600"
+            className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded hover:scale-105 duration-0 transform transition bg-gradient-to-br from-accent-700 to-accent-600"
           >
             <Link href="https://github.com/firezone/firezone">
               Drop us a star
             </Link>
           </button>
         </div>
-        <div className="py-8 rounded-md shadow-md text-center bg-white">
+        <div className="py-8 rounded shadow-md text-center bg-white">
           <HiChatBubbleLeftRight className="flex-shrink-0 w-12 h-12 mx-auto text-primary-450 " />
           <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-900 ">
             250+
@@ -52,7 +52,7 @@ export default function JoinOurCommunity() {
           <p className="mb-8 text-xl font-semibold">Members</p>
           <button
             type="button"
-            className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-md hover:scale-105 duration-0 transform transition bg-gradient-to-br from-accent-700 to-accent-600"
+            className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded hover:scale-105 duration-0 transform transition bg-gradient-to-br from-accent-700 to-accent-600"
           >
             <Link href="https://firezone-users.slack.com/join/shared_invite/zt-19jd956j4-rWcCqiKMh~ikPGsUFbvZiA#/shared-invite/email">
               Join our Slack

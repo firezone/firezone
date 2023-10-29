@@ -33,7 +33,7 @@ export default function Banner({
       <button
         data-collapse-toggle="banner"
         type="button"
-        className="flex items-center text-neutral-50 hover:bg-neutral-50 hover:text-neutral-900 rounded-lg text-sm p-1.5  "
+        className="flex items-center text-neutral-50 hover:bg-neutral-50 hover:text-neutral-900 rounded text-sm p-1.5  "
       >
         <HiXMark className="w-5 h-5" />
       </button>

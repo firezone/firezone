@@ -13,7 +13,7 @@ export default function Item({ href, label }: { href: string; label: string }) {
       href={href}
       className={[
         active(href),
-        "flex items-center text-left rounded-lg text-base font-normal text-neutral-900 hover:bg-neutral-100  ",
+        "flex items-center text-left rounded text-base font-normal text-neutral-900 hover:bg-neutral-100  ",
       ].join(" ")}
     >
       <span className="ml-3">{label}</span>
