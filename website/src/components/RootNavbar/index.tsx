@@ -91,7 +91,7 @@ export default function RootNavbar() {
             </button>
             <div
               id="product-dropdown-menu"
-              className="z-10 hidden bg-white divide-y divide-gray-100 rounded-md shadow-lg w-44"
+              className="z-10 hidden bg-white divide-y divide-gray-100 rounded shadow-lg w-44"
             >
               <ul className="py-2" aria-labelledby="product-dropdown-link">
                 <li>

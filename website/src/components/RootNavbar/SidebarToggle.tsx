@@ -11,7 +11,7 @@ export default function SidebarToggle() {
         data-drawer-target="docs-sidebar"
         data-drawer-toggle="docs-sidebar"
         aria-controls="docs-sidebar"
-        className="py-2 ml-2 text-neutral-800 rounded-lg cursor-pointer md:hidden hover:text-neutral-900 hover:bg-neutral-100 focus:bg-neutral-100  focus:ring-2 focus:ring-neutral-100    "
+        className="py-2 ml-2 text-neutral-800 rounded cursor-pointer md:hidden hover:text-neutral-900 hover:bg-neutral-100 focus:bg-neutral-100  focus:ring-2 focus:ring-neutral-100    "
       >
         <HiBars3 aria-hidden="true" className="w-6 h-6" />
         <span className="sr-only">Toggle sidebar</span>

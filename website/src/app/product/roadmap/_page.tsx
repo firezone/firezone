@@ -63,7 +63,7 @@ function RoadmapItem({
   return (
     <li
       key={entryId}
-      className="shadow-sm bg-white rounded-sm shadow-sm p-4 mb-4 hover:shadow-md"
+      className="shadow-sm bg-white rounded shadow-sm p-4 mb-4 hover:shadow-md"
     >
       <h5 className="text-lg font-semibold">
         <Link
