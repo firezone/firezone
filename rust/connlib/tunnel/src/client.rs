@@ -1,5 +1,5 @@
 use crate::bounded_queue::BoundedQueue;
-use crate::device_channel::create_iface;
+use crate::device_channel::{create_iface, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::WriteTo;
 use crate::resource_table::ResourceTable;
@@ -233,22 +233,36 @@ pub struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
+    /// Attempt to handle the given packet as a DNS packet.
+    ///
+    /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
+    /// Returns `Err` if the packet is not a DNS query.
+    pub(crate) fn handle_dns<'a>(
+        &mut self,
+        packet: MutableIpPacket<'a>,
+    ) -> Result<Option<Packet<'a>>, MutableIpPacket<'a>> {
+        match dns::parse(&self.resources, packet.as_immutable()) {
+            Some(dns::ResolveStrategy::LocalResponse(pkt)) => Ok(Some(pkt)),
+            Some(dns::ResolveStrategy::ForwardQuery(query)) => {
+                self.add_pending_dns_query(query);
+
+                Ok(None)
+            }
+            None => Err(packet),
+        }
+    }
+
     pub(crate) fn handle_new_packet<'b>(
         &mut self,
-        packet: MutableIpPacket,
+        packet: MutableIpPacket<'b>,
         peer: Option<&ConnectedPeer<GatewayId>>,
         buf: &'b mut [u8],
     ) -> Result<Option<WriteTo<'b>>, ConnlibError> {
-        match dns::parse(&self.resources, packet.as_immutable()) {
-            Some(dns::ResolveStrategy::LocalResponse(pkt)) => {
-                return Ok(Some(WriteTo::Resource(pkt)))
-            }
-            Some(dns::ResolveStrategy::ForwardQuery(query)) => {
-                self.add_pending_dns_query(query);
-                return Ok(None);
-            }
-            None => {}
-        }
+        let packet = match self.handle_dns(packet) {
+            Ok(Some(packet)) => return Ok(Some(WriteTo::Resource(packet))),
+            Ok(None) => return Ok(None),
+            Err(packet) => packet,
+        };
 
         let dest = packet.destination();
 
