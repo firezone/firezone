@@ -113,11 +113,12 @@ where
             .take()
             .ok_or(Error::ControlProtocolError)?;
 
-        if let Some(new_device) = device.config.add_route(route, self.callbacks()).await? {
-            *self.device.write() = Some(new_device);
-        } else {
-            *self.device.write() = Some(device); // Restore the old device.
-        }
+        let new_device = device
+            .config
+            .add_route(route, self.callbacks())
+            .await?
+            .unwrap_or(device); // Restore the old device.
+        *self.device.write() = Some(new_device);
 
         Ok(())
     }
