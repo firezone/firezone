@@ -21,6 +21,7 @@ const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: u64 = 0x4004_54ca;
 const TUN_FILE: &[u8] = b"/dev/net/tun\0";
 const RT_PROT_STATIC: u8 = 4;
+const DEFAULT_MTU: u32 = 1280;
 
 #[repr(C)]
 union IfrIfru {
@@ -228,6 +229,13 @@ impl IfaceDevice {
             .execute();
 
         ips.try_for_each(|ip| self.handle.address().del(ip).execute())
+            .await?;
+
+        self.handle
+            .link()
+            .set(self.interface_index)
+            .mtu(DEFAULT_MTU)
+            .execute()
             .await?;
 
         let res_v4 = self
