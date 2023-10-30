@@ -71,7 +71,7 @@ where
 
     /// Writes the response to a DNS lookup
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn write_dns_lookup_response(
+    pub fn write_dns_lookup_response(
         self: &Arc<Self>,
         response: hickory_resolver::error::ResolveResult<Lookup>,
         query: IpPacket<'static>,

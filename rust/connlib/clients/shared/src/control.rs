@@ -332,10 +332,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 let tunnel = self.tunnel.clone();
                 tokio::spawn(async move {
                     let response = resolver.lookup(query.name, query.record_type).await;
-                    if let Err(err) = tunnel
-                        .write_dns_lookup_response(response, query.query)
-                        .await
-                    {
+                    if let Err(err) = tunnel.write_dns_lookup_response(response, query.query) {
                         tracing::error!(err = ?err, "DNS lookup failed: {err:#}");
                     }
                 });
