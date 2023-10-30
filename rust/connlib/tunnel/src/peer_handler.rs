@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use connlib_shared::{Callbacks, Error, Result};
+use connlib_shared::{Callbacks, Error};
 use futures_util::SinkExt;
 use webrtc::data::data_channel::DataChannel;
 
@@ -67,44 +67,26 @@ where
                 break;
             }
 
-            match self
-                .handle_peer_packet(peer, &channel, &device_io, &src_buf[..size], &mut dst_buf)
-                .await
-            {
-                Err(Error::Io(e)) => return Err(e),
+            let src = &src_buf[..size];
+
+            match peer.decapsulate(src, &mut dst_buf) {
+                Ok(Some(WriteTo::Network(bytes))) => {
+                    for packet in bytes {
+                        if let Err(e) = channel.write(&packet).await {
+                            tracing::error!("Couldn't send packet to connected peer: {e}");
+                            let _ = self.callbacks.on_error(&e.into());
+                        }
+                    }
+                }
+                Ok(Some(WriteTo::Resource(packet))) => {
+                    device_io.write(packet)?;
+                }
+                Ok(None) => {}
                 Err(other) => {
                     tracing::error!(error = ?other, "failed to handle peer packet");
                     let _ = self.callbacks.on_error(&other);
                 }
-                _ => {}
             }
-        }
-
-        Ok(())
-    }
-
-    #[inline(always)]
-    pub(crate) async fn handle_peer_packet(
-        &self,
-        peer: &Arc<Peer<TRoleState::Id>>,
-        channel: &DataChannel,
-        device_writer: &DeviceIo,
-        src: &[u8],
-        dst: &mut [u8],
-    ) -> Result<()> {
-        match peer.decapsulate(src, dst)? {
-            Some(WriteTo::Network(bytes)) => {
-                for packet in bytes {
-                    if let Err(e) = channel.write(&packet).await {
-                        tracing::error!("Couldn't send packet to connected peer: {e}");
-                        let _ = self.callbacks.on_error(&e.into());
-                    }
-                }
-            }
-            Some(WriteTo::Resource(packet)) => {
-                device_writer.write(packet)?;
-            }
-            None => {}
         }
 
         Ok(())
