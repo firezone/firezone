@@ -27,10 +27,11 @@ use webrtc::{
 };
 
 use futures::channel::mpsc;
+use futures_util::task::AtomicWaker;
 use futures_util::{SinkExt, StreamExt};
 use itertools::Itertools;
 use std::collections::VecDeque;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
 use std::{collections::HashSet, hash::Hash};
 use tokio::time::Interval;
@@ -45,6 +46,7 @@ use connlib_shared::{
 use device_channel::{DeviceIo, IfaceConfig};
 
 pub use client::ClientState;
+use connlib_shared::error::ConnlibError;
 pub use control_protocol::Request;
 pub use gateway::GatewayState;
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
@@ -130,12 +132,28 @@ impl Device {
             })?,
         ))
     }
+
+    fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<Option<MutableIpPacket<'_>>>> {
+        let res = ready!(self.io.poll_read(&mut self.buf[..self.config.mtu()], cx))?;
+
+        if res == 0 {
+            return Poll::Ready(Ok(None));
+        }
+
+        Poll::Ready(Ok(Some(
+            MutableIpPacket::new(&mut self.buf[..res]).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "received bytes are not an IP packet",
+                )
+            })?,
+        )))
+    }
 }
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
 pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     next_index: Mutex<IndexLfsr>,
-    device: RwLock<Option<Device>>,
     rate_limiter: Arc<RateLimiter>,
     private_key: StaticSecret,
     public_key: PublicKey,
@@ -157,6 +175,10 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     mtu_refresh_interval: Mutex<Interval>,
 
     peers_to_stop: Mutex<VecDeque<TRoleState::Id>>,
+
+    device: RwLock<Option<Device>>,
+    buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
+    no_device_waker: AtomicWaker,
 }
 
 impl<CB> Tunnel<CB, ClientState>
@@ -172,8 +194,69 @@ impl<CB> Tunnel<CB, GatewayState>
 where
     CB: Callbacks + 'static,
 {
-    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<ClientId>> {
-        self.poll_next_event_common(cx)
+    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
+        loop {
+            {
+                let mut device = self.device.write();
+
+                match device.as_mut().map(|d| d.poll_read(cx)) {
+                    Some(Poll::Ready(Ok(Some(packet)))) => {
+                        let dest = packet.destination();
+
+                        let peers_by_ip = self.peers_by_ip.read();
+                        let Some(peer) = peer_by_ip(&peers_by_ip, dest) else {
+                            continue;
+                        };
+                        let client_id = peer.inner.conn_id;
+                        let mut buf = self.buf.lock();
+
+                        match peer.inner.encapsulate(packet, dest, buf.as_mut_slice()) {
+                            Ok(None) => {}
+                            Ok(Some(b)) => {
+                                tokio::spawn({
+                                    let channel = peer.channel.clone();
+                                    let mut sender = self.stop_peer_command_sender.clone();
+
+                                    async move {
+                                        if let Err(e) = channel.write(&b).await {
+                                            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+                                            let _ = sender.send(client_id).await;
+                                        }
+                                    }
+                                });
+                            }
+                            Err(e) => {
+                                tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+
+                                if e.is_fatal_connection_error() {
+                                    self.peers_to_stop.lock().push_back(client_id);
+                                }
+                            }
+                        };
+
+                        continue;
+                    }
+                    Some(Poll::Ready(Ok(None))) => {
+                        tracing::info!("Device stopped");
+                        drop(device.take());
+                    }
+                    Some(Poll::Ready(Err(e))) => return Poll::Ready(Err(ConnlibError::Io(e))),
+                    Some(Poll::Pending) => {
+                        // device not ready for reading, moving on ..
+                    }
+                    None => {
+                        self.no_device_waker.register(cx.waker());
+                    }
+                }
+            }
+
+            match self.poll_next_event_common(cx) {
+                Poll::Ready(e) => return Poll::Ready(Ok(e)),
+                Poll::Pending => {}
+            }
+
+            return Poll::Pending;
+        }
     }
 }
 
@@ -436,6 +519,7 @@ where
             next_index,
             webrtc_api,
             device,
+            buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             callbacks: CallbackErrorFacade(callbacks),
             iface_handler_abort,
             role_state: Default::default(),
@@ -445,6 +529,7 @@ where
             peer_refresh_interval: Mutex::new(peer_refresh_interval()),
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
             peers_to_stop: Default::default(),
+            no_device_waker: Default::default(),
         })
     }
 
