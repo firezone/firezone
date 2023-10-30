@@ -114,7 +114,7 @@ defmodule Domain.Config do
   end
 
   def sign_up_enabled? do
-    compile_config!(Definitions, :sign_up_enabled)
+    compile_config!(Definitions, :feature_sign_up_enabled)
   end
 
   ## Test helpers

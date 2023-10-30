@@ -606,11 +606,11 @@ defmodule Domain.Config.Definitions do
   )
 
   ##############################################
-  ## Sign-ups Enabled Flag
+  ## Feature Flags
   ##############################################
 
   @doc """
   Boolean flag to turn Sign-ups on/off.
   """
-  defconfig(:sign_up_enabled, :boolean, default: true)
+  defconfig(:feature_sign_up_enabled, :boolean, default: true)
 end
