@@ -13,10 +13,10 @@ enum TunnelStoreError: Error {
   case tunnelCouldNotBeStarted
 }
 
-struct TunnelProviderKeys {
+public struct TunnelProviderKeys {
   static let keyAuthBaseURLString = "authBaseURLString"
   static let keyAccountId = "accountId"
-  static let keyConnlibLogFilter = "connlibLogFilter"
+  public static let keyConnlibLogFilter = "connlibLogFilter"
 }
 
 final class TunnelStore: ObservableObject {
