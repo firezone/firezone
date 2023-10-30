@@ -77,7 +77,7 @@ where
         query: IpPacket<'static>,
     ) -> connlib_shared::Result<()> {
         if let Some(pkt) = dns::build_response_from_resolve_result(query, response)? {
-            let Some(ref device) = *self.device.read().await else {
+            let Some(ref device) = *self.device.read() else {
                 return Ok(());
             };
 
@@ -95,7 +95,7 @@ where
     ) -> connlib_shared::Result<()> {
         let device = create_iface(config, self.callbacks()).await?;
 
-        *self.device.write().await = Some(device.clone());
+        *self.device.write() = Some(device.clone());
         *self.iface_handler_abort.lock() = Some(tokio_util::spawn_log(
             &self.callbacks,
             device_handler(Arc::clone(self), device),
@@ -122,18 +122,17 @@ where
         let device = self
             .device
             .write()
-            .await
             .take()
             .ok_or(Error::ControlProtocolError)?;
 
         if let Some(new_device) = device.config.add_route(route, self.callbacks()).await? {
-            *self.device.write().await = Some(new_device.clone());
+            *self.device.write() = Some(new_device.clone());
             *self.iface_handler_abort.lock() = Some(tokio_util::spawn_log(
                 &self.callbacks,
                 device_handler(Arc::clone(self), new_device),
             ));
         } else {
-            *self.device.write().await = Some(device); // Restore the old device.
+            *self.device.write() = Some(device); // Restore the old device.
         }
 
         Ok(())

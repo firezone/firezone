@@ -27,7 +27,7 @@ where
     ) -> connlib_shared::Result<()> {
         let device = create_iface(config, self.callbacks()).await?;
 
-        *self.device.write().await = Some(device.clone());
+        *self.device.write() = Some(device.clone());
         *self.iface_handler_abort.lock() =
             Some(tokio::spawn(device_handler(Arc::clone(self), device)).abort_handle());
 

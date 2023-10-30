@@ -18,7 +18,7 @@ where
         channel: Arc<DataChannel>,
     ) {
         loop {
-            let Some(device) = self.device.read().await.clone() else {
+            let Some(device) = self.device.read().clone() else {
                 let err = Error::NoIface;
                 tracing::error!(?err);
                 let _ = self.callbacks().on_disconnect(Some(&err));

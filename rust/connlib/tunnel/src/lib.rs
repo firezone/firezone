@@ -135,8 +135,7 @@ impl Device {
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
 pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     next_index: Mutex<IndexLfsr>,
-    // We use a tokio Mutex here since this is only read/write during config so there's no relevant performance impact
-    device: tokio::sync::RwLock<Option<Device>>,
+    device: RwLock<Option<Device>>,
     rate_limiter: Arc<RateLimiter>,
     private_key: StaticSecret,
     public_key: PublicKey,
@@ -305,21 +304,11 @@ where
             }
 
             if self.mtu_refresh_interval.lock().poll_tick(cx).is_ready() {
-                // We use `try_read` to acquire a lock on the device because we are within a synchronous context here and cannot use `.await`.
-                // The device is only updated during `add_route` and `set_interface` which would be extremely unlucky to hit at the same time as this timer.
-                // Even if we hit this, we just wait for the next tick to update the MTU.
-                let device = match self.device.try_read().map(|d| d.clone()) {
-                    Ok(Some(device)) => device,
-                    Ok(None) => {
-                        let err = Error::ControlProtocolError;
-                        tracing::error!(?err, "get_iface_config");
-                        let _ = self.callbacks.on_error(&err);
-                        continue;
-                    }
-                    Err(_) => {
-                        tracing::debug!("Unlucky! Somebody is updating the device just as we are about to update its MTU, trying again on the next tick ...");
-                        continue;
-                    }
+                let Some(device) = self.device.read().clone() else {
+                    let err = Error::ControlProtocolError;
+                    tracing::error!(?err, "get_iface_config");
+                    let _ = self.callbacks.on_error(&err);
+                    continue;
                 };
 
                 tokio::spawn({
