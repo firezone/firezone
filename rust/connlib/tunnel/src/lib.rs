@@ -241,8 +241,13 @@ where
                         };
 
                         if let Err(e) = peer_channel.write(&bytes).await {
-                            tracing::error!("Failed to send packet to peer: {e}");
-                            let _ = callbacks.on_error(&e.into());
+                            let err = e.into();
+                            tracing::error!("Failed to send packet to peer: {err:?}");
+                            let _ = callbacks.on_error(&err);
+
+                            if err.is_fatal_connection_error() {
+                                let _ = stop_command_sender.send((peer_index, peer_conn_id)).await;
+                            }
                         }
                     });
                 }
