@@ -165,6 +165,19 @@
         android:layout_marginBottom="8dp"
         android:enabled="false"
         android:text="@string/save"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/btShareLog"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btShareLog"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/share_diagnostic_logs"
+        style="?attr/materialIconButtonOutlinedStyle"
+        app:icon="@drawable/ic_share"
+        app:iconGravity="textStart"
+        app:iconPadding="@dimen/spacing_small"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="1.0"

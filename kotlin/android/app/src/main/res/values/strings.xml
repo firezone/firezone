@@ -10,6 +10,7 @@
 	<string name="api_url">API URL</string>
 	<string name="log_filter">Log Filter</string>
 	<string name="save">Save</string>
+	<string name="share_diagnostic_logs">Share Diagnostic Logs</string>
 
 
 	<!-- Sign In -->
