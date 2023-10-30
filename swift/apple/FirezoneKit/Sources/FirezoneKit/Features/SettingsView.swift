@@ -58,26 +58,28 @@ public final class SettingsViewModel: ObservableObject {
           return await authStore.tunnelAuthStatusForAccount(accountId: accountSettings.accountId)
         }
       }()
-      try await authStore.tunnelStore.setAuthStatus(tunnelAuthStatus)
+      try await authStore.tunnelStore.saveAuthStatus(tunnelAuthStatus)
       onSettingsSaved()
     }
   }
 
   func loadAdvancedSettings() {
-    let userDefaults = UserDefaults.standard
-    let defaultValue = AdvancedSettings.defaultValue
-    advancedSettings = AdvancedSettings(
-      authBaseURLString: userDefaults.authBaseURLString ?? defaultValue.authBaseURLString,
-      apiURLString: userDefaults.apiURLString ?? defaultValue.apiURLString,
-      connlibLogFilterString: userDefaults.connlibLogFilterString
-        ?? defaultValue.connlibLogFilterString)
+    advancedSettings = authStore.tunnelStore.advancedSettings() ?? AdvancedSettings.defaultValue
   }
 
   func saveAdvancedSettings() {
-    let userDefaults = UserDefaults.standard
-    userDefaults.authBaseURLString = advancedSettings.authBaseURLString
-    userDefaults.apiURLString = advancedSettings.apiURLString
-    userDefaults.connlibLogFilterString = advancedSettings.connlibLogFilterString
+    Task {
+      guard let authBaseURL = URL(string: advancedSettings.authBaseURLString) else {
+        fatalError("Saved authBaseURL is invalid")
+      }
+      try await authStore.tunnelStore.saveAdvancedSettings(advancedSettings)
+      var isChanged = false
+      await authStore.setAuthBaseURL(authBaseURL, isChanged: &isChanged)
+      if isChanged {
+        // Update tunnelAuthStatus looking for the new authBaseURL in the keychain
+        saveAccountSettings()
+      }
+    }
   }
 }
 
@@ -198,14 +200,9 @@ public struct SettingsView: View {
         Spacer()
         HStack(spacing: 30) {
           Button(
-            "Cancel",
+            "Apply",
             action: {
-              self.cancelButtonTapped()
-            })
-          Button(
-            "Save",
-            action: {
-              self.saveButtonTapped()
+              self.model.saveAccountSettings()
             }
           )
           .disabled(!isTeamIdValid(model.accountSettings.accountId))
@@ -319,16 +316,13 @@ public struct SettingsView: View {
         Spacer()
         HStack(spacing: 30) {
           Button(
-            "Cancel",
+            "Apply",
             action: {
-            })
-          Button(
-            "Save",
-            action: {
+              self.model.saveAdvancedSettings()
             }
           )
           .disabled(
-            isAdvancedSettingsValid(
+            !isAdvancedSettingsValid(
               authBaseURLString: model.advancedSettings.authBaseURLString,
               apiURLString: model.advancedSettings.authBaseURLString,
               logFilter: model.advancedSettings.connlibLogFilterString

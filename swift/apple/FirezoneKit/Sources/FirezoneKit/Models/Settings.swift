@@ -33,20 +33,3 @@ struct AdvancedSettings {
     #endif
   }()
 }
-
-extension UserDefaults {
-  @objc dynamic var authBaseURLString: String? {
-    get { return string(forKey: "authBaseURLString") }
-    set { set(newValue, forKey: "authBaseURLString") }
-  }
-
-  @objc dynamic var apiURLString: String? {
-    get { return string(forKey: "apiURLString") }
-    set { set(newValue, forKey: "apiURLString") }
-  }
-
-  @objc dynamic var connlibLogFilterString: String? {
-    get { return string(forKey: "connlibLogFilterString") }
-    set { set(newValue, forKey: "connlibLogFilterString") }
-  }
-}
