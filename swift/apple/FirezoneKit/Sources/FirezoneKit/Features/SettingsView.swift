@@ -97,6 +97,21 @@ public struct SettingsView: View {
     @State private var isPresentingExportLogShareSheet = false
   #endif
 
+  struct PlaceholderText {
+    static let accountId = "account-id"
+    static let authBaseURL = "Admin portal base URL"
+    static let apiURL = "Control plane WebSocket URL"
+    static let logFilter = "RUST_LOG-style filter string"
+  }
+
+  struct FootnoteText {
+    static let forAccount = "Your account ID is provided by your admin"
+    static let forAdvanced = """
+      Use the default values unless you know what you're doing. \
+      Changing them might disrupt access to your Firezone resources.
+      """
+  }
+
   public init(model: SettingsViewModel) {
     self.model = model
     self.teamIdAllowedCharacterSet = {
@@ -116,12 +131,6 @@ public struct SettingsView: View {
               Text("Account")
             }
             .badge(isTeamIdValid(model.accountSettings.accountId) ? nil : "!")
-
-          exportLogsTab
-            .tabItem {
-              Image(systemName: "doc.text")
-              Text("Logs")
-            }
 
           advancedTab
             .tabItem {
@@ -152,10 +161,6 @@ public struct SettingsView: View {
             .tabItem {
               Text("Account")
             }
-          exportLogsTab
-            .tabItem {
-              Text("Logs")
-            }
           advancedTab
             .tabItem {
               Text("Advanced")
@@ -184,7 +189,7 @@ public struct SettingsView: View {
                     get: { model.accountSettings.accountId },
                     set: { model.accountSettings.accountId = $0 }
                   ),
-                  prompt: Text("account-id")
+                  prompt: Text(PlaceholderText.accountId)
                 )
                 .frame(maxWidth: 240)
                 .padding(10)
@@ -192,7 +197,7 @@ public struct SettingsView: View {
               }
             },
             footer: {
-              Text("Your account ID is provided by your admin")
+              Text(FootnoteText.forAccount)
                 .foregroundStyle(.secondary)
             }
           )
@@ -207,7 +212,7 @@ public struct SettingsView: View {
           )
           .disabled(!isTeamIdValid(model.accountSettings.accountId))
         }
-        .padding(10)
+        Spacer()
       }
     #elseif os(iOS)
       VStack {
@@ -218,16 +223,18 @@ public struct SettingsView: View {
                 Text("Account ID")
                   .foregroundStyle(.secondary)
                 TextField(
-                  "account-id",
+                  PlaceholderText.accountId,
                   text: Binding(
                     get: { model.accountSettings.accountId },
                     set: { model.accountSettings.accountId = $0 }
                   )
                 )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
               }
             },
             header: { Text("Account") },
-            footer: { Text("Your account ID is provided by your admin") }
+            footer: { Text(FootnoteText.forAccount) }
           )
         }
       }
@@ -236,10 +243,137 @@ public struct SettingsView: View {
     #endif
   }
 
-  private var exportLogsTab: some View {
-    #if os(iOS)
+  private var advancedTab: some View {
+    #if os(macOS)
+      VStack {
+        Spacer()
+        HStack {
+          Spacer()
+          Form {
+            TextField(
+              "Auth Base URL:",
+              text: Binding(
+                get: { model.advancedSettings.authBaseURLString },
+                set: { model.advancedSettings.authBaseURLString = $0 }
+              ),
+              prompt: Text(PlaceholderText.authBaseURL)
+            )
+
+            TextField(
+              "API URL:",
+              text: Binding(
+                get: { model.advancedSettings.apiURLString },
+                set: { model.advancedSettings.apiURLString = $0 }
+              ),
+              prompt: Text(PlaceholderText.apiURL)
+            )
+
+            TextField(
+              "Log Filter:",
+              text: Binding(
+                get: { model.advancedSettings.connlibLogFilterString },
+                set: { model.advancedSettings.connlibLogFilterString = $0 }
+              ),
+              prompt: Text(PlaceholderText.logFilter)
+            )
+
+            HStack(spacing: 30) {
+              Button(
+                "Apply",
+                action: {
+                  self.model.saveAdvancedSettings()
+                }
+              )
+              .disabled(
+                !isAdvancedSettingsValid(
+                  authBaseURLString: model.advancedSettings.authBaseURLString,
+                  apiURLString: model.advancedSettings.authBaseURLString,
+                  logFilter: model.advancedSettings.connlibLogFilterString
+                )
+              )
+
+              Button(
+                "Restore to Defaults",
+                action: {
+                  self.restoreAdvancedSettingsToDefaults()
+                }
+              )
+            }
+
+            Text(FootnoteText.forAdvanced)
+              .foregroundStyle(.secondary)
+          }
+          .padding(10)
+          Spacer()
+        }
+        Spacer()
+        HStack {
+          Spacer()
+          ExportLogsButton(isProcessing: $isExportingLogs) {
+            self.exportLogsWithSavePanelOnMac()
+          }
+          Spacer()
+        }
+        Spacer()
+      }
+    #elseif os(iOS)
       VStack {
         Form {
+          Section(
+            content: {
+              HStack(spacing: 15) {
+                Text("Auth Base URL")
+                  .foregroundStyle(.secondary)
+                TextField(
+                  PlaceholderText.authBaseURL,
+                  text: Binding(
+                    get: { model.advancedSettings.authBaseURLString },
+                    set: { model.advancedSettings.authBaseURLString = $0 }
+                  )
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+              }
+              HStack(spacing: 15) {
+                Text("API URL")
+                  .foregroundStyle(.secondary)
+                TextField(
+                  PlaceholderText.apiURL,
+                  text: Binding(
+                    get: { model.advancedSettings.apiURLString },
+                    set: { model.advancedSettings.apiURLString = $0 }
+                  )
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+              }
+              HStack(spacing: 15) {
+                Text("Log Filter")
+                  .foregroundStyle(.secondary)
+                TextField(
+                  PlaceholderText.logFilter,
+                  text: Binding(
+                    get: { model.advancedSettings.connlibLogFilterString },
+                    set: { model.advancedSettings.connlibLogFilterString = $0 }
+                  )
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+              }
+              HStack {
+                Spacer()
+                Button(
+                  "Restore to Defaults",
+                  action: {
+                    self.restoreAdvancedSettingsToDefaults()
+                  }
+                )
+                Spacer()
+              }
+            },
+            header: { Text("Advanced Settings") },
+            footer: { Text(FootnoteText.forAdvanced) }
+          )
           Section(header: Text("Logs")) {
             HStack {
               Spacer()
@@ -265,116 +399,6 @@ public struct SettingsView: View {
           }
         }
       }
-    #elseif os(macOS)
-      VStack {
-        ExportLogsButton(isProcessing: $isExportingLogs) {
-          self.exportLogsWithSavePanelOnMac()
-        }
-      }
-    #else
-      #error("Unsupported platform")
-    #endif
-  }
-
-  private var advancedTab: some View {
-    #if os(macOS)
-      VStack {
-        Spacer()
-        HStack {
-          Spacer()
-          Form {
-            TextField(
-              "Auth Base URL:",
-              text: Binding(
-                get: { model.advancedSettings.authBaseURLString },
-                set: { model.advancedSettings.authBaseURLString = $0 }
-              ),
-              prompt: Text("Admin portal base URL")
-            )
-
-            TextField(
-              "API URL:",
-              text: Binding(
-                get: { model.advancedSettings.apiURLString },
-                set: { model.advancedSettings.apiURLString = $0 }
-              ),
-              prompt: Text("Control plane WebSocket URL")
-            )
-
-            TextField(
-              "Log Filter:",
-              text: Binding(
-                get: { model.advancedSettings.connlibLogFilterString },
-                set: { model.advancedSettings.connlibLogFilterString = $0 }
-              ),
-              prompt: Text("RUST_LOG-style log filter string")
-            )
-          }
-          .padding(10)
-          Spacer()
-        }
-        Spacer()
-        HStack(spacing: 30) {
-          Button(
-            "Apply",
-            action: {
-              self.model.saveAdvancedSettings()
-            }
-          )
-          .disabled(
-            !isAdvancedSettingsValid(
-              authBaseURLString: model.advancedSettings.authBaseURLString,
-              apiURLString: model.advancedSettings.authBaseURLString,
-              logFilter: model.advancedSettings.connlibLogFilterString
-            )
-          )
-        }
-        .padding(10)
-      }
-    #elseif os(iOS)
-      VStack {
-        Form {
-          Section(
-            content: {
-              HStack(spacing: 15) {
-                Text("Auth Base URL")
-                  .foregroundStyle(.secondary)
-                TextField(
-                  "Admin portal base URL",
-                  text: Binding(
-                    get: { model.advancedSettings.authBaseURLString },
-                    set: { model.advancedSettings.authBaseURLString = $0 }
-                  )
-                )
-              }
-              HStack(spacing: 15) {
-                Text("API URL")
-                  .foregroundStyle(.secondary)
-                TextField(
-                  "Control plane WebSocket URL",
-                  text: Binding(
-                    get: { model.advancedSettings.authBaseURLString },
-                    set: { model.advancedSettings.authBaseURLString = $0 }
-                  )
-                )
-              }
-              HStack(spacing: 15) {
-                Text("Log Filter")
-                  .foregroundStyle(.secondary)
-                TextField(
-                  "RUST_LOG-style log filter string",
-                  text: Binding(
-                    get: { model.advancedSettings.authBaseURLString },
-                    set: { model.advancedSettings.authBaseURLString = $0 }
-                  )
-                )
-              }
-            },
-            header: { Text("Advanced Settings") },
-            footer: { Text("Do not change unless you know what you're doing") }
-          )
-        }
-      }
     #endif
   }
 
@@ -398,6 +422,10 @@ public struct SettingsView: View {
     model.loadAccountSettings()
     model.loadAdvancedSettings()
     dismiss()
+  }
+
+  func restoreAdvancedSettingsToDefaults() {
+    model.advancedSettings = AdvancedSettings.defaultValue
   }
 
   #if os(macOS)
@@ -513,9 +541,6 @@ struct FormTextField: View {
           Spacer()
           TextField(baseURLString, text: text, prompt: Text(placeholder))
             .autocorrectionDisabled()
-            .multilineTextAlignment(.leading)
-            .foregroundColor(.secondary)
-            .frame(maxWidth: .infinity)
             .textInputAutocapitalization(.never)
         }
         Spacer()
