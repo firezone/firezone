@@ -49,7 +49,7 @@ where
     }
 
     async fn peer_handler(
-        self: &Arc<Self>,
+        &self,
         peer: &Arc<Peer<TRoleState::Id>>,
         channel: Arc<DataChannel>,
         device_io: DeviceIo,
@@ -85,7 +85,7 @@ where
 
     #[inline(always)]
     pub(crate) async fn handle_peer_packet(
-        self: &Arc<Self>,
+        &self,
         peer: &Arc<Peer<TRoleState::Id>>,
         channel: &DataChannel,
         device_writer: &DeviceIo,

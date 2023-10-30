@@ -6,7 +6,6 @@ use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
-use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
@@ -17,10 +16,7 @@ where
 {
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_interface(
-        self: &Arc<Self>,
-        config: &InterfaceConfig,
-    ) -> connlib_shared::Result<()> {
+    pub async fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         let device = create_iface(config, self.callbacks()).await?;
 
         *self.device.write() = Some(device.clone());

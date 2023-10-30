@@ -22,7 +22,6 @@ use ip_network_table::IpNetworkTable;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::Instant;
@@ -38,7 +37,7 @@ where
     /// and packets will be wrapped with wireguard and sent through it.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn add_resource(
-        self: &Arc<Self>,
+        &self,
         resource_description: ResourceDescription,
     ) -> connlib_shared::Result<()> {
         let mut any_valid_route = false;
@@ -69,7 +68,7 @@ where
     /// Writes the response to a DNS lookup
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn write_dns_lookup_response(
-        self: &Arc<Self>,
+        &self,
         response: hickory_resolver::error::ResolveResult<Lookup>,
         query: IpPacket<'static>,
     ) -> connlib_shared::Result<()> {
@@ -86,10 +85,7 @@ where
 
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_interface(
-        self: &Arc<Self>,
-        config: &InterfaceConfig,
-    ) -> connlib_shared::Result<()> {
+    pub async fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         let device = create_iface(config, self.callbacks()).await?;
 
         *self.device.write() = Some(device.clone());
@@ -110,7 +106,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn add_route(self: &Arc<Self>, route: IpNetwork) -> connlib_shared::Result<()> {
+    async fn add_route(&self, route: IpNetwork) -> connlib_shared::Result<()> {
         let device = self
             .device
             .write()
