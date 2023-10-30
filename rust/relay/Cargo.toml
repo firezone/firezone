@@ -9,7 +9,7 @@ secrecy = { workspace = true }
 anyhow = "1.0.75"
 clap = { version = "4.4.4", features = ["derive", "env"] }
 bytecodec = "0.4.15"
-futures = "0.3.28"
+futures = "0.3.29"
 hex = "0.4.3"
 hex-literal = "0.4.1"
 rand = "0.8.5"
