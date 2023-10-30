@@ -236,31 +236,7 @@ where
                 continue;
             };
 
-            let gateway_id = peer.inner.conn_id;
-
-            match peer.inner.encapsulate(packet, dest, write_buf) {
-                Ok(None) => {}
-                Ok(Some(b)) => {
-                    tokio::spawn({
-                        let channel = peer.channel.clone();
-                        let mut sender = self.stop_peer_command_sender.clone();
-
-                        async move {
-                            if let Err(e) = channel.write(&b).await {
-                                tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
-                                let _ = sender.send(gateway_id).await;
-                            }
-                        }
-                    });
-                }
-                Err(e) => {
-                    tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
-
-                    if e.is_fatal_connection_error() {
-                        self.peers_to_stop.lock().push_back(gateway_id);
-                    }
-                }
-            };
+            self.encapsulate(write_buf, packet, dest, peer);
 
             continue;
         }
@@ -290,31 +266,8 @@ where
                         let Some(peer) = peer_by_ip(&peers_by_ip, dest) else {
                             continue;
                         };
-                        let client_id = peer.inner.conn_id;
 
-                        match peer.inner.encapsulate(packet, dest, write_buf) {
-                            Ok(None) => {}
-                            Ok(Some(b)) => {
-                                tokio::spawn({
-                                    let channel = peer.channel.clone();
-                                    let mut sender = self.stop_peer_command_sender.clone();
-
-                                    async move {
-                                        if let Err(e) = channel.write(&b).await {
-                                            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
-                                            let _ = sender.send(client_id).await;
-                                        }
-                                    }
-                                });
-                            }
-                            Err(e) => {
-                                tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
-
-                                if e.is_fatal_connection_error() {
-                                    self.peers_to_stop.lock().push_back(client_id);
-                                }
-                            }
-                        };
+                        self.encapsulate(write_buf, packet, dest, peer);
 
                         continue;
                     }
@@ -502,6 +455,40 @@ where
 
             return Poll::Pending;
         }
+    }
+
+    fn encapsulate(
+        &self,
+        write_buf: &mut [u8],
+        packet: MutableIpPacket,
+        dest: IpAddr,
+        peer: &ConnectedPeer<TRoleState::Id>,
+    ) {
+        let peer_id = peer.inner.conn_id;
+
+        match peer.inner.encapsulate(packet, dest, write_buf) {
+            Ok(None) => {}
+            Ok(Some(b)) => {
+                tokio::spawn({
+                    let channel = peer.channel.clone();
+                    let mut sender = self.stop_peer_command_sender.clone();
+
+                    async move {
+                        if let Err(e) = channel.write(&b).await {
+                            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+                            let _ = sender.send(peer_id).await;
+                        }
+                    }
+                });
+            }
+            Err(e) => {
+                tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+
+                if e.is_fatal_connection_error() {
+                    self.peers_to_stop.lock().push_back(peer_id);
+                }
+            }
+        };
     }
 }
 
