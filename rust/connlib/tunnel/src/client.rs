@@ -119,20 +119,21 @@ where
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn add_route(self: &Arc<Self>, route: IpNetwork) -> connlib_shared::Result<()> {
-        let mut device = self.device.write().await;
+        let device = self
+            .device
+            .write()
+            .await
+            .take()
+            .ok_or(Error::ControlProtocolError)?;
 
-        if let Some(new_device) = device
-            .as_ref()
-            .ok_or(Error::ControlProtocolError)?
-            .config
-            .add_route(route, self.callbacks())
-            .await?
-        {
-            *device = Some(new_device.clone());
+        if let Some(new_device) = device.config.add_route(route, self.callbacks()).await? {
+            *self.device.write().await = Some(new_device.clone());
             *self.iface_handler_abort.lock() = Some(tokio_util::spawn_log(
                 &self.callbacks,
                 device_handler(Arc::clone(self), new_device),
             ));
+        } else {
+            *self.device.write().await = Some(device); // Restore the old device.
         }
 
         Ok(())
