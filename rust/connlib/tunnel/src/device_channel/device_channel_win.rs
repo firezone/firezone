@@ -14,10 +14,6 @@ impl DeviceIo {
         todo!()
     }
 
-    pub async fn read(&self, _: &mut [u8]) -> std::io::Result<usize> {
-        todo!()
-    }
-
     pub fn write(&self, _: Packet<'_>) -> std::io::Result<usize> {
         todo!()
     }

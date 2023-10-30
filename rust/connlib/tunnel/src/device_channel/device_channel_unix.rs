@@ -7,12 +7,12 @@ use std::task::{ready, Context, Poll};
 
 use connlib_shared::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
 use ip_network::IpNetwork;
-use tokio::io::{unix::AsyncFd, Interest, Ready};
+use tokio::io::{unix::AsyncFd, Ready};
 
 use tun::{IfaceDevice, IfaceStream};
 
 use crate::device_channel::Packet;
-use crate::{Device, MAX_UDP_SIZE};
+use crate::Device;
 
 mod tun;
 
@@ -25,12 +25,6 @@ pub(crate) struct IfaceConfig {
 pub(crate) struct DeviceIo(Arc<AsyncFd<IfaceStream>>);
 
 impl DeviceIo {
-    pub async fn read(&self, out: &mut [u8]) -> io::Result<usize> {
-        self.0
-            .async_io(Interest::READABLE, |inner| inner.read(out))
-            .await
-    }
-
     pub fn poll_read(&self, out: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         loop {
             let mut guard = ready!(self.0.poll_read_ready(cx))?;
@@ -84,11 +78,7 @@ impl IfaceConfig {
             iface,
             mtu: AtomicUsize::new(mtu),
         });
-        Ok(Some(Device {
-            io,
-            config,
-            buf: Box::new([0u8; MAX_UDP_SIZE]),
-        }))
+        Ok(Some(Device { io, config }))
     }
 }
 
@@ -105,9 +95,5 @@ pub(crate) async fn create_iface(
         mtu: AtomicUsize::new(mtu),
     });
 
-    Ok(Device {
-        io,
-        config,
-        buf: Box::new([0u8; MAX_UDP_SIZE]),
-    })
+    Ok(Device { io, config })
 }

@@ -286,9 +286,9 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             .await;
     }
 
-    pub async fn handle_tunnel_event(&mut self, event: firezone_tunnel::Event<GatewayId>) {
+    pub async fn handle_tunnel_event(&mut self, event: Result<firezone_tunnel::Event<GatewayId>>) {
         match event {
-            firezone_tunnel::Event::SignalIceCandidate { conn_id, candidate } => {
+            Ok(firezone_tunnel::Event::SignalIceCandidate { conn_id, candidate }) => {
                 if let Err(e) = self
                     .phoenix_channel
                     .send(EgressMessages::BroadcastIceCandidates(
@@ -302,11 +302,11 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     tracing::error!("Failed to signal ICE candidate: {e}")
                 }
             }
-            firezone_tunnel::Event::ConnectionIntent {
+            Ok(firezone_tunnel::Event::ConnectionIntent {
                 resource,
                 connected_gateway_ids,
                 reference,
-            } => {
+            }) => {
                 if let Err(e) = self
                     .phoenix_channel
                     .clone()
@@ -324,7 +324,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     // TODO: Clean up connection in `ClientState` here?
                 }
             }
-            firezone_tunnel::Event::DnsQuery(query) => {
+            Ok(firezone_tunnel::Event::DnsQuery(query)) => {
                 // Until we handle it better on a gateway-like eventloop, making sure not to block the loop
                 let Some(resolver) = self.fallback_resolver.lock().clone() else {
                     return;
@@ -336,6 +336,9 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         tracing::error!(err = ?err, "DNS lookup failed: {err:#}");
                     }
                 });
+            }
+            Err(e) => {
+                tracing::error!("Tunnel failed: {e}");
             }
         }
     }

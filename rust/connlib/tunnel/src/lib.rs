@@ -16,7 +16,7 @@ use pnet_packet::Packet;
 use hickory_resolver::proto::rr::RecordType;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
-use tokio::{task::AbortHandle, time::MissedTickBehavior};
+use tokio::time::MissedTickBehavior;
 use webrtc::{
     api::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
@@ -66,7 +66,6 @@ mod ip_packet;
 mod peer;
 mod peer_handler;
 mod resource_table;
-mod tokio_util;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
@@ -110,44 +109,28 @@ impl From<connlib_shared::messages::Peer> for PeerConfig {
 struct Device {
     config: Arc<IfaceConfig>,
     io: DeviceIo,
-
-    buf: Box<[u8; MAX_UDP_SIZE]>,
 }
 
 impl Device {
-    async fn read(&mut self) -> io::Result<Option<MutableIpPacket<'_>>> {
-        let res = self.io.read(&mut self.buf[..self.config.mtu()]).await?;
-        tracing::trace!(target: "wire", action = "read", bytes = res, from = "iface");
-
-        if res == 0 {
-            return Ok(None);
-        }
-
-        Ok(Some(
-            MutableIpPacket::new(&mut self.buf[..res]).ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "received bytes are not an IP packet",
-                )
-            })?,
-        ))
-    }
-
-    fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<Option<MutableIpPacket<'_>>>> {
-        let res = ready!(self.io.poll_read(&mut self.buf[..self.config.mtu()], cx))?;
+    fn poll_read<'b>(
+        &mut self,
+        buf: &'b mut [u8],
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+        let res = ready!(self.io.poll_read(&mut buf[..self.config.mtu()], cx))?;
 
         if res == 0 {
             return Poll::Ready(Ok(None));
         }
 
-        Poll::Ready(Ok(Some(
-            MutableIpPacket::new(&mut self.buf[..res]).ok_or_else(|| {
+        Poll::Ready(Ok(Some(MutableIpPacket::new(&mut buf[..res]).ok_or_else(
+            || {
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
                     "received bytes are not an IP packet",
                 )
-            })?,
-        )))
+            },
+        )?)))
     }
 }
 
@@ -162,7 +145,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCPeerConnection>>>,
     webrtc_api: API,
     callbacks: CallbackErrorFacade<CB>,
-    iface_handler_abort: Mutex<Option<AbortHandle>>,
 
     /// State that differs per role, i.e. clients vs gateways.
     role_state: Mutex<TRoleState>,
@@ -177,7 +159,8 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     peers_to_stop: Mutex<VecDeque<TRoleState::Id>>,
 
     device: RwLock<Option<Device>>,
-    buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
+    read_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
+    write_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
     no_device_waker: AtomicWaker,
 }
 
@@ -185,8 +168,102 @@ impl<CB> Tunnel<CB, ClientState>
 where
     CB: Callbacks + 'static,
 {
-    pub async fn next_event(&self) -> Event<GatewayId> {
-        std::future::poll_fn(|cx| self.poll_next_event_common(cx)).await
+    pub async fn next_event(&self) -> Result<Event<GatewayId>> {
+        std::future::poll_fn(|cx| loop {
+            {
+                let mut guard = self.device.write();
+
+                if let Some(device) = guard.as_mut() {
+                    match self.poll_device(device, cx) {
+                        Poll::Ready(Ok(Some(event))) => return Poll::Ready(Ok(event)),
+                        Poll::Ready(Ok(None)) => {
+                            tracing::info!("Device stopped");
+                            guard.take();
+                            continue;
+                        }
+                        Poll::Ready(Err(e)) => {
+                            guard.take(); // Ensure we don't poll a failed device again.
+                            return Poll::Ready(Err(e));
+                        }
+                        Poll::Pending => {}
+                    }
+                } else {
+                    self.no_device_waker.register(cx.waker());
+                }
+            }
+
+            match self.poll_next_event_common(cx) {
+                Poll::Ready(event) => return Poll::Ready(Ok(event)),
+                Poll::Pending => {}
+            }
+
+            return Poll::Pending;
+        })
+        .await
+    }
+
+    pub(crate) fn poll_device(
+        &self,
+        device: &mut Device,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Option<Event<GatewayId>>>> {
+        loop {
+            let mut read_guard = self.read_buf.lock();
+            let mut write_guard = self.write_buf.lock();
+            let read_buf = read_guard.as_mut_slice();
+            let write_buf = write_guard.as_mut_slice();
+
+            let Some(packet) = ready!(device.poll_read(read_buf, cx))? else {
+                return Poll::Ready(Ok(None));
+            };
+
+            let mut role_state = self.role_state.lock();
+
+            let packet = match role_state.handle_dns(packet) {
+                Ok(Some(response)) => {
+                    device.io.write(response)?;
+                    continue;
+                }
+                Ok(None) => continue,
+                Err(non_dns_packet) => non_dns_packet,
+            };
+
+            let dest = packet.destination();
+
+            let peers_by_ip = self.peers_by_ip.read();
+            let Some(peer) = peer_by_ip(&peers_by_ip, dest) else {
+                role_state.on_connection_intent(dest);
+                continue;
+            };
+
+            let gateway_id = peer.inner.conn_id;
+
+            match peer.inner.encapsulate(packet, dest, write_buf) {
+                Ok(None) => {}
+                Ok(Some(b)) => {
+                    tokio::spawn({
+                        let channel = peer.channel.clone();
+                        let mut sender = self.stop_peer_command_sender.clone();
+
+                        async move {
+                            if let Err(e) = channel.write(&b).await {
+                                tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+                                let _ = sender.send(gateway_id).await;
+                            }
+                        }
+                    });
+                }
+                Err(e) => {
+                    tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+
+                    if e.is_fatal_connection_error() {
+                        self.peers_to_stop.lock().push_back(gateway_id);
+                    }
+                }
+            };
+
+            continue;
+        }
     }
 }
 
@@ -195,11 +272,17 @@ where
     CB: Callbacks + 'static,
 {
     pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
+        let mut read_guard = self.read_buf.lock();
+        let mut write_guard = self.write_buf.lock();
+
+        let read_buf = read_guard.as_mut_slice();
+        let write_buf = write_guard.as_mut_slice();
+
         loop {
             {
                 let mut device = self.device.write();
 
-                match device.as_mut().map(|d| d.poll_read(cx)) {
+                match device.as_mut().map(|d| d.poll_read(read_buf, cx)) {
                     Some(Poll::Ready(Ok(Some(packet)))) => {
                         let dest = packet.destination();
 
@@ -208,9 +291,8 @@ where
                             continue;
                         };
                         let client_id = peer.inner.conn_id;
-                        let mut buf = self.buf.lock();
 
-                        match peer.inner.encapsulate(packet, dest, buf.as_mut_slice()) {
+                        match peer.inner.encapsulate(packet, dest, write_buf) {
                             Ok(None) => {}
                             Ok(Some(b)) => {
                                 tokio::spawn({
@@ -489,7 +571,6 @@ where
         let next_index = Default::default();
         let peer_connections = Default::default();
         let device = Default::default();
-        let iface_handler_abort = Default::default();
 
         // ICE
         let mut media_engine = MediaEngine::default();
@@ -519,9 +600,9 @@ where
             next_index,
             webrtc_api,
             device,
-            buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
+            read_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
+            write_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             callbacks: CallbackErrorFacade(callbacks),
-            iface_handler_abort,
             role_state: Default::default(),
             stop_peer_command_receiver: Mutex::new(stop_peer_command_receiver),
             stop_peer_command_sender,

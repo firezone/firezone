@@ -1,12 +1,10 @@
 use crate::bounded_queue::BoundedQueue;
 use crate::device_channel::{create_iface, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
-use crate::peer::WriteTo;
 use crate::resource_table::ResourceTable;
 use crate::{
-    dns, peer_by_ip, tokio_util, ConnectedPeer, Device, DnsQuery, Event, PeerConfig, RoleState,
-    Tunnel, DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
-    MAX_UDP_SIZE,
+    dns, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE,
+    ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
 };
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
@@ -18,12 +16,11 @@ use connlib_shared::{Callbacks, DNS_SENTINEL};
 use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{PushError, StreamMap};
-use futures_util::SinkExt;
 use hickory_resolver::lookup::Lookup;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -96,11 +93,6 @@ where
         let device = create_iface(config, self.callbacks()).await?;
 
         *self.device.write() = Some(device.clone());
-        *self.iface_handler_abort.lock() = Some(tokio_util::spawn_log(
-            &self.callbacks,
-            device_handler(Arc::clone(self), device),
-        ));
-
         self.add_route(DNS_SENTINEL.into()).await?;
 
         self.callbacks.on_tunnel_ready()?;
@@ -127,83 +119,11 @@ where
 
         if let Some(new_device) = device.config.add_route(route, self.callbacks()).await? {
             *self.device.write() = Some(new_device.clone());
-            *self.iface_handler_abort.lock() = Some(tokio_util::spawn_log(
-                &self.callbacks,
-                device_handler(Arc::clone(self), new_device),
-            ));
         } else {
             *self.device.write() = Some(device); // Restore the old device.
         }
 
         Ok(())
-    }
-}
-
-/// Reads IP packets from the [`Device`] and handles them accordingly.
-async fn device_handler<CB>(
-    tunnel: Arc<Tunnel<CB, ClientState>>,
-    mut device: Device,
-) -> Result<(), ConnlibError>
-where
-    CB: Callbacks + 'static,
-{
-    let device_writer = device.io.clone();
-    let mut buf = [0u8; MAX_UDP_SIZE];
-    'outer: loop {
-        let Some(packet) = device.read().await? else {
-            return Ok(());
-        };
-
-        let dest = packet.destination();
-        let (peer_conn_id, peer_channel, maybe_write_to) = {
-            let peers_by_ip = tunnel.peers_by_ip.read();
-            let peer = peer_by_ip(&peers_by_ip, dest);
-
-            let result = tunnel
-                .role_state
-                .lock()
-                .handle_new_packet(packet, peer, &mut buf);
-
-            let maybe_write_to = match result {
-                Ok(None) => continue,
-                Ok(Some(write_to)) => Ok(write_to),
-                Err(e) => Err(e),
-            };
-
-            let peer = peer.expect("must have peer if we should write bytes");
-
-            (peer.inner.conn_id, peer.channel.clone(), maybe_write_to)
-        };
-
-        let error = match maybe_write_to {
-            Ok(WriteTo::Network(mut packets)) => loop {
-                let Some(packet) = packets.pop_front() else {
-                    continue 'outer;
-                };
-
-                match peer_channel.write(&packet).await {
-                    Ok(_) => continue,
-                    Err(e) => break ConnlibError::IceDataError(e),
-                }
-            },
-            Ok(WriteTo::Resource(packet)) => match device_writer.write(packet) {
-                Ok(_) => continue,
-                Err(e) => ConnlibError::Io(e),
-            },
-            Err(e) => e,
-        };
-
-        tracing::error!(resource_address = %dest, err = ?error, "failed to handle packet {error:#}");
-
-        let _ = tunnel.callbacks.on_error(&error);
-
-        if error.is_fatal_connection_error() {
-            let _ = tunnel
-                .stop_peer_command_sender
-                .clone()
-                .send(peer_conn_id)
-                .await;
-        }
     }
 }
 
@@ -250,32 +170,6 @@ impl ClientState {
             }
             None => Err(packet),
         }
-    }
-
-    pub(crate) fn handle_new_packet<'b>(
-        &mut self,
-        packet: MutableIpPacket<'b>,
-        peer: Option<&ConnectedPeer<GatewayId>>,
-        buf: &'b mut [u8],
-    ) -> Result<Option<WriteTo<'b>>, ConnlibError> {
-        let packet = match self.handle_dns(packet) {
-            Ok(Some(packet)) => return Ok(Some(WriteTo::Resource(packet))),
-            Ok(None) => return Ok(None),
-            Err(packet) => packet,
-        };
-
-        let dest = packet.destination();
-
-        let Some(peer) = peer else {
-            self.on_connection_intent(dest);
-            return Ok(None);
-        };
-
-        let Some(bytes) = peer.inner.encapsulate(packet, dest, buf)? else {
-            return Ok(None);
-        };
-
-        Ok(Some(WriteTo::Network(VecDeque::from([bytes]))))
     }
 
     pub(crate) fn attempt_to_reuse_connection(
