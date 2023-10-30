@@ -3,6 +3,7 @@ package dev.firezone.android.features.settings.ui
 
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -11,7 +12,9 @@ import androidx.core.widget.doOnTextChanged
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.navigation.fragment.findNavController
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.R
 import dev.firezone.android.databinding.ActivitySettingsBinding
 import kotlinx.coroutines.launch
 
@@ -28,9 +31,9 @@ internal class SettingsActivity : AppCompatActivity() {
         setupViews()
         setupStateObservers()
         setupActionObservers()
-        setupButtonListener()
+        setupButtonListeners()
 
-        viewModel.getAccountId()
+        viewModel.populateFieldsFromConfig()
     }
 
     override fun onResume() {
@@ -39,16 +42,13 @@ internal class SettingsActivity : AppCompatActivity() {
     }
 
     private fun setupStateObservers() {
-        viewModel.stateLiveData.observe(this@SettingsActivity) { state ->
-            with(binding) {
-                btSave.isEnabled = state.isButtonEnabled
-            }
-        }
-
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { uiState ->
-                    binding.btSave.isVisible = uiState.logSize > 0
+                    with(binding) {
+                        btSaveSettings.isEnabled = uiState.isSaveButtonEnabled
+                        btShareLog.isVisible = uiState.logSize > 0
+                    }
                 }
             }
         }
@@ -59,10 +59,19 @@ internal class SettingsActivity : AppCompatActivity() {
             when (action) {
                 is SettingsViewModel.ViewAction.NavigateBack ->
                     finish()
-                is SettingsViewModel.ViewAction.FillAccountId -> {
-                    binding.etInput.apply {
-                        setText(action.value)
-                        isCursorVisible = false
+                is SettingsViewModel.ViewAction.FillSettings -> {
+                    Log.d("SettingsFragment", "action: $action")
+                    binding.etAccountIdInput.apply {
+                        setText(action.accountId)
+                    }
+                    binding.etAuthBaseUrlInput.apply {
+                        setText(action.authBaseUrl)
+                    }
+                    binding.etApiUrlInput.apply {
+                        setText(action.apiUrl)
+                    }
+                    binding.etLogFilterInput.apply {
+                        setText(action.logFilter)
                     }
                 }
             }
@@ -70,30 +79,52 @@ internal class SettingsActivity : AppCompatActivity() {
     }
 
     private fun setupViews() {
-        binding.ilUrlInput.apply {
-            prefixText = SettingsViewModel.AUTH_URL
+        binding.etAccountIdInput.apply {
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            setOnClickListener { isCursorVisible = true }
+            doOnTextChanged { accountId, _, _, _ ->
+                viewModel.onValidateAccountId(accountId.toString())
+            }
         }
 
+        binding.etAuthBaseUrlInput.apply {
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            setOnClickListener { isCursorVisible = true }
+            doOnTextChanged { authBaseUrl, _, _, _ ->
+                viewModel.onValidateAuthBaseUrl(authBaseUrl.toString())
+            }
+        }
+
+        binding.etApiUrlInput.apply {
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            setOnClickListener { isCursorVisible = true }
+            doOnTextChanged { apiUrl, _, _, _ ->
+                viewModel.onValidateApiUrl(apiUrl.toString())
+            }
+        }
+
+        binding.etLogFilterInput.apply {
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            setOnClickListener { isCursorVisible = true }
+            doOnTextChanged { logFilter, _, _, _ ->
+                viewModel.onValidateLogFilter(logFilter.toString())
+            }
+        }
+    }
+
+    private fun setupButtonListeners() {
         binding.btShareLog.apply {
             setOnClickListener {
                 viewModel.createLogZip(this@SettingsActivity)
             }
         }
 
-        binding.etInput.apply {
-            imeOptions = EditorInfo.IME_ACTION_DONE
-            setOnClickListener { isCursorVisible = true }
-            doOnTextChanged { input, _, _, _ ->
-                viewModel.onValidateInput(input.toString())
-            }
-            requestFocus()
-        }
-
-        binding.btSave.setOnClickListener {
+        binding.btSaveSettings.setOnClickListener {
             viewModel.onSaveSettingsCompleted()
         }
-    }
 
-    private fun setupButtonListener() {
+        binding.btCancel.setOnClickListener {
+            viewModel.onCancel()
+        }
     }
 }

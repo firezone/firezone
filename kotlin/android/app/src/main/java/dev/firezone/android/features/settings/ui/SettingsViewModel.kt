@@ -12,7 +12,6 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.core.domain.preference.SaveSettingsUseCase
-import dev.firezone.android.core.domain.preference.SaveAccountIdUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,8 +35,6 @@ internal class SettingsViewModel
         private val getConfigUseCase: GetConfigUseCase,
         private val saveSettingsUseCase: SaveSettingsUseCase,
     ) : ViewModel() {
-        private val stateMutableLiveData = MutableLiveData<UiState>()
-        val stateLiveData: LiveData<UiState> = stateMutableLiveData
 
         private val _uiState = MutableStateFlow(UiState())
         val uiState: StateFlow<UiState> = _uiState
@@ -79,49 +76,35 @@ internal class SettingsViewModel
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
                 saveSettingsUseCase(accountId, authBaseUrl, apiUrl, logFilter).collect {
-                    actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
+                    actionMutableLiveData.postValue(ViewAction.NavigateBack)
                 }
             }
         }
 
         fun onCancel() {
-            actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
+            actionMutableLiveData.postValue(ViewAction.NavigateBack)
         }
 
         fun onValidateAccountId(accountId: String) {
             this.accountId = accountId
-            stateMutableLiveData.postValue(
-                ViewState().copy(
-                    isSaveButtonEnabled = areFieldsValid(),
-                ),
-            )
+            onFieldUpdated()
         }
 
         fun onValidateAuthBaseUrl(authBaseUrl: String) {
             this.authBaseUrl = authBaseUrl
-            stateMutableLiveData.postValue(
-                ViewState().copy(
-                    isSaveButtonEnabled = areFieldsValid(),
-                ),
-            )
+            onFieldUpdated()
         }
 
         fun onValidateApiUrl(apiUrl: String) {
             this.apiUrl = apiUrl
-            stateMutableLiveData.postValue(
-                ViewState().copy(
-                    isSaveButtonEnabled = areFieldsValid(),
-                ),
-            )
+            onFieldUpdated()
         }
 
         fun onValidateLogFilter(logFilter: String) {
             this.logFilter = logFilter
-            stateMutableLiveData.postValue(
-                ViewState().copy(
-                    isSaveButtonEnabled = areFieldsValid(),
-                ),
-            )
+            onFieldUpdated()
+        }
+
         fun createLogZip(context: Context) {
             viewModelScope.launch {
                 val logDir = context.cacheDir.absolutePath + "/log"
@@ -130,33 +113,38 @@ internal class SettingsViewModel
 
                 zipFolder(sourceFolder, zipFile).collect()
 
-                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    putExtra(
-                        Intent.EXTRA_SUBJECT,
-                        "Sharing diagnostic logs"
-                    )
+                val shareIntent =
+                    Intent(Intent.ACTION_SEND).apply {
+                        putExtra(
+                            Intent.EXTRA_SUBJECT,
+                            "Sharing diagnostic logs",
+                        )
 
-                    // Add additional details to the share intent, for ex: email body.
-                    /*putExtra(
-                        Intent.EXTRA_TEXT,
-                        "Sharing diagnostic logs for $input"
-                    )*/
+                        // Add additional details to the share intent, for ex: email body.
+                        // putExtra(
+                        //    Intent.EXTRA_TEXT,
+                        //    "Sharing diagnostic logs for $input"
+                        // )
 
-                    val fileURI = FileProvider.getUriForFile(
-                        context,
-                        "${context.applicationContext.packageName}.provider",
-                        zipFile,
-                    )
-                    putExtra(Intent.EXTRA_STREAM, fileURI)
+                        val fileURI =
+                            FileProvider.getUriForFile(
+                                context,
+                                "${context.applicationContext.packageName}.provider",
+                                zipFile,
+                            )
+                        putExtra(Intent.EXTRA_STREAM, fileURI)
 
-                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    data = fileURI
-                }
+                        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        data = fileURI
+                    }
                 context.startActivity(shareIntent)
             }
         }
 
-        private suspend fun zipFolder(sourceFolder: File, zipFile: File) = flow {
+        private suspend fun zipFolder(
+            sourceFolder: File,
+            zipFile: File,
+        ) = flow {
             ZipOutputStream(FileOutputStream(zipFile)).use { zipStream ->
                 sourceFolder.walkTopDown().forEach { file ->
                     val entryName = sourceFolder.toPath().relativize(file.toPath()).toString()
@@ -185,45 +173,43 @@ internal class SettingsViewModel
             }
         }
 
-    companion object {
-            val AUTH_URL = "${BuildConfig.AUTH_SCHEME}://${BuildConfig.AUTH_HOST}:${BuildConfig.AUTH_PORT}/"
-        }
-
-        internal data class UiState(
-            val isButtonEnabled: Boolean = false,
-            val logSize: Long = 0,
+    private fun onFieldUpdated() {
+        _uiState.value = _uiState.value.copy(
+            isSaveButtonEnabled = areFieldsValid(),
         )
+    }
 
-        internal sealed class ViewAction {
-            object NavigateBack : ViewAction()
-
-            data class FillSettings(
-                val accountId: String,
-                val authBaseUrl: String,
-                val apiUrl: String,
-                val logFilter: String,
-            ) : ViewAction()
-        }
-
-        private fun areFieldsValid(): Boolean {
-            // This comes from the backend account slug validator at elixir/apps/domain/lib/domain/accounts/account/changeset.ex
-            val accountIdRegex = Regex("^[a-z0-9_]{3,100}\$")
-            return accountIdRegex.matches(accountId) &&
+    private fun areFieldsValid(): Boolean {
+        // This comes from the backend account slug validator at elixir/apps/domain/lib/domain/accounts/account/changeset.ex
+        val accountIdRegex = Regex("^[a-z0-9_]{3,100}\$")
+        return accountIdRegex.matches(accountId) &&
                 URLUtil.isValidUrl(authBaseUrl) &&
                 isUriValid(apiUrl) &&
                 logFilter.isNotBlank()
-        }
-
-        private fun isUriValid(uri: String): Boolean {
-            return try {
-                URI(uri)
-                true
-            } catch (e: URISyntaxException) {
-                false
-            }
-        }
-
-        internal data class ViewState(
-            val isSaveButtonEnabled: Boolean = false,
-        )
     }
+
+    private fun isUriValid(uri: String): Boolean {
+        return try {
+            URI(uri)
+            true
+        } catch (e: URISyntaxException) {
+            false
+        }
+    }
+
+    internal data class UiState(
+        val isSaveButtonEnabled: Boolean = false,
+        val logSize: Long = 0,
+    )
+
+    internal sealed class ViewAction {
+        object NavigateBack : ViewAction()
+
+        data class FillSettings(
+            val accountId: String,
+            val authBaseUrl: String,
+            val apiUrl: String,
+            val logFilter: String,
+        ) : ViewAction()
+    }
+}
