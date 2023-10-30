@@ -20,6 +20,7 @@ where
         let device = create_iface(config, self.callbacks()).await?;
 
         *self.device.write() = Some(device.clone());
+        self.no_device_waker.wake();
 
         tracing::debug!("background_loop_started");
 
