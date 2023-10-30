@@ -27,8 +27,9 @@ host:
 
 1. Generate a new Relay token from the "Relays" section of the admin portal and
    save it in your secrets manager.
-1. Ensure the `TOKEN=<relay_token>` environment variable is set securely in your
-   Relay's shell environment. The Relay expects this variable at startup.
+1. Ensure the `FIREZONE_TOKEN=<relay_token>` environment variable is set
+   securely in your Relay's shell environment. The Relay expects this variable
+   at startup.
 1. Now, you can start the Firezone Relay with:
 
 ```

@@ -15,9 +15,9 @@ Linux host:
 
 1. Generate a new Gateway token from the "Gateways" section of the admin portal
    and save it in your secrets manager.
-1. Ensure the `TOKEN=<gateway_token>` environment variable is set securely in
-   your Gateway's shell environment. The Gateway requires this variable at
-   startup.
+1. Ensure the `FIREZONE_TOKEN=<gateway_token>` environment variable is set
+   securely in your Gateway's shell environment. The Gateway requires this
+   variable at startup.
 1. Set `FIREZONE_ID` to a unique string to identify this gateway in the portal,
    e.g. `export FIREZONE_ID=$(uuidgen)`. The Gateway requires this variable at
    startup.

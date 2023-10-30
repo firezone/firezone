@@ -38,11 +38,11 @@ locals {
       value = "127.0.0.1:4317"
     },
     {
-      name  = "TOKEN"
+      name  = "FIREZONE_TOKEN"
       value = var.token
     },
     {
-      name  = "API_URL"
+      name  = "FIREZONE_API_URL"
       value = var.api_url
     }
   ], var.application_environment_variables)

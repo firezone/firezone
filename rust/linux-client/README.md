@@ -20,8 +20,8 @@ To run the Linux client:
 1. Generate a new Service account token from the "Actors -> Service Accounts"
    section of the admin portal and save it in your secrets manager. The Firezone
    Linux client requires a service account at this time.
-1. Ensure the `TOKEN=<service_account_token>` environment variable is set
-   securely in your client's shell environment. The client requires this
+1. Ensure the `FIREZONE_TOKEN=<service_account_token>` environment variable is
+   set securely in your client's shell environment. The client requires this
    variable at startup.
 1. Set `FIREZONE_ID` to a unique string to identify this client in the portal,
    e.g. `export FIREZONE_ID=$(uuidgen)`. The client requires this variable at
