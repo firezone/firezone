@@ -50,7 +50,7 @@ pub use gateway::GatewayState;
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 use crate::ip_packet::MutableIpPacket;
-use connlib_shared::messages::SecretKey;
+use connlib_shared::messages::{ClientId, SecretKey};
 use index::IndexLfsr;
 
 mod bounded_queue;
@@ -160,6 +160,24 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     peers_to_stop: Mutex<VecDeque<TRoleState::Id>>,
 }
 
+impl<CB> Tunnel<CB, ClientState>
+where
+    CB: Callbacks + 'static,
+{
+    pub async fn next_event(&self) -> Event<GatewayId> {
+        std::future::poll_fn(|cx| self.poll_next_event_common(cx)).await
+    }
+}
+
+impl<CB> Tunnel<CB, GatewayState>
+where
+    CB: Callbacks + 'static,
+{
+    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<ClientId>> {
+        self.poll_next_event_common(cx)
+    }
+}
+
 pub struct ConnectedPeer<TId> {
     inner: Arc<Peer<TId>>,
     channel: Arc<DataChannel>,
@@ -195,11 +213,7 @@ where
         }
     }
 
-    pub async fn next_event(&self) -> Event<TRoleState::Id> {
-        std::future::poll_fn(|cx| self.poll_next_event(cx)).await
-    }
-
-    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
+    fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         loop {
             if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
                 let mut peers = self.peers_by_ip.write();
