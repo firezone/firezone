@@ -9,7 +9,7 @@ edition = "2021"
 [dependencies]
 secrecy = { workspace = true }
 tokio-tungstenite = { version = "0.20.1", features = ["rustls-tls-native-roots"] }
-futures = "0.3.28"
+futures = "0.3.29"
 base64 = "0.21.4"
 serde = { version = "1.0.190", features = ["derive"] }
 tracing = { workspace = true }
