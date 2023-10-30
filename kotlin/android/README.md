@@ -12,11 +12,13 @@ locally.
    environment to use the JDK bundled in Android Studio to ensure you're using
    the same JDK on the CLI as Android Studio.
 1. Perform a test build: `./gradlew assembleDebug`
-1. [Set up a dev signing key]() and add its fingerprint to the portal's
+1. Add your debug signing key's SHA256 fingerprint to the portal's
    [`assetlinks.json`](../../elixir/apps/web/priv/static/.well-known/assetlinks.json)
    file. This is required for the App Links to successfully intercept the Auth
    redirect.
-1.
+   ```
+   ./gradlew signingReport
+   ```
 
 # Release Setup
 
