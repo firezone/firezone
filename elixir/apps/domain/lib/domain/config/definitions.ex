@@ -604,4 +604,13 @@ defmodule Domain.Config.Definitions do
     default: nil,
     changeset: {Logo, :changeset, []}
   )
+
+  ##############################################
+  ## Feature Flags
+  ##############################################
+
+  @doc """
+  Boolean flag to turn Sign-ups on/off.
+  """
+  defconfig(:feature_sign_up_enabled, :boolean, default: true)
 end
