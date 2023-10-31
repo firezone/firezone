@@ -113,6 +113,10 @@ defmodule Domain.Config do
     end
   end
 
+  def sign_up_enabled? do
+    compile_config!(Definitions, :feature_sign_up_enabled)
+  end
+
   ## Test helpers
 
   if Mix.env() != :test do
