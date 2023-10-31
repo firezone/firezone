@@ -27,7 +27,7 @@ use webrtc::{
 };
 
 use futures::channel::mpsc;
-use futures_util::StreamExt;
+use futures_util::{SinkExt, StreamExt};
 use itertools::Itertools;
 use std::collections::VecDeque;
 use std::task::{Context, Poll};
@@ -272,6 +272,7 @@ where
 
                     let callbacks = self.callbacks.clone();
                     let peer_channel = peer.channel.clone();
+                    let mut stop_command_sender = self.stop_peer_command_sender.clone();
 
                     tokio::spawn(async move {
                         if let Err(e) = peer_channel.write(&bytes).await {
@@ -280,7 +281,7 @@ where
                             let _ = callbacks.on_error(&err);
 
                             if err.is_fatal_connection_error() {
-                                let _ = stop_command_sender.send((peer_index, peer_conn_id)).await;
+                                let _ = stop_command_sender.send(conn_id).await;
                             }
                         }
                     });
