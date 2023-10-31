@@ -751,6 +751,8 @@ dependencies = [
  "url",
  "uuid",
  "webrtc",
+ "windows",
+ "wintun",
 ]
 
 [[package]]

@@ -24,6 +24,19 @@ tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
 hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
 webrtc = "0.9"
+wintun = "0.3"
+windows = { version = "0.51", features = [
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_SystemServices",
+    "Win32_Security_Cryptography",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+    "Win32_System_Threading",
+    "Win32_System_Com",
+    "Win32_Security",
+    "Win32_Foundation",
+] }
 
 connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}

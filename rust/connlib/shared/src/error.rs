@@ -138,6 +138,12 @@ pub enum ConnlibError {
     /// Connection is still being stablished, retry later
     #[error("Pending connection")]
     PendingConnection,
+    #[cfg(target_os = "windows")]
+    #[error("Wintun Error: {0}")]
+    WintunError(#[from] wintun::Error),
+    #[cfg(target_os = "windows")]
+    #[error("Windows error: {0}")]
+    WindowsError(#[from] windows::core::Error),
 }
 
 impl ConnlibError {

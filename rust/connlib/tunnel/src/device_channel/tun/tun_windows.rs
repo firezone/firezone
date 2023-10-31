@@ -5,30 +5,36 @@ use connlib_shared::{
     Result,
 };
 use ip_network::IpNetwork;
+use std::iter;
+use std::net::Ipv4Addr;
 use std::sync::Arc;
+use windows::core::PCWSTR;
 use windows::Win32::{
     Foundation::BOOLEAN,
     Foundation::NO_ERROR,
     NetworkManagement::IpHelper::{
         AddIPAddress, CreateIpForwardEntry2, DeleteUnicastIpAddressEntry, FreeMibTable,
-        GetIpInterfaceEntry, GetUnicastIpAddressTable, SetIpInterfaceEntry, MIB_IPFORWARD_ROW2,
-        MIB_IPINTERFACE_ROW, MIB_UNICASTIPADDRESS_ROW, MIB_UNICASTIPADDRESS_TABLE,
+        GetAdapterIndex, GetIpInterfaceEntry, GetUnicastIpAddressTable, SetIpInterfaceEntry,
+        MIB_IPFORWARD_ROW2, MIB_IPINTERFACE_ROW, MIB_UNICASTIPADDRESS_ROW,
+        MIB_UNICASTIPADDRESS_TABLE,
     },
     Networking::WinSock::{
         htonl, RouterDiscoveryDisabled, AF_INET, MIB_IPPROTO_NETMGMT, SOCKADDR_INET,
     },
 };
 
+use netsh::set_ipv6_addr;
+
+mod netsh;
+
 const IFACE_NAME: &str = "tun-firezone";
+const IFACE_TYPE: &str = "vpn";
 // Using static vaue for MTU
 const MTU: u32 = 1280;
 
 pub struct IfaceDevice {
     adapter_index: u32,
     mtu: u32,
-    ipv4_address: u32,
-    ip_context: u32,
-    ip_instance: u32,
 }
 
 pub struct IfaceStream {
@@ -85,98 +91,53 @@ impl IfaceDevice {
         config: &InterfaceConfig,
         _: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<(Self, Arc<IfaceStream>)> {
-        //Copy the wintun.dll in C:\Windows\System32 & run as Administrator to create network adapters
-        let wt = unsafe {
-            wintun::load_from_path("wintun.dll")
-                .map_err(|err| OnSetInterfaceConfigFailed(err.to_string()))
-        }?;
+        // Copy the wintun.dll in C:\Windows\System32 & run as Administrator to create network adapters
+        // Note: We can use load
+        // SAFETY: Safe as long as we have the correct DLL.
+        let wt = unsafe { wintun::load()? };
 
-        let adapter = match wintun::Adapter::open(&wt, IFACE_NAME) {
-            Ok(a) => a,
-            Err(_) => wintun::Adapter::create(&wt, IFACE_NAME, "vpn", None)
-                .map_err(|err| OnSetInterfaceConfigFailed(err.to_string()))?,
-        };
-        let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY).unwrap());
+        let adapter = wintun::Adapter::create(&wt, IFACE_NAME, IFACE_TYPE, None)?;
+        let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
 
-        let adapter_index = adapter.get_adapter_index().unwrap();
+        let mut adapter_index = 0u32;
+        // Should we use OsString?
+        let adapter_name: Vec<_> = IFACE_NAME.encode_utf16().chain(iter::once(0)).collect();
+        // SAFETY: We just opened or created the iface, it must exists
+        // We get the index instead of get_guid because then we don't need to rely on undocumented behaviour.
+        unsafe {
+            GetAdapterIndex(
+                // TODO: from_raw vs using PCWSTR(*const _) ???
+                PCWSTR::from_raw(adapter_name.as_ptr()),
+                &mut adapter_index as *mut _,
+            );
+        }
         let stream = Arc::new(IfaceStream { session });
         let mut this = Self {
             adapter_index,
             mtu: MTU,
-            ipv4_address: 0,
-            ip_context: 0,
-            ip_instance: 0,
         };
-        this.set_iface_config(config)?;
+        this.set_iface_config(config).await?;
         Ok((this, stream))
     }
 
-    fn set_iface_config(&mut self, config: &InterfaceConfig) -> Result<()> {
-        // Delete all existing assigned addresses
-        unsafe {
-            let mut table: *mut MIB_UNICASTIPADDRESS_TABLE = std::ptr::null_mut();
-            let table_ptr: *mut *mut MIB_UNICASTIPADDRESS_TABLE = &mut table;
-            let ret = GetUnicastIpAddressTable(AF_INET, table_ptr);
-
-            if ret.is_ok() && !table.is_null() {
-                let num_entries = (*table).NumEntries;
-                let table_slice: &mut [MIB_UNICASTIPADDRESS_ROW] =
-                    std::slice::from_raw_parts_mut(&mut (*table).Table[0], num_entries as usize);
-
-                for entry in table_slice.iter_mut() {
-                    let interface_index = entry.InterfaceIndex;
-                    if interface_index == self.adapter_index {
-                        let _ = DeleteUnicastIpAddressEntry(entry);
-                    }
-                }
-                let _ = FreeMibTable(table as *const _);
-            }
-        }
+    async fn set_iface_config(&mut self, config: &InterfaceConfig) -> Result<()> {
         // TODO: Need to support IPv6 address assignment
-        return self.set_iface_ipv4(config);
-    }
-
-    fn set_iface_ipv4(&mut self, config: &InterfaceConfig) -> Result<()> {
         // Change the interface metric to lowest, ignore error if it fails
-        unsafe {
-            let mut row: MIB_IPINTERFACE_ROW = Default::default();
-            row.InterfaceIndex = self.adapter_index;
-            row.Family = AF_INET; // IPv4
-            let ret = GetIpInterfaceEntry(&mut row);
-            if ret.is_ok() {
-                if row.SitePrefixLength > 32 {
-                    row.SitePrefixLength = 0
-                }
-                row.RouterDiscoveryBehavior = RouterDiscoveryDisabled;
-                row.DadTransmits = 0;
-                row.ManagedAddressConfigurationSupported = BOOLEAN(0);
-                row.OtherStatefulConfigurationSupported = BOOLEAN(0);
-                row.NlMtu = self.mtu;
-                row.UseAutomaticMetric = BOOLEAN(0);
-                row.Metric = 0;
-                let _ = SetIpInterfaceEntry(&mut row);
-            }
-        }
+        let mut row: MIB_IPINTERFACE_ROW = Default::default();
+        row.InterfaceIndex = self.adapter_index;
+        // We use this to get/set the MTU and metric, family should be irrelevant
+        row.Family = AF_INET;
+        unsafe { GetIpInterfaceEntry(&mut row)? };
+        row.ManagedAddressConfigurationSupported = BOOLEAN(0);
+        row.OtherStatefulConfigurationSupported = BOOLEAN(0);
+        row.NlMtu = self.mtu;
+        row.UseAutomaticMetric = BOOLEAN(0);
+        row.Metric = 0;
+        let _ = unsafe { SetIpInterfaceEntry(&mut row) };
 
-        // Assign IPv4 address to the interface
-        unsafe {
-            const IPV4_NETMASK_32: u32 = 0xFFFFFFFF;
-            self.ipv4_address = htonl(config.ipv4.into());
-            let result = AddIPAddress(
-                htonl(config.ipv4.into()),
-                IPV4_NETMASK_32,
-                self.adapter_index,
-                &mut self.ip_context,
-                &mut self.ip_instance,
-            );
-            if result != NO_ERROR.0 {
-                return Err(OnSetInterfaceConfigFailed(format!(
-                    "AddIPAddress failed with error code: {}",
-                    result
-                )));
-            }
-            Ok(())
-        }
+        set_ipv4_addr(self.adapter_index, config.ipv4)?;
+        set_ipv6_addr(self.adapter_index, config.ipv6).await?;
+        Ok(())
     }
 
     /// Get the current MTU value
@@ -222,4 +183,27 @@ impl IfaceDevice {
         // Adapter is UP after creation
         Ok(())
     }
+}
+
+fn set_ipv4_addr(idx: u32, addr: Ipv4Addr) -> Result<()> {
+    // Assign IPv4 address to the interface
+    const IPV4_NETMASK_32: u32 = 0xFFFFFFFF;
+    let mut ip_context = 0u32;
+    let mut ip_instance = 0u32;
+    let result = unsafe {
+        AddIPAddress(
+            u32::from(addr).to_be(),
+            IPV4_NETMASK_32.to_be(),
+            idx,
+            &mut ip_context as *mut _,
+            &mut ip_instance as *mut _,
+        )
+    };
+    if result != NO_ERROR.0 {
+        return Err(OnSetInterfaceConfigFailed(format!(
+            "AddIPAddress failed with error code: {}",
+            result
+        )));
+    }
+    Ok(())
 }
