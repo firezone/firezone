@@ -150,6 +150,7 @@ public struct SettingsView: View {
             .disabled(
               (model.accountSettings.isSavedToDisk && model.advancedSettings.isSavedToDisk)
                 || !model.accountSettings.isValid
+                || !model.advancedSettings.isValid
             )
           }
           ToolbarItem(placement: .navigationBarLeading) {
@@ -242,6 +243,7 @@ public struct SettingsView: View {
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .submitLabel(.done)
               }
             },
             header: { Text("Account") },
@@ -340,6 +342,7 @@ public struct SettingsView: View {
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .submitLabel(.done)
               }
               HStack(spacing: 15) {
                 Text("API URL")
@@ -353,6 +356,7 @@ public struct SettingsView: View {
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .submitLabel(.done)
               }
               HStack(spacing: 15) {
                 Text("Log Filter")
@@ -366,6 +370,7 @@ public struct SettingsView: View {
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .submitLabel(.done)
               }
               HStack {
                 Spacer()
