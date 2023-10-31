@@ -8,7 +8,7 @@ defmodule API.Client.Views.Interface do
       |> Keyword.fetch!(:upstream_dns)
       |> Enum.map(fn dns_config ->
         addr = ClientsUpstreamDNS.normalize_dns_address(dns_config)
-        %{dns_config | address: addr}
+        Map.from_struct(%{dns_config | address: addr})
       end)
 
     %{
