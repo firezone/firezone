@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use connlib_client_shared::{file_logger, get_device_id, Callbacks, Error, Session};
+use connlib_client_shared::{file_logger, Callbacks, Error, Session};
 use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
 use std::path::PathBuf;
@@ -11,12 +11,10 @@ fn main() -> Result<()> {
     let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
-    let device_id = get_device_id();
-
     let mut session = Session::connect(
-        cli.common.portal_url,
-        SecretString::from(cli.common.portal_token),
-        device_id,
+        cli.common.api_url,
+        SecretString::from(cli.common.token),
+        cli.common.firezone_id,
         CallbackHandler { handle },
     )
     .unwrap();
@@ -55,7 +53,7 @@ struct Cli {
     #[command(flatten)]
     common: CommonArgs,
 
-    /// File logging directory.
-    #[arg(short, long, env = "FZ_LOG_DIR")]
+    /// File logging directory. Should be a path that's writeable by the current user.
+    #[arg(short, long, env = "LOG_DIR")]
     log_dir: Option<PathBuf>,
 }

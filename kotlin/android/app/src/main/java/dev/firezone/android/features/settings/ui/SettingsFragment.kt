@@ -2,6 +2,7 @@
 package dev.firezone.android.features.settings.ui
 
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.core.widget.doOnTextChanged
@@ -27,15 +28,16 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
         setupViews()
         setupStateObservers()
         setupActionObservers()
-        setupButtonListener()
+        setupButtonListeners()
 
-        viewModel.getAccountId()
+        viewModel.populateFieldsFromConfig()
     }
 
     private fun setupStateObservers() {
         viewModel.stateLiveData.observe(viewLifecycleOwner) { state ->
             with(binding) {
-                btLogin.isEnabled = state.isButtonEnabled
+                Log.d("SettingsFragment", "state: $state")
+                btSaveSettings.isEnabled = state.isSaveButtonEnabled
             }
         }
     }
@@ -47,10 +49,19 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
                     findNavController().navigate(
                         R.id.signInFragment,
                     )
-                is SettingsViewModel.ViewAction.FillAccountId -> {
-                    binding.etInput.apply {
-                        setText(action.value)
-                        isCursorVisible = false
+                is SettingsViewModel.ViewAction.FillSettings -> {
+                    Log.d("SettingsFragment", "action: $action")
+                    binding.etAccountIdInput.apply {
+                        setText(action.accountId)
+                    }
+                    binding.etAuthBaseUrlInput.apply {
+                        setText(action.authBaseUrl)
+                    }
+                    binding.etApiUrlInput.apply {
+                        setText(action.apiUrl)
+                    }
+                    binding.etLogFilterInput.apply {
+                        setText(action.logFilter)
                     }
                 }
             }
@@ -58,24 +69,46 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
     }
 
     private fun setupViews() {
-        binding.ilUrlInput.apply {
-            prefixText = SettingsViewModel.AUTH_URL
-        }
-
-        binding.etInput.apply {
+        binding.etAccountIdInput.apply {
             imeOptions = EditorInfo.IME_ACTION_DONE
             setOnClickListener { isCursorVisible = true }
-            doOnTextChanged { input, _, _, _ ->
-                viewModel.onValidateInput(input.toString())
+            doOnTextChanged { accountId, _, _, _ ->
+                viewModel.onValidateAccountId(accountId.toString())
             }
-            requestFocus()
         }
 
-        binding.btLogin.setOnClickListener {
-            viewModel.onSaveSettingsCompleted()
+        binding.etAuthBaseUrlInput.apply {
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            setOnClickListener { isCursorVisible = true }
+            doOnTextChanged { authBaseUrl, _, _, _ ->
+                viewModel.onValidateAuthBaseUrl(authBaseUrl.toString())
+            }
+        }
+
+        binding.etApiUrlInput.apply {
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            setOnClickListener { isCursorVisible = true }
+            doOnTextChanged { apiUrl, _, _, _ ->
+                viewModel.onValidateApiUrl(apiUrl.toString())
+            }
+        }
+
+        binding.etLogFilterInput.apply {
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            setOnClickListener { isCursorVisible = true }
+            doOnTextChanged { logFilter, _, _, _ ->
+                viewModel.onValidateLogFilter(logFilter.toString())
+            }
         }
     }
 
-    private fun setupButtonListener() {
+    private fun setupButtonListeners() {
+        binding.btSaveSettings.setOnClickListener {
+            viewModel.onSaveSettingsCompleted()
+        }
+
+        binding.btCancel.setOnClickListener {
+            viewModel.onCancel()
+        }
     }
 }

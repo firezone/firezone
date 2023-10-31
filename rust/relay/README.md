@@ -22,19 +22,25 @@ You should then find a binary in `target/release/firezone-relay`.
 
 ## Running
 
-To run the relay:
+The Firezone Relay supports Linux only. To run the Relay binary on your Linux
+host:
+
+1. Generate a new Relay token from the "Relays" section of the admin portal and
+   save it in your secrets manager.
+1. Ensure the `FIREZONE_TOKEN=<relay_token>` environment variable is set
+   securely in your Relay's shell environment. The Relay expects this variable
+   at startup.
+1. Now, you can start the Firezone Relay with:
 
 ```
-firezone-relay --portal_token <portal_token>
+firezone-relay
 ```
 
-where `portal_token` is the token shown when creating a Relay in the Firezone
-admin portal.
+To view more advanced configuration options pass the `--help` flag:
 
-For an up-to-date documentation on the available configurations options and a
-detailed help text, run `cargo run --bin relay -- --help`. All command-line
-options can be overridden using environment variables. Those variables are
-listed in the `--help` output at the bottom of each command.
+```
+firezone-relay --help
+```
 
 ### Ports
 
@@ -44,9 +50,8 @@ not configurable. Additionally, the relay needs to have access to the port range
 
 ### Portal Connection
 
-When given a `portal_token`, the relay will connect to the Firezone portal
-(default `wss://api.firezone.dev`) and wait for an `init` message before
-commencing relay operations.
+When given a `token`, the relay will connect to the Firezone portal and wait for
+an `init` message before commencing relay operations.
 
 ## Design
 

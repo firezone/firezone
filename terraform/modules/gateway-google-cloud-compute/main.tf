@@ -40,12 +40,12 @@ locals {
       value = "127.0.0.1:4317"
     },
     {
-      name  = "PORTAL_TOKEN"
-      value = var.portal_token
+      name  = "FIREZONE_TOKEN"
+      value = var.token
     },
     {
-      name  = "PORTAL_URL"
-      value = var.portal_websocket_url
+      name  = "FIREZONE_API_URL"
+      value = var.api_url
     }
   ], var.application_environment_variables)
 }

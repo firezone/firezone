@@ -20,7 +20,7 @@ mod ffi {
 
         #[swift_bridge(associated_to = WrappedSession)]
         fn connect(
-            portal_url: String,
+            api_url: String,
             token: String,
             device_id: String,
             log_dir: String,
@@ -162,7 +162,7 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> file_logger::Handle {
 
 impl WrappedSession {
     fn connect(
-        portal_url: String,
+        api_url: String,
         token: String,
         device_id: String,
         log_dir: String,
@@ -172,7 +172,7 @@ impl WrappedSession {
         let secret = SecretString::from(token);
 
         let session = Session::connect(
-            portal_url.as_str(),
+            api_url.as_str(),
             secret,
             device_id,
             CallbackHandler {

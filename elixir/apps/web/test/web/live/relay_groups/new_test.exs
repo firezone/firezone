@@ -119,11 +119,11 @@ defmodule Web.Live.RelayGroups.NewTest do
       |> render_submit()
 
     assert html =~ "Select deployment method"
-    assert html =~ "PORTAL_TOKEN="
+    assert html =~ "FIREZONE_TOKEN="
     assert html =~ "docker run"
     assert html =~ "Waiting for relay connection..."
 
-    token = Regex.run(~r/PORTAL_TOKEN=([^ ]+)/, html) |> List.last()
+    token = Regex.run(~r/FIREZONE_TOKEN=([^ ]+)/, html) |> List.last()
     assert {:ok, _token} = Domain.Relays.authorize_relay(token)
 
     group = Repo.get_by(Domain.Relays.Group, name: attrs.name) |> Repo.preload(:tokens)

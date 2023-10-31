@@ -148,12 +148,12 @@ variable "application_environment_variables" {
 ## Firezone
 ################################################################################
 
-variable "portal_token" {
+variable "token" {
   type        = string
   description = "Portal token to use for authentication."
 }
 
-variable "portal_websocket_url" {
+variable "api_url" {
   type        = string
   default     = "wss://api.firezone.dev"
   description = "URL of the control plane endpoint."
