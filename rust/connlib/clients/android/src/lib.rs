@@ -394,15 +394,15 @@ macro_rules! string_from_jstring {
 
 fn connect(
     env: &mut JNIEnv,
-    portal_url: JString,
-    portal_token: JString,
+    api_url: JString,
+    token: JString,
     device_id: JString,
     log_dir: JString,
     log_filter: JString,
     callback_handler: GlobalRef,
 ) -> Result<Session<CallbackHandler>, ConnectError> {
-    let portal_url = string_from_jstring!(env, portal_url);
-    let secret = SecretString::from(string_from_jstring!(env, portal_token));
+    let api_url = string_from_jstring!(env, api_url);
+    let secret = SecretString::from(string_from_jstring!(env, token));
     let device_id = string_from_jstring!(env, device_id);
     let log_dir = string_from_jstring!(env, log_dir);
     let log_filter = string_from_jstring!(env, log_filter);
@@ -415,7 +415,7 @@ fn connect(
         handle,
     };
 
-    let session = Session::connect(portal_url.as_str(), secret, device_id, callback_handler)?;
+    let session = Session::connect(api_url.as_str(), secret, device_id, callback_handler)?;
 
     Ok(session)
 }
@@ -428,8 +428,8 @@ fn connect(
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_connect(
     mut env: JNIEnv,
     _class: JClass,
-    portal_url: JString,
-    portal_token: JString,
+    api_url: JString,
+    token: JString,
     device_id: JString,
     log_dir: JString,
     log_filter: JString,
@@ -442,8 +442,8 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
     let connect = catch_and_throw(&mut env, |env| {
         connect(
             env,
-            portal_url,
-            portal_token,
+            api_url,
+            token,
             device_id,
             log_dir,
             log_filter,

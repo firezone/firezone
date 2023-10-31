@@ -3,7 +3,7 @@ package dev.firezone.android.tunnel
 
 object TunnelSession {
     external fun connect(
-        controlPlaneUrl: String,
+        apiUrl: String,
         token: String,
         deviceId: String,
         logDir: String,

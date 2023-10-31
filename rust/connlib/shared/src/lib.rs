@@ -31,8 +31,8 @@ const LIB_NAME: &str = "connlib";
 /// Creates a new login URL to use with the portal.
 pub fn login_url(
     mode: Mode,
-    portal_url: Url,
-    portal_token: SecretString,
+    api_url: Url,
+    token: SecretString,
     device_id: String,
 ) -> Result<(Url, StaticSecret)> {
     let private_key = StaticSecret::random_from_rng(rand::rngs::OsRng);
@@ -44,8 +44,8 @@ pub fn login_url(
     let external_id = sha256(device_id);
 
     let url = get_websocket_path(
-        portal_url,
-        portal_token,
+        api_url,
+        token,
         match mode {
             Mode::Client => "client",
             Mode::Gateway => "gateway",
@@ -73,36 +73,6 @@ pub fn get_user_agent() -> String {
     format!("{os_type}/{os_version} {lib_name}/{lib_version}")
 }
 
-/// Returns the SMBios Serial of the device or a random UUIDv4 if the SMBios is not available.
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
-pub fn get_device_id() -> String {
-    match smbioslib::table_load_from_device() {
-        Ok(data) => {
-            if let Some(uuid) =
-                data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| sys_info.uuid())
-            {
-                tracing::debug!("get_device_id() found SMBios Serial: {}", uuid);
-                return uuid.to_string();
-            }
-        }
-        Err(e) => {
-            tracing::warn!("get_device_id() couldn't load SMBios. Error: {}", e);
-        }
-    }
-
-    tracing::warn!("get_device_id() couldn't find a SMBios Serial. Using random UUIDv4 instead.");
-    uuid::Uuid::new_v4().to_string()
-}
-
-#[cfg(any(target_os = "ios", target_os = "android"))]
-pub fn get_device_id() -> String {
-    tracing::warn!(
-        "get_device_id() is not implemented for this platform. Using random UUIDv4 instead."
-    );
-
-    uuid::Uuid::new_v4().to_string()
-}
-
 fn set_ws_scheme(url: &mut Url) -> Result<()> {
     let scheme = match url.scheme() {
         "http" | "ws" => "ws",
@@ -128,24 +98,24 @@ fn sha256(input: String) -> String {
 }
 
 fn get_websocket_path(
-    mut url: Url,
+    mut api_url: Url,
     secret: SecretString,
     mode: &str,
     public_key: &Key,
     external_id: &str,
     name_suffix: &str,
 ) -> Result<Url> {
-    set_ws_scheme(&mut url)?;
+    set_ws_scheme(&mut api_url)?;
 
     {
-        let mut paths = url.path_segments_mut().map_err(|_| Error::UriError)?;
+        let mut paths = api_url.path_segments_mut().map_err(|_| Error::UriError)?;
         paths.pop_if_empty();
         paths.push(mode);
         paths.push("websocket");
     }
 
     {
-        let mut query_pairs = url.query_pairs_mut();
+        let mut query_pairs = api_url.query_pairs_mut();
         query_pairs.clear();
         query_pairs.append_pair("token", secret.expose_secret());
         query_pairs.append_pair("public_key", &public_key.to_string());
@@ -153,5 +123,5 @@ fn get_websocket_path(
         query_pairs.append_pair("name_suffix", name_suffix);
     }
 
-    Ok(url)
+    Ok(api_url)
 }

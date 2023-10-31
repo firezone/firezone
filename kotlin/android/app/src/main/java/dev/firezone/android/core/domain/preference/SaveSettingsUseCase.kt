@@ -5,10 +5,15 @@ import dev.firezone.android.core.data.PreferenceRepository
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
-internal class SaveAccountIdUseCase
+internal class SaveSettingsUseCase
     @Inject
     constructor(
         private val repository: PreferenceRepository,
     ) {
-        operator fun invoke(accountId: String): Flow<Unit> = repository.saveAccountId(accountId)
+        operator fun invoke(
+            accountId: String,
+            authBaseUrl: String,
+            apiUrl: String,
+            logFilter: String,
+        ): Flow<Unit> = repository.saveSettings(accountId, authBaseUrl, apiUrl, logFilter)
     }

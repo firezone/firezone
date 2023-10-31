@@ -619,7 +619,7 @@ resource "google_project_iam_member" "application" {
 
 # Deploy relays
 module "relays" {
-  count = var.relay_portal_token != null ? 1 : 0
+  count = var.relay_token != null ? 1 : 0
 
   source     = "../../modules/relay-app"
   project_id = module.google-cloud-project.project.project_id
@@ -708,8 +708,8 @@ module "relays" {
     }
   }
 
-  portal_websocket_url = "wss://api.${local.tld}"
-  portal_token         = var.relay_portal_token
+  api_url = "wss://api.${local.tld}"
+  token   = var.relay_token
 
   depends_on = [
     module.api

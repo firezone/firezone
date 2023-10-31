@@ -65,20 +65,15 @@ android {
         // Debug Config
         getByName("debug") {
             isDebuggable = true
+            resValue("string", "app_name", "\"Firezone (Dev)\"")
 
-            buildConfigField("String", "AUTH_HOST", "\"app.firez.one\"")
-            buildConfigField("String", "AUTH_SCHEME", "\"https\"")
-            buildConfigField("Integer", "AUTH_PORT", "443")
-            buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firez.one/\"")
-
-            // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
+            buildConfigField("String", "AUTH_BASE_URL", "\"https://app.firez.one\"")
+            buildConfigField("String", "API_URL", "\"wss://api.firez.one\"")
             buildConfigField(
                 "String",
-                "CONNLIB_LOG_FILTER_STRING",
+                "LOG_FILTER",
                 "\"connlib_client_android=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn\"",
             )
-
-            resValue("string", "app_name", "\"Firezone (Dev)\"")
         }
 
         // Release Config
@@ -103,25 +98,20 @@ android {
             )
             isDebuggable = false
 
-            buildConfigField("String", "AUTH_HOST", "\"app.firezone.dev\"")
-            buildConfigField("String", "AUTH_SCHEME", "\"https\"")
-            buildConfigField("Integer", "AUTH_PORT", "443")
-            buildConfigField("String", "CONTROL_PLANE_URL", "\"wss://api.firezone.dev/\"")
-
-            // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
-            buildConfigField(
-                "String",
-                "CONNLIB_LOG_FILTER_STRING",
-                "\"connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn\"",
-            )
-
             resValue("string", "app_name", "\"Firezone\"")
 
+            buildConfigField("String", "AUTH_BASE_URL", "\"https://app.firezone.dev\"")
+            buildConfigField("String", "API_URL", "\"wss://api.firezone.dev\"")
+            buildConfigField(
+                "String",
+                "LOG_FILTER",
+                "\"connlib_client_android=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn\"",
+            )
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
                 artifactType = "AAB"
                 releaseNotes = "https://github.com/firezone/firezone/releases"
-                groups = "firezone-engineering"
+                groups = "firezone-engineering, firezone-go-to-market"
                 artifactPath = "app/build/outputs/bundle/release/app-release.aab"
             }
         }

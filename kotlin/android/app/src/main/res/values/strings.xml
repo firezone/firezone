@@ -2,8 +2,15 @@
 	<string name="app_short_name">firezone</string>
 
 	<!-- Settings -->
-	<string name="account_id">account-id</string>
+	<string name="settings_title">Settings</string>
+	<string name="required_settings_title">Required</string>
+	<string name="advanced_settings_title">Advanced</string>
+	<string name="account_id">Account ID</string>
+	<string name="auth_base_url">Auth Base URL</string>
+	<string name="api_url">API URL</string>
+	<string name="log_filter">Log Filter</string>
 	<string name="save">Save</string>
+
 
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
@@ -15,18 +22,14 @@
 	<string name="sign_out">Sign Out</string>
 
 	<!-- Auth -->
-	<string name="launching_auth_flow">Launching Auth Flow…</string>
+	<string name="launching_auth_flow">Launching Chrome to sign in...</string>
 
 	<!-- Error Dialog -->
 	<string name="error_dialog_title">Error</string>
-	<string name="error_dialog_message">Ops, something went wrong. Please try again later.</string>
+	<string name="error_dialog_message">Oops! Something went wrong. Contact your admin if this issue persists.</string>
 	<string name="error_dialog_button_text">Ok</string>
 	<string name="enable_vpn_permission">Enable VPN Permission</string>
 	<string name="vpn_permission_description">Firezone requires the VPN permission in order to route packets from your device to protected resources in a secure manner. All communication is end-to-end encrypted; we can never decrypt or otherwise monitor your communication. Please grant the VPN permission by tapping the button below.</string>
 	<string name="request_permission">Request Permission</string>
-	<string name="enter_team_id">Enter team id</string>
-	<string name="sign_in_debug_user">Sign In (Debug User)</string>
-	<string name="signing_in_requires_chrome_browser">Signing in requires chrome browser</string>
-	<!-- Error Dialog -->
-
+	<string name="signing_in_requires_chrome_browser">Signing in requires Chrome browser</string>
 </resources>

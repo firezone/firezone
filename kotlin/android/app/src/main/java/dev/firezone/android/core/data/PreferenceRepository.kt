@@ -9,7 +9,12 @@ internal interface PreferenceRepository {
 
     fun getConfig(): Flow<Config>
 
-    fun saveAccountId(value: String): Flow<Unit>
+    fun saveSettings(
+        accountId: String,
+        authBaseUrl: String,
+        apiUrl: String,
+        logFilter: String,
+    ): Flow<Unit>
 
     fun saveToken(value: String): Flow<Unit>
 

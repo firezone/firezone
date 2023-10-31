@@ -34,7 +34,7 @@
     </androidx.appcompat.widget.LinearLayoutCompat>
 
     <com.google.android.material.textview.MaterialTextView
-        android:id="@+id/tvSignStatus"
+        android:id="@+id/tvSessionStatus"
         style="@style/AppTheme.Base.HeaderText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -47,20 +47,24 @@
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btSignIn"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_width="135dp"
+        android:layout_height="50dp"
+        android:layout_marginBottom="16dp"
         android:text="@string/sign_in"
-        app:layout_constraintBottom_toTopOf="@+id/btSettings"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
         app:layout_constraintStart_toStartOf="parent" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btSettings"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_width="135dp"
+        android:layout_height="50dp"
+        android:layout_marginBottom="16dp"
         android:text="@string/settings"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

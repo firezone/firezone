@@ -113,9 +113,10 @@ services:
 
   client:
     environment:
-      PORTAL_URL: "ws://api:8081/"
-      PORTAL_TOKEN: "SFMyNTY.g2gDaAN3CGlkZW50aXR5bQAAACQ3ZGE3ZDFjZC0xMTFjLTQ0YTctYjVhYy00MDI3YjlkMjMwZTVtAAAAIBn8Xu1jtFlxZxp4ZvAz0f0QEN2PZThA-7awHMPxn_tHbgYAbLRvQokBYgHhM38.pM-prhb7uvvCVKf51-tAUMEtMzLPZk1n3nLsY44dGFA"
+      FIREZONE_TOKEN: "SFMyNTY.g2gDaAN3CGlkZW50aXR5bQAAACQ3ZGE3ZDFjZC0xMTFjLTQ0YTctYjVhYy00MDI3YjlkMjMwZTVtAAAAIBn8Xu1jtFlxZxp4ZvAz0f0QEN2PZThA-7awHMPxn_tHbgYAbLRvQokBYgHhM38.pM-prhb7uvvCVKf51-tAUMEtMzLPZk1n3nLsY44dGFA"
       RUST_LOG: firezone_linux_client=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
+      FIREZONE_API_URL: ws://api:8081
+      FIREZONE_ID: D0455FDE-8F65-4960-A778-B934E4E85A5F
     build:
       target: debug
       context: rust
@@ -149,10 +150,11 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "ip link | grep tun-firezone"]
     environment:
-      PORTAL_URL: "ws://api:8081/"
-      PORTAL_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAEC0b0KJAWIAAVGA.9Oirn9t8rvQpfOhW7hwGBFVzeMm9di0xYGTlwf9cFFk"
+      FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAEC0b0KJAWIAAVGA.9Oirn9t8rvQpfOhW7hwGBFVzeMm9di0xYGTlwf9cFFk"
       RUST_LOG: firezone_gateway=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
       FIREZONE_ENABLE_MASQUERADE: 1
+      FIREZONE_API_URL: ws://api:8081
+      FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
     build:
       target: debug
       context: rust
@@ -201,10 +203,10 @@ services:
       PUBLIC_IP6_ADDR: fcff:3990:3990::101
       LOWEST_PORT: 55555
       HIGHEST_PORT: 55666
-      PORTAL_URL: "ws://api:8081/"
-      PORTAL_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDcyODZiNTNkLTA3M2UtNGM0MS05ZmYxLWNjODQ1MWRhZDI5OW0AAABARVg3N0dhMEhLSlVWTGdjcE1yTjZIYXRkR25mdkFEWVFyUmpVV1d5VHFxdDdCYVVkRVUzbzktRmJCbFJkSU5JS24GAFSzb0KJAWIAAVGA.waeGE26tbgkgIcMrWyck0ysv9SHIoHr0zqoM3wao84M"
+      FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDcyODZiNTNkLTA3M2UtNGM0MS05ZmYxLWNjODQ1MWRhZDI5OW0AAABARVg3N0dhMEhLSlVWTGdjcE1yTjZIYXRkR25mdkFEWVFyUmpVV1d5VHFxdDdCYVVkRVUzbzktRmJCbFJkSU5JS24GAFSzb0KJAWIAAVGA.waeGE26tbgkgIcMrWyck0ysv9SHIoHr0zqoM3wao84M"
       RUST_LOG: "debug"
       RUST_BACKTRACE: 1
+      FIREZONE_API_URL: ws://api:8081
     build:
       target: debug
       context: rust

@@ -49,9 +49,9 @@ internal class SessionActivity : AppCompatActivity() {
                 this@SessionActivity,
                 layoutManager.orientation,
             )
-        binding.resourcesList.addItemDecoration(dividerItemDecoration)
-        binding.resourcesList.adapter = resourcesAdapter
-        binding.resourcesList.layoutManager = layoutManager
+        binding.rvResourcesList.addItemDecoration(dividerItemDecoration)
+        binding.rvResourcesList.adapter = resourcesAdapter
+        binding.rvResourcesList.layoutManager = layoutManager
     }
 
     private fun setupObservers() {

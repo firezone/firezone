@@ -10,17 +10,25 @@ You should then find a binary in `target/release/firezone-gateway`.
 
 ## Running
 
-To run the gateway:
+The Firezone Gateway supports Linux only. To run the Gateway binary on your
+Linux host:
+
+1. Generate a new Gateway token from the "Gateways" section of the admin portal
+   and save it in your secrets manager.
+1. Ensure the `FIREZONE_TOKEN=<gateway_token>` environment variable is set
+   securely in your Gateway's shell environment. The Gateway requires this
+   variable at startup.
+1. Set `FIREZONE_ID` to a unique string to identify this gateway in the portal,
+   e.g. `export FIREZONE_ID=$(uuidgen)`. The Gateway requires this variable at
+   startup.
+1. Now, you can start the Gateway with:
 
 ```
-firezone-gateway --portal_token <portal_token>
+firezone-gateway
 ```
 
-where `portal_token` is the token shown when creating a gateway group in the
-Firezone admin portal.
-
-If you're running as an unprivileged user, you'll need the `CAP_NET_ADMIN`
-capability to open `/dev/net/tun`. You can add this to the gateway binary with:
+If you're running as a non-root user, you'll need the `CAP_NET_ADMIN` capability
+to open `/dev/net/tun`. You can add this to the gateway binary with:
 
 ```
 sudo setcap 'cap_net_admin+eip' /path/to/firezone-gateway

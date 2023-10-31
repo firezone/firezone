@@ -2,11 +2,13 @@
 package dev.firezone.android.core.data
 
 import android.content.SharedPreferences
+import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import java.security.MessageDigest
 import javax.inject.Inject
 
 internal class PreferenceRepositoryImpl
@@ -18,6 +20,9 @@ internal class PreferenceRepositoryImpl
         override fun getConfigSync(): Config =
             Config(
                 accountId = sharedPreferences.getString(ACCOUNT_ID_KEY, null),
+                authBaseUrl = sharedPreferences.getString(AUTH_BASE_URL_KEY, null) ?: BuildConfig.AUTH_BASE_URL,
+                apiUrl = sharedPreferences.getString(API_URL_KEY, null) ?: BuildConfig.API_URL,
+                logFilter = sharedPreferences.getString(LOG_FILTER_KEY, null) ?: BuildConfig.LOG_FILTER,
                 token = sharedPreferences.getString(TOKEN_KEY, null),
             )
 
@@ -26,12 +31,20 @@ internal class PreferenceRepositoryImpl
                 emit(getConfigSync())
             }.flowOn(coroutineDispatcher)
 
-        override fun saveAccountId(value: String): Flow<Unit> =
+        override fun saveSettings(
+            accountId: String,
+            authBaseUrl: String,
+            apiUrl: String,
+            logFilter: String,
+        ): Flow<Unit> =
             flow {
                 emit(
                     sharedPreferences
                         .edit()
-                        .putString(ACCOUNT_ID_KEY, value)
+                        .putString(ACCOUNT_ID_KEY, accountId)
+                        .putString(AUTH_BASE_URL_KEY, authBaseUrl)
+                        .putString(API_URL_KEY, apiUrl)
+                        .putString(LOG_FILTER_KEY, logFilter)
                         .apply(),
                 )
             }.flowOn(coroutineDispatcher)
@@ -48,8 +61,8 @@ internal class PreferenceRepositoryImpl
 
         override fun validateCsrfToken(value: String): Flow<Boolean> =
             flow {
-                val token = sharedPreferences.getString(CSRF_KEY, "")
-                emit(token == value)
+                val token = sharedPreferences.getString(CSRF_KEY, "").orEmpty()
+                emit(MessageDigest.isEqual(token.toByteArray(), value.toByteArray()))
             }.flowOn(coroutineDispatcher)
 
         override fun clearToken() {
@@ -66,6 +79,9 @@ internal class PreferenceRepositoryImpl
 
         companion object {
             private const val ACCOUNT_ID_KEY = "accountId"
+            private const val AUTH_BASE_URL_KEY = "authBaseUrl"
+            private const val API_URL_KEY = "apiUrl"
+            private const val LOG_FILTER_KEY = "logFilter"
             private const val TOKEN_KEY = "token"
             private const val CSRF_KEY = "csrf"
         }
