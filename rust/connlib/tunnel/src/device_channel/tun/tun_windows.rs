@@ -19,7 +19,7 @@ use windows::Win32::{
         MIB_UNICASTIPADDRESS_TABLE,
     },
     Networking::WinSock::{
-        htonl, RouterDiscoveryDisabled, AF_INET, MIB_IPPROTO_NETMGMT, SOCKADDR_INET,
+        htonl, RouterDiscoveryDisabled, AF_INET, AF_INET6, MIB_IPPROTO_NETMGMT, SOCKADDR_INET,
     },
 };
 
@@ -150,33 +150,37 @@ impl IfaceDevice {
         route: IpNetwork,
         _callbacks: &CallbackErrorFacade<impl Callbacks>,
     ) -> Result<Option<(Self, Arc<IfaceStream>)>> {
+        let mut route_entry = MIB_IPFORWARD_ROW2::default();
+
+        // Fill in the route entry fields
+        route_entry.ValidLifetime = u32::MAX;
+        route_entry.PreferredLifetime = u32::MAX;
+        route_entry.Protocol = MIB_IPPROTO_NETMGMT;
+        route_entry.Metric = 0;
+        route_entry.InterfaceIndex = self.adapter_index;
+
+        let mut sockaddr_inet: SOCKADDR_INET = Default::default();
         match route {
             IpNetwork::V4(ipnet) => {
-                let mut route: MIB_IPFORWARD_ROW2 = Default::default();
-
-                // Fill in the route entry fields
-                route.ValidLifetime = u32::MAX;
-                route.PreferredLifetime = u32::MAX;
-                route.Protocol = MIB_IPPROTO_NETMGMT;
-                route.Metric = 0;
-                route.InterfaceIndex = self.adapter_index;
-
-                let mut sockaddr_inet: SOCKADDR_INET = Default::default();
                 sockaddr_inet.si_family = AF_INET;
                 sockaddr_inet.Ipv4.sin_addr.S_un.S_addr =
-                    unsafe { htonl(ipnet.network_address().into()) };
-                route.DestinationPrefix.Prefix = sockaddr_inet;
-                route.DestinationPrefix.PrefixLength = ipnet.netmask().into();
-
-                // Create the route entry
-                unsafe {
-                    CreateIpForwardEntry2(&mut route)
-                        .map_err(|err| OnAddRouteFailed(err.to_string()))?
-                };
-                Ok(None)
+                    u32::from(ipnet.network_address()).to_be();
+                route_entry.DestinationPrefix.Prefix = sockaddr_inet;
             }
-            IpNetwork::V6(_) => Err(OnAddRouteFailed(format!("Not implemented"))),
+            IpNetwork::V6(ipnet) => {
+                sockaddr_inet.si_family = AF_INET6;
+                sockaddr_inet.Ipv6.sin6_addr.u.Byte = ipnet.network_address().octets();
+                route_entry.DestinationPrefix.Prefix = sockaddr_inet;
+            }
         }
+
+        route_entry.DestinationPrefix.PrefixLength = route.netmask().into();
+        // Create the route entry
+        unsafe {
+            CreateIpForwardEntry2(&mut route_entry)?;
+        }
+
+        Ok(None)
     }
 
     pub async fn up(&self) -> Result<()> {
@@ -197,7 +201,7 @@ fn set_ipv4_addr(idx: u32, addr: Ipv4Addr) -> Result<()> {
             idx,
             &mut ip_context as *mut _,
             &mut ip_instance as *mut _,
-        )
+        )?
     };
     if result != NO_ERROR.0 {
         return Err(OnSetInterfaceConfigFailed(format!(
