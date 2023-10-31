@@ -201,27 +201,26 @@ public struct SettingsView: View {
                   prompt: Text(PlaceholderText.accountId)
                 )
                 .frame(maxWidth: 240)
-                .padding(10)
+                .onSubmit {
+                  self.model.saveAccountSettings()
+                }
                 Spacer()
               }
+              Button(
+                "Apply",
+                action: {
+                  self.model.saveAccountSettings()
+                }
+              )
+              .disabled(
+                model.accountSettings.isSavedToDisk
+                  || !isTeamIdValid(model.accountSettings.accountId)
+              )
             },
             footer: {
               Text(FootnoteText.forAccount)
                 .foregroundStyle(.secondary)
             }
-          )
-        }
-        Spacer()
-        HStack(spacing: 30) {
-          Button(
-            "Apply",
-            action: {
-              self.model.saveAccountSettings()
-            }
-          )
-          .disabled(
-            model.accountSettings.isSavedToDisk
-              || !isTeamIdValid(model.accountSettings.accountId)
           )
         }
         Spacer()
