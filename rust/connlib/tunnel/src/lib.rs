@@ -356,16 +356,8 @@ where
                 continue;
             }
 
-            if self.mtu_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let Some(device) = self.device.load().clone() else {
-                    tracing::debug!("Device temporarily not available");
-                    continue;
-                };
-
-                if let Err(e) = device.refresh_mtu() {
-                    tracing::error!(error = ?e, "refresh_mtu");
-                    let _ = self.callbacks.on_error(&e);
-                }
+            if self.refresh_mtu(cx).is_ready() {
+                continue;
             }
 
             if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
@@ -374,6 +366,22 @@ where
 
             return Poll::Pending;
         }
+    }
+
+    fn refresh_mtu(&self, cx: &mut Context) -> Poll<()> {
+        ready!(self.mtu_refresh_interval.lock().poll_tick(cx));
+
+        let Some(device) = self.device.load().clone() else {
+            tracing::debug!("Device temporarily not available");
+            return Poll::Ready(());
+        };
+
+        if let Err(e) = device.refresh_mtu() {
+            tracing::error!(error = ?e, "refresh_mtu");
+            let _ = self.callbacks.on_error(&e);
+        }
+
+        Poll::Ready(())
     }
 
     fn refresh_peers(&self, cx: &mut Context) -> Poll<()> {
