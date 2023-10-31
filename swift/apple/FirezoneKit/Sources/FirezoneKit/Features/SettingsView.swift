@@ -54,15 +54,7 @@ public final class SettingsViewModel: ObservableObject {
         }
         return
       }
-      let tunnelAuthStatus: TunnelAuthStatus = await {
-        if accountSettings.accountId.isEmpty {
-          return .accountNotSetup
-        } else {
-          return await authStore.tunnelAuthStatusForAccount(accountId: accountSettings.accountId)
-        }
-      }()
-      try await authStore.tunnelStore.saveAuthStatus(tunnelAuthStatus)
-      onSettingsSaved()
+      try await updateTunnelAuthStatus(accountId: accountSettings.accountId)
       await MainActor.run {
         accountSettings.isSavedToDisk = true
       }
@@ -85,10 +77,25 @@ public final class SettingsViewModel: ObservableObject {
       var isChanged = false
       await authStore.setAuthBaseURL(authBaseURL, isChanged: &isChanged)
       if isChanged {
-        // Update tunnelAuthStatus looking for the new authBaseURL in the keychain
-        saveAccountSettings()
+        try await updateTunnelAuthStatus(
+          accountId: authStore.tunnelStore.tunnelAuthStatus.accountId() ?? "")
       }
     }
+  }
+
+  // updateTunnelAuthStatus:
+  // When the authBaseURL or the accountId changes, we should update the signed-in-ness.
+  // This is done by searching the keychain for an entry with the authBaseURL+accountId
+  // combination. If an entry was found, we consider that entry to mean we're logged in.
+  func updateTunnelAuthStatus(accountId: String) async throws {
+    let tunnelAuthStatus: TunnelAuthStatus = await {
+      if accountId.isEmpty {
+        return .accountNotSetup
+      } else {
+        return await authStore.tunnelAuthStatusForAccount(accountId: accountId)
+      }
+    }()
+    try await authStore.tunnelStore.saveAuthStatus(tunnelAuthStatus)
   }
 }
 
