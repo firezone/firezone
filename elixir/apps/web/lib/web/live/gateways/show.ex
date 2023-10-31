@@ -73,7 +73,7 @@ defmodule Web.Gateways.Show do
           <.vertical_table_row>
             <:label>Last Seen Remote IP</:label>
             <:value>
-              <code><%= @gateway.last_seen_remote_ip %></code>
+              <.last_seen schema={@gateway} />
             </:value>
           </.vertical_table_row>
           <!--

@@ -190,7 +190,14 @@ unprivileged_subject =
   Auth.build_subject(
     unprivileged_actor_userpass_identity,
     DateTime.utc_now() |> DateTime.add(365, :day),
-    %Auth.Context{user_agent: "Debian/11.0.0 connlib/0.1.0", remote_ip: {172, 28, 0, 100}}
+    %Auth.Context{
+      user_agent: "Debian/11.0.0 connlib/0.1.0",
+      remote_ip: {172, 28, 0, 100},
+      remote_ip_location_region: "UA",
+      remote_ip_location_city: "Kyiv",
+      remote_ip_location_lat: 50.4333,
+      remote_ip_location_lon: 30.5167
+    }
   )
 
 admin_subject =

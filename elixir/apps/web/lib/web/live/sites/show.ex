@@ -112,7 +112,7 @@ defmodule Web.Sites.Show do
               </.link>
             </:col>
             <:col :let={gateway} label="REMOTE IP">
-              <code class="block text-xs">
+              <code>
                 <%= gateway.last_seen_remote_ip %>
               </code>
             </:col>

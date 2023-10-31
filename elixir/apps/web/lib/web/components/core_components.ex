@@ -824,6 +824,35 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
+
+  """
+  attr :schema, :any, required: true
+
+  def last_seen(assigns) do
+    ~H"""
+    <code>
+      <%= @schema.last_seen_remote_ip %>
+    </code>
+    <span class="text-gray-500 dark:text-gray-400 inline-block">
+      <%= [
+        @schema.last_seen_remote_ip_location_region,
+        @schema.last_seen_remote_ip_location_city
+      ]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join(", ") %>
+
+      <a
+        :if={not is_nil(@schema.last_seen_remote_ip_location_lat)}
+        class="ml-1 text-blue-800 dark:text-blue-300"
+        href={"http://www.google.com/maps/place/#{@schema.last_seen_remote_ip_location_lat},#{@schema.last_seen_remote_ip_location_lon}"}
+      >
+        <.icon name="hero-arrow-top-right-on-square" class="-ml-1 mb-3 w-3 h-3" />
+      </a>
+    </span>
+    """
+  end
+
+  @doc """
   Helps to pluralize a word based on a cardinal number.
 
   Cardinal numbers indicate an amount—how many of something we have: one, two, three, four, five.
