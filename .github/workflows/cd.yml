@@ -206,7 +206,7 @@ jobs:
           cache-from: |
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.artifact }}:main
           cache-to: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.artifact }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.artifact }}:main,mode=max
           target: release
           outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact}},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
