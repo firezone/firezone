@@ -183,7 +183,11 @@ where
     CB: Callbacks + 'static,
 {
     pub async fn next_event(&self) -> Result<client::Event> {
-        std::future::poll_fn(|cx| loop {
+        std::future::poll_fn(|cx| self.poll_next_event(cx)).await
+    }
+
+    fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Result<client::Event>> {
+        loop {
             {
                 let guard = self.device.load();
 
@@ -224,11 +228,10 @@ where
             }
 
             return Poll::Pending;
-        })
-        .await
+        }
     }
 
-    pub(crate) fn poll_device(
+    fn poll_device(
         &self,
         device: &Device,
         cx: &mut Context<'_>,
