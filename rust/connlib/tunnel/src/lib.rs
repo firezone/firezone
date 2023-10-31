@@ -580,9 +580,7 @@ fn mtu_refresh_interval() -> Interval {
 /// The state should only be modified when the concrete type is known, e.g. [`State`] or [`State`].
 pub trait RoleState: Default + Send + 'static {
     type Id: fmt::Debug + fmt::Display + Eq + Hash + Copy + Unpin + Send + Sync + 'static;
-    type Event;
 
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Self::Event>;
     fn remove_peers(&mut self, conn_id: Self::Id);
     fn refresh_peers(&mut self) -> VecDeque<Self::Id>;
 }

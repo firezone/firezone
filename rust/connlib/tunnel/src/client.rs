@@ -195,6 +195,28 @@ pub struct State {
     pub ip_provider: IpProvider,
 }
 
+pub struct IpProvider {
+    ipv4: Box<dyn Iterator<Item = Ipv4Addr> + Send + Sync>,
+    ipv6: Box<dyn Iterator<Item = Ipv6Addr> + Send + Sync>,
+}
+
+impl IpProvider {
+    fn new(ipv4: Ipv4Network, ipv6: Ipv6Network) -> Self {
+        Self {
+            ipv4: Box::new(ipv4.hosts()),
+            ipv6: Box::new(ipv6.subnets_with_prefix(128).map(|ip| ip.network_address())),
+        }
+    }
+
+    pub fn next_ipv4(&mut self) -> Option<Ipv4Addr> {
+        self.ipv4.next()
+    }
+
+    pub fn next_ipv6(&mut self) -> Option<Ipv6Addr> {
+        self.ipv6.next()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AwaitingConnectionDetails {
     total_attemps: usize,
@@ -566,66 +588,8 @@ impl State {
             tracing::warn!("Too many DNS queries, dropping new ones");
         }
     }
-}
 
-pub struct IpProvider {
-    ipv4: Box<dyn Iterator<Item = Ipv4Addr> + Send + Sync>,
-    ipv6: Box<dyn Iterator<Item = Ipv6Addr> + Send + Sync>,
-}
-
-impl IpProvider {
-    fn new(ipv4: Ipv4Network, ipv6: Ipv6Network) -> Self {
-        Self {
-            ipv4: Box::new(ipv4.hosts()),
-            ipv6: Box::new(ipv6.subnets_with_prefix(128).map(|ip| ip.network_address())),
-        }
-    }
-
-    pub fn next_ipv4(&mut self) -> Option<Ipv4Addr> {
-        self.ipv4.next()
-    }
-
-    pub fn next_ipv6(&mut self) -> Option<Ipv6Addr> {
-        self.ipv6.next()
-    }
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            active_candidate_receivers: StreamMap::new(
-                Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
-                MAX_CONCURRENT_ICE_GATHERING,
-            ),
-            waiting_for_sdp_from_gateway: Default::default(),
-            awaiting_connection: Default::default(),
-            gateway_awaiting_connection: Default::default(),
-            awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
-            gateway_public_keys: Default::default(),
-            resources_gateways: Default::default(),
-            forwarded_dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
-            gateway_preshared_keys: Default::default(),
-            dns_strategy: Default::default(),
-            // TODO: decide ip ranges
-            ip_provider: IpProvider::new(
-                IPV4_RESOURCES.parse().unwrap(),
-                IPV6_RESOURCES.parse().unwrap(),
-            ),
-            dns_resources_internal_ips: Default::default(),
-            dns_resources: Default::default(),
-            cidr_resources: IpNetworkTable::new(),
-            resource_ids: Default::default(),
-            peers_by_ip: IpNetworkTable::new(),
-            deferred_dns_queries: Default::default(),
-        }
-    }
-}
-
-impl RoleState for State {
-    type Id = GatewayId;
-    type Event = Event;
-
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
         loop {
             match self.active_candidate_receivers.poll_next_unpin(cx) {
                 Poll::Ready((conn_id, Some(Ok(c)))) => {
@@ -684,12 +648,47 @@ impl RoleState for State {
             return self.forwarded_dns_queries.poll(cx).map(Event::DnsQuery);
         }
     }
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            active_candidate_receivers: StreamMap::new(
+                Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
+                MAX_CONCURRENT_ICE_GATHERING,
+            ),
+            waiting_for_sdp_from_gateway: Default::default(),
+            awaiting_connection: Default::default(),
+            gateway_awaiting_connection: Default::default(),
+            awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
+            gateway_public_keys: Default::default(),
+            resources_gateways: Default::default(),
+            forwarded_dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
+            gateway_preshared_keys: Default::default(),
+            dns_strategy: Default::default(),
+            // TODO: decide ip ranges
+            ip_provider: IpProvider::new(
+                IPV4_RESOURCES.parse().unwrap(),
+                IPV6_RESOURCES.parse().unwrap(),
+            ),
+            dns_resources_internal_ips: Default::default(),
+            dns_resources: Default::default(),
+            cidr_resources: IpNetworkTable::new(),
+            resource_ids: Default::default(),
+            peers_by_ip: IpNetworkTable::new(),
+            deferred_dns_queries: Default::default(),
+        }
+    }
+}
+
+impl RoleState for State {
+    type Id = GatewayId;
 
     fn remove_peers(&mut self, conn_id: GatewayId) {
         self.peers_by_ip.retain(|_, p| p.inner.conn_id != conn_id);
     }
 
-    fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
+    fn refresh_peers(&mut self) -> VecDeque<GatewayId> {
         let mut peers_to_stop = VecDeque::new();
         for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
             let conn_id = peer.inner.conn_id;

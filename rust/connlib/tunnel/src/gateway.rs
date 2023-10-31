@@ -64,6 +64,23 @@ impl State {
             }
         }
     }
+
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
+        loop {
+            match ready!(self.candidate_receivers.poll_next_unpin(cx)) {
+                (conn_id, Some(Ok(c))) => {
+                    return Poll::Ready(Event::SignalIceCandidate {
+                        conn_id,
+                        candidate: c,
+                    });
+                }
+                (id, Some(Err(e))) => {
+                    tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}")
+                }
+                (_, None) => {}
+            }
+        }
+    }
 }
 
 impl Default for State {
@@ -80,30 +97,12 @@ impl Default for State {
 
 impl RoleState for State {
     type Id = ClientId;
-    type Event = Event;
-
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
-        loop {
-            match ready!(self.candidate_receivers.poll_next_unpin(cx)) {
-                (conn_id, Some(Ok(c))) => {
-                    return Poll::Ready(Event::SignalIceCandidate {
-                        conn_id,
-                        candidate: c,
-                    });
-                }
-                (id, Some(Err(e))) => {
-                    tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}")
-                }
-                (_, None) => {}
-            }
-        }
-    }
 
     fn remove_peers(&mut self, conn_id: ClientId) {
         self.peers_by_ip.retain(|_, p| p.inner.conn_id != conn_id);
     }
 
-    fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
+    fn refresh_peers(&mut self) -> VecDeque<ClientId> {
         let mut peers_to_stop = VecDeque::new();
         for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
             let conn_id = peer.inner.conn_id;
