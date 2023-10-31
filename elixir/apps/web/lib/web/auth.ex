@@ -136,8 +136,10 @@ defmodule Web.Auth do
   """
   def fetch_subject_and_account(%Plug.Conn{} = conn, _opts) do
     with token when not is_nil(token) <- Plug.Conn.get_session(conn, :session_token),
+         # TODO: add geolocation context
+         context = %Auth.Context{user_agent: conn.assigns.user_agent, remote_ip: conn.remote_ip},
          {:ok, subject} <-
-           Domain.Auth.sign_in(token, conn.assigns.user_agent, conn.remote_ip),
+           Domain.Auth.sign_in(token, context),
          {:ok, account} <-
            Domain.Accounts.fetch_account_by_id_or_slug(
              conn.path_params["account_id_or_slug"],
@@ -295,7 +297,9 @@ defmodule Web.Auth do
       real_ip = real_ip(socket)
 
       with token when not is_nil(token) <- session["session_token"],
-           {:ok, subject} <- Domain.Auth.sign_in(token, user_agent, real_ip) do
+           # TODO: add geolocation context
+           context = %Domain.Auth.Context{user_agent: user_agent, remote_ip: real_ip},
+           {:ok, subject} <- Domain.Auth.sign_in(token, context) do
         subject
       else
         _ -> nil

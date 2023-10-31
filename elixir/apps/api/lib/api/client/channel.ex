@@ -182,7 +182,13 @@ defmodule API.Client.Channel do
            {:ok, [_ | _] = gateways} <-
              Gateways.list_connected_gateways_for_resource(resource),
            {:ok, [_ | _] = relays} <- Relays.list_connected_relays_for_resource(resource) do
-        gateway = Gateways.load_balance_gateways(gateways, connected_gateway_ids)
+        location = {
+          socket.assigns.client.last_seen_remote_ip_location_lat,
+          socket.assigns.client.last_seen_remote_ip_location_lon
+        }
+
+        {:ok, relays} = Relays.select_relays(location, relays)
+        gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids)
 
         reply =
           {:ok,

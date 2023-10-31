@@ -1,6 +1,6 @@
 defmodule Domain.Gateways do
   use Supervisor
-  alias Domain.{Repo, Auth, Validator}
+  alias Domain.{Repo, Auth, Validator, Geo}
   alias Domain.{Accounts, Resources}
   alias Domain.Gateways.{Authorizer, Gateway, Group, Token, Presence}
 
@@ -335,16 +335,33 @@ defmodule Domain.Gateways do
     end
   end
 
-  def load_balance_gateways(gateways) do
-    Enum.random(gateways)
+  def load_balance_gateways({_lat, _lon}, []) do
+    nil
   end
 
-  def load_balance_gateways(gateways, preferred_gateway_ids) do
+  def load_balance_gateways({lat, lon}, gateways) do
+    gateways
+    # This allows to group gateways that are running at the same location so
+    # we are using at least 2 locations to build ICE candidates
+    |> Enum.group_by(fn gateway ->
+      {gateway.last_seen_remote_ip_location_lat, gateway.last_seen_remote_ip_location_lon}
+    end)
+    |> Enum.map(fn {{gateway_lat, gateway_lon}, gateway} ->
+      distance = Geo.distance({lat, lon}, {gateway_lat, gateway_lon})
+      {distance, gateway}
+    end)
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.at(0)
+    |> elem(1)
+    |> Enum.random()
+  end
+
+  def load_balance_gateways({lat, lon}, gateways, preferred_gateway_ids) do
     gateways
     |> Enum.filter(&(&1.id in preferred_gateway_ids))
     |> case do
-      [] -> load_balance_gateways(gateways)
-      preferred_gateways -> load_balance_gateways(preferred_gateways)
+      [] -> load_balance_gateways({lat, lon}, gateways)
+      preferred_gateways -> load_balance_gateways({lat, lon}, preferred_gateways)
     end
   end
 

@@ -796,6 +796,78 @@ defmodule Domain.RelaysTest do
     end
   end
 
+  describe "select_relays/2" do
+    test "returns empty list when there are no relays" do
+      assert select_relays({0, 0}, []) == {:ok, []}
+    end
+
+    test "selects relays in two closest regions to a given location" do
+      # Moncks Corner, South Carolina
+      relay_us_east_1 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      relay_us_east_2 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      relay_us_east_3 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      # The Dalles, Oregon
+      relay_us_west_1 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 45.5946,
+          last_seen_remote_ip_location_lon: -121.1787
+        )
+
+      relay_us_west_2 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 45.5946,
+          last_seen_remote_ip_location_lon: -121.1787
+        )
+
+      # Council Bluffs, Iowa
+      relay_us_central_1 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 41.2619,
+          last_seen_remote_ip_location_lon: -95.8608
+        )
+
+      relays = [
+        relay_us_east_1,
+        relay_us_east_2,
+        relay_us_east_3,
+        relay_us_west_1,
+        relay_us_west_2,
+        relay_us_central_1
+      ]
+
+      # multiple attempts are used to increase chances that all relays in a group are randomly selected
+      for _ <- 0..3 do
+        assert {:ok, [relay1, relay2]} = select_relays({32.2029, -80.0131}, relays)
+        assert relay1.id in [relay_us_east_1.id, relay_us_east_2.id, relay_us_east_3.id]
+        assert relay2.id == relay_us_central_1.id
+      end
+
+      for _ <- 0..2 do
+        assert {:ok, [relay1, relay2]} = select_relays({45.5946, -121.1787}, relays)
+        assert relay1.id in [relay_us_west_1.id, relay_us_west_2.id]
+        assert relay2.id == relay_us_central_1.id
+      end
+
+      assert {:ok, [relay1, _relay2]} = select_relays({42.2619, -96.8608}, relays)
+      assert relay1.id == relay_us_central_1.id
+    end
+  end
+
   describe "encode_token!/1" do
     test "returns encoded token" do
       token = Fixtures.Relays.create_token()

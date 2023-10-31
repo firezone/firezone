@@ -318,7 +318,7 @@ defmodule API.Client.ChannelTest do
       :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :ok, %{relays: relays}
-      assert length(relays) == 3
+      assert length(relays) == 2
     end
   end
 

@@ -802,31 +802,102 @@ defmodule Domain.GatewaysTest do
     end
   end
 
-  describe "load_balance_gateways/1" do
+  describe "load_balance_gateways/2" do
+    test "returns nil when there are no gateways" do
+      assert load_balance_gateways({0, 0}, []) == nil
+    end
+
     test "returns random gateway" do
       gateways = Enum.map(1..10, fn _ -> Fixtures.Gateways.create_gateway() end)
-      assert Enum.member?(gateways, load_balance_gateways(gateways))
+      assert Enum.member?(gateways, load_balance_gateways({0, 0}, gateways))
+    end
+
+    test "returns gateways in two closest regions to a given location" do
+      # Moncks Corner, South Carolina
+      gateway_us_east_1 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      gateway_us_east_2 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      gateway_us_east_3 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      # The Dalles, Oregon
+      gateway_us_west_1 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: 45.5946,
+          last_seen_remote_ip_location_lon: -121.1787
+        )
+
+      gateway_us_west_2 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: 45.5946,
+          last_seen_remote_ip_location_lon: -121.1787
+        )
+
+      # Council Bluffs, Iowa
+      gateway_us_central_1 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: 41.2619,
+          last_seen_remote_ip_location_lon: -95.8608
+        )
+
+      gateways = [
+        gateway_us_east_1,
+        gateway_us_east_2,
+        gateway_us_east_3,
+        gateway_us_west_1,
+        gateway_us_west_2,
+        gateway_us_central_1
+      ]
+
+      # multiple attempts are used to increase chances that all gateways in a group are randomly selected
+      for _ <- 0..3 do
+        assert gateway = load_balance_gateways({32.2029, -80.0131}, gateways)
+        assert gateway.id in [gateway_us_east_1.id, gateway_us_east_2.id, gateway_us_east_3.id]
+      end
+
+      for _ <- 0..2 do
+        assert gateway = load_balance_gateways({45.5946, -121.1787}, gateways)
+        assert gateway.id in [gateway_us_west_1.id, gateway_us_west_2.id]
+      end
+
+      assert gateway = load_balance_gateways({42.2619, -96.8608}, gateways)
+      assert gateway.id == gateway_us_central_1.id
     end
   end
 
-  describe "load_balance_gateways/2" do
+  describe "load_balance_gateways/3" do
     test "returns random gateway if no gateways are already connected" do
       gateways = Enum.map(1..10, fn _ -> Fixtures.Gateways.create_gateway() end)
-      assert Enum.member?(gateways, load_balance_gateways(gateways, []))
+      assert Enum.member?(gateways, load_balance_gateways({0, 0}, gateways, []))
     end
 
     test "reuses gateway that is already connected to reduce the latency" do
       gateways = Enum.map(1..10, fn _ -> Fixtures.Gateways.create_gateway() end)
       [connected_gateway | _] = gateways
 
-      assert load_balance_gateways(gateways, [connected_gateway.id]) == connected_gateway
+      assert load_balance_gateways({0, 0}, gateways, [connected_gateway.id]) == connected_gateway
     end
 
     test "returns random gateway from the connected ones" do
       gateways = Enum.map(1..10, fn _ -> Fixtures.Gateways.create_gateway() end)
       [connected_gateway1, connected_gateway2 | _] = gateways
 
-      assert load_balance_gateways(gateways, [connected_gateway1.id, connected_gateway2.id]) in [
+      assert load_balance_gateways({0, 0}, gateways, [
+               connected_gateway1.id,
+               connected_gateway2.id
+             ]) in [
                connected_gateway1,
                connected_gateway2
              ]

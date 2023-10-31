@@ -1,6 +1,6 @@
 defmodule Domain.Relays do
   use Supervisor
-  alias Domain.{Repo, Auth, Validator}
+  alias Domain.{Repo, Auth, Validator, Geo}
   alias Domain.{Accounts, Resources}
   alias Domain.Relays.{Authorizer, Relay, Group, Token, Presence}
 
@@ -311,6 +311,28 @@ defmodule Domain.Relays do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Relay.Changeset.delete/1)
     end
+  end
+
+  @doc """
+  Selects 3 nearest relays to the given location and then picks one of them randomly.
+  """
+  def select_relays({lat, lon}, relays) do
+    relays =
+      relays
+      # This allows to group relays that are running at the same location so
+      # we are using at least 2 locations to build ICE candidates
+      |> Enum.group_by(fn relay ->
+        {relay.last_seen_remote_ip_location_lat, relay.last_seen_remote_ip_location_lon}
+      end)
+      |> Enum.map(fn {{relay_lat, relay_lon}, relay} ->
+        distance = Geo.distance({lat, lon}, {relay_lat, relay_lon})
+        {distance, relay}
+      end)
+      |> Enum.sort_by(&elem(&1, 0))
+      |> Enum.take(2)
+      |> Enum.map(&Enum.random(elem(&1, 1)))
+
+    {:ok, relays}
   end
 
   def encode_token!(%Token{value: value} = token) when not is_nil(value) do
