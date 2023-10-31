@@ -190,16 +190,14 @@ unprivileged_subject =
   Auth.build_subject(
     unprivileged_actor_userpass_identity,
     DateTime.utc_now() |> DateTime.add(365, :day),
-    "Debian/11.0.0 connlib/0.1.0",
-    {172, 28, 0, 100}
+    %Auth.Context{user_agent: "Debian/11.0.0 connlib/0.1.0", remote_ip: {172, 28, 0, 100}}
   )
 
 admin_subject =
   Auth.build_subject(
     admin_actor_email_identity,
     nil,
-    "iOS/12.5 (iPhone) connlib/0.7.412",
-    {100, 64, 100, 58}
+    %Auth.Context{user_agent: "iOS/12.5 (iPhone) connlib/0.7.412", remote_ip: {100, 64, 100, 58}}
   )
 
 IO.puts("Created users: ")
