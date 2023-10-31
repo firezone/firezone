@@ -384,32 +384,8 @@ impl State {
             tracing::warn!("Too many DNS queries, dropping new ones");
         }
     }
-}
 
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            active_candidate_receivers: StreamMap::new(
-                Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
-                MAX_CONCURRENT_ICE_GATHERING,
-            ),
-            waiting_for_sdp_from_gatway: Default::default(),
-            awaiting_connection: Default::default(),
-            gateway_awaiting_connection: Default::default(),
-            awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
-            gateway_public_keys: Default::default(),
-            resources_gateways: Default::default(),
-            resources: Default::default(),
-            dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
-        }
-    }
-}
-
-impl RoleState for State {
-    type Id = GatewayId;
-    type Event = Event;
-
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
         loop {
             match self.active_candidate_receivers.poll_next_unpin(cx) {
                 Poll::Ready((conn_id, Some(Ok(c)))) => {
@@ -468,6 +444,29 @@ impl RoleState for State {
             return self.dns_queries.poll(cx).map(Event::DnsQuery);
         }
     }
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            active_candidate_receivers: StreamMap::new(
+                Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
+                MAX_CONCURRENT_ICE_GATHERING,
+            ),
+            waiting_for_sdp_from_gatway: Default::default(),
+            awaiting_connection: Default::default(),
+            gateway_awaiting_connection: Default::default(),
+            awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
+            gateway_public_keys: Default::default(),
+            resources_gateways: Default::default(),
+            resources: Default::default(),
+            dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
+        }
+    }
+}
+
+impl RoleState for State {
+    type Id = GatewayId;
 }
 
 pub enum Event {

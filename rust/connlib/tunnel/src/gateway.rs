@@ -50,24 +50,8 @@ impl State {
             }
         }
     }
-}
 
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            candidate_receivers: StreamMap::new(
-                Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
-                MAX_CONCURRENT_ICE_GATHERING,
-            ),
-        }
-    }
-}
-
-impl RoleState for State {
-    type Id = ClientId;
-    type Event = Event;
-
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
         loop {
             match ready!(self.candidate_receivers.poll_next_unpin(cx)) {
                 (conn_id, Some(Ok(c))) => {
@@ -83,6 +67,21 @@ impl RoleState for State {
             }
         }
     }
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            candidate_receivers: StreamMap::new(
+                Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
+                MAX_CONCURRENT_ICE_GATHERING,
+            ),
+        }
+    }
+}
+
+impl RoleState for State {
+    type Id = ClientId;
 }
 
 pub enum Event {
