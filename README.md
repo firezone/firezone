@@ -1,3 +1,8 @@
+**Note**: The legacy branch of Firezone tracks the 0.7 release, which is
+currently EOL status. Please see the
+[README in main](https://github.com/firezone/firezone/blob/main/README.md) for
+the current version.
+
 <p align="center">
   <img src="https://user-images.githubusercontent.com/52545545/144147936-39f3e416-8ba0-4f24-915e-f0515f85bb64.png" alt="firezone logo" width="305"/>
 </p>
