@@ -294,33 +294,7 @@ where
 
     fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<TRoleState::Event> {
         loop {
-            if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
-                let mut peers = self.peers_by_ip.write();
-
-                let Some(peer_to_remove) = peers
-                    .iter()
-                    .find_map(|(n, p)| (p.inner.conn_id == conn_id).then_some(n))
-                else {
-                    continue;
-                };
-
-                let peer = peers.remove(peer_to_remove).expect("just found it");
-
-                let channel = peer.channel.clone();
-
-                tokio::spawn(async move { channel.close().await });
-                if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
-                    tokio::spawn({
-                        let callbacks = self.callbacks.clone();
-                        async move {
-                            if let Err(e) = conn.close().await {
-                                tracing::warn!(%conn_id, error = ?e, "Can't close peer");
-                                let _ = callbacks.on_error(&e.into());
-                            }
-                        }
-                    });
-                }
-            }
+            self.stop_peers();
 
             if self
                 .rate_limit_reset_interval
@@ -414,6 +388,36 @@ where
             }
 
             return Poll::Pending;
+        }
+    }
+
+    fn stop_peers(&self) {
+        let mut peers = self.peers_by_ip.write();
+
+        while let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
+            let Some(peer_to_remove) = peers
+                .iter()
+                .find_map(|(n, p)| (p.inner.conn_id == conn_id).then_some(n))
+            else {
+                continue;
+            };
+
+            let peer = peers.remove(peer_to_remove).expect("just found it");
+
+            let channel = peer.channel.clone();
+
+            tokio::spawn(async move { channel.close().await });
+            if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
+                tokio::spawn({
+                    let callbacks = self.callbacks.clone();
+                    async move {
+                        if let Err(e) = conn.close().await {
+                            tracing::warn!(%conn_id, error = ?e, "Can't close peer");
+                            let _ = callbacks.on_error(&e.into());
+                        }
+                    }
+                });
+            }
         }
     }
 
