@@ -4,10 +4,21 @@ defmodule Domain.Relays.Relay.Changeset do
   alias Domain.Relays
 
   @upsert_fields ~w[ipv4 ipv6 port
-                    last_seen_user_agent last_seen_remote_ip]a
+                    last_seen_user_agent
+                    last_seen_remote_ip
+                    last_seen_remote_ip_location_region
+                    last_seen_remote_ip_location_city
+                    last_seen_remote_ip_location_lat
+                    last_seen_remote_ip_location_lon]a
   @conflict_replace_fields ~w[ipv4 ipv6 port
-                              last_seen_user_agent last_seen_remote_ip
-                              last_seen_version last_seen_at
+                              last_seen_user_agent
+                              last_seen_remote_ip
+                              last_seen_remote_ip_location_region
+                              last_seen_remote_ip_location_city
+                              last_seen_remote_ip_location_lat
+                              last_seen_remote_ip_location_lon
+                              last_seen_version
+                              last_seen_at
                               updated_at]a
 
   def upsert_conflict_target(%{account_id: nil}) do

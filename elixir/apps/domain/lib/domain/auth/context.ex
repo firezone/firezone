@@ -7,9 +7,17 @@ defmodule Domain.Auth.Context do
   """
   @type t :: %__MODULE__{
           remote_ip: :inet.ip_address(),
+          remote_ip_location_region: String.t(),
+          remote_ip_location_city: String.t(),
+          remote_ip_location_lat: float(),
+          remote_ip_location_lon: float(),
           user_agent: String.t()
         }
 
   defstruct remote_ip: nil,
+            remote_ip_location_region: nil,
+            remote_ip_location_city: nil,
+            remote_ip_location_lat: nil,
+            remote_ip_location_lon: nil,
             user_agent: nil
 end

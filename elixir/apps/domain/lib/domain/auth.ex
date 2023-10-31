@@ -419,7 +419,8 @@ defmodule Domain.Auth do
 
     with {:ok, identity} <- Repo.fetch(identity_queryable),
          {:ok, identity, expires_at} <- Adapters.verify_secret(provider, identity, secret) do
-      {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}
+      context = %Context{remote_ip: remote_ip, user_agent: user_agent}
+      {:ok, build_subject(identity, expires_at, context)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
       {:error, :invalid_secret} -> {:error, :unauthorized}
@@ -429,7 +430,8 @@ defmodule Domain.Auth do
 
   def sign_in(%Provider{} = provider, payload, user_agent, remote_ip) do
     with {:ok, identity, expires_at} <- Adapters.verify_and_update_identity(provider, payload) do
-      {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}
+      context = %Context{remote_ip: remote_ip, user_agent: user_agent}
+      {:ok, build_subject(identity, expires_at, context)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
       {:error, :invalid} -> {:error, :unauthorized}
@@ -437,9 +439,9 @@ defmodule Domain.Auth do
     end
   end
 
-  def sign_in(token, user_agent, remote_ip) when is_binary(token) do
-    with {:ok, identity, expires_at} <- verify_token(token, user_agent, remote_ip) do
-      {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}
+  def sign_in(token, %Context{} = context) when is_binary(token) do
+    with {:ok, identity, expires_at} <- verify_token(token, context.user_agent, context.remote_ip) do
+      {:ok, build_subject(identity, expires_at, context)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
       {:error, :invalid_token} -> {:error, :unauthorized}
@@ -468,11 +470,10 @@ defmodule Domain.Auth do
   end
 
   @doc false
-  def build_subject(%Identity{} = identity, expires_at, user_agent, remote_ip)
-      when is_binary(user_agent) and is_tuple(remote_ip) do
+  def build_subject(%Identity{} = identity, expires_at, context) do
     identity =
       identity
-      |> Identity.Changeset.sign_in_identity(user_agent, remote_ip)
+      |> Identity.Changeset.sign_in_identity(context)
       |> Repo.update!()
 
     identity_with_preloads = Repo.preload(identity, [:account, :actor])
@@ -484,7 +485,7 @@ defmodule Domain.Auth do
       permissions: permissions,
       account: identity_with_preloads.account,
       expires_at: build_subject_expires_at(identity_with_preloads.actor, expires_at),
-      context: %Context{remote_ip: remote_ip, user_agent: user_agent}
+      context: context
     }
   end
 

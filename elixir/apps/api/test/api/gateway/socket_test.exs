@@ -9,7 +9,12 @@ defmodule API.Gateway.SocketTest do
   @connect_info %{
     user_agent: "iOS/12.7 (iPhone) connlib/#{@connlib_version}",
     peer_data: %{address: {189, 172, 73, 001}},
-    x_headers: [{"x-forwarded-for", "189.172.73.153"}],
+    x_headers: [
+      {"x-forwarded-for", "189.172.73.153"},
+      {"x-geo-location-region", "Ukraine"},
+      {"x-geo-location-city", "Kyiv"},
+      {"x-geo-location-coordinates", "50.4333,30.5167"}
+    ],
     trace_context_headers: []
   }
 
@@ -31,6 +36,10 @@ defmodule API.Gateway.SocketTest do
       assert gateway.public_key == attrs["public_key"]
       assert gateway.last_seen_user_agent == @connect_info.user_agent
       assert gateway.last_seen_remote_ip.address == {189, 172, 73, 153}
+      assert gateway.last_seen_remote_ip_location_region == "Ukraine"
+      assert gateway.last_seen_remote_ip_location_city == "Kyiv"
+      assert gateway.last_seen_remote_ip_location_lat == 50.4333
+      assert gateway.last_seen_remote_ip_location_lon == 30.5167
       assert gateway.last_seen_version == @connlib_version
     end
 

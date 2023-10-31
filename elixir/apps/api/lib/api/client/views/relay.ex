@@ -23,10 +23,12 @@ defmodule API.Client.Views.Relay do
     } = Relays.generate_username_and_password(relay, expires_at)
 
     [
-      %{
-        type: :stun,
-        uri: "stun:#{format_address(address)}:#{relay.port}"
-      },
+      # WebRTC automatically falls back to STUN if TURN fails,
+      # so no need to send it explicitly
+      # %{
+      #   type: :stun,
+      #   uri: "stun:#{format_address(address)}:#{relay.port}"
+      # },
       %{
         type: :turn,
         uri: "turn:#{format_address(address)}:#{relay.port}",

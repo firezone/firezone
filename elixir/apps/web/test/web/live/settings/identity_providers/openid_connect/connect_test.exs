@@ -192,8 +192,17 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.Connect do
                "session_token" => session_token
              } = conn.private.plug_session
 
+      context = %Domain.Auth.Context{
+        remote_ip: conn.remote_ip,
+        user_agent: "testing",
+        remote_ip_location_region: "Mexico",
+        remote_ip_location_city: "Merida",
+        remote_ip_location_lat: 37.7749,
+        remote_ip_location_lon: -120.4194
+      }
+
       assert socket_id == identity.actor_id
-      assert {:ok, subject} = Domain.Auth.sign_in(session_token, "testing", conn.remote_ip)
+      assert {:ok, subject} = Domain.Auth.sign_in(session_token, context)
       assert subject.identity.id == identity.id
       assert subject.identity.last_seen_user_agent == "testing"
       assert subject.identity.last_seen_remote_ip.address == {127, 0, 0, 1}

@@ -4,10 +4,19 @@ defmodule API.Client.SocketTest do
   alias API.Client.Socket
   alias Domain.Auth
 
+  @geo_headers [
+    {"x-geo-location-region", "Ukraine"},
+    {"x-geo-location-city", "Kyiv"},
+    {"x-geo-location-coordinates", "50.4333,30.5167"}
+  ]
+
   @connect_info %{
     user_agent: "iOS/12.7 (iPhone) connlib/0.1.1",
     peer_data: %{address: {189, 172, 73, 001}},
-    x_headers: [{"x-forwarded-for", "189.172.73.153"}],
+    x_headers:
+      [
+        {"x-forwarded-for", "189.172.73.153"}
+      ] ++ @geo_headers,
     trace_context_headers: []
   }
 
@@ -34,6 +43,10 @@ defmodule API.Client.SocketTest do
       assert client.public_key == attrs["public_key"]
       assert client.last_seen_user_agent == subject.context.user_agent
       assert client.last_seen_remote_ip.address == subject.context.remote_ip
+      assert client.last_seen_remote_ip_location_region == "Ukraine"
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+      assert client.last_seen_remote_ip_location_lat == 50.4333
+      assert client.last_seen_remote_ip_location_lon == 30.5167
       assert client.last_seen_version == "0.7.412"
     end
 
@@ -82,7 +95,7 @@ defmodule API.Client.SocketTest do
     %{
       user_agent: subject.context.user_agent,
       peer_data: %{address: subject.context.remote_ip},
-      x_headers: [],
+      x_headers: @geo_headers,
       trace_context_headers: []
     }
   end

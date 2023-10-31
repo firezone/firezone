@@ -81,7 +81,11 @@ defmodule Domain.Fixtures.Relays do
       ipv4: ipv4,
       ipv6: unique_ipv6(),
       last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-      last_seen_remote_ip: ipv4
+      last_seen_remote_ip: ipv4,
+      last_seen_remote_ip_location_region: "Mexico",
+      last_seen_remote_ip_location_city: "Merida",
+      last_seen_remote_ip_location_lat: 37.7749,
+      last_seen_remote_ip_location_lon: -120.4194
     })
   end
 
