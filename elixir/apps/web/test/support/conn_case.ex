@@ -31,6 +31,9 @@ defmodule Web.ConnCase do
       Phoenix.ConnTest.build_conn()
       |> Plug.Conn.put_req_header("user-agent", user_agent)
       |> Plug.Test.init_test_session(%{})
+      |> Plug.Conn.put_req_header("x-geo-location-region", "UA")
+      |> Plug.Conn.put_req_header("x-geo-location-city", "Kyiv")
+      |> Plug.Conn.put_req_header("x-geo-location-coordinates", "50.4333,30.5167")
 
     {:ok, conn: conn, user_agent: user_agent}
   end

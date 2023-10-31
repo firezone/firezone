@@ -339,6 +339,10 @@ defmodule Domain.Gateways do
     nil
   end
 
+  def load_balance_gateways({lat, lon}, gateways) when is_nil(lat) or is_nil(lon) do
+    Enum.random(gateways)
+  end
+
   def load_balance_gateways({lat, lon}, gateways) do
     gateways
     # This allows to group gateways that are running at the same location so

@@ -187,7 +187,7 @@ defmodule API.Client.Channel do
           socket.assigns.client.last_seen_remote_ip_location_lon
         }
 
-        {:ok, relays} = Relays.select_relays(location, relays)
+        relays = Relays.load_balance_relays(location, relays)
         gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids)
 
         reply =

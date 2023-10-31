@@ -812,6 +812,15 @@ defmodule Domain.GatewaysTest do
       assert Enum.member?(gateways, load_balance_gateways({0, 0}, gateways))
     end
 
+    test "returns random gateways when there are no coordinates" do
+      gateway_1 = Fixtures.Gateways.create_gateway()
+      gateway_2 = Fixtures.Gateways.create_gateway()
+      gateway_3 = Fixtures.Gateways.create_gateway()
+
+      assert gateway = load_balance_gateways({nil, nil}, [gateway_1, gateway_2, gateway_3])
+      assert gateway.id in [gateway_1.id, gateway_2.id, gateway_3.id]
+    end
+
     test "returns gateways in two closest regions to a given location" do
       # Moncks Corner, South Carolina
       gateway_us_east_1 =

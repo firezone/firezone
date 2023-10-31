@@ -473,7 +473,7 @@ defmodule Domain.Auth do
   def build_subject(%Identity{} = identity, expires_at, context) do
     identity =
       identity
-      |> Identity.Changeset.sign_in_identity(context.user_agent, context.remote_ip)
+      |> Identity.Changeset.sign_in_identity(context)
       |> Repo.update!()
 
     identity_with_preloads = Repo.preload(identity, [:account, :actor])

@@ -264,7 +264,15 @@ defmodule API.Client.ChannelTest do
     } do
       # Online Relay
       global_relay_group = Fixtures.Relays.create_global_group()
-      global_relay = Fixtures.Relays.create_relay(group: global_relay_group, ipv6: nil)
+
+      global_relay =
+        Fixtures.Relays.create_relay(
+          group: global_relay_group,
+          ipv6: nil,
+          last_seen_remote_ip_location_lat: 37,
+          last_seen_remote_ip_location_lon: -120
+        )
+
       relay = Fixtures.Relays.create_relay(account: account)
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
@@ -316,9 +324,10 @@ defmodule API.Client.ChannelTest do
       assert is_binary(salt)
 
       :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
+
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :ok, %{relays: relays}
-      assert length(relays) == 2
+      assert length(relays) == 3
     end
   end
 
