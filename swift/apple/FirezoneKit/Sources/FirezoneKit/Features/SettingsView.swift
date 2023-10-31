@@ -49,6 +49,9 @@ public final class SettingsViewModel: ObservableObject {
       let accountId = await authStore.loginStatus.accountId
       if accountId == accountSettings.accountId {
         // Not changed
+        await MainActor.run {
+          accountSettings.isSavedToDisk = true
+        }
         return
       }
       let tunnelAuthStatus: TunnelAuthStatus = await {
@@ -60,6 +63,9 @@ public final class SettingsViewModel: ObservableObject {
       }()
       try await authStore.tunnelStore.saveAuthStatus(tunnelAuthStatus)
       onSettingsSaved()
+      await MainActor.run {
+        accountSettings.isSavedToDisk = true
+      }
     }
   }
 
@@ -73,6 +79,9 @@ public final class SettingsViewModel: ObservableObject {
         fatalError("Saved authBaseURL is invalid")
       }
       try await authStore.tunnelStore.saveAdvancedSettings(advancedSettings)
+      await MainActor.run {
+        advancedSettings.isSavedToDisk = true
+      }
       var isChanged = false
       await authStore.setAuthBaseURL(authBaseURL, isChanged: &isChanged)
       if isChanged {
@@ -210,7 +219,10 @@ public struct SettingsView: View {
               self.model.saveAccountSettings()
             }
           )
-          .disabled(!isTeamIdValid(model.accountSettings.accountId))
+          .disabled(
+            model.accountSettings.isSavedToDisk
+              || !isTeamIdValid(model.accountSettings.accountId)
+          )
         }
         Spacer()
       }
@@ -285,19 +297,21 @@ public struct SettingsView: View {
                 }
               )
               .disabled(
-                !isAdvancedSettingsValid(
-                  authBaseURLString: model.advancedSettings.authBaseURLString,
-                  apiURLString: model.advancedSettings.authBaseURLString,
-                  logFilter: model.advancedSettings.connlibLogFilterString
-                )
+                model.advancedSettings.isSavedToDisk
+                  || !isAdvancedSettingsValid(
+                    authBaseURLString: model.advancedSettings.authBaseURLString,
+                    apiURLString: model.advancedSettings.authBaseURLString,
+                    logFilter: model.advancedSettings.connlibLogFilterString
+                  )
               )
 
               Button(
-                "Restore to Defaults",
+                "Reset to Defaults",
                 action: {
                   self.restoreAdvancedSettingsToDefaults()
                 }
               )
+              .disabled(model.advancedSettings == AdvancedSettings.defaultValue)
             }
 
             Text(FootnoteText.forAdvanced)

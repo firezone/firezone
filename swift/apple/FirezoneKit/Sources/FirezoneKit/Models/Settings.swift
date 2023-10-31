@@ -7,13 +7,25 @@
 import Foundation
 
 struct AccountSettings {
-  var accountId: String = ""
+  var accountId: String = "" {
+    didSet { if oldValue != accountId { isSavedToDisk = false } }
+  }
+
+  var isSavedToDisk = true
 }
 
-struct AdvancedSettings {
-  var authBaseURLString: String
-  var apiURLString: String
-  var connlibLogFilterString: String
+struct AdvancedSettings: Equatable {
+  var authBaseURLString: String {
+    didSet { if oldValue != authBaseURLString { isSavedToDisk = false } }
+  }
+  var apiURLString: String {
+    didSet { if oldValue != apiURLString { isSavedToDisk = false } }
+  }
+  var connlibLogFilterString: String {
+    didSet { if oldValue != connlibLogFilterString { isSavedToDisk = false } }
+  }
+
+  var isSavedToDisk = true
 
   static let defaultValue: AdvancedSettings = {
     #if DEBUG
