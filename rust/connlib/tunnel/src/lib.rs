@@ -349,21 +349,10 @@ where
     fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<TRoleState::Event> {
         loop {
             self.stop_peers();
-
-            if self
-                .rate_limit_reset_interval
-                .lock()
-                .poll_tick(cx)
-                .is_ready()
-            {
-                self.rate_limiter.reset_count();
+            if self.reset_rate_limiter(cx).is_ready() {
                 continue;
             }
-
-            if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let mut peers_to_stop = self.role_state.lock().refresh_peers();
-                self.peers_to_stop.lock().append(&mut peers_to_stop);
-
+            if self.refresh_peers(cx).is_ready() {
                 continue;
             }
 
@@ -385,6 +374,23 @@ where
 
             return Poll::Pending;
         }
+    }
+
+    fn refresh_peers(&self, cx: &mut Context) -> Poll<()> {
+        ready!(self.peer_refresh_interval.lock().poll_tick(cx));
+
+        let mut peers_to_stop = self.role_state.lock().refresh_peers();
+        self.peers_to_stop.lock().append(&mut peers_to_stop);
+
+        Poll::Ready(())
+    }
+
+    fn reset_rate_limiter(&self, cx: &mut Context) -> Poll<()> {
+        ready!(self.rate_limit_reset_interval.lock().poll_tick(cx));
+
+        self.rate_limiter.reset_count();
+
+        Poll::Ready(())
     }
 
     fn stop_peers(&self) {
