@@ -1,9 +1,9 @@
 /* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.settings.ui
 
-import android.webkit.URLUtil
 import android.content.Context
 import android.content.Intent
+import android.webkit.URLUtil
 import androidx.core.content.FileProvider
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -20,10 +20,10 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
-import java.net.URI
-import java.net.URISyntaxException
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URI
+import java.net.URISyntaxException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
@@ -35,7 +35,6 @@ internal class SettingsViewModel
         private val getConfigUseCase: GetConfigUseCase,
         private val saveSettingsUseCase: SaveSettingsUseCase,
     ) : ViewModel() {
-
         private val _uiState = MutableStateFlow(UiState())
         val uiState: StateFlow<UiState> = _uiState
 
@@ -62,16 +61,17 @@ internal class SettingsViewModel
             }
         }
 
-    fun onViewResume(context: Context) {
-        val directory = File(context.cacheDir.absolutePath + "/log")
-        val totalSize = directory.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
+        fun onViewResume(context: Context) {
+            val directory = File(context.cacheDir.absolutePath + "/log")
+            val totalSize = directory.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
 
-        deleteLogZip(context)
+            deleteLogZip(context)
 
-        _uiState.value = _uiState.value.copy(
-            logSize = totalSize,
-        )
-    }
+            _uiState.value =
+                _uiState.value.copy(
+                    logSize = totalSize,
+                )
+        }
 
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
@@ -173,43 +173,44 @@ internal class SettingsViewModel
             }
         }
 
-    private fun onFieldUpdated() {
-        _uiState.value = _uiState.value.copy(
-            isSaveButtonEnabled = areFieldsValid(),
-        )
-    }
+        private fun onFieldUpdated() {
+            _uiState.value =
+                _uiState.value.copy(
+                    isSaveButtonEnabled = areFieldsValid(),
+                )
+        }
 
-    private fun areFieldsValid(): Boolean {
-        // This comes from the backend account slug validator at elixir/apps/domain/lib/domain/accounts/account/changeset.ex
-        val accountIdRegex = Regex("^[a-z0-9_]{3,100}\$")
-        return accountIdRegex.matches(accountId) &&
+        private fun areFieldsValid(): Boolean {
+            // This comes from the backend account slug validator at elixir/apps/domain/lib/domain/accounts/account/changeset.ex
+            val accountIdRegex = Regex("^[a-z0-9_]{3,100}\$")
+            return accountIdRegex.matches(accountId) &&
                 URLUtil.isValidUrl(authBaseUrl) &&
                 isUriValid(apiUrl) &&
                 logFilter.isNotBlank()
-    }
+        }
 
-    private fun isUriValid(uri: String): Boolean {
-        return try {
-            URI(uri)
-            true
-        } catch (e: URISyntaxException) {
-            false
+        private fun isUriValid(uri: String): Boolean {
+            return try {
+                URI(uri)
+                true
+            } catch (e: URISyntaxException) {
+                false
+            }
+        }
+
+        internal data class UiState(
+            val isSaveButtonEnabled: Boolean = false,
+            val logSize: Long = 0,
+        )
+
+        internal sealed class ViewAction {
+            object NavigateBack : ViewAction()
+
+            data class FillSettings(
+                val accountId: String,
+                val authBaseUrl: String,
+                val apiUrl: String,
+                val logFilter: String,
+            ) : ViewAction()
         }
     }
-
-    internal data class UiState(
-        val isSaveButtonEnabled: Boolean = false,
-        val logSize: Long = 0,
-    )
-
-    internal sealed class ViewAction {
-        object NavigateBack : ViewAction()
-
-        data class FillSettings(
-            val accountId: String,
-            val authBaseUrl: String,
-            val apiUrl: String,
-            val logFilter: String,
-        ) : ViewAction()
-    }
-}

@@ -3,7 +3,6 @@ package dev.firezone.android.features.settings.ui
 
 import android.os.Bundle
 import android.util.Log
-import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -12,9 +11,7 @@ import androidx.core.widget.doOnTextChanged
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.navigation.fragment.findNavController
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.R
 import dev.firezone.android.databinding.ActivitySettingsBinding
 import kotlinx.coroutines.launch
 
