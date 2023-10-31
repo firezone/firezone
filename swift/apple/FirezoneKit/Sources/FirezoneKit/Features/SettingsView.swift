@@ -425,6 +425,7 @@ public struct SettingsView: View {
     model.advancedSettings.authBaseURLString = defaultValue.authBaseURLString
     model.advancedSettings.apiURLString = defaultValue.apiURLString
     model.advancedSettings.connlibLogFilterString = defaultValue.connlibLogFilterString
+    model.saveAdvancedSettings()
   }
 
   #if os(macOS)
