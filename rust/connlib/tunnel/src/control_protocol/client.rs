@@ -105,8 +105,10 @@ where
                 }),
             )
             .await?;
-        let d = Arc::clone(&data_channel);
+        let offer = peer_connection.create_offer(None).await?;
+        peer_connection.set_local_description(offer.clone()).await?;
 
+        let d = Arc::clone(&data_channel);
         let tunnel = Arc::clone(self);
 
         let preshared_key = StaticSecret::random_from_rng(OsRng);
@@ -181,9 +183,6 @@ where
                     .remove(&resource_id);
             })
         }));
-
-        let offer = peer_connection.create_offer(None).await?;
-        peer_connection.set_local_description(offer.clone()).await?;
 
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
