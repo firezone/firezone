@@ -144,9 +144,18 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
       |> form("form", identity: attrs)
       |> render_submit()
 
+    context = %Domain.Auth.Context{
+      remote_ip: Fixtures.Auth.remote_ip(),
+      user_agent: Fixtures.Auth.user_agent(),
+      remote_ip_location_region: "Mexico",
+      remote_ip_location_city: "Merida",
+      remote_ip_location_lat: 37.7749,
+      remote_ip_location_lon: -120.4194
+    }
+
     # TODO: assert {:ok, _token} =
     Floki.find(html, "code")
     |> element_to_text()
-    |> Domain.Auth.sign_in(Fixtures.Auth.user_agent(), Fixtures.Auth.remote_ip())
+    |> Domain.Auth.sign_in(context)
   end
 end

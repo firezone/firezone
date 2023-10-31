@@ -2326,7 +2326,7 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "sign_in/3" do
+  describe "sign_in/2" do
     setup do
       account = Fixtures.Accounts.create_account()
       Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
@@ -2350,45 +2350,51 @@ defmodule Domain.AuthTest do
         identity: identity,
         subject: subject,
         user_agent: user_agent,
-        remote_ip: remote_ip
+        remote_ip: remote_ip,
+        context: %Auth.Context{
+          remote_ip: remote_ip,
+          remote_ip_location_region: "UA",
+          remote_ip_location_city: "Kyiv",
+          remote_ip_location_lat: 50.4501,
+          remote_ip_location_lon: 30.5234,
+          user_agent: user_agent
+        }
       }
     end
 
-    test "returns error when token is invalid", %{user_agent: user_agent, remote_ip: remote_ip} do
-      assert sign_in(Ecto.UUID.generate(), user_agent, remote_ip) ==
+    test "returns error when token is invalid", %{context: context} do
+      assert sign_in(Ecto.UUID.generate(), context) ==
                {:error, :unauthorized}
     end
 
     test "returns subject on success for session token", %{
       subject: subject,
-      user_agent: user_agent,
-      remote_ip: remote_ip
+      context: context
     } do
       {:ok, token} = create_session_token_from_subject(subject)
 
-      assert {:ok, reconstructed_subject} = sign_in(token, user_agent, remote_ip)
+      assert {:ok, reconstructed_subject} = sign_in(token, context)
       assert reconstructed_subject.identity.id == subject.identity.id
       assert reconstructed_subject.actor.id == subject.actor.id
       assert reconstructed_subject.account.id == subject.account.id
       assert reconstructed_subject.permissions == subject.permissions
-      assert reconstructed_subject.context == subject.context
+      assert reconstructed_subject.context.remote_ip == subject.context.remote_ip
+      assert reconstructed_subject.context.user_agent == subject.context.user_agent
       assert DateTime.diff(reconstructed_subject.expires_at, subject.expires_at) <= 1
     end
 
     test "returns subject on success for client token", %{
       subject: subject,
-      user_agent: user_agent
+      context: context
     } do
       {:ok, token} = create_client_token_from_subject(subject)
 
-      <<a::size(8), b::size(8), c::size(8), d::size(8)>> =
-        <<System.unique_integer([:positive])::32>>
-
       # Client sessions are not binded to a specific user agent or remote ip
-      remote_ip = {a, b, c, d}
-      user_agent = user_agent <> "+b1"
+      remote_ip = Domain.Fixture.unique_ipv4()
+      user_agent = context.user_agent <> "+b1"
+      context = %{context | remote_ip: remote_ip, user_agent: user_agent}
 
-      assert {:ok, reconstructed_subject} = sign_in(token, user_agent, remote_ip)
+      assert {:ok, reconstructed_subject} = sign_in(token, context)
 
       assert reconstructed_subject.identity.id == subject.identity.id
       assert reconstructed_subject.actor.id == subject.actor.id
@@ -2402,8 +2408,7 @@ defmodule Domain.AuthTest do
 
     test "returns subject on success for service account token", %{
       account: account,
-      user_agent: user_agent,
-      remote_ip: remote_ip,
+      context: context,
       subject: subject
     } do
       one_day = DateTime.utc_now() |> DateTime.add(1, :day)
@@ -2413,8 +2418,8 @@ defmodule Domain.AuthTest do
         Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
-          user_agent: user_agent,
-          remote_ip: remote_ip,
+          user_agent: context.user_agent,
+          remote_ip: context.remote_ip,
           provider_virtual_state: %{
             "expires_at" => one_day
           }
@@ -2422,24 +2427,24 @@ defmodule Domain.AuthTest do
 
       {:ok, token} = create_access_token_for_identity(identity)
 
-      assert {:ok, reconstructed_subject} = sign_in(token, user_agent, remote_ip)
+      assert {:ok, reconstructed_subject} = sign_in(token, context)
       assert reconstructed_subject.identity.id == identity.id
       assert reconstructed_subject.actor.id == identity.actor_id
       assert reconstructed_subject.account.id == identity.account_id
       assert reconstructed_subject.permissions == subject.permissions
-      assert reconstructed_subject.context == subject.context
+      assert reconstructed_subject.context.remote_ip == subject.context.remote_ip
+      assert reconstructed_subject.context.user_agent == subject.context.user_agent
       assert DateTime.diff(reconstructed_subject.expires_at, one_day) <= 1
     end
 
     test "updates last signed in fields for identity on success", %{
       identity: identity,
       subject: subject,
-      user_agent: user_agent,
-      remote_ip: remote_ip
+      context: context
     } do
       {:ok, token} = create_session_token_from_subject(subject)
 
-      assert {:ok, _subject} = sign_in(token, user_agent, remote_ip)
+      assert {:ok, _subject} = sign_in(token, context)
 
       assert updated_identity = Repo.one(Auth.Identity)
       assert updated_identity.last_seen_at != identity.last_seen_at
@@ -2463,19 +2468,18 @@ defmodule Domain.AuthTest do
     # } do
     #   user_agent = "iOS/12.6 (iPhone) connlib/0.7.412"
     #   {:ok, token} = create_session_token_from_subject(subject)
-    #   assert sign_in(token, user_agent, remote_ip) == {:error, :unauthorized}
+    #   assert sign_in(token, context) == {:error, :unauthorized}
     # end
 
     test "returns error when token is created for a deleted identity", %{
       identity: identity,
       subject: subject,
-      user_agent: user_agent,
-      remote_ip: remote_ip
+      context: context
     } do
       {:ok, _identity} = delete_identity(identity, subject)
 
       {:ok, token} = create_session_token_from_subject(subject)
-      assert sign_in(token, user_agent, remote_ip) == {:error, :unauthorized}
+      assert sign_in(token, context) == {:error, :unauthorized}
     end
   end
 

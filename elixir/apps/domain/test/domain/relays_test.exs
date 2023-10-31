@@ -575,7 +575,11 @@ defmodule Domain.RelaysTest do
         ipv4: "1.1.1.256",
         ipv6: "fd01::10000",
         last_seen_user_agent: "foo",
-        last_seen_remote_ip: {256, 0, 0, 0},
+        last_seen_remote_ip: -1,
+        last_seen_remote_ip_location_region: -1,
+        last_seen_remote_ip_location_city: -1,
+        last_seen_remote_ip_location_lat: :x,
+        last_seen_remote_ip_location_lon: :x,
         port: -1
       }
 
@@ -585,6 +589,11 @@ defmodule Domain.RelaysTest do
                ipv4: ["one of these fields must be present: ipv4, ipv6", "is invalid"],
                ipv6: ["one of these fields must be present: ipv4, ipv6", "is invalid"],
                last_seen_user_agent: ["is invalid"],
+               last_seen_remote_ip: ["is invalid"],
+               last_seen_remote_ip_location_region: ["is invalid"],
+               last_seen_remote_ip_location_city: ["is invalid"],
+               last_seen_remote_ip_location_lat: ["is invalid"],
+               last_seen_remote_ip_location_lon: ["is invalid"],
                port: ["must be greater than or equal to 1"]
              }
 
@@ -609,6 +618,14 @@ defmodule Domain.RelaysTest do
       assert relay.ipv6.address == attrs.ipv6
 
       assert relay.last_seen_remote_ip.address == attrs.last_seen_remote_ip
+
+      assert relay.last_seen_remote_ip_location_region ==
+               attrs.last_seen_remote_ip_location_region
+
+      assert relay.last_seen_remote_ip_location_city == attrs.last_seen_remote_ip_location_city
+      assert relay.last_seen_remote_ip_location_lat == attrs.last_seen_remote_ip_location_lat
+      assert relay.last_seen_remote_ip_location_lon == attrs.last_seen_remote_ip_location_lon
+
       assert relay.last_seen_user_agent == attrs.last_seen_user_agent
       assert relay.last_seen_version == "0.7.412"
       assert relay.last_seen_at
@@ -639,7 +656,11 @@ defmodule Domain.RelaysTest do
         Fixtures.Relays.relay_attrs(
           ipv4: relay.ipv4,
           last_seen_remote_ip: relay.ipv4,
-          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411",
+          last_seen_remote_ip_location_region: "Mexico",
+          last_seen_remote_ip_location_city: "Merida",
+          last_seen_remote_ip_location_lat: 7.7758,
+          last_seen_remote_ip_location_lon: -2.4128
         )
 
       assert {:ok, updated_relay} = upsert_relay(token, attrs)
@@ -660,6 +681,18 @@ defmodule Domain.RelaysTest do
       assert updated_relay.ipv6.address == attrs.ipv6
       assert updated_relay.ipv6 != relay.ipv6
       assert updated_relay.port == 3478
+
+      assert updated_relay.last_seen_remote_ip_location_region ==
+               attrs.last_seen_remote_ip_location_region
+
+      assert updated_relay.last_seen_remote_ip_location_city ==
+               attrs.last_seen_remote_ip_location_city
+
+      assert updated_relay.last_seen_remote_ip_location_lat ==
+               attrs.last_seen_remote_ip_location_lat
+
+      assert updated_relay.last_seen_remote_ip_location_lon ==
+               attrs.last_seen_remote_ip_location_lon
 
       assert Repo.aggregate(Domain.Network.Address, :count) == 0
     end
@@ -760,6 +793,111 @@ defmodule Domain.RelaysTest do
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Relays.Authorizer.manage_relays_permission()]]}}
+    end
+  end
+
+  describe "load_balance_relays/2" do
+    test "returns empty list when there are no relays" do
+      assert load_balance_relays({0, 0}, []) == []
+    end
+
+    test "returns random relays when there are no coordinates" do
+      relay_1 = Fixtures.Relays.create_relay()
+      relay_2 = Fixtures.Relays.create_relay()
+      relay_3 = Fixtures.Relays.create_relay()
+
+      assert relays = load_balance_relays({nil, nil}, [relay_1, relay_2, relay_3])
+      assert length(relays) == 2
+      assert Enum.all?(relays, &(&1.id in [relay_1.id, relay_2.id, relay_3.id]))
+    end
+
+    test "returns at least two relays even if they are at the same location" do
+      # Moncks Corner, South Carolina
+      relay_us_east_1 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      relay_us_east_2 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      relays = [
+        relay_us_east_1,
+        relay_us_east_2
+      ]
+
+      assert [relay1] = load_balance_relays({32.2029, -80.0131}, relays)
+      assert relay1.id in [relay_us_east_1.id, relay_us_east_2.id]
+    end
+
+    test "selects relays in two closest regions to a given location" do
+      # Moncks Corner, South Carolina
+      relay_us_east_1 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      relay_us_east_2 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      relay_us_east_3 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      # The Dalles, Oregon
+      relay_us_west_1 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 45.5946,
+          last_seen_remote_ip_location_lon: -121.1787
+        )
+
+      relay_us_west_2 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 45.5946,
+          last_seen_remote_ip_location_lon: -121.1787
+        )
+
+      # Council Bluffs, Iowa
+      relay_us_central_1 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 41.2619,
+          last_seen_remote_ip_location_lon: -95.8608
+        )
+
+      relays = [
+        relay_us_east_1,
+        relay_us_east_2,
+        relay_us_east_3,
+        relay_us_west_1,
+        relay_us_west_2,
+        relay_us_central_1
+      ]
+
+      # multiple attempts are used to increase chances that all relays in a group are randomly selected
+      for _ <- 0..3 do
+        assert [relay1, relay2] = load_balance_relays({32.2029, -80.0131}, relays)
+        assert relay1.id in [relay_us_east_1.id, relay_us_east_2.id, relay_us_east_3.id]
+        assert relay2.id == relay_us_central_1.id
+      end
+
+      for _ <- 0..2 do
+        assert [relay1, relay2] = load_balance_relays({45.5946, -121.1787}, relays)
+        assert relay1.id in [relay_us_west_1.id, relay_us_west_2.id]
+        assert relay2.id == relay_us_central_1.id
+      end
+
+      assert [relay1, _relay2] = load_balance_relays({42.2619, -96.8608}, relays)
+      assert relay1.id == relay_us_central_1.id
     end
   end
 

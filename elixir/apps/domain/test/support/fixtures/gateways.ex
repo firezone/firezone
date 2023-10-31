@@ -74,7 +74,11 @@ defmodule Domain.Fixtures.Gateways do
       name_suffix: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
       public_key: unique_public_key(),
       last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-      last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}}
+      last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}},
+      last_seen_remote_ip_location_region: "US",
+      last_seen_remote_ip_location_city: "San Francisco",
+      last_seen_remote_ip_location_lat: 37.7758,
+      last_seen_remote_ip_location_lon: -122.4128
     })
   end
 

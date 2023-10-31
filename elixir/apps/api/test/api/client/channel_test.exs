@@ -258,7 +258,15 @@ defmodule API.Client.ChannelTest do
     } do
       # Online Relay
       global_relay_group = Fixtures.Relays.create_global_group()
-      global_relay = Fixtures.Relays.create_relay(group: global_relay_group, ipv6: nil)
+
+      global_relay =
+        Fixtures.Relays.create_relay(
+          group: global_relay_group,
+          ipv6: nil,
+          last_seen_remote_ip_location_lat: 37,
+          last_seen_remote_ip_location_lon: -120
+        )
+
       relay = Fixtures.Relays.create_relay(account: account)
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
@@ -279,26 +287,16 @@ defmodule API.Client.ChannelTest do
       assert gateway_id == gateway.id
       assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
 
-      ipv4_stun_uri = "stun:#{relay.ipv4}:#{relay.port}"
       ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
-      ipv6_stun_uri = "stun:[#{relay.ipv6}]:#{relay.port}"
       ipv6_turn_uri = "turn:[#{relay.ipv6}]:#{relay.port}"
 
       assert [
-               %{
-                 type: :stun,
-                 uri: ^ipv4_stun_uri
-               },
                %{
                  type: :turn,
                  expires_at: expires_at_unix,
                  password: password1,
                  username: username1,
                  uri: ^ipv4_turn_uri
-               },
-               %{
-                 type: :stun,
-                 uri: ^ipv6_stun_uri
                },
                %{
                  type: :turn,
@@ -320,9 +318,10 @@ defmodule API.Client.ChannelTest do
       assert is_binary(salt)
 
       :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
+
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :ok, %{relays: relays}
-      assert length(relays) == 6
+      assert length(relays) == 3
     end
   end
 

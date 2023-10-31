@@ -35,7 +35,17 @@ defmodule Web.AcceptanceCase.Auth do
   def authenticate(session, %Domain.Auth.Identity{} = identity) do
     user_agent = fetch_session_user_agent!(session)
     remote_ip = {127, 0, 0, 1}
-    subject = Domain.Auth.build_subject(identity, nil, user_agent, remote_ip)
+
+    context = %Domain.Auth.Context{
+      user_agent: user_agent,
+      remote_ip_location_region: "UA",
+      remote_ip_location_city: "Kyiv",
+      remote_ip_location_lat: 50.4501,
+      remote_ip_location_lon: 30.5234,
+      remote_ip: remote_ip
+    }
+
+    subject = Domain.Auth.build_subject(identity, nil, context)
     authenticate(session, subject)
   end
 
@@ -77,8 +87,8 @@ defmodule Web.AcceptanceCase.Auth do
       if token = cookie["session_token"] do
         user_agent = fetch_session_user_agent!(session)
         remote_ip = {127, 0, 0, 1}
-
-        assert {:ok, subject} = Domain.Auth.sign_in(token, user_agent, remote_ip)
+        context = %Domain.Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
+        assert {:ok, subject} = Domain.Auth.sign_in(token, context)
         flunk("User is authenticated, identity: #{inspect(subject.identity)}")
         :ok
       else
@@ -91,9 +101,11 @@ defmodule Web.AcceptanceCase.Auth do
 
   def assert_authenticated(session, identity) do
     with {:ok, cookie} <- fetch_session_cookie(session),
-         user_agent = fetch_session_user_agent!(session),
-         remote_ip = {127, 0, 0, 1},
-         {:ok, subject} <- Domain.Auth.sign_in(cookie["session_token"], user_agent, remote_ip) do
+         context = %Domain.Auth.Context{
+           user_agent: fetch_session_user_agent!(session),
+           remote_ip: {127, 0, 0, 1}
+         },
+         {:ok, subject} <- Domain.Auth.sign_in(cookie["session_token"], context) do
       assert subject.identity.id == identity.id,
              "Expected #{inspect(identity)}, got #{inspect(subject.identity)}"
 

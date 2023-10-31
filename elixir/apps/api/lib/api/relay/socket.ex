@@ -23,11 +23,18 @@ defmodule API.Relay.Socket do
 
       real_ip = API.Sockets.real_ip(x_headers, peer_data)
 
+      {location_region, location_city, {location_lat, location_lon}} =
+        API.Sockets.load_balancer_ip_location(x_headers)
+
       attrs =
         attrs
         |> Map.take(~w[ipv4 ipv6])
         |> Map.put("last_seen_user_agent", user_agent)
         |> Map.put("last_seen_remote_ip", real_ip)
+        |> Map.put("last_seen_remote_ip_location_region", location_region)
+        |> Map.put("last_seen_remote_ip_location_city", location_city)
+        |> Map.put("last_seen_remote_ip_location_lat", location_lat)
+        |> Map.put("last_seen_remote_ip_location_lon", location_lon)
 
       with {:ok, token} <- Relays.authorize_relay(encrypted_secret),
            {:ok, relay} <- Relays.upsert_relay(token, attrs) do

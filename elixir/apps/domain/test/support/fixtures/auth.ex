@@ -333,12 +333,41 @@ defmodule Domain.Fixtures.Auth do
         user_agent()
       end)
 
-    {remote_ip, _attrs} =
+    {remote_ip, attrs} =
       Map.pop_lazy(attrs, :remote_ip, fn ->
         remote_ip()
       end)
 
-    Auth.build_subject(identity, expires_at, user_agent, remote_ip)
+    {remote_ip_location_region, attrs} =
+      Map.pop_lazy(attrs, :remote_ip_location_region, fn ->
+        Enum.random(["US", "UA"])
+      end)
+
+    {remote_ip_location_city, attrs} =
+      Map.pop_lazy(attrs, :remote_ip_location_city, fn ->
+        Enum.random(["Odessa", "New York"])
+      end)
+
+    {remote_ip_location_lat, attrs} =
+      Map.pop_lazy(attrs, :remote_ip_location_city, fn ->
+        Enum.random([37.7758, 40.7128])
+      end)
+
+    {remote_ip_location_lon, _attrs} =
+      Map.pop_lazy(attrs, :remote_ip_location_city, fn ->
+        Enum.random([-122.4128, -74.0060])
+      end)
+
+    context = %Auth.Context{
+      remote_ip: remote_ip,
+      remote_ip_location_region: remote_ip_location_region,
+      remote_ip_location_city: remote_ip_location_city,
+      remote_ip_location_lat: remote_ip_location_lat,
+      remote_ip_location_lon: remote_ip_location_lon,
+      user_agent: user_agent
+    }
+
+    Auth.build_subject(identity, expires_at, context)
   end
 
   def remove_permissions(%Auth.Subject{} = subject) do

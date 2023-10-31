@@ -31,6 +31,9 @@ defmodule Web.ConnCase do
       Phoenix.ConnTest.build_conn()
       |> Plug.Conn.put_req_header("user-agent", user_agent)
       |> Plug.Test.init_test_session(%{})
+      |> Plug.Conn.put_req_header("x-geo-location-region", "UA")
+      |> Plug.Conn.put_req_header("x-geo-location-city", "Kyiv")
+      |> Plug.Conn.put_req_header("x-geo-location-coordinates", "50.4333,30.5167")
 
     {:ok, conn: conn, user_agent: user_agent}
   end
@@ -46,7 +49,17 @@ defmodule Web.ConnCase do
   def authorize_conn(conn, %Domain.Auth.Identity{} = identity) do
     expires_in = DateTime.utc_now() |> DateTime.add(300, :second)
     {"user-agent", user_agent} = List.keyfind(conn.req_headers, "user-agent", 0, "FooBar 1.1")
-    subject = Domain.Auth.build_subject(identity, expires_in, user_agent, conn.remote_ip)
+
+    context = %Domain.Auth.Context{
+      user_agent: user_agent,
+      remote_ip_location_region: "UA",
+      remote_ip_location_city: "Kyiv",
+      remote_ip_location_lat: 50.4501,
+      remote_ip_location_lon: 30.5234,
+      remote_ip: conn.remote_ip
+    }
+
+    subject = Domain.Auth.build_subject(identity, expires_in, context)
 
     conn
     |> Web.Auth.put_subject_in_session(subject)

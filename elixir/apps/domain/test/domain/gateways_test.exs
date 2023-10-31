@@ -556,7 +556,11 @@ defmodule Domain.GatewaysTest do
         external_id: nil,
         public_key: "x",
         last_seen_user_agent: "foo",
-        last_seen_remote_ip: {256, 0, 0, 0}
+        last_seen_remote_ip: {256, 0, 0, 0},
+        last_seen_remote_ip_location_region: -1,
+        last_seen_remote_ip_location_city: -1,
+        last_seen_remote_ip_location_lat: :x,
+        last_seen_remote_ip_location_lon: :x
       }
 
       assert {:error, changeset} = upsert_gateway(token, attrs)
@@ -564,7 +568,11 @@ defmodule Domain.GatewaysTest do
       assert errors_on(changeset) == %{
                public_key: ["should be 44 character(s)", "must be a base64-encoded string"],
                external_id: ["can't be blank"],
-               last_seen_user_agent: ["is invalid"]
+               last_seen_user_agent: ["is invalid"],
+               last_seen_remote_ip_location_region: ["is invalid"],
+               last_seen_remote_ip_location_city: ["is invalid"],
+               last_seen_remote_ip_location_lat: ["is invalid"],
+               last_seen_remote_ip_location_lon: ["is invalid"]
              }
     end
 
@@ -590,6 +598,13 @@ defmodule Domain.GatewaysTest do
       assert gateway.last_seen_user_agent == attrs.last_seen_user_agent
       assert gateway.last_seen_version == "0.7.412"
       assert gateway.last_seen_at
+
+      assert gateway.last_seen_remote_ip_location_region ==
+               attrs.last_seen_remote_ip_location_region
+
+      assert gateway.last_seen_remote_ip_location_city == attrs.last_seen_remote_ip_location_city
+      assert gateway.last_seen_remote_ip_location_lat == attrs.last_seen_remote_ip_location_lat
+      assert gateway.last_seen_remote_ip_location_lon == attrs.last_seen_remote_ip_location_lon
     end
 
     test "updates gateway when it already exists", %{
@@ -601,7 +616,11 @@ defmodule Domain.GatewaysTest do
         Fixtures.Gateways.gateway_attrs(
           external_id: gateway.external_id,
           last_seen_remote_ip: {100, 64, 100, 101},
-          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411",
+          last_seen_remote_ip_location_region: "Mexico",
+          last_seen_remote_ip_location_city: "Merida",
+          last_seen_remote_ip_location_lat: 7.7758,
+          last_seen_remote_ip_location_lon: -2.4128
         )
 
       assert {:ok, updated_gateway} = upsert_gateway(token, attrs)
@@ -624,6 +643,18 @@ defmodule Domain.GatewaysTest do
 
       assert updated_gateway.ipv4 == gateway.ipv4
       assert updated_gateway.ipv6 == gateway.ipv6
+
+      assert updated_gateway.last_seen_remote_ip_location_region ==
+               attrs.last_seen_remote_ip_location_region
+
+      assert updated_gateway.last_seen_remote_ip_location_city ==
+               attrs.last_seen_remote_ip_location_city
+
+      assert updated_gateway.last_seen_remote_ip_location_lat ==
+               attrs.last_seen_remote_ip_location_lat
+
+      assert updated_gateway.last_seen_remote_ip_location_lon ==
+               attrs.last_seen_remote_ip_location_lon
     end
 
     test "does not reserve additional addresses on update", %{
@@ -771,31 +802,111 @@ defmodule Domain.GatewaysTest do
     end
   end
 
-  describe "load_balance_gateways/1" do
+  describe "load_balance_gateways/2" do
+    test "returns nil when there are no gateways" do
+      assert load_balance_gateways({0, 0}, []) == nil
+    end
+
     test "returns random gateway" do
       gateways = Enum.map(1..10, fn _ -> Fixtures.Gateways.create_gateway() end)
-      assert Enum.member?(gateways, load_balance_gateways(gateways))
+      assert Enum.member?(gateways, load_balance_gateways({0, 0}, gateways))
+    end
+
+    test "returns random gateways when there are no coordinates" do
+      gateway_1 = Fixtures.Gateways.create_gateway()
+      gateway_2 = Fixtures.Gateways.create_gateway()
+      gateway_3 = Fixtures.Gateways.create_gateway()
+
+      assert gateway = load_balance_gateways({nil, nil}, [gateway_1, gateway_2, gateway_3])
+      assert gateway.id in [gateway_1.id, gateway_2.id, gateway_3.id]
+    end
+
+    test "returns gateways in two closest regions to a given location" do
+      # Moncks Corner, South Carolina
+      gateway_us_east_1 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      gateway_us_east_2 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      gateway_us_east_3 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      # The Dalles, Oregon
+      gateway_us_west_1 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: 45.5946,
+          last_seen_remote_ip_location_lon: -121.1787
+        )
+
+      gateway_us_west_2 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: 45.5946,
+          last_seen_remote_ip_location_lon: -121.1787
+        )
+
+      # Council Bluffs, Iowa
+      gateway_us_central_1 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: 41.2619,
+          last_seen_remote_ip_location_lon: -95.8608
+        )
+
+      gateways = [
+        gateway_us_east_1,
+        gateway_us_east_2,
+        gateway_us_east_3,
+        gateway_us_west_1,
+        gateway_us_west_2,
+        gateway_us_central_1
+      ]
+
+      # multiple attempts are used to increase chances that all gateways in a group are randomly selected
+      for _ <- 0..3 do
+        assert gateway = load_balance_gateways({32.2029, -80.0131}, gateways)
+        assert gateway.id in [gateway_us_east_1.id, gateway_us_east_2.id, gateway_us_east_3.id]
+      end
+
+      for _ <- 0..2 do
+        assert gateway = load_balance_gateways({45.5946, -121.1787}, gateways)
+        assert gateway.id in [gateway_us_west_1.id, gateway_us_west_2.id]
+      end
+
+      assert gateway = load_balance_gateways({42.2619, -96.8608}, gateways)
+      assert gateway.id == gateway_us_central_1.id
     end
   end
 
-  describe "load_balance_gateways/2" do
+  describe "load_balance_gateways/3" do
     test "returns random gateway if no gateways are already connected" do
       gateways = Enum.map(1..10, fn _ -> Fixtures.Gateways.create_gateway() end)
-      assert Enum.member?(gateways, load_balance_gateways(gateways, []))
+      assert Enum.member?(gateways, load_balance_gateways({0, 0}, gateways, []))
     end
 
     test "reuses gateway that is already connected to reduce the latency" do
       gateways = Enum.map(1..10, fn _ -> Fixtures.Gateways.create_gateway() end)
       [connected_gateway | _] = gateways
 
-      assert load_balance_gateways(gateways, [connected_gateway.id]) == connected_gateway
+      assert load_balance_gateways({0, 0}, gateways, [connected_gateway.id]) == connected_gateway
     end
 
     test "returns random gateway from the connected ones" do
       gateways = Enum.map(1..10, fn _ -> Fixtures.Gateways.create_gateway() end)
       [connected_gateway1, connected_gateway2 | _] = gateways
 
-      assert load_balance_gateways(gateways, [connected_gateway1.id, connected_gateway2.id]) in [
+      assert load_balance_gateways({0, 0}, gateways, [
+               connected_gateway1.id,
+               connected_gateway2.id
+             ]) in [
                connected_gateway1,
                connected_gateway2
              ]

@@ -4,13 +4,25 @@ defmodule Domain.Gateways.Gateway.Changeset do
   alias Domain.Gateways
 
   @upsert_fields ~w[external_id name_suffix public_key
-                    last_seen_user_agent last_seen_remote_ip]a
+                    last_seen_user_agent
+                    last_seen_remote_ip
+                    last_seen_remote_ip_location_region
+                    last_seen_remote_ip_location_city
+                    last_seen_remote_ip_location_lat
+                    last_seen_remote_ip_location_lon]a
   @conflict_replace_fields ~w[public_key
-                              last_seen_user_agent last_seen_remote_ip
-                              last_seen_version last_seen_at
+                              last_seen_user_agent
+                              last_seen_remote_ip
+                              last_seen_remote_ip_location_region
+                              last_seen_remote_ip_location_city
+                              last_seen_remote_ip_location_lat
+                              last_seen_remote_ip_location_lon
+                              last_seen_version
+                              last_seen_at
                               updated_at]a
   @update_fields ~w[name_suffix]a
-  @required_fields @upsert_fields
+  @required_fields ~w[external_id name_suffix public_key
+                    last_seen_user_agent last_seen_remote_ip]a
 
   # WireGuard base64-encoded string length
   @key_length 44

@@ -135,9 +135,21 @@ defmodule Web.Auth do
   Fetches the session token from the session and assigns the subject to the connection.
   """
   def fetch_subject_and_account(%Plug.Conn{} = conn, _opts) do
+    {location_region, location_city, {location_lat, location_lon}} =
+      get_load_balancer_ip_location(conn)
+
+    context = %Auth.Context{
+      user_agent: conn.assigns.user_agent,
+      remote_ip: conn.remote_ip,
+      remote_ip_location_region: location_region,
+      remote_ip_location_city: location_city,
+      remote_ip_location_lat: location_lat,
+      remote_ip_location_lon: location_lon
+    }
+
     with token when not is_nil(token) <- Plug.Conn.get_session(conn, :session_token),
          {:ok, subject} <-
-           Domain.Auth.sign_in(token, conn.assigns.user_agent, conn.remote_ip),
+           Domain.Auth.sign_in(token, context),
          {:ok, account} <-
            Domain.Accounts.fetch_account_by_id_or_slug(
              conn.path_params["account_id_or_slug"],
@@ -149,6 +161,66 @@ defmodule Web.Auth do
     else
       _ -> conn
     end
+  end
+
+  defp get_load_balancer_ip_location(%Plug.Conn{} = conn) do
+    location_region =
+      case Plug.Conn.get_req_header(conn, "x-geo-location-region") do
+        [location_region | _] -> location_region
+        [] -> nil
+      end
+
+    location_city =
+      case Plug.Conn.get_req_header(conn, "x-geo-location-city") do
+        [location_city | _] -> location_city
+        [] -> nil
+      end
+
+    {location_lat, location_lon} =
+      case Plug.Conn.get_req_header(conn, "x-geo-location-coordinates") do
+        [coordinates | _] ->
+          [lat, lon] = String.split(coordinates, ",", parts: 2)
+          lat = String.to_float(lat)
+          lon = String.to_float(lon)
+          {lat, lon}
+
+        [] ->
+          {nil, nil}
+      end
+
+    {location_region, location_city, {location_lat, location_lon}}
+  end
+
+  defp get_load_balancer_ip_location(x_headers) do
+    location_region =
+      case get_socket_header(x_headers, "x-geo-location-region") do
+        {"x-geo-location-region", location_region} -> location_region
+        _other -> nil
+      end
+
+    location_city =
+      case get_socket_header(x_headers, "x-geo-location-city") do
+        {"x-geo-location-city", location_city} -> location_city
+        _other -> nil
+      end
+
+    {location_lat, location_lon} =
+      case get_socket_header(x_headers, "x-geo-location-coordinates") do
+        {"x-geo-location-coordinates", coordinates} ->
+          [lat, lon] = String.split(coordinates, ",", parts: 2)
+          lat = String.to_float(lat)
+          lon = String.to_float(lon)
+          {lat, lon}
+
+        _other ->
+          {nil, nil}
+      end
+
+    {location_region, location_city, {location_lat, location_lon}}
+  end
+
+  defp get_socket_header(x_headers, key) do
+    List.keyfind(x_headers, key, 0)
   end
 
   @doc """
@@ -293,9 +365,22 @@ defmodule Web.Auth do
     Phoenix.Component.assign_new(socket, :subject, fn ->
       user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
       real_ip = real_ip(socket)
+      x_headers = Phoenix.LiveView.get_connect_info(socket, :x_headers) || []
+
+      {location_region, location_city, {location_lat, location_lon}} =
+        get_load_balancer_ip_location(x_headers)
+
+      context = %Domain.Auth.Context{
+        user_agent: user_agent,
+        remote_ip: real_ip,
+        remote_ip_location_region: location_region,
+        remote_ip_location_city: location_city,
+        remote_ip_location_lat: location_lat,
+        remote_ip_location_lon: location_lon
+      }
 
       with token when not is_nil(token) <- session["session_token"],
-           {:ok, subject} <- Domain.Auth.sign_in(token, user_agent, real_ip) do
+           {:ok, subject} <- Domain.Auth.sign_in(token, context) do
         subject
       else
         _ -> nil

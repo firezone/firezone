@@ -5,8 +5,14 @@ defmodule Domain.Clients.Client.Changeset do
 
   @upsert_fields ~w[external_id name public_key]a
   @conflict_replace_fields ~w[public_key
-                              last_seen_user_agent last_seen_remote_ip
-                              last_seen_version last_seen_at
+                              last_seen_user_agent
+                              last_seen_remote_ip
+                              last_seen_remote_ip_location_region
+                              last_seen_remote_ip_location_city
+                              last_seen_remote_ip_location_lat
+                              last_seen_remote_ip_location_lon
+                              last_seen_version
+                              last_seen_at
                               updated_at]a
   @update_fields ~w[name]a
   @required_fields @upsert_fields
@@ -28,6 +34,10 @@ defmodule Domain.Clients.Client.Changeset do
     |> put_change(:account_id, identity.account_id)
     |> put_change(:last_seen_user_agent, context.user_agent)
     |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: context.remote_ip})
+    |> put_change(:last_seen_remote_ip_location_region, context.remote_ip_location_region)
+    |> put_change(:last_seen_remote_ip_location_city, context.remote_ip_location_city)
+    |> put_change(:last_seen_remote_ip_location_lat, context.remote_ip_location_lat)
+    |> put_change(:last_seen_remote_ip_location_lon, context.remote_ip_location_lon)
     |> changeset()
     |> validate_required(@required_fields)
     |> validate_base64(:public_key)
