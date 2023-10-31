@@ -7,9 +7,7 @@ use connlib_shared::{
 };
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
-use crate::control_protocol::{
-    new_peer_connection, on_dc_close_handler, on_peer_connection_state_change_handler,
-};
+use crate::control_protocol::{new_peer_connection, on_peer_connection_state_change_handler};
 use crate::{peer::Peer, ConnectedPeer, GatewayState, PeerConfig, Tunnel};
 
 impl<CB> Tunnel<CB, GatewayState>
@@ -82,9 +80,6 @@ where
                                 }
                             }
                         }
-
-                        data_channel
-                            .on_close(on_dc_close_handler(client_id, tunnel.stop_peer_command_sender.clone()));
 
                         let data_channel = data_channel.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us");
 

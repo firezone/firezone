@@ -6,7 +6,6 @@ use connlib_shared::{
     messages::{Relay, RequestConnection, ReuseConnection},
     Callbacks, Error, Result,
 };
-use webrtc::data_channel::OnCloseHdlrFn;
 use webrtc::peer_connection::OnPeerConnectionStateChangeHdlrFn;
 use webrtc::{
     ice_transport::{
@@ -72,23 +71,6 @@ where
             if state == RTCPeerConnectionState::Failed {
                 let _ = sender.send(conn_id).await;
             }
-        })
-    })
-}
-
-pub fn on_dc_close_handler<TId>(
-    conn_id: TId,
-    stop_command_sender: mpsc::Sender<TId>,
-) -> OnCloseHdlrFn
-where
-    TId: Copy + Send + Sync + 'static,
-{
-    Box::new(move || {
-        let mut sender = stop_command_sender.clone();
-
-        tracing::debug!("channel_closed");
-        Box::pin(async move {
-            let _ = sender.send(conn_id).await;
         })
     })
 }

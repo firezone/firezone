@@ -16,9 +16,7 @@ use webrtc::{
     },
 };
 
-use crate::control_protocol::{
-    new_peer_connection, on_dc_close_handler, on_peer_connection_state_change_handler,
-};
+use crate::control_protocol::{new_peer_connection, on_peer_connection_state_change_handler};
 use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
@@ -133,10 +131,6 @@ where
                     }
                 };
 
-                d.on_close(on_dc_close_handler(
-                    gateway_id,
-                    tunnel.stop_peer_command_sender.clone(),
-                ));
                 let d = d.detach().await.expect(
                     "only fails if not opened or not enabled, both of which are always true for us",
                 );
