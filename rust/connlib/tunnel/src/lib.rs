@@ -2,21 +2,35 @@
 //!
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
+use crate::ip_packet::MutableIpPacket;
+use arc_swap::ArcSwapOption;
 use boringtun::{
     noise::rate_limiter::RateLimiter,
     x25519::{PublicKey, StaticSecret},
 };
-
+use connlib_shared::error::ConnlibError;
+use connlib_shared::messages::SecretKey;
+use connlib_shared::Result;
 use connlib_shared::{messages::Key, CallbackErrorFacade, Callbacks, Error};
+use futures::channel::mpsc;
+use futures_util::task::AtomicWaker;
+use futures_util::{SinkExt, StreamExt};
+use hickory_resolver::proto::rr::RecordType;
+use index::IndexLfsr;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
-use pnet_packet::Packet;
-
-use hickory_resolver::proto::rr::RecordType;
+use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
+use pnet_packet::Packet;
+use std::collections::VecDeque;
+use std::hash::Hash;
+use std::task::{ready, Context, Poll};
+use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
+use tokio::time::Interval;
 use tokio::time::MissedTickBehavior;
+use webrtc::data::data_channel::DataChannel;
 use webrtc::{
     api::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
@@ -26,46 +40,22 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
-use arc_swap::ArcSwapOption;
-use futures::channel::mpsc;
-use futures_util::task::AtomicWaker;
-use futures_util::{SinkExt, StreamExt};
-use itertools::Itertools;
-use std::collections::VecDeque;
-use std::task::{ready, Context, Poll};
-use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
-use std::{collections::HashSet, hash::Hash};
-use tokio::time::Interval;
-use webrtc::data::data_channel::DataChannel;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
-
-use connlib_shared::{
-    messages::{GatewayId, ResourceDescription},
-    Result,
-};
-
-pub use client::ClientState;
-use connlib_shared::error::ConnlibError;
+use crate::device_channel::Device;
 pub use control_protocol::Request;
-pub use gateway::GatewayState;
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
-use crate::ip_packet::MutableIpPacket;
-use connlib_shared::messages::{ClientId, SecretKey};
-use device_channel::Device;
-use index::IndexLfsr;
-
 mod bounded_queue;
-mod client;
 mod control_protocol;
 mod device_channel;
 mod dns;
-mod gateway;
 mod index;
 mod ip_packet;
 mod peer;
 mod peer_handler;
 mod resource_table;
+
+pub mod client;
+pub mod gateway;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
@@ -136,11 +126,11 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     no_device_waker: AtomicWaker,
 }
 
-impl<CB> Tunnel<CB, ClientState>
+impl<CB> Tunnel<CB, client::State>
 where
     CB: Callbacks + 'static,
 {
-    pub async fn next_event(&self) -> Result<Event<GatewayId>> {
+    pub async fn next_event(&self) -> Result<client::Event> {
         std::future::poll_fn(|cx| loop {
             {
                 let guard = self.device.load();
@@ -178,7 +168,7 @@ where
         &self,
         device: &Device,
         cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<Event<GatewayId>>>> {
+    ) -> Poll<Result<Option<client::Event>>> {
         loop {
             let mut read_guard = self.read_buf.lock();
             let mut write_guard = self.write_buf.lock();
@@ -215,11 +205,11 @@ where
     }
 }
 
-impl<CB> Tunnel<CB, GatewayState>
+impl<CB> Tunnel<CB, gateway::State>
 where
     CB: Callbacks + 'static,
 {
-    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
+    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Result<gateway::Event>> {
         let mut read_guard = self.read_buf.lock();
         let mut write_guard = self.write_buf.lock();
 
@@ -302,7 +292,7 @@ where
         }
     }
 
-    fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
+    fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<TRoleState::Event> {
         loop {
             if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
                 let mut peers = self.peers_by_ip.write();
@@ -497,19 +487,6 @@ impl<'a> DnsQuery<'a> {
     }
 }
 
-pub enum Event<TId> {
-    SignalIceCandidate {
-        conn_id: TId,
-        candidate: RTCIceCandidateInit,
-    },
-    ConnectionIntent {
-        resource: ResourceDescription,
-        connected_gateway_ids: HashSet<GatewayId>,
-        reference: usize,
-    },
-    DnsQuery(DnsQuery<'static>),
-}
-
 impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
     CB: Callbacks + 'static,
@@ -611,9 +588,10 @@ fn mtu_refresh_interval() -> Interval {
 /// Dedicated trait for abstracting over the different ICE states.
 ///
 /// By design, this trait does not allow any operations apart from advancing via [`RoleState::poll_next_event`].
-/// The state should only be modified when the concrete type is known, e.g. [`ClientState`] or [`GatewayState`].
+/// The state should only be modified when the concrete type is known, e.g. [`State`] or [`State`].
 pub trait RoleState: Default + Send + 'static {
     type Id: fmt::Debug + fmt::Display + Eq + Hash + Copy + Unpin + Send + Sync + 'static;
+    type Event;
 
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
+    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Self::Event>;
 }

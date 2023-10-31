@@ -1,7 +1,5 @@
 use crate::device_channel::create_iface;
-use crate::{
-    Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
-};
+use crate::{RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING};
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
 use futures::channel::mpsc::Receiver;
@@ -11,7 +9,7 @@ use std::task::{ready, Context, Poll};
 use std::time::Duration;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
-impl<CB> Tunnel<CB, GatewayState>
+impl<CB> Tunnel<CB, State>
 where
     CB: Callbacks + 'static,
 {
@@ -36,11 +34,11 @@ where
 }
 
 /// [`Tunnel`] state specific to gateways.
-pub struct GatewayState {
+pub struct State {
     candidate_receivers: StreamMap<ClientId, RTCIceCandidateInit>,
 }
 
-impl GatewayState {
+impl State {
     pub fn add_new_ice_receiver(&mut self, id: ClientId, receiver: Receiver<RTCIceCandidateInit>) {
         match self.candidate_receivers.try_push(id, receiver) {
             Ok(()) => {}
@@ -54,7 +52,7 @@ impl GatewayState {
     }
 }
 
-impl Default for GatewayState {
+impl Default for State {
     fn default() -> Self {
         Self {
             candidate_receivers: StreamMap::new(
@@ -65,10 +63,11 @@ impl Default for GatewayState {
     }
 }
 
-impl RoleState for GatewayState {
+impl RoleState for State {
     type Id = ClientId;
+    type Event = Event;
 
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
+    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
         loop {
             match ready!(self.candidate_receivers.poll_next_unpin(cx)) {
                 (conn_id, Some(Ok(c))) => {
@@ -84,4 +83,11 @@ impl RoleState for GatewayState {
             }
         }
     }
+}
+
+pub enum Event {
+    SignalIceCandidate {
+        conn_id: ClientId,
+        candidate: RTCIceCandidateInit,
+    },
 }

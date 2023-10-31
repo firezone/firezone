@@ -8,9 +8,9 @@ use connlib_shared::{
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 use crate::control_protocol::{new_peer_connection, on_peer_connection_state_change_handler};
-use crate::{peer::Peer, ConnectedPeer, GatewayState, PeerConfig, Tunnel};
+use crate::{gateway, peer::Peer, ConnectedPeer, PeerConfig, Tunnel};
 
-impl<CB> Tunnel<CB, GatewayState>
+impl<CB> Tunnel<CB, gateway::State>
 where
     CB: Callbacks + 'static,
 {

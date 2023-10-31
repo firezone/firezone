@@ -17,11 +17,12 @@ use webrtc::{
 };
 
 use crate::control_protocol::new_peer_connection;
-use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
+use crate::peer::Peer;
+use crate::{client, ConnectedPeer, Error, Request, Result, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
 fn set_connection_state_update<CB>(
-    tunnel: &Arc<Tunnel<CB, ClientState>>,
+    tunnel: &Arc<Tunnel<CB, client::State>>,
     peer_connection: &Arc<RTCPeerConnection>,
     gateway_id: GatewayId,
     resource_id: ResourceId,
@@ -43,7 +44,7 @@ fn set_connection_state_update<CB>(
     ));
 }
 
-impl<CB> Tunnel<CB, ClientState>
+impl<CB> Tunnel<CB, client::State>
 where
     CB: Callbacks + 'static,
 {
