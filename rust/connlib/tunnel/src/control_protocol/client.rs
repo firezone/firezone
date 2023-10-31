@@ -114,6 +114,11 @@ where
         data_channel.on_open(Box::new(move || {
             Box::pin(async move {
                 tracing::trace!("new_data_channel_opened");
+
+                let d = d.detach().await.expect(
+                    "only fails if not opened or not enabled, both of which are always true for us",
+                );
+
                 let index = tunnel.next_index();
 
                 let peer_config = match tunnel
@@ -130,10 +135,6 @@ where
                         return;
                     }
                 };
-
-                let d = d.detach().await.expect(
-                    "only fails if not opened or not enabled, both of which are always true for us",
-                );
 
                 let peer = Arc::new(Peer::new(
                     tunnel.private_key.clone(),
