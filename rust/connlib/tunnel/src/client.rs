@@ -23,7 +23,7 @@ use hickory_resolver::lookup::Lookup;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -149,13 +149,13 @@ where
 {
     let device_writer = device.io.clone();
     let mut buf = [0u8; MAX_UDP_SIZE];
-    loop {
+    'outer: loop {
         let Some(packet) = device.read().await? else {
             return Ok(());
         };
 
         let dest = packet.destination();
-        let (peer_index, peer_conn_id, peer_channel, maybe_write_to) = {
+        let (peer_conn_id, peer_channel, maybe_write_to) = {
             let peers_by_ip = tunnel.peers_by_ip.read();
             let peer = peer_by_ip(&peers_by_ip, dest);
 
@@ -172,18 +172,19 @@ where
 
             let peer = peer.expect("must have peer if we should write bytes");
 
-            (
-                peer.inner.index,
-                peer.inner.conn_id,
-                peer.channel.clone(),
-                maybe_write_to,
-            )
+            (peer.inner.conn_id, peer.channel.clone(), maybe_write_to)
         };
 
         let error = match maybe_write_to {
-            Ok(WriteTo::Network(bytes)) => match peer_channel.write(&bytes).await {
-                Ok(_) => continue,
-                Err(e) => ConnlibError::IceDataError(e),
+            Ok(WriteTo::Network(mut packets)) => loop {
+                let Some(packet) = packets.pop_front() else {
+                    continue 'outer;
+                };
+
+                match peer_channel.write(&packet).await {
+                    Ok(_) => continue,
+                    Err(e) => break ConnlibError::IceDataError(e),
+                }
             },
             Ok(WriteTo::Resource(packet)) => match device_writer.write(packet) {
                 Ok(_) => continue,
@@ -200,7 +201,7 @@ where
             let _ = tunnel
                 .stop_peer_command_sender
                 .clone()
-                .send((peer_index, peer_conn_id))
+                .send(peer_conn_id)
                 .await;
         }
     }
@@ -260,7 +261,7 @@ impl ClientState {
             return Ok(None);
         };
 
-        Ok(Some(WriteTo::Network(bytes)))
+        Ok(Some(WriteTo::Network(VecDeque::from([bytes]))))
     }
 
     pub(crate) fn attempt_to_reuse_connection(

@@ -14,7 +14,6 @@ use ip_packet::IpPacket;
 use pnet_packet::Packet;
 
 use hickory_resolver::proto::rr::RecordType;
-use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
 use tokio::{task::AbortHandle, time::MissedTickBehavior};
@@ -28,7 +27,9 @@ use webrtc::{
 };
 
 use futures::channel::mpsc;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
+use itertools::Itertools;
+use std::collections::VecDeque;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
 use std::{collections::HashSet, hash::Hash};
@@ -149,12 +150,14 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     /// State that differs per role, i.e. clients vs gateways.
     role_state: Mutex<TRoleState>,
 
-    stop_peer_command_receiver: Mutex<mpsc::Receiver<(u32, TRoleState::Id)>>,
-    stop_peer_command_sender: mpsc::Sender<(u32, TRoleState::Id)>,
+    stop_peer_command_receiver: Mutex<mpsc::Receiver<TRoleState::Id>>,
+    stop_peer_command_sender: mpsc::Sender<TRoleState::Id>,
 
     rate_limit_reset_interval: Mutex<Interval>,
     peer_refresh_interval: Mutex<Interval>,
     mtu_refresh_interval: Mutex<Interval>,
+
+    peers_to_stop: Mutex<VecDeque<TRoleState::Id>>,
 }
 
 pub struct ConnectedPeer<TId> {
@@ -198,6 +201,34 @@ where
 
     pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         loop {
+            if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
+                let mut peers = self.peers_by_ip.write();
+
+                let Some(peer_to_remove) = peers
+                    .iter()
+                    .find_map(|(n, p)| (p.inner.conn_id == conn_id).then_some(n))
+                else {
+                    continue;
+                };
+
+                let peer = peers.remove(peer_to_remove).expect("just found it");
+
+                let channel = peer.channel.clone();
+
+                tokio::spawn(async move { channel.close().await });
+                if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
+                    tokio::spawn({
+                        let callbacks = self.callbacks.clone();
+                        async move {
+                            if let Err(e) = conn.close().await {
+                                tracing::warn!(%conn_id, error = ?e, "Can't close peer");
+                                let _ = callbacks.on_error(&e.into());
+                            }
+                        }
+                    });
+                }
+            }
+
             if self
                 .rate_limit_reset_interval
                 .lock()
@@ -209,37 +240,40 @@ where
             }
 
             if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let mut peers_by_ip = self.peers_by_ip.write();
+                let peers_by_ip = self.peers_by_ip.read();
+                let mut peers_to_stop = self.peers_to_stop.lock();
 
-                for peer in
-                    peers_to_refresh(&mut peers_by_ip, self.stop_peer_command_sender.clone())
-                {
+                for (_, peer) in peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
+                    let conn_id = peer.inner.conn_id;
+
+                    peer.inner.expire_resources();
+
+                    if peer.inner.is_emptied() {
+                        tracing::trace!(%conn_id, "peer_expired");
+                        peers_to_stop.push_back(conn_id);
+
+                        continue;
+                    }
+
+                    let bytes = match peer.inner.update_timers() {
+                        Ok(Some(bytes)) => bytes,
+                        Ok(None) => continue,
+                        Err(e) => {
+                            tracing::error!("Failed to update timers for peer: {e}");
+                            let _ = self.callbacks.on_error(&e);
+
+                            if e.is_fatal_connection_error() {
+                                peers_to_stop.push_back(conn_id);
+                            }
+
+                            continue;
+                        }
+                    };
+
                     let callbacks = self.callbacks.clone();
-                    let mut stop_command_sender = self.stop_peer_command_sender.clone();
-
-                    let result = peer.inner.update_timers();
-                    let peer_index = peer.inner.index;
-                    let peer_conn_id = peer.inner.conn_id;
                     let peer_channel = peer.channel.clone();
 
                     tokio::spawn(async move {
-                        let bytes = match result {
-                            Ok(Some(bytes)) => bytes,
-                            Ok(None) => {
-                                return;
-                            }
-                            Err(e) => {
-                                tracing::error!("Failed to update timers for peer: {e}");
-                                let _ = callbacks.on_error(&e);
-
-                                if e.is_fatal_connection_error() {
-                                    let _ =
-                                        stop_command_sender.send((peer_index, peer_conn_id)).await;
-                                }
-                                return;
-                            }
-                        };
-
                         if let Err(e) = peer_channel.write(&bytes).await {
                             let err = e.into();
                             tracing::error!("Failed to send packet to peer: {err:?}");
@@ -251,6 +285,7 @@ where
                         }
                     });
                 }
+
                 continue;
             }
 
@@ -288,34 +323,10 @@ where
                 return Poll::Ready(event);
             }
 
-            if let Poll::Ready(Some((i, conn_id))) =
+            if let Poll::Ready(Some(conn_id)) =
                 self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
             {
-                let mut peers = self.peers_by_ip.write();
-
-                let Some(peer_to_remove) = peers
-                    .iter()
-                    .find_map(|(n, p)| (p.inner.index == i).then_some(n))
-                else {
-                    continue;
-                };
-
-                let peer = peers.remove(peer_to_remove).expect("just found it");
-
-                let channel = peer.channel.clone();
-
-                tokio::spawn(async move { channel.close().await });
-                if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
-                    tokio::spawn({
-                        let callbacks = self.callbacks.clone();
-                        async move {
-                            if let Err(e) = conn.close().await {
-                                tracing::warn!(%conn_id, error = ?e, "Can't close peer");
-                                let _ = callbacks.on_error(&e.into());
-                            }
-                        }
-                    });
-                }
+                self.peers_to_stop.lock().push_back(conn_id);
 
                 continue;
             }
@@ -429,6 +440,7 @@ where
             rate_limit_reset_interval: Mutex::new(rate_limit_reset_interval()),
             peer_refresh_interval: Mutex::new(peer_refresh_interval()),
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
+            peers_to_stop: Default::default(),
         })
     }
 
@@ -467,42 +479,6 @@ fn mtu_refresh_interval() -> Interval {
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     interval
-}
-
-fn peers_to_refresh<TId>(
-    peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId>>,
-    shutdown_sender: mpsc::Sender<(u32, TId)>,
-) -> impl Iterator<Item = &ConnectedPeer<TId>>
-where
-    TId: Eq + Hash + Copy + Send + Sync + 'static,
-{
-    remove_expired_peers(peers_by_ip, shutdown_sender);
-
-    peers_by_ip.iter().map(|p| p.1).unique_by(|p| p.inner.index)
-}
-
-fn remove_expired_peers<TId>(
-    peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId>>,
-    shutdown_sender: mpsc::Sender<(u32, TId)>,
-) where
-    TId: Eq + Hash + Copy + Send + Sync + 'static,
-{
-    for (_, p) in peers_by_ip.iter() {
-        p.inner.expire_resources();
-        if p.inner.is_emptied() {
-            let index = p.inner.index;
-            let conn_id = p.inner.conn_id;
-
-            tracing::trace!(%index, "peer_expired");
-
-            tokio::spawn({
-                let mut sender = shutdown_sender.clone();
-                async move { sender.send((index, conn_id)).await }
-            });
-        }
-    }
-
-    peers_by_ip.retain(|_, p| !p.inner.is_emptied());
 }
 
 /// Dedicated trait for abstracting over the different ICE states.

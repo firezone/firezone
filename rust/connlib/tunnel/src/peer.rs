@@ -1,7 +1,10 @@
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::net::ToSocketAddrs;
+use std::sync::Arc;
 use std::{collections::HashMap, net::IpAddr};
 
+use boringtun::noise::rate_limiter::RateLimiter;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::StaticSecret;
 use bytes::Bytes;
@@ -23,8 +26,7 @@ use crate::{
 type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 
 pub(crate) struct Peer<TId> {
-    pub tunnel: Mutex<Tunn>,
-    pub index: u32,
+    tunnel: Mutex<Tunn>,
     allowed_ips: RwLock<IpNetworkTable<()>>,
     pub conn_id: TId,
     resources: Option<RwLock<ResourceTable<ExpiryingResource>>>,
@@ -44,7 +46,6 @@ pub(crate) struct Peer<TId> {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct PeerStats<TId> {
-    pub index: u32,
     pub allowed_ips: Vec<IpNetwork>,
     pub conn_id: TId,
     pub dns_resources: HashMap<String, ExpiryingResource>,
@@ -67,7 +68,6 @@ where
         let allowed_ips = self.allowed_ips.read().iter().map(|(ip, _)| ip).collect();
         let translated_resource_addresses = self.translated_resource_addresses.read().clone();
         PeerStats {
-            index: self.index,
             allowed_ips,
             conn_id: self.conn_id,
             dns_resources,
@@ -82,6 +82,7 @@ where
         peer_config: PeerConfig,
         conn_id: TId,
         resource: Option<(ResourceDescription, DateTime<Utc>)>,
+        rate_limiter: Arc<RateLimiter>,
     ) -> Peer<TId> {
         let tunnel = Tunn::new(
             private_key.clone(),
@@ -89,7 +90,7 @@ where
             Some(peer_config.preshared_key.expose_secret().0),
             peer_config.persistent_keepalive,
             index,
-            None,
+            Some(rate_limiter),
         )
         .expect("never actually fails"); // See https://github.com/cloudflare/boringtun/pull/366.
 
@@ -106,7 +107,6 @@ where
 
         Peer {
             tunnel: Mutex::new(tunnel),
-            index,
             allowed_ips,
             conn_id,
             resources,
@@ -221,11 +221,25 @@ where
         src: &[u8],
         dst: &'b mut [u8],
     ) -> Result<Option<WriteTo<'b>>> {
-        match self.tunnel.lock().decapsulate(None, src, dst) {
+        let mut tunnel = self.tunnel.lock();
+
+        match tunnel.decapsulate(None, src, dst) {
             TunnResult::Done => Ok(None),
             TunnResult::Err(e) => Err(e.into()),
             TunnResult::WriteToNetwork(packet) => {
-                Ok(Some(WriteTo::Network(Bytes::copy_from_slice(packet))))
+                let mut packets = VecDeque::from([Bytes::copy_from_slice(packet)]);
+
+                // Boringtun requires us to call `decapsulate` repeatedly if it returned `WriteToNetwork`.
+                // However, for the repeated calls, we only need a buffer of at most 148 bytes which we can easily allocate on the stack.
+                let mut buf = [0u8; 148];
+
+                while let TunnResult::WriteToNetwork(packet) =
+                    tunnel.decapsulate(None, &[], &mut buf)
+                {
+                    packets.push_back(Bytes::copy_from_slice(packet));
+                }
+
+                Ok(Some(WriteTo::Network(packets)))
             }
             TunnResult::WriteToTunnelV4(packet, addr) => {
                 let Some(packet) = make_packet_for_resource(self, addr.into(), packet)? else {
@@ -262,7 +276,7 @@ where
 }
 
 pub enum WriteTo<'a> {
-    Network(Bytes),
+    Network(VecDeque<Bytes>),
     Resource(device_channel::Packet<'a>),
 }
 
