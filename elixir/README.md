@@ -214,7 +214,7 @@ remote_ip = {127, 0, 0, 1}
 # For an admin user
 provider = Domain.Repo.get_by(Domain.Auth.Provider, adapter: :userpass)
 identity = Domain.Repo.get_by(Domain.Auth.Identity, provider_id: provider.id, provider_identifier: "firezone@localhost")
-subject = Domain.Auth.build_subject(identity, nil, user_agent, remote_ip)
+subject = Domain.Auth.build_subject(identity, nil, %Domain.Auth.Context{user_agent: user_agent, remote_ip: remote_ip})
 ```
 
 Listing connected gateways, relays, clients for an account:
@@ -314,6 +314,37 @@ iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)5> {:ok, identity} = Dom
 
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)6> Web.Mailer.AuthEmail.sign_in_link_email(identity) |> Web.Mailer.deliver()
 {:ok, %{id: "d24dbe9a-d0f5-4049-ac0d-0df793725a80"}}
+```
+
+### Obtaining admin subject on staging
+
+```elixir
+
+❯ gcloud compute ssh web-2f4j --tunnel-through-iap -- '$(docker ps | grep klt- | head -n 1 | awk '\''{split($NF, arr, "-"); print "docker exec -it " $NF " bin/" arr[2] " remote";}'\'')'
+Erlang/OTP 26 [erts-14.0.2] [source] [64-bit] [smp:1:1] [ds:1:1:20] [async-threads:1] [jit]
+
+Interactive Elixir (1.15.2) - press Ctrl+C to exit (type h() ENTER for help)
+
+iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)1> [actor | _] = Domain.Actors.Actor.Query.by_type(:account_admin_user) |> Domain.Actors.Actor.Query.by_account_id("ACCOUNT_ID") |> Domain.Repo.all()
+...
+
+iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)2> [identity | _] = Domain.Auth.Identity.Query.by_actor_id(actor.id) |> Domain.Repo.all()
+...
+
+iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)3> subject = Domain.Auth.build_subject(identity, nil, %Domain.Auth.Context{user_agent: "CLI", remote_ip: {127, 0, 0, 1}})
+```
+
+### Rotate relay token
+
+```elixir
+
+iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)1> # select group to update
+...
+
+iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)2> {:ok, %{tokens: [token]}} = %{group | tokens: []} |> Domain.Repo.preload(:account) |> Domain.Relays.Group.Changeset.update(%{tokens: [%{}]}) |> Domain.Repo.update()
+
+iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)3> Domain.Relays.encode_token!(token)
+...
 ```
 
 ## Viewing logs
