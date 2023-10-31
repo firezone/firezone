@@ -98,7 +98,6 @@ public struct SettingsView: View {
   @ObservedObject var model: SettingsViewModel
   @Environment(\.dismiss) var dismiss
 
-  let teamIdAllowedCharacterSet: CharacterSet
   @State private var isExportingLogs = false
 
   #if os(iOS)
@@ -123,11 +122,6 @@ public struct SettingsView: View {
 
   public init(model: SettingsViewModel) {
     self.model = model
-    self.teamIdAllowedCharacterSet = {
-      var pathAllowed = CharacterSet.urlPathAllowed
-      pathAllowed.remove("/")
-      return pathAllowed
-    }()
   }
 
   public var body: some View {
@@ -139,24 +133,28 @@ public struct SettingsView: View {
               Image(systemName: "person.3.fill")
               Text("Account")
             }
-            .badge(isTeamIdValid(model.accountSettings.accountId) ? nil : "!")
+            .badge(model.accountSettings.isValid ? nil : "!")
 
           advancedTab
             .tabItem {
               Image(systemName: "slider.horizontal.3")
               Text("Advanced")
             }
+            .badge(model.advancedSettings.isValid ? nil : "!")
         }
         .toolbar {
           ToolbarItem(placement: .navigationBarTrailing) {
             Button("Save") {
-              self.saveButtonTapped()
+              self.saveSettings()
             }
-            .disabled(!isTeamIdValid(model.accountSettings.accountId))
+            .disabled(
+              (model.accountSettings.isSavedToDisk && model.advancedSettings.isSavedToDisk)
+                || !model.accountSettings.isValid
+            )
           }
           ToolbarItem(placement: .navigationBarLeading) {
             Button("Cancel") {
-              self.cancelButtonTapped()
+              self.loadSettings()
             }
           }
         }
@@ -177,6 +175,7 @@ public struct SettingsView: View {
         }
         .padding(20)
       }
+      .onDisappear(perform: { self.loadSettings() })
     #else
       #error("Unsupported platform")
     #endif
@@ -214,7 +213,7 @@ public struct SettingsView: View {
               )
               .disabled(
                 model.accountSettings.isSavedToDisk
-                  || !isTeamIdValid(model.accountSettings.accountId)
+                  || !model.accountSettings.isValid
               )
             },
             footer: {
@@ -295,14 +294,7 @@ public struct SettingsView: View {
                   self.model.saveAdvancedSettings()
                 }
               )
-              .disabled(
-                model.advancedSettings.isSavedToDisk
-                  || !isAdvancedSettingsValid(
-                    authBaseURLString: model.advancedSettings.authBaseURLString,
-                    apiURLString: model.advancedSettings.authBaseURLString,
-                    logFilter: model.advancedSettings.connlibLogFilterString
-                  )
-              )
+              .disabled(model.advancedSettings.isSavedToDisk || !model.advancedSettings.isValid)
 
               Button(
                 "Reset to Defaults",
@@ -376,11 +368,12 @@ public struct SettingsView: View {
               HStack {
                 Spacer()
                 Button(
-                  "Restore to Defaults",
+                  "Reset to Defaults",
                   action: {
                     self.restoreAdvancedSettingsToDefaults()
                   }
                 )
+                .disabled(model.advancedSettings == AdvancedSettings.defaultValue)
                 Spacer()
               }
             },
@@ -415,30 +408,23 @@ public struct SettingsView: View {
     #endif
   }
 
-  private func isTeamIdValid(_ teamId: String) -> Bool {
-    !teamId.isEmpty && teamId.unicodeScalars.allSatisfy { teamIdAllowedCharacterSet.contains($0) }
-  }
-
-  private func isAdvancedSettingsValid(
-    authBaseURLString: String, apiURLString: String, logFilter: String
-  ) -> Bool {
-    URL(string: authBaseURLString) != nil && URL(string: apiURLString) != nil && !logFilter.isEmpty
-  }
-
-  func saveButtonTapped() {
+  func saveSettings() {
     model.saveAccountSettings()
     model.saveAdvancedSettings()
     dismiss()
   }
 
-  func cancelButtonTapped() {
+  func loadSettings() {
     model.loadAccountSettings()
     model.loadAdvancedSettings()
     dismiss()
   }
 
   func restoreAdvancedSettingsToDefaults() {
-    model.advancedSettings = AdvancedSettings.defaultValue
+    let defaultValue = AdvancedSettings.defaultValue
+    model.advancedSettings.authBaseURLString = defaultValue.authBaseURLString
+    model.advancedSettings.apiURLString = defaultValue.apiURLString
+    model.advancedSettings.connlibLogFilterString = defaultValue.connlibLogFilterString
   }
 
   #if os(macOS)
