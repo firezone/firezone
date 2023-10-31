@@ -141,14 +141,8 @@ defmodule API.Client.ChannelTest do
                ipv4: client.ipv4,
                ipv6: client.ipv6,
                upstream_dns: [
-                 %Domain.Config.Configuration.ClientsUpstreamDNS{
-                   protocol: :ip_port,
-                   address: "1.1.1.1:53"
-                 },
-                 %Domain.Config.Configuration.ClientsUpstreamDNS{
-                   protocol: :ip_port,
-                   address: "8.8.8.8:53"
-                 }
+                 %{protocol: :ip_port, address: "1.1.1.1:53"},
+                 %{protocol: :ip_port, address: "8.8.8.8:53"}
                ]
              }
     end

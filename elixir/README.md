@@ -61,7 +61,7 @@ Now you can verify that it's working by connecting to a websocket:
 <details>
   <summary>Gateway</summary>
 
-```elixir
+```bash
 ❯ export GATEWAY_TOKEN_FROM_SEEDS="SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAJXr4emIAWIAAVGA.jz0s-NohxgdAXeRMjIQ9kLBOyd7CmKXWi2FHY-Op8GM"
 ❯ websocat --header="User-Agent: iOS/12.7 (iPhone) connlib/0.7.412" "ws://127.0.0.1:13000/gateway/websocket?token=${GATEWAY_TOKEN_FROM_SEEDS}&external_id=thisisrandomandpersistent&name_suffix=kkX1&public_key=kceI60D6PrwOIiGoVz6hD7VYCgD1H57IVQlPJTTieUE="
 
@@ -77,7 +77,7 @@ Now you can verify that it's working by connecting to a websocket:
 <details>
   <summary>Relay</summary>
 
-```elixir
+```bash
 ❯ export RELAY_TOKEN_FROM_SEEDS="SFMyNTY.g2gDaAJtAAAAJDcyODZiNTNkLTA3M2UtNGM0MS05ZmYxLWNjODQ1MWRhZDI5OW0AAABARVg3N0dhMEhLSlVWTGdjcE1yTjZIYXRkR25mdkFEWVFyUmpVV1d5VHFxdDdCYVVkRVUzbzktRmJCbFJkSU5JS24GAMDq4emIAWIAAVGA.fLlZsUMS0VJ4RCN146QzUuINmGubpsxoyIf3uhRHdiQ"
 ❯ websocat --header="User-Agent: Linux/5.2.6 (Debian; x86_64) relay/0.7.412" "ws://127.0.0.1:8081/relay/websocket?token=${RELAY_TOKEN_FROM_SEEDS}&ipv4=24.12.79.100&ipv6=4d36:aa7f:473c:4c61:6b9e:2416:9917:55cc"
 
@@ -96,7 +96,8 @@ Now you can verify that it's working by connecting to a websocket:
 <details>
   <summary>Client</summary>
 
-```elixir
+```bash
+# Note: The token value below is an example.  The token value you will need is generated and printed out when seeding the database, as described earlier in the document.
 ❯ export CLIENT_TOKEN_FROM_SEEDS="SFMyNTY.g2gDaAN3CGlkZW50aXR5bQAAACQ3ZGE3ZDFjZC0xMTFjLTQ0YTctYjVhYy00MDI3YjlkMjMwZTV3Bmlnbm9yZW4GAJhGr7WKAWIACTqA.mrPu5eFVwkfRml7zzHb5uYfosLGaYVHq03-wE02xUNc"
 
 # Panel will only accept token if it's coming with this User-Agent header and from IP 172.28.0.1
