@@ -1,7 +1,7 @@
 defmodule Web.Resources.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Resources, Flows}
+  alias Domain.{Resources, Flows, Config}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, resource} <-
@@ -12,7 +12,15 @@ defmodule Web.Resources.Show do
            Flows.list_flows_for(resource, socket.assigns.subject,
              preload: [client: [:actor], gateway: [:group], policy: [:resource, :actor_group]]
            ) do
-      {:ok, assign(socket, resource: resource, flows: flows)}
+      socket =
+        assign(
+          socket,
+          resource: resource,
+          flows: flows,
+          todos_enabled?: Config.todos_enabled?()
+        )
+
+      {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end

@@ -1,7 +1,7 @@
 defmodule Web.Gateways.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Gateways, Flows}
+  alias Domain.{Gateways, Flows, Config}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, gateway} <-
@@ -11,7 +11,17 @@ defmodule Web.Gateways.Show do
              preload: [client: [:actor], policy: [:resource, :actor_group]]
            ) do
       :ok = Gateways.subscribe_for_gateways_presence_in_group(gateway.group)
-      {:ok, assign(socket, gateway: gateway, flows: flows)}
+
+      socket =
+        assign(
+          socket,
+          gateway: gateway,
+          flows: flows,
+          todos_enabled?: Config.todos_enabled?(),
+          flows_enabled?: Config.flows_enabled?()
+        )
+
+      {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -52,7 +62,7 @@ defmodule Web.Gateways.Show do
             <:label>Instance Name</:label>
             <:value><%= @gateway.name_suffix %></:value>
           </.vertical_table_row>
-          <.vertical_table_row>
+          <.vertical_table_row :if={@todos_enabled?}>
             <:label>Connectivity</:label>
             <:value>TODO: Peer to Peer</:value>
           </.vertical_table_row>
@@ -143,7 +153,7 @@ defmodule Web.Gateways.Show do
             </.link>
             (<%= flow.client_remote_ip %>)
           </:col>
-          <:col :let={flow} label="ACTIVITY">
+          <:col :let={flow} :if={@flows_enabled?} label="ACTIVITY">
             <.link
               navigate={~p"/#{@account}/flows/#{flow.id}"}
               class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
