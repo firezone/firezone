@@ -295,65 +295,10 @@ where
     fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<TRoleState::Event> {
         loop {
             self.stop_peers();
-
-            if self
-                .rate_limit_reset_interval
-                .lock()
-                .poll_tick(cx)
-                .is_ready()
-            {
-                self.rate_limiter.reset_count();
+            if self.reset_rate_limiter(cx).is_ready() {
                 continue;
             }
-
-            if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let peers_by_ip = self.peers_by_ip.read();
-                let mut peers_to_stop = self.peers_to_stop.lock();
-
-                for (_, peer) in peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
-                    let conn_id = peer.inner.conn_id;
-
-                    peer.inner.expire_resources();
-
-                    if peer.inner.is_emptied() {
-                        tracing::trace!(%conn_id, "peer_expired");
-                        peers_to_stop.push_back(conn_id);
-
-                        continue;
-                    }
-
-                    let bytes = match peer.inner.update_timers() {
-                        Ok(Some(bytes)) => bytes,
-                        Ok(None) => continue,
-                        Err(e) => {
-                            tracing::error!("Failed to update timers for peer: {e}");
-                            let _ = self.callbacks.on_error(&e);
-
-                            if e.is_fatal_connection_error() {
-                                peers_to_stop.push_back(conn_id);
-                            }
-
-                            continue;
-                        }
-                    };
-
-                    let callbacks = self.callbacks.clone();
-                    let peer_channel = peer.channel.clone();
-                    let mut stop_command_sender = self.stop_peer_command_sender.clone();
-
-                    tokio::spawn(async move {
-                        if let Err(e) = peer_channel.write(&bytes).await {
-                            let err = e.into();
-                            tracing::error!("Failed to send packet to peer: {err:?}");
-                            let _ = callbacks.on_error(&err);
-
-                            if err.is_fatal_connection_error() {
-                                let _ = stop_command_sender.send(conn_id).await;
-                            }
-                        }
-                    });
-                }
-
+            if self.refresh_peers(cx).is_ready() {
                 continue;
             }
 
@@ -389,6 +334,67 @@ where
 
             return Poll::Pending;
         }
+    }
+
+    fn refresh_peers(&self, cx: &mut Context) -> Poll<()> {
+        ready!(self.peer_refresh_interval.lock().poll_tick(cx));
+
+        let peers_by_ip = self.peers_by_ip.read();
+        let mut peers_to_stop = self.peers_to_stop.lock();
+
+        for (_, peer) in peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
+            let conn_id = peer.inner.conn_id;
+
+            peer.inner.expire_resources();
+
+            if peer.inner.is_emptied() {
+                tracing::trace!(%conn_id, "peer_expired");
+                peers_to_stop.push_back(conn_id);
+
+                continue;
+            }
+
+            let bytes = match peer.inner.update_timers() {
+                Ok(Some(bytes)) => bytes,
+                Ok(None) => continue,
+                Err(e) => {
+                    tracing::error!("Failed to update timers for peer: {e}");
+                    let _ = self.callbacks.on_error(&e);
+
+                    if e.is_fatal_connection_error() {
+                        peers_to_stop.push_back(conn_id);
+                    }
+
+                    continue;
+                }
+            };
+
+            let callbacks = self.callbacks.clone();
+            let peer_channel = peer.channel.clone();
+            let mut stop_command_sender = self.stop_peer_command_sender.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = peer_channel.write(&bytes).await {
+                    let err = e.into();
+                    tracing::error!("Failed to send packet to peer: {err:?}");
+                    let _ = callbacks.on_error(&err);
+
+                    if err.is_fatal_connection_error() {
+                        let _ = stop_command_sender.send(conn_id).await;
+                    }
+                }
+            });
+        }
+
+        Poll::Ready(())
+    }
+
+    fn reset_rate_limiter(&self, cx: &mut Context) -> Poll<()> {
+        ready!(self.rate_limit_reset_interval.lock().poll_tick(cx));
+
+        self.rate_limiter.reset_count();
+
+        Poll::Ready(())
     }
 
     fn stop_peers(&self) {
