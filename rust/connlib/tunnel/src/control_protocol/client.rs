@@ -16,7 +16,7 @@ use webrtc::{
     },
 };
 
-use crate::control_protocol::{new_peer_connection, on_peer_connection_state_change_handler};
+use crate::control_protocol::new_peer_connection;
 use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
@@ -165,13 +165,6 @@ where
                         .lock()
                         .gateway_awaiting_connection
                         .remove(&gateway_id);
-                }
-
-                if let Some(conn) = tunnel.peer_connections.lock().get(&gateway_id) {
-                    conn.on_peer_connection_state_change(on_peer_connection_state_change_handler(
-                        gateway_id,
-                        tunnel.stop_peer_command_sender.clone(),
-                    ));
                 }
 
                 tokio::spawn(tunnel.start_peer_handler(peer, d));
