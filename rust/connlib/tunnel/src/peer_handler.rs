@@ -33,16 +33,20 @@ where
             };
             let device_io = device.io;
 
-            if let Err(err) = self.peer_handler(&peer, channel.clone(), device_io).await {
-                if err.raw_os_error() != Some(9) {
-                    tracing::error!(?err);
-                    let _ = self.callbacks().on_error(&err.into());
-                    break;
-                } else {
-                    tracing::warn!("bad_file_descriptor");
-                }
+            let result = self.peer_handler(&peer, channel.clone(), device_io).await;
+
+            if matches!(result, Err(ref err) if err.raw_os_error() == Some(9)) {
+                tracing::warn!("bad_file_descriptor");
+                continue;
             }
+
+            if let Err(e) = result {
+                tracing::error!(err = ?e, "peer_handle_error");
+            }
+
+            break;
         }
+
         tracing::debug!(peer = ?peer.stats(), "peer_stopped");
         let _ = self
             .stop_peer_command_sender
