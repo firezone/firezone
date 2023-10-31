@@ -2,7 +2,6 @@
 package dev.firezone.android.features.settings.ui
 
 import android.os.Bundle
-import android.util.Log
 import android.view.inputmethod.EditorInfo
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -57,7 +56,6 @@ internal class SettingsActivity : AppCompatActivity() {
                 is SettingsViewModel.ViewAction.NavigateBack ->
                     finish()
                 is SettingsViewModel.ViewAction.FillSettings -> {
-                    Log.d("SettingsFragment", "action: $action")
                     binding.etAccountIdInput.apply {
                         setText(action.accountId)
                     }

@@ -6,9 +6,9 @@
     android:orientation="vertical"
     android:padding="@dimen/spacing_medium">
 
-    <androidx.appcompat.widget.LinearLayoutCompat
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/llContainer"
-        android:layout_width="0dp"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:gravity="center"
         android:orientation="horizontal"
@@ -18,9 +18,13 @@
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/ivLogo"
-            android:layout_width="@dimen/iv_logo_size"
-            android:layout_height="@dimen/iv_logo_size"
-            android:src="@drawable/ic_firezone_logo" />
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:src="@drawable/ic_firezone_logo"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintTop_toTopOf="@id/tvHeaderTitle"
+            app:layout_constraintBottom_toBottomOf="@id/tvHeaderTitle"
+            app:layout_constraintEnd_toStartOf="@id/tvHeaderTitle"/>
 
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/tvHeaderTitle"
@@ -29,9 +33,12 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="@dimen/spacing_small"
             android:gravity="center"
-            android:text="@string/app_short_name" />
+            android:text="@string/app_short_name"
+            app:layout_constraintStart_toEndOf="@id/ivLogo"
+            app:layout_constraintTop_toTopOf="parent"
+            />
 
-    </androidx.appcompat.widget.LinearLayoutCompat>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/tvSessionStatus"
@@ -46,26 +53,24 @@
         app:layout_constraintTop_toBottomOf="@+id/llContainer" />
 
     <com.google.android.material.button.MaterialButton
-        android:id="@+id/btSignIn"
-        android:layout_width="135dp"
-        android:layout_height="50dp"
-        android:layout_marginBottom="16dp"
-        android:text="@string/sign_in"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="1.0"
-        app:layout_constraintStart_toStartOf="parent" />
-
-    <com.google.android.material.button.MaterialButton
         android:id="@+id/btSettings"
-        android:layout_width="135dp"
-        android:layout_height="50dp"
-        android:layout_marginBottom="16dp"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="@dimen/spacing_2x"
         android:text="@string/settings"
         style="?attr/materialButtonOutlinedStyle"
         app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/btSignIn"/>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btSignIn"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/spacing_2x"
+        android:text="@string/sign_in"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.0"
-        app:layout_constraintStart_toStartOf="parent" />
+        app:layout_constraintStart_toEndOf="@id/btSettings" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
