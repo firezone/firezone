@@ -98,7 +98,7 @@ defmodule Web.RelayGroups.New do
       --name=firezone-relay-0 \\
       --restart=always \\
       -v /dev/net/tun:/dev/net/tun \\
-      -e PORTAL_TOKEN=#{secret} \\
+      -e FIREZONE_TOKEN=#{secret} \\
       us-east1-docker.pkg.dev/firezone/firezone/relay:stable
     """
   end
