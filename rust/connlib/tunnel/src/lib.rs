@@ -348,21 +348,7 @@ where
 
     fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<TRoleState::Event> {
         loop {
-            if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
-                self.role_state.lock().remove_peers(conn_id);
-
-                if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
-                    tokio::spawn({
-                        let callbacks = self.callbacks.clone();
-                        async move {
-                            if let Err(e) = conn.stop().await {
-                                tracing::warn!(%conn_id, error = ?e, "Can't close peer");
-                                let _ = callbacks.on_error(&e.into());
-                            }
-                        }
-                    });
-                }
-            }
+            self.stop_peers();
 
             if self
                 .rate_limit_reset_interval
@@ -398,6 +384,24 @@ where
             }
 
             return Poll::Pending;
+        }
+    }
+
+    fn stop_peers(&self) {
+        while let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
+            self.role_state.lock().remove_peers(conn_id);
+
+            if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
+                tokio::spawn({
+                    let callbacks = self.callbacks.clone();
+                    async move {
+                        if let Err(e) = conn.stop().await {
+                            tracing::warn!(%conn_id, error = ?e, "Can't close peer");
+                            let _ = callbacks.on_error(&e.into());
+                        }
+                    }
+                });
+            }
         }
     }
 
