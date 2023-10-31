@@ -409,6 +409,8 @@ extension NETunnelProviderManager {
         advancedSettings.authBaseURLString
       providerConfig[TunnelProviderKeys.keyConnlibLogFilter] =
         advancedSettings.connlibLogFilterString
+
+      protocolConfiguration.providerConfiguration = providerConfig
       protocolConfiguration.serverAddress = advancedSettings.apiURLString
 
       try await saveToPreferences()
