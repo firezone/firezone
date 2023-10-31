@@ -3,7 +3,7 @@ use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::{
-    dns, ConnectedPeer, DnsFallbackStrategy, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
+    dns, ConnectedPeer, DnsFallbackStrategy, DnsQuery, PeerConfig, RoleState, Tunnel,
     DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
 };
 use boringtun::x25519::{PublicKey, StaticSecret};
@@ -51,7 +51,7 @@ impl DnsResource {
     }
 }
 
-impl<CB> Tunnel<CB, ClientState>
+impl<CB> Tunnel<CB, State>
 where
     CB: Callbacks + 'static,
 {
@@ -165,7 +165,7 @@ where
 }
 
 /// [`Tunnel`] state specific to clients.
-pub struct ClientState {
+pub struct State {
     active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidate>,
     /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
     waiting_for_sdp_from_gateway: HashMap<GatewayId, Receiver<RTCIceCandidate>>,
@@ -203,7 +203,7 @@ pub struct AwaitingConnectionDetails {
     gateways: HashSet<GatewayId>,
 }
 
-impl ClientState {
+impl State {
     /// Attempt to handle the given packet as a DNS packet.
     ///
     /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
@@ -590,7 +590,7 @@ impl IpProvider {
     }
 }
 
-impl Default for ClientState {
+impl Default for State {
     fn default() -> Self {
         Self {
             active_candidate_receivers: StreamMap::new(
@@ -621,10 +621,11 @@ impl Default for ClientState {
     }
 }
 
-impl RoleState for ClientState {
+impl RoleState for State {
     type Id = GatewayId;
+    type Event = Event;
 
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
+    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
         loop {
             match self.active_candidate_receivers.poll_next_unpin(cx) {
                 Poll::Ready((conn_id, Some(Ok(c)))) => {
@@ -717,4 +718,17 @@ impl RoleState for ClientState {
 
         peers_to_stop
     }
+}
+
+pub enum Event {
+    SignalIceCandidate {
+        conn_id: GatewayId,
+        candidate: RTCIceCandidate,
+    },
+    ConnectionIntent {
+        resource: ResourceDescription,
+        connected_gateway_ids: HashSet<GatewayId>,
+        reference: usize,
+    },
+    DnsQuery(DnsQuery<'static>),
 }

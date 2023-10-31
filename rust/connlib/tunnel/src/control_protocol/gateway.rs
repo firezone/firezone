@@ -1,7 +1,8 @@
 use crate::{
     control_protocol::{insert_peers, start_handlers},
+    gateway,
     peer::{PacketTransformGateway, Peer},
-    ConnectedPeer, GatewayState, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
+    ConnectedPeer, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
 };
 
 use chrono::{DateTime, Utc};
@@ -39,7 +40,7 @@ fn set_connection_state_update(ice: &Arc<RTCIceTransport>, client_id: ClientId) 
     });
 }
 
-impl<CB> Tunnel<CB, GatewayState>
+impl<CB> Tunnel<CB, gateway::State>
 where
     CB: Callbacks + 'static,
 {

@@ -9,13 +9,13 @@ use crate::messages::{
 };
 use connlib_shared::{
     control::{ErrorInfo, ErrorReply, PhoenixSenderWithTopic, Reference},
-    messages::{GatewayId, ResourceDescription, ResourceId},
+    messages::{ResourceDescription, ResourceId},
     Callbacks,
     Error::{self},
     Result,
 };
 
-use firezone_tunnel::{ClientState, Request, Tunnel};
+use firezone_tunnel::{client, Request, Tunnel};
 use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
@@ -26,7 +26,7 @@ use url::Url;
 
 const DNS_PORT: u16 = 53;
 pub struct ControlPlane<CB: Callbacks> {
-    pub tunnel: Arc<Tunnel<CB, ClientState>>,
+    pub tunnel: Arc<Tunnel<CB, client::State>>,
     pub phoenix_channel: PhoenixSenderWithTopic,
     pub tunnel_init: Mutex<bool>,
     // It's a Mutex<Option<_>> because we need the init message to initialize the resolver
@@ -305,9 +305,9 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             .await;
     }
 
-    pub async fn handle_tunnel_event(&mut self, event: Result<firezone_tunnel::Event<GatewayId>>) {
+    pub async fn handle_tunnel_event(&mut self, event: Result<client::Event>) {
         match event {
-            Ok(firezone_tunnel::Event::SignalIceCandidate { conn_id, candidate }) => {
+            Ok(client::Event::SignalIceCandidate { conn_id, candidate }) => {
                 if let Err(e) = self
                     .phoenix_channel
                     .send(EgressMessages::BroadcastIceCandidates(
@@ -321,7 +321,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     tracing::error!("Failed to signal ICE candidate: {e}")
                 }
             }
-            Ok(firezone_tunnel::Event::ConnectionIntent {
+            Ok(client::Event::ConnectionIntent {
                 resource,
                 connected_gateway_ids,
                 reference,
@@ -343,7 +343,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     // TODO: Clean up connection in `ClientState` here?
                 }
             }
-            Ok(firezone_tunnel::Event::DnsQuery(query)) => {
+            Ok(client::Event::DnsQuery(query)) => {
                 // Until we handle it better on a gateway-like eventloop, making sure not to block the loop
                 let Some(resolver) = self.fallback_resolver.lock().clone() else {
                     return;

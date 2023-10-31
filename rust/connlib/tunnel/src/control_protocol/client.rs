@@ -1,6 +1,7 @@
 use std::{net::IpAddr, sync::Arc};
 
 use boringtun::x25519::PublicKey;
+use connlib_shared::Result;
 use connlib_shared::{
     control::Reference,
     messages::{
@@ -17,6 +18,8 @@ use webrtc::ice_transport::{
     ice_transport_state::RTCIceTransportState, RTCIceTransport,
 };
 
+use crate::peer::Peer;
+use crate::{client, ConnectedPeer, Error, Request, Tunnel};
 use crate::{
     client::DnsResource,
     control_protocol::{new_ice_connection, IceConnection},
@@ -25,13 +28,12 @@ use crate::{
     peer::PacketTransformClient,
     PEER_QUEUE_SIZE,
 };
-use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
 
 use super::{insert_peers, start_handlers};
 
 #[tracing::instrument(level = "trace", skip(tunnel, ice))]
 fn set_connection_state_update<CB>(
-    tunnel: &Arc<Tunnel<CB, ClientState>>,
+    tunnel: &Arc<Tunnel<CB, client::State>>,
     ice: &Arc<RTCIceTransport>,
     gateway_id: GatewayId,
     resource_id: ResourceId,
@@ -61,7 +63,7 @@ fn set_connection_state_update<CB>(
     }));
 }
 
-impl<CB> Tunnel<CB, ClientState>
+impl<CB> Tunnel<CB, client::State>
 where
     CB: Callbacks + 'static,
 {
@@ -331,7 +333,7 @@ where
 }
 
 fn send_dns_answer(
-    role_state: &mut ClientState,
+    role_state: &mut client::State,
     qtype: Rtype,
     device: &Device,
     resource_description: &DnsResource,

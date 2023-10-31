@@ -1,7 +1,7 @@
 use crate::device_channel::Device;
 use crate::peer::PacketTransformGateway;
 use crate::{
-    ConnectedPeer, DnsFallbackStrategy, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
+    ConnectedPeer, DnsFallbackStrategy, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING,
 };
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
@@ -16,7 +16,7 @@ use std::task::{ready, Context, Poll};
 use std::time::Duration;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
-impl<CB> Tunnel<CB, GatewayState>
+impl<CB> Tunnel<CB, State>
 where
     CB: Callbacks + 'static,
 {
@@ -46,13 +46,13 @@ where
 }
 
 /// [`Tunnel`] state specific to gateways.
-pub struct GatewayState {
+pub struct State {
     pub candidate_receivers: StreamMap<ClientId, RTCIceCandidate>,
     #[allow(clippy::type_complexity)]
     pub peers_by_ip: IpNetworkTable<ConnectedPeer<ClientId, PacketTransformGateway>>,
 }
 
-impl GatewayState {
+impl State {
     pub fn add_new_ice_receiver(&mut self, id: ClientId, receiver: Receiver<RTCIceCandidate>) {
         match self.candidate_receivers.try_push(id, receiver) {
             Ok(()) => {}
@@ -66,7 +66,7 @@ impl GatewayState {
     }
 }
 
-impl Default for GatewayState {
+impl Default for State {
     fn default() -> Self {
         Self {
             candidate_receivers: StreamMap::new(
@@ -78,10 +78,11 @@ impl Default for GatewayState {
     }
 }
 
-impl RoleState for GatewayState {
+impl RoleState for State {
     type Id = ClientId;
+    type Event = Event;
 
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
+    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
         loop {
             match ready!(self.candidate_receivers.poll_next_unpin(cx)) {
                 (conn_id, Some(Ok(c))) => {
@@ -140,4 +141,11 @@ impl RoleState for GatewayState {
 
         peers_to_stop
     }
+}
+
+pub enum Event {
+    SignalIceCandidate {
+        conn_id: ClientId,
+        candidate: RTCIceCandidate,
+    },
 }
