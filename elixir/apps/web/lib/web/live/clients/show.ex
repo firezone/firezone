@@ -72,7 +72,9 @@ defmodule Web.Clients.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Last Seen Remote IP</:label>
-            <:value><code><%= @client.last_seen_remote_ip %></code></:value>
+            <:value>
+              <.last_seen schema={@client} />
+            </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Client Version</:label>

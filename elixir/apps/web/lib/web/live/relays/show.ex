@@ -51,9 +51,7 @@ defmodule Web.Relays.Show do
             <.vertical_table_row>
               <:label>Location</:label>
               <:value>
-                <code>
-                  <%= @relay.last_seen_remote_ip %>
-                </code>
+                <.last_seen schema={@relay} />
               </:value>
             </.vertical_table_row>
             <.vertical_table_row>
