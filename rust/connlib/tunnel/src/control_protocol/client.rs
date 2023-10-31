@@ -17,8 +17,7 @@ use webrtc::{
 };
 
 use crate::control_protocol::new_peer_connection;
-use crate::peer::Peer;
-use crate::{client, ConnectedPeer, Error, Request, Result, Tunnel};
+use crate::{client, Error, Request, Result, Tunnel};
 
 #[tracing::instrument(level = "trace", skip(tunnel))]
 fn set_connection_state_update<CB>(
@@ -109,11 +108,16 @@ where
         let offer = peer_connection.create_offer(None).await?;
         peer_connection.set_local_description(offer.clone()).await?;
 
-        let d = Arc::clone(&data_channel);
-        let tunnel = Arc::clone(self);
-
         let preshared_key = StaticSecret::random_from_rng(OsRng);
         let p_key = preshared_key.clone();
+
+        let sender =
+            self.role_state
+                .lock()
+                .register_new_data_channel(resource_id, gateway_id, p_key);
+
+        let d = Arc::clone(&data_channel);
+
         data_channel.on_open(Box::new(move || {
             Box::pin(async move {
                 tracing::trace!("new_data_channel_opened");
@@ -121,60 +125,7 @@ where
                 let d = d.detach().await.expect(
                     "only fails if not opened or not enabled, both of which are always true for us",
                 );
-
-                let index = tunnel.next_index();
-
-                let peer_config = match tunnel
-                    .role_state
-                    .lock()
-                    .create_peer_config_for_new_connection(resource_id, gateway_id, p_key)
-                {
-                    Ok(c) => c,
-                    Err(e) => {
-                        tunnel.peer_connections.lock().remove(&gateway_id);
-
-                        tracing::warn!(err = ?e, "channel_open");
-                        let _ = tunnel.callbacks.on_error(&e);
-                        return;
-                    }
-                };
-
-                let peer = Arc::new(Peer::new(
-                    tunnel.private_key.clone(),
-                    index,
-                    peer_config.clone(),
-                    gateway_id,
-                    None,
-                    tunnel.rate_limiter.clone(),
-                ));
-
-                {
-                    let mut peers_by_ip = tunnel.peers_by_ip.write();
-
-                    for ip in peer_config.ips {
-                        peers_by_ip.insert(
-                            ip,
-                            ConnectedPeer {
-                                inner: peer.clone(),
-                                channel: d.clone(),
-                            },
-                        );
-                    }
-
-                    tunnel
-                        .role_state
-                        .lock()
-                        .gateway_awaiting_connection
-                        .remove(&gateway_id);
-                }
-
-                tokio::spawn(tunnel.start_peer_handler(peer, d));
-
-                tunnel
-                    .role_state
-                    .lock()
-                    .awaiting_connection
-                    .remove(&resource_id);
+                let _ = sender.send(d); // Ignore error if receiver is gone.
             })
         }));
 

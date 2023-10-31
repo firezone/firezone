@@ -13,9 +13,11 @@ use connlib_shared::messages::{
     SecretKey,
 };
 use connlib_shared::{Callbacks, DNS_SENTINEL};
+use either::Either;
 use futures::channel::mpsc::Receiver;
+use futures::channel::oneshot;
 use futures::stream;
-use futures_bounded::{PushError, StreamMap};
+use futures_bounded::{FuturesMap, PushError, StreamMap};
 use hickory_resolver::lookup::Lookup;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
@@ -26,6 +28,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::Instant;
+use webrtc::data::data_channel::DataChannel;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 impl<CB> Tunnel<CB, State>
@@ -142,6 +145,11 @@ pub struct State {
     resources_gateways: HashMap<ResourceId, GatewayId>,
     resources: ResourceTable<ResourceDescription>,
     dns_queries: BoundedQueue<DnsQuery<'static>>,
+
+    awaiting_data_channels: FuturesMap<
+        (ResourceId, GatewayId),
+        Result<(Arc<DataChannel>, StaticSecret), oneshot::Canceled>,
+    >,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,6 +160,29 @@ pub struct AwaitingConnectionDetails {
 }
 
 impl State {
+    pub(crate) fn register_new_data_channel(
+        &mut self,
+        resource: ResourceId,
+        gateway: GatewayId,
+        key: StaticSecret,
+    ) -> oneshot::Sender<Arc<DataChannel>> {
+        let (sender, receiver) = oneshot::channel();
+
+        match self
+            .awaiting_data_channels
+            .try_push((resource, gateway), async move {
+                let channel = receiver.await?;
+
+                Ok((channel, key))
+            }) {
+            Ok(()) => {}
+            Err(_) => {
+                tracing::warn!("Failed to register new data channel");
+            }
+        }
+
+        sender
+    }
     /// Attempt to handle the given packet as a DNS packet.
     ///
     /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
@@ -294,7 +325,7 @@ impl State {
         );
     }
 
-    pub fn create_peer_config_for_new_connection(
+    fn create_peer_config_for_new_connection(
         &mut self,
         resource: ResourceId,
         gateway: GatewayId,
@@ -385,14 +416,47 @@ impl State {
         }
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
+    pub(crate) fn poll_next_event(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Either<Event, InternalEvent>> {
         loop {
+            match self.awaiting_data_channels.poll_unpin(cx) {
+                Poll::Ready(((resource_id, gateway_id), Ok(Ok((channel, p_key))))) => {
+                    let peer_config = match self.create_peer_config_for_new_connection(
+                        resource_id,
+                        gateway_id,
+                        p_key,
+                    ) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            return Poll::Ready(Either::Right(InternalEvent::ConnectionFailed(
+                                gateway_id, e,
+                            )))
+                        }
+                    };
+
+                    self.gateway_awaiting_connection.remove(&gateway_id);
+                    self.awaiting_connection.remove(&resource_id);
+
+                    return Poll::Ready(Either::Right(InternalEvent::NewPeer {
+                        config: peer_config,
+                        id: gateway_id,
+                        channel,
+                    }));
+                }
+                Poll::Ready(_) => {
+                    todo!()
+                }
+                Poll::Pending => {}
+            }
+
             match self.active_candidate_receivers.poll_next_unpin(cx) {
                 Poll::Ready((conn_id, Some(Ok(c)))) => {
-                    return Poll::Ready(Event::SignalIceCandidate {
+                    return Poll::Ready(Either::Left(Event::SignalIceCandidate {
                         conn_id,
                         candidate: c,
-                    })
+                    }))
                 }
                 Poll::Ready((id, Some(Err(e)))) => {
                     tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}");
@@ -423,7 +487,7 @@ impl State {
 
                     let reference = entry.get_mut().total_attemps;
 
-                    return Poll::Ready(Event::ConnectionIntent {
+                    return Poll::Ready(Either::Left(Event::ConnectionIntent {
                         resource: self
                             .resources
                             .get_by_id(&resource)
@@ -431,7 +495,7 @@ impl State {
                             .clone(),
                         connected_gateway_ids: entry.get().gateways.clone(),
                         reference,
-                    });
+                    }));
                 }
 
                 Poll::Ready((id, Some(Err(e)))) => {
@@ -441,7 +505,11 @@ impl State {
                 Poll::Pending => {}
             }
 
-            return self.dns_queries.poll(cx).map(Event::DnsQuery);
+            return self
+                .dns_queries
+                .poll(cx)
+                .map(Event::DnsQuery)
+                .map(Either::Left);
         }
     }
 }
@@ -461,12 +529,22 @@ impl Default for State {
             resources_gateways: Default::default(),
             resources: Default::default(),
             dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
+            awaiting_data_channels: FuturesMap::new(Duration::from_secs(60), 100),
         }
     }
 }
 
 impl RoleState for State {
     type Id = GatewayId;
+}
+
+pub(crate) enum InternalEvent {
+    ConnectionFailed(GatewayId, ConnlibError),
+    NewPeer {
+        config: PeerConfig,
+        id: GatewayId,
+        channel: Arc<DataChannel>,
+    },
 }
 
 pub enum Event {

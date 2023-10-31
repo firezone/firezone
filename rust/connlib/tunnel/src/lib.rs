@@ -12,6 +12,7 @@ use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::SecretKey;
 use connlib_shared::Result;
 use connlib_shared::{messages::Key, CallbackErrorFacade, Callbacks, Error};
+use either::Either;
 use futures::channel::mpsc;
 use futures_util::task::AtomicWaker;
 use futures_util::{SinkExt, StreamExt};
@@ -171,8 +172,41 @@ where
                 continue;
             }
 
-            if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
-                return Poll::Ready(Ok(event));
+            match self.role_state.lock().poll_next_event(cx) {
+                Poll::Ready(Either::Left(event)) => {
+                    return Poll::Ready(Ok(event));
+                }
+                Poll::Ready(Either::Right(client::InternalEvent::NewPeer {
+                    channel,
+                    id,
+                    config,
+                })) => {
+                    let peer = Arc::new(Peer::new(
+                        self.private_key.clone(),
+                        self.next_index(),
+                        config.clone(),
+                        id,
+                        None,
+                        self.rate_limiter.clone(),
+                    ));
+
+                    {
+                        let mut peers_by_ip = self.peers_by_ip.write();
+
+                        for ip in config.ips {
+                            peers_by_ip.insert(
+                                ip,
+                                ConnectedPeer {
+                                    inner: peer.clone(),
+                                    channel: channel.clone(),
+                                },
+                            );
+                        }
+                    }
+
+                    tokio::spawn(self.start_peer_handler(peer, channel));
+                }
+                _ => {}
             }
 
             if let Poll::Ready(Some(conn_id)) =
