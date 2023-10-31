@@ -154,9 +154,29 @@ where
                 }
             }
 
-            match self.poll_next_event_common(cx) {
-                Poll::Ready(event) => return Poll::Ready(Ok(event)),
-                Poll::Pending => {}
+            self.stop_peers();
+
+            if self.reset_rate_limiter(cx).is_ready() {
+                continue;
+            }
+            if self.refresh_peers(cx).is_ready() {
+                continue;
+            }
+
+            if self.refresh_mtu(cx).is_ready() {
+                continue;
+            }
+
+            if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
+                return Poll::Ready(Ok(event));
+            }
+
+            if let Poll::Ready(Some(conn_id)) =
+                self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
+            {
+                self.peers_to_stop.lock().push_back(conn_id);
+
+                continue;
             }
 
             return Poll::Pending;
@@ -247,9 +267,29 @@ where
                 }
             }
 
-            match self.poll_next_event_common(cx) {
-                Poll::Ready(e) => return Poll::Ready(Ok(e)),
-                Poll::Pending => {}
+            self.stop_peers();
+
+            if self.reset_rate_limiter(cx).is_ready() {
+                continue;
+            }
+            if self.refresh_peers(cx).is_ready() {
+                continue;
+            }
+
+            if self.refresh_mtu(cx).is_ready() {
+                continue;
+            }
+
+            if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
+                return Poll::Ready(Ok(event));
+            }
+
+            if let Poll::Ready(Some(conn_id)) =
+                self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
+            {
+                self.peers_to_stop.lock().push_back(conn_id);
+
+                continue;
             }
 
             return Poll::Pending;
@@ -289,36 +329,6 @@ where
             public_key: Key::from(self.public_key).to_string(),
             peers_by_ip,
             peer_connections,
-        }
-    }
-
-    fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<TRoleState::Event> {
-        loop {
-            self.stop_peers();
-            if self.reset_rate_limiter(cx).is_ready() {
-                continue;
-            }
-            if self.refresh_peers(cx).is_ready() {
-                continue;
-            }
-
-            if self.refresh_mtu(cx).is_ready() {
-                continue;
-            }
-
-            if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
-                return Poll::Ready(event);
-            }
-
-            if let Poll::Ready(Some(conn_id)) =
-                self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
-            {
-                self.peers_to_stop.lock().push_back(conn_id);
-
-                continue;
-            }
-
-            return Poll::Pending;
         }
     }
 
