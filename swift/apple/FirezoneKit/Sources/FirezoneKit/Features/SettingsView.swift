@@ -205,22 +205,23 @@ public struct SettingsView: View {
                 }
                 Spacer()
               }
-              Button(
-                "Apply",
-                action: {
-                  self.model.saveAccountSettings()
-                }
-              )
-              .disabled(
-                model.accountSettings.isSavedToDisk
-                  || !model.accountSettings.isValid
-              )
             },
             footer: {
               Text(FootnoteText.forAccount)
                 .foregroundStyle(.secondary)
             }
           )
+          Button(
+            "Apply",
+            action: {
+              self.model.saveAccountSettings()
+            }
+          )
+          .disabled(
+            model.accountSettings.isSavedToDisk
+              || !model.accountSettings.isValid
+          )
+          .padding(.top, 5)
         }
         Spacer()
       }
@@ -287,6 +288,9 @@ public struct SettingsView: View {
               prompt: Text(PlaceholderText.logFilter)
             )
 
+            Text(FootnoteText.forAdvanced)
+              .foregroundStyle(.secondary)
+
             HStack(spacing: 30) {
               Button(
                 "Apply",
@@ -304,9 +308,7 @@ public struct SettingsView: View {
               )
               .disabled(model.advancedSettings == AdvancedSettings.defaultValue)
             }
-
-            Text(FootnoteText.forAdvanced)
-              .foregroundStyle(.secondary)
+            .padding(.top, 5)
           }
           .padding(10)
           Spacer()
