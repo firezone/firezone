@@ -17,7 +17,7 @@ defmodule Web.Policies.Show do
           policy: policy,
           flows: flows,
           page_title: "Policy",
-          flows_enabled?: Config.flows_enabled?()
+          flow_activities_enabled?: Config.flow_activities_enabled?()
         )
 
       {:ok, socket}
@@ -128,7 +128,7 @@ defmodule Web.Policies.Show do
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
-          <:col :let={flow} :if={@flows_enabled?} label="ACTIVITY">
+          <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={link_style()}>
               Show
             </.link>

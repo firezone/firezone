@@ -18,7 +18,7 @@ defmodule Web.Gateways.Show do
           gateway: gateway,
           flows: flows,
           todos_enabled?: Config.todos_enabled?(),
-          flows_enabled?: Config.flows_enabled?()
+          flow_activities_enabled?: Config.flow_activities_enabled?()
         )
 
       {:ok, socket}
@@ -153,7 +153,7 @@ defmodule Web.Gateways.Show do
             </.link>
             (<%= flow.client_remote_ip %>)
           </:col>
-          <:col :let={flow} :if={@flows_enabled?} label="ACTIVITY">
+          <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
             <.link
               navigate={~p"/#{@account}/flows/#{flow.id}"}
               class="font-medium text-blue-600 dark:text-blue-500 hover:underline"

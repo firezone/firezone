@@ -615,9 +615,9 @@ defmodule Domain.Config.Definitions do
   defconfig(:feature_sign_up_enabled, :boolean, default: true)
 
   @doc """
-  Boolean flag to turn UI flows on/off.
+  Boolean flag to turn UI flow activities on/off.
   """
-  defconfig(:feature_flows_enabled, :boolean, default: false)
+  defconfig(:feature_flow_activities_enabled, :boolean, default: false)
 
   @doc """
   Boolean flag to turn UI TODOs on/off.

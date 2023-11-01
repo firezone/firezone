@@ -15,10 +15,11 @@ defmodule Web.Clients.Show do
           client: client,
           flows: flows,
           todos_enabled?: Config.todos_enabled?(),
-          flows_enabled?: Config.flows_enabled?()
+          flow_activities_enabled?: Config.flow_activities_enabled?()
         )
 
-      {:ok, socket}
+      {:ok, socket,
+       temporary_assigns: [flows: [], todos_enabled?: nil, flow_activities_enabled?: nil]}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -125,7 +126,7 @@ defmodule Web.Clients.Show do
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
-          <:col :let={flow} :if={@flows_enabled?} label="ACTIVITY">
+          <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
             <.link
               navigate={~p"/#{@account}/flows/#{flow.id}"}
               class="font-medium text-blue-600 dark:text-blue-500 hover:underline"

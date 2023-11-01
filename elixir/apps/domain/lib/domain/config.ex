@@ -119,8 +119,8 @@ defmodule Domain.Config do
     compile_config!(Definitions, :feature_sign_up_enabled)
   end
 
-  def flows_enabled? do
-    compile_config!(Definitions, :feature_flows_enabled)
+  def flow_activities_enabled? do
+    compile_config!(Definitions, :feature_flow_activities_enabled)
   end
 
   def todos_enabled? do
