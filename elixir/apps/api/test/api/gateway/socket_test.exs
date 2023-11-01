@@ -43,6 +43,22 @@ defmodule API.Gateway.SocketTest do
       assert gateway.last_seen_version == @connlib_version
     end
 
+    test "uses region code to put default coordinates" do
+      token = Fixtures.Gateways.create_token()
+      encrypted_secret = Gateways.encode_token!(token)
+
+      attrs = connect_attrs(token: encrypted_secret)
+
+      connect_info = %{@connect_info | x_headers: [{"x-geo-location-region", "UA"}]}
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert gateway = Map.fetch!(socket.assigns, :gateway)
+      assert gateway.last_seen_remote_ip_location_region == "UA"
+      assert gateway.last_seen_remote_ip_location_city == nil
+      assert gateway.last_seen_remote_ip_location_lat == 49.0
+      assert gateway.last_seen_remote_ip_location_lon == 32.0
+    end
+
     test "propagates trace context" do
       token = Fixtures.Gateways.create_token()
       encrypted_secret = Gateways.encode_token!(token)

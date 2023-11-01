@@ -422,7 +422,6 @@ resource "google_compute_backend_service" "default" {
     "X-Geo-Location-Region:{client_region}",
     "X-Geo-Location-City:{client_city}",
     "X-Geo-Location-Coordinates:{client_city_lat_long}",
-    "X-Client-IP:{client_ip}",
   ]
 
   custom_response_headers = [

@@ -79,6 +79,28 @@ defmodule API.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info(subject))
       assert client = Repo.one(Domain.Clients.Client)
       assert client.id == socket.assigns.client.id
+      assert client.last_seen_remote_ip_location_region == "Ukraine"
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+      assert client.last_seen_remote_ip_location_lat == 50.4333
+      assert client.last_seen_remote_ip_location_lon == 30.5167
+    end
+
+    test "uses region code to put default coordinates" do
+      subject = Fixtures.Auth.create_subject()
+      existing_client = Fixtures.Clients.create_client(subject: subject)
+      {:ok, token} = Auth.create_session_token_from_subject(subject)
+
+      attrs = connect_attrs(token: token, external_id: existing_client.external_id)
+
+      connect_info = %{connect_info(subject) | x_headers: [{"x-geo-location-region", "UA"}]}
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert client = Repo.one(Domain.Clients.Client)
+      assert client.id == socket.assigns.client.id
+      assert client.last_seen_remote_ip_location_region == "UA"
+      assert client.last_seen_remote_ip_location_city == nil
+      assert client.last_seen_remote_ip_location_lat == 49.0
+      assert client.last_seen_remote_ip_location_lon == 32.0
     end
   end
 

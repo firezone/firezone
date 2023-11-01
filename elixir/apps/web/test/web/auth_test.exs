@@ -148,6 +148,30 @@ defmodule Web.AuthTest do
       assert conn.assigns.subject.context.remote_ip_location_lon == 30.5167
     end
 
+    test "puts country coordinates to subject assign", %{
+      conn: conn,
+      admin_subject: subject
+    } do
+      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
+
+      conn =
+        %{
+          conn
+          | path_params: %{"account_id_or_slug" => subject.account.id},
+            remote_ip: {100, 64, 100, 58}
+        }
+        |> put_req_header("x-geo-location-region", "UA")
+        |> delete_req_header("x-geo-location-city")
+        |> delete_req_header("x-geo-location-coordinates")
+        |> put_session(:session_token, session_token)
+        |> fetch_subject_and_account([])
+
+      assert conn.assigns.subject.context.remote_ip_location_region == "UA"
+      assert conn.assigns.subject.context.remote_ip_location_city == nil
+      assert conn.assigns.subject.context.remote_ip_location_lat == 49.0
+      assert conn.assigns.subject.context.remote_ip_location_lon == 32.0
+    end
+
     test "does not authenticate to an incorrect account", %{conn: conn, admin_subject: subject} do
       {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
 
@@ -294,6 +318,34 @@ defmodule Web.AuthTest do
       assert socket.assigns.subject.context.remote_ip_location_city == "Kyiv"
       assert socket.assigns.subject.context.remote_ip_location_lat == 50.4333
       assert socket.assigns.subject.context.remote_ip_location_lon == 30.5167
+    end
+
+    test "puts country coordinates to subject context", %{
+      conn: conn,
+      admin_subject: subject
+    } do
+      socket = %Phoenix.LiveView.Socket{
+        private: %{
+          connect_info: %{
+            user_agent: subject.context.user_agent,
+            peer_data: %{address: {100, 64, 100, 58}},
+            x_headers: [
+              {"x-geo-location-region", "UA"}
+            ]
+          }
+        }
+      }
+
+      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
+      session = conn |> put_session(:session_token, session_token) |> get_session()
+      params = %{"account_id_or_slug" => subject.account.id}
+
+      assert {:cont, socket} = on_mount(:mount_subject, params, session, socket)
+
+      assert socket.assigns.subject.context.remote_ip_location_region == "UA"
+      assert socket.assigns.subject.context.remote_ip_location_city == nil
+      assert socket.assigns.subject.context.remote_ip_location_lat == 49.0
+      assert socket.assigns.subject.context.remote_ip_location_lon == 32.0
     end
 
     test "assigns nil to subject assign if there isn't a valid session_token", %{

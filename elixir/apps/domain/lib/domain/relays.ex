@@ -329,9 +329,13 @@ defmodule Domain.Relays do
     |> Enum.group_by(fn relay ->
       {relay.last_seen_remote_ip_location_lat, relay.last_seen_remote_ip_location_lon}
     end)
-    |> Enum.map(fn {{relay_lat, relay_lon}, relay} ->
-      distance = Geo.distance({lat, lon}, {relay_lat, relay_lon})
-      {distance, relay}
+    |> Enum.map(fn
+      {{nil, nil}, relay} ->
+        {Geo.fetch_radius_of_earth_km!(), relay}
+
+      {{relay_lat, relay_lon}, relay} ->
+        distance = Geo.distance({lat, lon}, {relay_lat, relay_lon})
+        {distance, relay}
     end)
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.take(2)
