@@ -121,10 +121,11 @@ public struct SettingsView: View {
 
   struct FootnoteText {
     static let forAccount = "Your account ID is provided by your admin"
-    static let forAdvanced = """
-      Use the default values unless you know what you're doing. \
-      Changing them might disrupt access to your Firezone resources.
-      """
+    static let forAdvanced = try! AttributedString(
+      markdown: """
+        **WARNING:** These settings are intended for internal debug purposes **only**. \
+        Changing these is not supported and will disrupt access to your Firezone resources.
+        """)
   }
 
   public init(model: SettingsViewModel) {
