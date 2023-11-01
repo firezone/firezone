@@ -11,5 +11,5 @@ ip_network = "0.4"
 url = { version = "2.3.1", default-features = false }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tracing = { workspace = true }
-clap = { version = "4.3", features = ["derive",  "env"] }
+clap = { version = "4.4", features = ["derive",  "env"] }
 ctrlc  = "3.4"
