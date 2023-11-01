@@ -1,8 +1,8 @@
 **Note**: 🚧 The `main` branch is undergoing major restructuring in preparation
-for the 1.0 release 🚧.
+for the release of Firezone 1.0 🚧.
 
-See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) for
-the branch tracking the latest 0.7 release.
+See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) to
+track the latest changes to Firezone 0.7.
 
 [Read the 1.0 announcement](https://www.firezone.dev/blog/firezone-1-0).
 
@@ -30,51 +30,61 @@ the branch tracking the latest 0.7 release.
   </a>
 </p>
 
-## [Firezone](https://www.firezone.dev/?utm_source=readme) is a self-hosted VPN server and Linux firewall
+## [Firezone](https://www.firezone.dev/?utm_source=readme): A blazing-fast alternative to legacy VPNs
 
-- Manage remote access through an intuitive web interface and CLI utility.
-- [Deploy on your own infrastructure](https://docs.firezone.dev/deploy?utm_source=readme)
-  to keep control of your network traffic.
-- Built on [WireGuard®](https://www.wireguard.com/) to be stable, performant,
-  and lightweight.
+Firezone is an open source platform to securely manage remote access for
+any-sized organization.
 
-![Firezone Architecture](https://user-images.githubusercontent.com/52545545/183804397-ae81ca4e-6972-41f9-80d4-b431a077119d.png)
-
-## Get Started
-
-Follow our [deploy guide](https://docs.firezone.dev/deploy) to install your
-self-hosted instance of Firezone.
-
-Or, if you're on a
-[supported platform](https://docs.firezone.dev/deploy/docker/supported-platforms?utm_source=readme),
-try our
-[auto-install script](https://docs.firezone.dev/deploy/docker/#option-1-automatic-install).
-
-Using Firezone in production at your organization? Contact us to learn about our
-[Enterprise Plan](https://www.firezone.dev/contact/sales?utm_source=readme).
+<!-- TODO: New intro usage video!
+![firezone-usage](https://user-images.githubusercontent.com/52545545/147392573-fe4cb936-a0a8-436f-a69b-c0a9587de58b.gif)
+ -->
 
 ## Features
 
-![firezone-usage](https://user-images.githubusercontent.com/52545545/147392573-fe4cb936-a0a8-436f-a69b-c0a9587de58b.gif)
+Unlike most VPNs, Firezone is:
 
-- **Fast:** Uses WireGuard® to be
+- **Insanely Fast:** Built on WireGuard® to be
   [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
-- **SSO Integration:** Authenticate using any identity provider with an OpenID
-  Connect (OIDC) connector.
-- **Containerized:** All dependencies are bundled via Docker.
-- **Simple:** Takes minutes to set up. Manage via a simple CLI.
-- **Secure:** Runs unprivileged. HTTPS enforced. Encrypted cookies.
-- **Firewall included:** Uses Linux [nftables](https://netfilter.org) to block
-  unwanted egress traffic.
-
-### Anti-features
+- **Scalable:** Deploy two or more gateways for automatic load balancing and
+  failover across them.
+- **Private:** Packets never route through Firezone's Relays (optional).
+- **Flexible:** Authenticate users via email, Google Workspace, or any
+  OIDC-compatible identity provider.
+- **Simple:** Deploy gateways and configure access in minutes with a snappy
+  admin UI.
 
 Firezone is **not:**
 
-- An inbound firewall
 - A tool for creating mesh networks
-- A full-featured router
+- A full-featured router or firewall
 - An IPSec or OpenVPN server
+
+## Contents of this repository
+
+This is a monorepo containing the full Firezone product, marketing website, and
+product documentation, organized as follows:
+
+- [elixir/](./elixir): Control plane API and admin UI
+- [rust/](./rust): Data plane components and Linux / Windows clients
+- [swift/](./swift/apple): macOS / iOS clients
+- [kotlin/](./kotlin/android): Android / ChromeOS clients
+- [website/](./website): Marketing website and product documentation
+
+## Frequently asked questions (FAQ)
+
+> Can I self-host Firezone?
+
+<!-- FIXME -->
+
+> How do I upgrade from 0.7?
+
+<!-- FIXME -->
+
+<!-- TODO
+> What's your pricing structure like?
+
+Please see our pricing page at https://www.firezone.dev/pricing?utm_source=readme
+-->
 
 ## Documentation
 
@@ -93,22 +103,20 @@ community support options:
 1. [Open a PR](https://github.com/firezone/firezone/issues): Contribute a bugfix
    or make a contribution to Firezone.
 
+<!-- TODO
 If you need help deploying or maintaining Firezone for your business, consider
 [contacting us about our paid support plan](https://www.firezone.dev/contact/sales?utm_source=readme).
+-->
+
+<!-- TODO
+## Architecture
+
+![Firezone Architecture](https://user-images.githubusercontent.com/52545545/183804397-ae81ca4e-6972-41f9-80d4-b431a077119d.png)
+-->
 
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=firezone/firezone&type=Date)](https://star-history.com/#firezone/firezone&Date)
-
-## Package Repository
-
-[![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith&style=for-the-badge)](https://cloudsmith.com)
-
-Package repository hosting is graciously provided by
-[Cloudsmith](https://cloudsmith.com). Cloudsmith is the only fully hosted,
-cloud-native, universal package management solution, that enables your
-organization to create, store and share packages in any format, to any place,
-with total confidence.
 
 ## Developing and Contributing
 
