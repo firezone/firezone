@@ -130,11 +130,14 @@ jobs:
       matrix:
         arch:
           - target: x86_64-unknown-linux-musl
+            shortname: x64
             platform: linux/amd64
           - target: aarch64-unknown-linux-musl # E.g. AWS Graviton
+            shortname: arm64
             platform: linux/arm64
           - target: armv7-unknown-linux-musleabihf # E.g. Raspberry Pi
             platform: linux/arm/v7
+            shortname: arm
           # Requires ring v0.17 which a number of our dependencies don't yet support
           # - target: mips64-unknown-linux-muslabi64 # E.g. UniFi Routers
           #   platform: linux/mips64le
@@ -146,7 +149,7 @@ jobs:
           - package: firezone-gateway
             artifact: gateway
     env:
-      BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.target }}
+      BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
@@ -156,15 +159,10 @@ jobs:
         with:
           tool: cross
       - name: Build release binaries
-        env:
-          CARGO_OUTPUT_FILE:
-            target/${{ matrix.arch.target }}/release/${{ matrix.name.package }}
         run: |
-          dest="$BINARY_DEST_PATH-$VERSION"
           cross build --release -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
-          mv $CARGO_OUTPUT_FILE $dest
-          cp $dest ${{ matrix.name.package }}
-          sha256sum $dest > $dest.sha256sum.txt
+          cp target/${{ matrix.arch.target }}/release/${{ matrix.name.package }} $BINARY_DEST_PATH
+          sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
       - name: Push binaries
         uses: softprops/action-gh-release@v1
         with:
