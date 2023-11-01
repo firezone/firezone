@@ -247,8 +247,14 @@ defmodule Web.Auth do
   """
   def redirect_if_user_is_authenticated(%Plug.Conn{} = conn, _opts) do
     if conn.assigns[:subject] do
+      client_platform =
+        Plug.Conn.get_session(conn, :client_platform) || conn.query_params["client_platform"]
+
+      client_csrf_token =
+        Plug.Conn.get_session(conn, :client_csrf_token) || conn.query_params["client_csrf_token"]
+
       conn
-      |> Phoenix.Controller.redirect(to: signed_in_path(conn.assigns.subject))
+      |> signed_in_redirect(conn.assigns[:subject], client_platform, client_csrf_token)
       |> Plug.Conn.halt()
     else
       conn

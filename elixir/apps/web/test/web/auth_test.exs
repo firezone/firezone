@@ -197,14 +197,28 @@ defmodule Web.AuthTest do
   end
 
   describe "redirect_if_user_is_authenticated/2" do
-    test "redirects if user is authenticated", %{conn: conn, admin_subject: subject} do
+    test "redirects if user is authenticated to the signed in path", %{
+      conn: conn,
+      admin_subject: subject
+    } do
       conn =
         conn
         |> assign(:subject, subject)
+        |> fetch_query_params()
         |> redirect_if_user_is_authenticated([])
 
       assert conn.halted
       assert redirected_to(conn) == signed_in_path(subject)
+    end
+
+    test "redirects clients to platform specific urls", %{conn: conn, admin_subject: subject} do
+      conn =
+        %{conn | query_params: %{"client_platform" => "apple"}}
+        |> assign(:subject, subject)
+        |> redirect_if_user_is_authenticated([])
+
+      assert conn.halted
+      assert redirected_to(conn) =~ "firezone://handle_client_auth_callback"
     end
 
     test "does not redirect if user is not authenticated", %{conn: conn} do
