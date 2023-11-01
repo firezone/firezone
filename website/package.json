@@ -23,7 +23,7 @@
     "autoprefixer": "10.4.16",
     "fast-xml-parser": "^4.3.2",
     "flowbite": "^1.8.1",
-    "flowbite-react": "^0.4.11",
+    "flowbite-react": "^0.6.4",
     "highlight.js": "^11.9.0",
     "md5": "^2.3.0",
     "next": "~13.4.19",
