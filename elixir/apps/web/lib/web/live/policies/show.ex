@@ -1,7 +1,7 @@
 defmodule Web.Policies.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Policies, Flows}
+  alias Domain.{Policies, Flows, Config}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
@@ -12,7 +12,15 @@ defmodule Web.Policies.Show do
            Flows.list_flows_for(policy, socket.assigns.subject,
              preload: [client: [:actor], gateway: [:group]]
            ) do
-      {:ok, assign(socket, policy: policy, flows: flows, page_title: "Policy")}
+      socket =
+        assign(socket,
+          policy: policy,
+          flows: flows,
+          page_title: "Policy",
+          flow_activities_enabled?: Config.flow_activities_enabled?()
+        )
+
+      {:ok, socket}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end
@@ -120,7 +128,7 @@ defmodule Web.Policies.Show do
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
-          <:col :let={flow} label="ACTIVITY">
+          <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={link_style()}>
               Show
             </.link>

@@ -113,8 +113,18 @@ defmodule Domain.Config do
     end
   end
 
+  ## Feature flag helpers
+
   def sign_up_enabled? do
     compile_config!(Definitions, :feature_sign_up_enabled)
+  end
+
+  def flow_activities_enabled? do
+    compile_config!(Definitions, :feature_flow_activities_enabled)
+  end
+
+  def todos_enabled? do
+    compile_config!(Definitions, :feature_todos_enabled)
   end
 
   ## Test helpers
