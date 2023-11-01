@@ -54,7 +54,7 @@ defmodule Domain.MixProject do
       # Auth-related deps
       {:plug_crypto, "~> 2.0"},
       {:openid_connect, github: "firezone/openid_connect", branch: "master"},
-      {:argon2_elixir, "~> 3.0"},
+      {:argon2_elixir, "~> 4.0"},
 
       # Erlang Clustering
       {:libcluster, "~> 3.3"},
