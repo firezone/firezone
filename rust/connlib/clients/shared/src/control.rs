@@ -63,10 +63,6 @@ fn create_resolver(
     for srv in dns_servers.iter() {
         let name_server = match srv {
             DnsServer::IpPort(srv) => NameServerConfig::new(srv.address, Protocol::Udp),
-            _ => {
-                tracing::warn!("DNS protocol not yet supported: {srv:?}");
-                continue;
-            }
         };
 
         resolver_config.add_name_server(name_server);

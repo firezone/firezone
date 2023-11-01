@@ -205,7 +205,6 @@ pub struct ResourceDescriptionCidr {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(tag = "protocol", rename_all = "snake_case")]
-#[non_exhaustive]
 pub enum DnsServer {
     IpPort(IpDnsServer),
 }
