@@ -2,6 +2,8 @@ defmodule Domain.Relays.Relay do
   use Domain, :schema
 
   schema "relays" do
+    field :name, :string
+
     field :ipv4, Domain.Types.IP
     field :ipv6, Domain.Types.IP
 
