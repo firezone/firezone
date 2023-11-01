@@ -115,16 +115,25 @@ defmodule Domain.Config do
 
   ## Feature flag helpers
 
+  defp feature_enabled?(feature) do
+    compile_config!(Definitions, feature) ||
+      compile_config!(Definitions, :all_features_enabled, %{})
+  end
+
   def sign_up_enabled? do
-    compile_config!(Definitions, :feature_sign_up_enabled)
+    feature_enabled?(:feature_sign_up_enabled)
   end
 
   def flow_activities_enabled? do
-    compile_config!(Definitions, :feature_flow_activities_enabled)
+    feature_enabled?(:feature_flow_activities_enabled)
   end
 
   def todos_enabled? do
-    compile_config!(Definitions, :feature_todos_enabled)
+    feature_enabled?(:feature_todos_enabled)
+  end
+
+  def traffic_filters_enabled? do
+    feature_enabled?(:feature_traffic_filters_enabled)
   end
 
   ## Test helpers

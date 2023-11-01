@@ -1,14 +1,13 @@
 defmodule Web.Resources.New do
   use Web, :live_view
   import Web.Resources.Components
-  alias Domain.Gateways
-  alias Domain.Resources
+  alias Domain.{Gateways, Resources}
 
   def mount(params, _session, socket) do
     with {:ok, gateway_groups} <- Gateways.list_groups(socket.assigns.subject) do
       changeset = Resources.new_resource(socket.assigns.account)
 
-      {:ok, assign(socket, params: Map.take(params, ["site_id"])),
+      {:ok, assign(socket, params: Map.take(params, ["site_id"], traffic_filters_enabled?: true)),
        temporary_assigns: [
          gateway_groups: gateway_groups,
          form: to_form(changeset)
@@ -51,7 +50,7 @@ defmodule Web.Resources.New do
               phx-debounce="300"
             />
 
-            <.filters_form form={@form[:filters]} />
+            <.filters_form :if={@traffic_filters_enabled?} form={@form[:filters]} />
 
             <.connections_form
               :if={is_nil(@params["site_id"])}
