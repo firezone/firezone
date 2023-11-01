@@ -821,6 +821,28 @@ defmodule Domain.GatewaysTest do
       assert gateway.id in [gateway_1.id, gateway_2.id, gateway_3.id]
     end
 
+    test "prioritizes gateways with known location" do
+      gateway_1 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      gateway_2 =
+        Fixtures.Gateways.create_gateway(
+          last_seen_remote_ip_location_lat: nil,
+          last_seen_remote_ip_location_lon: nil
+        )
+
+      gateways = [
+        gateway_1,
+        gateway_2
+      ]
+
+      assert gateway = load_balance_gateways({32.2029, -80.0131}, gateways)
+      assert gateway.id == gateway_1.id
+    end
+
     test "returns gateways in two closest regions to a given location" do
       # Moncks Corner, South Carolina
       gateway_us_east_1 =

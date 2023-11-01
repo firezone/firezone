@@ -43,6 +43,22 @@ defmodule API.Relay.SocketTest do
       assert relay.last_seen_version == @connlib_version
     end
 
+    test "uses region code to put default coordinates" do
+      token = Fixtures.Relays.create_token()
+      encrypted_secret = Relays.encode_token!(token)
+
+      attrs = connect_attrs(token: encrypted_secret)
+
+      connect_info = %{@connect_info | x_headers: [{"x-geo-location-region", "UA"}]}
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert relay = Map.fetch!(socket.assigns, :relay)
+      assert relay.last_seen_remote_ip_location_region == "UA"
+      assert relay.last_seen_remote_ip_location_city == nil
+      assert relay.last_seen_remote_ip_location_lat == 49.0
+      assert relay.last_seen_remote_ip_location_lon == 32.0
+    end
+
     test "propagates trace context" do
       token = Fixtures.Relays.create_token()
       encrypted_secret = Relays.encode_token!(token)

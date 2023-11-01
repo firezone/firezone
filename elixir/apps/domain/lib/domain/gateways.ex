@@ -350,9 +350,13 @@ defmodule Domain.Gateways do
     |> Enum.group_by(fn gateway ->
       {gateway.last_seen_remote_ip_location_lat, gateway.last_seen_remote_ip_location_lon}
     end)
-    |> Enum.map(fn {{gateway_lat, gateway_lon}, gateway} ->
-      distance = Geo.distance({lat, lon}, {gateway_lat, gateway_lon})
-      {distance, gateway}
+    |> Enum.map(fn
+      {{nil, nil}, gateway} ->
+        {Geo.fetch_radius_of_earth_km!(), gateway}
+
+      {{gateway_lat, gateway_lon}, gateway} ->
+        distance = Geo.distance({lat, lon}, {gateway_lat, gateway_lon})
+        {distance, gateway}
     end)
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.at(0)

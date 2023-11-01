@@ -16,7 +16,8 @@ resource "google_artifact_registry_repository" "firezone" {
   format = "DOCKER"
 
   docker_config {
-    immutable_tags = false
+    # It's false by default but setting it explicitly produces unwanted state diff
+    # immutable_tags = false
   }
 
   cleanup_policies {

@@ -811,6 +811,29 @@ defmodule Domain.RelaysTest do
       assert Enum.all?(relays, &(&1.id in [relay_1.id, relay_2.id, relay_3.id]))
     end
 
+    test "prioritizes relays with known location" do
+      relay_1 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: 33.2029,
+          last_seen_remote_ip_location_lon: -80.0131
+        )
+
+      relay_2 =
+        Fixtures.Relays.create_relay(
+          last_seen_remote_ip_location_lat: nil,
+          last_seen_remote_ip_location_lon: nil
+        )
+
+      relays = [
+        relay_1,
+        relay_2
+      ]
+
+      assert [fetched_relay1, fetched_relay2] = load_balance_relays({32.2029, -80.0131}, relays)
+      assert fetched_relay1.id == relay_1.id
+      assert fetched_relay2.id == relay_2.id
+    end
+
     test "returns at least two relays even if they are at the same location" do
       # Moncks Corner, South Carolina
       relay_us_east_1 =

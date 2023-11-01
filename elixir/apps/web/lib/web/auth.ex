@@ -166,18 +166,26 @@ defmodule Web.Auth do
   defp get_load_balancer_ip_location(%Plug.Conn{} = conn) do
     location_region =
       case Plug.Conn.get_req_header(conn, "x-geo-location-region") do
+        ["" | _] -> nil
         [location_region | _] -> location_region
         [] -> nil
       end
 
     location_city =
       case Plug.Conn.get_req_header(conn, "x-geo-location-city") do
+        ["" | _] -> nil
         [location_city | _] -> location_city
         [] -> nil
       end
 
     {location_lat, location_lon} =
       case Plug.Conn.get_req_header(conn, "x-geo-location-coordinates") do
+        ["" | _] ->
+          {nil, nil}
+
+        ["," | _] ->
+          {nil, nil}
+
         [coordinates | _] ->
           [lat, lon] = String.split(coordinates, ",", parts: 2)
           lat = String.to_float(lat)
@@ -188,24 +196,32 @@ defmodule Web.Auth do
           {nil, nil}
       end
 
+    {location_lat, location_lon} =
+      Domain.Geo.maybe_put_default_coordinates(location_region, {location_lat, location_lon})
+
     {location_region, location_city, {location_lat, location_lon}}
   end
 
   defp get_load_balancer_ip_location(x_headers) do
     location_region =
       case get_socket_header(x_headers, "x-geo-location-region") do
+        {"x-geo-location-region", ""} -> nil
         {"x-geo-location-region", location_region} -> location_region
         _other -> nil
       end
 
     location_city =
       case get_socket_header(x_headers, "x-geo-location-city") do
+        {"x-geo-location-city", ""} -> nil
         {"x-geo-location-city", location_city} -> location_city
         _other -> nil
       end
 
     {location_lat, location_lon} =
       case get_socket_header(x_headers, "x-geo-location-coordinates") do
+        {"x-geo-location-coordinates", ""} ->
+          {nil, nil}
+
         {"x-geo-location-coordinates", coordinates} ->
           [lat, lon] = String.split(coordinates, ",", parts: 2)
           lat = String.to_float(lat)
@@ -215,6 +231,9 @@ defmodule Web.Auth do
         _other ->
           {nil, nil}
       end
+
+    {location_lat, location_lon} =
+      Domain.Geo.maybe_put_default_coordinates(location_region, {location_lat, location_lon})
 
     {location_region, location_city, {location_lat, location_lon}}
   end
