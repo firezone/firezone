@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use connlib_shared::{Callbacks, Error};
 use futures_util::SinkExt;
@@ -19,10 +20,9 @@ where
     ) {
         loop {
             let Some(device) = self.device.read().clone() else {
-                let err = Error::NoIface;
-                tracing::error!(?err);
-                let _ = self.callbacks().on_disconnect(Some(&err));
-                break;
+                tracing::debug!("Device temporarily not available");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                continue;
             };
             let device_io = device.io;
 

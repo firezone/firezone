@@ -423,9 +423,7 @@ where
 
             if self.mtu_refresh_interval.lock().poll_tick(cx).is_ready() {
                 let Some(device) = self.device.read().clone() else {
-                    let err = Error::ControlProtocolError;
-                    tracing::error!(?err, "get_iface_config");
-                    let _ = self.callbacks.on_error(&err);
+                    tracing::debug!("Device temporarily not available");
                     continue;
                 };
 
