@@ -122,8 +122,8 @@ imposed by Apple and Google:
 - Android / ChromeOS
 
 Because it's impossible to select which client version to install from a
-particular app store, building Firezone entirely from source is the only to way
-self-host Firezone at this time.
+particular app store, building and distributing Firezone from source is the only
+to way self-host Firezone at this time.
 
 Otherwise, if you're hobbyist or developer and are looking to spin it up locally
 to contribute or experiment with, see [CONTRIBUTING.md](CONTRIBUTING.md).
