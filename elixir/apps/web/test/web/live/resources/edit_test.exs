@@ -7,12 +7,20 @@ defmodule Web.Live.Resources.EditTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
-    resource = Fixtures.Resources.create_resource(account: account, subject: subject)
+    group = Fixtures.Gateways.create_group(account: account, subject: subject)
+
+    resource =
+      Fixtures.Resources.create_resource(
+        account: account,
+        subject: subject,
+        connections: [%{gateway_group_id: group.id}]
+      )
 
     %{
       account: account,
       actor: actor,
       identity: identity,
+      group: group,
       resource: resource
     }
   end
@@ -105,6 +113,35 @@ defmodule Web.Live.Resources.EditTest do
       |> Enum.sort()
 
     assert find_inputs(form) == expected_inputs
+  end
+
+  test "renders form without connections when site is set by query param", %{
+    account: account,
+    group: group,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{group}")
+
+    form = form(lv, "form")
+
+    assert find_inputs(form) == [
+             "resource[filters][all][enabled]",
+             "resource[filters][all][protocol]",
+             "resource[filters][icmp][enabled]",
+             "resource[filters][icmp][protocol]",
+             "resource[filters][tcp][enabled]",
+             "resource[filters][tcp][ports]",
+             "resource[filters][tcp][protocol]",
+             "resource[filters][udp][enabled]",
+             "resource[filters][udp][ports]",
+             "resource[filters][udp][protocol]",
+             "resource[name]"
+           ]
   end
 
   test "renders changeset errors on input change", %{
@@ -216,6 +253,34 @@ defmodule Web.Live.Resources.EditTest do
     assert Map.keys(saved_filters) == Map.keys(attrs.filters)
     assert saved_filters.tcp == attrs.filters.tcp
     assert saved_filters.udp == attrs.filters.udp
+  end
+
+  test "redirects to a site when site_id query param is set", %{
+    account: account,
+    identity: identity,
+    group: group,
+    resource: resource,
+    conn: conn
+  } do
+    attrs = %{
+      name: "foobar.com",
+      filters: %{
+        icmp: %{enabled: true},
+        tcp: %{ports: "8080, 4443"},
+        udp: %{ports: "4000 - 5000"}
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{group}")
+
+    assert lv
+           |> form("form", resource: attrs)
+           |> render_submit() ==
+             {:error,
+              {:live_redirect, %{to: ~p"/#{account}/sites/#{group}?#resources", kind: :push}}}
   end
 
   test "disables all filters on a resource when 'Permit All' filter is selected", %{
