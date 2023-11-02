@@ -40,6 +40,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       return
     }
 
+    let providerConfig = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration
+
+    guard let connlibLogFilter = providerConfig?[TunnelProviderKeys.keyConnlibLogFilter] as? String
+    else {
+      Self.logger.error("connlibLogFilter is missing")
+      completionHandler(
+        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("connlibLogFilter"))
+      return
+    }
+
     Task {
       let keychain = Keychain()
       guard let token = await keychain.load(persistentRef: tokenRef) else {
@@ -48,7 +58,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       }
 
       let adapter = Adapter(
-        controlPlaneURLString: controlPlaneURLString, token: token, packetTunnelProvider: self)
+        controlPlaneURLString: controlPlaneURLString, token: token, logFilter: connlibLogFilter,
+        packetTunnelProvider: self)
       self.adapter = adapter
       do {
         try adapter.start { error in

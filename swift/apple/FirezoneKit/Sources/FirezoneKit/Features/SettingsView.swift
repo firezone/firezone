@@ -18,46 +18,84 @@ enum SettingsViewError: Error {
 public final class SettingsViewModel: ObservableObject {
   @Dependency(\.authStore) private var authStore
 
-  @Published var settings: Settings
+  @Published var accountSettings: AccountSettings
+  @Published var advancedSettings: AdvancedSettings
 
   public var onSettingsSaved: () -> Void = unimplemented()
   private var cancellables = Set<AnyCancellable>()
 
   public init() {
-    settings = Settings()
-    load()
+    accountSettings = AccountSettings()
+    advancedSettings = AdvancedSettings.defaultValue
+    loadAccountSettings()
+    loadAdvancedSettings()
   }
 
-  func load() {
+  func loadAccountSettings() {
     Task {
       authStore.tunnelStore.$tunnelAuthStatus
         .filter { $0.isInitialized }
         .receive(on: RunLoop.main)
         .sink { [weak self] tunnelAuthStatus in
           guard let self = self else { return }
-          self.settings = Settings(accountId: tunnelAuthStatus.accountId() ?? "")
+          self.accountSettings = AccountSettings(accountId: tunnelAuthStatus.accountId() ?? "")
         }
         .store(in: &cancellables)
     }
   }
 
-  func save() {
+  func saveAccountSettings() {
     Task {
       let accountId = await authStore.loginStatus.accountId
-      if accountId == settings.accountId {
+      if accountId == accountSettings.accountId {
         // Not changed
+        await MainActor.run {
+          accountSettings.isSavedToDisk = true
+        }
         return
       }
-      let tunnelAuthStatus: TunnelAuthStatus = await {
-        if settings.accountId.isEmpty {
-          return .accountNotSetup
-        } else {
-          return await authStore.tunnelAuthStatusForAccount(accountId: settings.accountId)
-        }
-      }()
-      try await authStore.tunnelStore.setAuthStatus(tunnelAuthStatus)
-      onSettingsSaved()
+      try await updateTunnelAuthStatus(accountId: accountSettings.accountId)
+      await MainActor.run {
+        accountSettings.isSavedToDisk = true
+      }
     }
+  }
+
+  func loadAdvancedSettings() {
+    advancedSettings = authStore.tunnelStore.advancedSettings() ?? AdvancedSettings.defaultValue
+  }
+
+  func saveAdvancedSettings() {
+    Task {
+      guard let authBaseURL = URL(string: advancedSettings.authBaseURLString) else {
+        fatalError("Saved authBaseURL is invalid")
+      }
+      try await authStore.tunnelStore.saveAdvancedSettings(advancedSettings)
+      await MainActor.run {
+        advancedSettings.isSavedToDisk = true
+      }
+      var isChanged = false
+      await authStore.setAuthBaseURL(authBaseURL, isChanged: &isChanged)
+      if isChanged {
+        try await updateTunnelAuthStatus(
+          accountId: authStore.tunnelStore.tunnelAuthStatus.accountId() ?? "")
+      }
+    }
+  }
+
+  // updateTunnelAuthStatus:
+  // When the authBaseURL or the accountId changes, we should update the signed-in-ness.
+  // This is done by searching the keychain for an entry with the authBaseURL+accountId
+  // combination. If an entry was found, we consider that entry to mean we're logged in.
+  func updateTunnelAuthStatus(accountId: String) async throws {
+    let tunnelAuthStatus: TunnelAuthStatus = await {
+      if accountId.isEmpty {
+        return .accountNotSetup
+      } else {
+        return await authStore.tunnelAuthStatusForAccount(accountId: accountId)
+      }
+    }()
+    try await authStore.tunnelStore.saveAuthStatus(tunnelAuthStatus)
   }
 }
 
@@ -67,7 +105,6 @@ public struct SettingsView: View {
   @ObservedObject var model: SettingsViewModel
   @Environment(\.dismiss) var dismiss
 
-  let teamIdAllowedCharacterSet: CharacterSet
   @State private var isExportingLogs = false
 
   #if os(iOS)
@@ -75,125 +112,335 @@ public struct SettingsView: View {
     @State private var isPresentingExportLogShareSheet = false
   #endif
 
+  struct PlaceholderText {
+    static let accountId = "account-id"
+    static let authBaseURL = "Admin portal base URL"
+    static let apiURL = "Control plane WebSocket URL"
+    static let logFilter = "RUST_LOG-style filter string"
+  }
+
+  struct FootnoteText {
+    static let forAccount = "Your account ID is provided by your admin"
+    static let forAdvanced = try! AttributedString(
+      markdown: """
+        **WARNING:** These settings are intended for internal debug purposes **only**. \
+        Changing these is not supported and will disrupt access to your Firezone resources.
+        """)
+  }
+
   public init(model: SettingsViewModel) {
     self.model = model
-    self.teamIdAllowedCharacterSet = {
-      var pathAllowed = CharacterSet.urlPathAllowed
-      pathAllowed.remove("/")
-      return pathAllowed
-    }()
   }
 
   public var body: some View {
     #if os(iOS)
-      ios
+      NavigationView {
+        TabView {
+          accountTab
+            .tabItem {
+              Image(systemName: "person.3.fill")
+              Text("Account")
+            }
+            .badge(model.accountSettings.isValid ? nil : "!")
+
+          advancedTab
+            .tabItem {
+              Image(systemName: "slider.horizontal.3")
+              Text("Advanced")
+            }
+            .badge(model.advancedSettings.isValid ? nil : "!")
+        }
+        .toolbar {
+          ToolbarItem(placement: .navigationBarTrailing) {
+            Button("Save") {
+              self.saveSettings()
+            }
+            .disabled(
+              (model.accountSettings.isSavedToDisk && model.advancedSettings.isSavedToDisk)
+                || !model.accountSettings.isValid
+                || !model.advancedSettings.isValid
+            )
+          }
+          ToolbarItem(placement: .navigationBarLeading) {
+            Button("Cancel") {
+              self.loadSettings()
+            }
+          }
+        }
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
+      }
     #elseif os(macOS)
-      mac
+      VStack {
+        TabView {
+          accountTab
+            .tabItem {
+              Text("Account")
+            }
+          advancedTab
+            .tabItem {
+              Text("Advanced")
+            }
+        }
+        .padding(20)
+      }
+      .onDisappear(perform: { self.loadSettings() })
     #else
       #error("Unsupported platform")
     #endif
   }
 
-  #if os(iOS)
-    private var ios: some View {
-      NavigationView {
-        VStack(spacing: 10) {
-          form
-          ExportLogsButton(isProcessing: $isExportingLogs) {
-            self.isExportingLogs = true
-            Task {
-              self.logTempZipFileURL = try await createLogZipBundle()
-              self.isPresentingExportLogShareSheet = true
+  private var accountTab: some View {
+    #if os(macOS)
+      VStack {
+        Spacer()
+        Form {
+          Section(
+            content: {
+              HStack(spacing: 15) {
+                Spacer()
+                Text("Account ID:")
+                TextField(
+                  "",
+                  text: Binding(
+                    get: { model.accountSettings.accountId },
+                    set: { model.accountSettings.accountId = $0 }
+                  ),
+                  prompt: Text(PlaceholderText.accountId)
+                )
+                .frame(maxWidth: 240)
+                .onSubmit {
+                  self.model.saveAccountSettings()
+                }
+                Spacer()
+              }
+            },
+            footer: {
+              Text(FootnoteText.forAccount)
+                .foregroundStyle(.secondary)
             }
+          )
+          Button(
+            "Apply",
+            action: {
+              self.model.saveAccountSettings()
+            }
+          )
+          .disabled(
+            model.accountSettings.isSavedToDisk
+              || !model.accountSettings.isValid
+          )
+          .padding(.top, 5)
+        }
+        Spacer()
+      }
+    #elseif os(iOS)
+      VStack {
+        Form {
+          Section(
+            content: {
+              HStack(spacing: 15) {
+                Text("Account ID")
+                  .foregroundStyle(.secondary)
+                TextField(
+                  PlaceholderText.accountId,
+                  text: Binding(
+                    get: { model.accountSettings.accountId },
+                    set: { model.accountSettings.accountId = $0 }
+                  )
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+              }
+            },
+            header: { Text("Account") },
+            footer: { Text(FootnoteText.forAccount) }
+          )
+        }
+      }
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
+
+  private var advancedTab: some View {
+    #if os(macOS)
+      VStack {
+        Spacer()
+        HStack {
+          Spacer()
+          Form {
+            TextField(
+              "Auth Base URL:",
+              text: Binding(
+                get: { model.advancedSettings.authBaseURLString },
+                set: { model.advancedSettings.authBaseURLString = $0 }
+              ),
+              prompt: Text(PlaceholderText.authBaseURL)
+            )
+
+            TextField(
+              "API URL:",
+              text: Binding(
+                get: { model.advancedSettings.apiURLString },
+                set: { model.advancedSettings.apiURLString = $0 }
+              ),
+              prompt: Text(PlaceholderText.apiURL)
+            )
+
+            TextField(
+              "Log Filter:",
+              text: Binding(
+                get: { model.advancedSettings.connlibLogFilterString },
+                set: { model.advancedSettings.connlibLogFilterString = $0 }
+              ),
+              prompt: Text(PlaceholderText.logFilter)
+            )
+
+            Text(FootnoteText.forAdvanced)
+              .foregroundStyle(.secondary)
+
+            HStack(spacing: 30) {
+              Button(
+                "Apply",
+                action: {
+                  self.model.saveAdvancedSettings()
+                }
+              )
+              .disabled(model.advancedSettings.isSavedToDisk || !model.advancedSettings.isValid)
+
+              Button(
+                "Reset to Defaults",
+                action: {
+                  self.restoreAdvancedSettingsToDefaults()
+                }
+              )
+              .disabled(model.advancedSettings == AdvancedSettings.defaultValue)
+            }
+            .padding(.top, 5)
           }
-          .sheet(isPresented: $isPresentingExportLogShareSheet) {
-            if let logfileURL = self.logTempZipFileURL {
-              ShareSheetView(
-                localFileURL: logfileURL,
-                completionHandler: {
-                  self.isPresentingExportLogShareSheet = false
-                  self.isExportingLogs = false
-                  self.logTempZipFileURL = nil
-                })
-            }
+          .padding(10)
+          Spacer()
+        }
+        Spacer()
+        HStack {
+          Spacer()
+          ExportLogsButton(isProcessing: $isExportingLogs) {
+            self.exportLogsWithSavePanelOnMac()
           }
           Spacer()
         }
-        .toolbar {
-          ToolbarItem(placement: .navigationBarTrailing) {
-            Button("Save") {
-              self.saveButtonTapped()
-            }
-            .disabled(!isTeamIdValid(model.settings.accountId))
-          }
-          ToolbarItem(placement: .navigationBarLeading) {
-            Button("Cancel") {
-              self.cancelButtonTapped()
-            }
-          }
-        }
+        Spacer()
       }
-    }
-  #endif
-
-  #if os(macOS)
-    private var mac: some View {
-      VStack(spacing: 50) {
-        form
-        HStack(spacing: 30) {
-          Button(
-            "Cancel",
-            action: {
-              self.cancelButtonTapped()
-            })
-          Button(
-            "Save",
-            action: {
-              self.saveButtonTapped()
-            }
+    #elseif os(iOS)
+      VStack {
+        Form {
+          Section(
+            content: {
+              HStack(spacing: 15) {
+                Text("Auth Base URL")
+                  .foregroundStyle(.secondary)
+                TextField(
+                  PlaceholderText.authBaseURL,
+                  text: Binding(
+                    get: { model.advancedSettings.authBaseURLString },
+                    set: { model.advancedSettings.authBaseURLString = $0 }
+                  )
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+              }
+              HStack(spacing: 15) {
+                Text("API URL")
+                  .foregroundStyle(.secondary)
+                TextField(
+                  PlaceholderText.apiURL,
+                  text: Binding(
+                    get: { model.advancedSettings.apiURLString },
+                    set: { model.advancedSettings.apiURLString = $0 }
+                  )
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+              }
+              HStack(spacing: 15) {
+                Text("Log Filter")
+                  .foregroundStyle(.secondary)
+                TextField(
+                  PlaceholderText.logFilter,
+                  text: Binding(
+                    get: { model.advancedSettings.connlibLogFilterString },
+                    set: { model.advancedSettings.connlibLogFilterString = $0 }
+                  )
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+              }
+              HStack {
+                Spacer()
+                Button(
+                  "Reset to Defaults",
+                  action: {
+                    self.restoreAdvancedSettingsToDefaults()
+                  }
+                )
+                .disabled(model.advancedSettings == AdvancedSettings.defaultValue)
+                Spacer()
+              }
+            },
+            header: { Text("Advanced Settings") },
+            footer: { Text(FootnoteText.forAdvanced) }
           )
-          .disabled(!isTeamIdValid(model.settings.accountId))
+          Section(header: Text("Logs")) {
+            HStack {
+              Spacer()
+              ExportLogsButton(isProcessing: $isExportingLogs) {
+                self.isExportingLogs = true
+                Task {
+                  self.logTempZipFileURL = try await createLogZipBundle()
+                  self.isPresentingExportLogShareSheet = true
+                }
+              }.sheet(isPresented: $isPresentingExportLogShareSheet) {
+                if let logfileURL = self.logTempZipFileURL {
+                  ShareSheetView(
+                    localFileURL: logfileURL,
+                    completionHandler: {
+                      self.isPresentingExportLogShareSheet = false
+                      self.isExportingLogs = false
+                      self.logTempZipFileURL = nil
+                    })
+                }
+              }
+              Spacer()
+            }
+          }
         }
-        ExportLogsButton(isProcessing: $isExportingLogs) {
-          self.exportLogsWithSavePanelOnMac()
-        }
       }
-    }
-  #endif
-
-  private var form: some View {
-    Form {
-      Section {
-        FormTextField(
-          title: "Account ID:",
-          baseURLString: AppInfoPlistConstants.authBaseURL.absoluteString,
-          placeholder: "account-id",
-          text: Binding(
-            get: { model.settings.accountId },
-            set: { model.settings.accountId = $0 }
-          )
-        )
-      }
-    }
-    .navigationTitle("Settings")
-    .toolbar {
-      ToolbarItem(placement: .primaryAction) {
-      }
-    }
+    #endif
   }
 
-  private func isTeamIdValid(_ teamId: String) -> Bool {
-    !teamId.isEmpty && teamId.unicodeScalars.allSatisfy { teamIdAllowedCharacterSet.contains($0) }
-  }
-
-  func saveButtonTapped() {
-    model.save()
+  func saveSettings() {
+    model.saveAccountSettings()
+    model.saveAdvancedSettings()
     dismiss()
   }
 
-  func cancelButtonTapped() {
-    model.load()
+  func loadSettings() {
+    model.loadAccountSettings()
+    model.loadAdvancedSettings()
     dismiss()
+  }
+
+  func restoreAdvancedSettingsToDefaults() {
+    let defaultValue = AdvancedSettings.defaultValue
+    model.advancedSettings.authBaseURLString = defaultValue.authBaseURLString
+    model.advancedSettings.apiURLString = defaultValue.apiURLString
+    model.advancedSettings.connlibLogFilterString = defaultValue.connlibLogFilterString
+    model.saveAdvancedSettings()
   }
 
   #if os(macOS)
@@ -302,15 +549,16 @@ struct FormTextField: View {
 
   var body: some View {
     #if os(iOS)
-      HStack(spacing: 15) {
-        Text(title)
+      VStack(spacing: 10) {
         Spacer()
-        TextField(baseURLString, text: text, prompt: Text(placeholder))
-          .autocorrectionDisabled()
-          .multilineTextAlignment(.leading)
-          .foregroundColor(.secondary)
-          .frame(maxWidth: .infinity)
-          .textInputAutocapitalization(.never)
+        HStack(spacing: 5) {
+          Text(title)
+          Spacer()
+          TextField(baseURLString, text: text, prompt: Text(placeholder))
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+        }
+        Spacer()
       }
     #else
       HStack(spacing: 30) {
