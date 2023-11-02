@@ -68,10 +68,10 @@ export default function EarlyAccess() {
             <ol className="px-4 items-center sm:flex">
               <li className="relative mb-6 sm:mb-0">
                 <div className="flex items-center">
-                  <div className="z-10 flex items-center justify-center font-semibold w-6 h-6 bg-accent-600 text-neutral-50 rounded-full ring-0 ring-neutral-300 ring-8 shrink-0">
+                  <div className="z-10 flex items-center justify-center font-semibold w-6 h-6 bg-neutral-300 text-neutral-900 rounded-full ring-0 ring-accent-600 ring-8 shrink-0">
                     1
                   </div>
-                  <div className="hidden sm:flex w-full bg-neutral-300 h-0.5"></div>
+                  <div className="hidden sm:flex w-full bg-accent-600 h-1"></div>
                 </div>
                 <div className="mt-3 sm:pr-8">
                   <h3 className="text-lg font-semibold text-neutral-900">
@@ -88,7 +88,7 @@ export default function EarlyAccess() {
               </li>
               <li className="relative mb-6 sm:mb-0">
                 <div className="flex items-center">
-                  <div className="z-10 flex items-center justify-center font-semibold w-6 h-6 bg-accent-600 text-neutral-50 rounded-full ring-0 ring-neutral-300 ring-8 shrink-0">
+                  <div className="z-10 flex items-center justify-center font-semibold w-6 h-6 bg-neutral-300 text-neutral-900 rounded-full ring-0 ring-accent-600 ring-8 shrink-0">
                     2
                   </div>
                   <div className="hidden sm:flex w-full bg-neutral-300 h-0.5"></div>
