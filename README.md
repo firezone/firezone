@@ -91,6 +91,13 @@ product documentation, organized as follows:
 - [kotlin/](./kotlin/android): Android / ChromeOS clients
 - [website/](./website): Marketing website and product documentation
 
+## Quickstart
+
+Firezone 1.x is currently accepting early access signups for closed testing.
+Fill out the
+[early access form](https://www.firezone.dev/product/early-access?utm_source=readme)
+to request access and we'll be in touch!
+
 ## Frequently asked questions (FAQ)
 
 ### Can I self-host Firezone?
