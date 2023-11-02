@@ -1,14 +1,12 @@
-**Note**: 🚧 The `main` branch is undergoing major restructuring in preparation
-for the release of Firezone 1.0 🚧.
-
-See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) to
-track the latest changes to Firezone 0.7.
-
-[Read the 1.0 announcement](https://www.firezone.dev/blog/firezone-1-0).
-
 <p align="center">
   <img src="https://user-images.githubusercontent.com/52545545/144147936-39f3e416-8ba0-4f24-915e-f0515f85bb64.png" alt="firezone logo" width="305"/>
 </p>
+<p align="center">
+ <strong>A modern alternative to legacy VPNs.</strong>
+</p>
+
+---
+
 <p align="center">
   <a href="https://github.com/firezone/firezone/releases">
     <img src="https://img.shields.io/github/v/release/firezone/firezone?color=%23999">
@@ -30,32 +28,55 @@ track the latest changes to Firezone 0.7.
   </a>
 </p>
 
-## [Firezone](https://www.firezone.dev/?utm_source=readme): A blazing-fast alternative to legacy VPNs
+---
 
-Firezone is an open source platform to securely manage remote access for
-any-sized organization.
+**Note**: 🚧 The `main` branch is undergoing major restructuring in preparation
 
-<!-- TODO: New intro usage video!
+for the release of Firezone 1.x 🚧.
+
+See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) to
+track the latest changes to Firezone 0.7.
+
+[Read the 1.0 announcement for more](https://www.firezone.dev/blog/firezone-1-0).
+
+---
+
+## Overview
+
+[Firezone](https://www.firezone.dev/?utm_source=readme) is an open source
+platform to securely manage remote access for any-sized organization. Unlike
+most VPNs, Firezone takes a granular, least-privileged approach to access
+management with group-based policies that control access to individual
+applications, entire subnets, and everything in between.
+
+<p align="center">
+  ![architecture](https://github.com/firezone/firezone/assets/167144/5f0a61aa-bc84-4106-9b73-d6f8a01daebd)
+</p>
+
+<!-- TODO: New intro usage video
 ![firezone-usage](https://user-images.githubusercontent.com/52545545/147392573-fe4cb936-a0a8-436f-a69b-c0a9587de58b.gif)
  -->
 
 ## Features
 
-Unlike most VPNs, Firezone is:
+Firezone is:
 
-- **Insanely Fast:** Built on WireGuard® to be
+- **Fast:** Built on WireGuard® to be
   [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
 - **Scalable:** Deploy two or more gateways for automatic load balancing and
-  failover across them.
-- **Private:** Packets never route through Firezone's Relays (optional).
-- **Flexible:** Authenticate users via email, Google Workspace, or any
-  OIDC-compatible identity provider.
+  failover.
+- **Private:** Tunnels are peer-to-peer so packets never route through Firezone
+  infrastructure.
+- **Secure:** Zero attack surface thanks to Firezone's holepunching tech which
+  establishes tunnels on-the-fly at the time of access.
+- **Flexible:** Authenticate users via email, Google Workspace, or OIDC and sync
+  users and groups automatically.
 - **Simple:** Deploy gateways and configure access in minutes with a snappy
   admin UI.
 
 Firezone is **not:**
 
-- A tool for creating mesh networks
+- A tool for creating bi-directional mesh networks
 - A full-featured router or firewall
 - An IPSec or OpenVPN server
 
@@ -72,13 +93,49 @@ product documentation, organized as follows:
 
 ## Frequently asked questions (FAQ)
 
+<strong>
 > Can I self-host Firezone?
+</strong>
 
-<!-- FIXME -->
+Our [license](#license) won't stop you from self-hosting the entire Firezone
+product top to bottom, but we can't dedicated the resources to make this a
+smooth experience and therefore don't support self-hosting the control plane at
+this time.
 
+If you have a business case requiring an onprem installation of Firezone please
+[get in touch](https://www.firezone.dev/contact/sales?utm_source=readme).
+
+If you're feeling especially adventurous and want to self-host Firezone for
+**educational** or **recreational** purposes, you'll want to build and
+distribute the clients from source to ensure they remain locked to a version
+compatible with your self-hosted control plane. Unfortunately, the following
+clients must be distributed through proprietary app stores due to restrictions
+imposed by Apple and Google:
+
+- macOS
+- iOS
+- Android / ChromeOS
+
+Because it's impossible to select which client version to install from a
+particular app store, building Firezone entirely from source is the only way
+self-host Firezone at this time.
+
+Otherwise, if you're hobbyist or developer and are looking to spin it up locally
+to contribute or experiment with, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+<strong>
 > How do I upgrade from 0.7?
+</strong>
 
-<!-- FIXME -->
+Unfortunately, you can't. The good news is Firezone 1.x is _much_ easier to
+setup and manage than 0.x and so you probably don't need to.
+
+<strong>
+> How long will 0.7 be supported until?
+</strong>
+
+Firezone 0.7 is current end-of-life and will stop receiving updates after
+<strong>January 31st, 2024</strong>.
 
 <!-- TODO
 > What's your pricing structure like?
@@ -106,12 +163,6 @@ community support options:
 <!-- TODO
 If you need help deploying or maintaining Firezone for your business, consider
 [contacting us about our paid support plan](https://www.firezone.dev/contact/sales?utm_source=readme).
--->
-
-<!-- TODO
-## Architecture
-
-![Firezone Architecture](https://user-images.githubusercontent.com/52545545/183804397-ae81ca4e-6972-41f9-80d4-b431a077119d.png)
 -->
 
 ## Star History
