@@ -61,4 +61,7 @@ struct AdvancedSettings: Equatable {
       )
     #endif
   }()
+
+  // Note: To see what the connlibLogFilterString values mean, see:
+  // https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
 }

@@ -137,6 +137,10 @@ final class TunnelStore: ObservableObject {
       return
     }
 
+    if tunnel.advancedSettings().connlibLogFilterString.isEmpty {
+      tunnel.setConnlibLogFilter(AdvancedSettings.defaultValue.connlibLogFilterString)
+    }
+
     tunnel.isEnabled = true
     try await tunnel.saveToPreferences()
     try await tunnel.loadFromPreferences()
@@ -348,7 +352,7 @@ extension NETunnelProviderManager {
         return .accountNotSetup
       }
     }
-    return .tunnelUninitialized
+    return .accountNotSetup
   }
 
   func saveAuthStatus(_ authStatus: TunnelAuthStatus) async throws {
@@ -397,6 +401,16 @@ extension NETunnelProviderManager {
     }
 
     return AdvancedSettings.defaultValue
+  }
+
+  func setConnlibLogFilter(_ logFiler: String) {
+    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol,
+      let providerConfiguration = protocolConfiguration.providerConfiguration
+    {
+      var providerConfig = providerConfiguration
+      providerConfig[TunnelProviderKeys.keyConnlibLogFilter] = logFiler
+      protocolConfiguration.providerConfiguration = providerConfig
+    }
   }
 
   func saveAdvancedSettings(_ advancedSettings: AdvancedSettings) async throws {

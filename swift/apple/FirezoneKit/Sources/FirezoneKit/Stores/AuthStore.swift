@@ -55,6 +55,10 @@ final class AuthStore: ObservableObject {
     self.authBaseURL = AppInfoPlistConstants.authBaseURL
     self.loginStatus = .uninitialized
 
+    Task {
+      self.loginStatus = await self.getLoginStatus(from: tunnelStore.tunnelAuthStatus)
+    }
+
     tunnelStore.$tunnelAuthStatus
       .sink { [weak self] tunnelAuthStatus in
         guard let self = self else { return }

@@ -89,28 +89,19 @@ public class Adapter {
   private var controlPlaneURLString: String
   private var token: String
 
-  // Docs on filter strings: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
   private let logFilter: String
-  #if DEBUG
-    private let defaultLogFilter =
-      "connlib_client_apple=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn"
-  #else
-    private let defaultLogFilter =
-      "connlib_client_apple=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn"
-  #endif
-
   private let connlibLogFolderPath: String
 
   public init(
     controlPlaneURLString: String, token: String,
-    logFilter: String?, packetTunnelProvider: NEPacketTunnelProvider
+    logFilter: String, packetTunnelProvider: NEPacketTunnelProvider
   ) {
     self.controlPlaneURLString = controlPlaneURLString
     self.token = token
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler()
     self.state = .stoppedTunnel
-    self.logFilter = logFilter ?? defaultLogFilter
+    self.logFilter = logFilter
     self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
   }
 
