@@ -10,9 +10,14 @@ defmodule Web.Resources.Edit do
          {:ok, gateway_groups} <- Gateways.list_groups(socket.assigns.subject) do
       form = Resources.change_resource(resource, socket.assigns.subject) |> to_form()
 
-      {:ok, assign(socket, resource: resource, form: form, params: Map.take(params, ["site_id"])),
-       temporary_assigns: [
+      {:ok,
+       assign(socket,
+         resource: resource,
          gateway_groups: gateway_groups,
+         form: form,
+         params: Map.take(params, ["site_id"])
+       ),
+       temporary_assigns: [
          form: %Phoenix.HTML.Form{}
        ]}
     else
@@ -52,6 +57,8 @@ defmodule Web.Resources.Edit do
 
             <.connections_form
               :if={is_nil(@params["site_id"])}
+              id="connections_form"
+              phx-update="ignore"
               form={@form[:connections]}
               account={@account}
               resource={@resource}
