@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<!-- tablet / L design spacing -->
+	<!-- Try not to use half spacing unless necessary -->
+	<dimen name="spacing_0x">0dp</dimen>
+	<dimen name="spacing_0.25x">1dp</dimen>
+	<dimen name="spacing_0.5x">2dp</dimen>
+	<dimen name="spacing_1x">4dp</dimen>
+	<dimen name="spacing_1.5x">6dp</dimen>
+	<dimen name="spacing_2x">8dp</dimen>
+	<dimen name="spacing_3x">12dp</dimen>
+	<dimen name="spacing_4x">16dp</dimen>
+	<dimen name="spacing_5x">20dp</dimen>
+	<dimen name="spacing_6x">24dp</dimen>
+	<dimen name="spacing_7x">28dp</dimen>
+	<dimen name="spacing_8x">32dp</dimen>
+	<dimen name="spacing_9x">36dp</dimen>
+	<dimen name="spacing_10x">40dp</dimen>
+	<dimen name="spacing_11x">44dp</dimen>
+	<dimen name="spacing_12x">48dp</dimen>
+	<dimen name="spacing_13x">52dp</dimen>
+	<dimen name="spacing_14x">56dp</dimen>
+	<dimen name="spacing_15x">60dp</dimen>
+	<dimen name="spacing_16x">64dp</dimen>
+	<dimen name="spacing_17x">68dp</dimen>
+	<dimen name="spacing_18x">72dp</dimen>
+	<dimen name="spacing_20x">80dp</dimen>
+	<dimen name="spacing_21x">84dp</dimen>
+	<dimen name="spacing_22x">88dp</dimen>
+	<dimen name="spacing_23x">92dp</dimen>
+	<dimen name="spacing_24x">96dp</dimen>
+	<dimen name="spacing_25x">100dp</dimen>
+	<dimen name="spacing_26x">104dp</dimen>
+	<dimen name="spacing_27x">108dp</dimen>
+	<dimen name="spacing_28x">112dp</dimen>
+	<dimen name="spacing_30x">120dp</dimen>
+	<dimen name="spacing_31x">124dp</dimen>
+	<dimen name="spacing_32x">128dp</dimen>
+	<dimen name="spacing_33x">132dp</dimen>
+	<dimen name="spacing_34x">136dp</dimen>
+	<dimen name="spacing_35x">140dp</dimen>
+	<dimen name="spacing_36x">144dp</dimen>
+	<dimen name="spacing_37x">148dp</dimen>
+	<dimen name="spacing_38x">152dp</dimen>
+	<dimen name="spacing_39x">156dp</dimen>
+	<dimen name="spacing_40x">160dp</dimen>
+	<dimen name="spacing_41x">164dp</dimen>
+	<dimen name="spacing_42x">168dp</dimen>
+	<dimen name="spacing_45x">180dp</dimen>
+	<dimen name="spacing_47x">188dp</dimen>
+	<dimen name="spacing_48x">192dp</dimen>
+	<dimen name="spacing_50x">200dp</dimen>
+	<dimen name="spacing_54x">216dp</dimen>
+	<dimen name="spacing_58x">232dp</dimen>
+	<dimen name="spacing_73x">292dp</dimen>
+	<dimen name="spacing_74x">296dp</dimen>
+	<dimen name="spacing_78x">312dp</dimen>
+	<dimen name="spacing_84x">336dp</dimen>
+	<dimen name="spacing_94x">376dp</dimen>
+	<dimen name="spacing_100x">400dp</dimen>
+
+	<dimen name="spacing_negative_0.5x">-2dp</dimen>
+	<dimen name="spacing_negative_1.5x">-6dp</dimen>
+	<dimen name="spacing_negative_2x">-8dp</dimen>
+	<dimen name="spacing_negative_7x">-28dp</dimen>
+	<dimen name="spacing_negative_10x">-40dp</dimen>
+</resources>

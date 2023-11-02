@@ -2,28 +2,27 @@
 package dev.firezone.android.features.settings.ui
 
 import android.os.Bundle
-import android.util.Log
-import android.view.View
 import android.view.inputmethod.EditorInfo
+import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
 import androidx.core.widget.doOnTextChanged
-import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
-import androidx.navigation.fragment.findNavController
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.R
-import dev.firezone.android.databinding.FragmentSettingsBinding
+import dev.firezone.android.databinding.ActivitySettingsBinding
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
-    private lateinit var binding: FragmentSettingsBinding
+internal class SettingsActivity : AppCompatActivity() {
+    private lateinit var binding: ActivitySettingsBinding
     private val viewModel: SettingsViewModel by viewModels()
 
-    override fun onViewCreated(
-        view: View,
-        savedInstanceState: Bundle?,
-    ) {
-        super.onViewCreated(view, savedInstanceState)
-        binding = FragmentSettingsBinding.bind(view)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivitySettingsBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
         setupViews()
         setupStateObservers()
@@ -33,24 +32,30 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
         viewModel.populateFieldsFromConfig()
     }
 
+    override fun onResume() {
+        super.onResume()
+        viewModel.onViewResume(this@SettingsActivity)
+    }
+
     private fun setupStateObservers() {
-        viewModel.stateLiveData.observe(viewLifecycleOwner) { state ->
-            with(binding) {
-                Log.d("SettingsFragment", "state: $state")
-                btSaveSettings.isEnabled = state.isSaveButtonEnabled
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { uiState ->
+                    with(binding) {
+                        btSaveSettings.isEnabled = uiState.isSaveButtonEnabled
+                        btShareLog.isVisible = uiState.logSize > 0
+                    }
+                }
             }
         }
     }
 
     private fun setupActionObservers() {
-        viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
+        viewModel.actionLiveData.observe(this@SettingsActivity) { action ->
             when (action) {
-                is SettingsViewModel.ViewAction.NavigateToSignIn ->
-                    findNavController().navigate(
-                        R.id.signInFragment,
-                    )
+                is SettingsViewModel.ViewAction.NavigateBack ->
+                    finish()
                 is SettingsViewModel.ViewAction.FillSettings -> {
-                    Log.d("SettingsFragment", "action: $action")
                     binding.etAccountIdInput.apply {
                         setText(action.accountId)
                     }
@@ -103,6 +108,12 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
     }
 
     private fun setupButtonListeners() {
+        binding.btShareLog.apply {
+            setOnClickListener {
+                viewModel.createLogZip(this@SettingsActivity)
+            }
+        }
+
         binding.btSaveSettings.setOnClickListener {
             viewModel.onSaveSettingsCompleted()
         }

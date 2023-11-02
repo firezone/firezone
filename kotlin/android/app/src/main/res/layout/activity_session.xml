@@ -4,11 +4,11 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="@dimen/spacing_medium">
+    android:padding="@dimen/spacing_4x">
 
-    <androidx.appcompat.widget.LinearLayoutCompat
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/llContainer"
-        android:layout_width="0dp"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:gravity="center"
         android:orientation="horizontal"
@@ -18,9 +18,13 @@
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/ivLogo"
-            android:layout_width="@dimen/iv_logo_size"
-            android:layout_height="@dimen/iv_logo_size"
-            android:src="@drawable/ic_firezone_logo" />
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:src="@drawable/ic_firezone_logo"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintTop_toTopOf="@id/tvHeaderTitle"
+            app:layout_constraintBottom_toBottomOf="@id/tvHeaderTitle"
+            app:layout_constraintEnd_toStartOf="@id/tvHeaderTitle"/>
 
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/tvHeaderTitle"
@@ -29,9 +33,12 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="@dimen/spacing_small"
             android:gravity="center"
-            android:text="@string/app_short_name" />
+            android:text="@string/app_short_name"
+            app:layout_constraintStart_toEndOf="@id/ivLogo"
+            app:layout_constraintTop_toTopOf="parent"
+            />
 
-    </androidx.appcompat.widget.LinearLayoutCompat>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/tvResourcesList"
@@ -39,6 +46,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/resources"
+        android:layout_marginTop="@dimen/spacing_4x"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/llContainer" />
 
@@ -46,6 +54,8 @@
         android:id="@+id/rvResourcesList"
         android:layout_width="match_parent"
         android:layout_height="0dp"
+        android:layout_marginTop="@dimen/spacing_2x"
+        android:layout_marginBottom="@dimen/spacing_2x"
         app:layout_constraintTop_toBottomOf="@id/tvResourcesList"
         app:layout_constraintBottom_toTopOf="@id/btSignOut" />
 
@@ -54,6 +64,17 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="@string/sign_out"
+        android:layout_marginBottom="@dimen/spacing_2x"
+        app:layout_constraintBottom_toTopOf="@id/btSettings"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btSettings"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/settings"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />

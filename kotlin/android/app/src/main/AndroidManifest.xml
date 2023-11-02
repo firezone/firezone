@@ -95,6 +95,10 @@
             android:name="dev.firezone.android.features.session.ui.SessionActivity"
             android:exported="false" />
 
+        <activity
+            android:name="dev.firezone.android.features.settings.ui.SettingsActivity"
+            android:exported="false" />
+
         <service
             android:name="dev.firezone.android.tunnel.TunnelService"
             android:exported="true"
@@ -112,6 +116,17 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 
 </manifest>
