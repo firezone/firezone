@@ -46,7 +46,7 @@ export default function RootNavbar() {
                 width={150}
                 height={150}
                 src="/images/logo-main.svg"
-                className="md:hidden w-6 ml-2 flex"
+                className="md:hidden w-9 ml-2 flex"
                 alt="Firezone Logo"
               />
             </Link>
@@ -149,7 +149,7 @@ export default function RootNavbar() {
               }
               href="/contact/sales"
             >
-              Contact Sales
+              Contact
             </Link>
           </div>
           <div className="hidden md:flex items-center lg:order-2">
