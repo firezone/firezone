@@ -128,8 +128,8 @@ setup and manage than 0.x and so you probably don't need to.
 
 > **How long will 0.7 be supported until?**
 
-Firezone 0.7 is current end-of-life and will stop receiving updates after
-<strong>January 31st, 2024</strong>.
+**Firezone 0.7 is currently end-of-life and will stop receiving updates after
+January 31st, 2024.**
 
 <!-- TODO
 > What's your pricing structure like?
