@@ -1,6 +1,7 @@
 name: Swift
 on:
   workflow_call:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -170,7 +171,7 @@ jobs:
             exit 1
           fi
       - name: Upload build to App Store Connect
-        if: ${{ github.ref == 'refs/heads/main' && contains(github.event.pull_request.labels.*.name, 'distribute/apple') }}
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, 'elixir/VERSION')) }}
         env:
           ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
           API_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}

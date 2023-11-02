@@ -1,6 +1,7 @@
 name: Kotlin
 on:
   workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: 'read'
@@ -69,7 +70,7 @@ jobs:
         uses: asadmansr/android-test-report-action@v1.2.0
         if: "!cancelled()"
       - name: Upload release
-        if: ${{ github.ref == 'refs/heads/main' && contains(github.event.pull_request.labels.*.name, 'distribute/android') }}
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, 'elixir/VERSION')) }}
         env:
           FIREBASE_APP_DISTRIBUTION_CREDENTIALS: ${{ secrets.FIREBASE_APP_DISTRIBUTION_CREDENTIALS }}
           FIREBASE_CREDENTIALS_PATH: firebase-credentials.json
