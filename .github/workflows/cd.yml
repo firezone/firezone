@@ -161,7 +161,12 @@ jobs:
       - name: Build release binaries
         run: |
           cross build --release -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+
+          # Used for release artifact
           cp target/${{ matrix.arch.target }}/release/${{ matrix.name.package }} $BINARY_DEST_PATH
+
+          # Used for Docker images
+          cp target/${{ matrix.arch.target }}/release/${{ matrix.name.package }} ${{ matrix.name.package }}
           sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
       - name: Push binaries
         uses: softprops/action-gh-release@v1
