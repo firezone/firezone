@@ -78,7 +78,7 @@ export default function EarlyAccess() {
                     Announcement
                   </h3>
                   <time className="block mb-2 text-sm font-normal leading-none text-neutral-700">
-                    Early Q3 2023
+                    Q3 2023
                   </time>
                   <p className="text-base font-normal text-neutral-800">
                     Firezone 1.0 is announced to the public. Early access
@@ -88,7 +88,7 @@ export default function EarlyAccess() {
               </li>
               <li className="relative mb-6 sm:mb-0">
                 <div className="flex items-center">
-                  <div className="z-10 flex items-center font-semibold justify-center w-6 h-6 text-neutral-900 bg-white rounded-full ring-0 ring-neutral-300 ring-8 shrink-0">
+                  <div className="z-10 flex items-center justify-center font-semibold w-6 h-6 bg-accent-600 text-neutral-50 rounded-full ring-0 ring-neutral-300 ring-8 shrink-0">
                     2
                   </div>
                   <div className="hidden sm:flex w-full bg-neutral-300 h-0.5"></div>
@@ -98,7 +98,7 @@ export default function EarlyAccess() {
                     Beta Testing
                   </h3>
                   <time className="block mb-2 text-sm font-normal leading-none text-neutral-700">
-                    Mid Q3 2023
+                    Q4 2023
                   </time>
                   <p className="text-base font-normal text-neutral-800">
                     Early access users are invited to beta test the 1.0 release.
@@ -117,7 +117,7 @@ export default function EarlyAccess() {
                     Public Release
                   </h3>
                   <time className="block mb-2 text-sm font-normal leading-none text-neutral-700">
-                    Q4 2023
+                    Q1 2024
                   </time>
                   <p className="text-base font-normal text-neutral-800">
                     Firezone 1.0 is released to the general public.
