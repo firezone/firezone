@@ -1,3 +1,8 @@
+**NOTE:** Firezone 0.7 has reached end-of-life status and will stop receiving
+updates after January 31st, 2024. See the
+[README](https://github.com/firezone/firezone/blob/main/README.md) in our main
+branch for information regarding the current version of Firezone.
+
 <p align="center">
   <img src="https://user-images.githubusercontent.com/52545545/144147936-39f3e416-8ba0-4f24-915e-f0515f85bb64.png" alt="firezone logo" width="305"/>
 </p>
