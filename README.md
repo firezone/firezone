@@ -103,9 +103,9 @@ to request access and we'll be in touch!
 ### Can I self-host Firezone?
 
 Our [license](#license) won't stop you from self-hosting the entire Firezone
-product top to bottom, but we can't dedicated the resources to make this a
-smooth experience and therefore don't support self-hosting the control plane at
-this time.
+product top to bottom, but we can't commit the resources to make this a smooth
+experience and therefore don't support self-hosting the control plane at this
+time.
 
 If you have a business case requiring an on-prem installation of Firezone please
 [get in touch](https://www.firezone.dev/contact/sales?utm_source=readme).
