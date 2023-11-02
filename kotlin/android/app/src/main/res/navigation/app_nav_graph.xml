@@ -11,14 +11,14 @@
         tools:layout="@layout/fragment_splash" />
 
     <fragment
-        android:id="@+id/settingsFragment"
-        android:name="dev.firezone.android.features.settings.ui.SettingsFragment"
-        tools:layout="@layout/fragment_settings" />
-
-    <fragment
         android:id="@+id/signInFragment"
         android:name="dev.firezone.android.features.signin.ui.SignInFragment"
         tools:layout="@layout/fragment_sign_in" />
+
+    <activity
+        android:id="@+id/settingsActivity"
+        android:name="dev.firezone.android.features.settings.ui.SettingsActivity"
+        tools:layout="@layout/activity_settings" />
 
     <activity
         android:id="@+id/sessionActivity"

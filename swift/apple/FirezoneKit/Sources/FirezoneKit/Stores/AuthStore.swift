@@ -45,7 +45,7 @@ final class AuthStore: ObservableObject {
 
   let tunnelStore: TunnelStore
 
-  public let authBaseURL: URL
+  public var authBaseURL: URL
   private var cancellables = Set<AnyCancellable>()
 
   @Published private(set) var loginStatus: LoginStatus
@@ -54,6 +54,10 @@ final class AuthStore: ObservableObject {
     self.tunnelStore = tunnelStore
     self.authBaseURL = AppInfoPlistConstants.authBaseURL
     self.loginStatus = .uninitialized
+
+    Task {
+      self.loginStatus = await self.getLoginStatus(from: tunnelStore.tunnelAuthStatus)
+    }
 
     tunnelStore.$tunnelAuthStatus
       .sink { [weak self] tunnelAuthStatus in
@@ -71,15 +75,11 @@ final class AuthStore: ObservableObject {
       return .uninitialized
     case .accountNotSetup:
       return .signedOut(accountId: nil)
-    case .signedOut(let tunnelAuthBaseURL, let tunnelAccountId):
-      if self.authBaseURL == tunnelAuthBaseURL {
-        return .signedOut(accountId: tunnelAccountId)
-      } else {
-        return .signedOut(accountId: nil)
-      }
+    case .signedOut(_, let tunnelAccountId):
+      return .signedOut(accountId: tunnelAccountId)
     case .signedIn(let tunnelAuthBaseURL, let tunnelAccountId, let tokenReference):
       guard self.authBaseURL == tunnelAuthBaseURL else {
-        return .signedOut(accountId: nil)
+        return .signedOut(accountId: tunnelAccountId)
       }
       let tunnelPortalURLString = self.authURL(accountId: tunnelAccountId).absoluteString
       guard let tokenAttributes = await keychain.loadAttributes(tokenReference),
@@ -100,7 +100,7 @@ final class AuthStore: ObservableObject {
       authURLString: portalURL.absoluteString, actorName: authResponse.actorName ?? "")
     let tokenRef = try await keychain.store(authResponse.token, attributes)
 
-    try await tunnelStore.setAuthStatus(
+    try await tunnelStore.saveAuthStatus(
       .signedIn(authBaseURL: self.authBaseURL, accountId: accountId, tokenReference: tokenRef))
   }
 
@@ -142,5 +142,10 @@ final class AuthStore: ObservableObject {
 
   func authURL(accountId: String) -> URL {
     self.authBaseURL.appendingPathComponent(accountId)
+  }
+
+  func setAuthBaseURL(_ authBaseURL: URL, isChanged: inout Bool) {
+    isChanged = (self.authBaseURL == authBaseURL)
+    self.authBaseURL = authBaseURL
   }
 }

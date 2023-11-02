@@ -16,6 +16,7 @@ import dev.firezone.android.R
 import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.core.utils.ClipboardUtils
 import dev.firezone.android.databinding.ActivitySessionBinding
+import dev.firezone.android.features.settings.ui.SettingsActivity
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -41,6 +42,10 @@ internal class SessionActivity : AppCompatActivity() {
     private fun setupViews() {
         binding.btSignOut.setOnClickListener {
             viewModel.disconnect()
+        }
+
+        binding.btSettings.setOnClickListener {
+            startActivity(Intent(this@SessionActivity, SettingsActivity::class.java))
         }
 
         val layoutManager = LinearLayoutManager(this@SessionActivity)
