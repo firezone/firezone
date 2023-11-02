@@ -4,7 +4,6 @@ import { Metadata } from "next";
 import Link from "next/link";
 import CommitMarquee from "@/components/CommitMarquee";
 import ActionLink from "@/components/ActionLink";
-import JoinOurCommunity from "@/components/JoinOurCommunity";
 import { HiMegaphone, HiBeaker } from "react-icons/hi2";
 import { XMLParser } from "fast-xml-parser";
 import { useState, useEffect } from "react";
@@ -363,8 +362,6 @@ export default function Page() {
         </p>
         <CommitMarquee xmlFeed="/api/github/firezone/firezone/commits/main.atom" />
       </div>
-
-      <JoinOurCommunity />
     </div>
   );
 }
