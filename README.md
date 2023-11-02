@@ -1,6 +1,9 @@
 <p align="center">
+
 ![firezone logo dark](https://github.com/firezone/firezone/assets/167144/73a16cec-f7fd-4983-91ed-4fb8c372b578#gh-dark-mode-only)
+
 ![firezone logo light](https://github.com/firezone/firezone/assets/167144/267dad97-8f4e-4825-8581-71196ce01d3d#gh-light-mode-only)
+
 </p>
 <p align="center">
  <strong>A modern alternative to legacy VPNs.</strong>
