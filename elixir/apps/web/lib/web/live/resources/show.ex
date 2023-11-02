@@ -3,7 +3,7 @@ defmodule Web.Resources.Show do
   import Web.Policies.Components
   alias Domain.{Resources, Flows, Config}
 
-  def mount(%{"id" => id}, _session, socket) do
+  def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <-
            Resources.fetch_resource_by_id(id, socket.assigns.subject,
              preload: [:gateway_groups, created_by_identity: [:actor]]
@@ -17,6 +17,7 @@ defmodule Web.Resources.Show do
           socket,
           resource: resource,
           flows: flows,
+          params: Map.take(params, ["site_id"]),
           todos_enabled?: Config.todos_enabled?()
         )
 
@@ -39,7 +40,7 @@ defmodule Web.Resources.Show do
         Resource: <code><%= @resource.name %></code>
       </:title>
       <:action>
-        <.edit_button navigate={~p"/#{@account}/resources/#{@resource.id}/edit"}>
+        <.edit_button navigate={~p"/#{@account}/resources/#{@resource.id}/edit?#{@params}"}>
           Edit Resource
         </.edit_button>
       </:action>
@@ -188,7 +189,12 @@ defmodule Web.Resources.Show do
 
   def handle_event("delete", %{"id" => _resource_id}, socket) do
     {:ok, _} = Resources.delete_resource(socket.assigns.resource, socket.assigns.subject)
-    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources")}
+
+    if site_id = socket.assigns.params["site_id"] do
+      {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}")}
+    else
+      {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources")}
+    end
   end
 
   defp pretty_print_filter(filter) do
@@ -197,7 +203,7 @@ defmodule Web.Resources.Show do
         "All Traffic Allowed"
 
       :icmp ->
-        "ICPM: Allowed"
+        "ICMP: Allowed"
 
       :tcp ->
         "TCP: #{pretty_print_ports(filter.ports)}"

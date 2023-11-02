@@ -149,13 +149,6 @@ defmodule Web.Router do
         live "/new", New
         live "/:id/new_token", NewToken
         live "/:id/edit", Edit
-
-        scope "/:gateway_group_id/resources", Resources do
-          live "/new", New
-          live "/:id/edit", Edit
-          live "/:id", Show
-        end
-
         live "/:id", Show
       end
 

@@ -4,11 +4,11 @@ defmodule Web.Resources.New do
   alias Domain.Gateways
   alias Domain.Resources
 
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     with {:ok, gateway_groups} <- Gateways.list_groups(socket.assigns.subject) do
       changeset = Resources.new_resource(socket.assigns.account)
 
-      {:ok, socket,
+      {:ok, assign(socket, params: Map.take(params, ["site_id"])),
        temporary_assigns: [
          gateway_groups: gateway_groups,
          form: to_form(changeset)
@@ -54,6 +54,7 @@ defmodule Web.Resources.New do
             <.filters_form form={@form[:filters]} />
 
             <.connections_form
+              :if={is_nil(@params["site_id"])}
               form={@form[:connections]}
               account={@account}
               gateway_groups={@gateway_groups}
@@ -74,6 +75,7 @@ defmodule Web.Resources.New do
       attrs
       |> map_filters_form_attrs()
       |> map_connections_form_attrs()
+      |> maybe_put_connections(socket.assigns.params)
 
     changeset =
       Resources.new_resource(socket.assigns.account, attrs)
@@ -87,15 +89,31 @@ defmodule Web.Resources.New do
       attrs
       |> map_filters_form_attrs()
       |> map_connections_form_attrs()
+      |> maybe_put_connections(socket.assigns.params)
 
     case Resources.create_resource(attrs, socket.assigns.subject) do
       {:ok, resource} ->
-        {:noreply,
-         push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources/#{resource.id}")}
+        if site_id = socket.assigns.params["site_id"] do
+          {:noreply,
+           push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}?#resources")}
+        else
+          {:noreply,
+           push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources/#{resource.id}")}
+        end
 
       {:error, changeset} ->
         changeset = Map.put(changeset, :action, :validate)
         {:noreply, assign(socket, form: to_form(changeset))}
+    end
+  end
+
+  defp maybe_put_connections(attrs, params) do
+    if site_id = params["site_id"] do
+      Map.put(attrs, "connections", %{
+        "#{site_id}" => %{"gateway_group_id" => site_id, "enabled" => "true"}
+      })
+    else
+      attrs
     end
   end
 end

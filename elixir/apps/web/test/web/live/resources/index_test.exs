@@ -77,7 +77,7 @@ defmodule Web.Live.Resources.IndexTest do
     Enum.each(resource_rows, fn row ->
       assert row["name"] =~ resource.name
       assert row["address"] =~ resource.address
-      assert row["gateway instance group"] =~ group.name_prefix
+      assert row["sites"] =~ group.name_prefix
     end)
 
     # TODO: add assertion for Authorized Groups column

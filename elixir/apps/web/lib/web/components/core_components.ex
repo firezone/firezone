@@ -844,6 +844,7 @@ defmodule Web.CoreComponents do
       <a
         :if={not is_nil(@schema.last_seen_remote_ip_location_lat)}
         class="ml-1 text-blue-800 dark:text-blue-300"
+        target="_blank"
         href={"http://www.google.com/maps/place/#{@schema.last_seen_remote_ip_location_lat},#{@schema.last_seen_remote_ip_location_lon}"}
       >
         <.icon name="hero-arrow-top-right-on-square" class="-ml-1 mb-3 w-3 h-3" />

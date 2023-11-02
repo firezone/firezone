@@ -167,12 +167,13 @@ defmodule Web.Resources.Components do
   attr :account, :any, required: true
   attr :gateway_groups, :list, required: true
   attr :resource, :any, default: nil
+  attr :rest, :global
 
   def connections_form(assigns) do
     assigns = assign(assigns, :errors, Enum.map(assigns.form.errors, &translate_error(&1)))
 
     ~H"""
-    <fieldset class="flex flex-col gap-2">
+    <fieldset class="flex flex-col gap-2" {@rest}>
       <legend class="mb-2">Sites</legend>
 
       <.error :for={msg <- @errors} data-validation-error-for="connections">

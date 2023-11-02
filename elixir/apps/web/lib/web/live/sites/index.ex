@@ -54,7 +54,9 @@ defmodule Web.Sites.Index do
 
               <:item :let={connection}>
                 <.link
-                  navigate={~p"/#{@account}/resources/#{connection.resource}"}
+                  navigate={
+                    ~p"/#{@account}/resources/#{connection.resource}?site_id=#{connection.gateway_group_id}"
+                  }
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline inline-block"
                   phx-no-format
                 ><%= connection.resource.name %></.link>

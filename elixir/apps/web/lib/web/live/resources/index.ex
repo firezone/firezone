@@ -42,7 +42,7 @@ defmodule Web.Resources.Index do
                 <%= resource.address %>
               </code>
             </:col>
-            <:col :let={resource} label="GATEWAY INSTANCE GROUP">
+            <:col :let={resource} label="sites">
               <.link
                 :for={gateway_group <- resource.gateway_groups}
                 navigate={~p"/#{@account}/sites"}

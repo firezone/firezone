@@ -5,11 +5,15 @@ defmodule Web.Live.Resources.NewTest do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+
+    group = Fixtures.Gateways.create_group(account: account, subject: subject)
 
     %{
       account: account,
       actor: actor,
-      identity: identity
+      identity: identity,
+      group: group
     }
   end
 
@@ -45,10 +49,9 @@ defmodule Web.Live.Resources.NewTest do
   test "renders form", %{
     account: account,
     identity: identity,
+    group: group,
     conn: conn
   } do
-    gateway_group = Fixtures.Gateways.create_group(account: account)
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
@@ -58,12 +61,9 @@ defmodule Web.Live.Resources.NewTest do
 
     connection_inputs =
       [
-        [
-          "resource[connections][#{gateway_group.id}][enabled]",
-          "resource[connections][#{gateway_group.id}][gateway_group_id]"
-        ]
+        "resource[connections][#{group.id}][enabled]",
+        "resource[connections][#{group.id}][gateway_group_id]"
       ]
-      |> List.flatten()
 
     expected_inputs =
       (connection_inputs ++
@@ -84,6 +84,35 @@ defmodule Web.Live.Resources.NewTest do
       |> Enum.sort()
 
     assert find_inputs(form) == expected_inputs
+  end
+
+  test "renders form without connections when site is set by query param", %{
+    account: account,
+    group: group,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+
+    form = form(lv, "form")
+
+    assert find_inputs(form) == [
+             "resource[address]",
+             "resource[filters][all][enabled]",
+             "resource[filters][all][protocol]",
+             "resource[filters][icmp][enabled]",
+             "resource[filters][icmp][protocol]",
+             "resource[filters][tcp][enabled]",
+             "resource[filters][tcp][ports]",
+             "resource[filters][tcp][protocol]",
+             "resource[filters][udp][enabled]",
+             "resource[filters][udp][ports]",
+             "resource[filters][udp][protocol]",
+             "resource[name]"
+           ]
   end
 
   test "renders changeset errors on input change", %{
@@ -242,5 +271,33 @@ defmodule Web.Live.Resources.NewTest do
 
     resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
     assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}")
+  end
+
+  test "redirects to a site when site_id query param is set", %{
+    account: account,
+    identity: identity,
+    group: group,
+    conn: conn
+  } do
+    attrs = %{
+      name: "foobar.com",
+      address: "foobar.com",
+      filters: %{
+        icmp: %{enabled: true},
+        tcp: %{ports: "80, 443"},
+        udp: %{ports: "4000 - 5000"}
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+
+    lv
+    |> form("form", resource: attrs)
+    |> render_submit()
+
+    assert assert_redirect(lv, ~p"/#{account}/sites/#{group}?#resources")
   end
 end

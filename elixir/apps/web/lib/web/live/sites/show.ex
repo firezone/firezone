@@ -63,7 +63,7 @@ defmodule Web.Sites.Show do
         Resources
       </:title>
       <:action>
-        <.add_button navigate={~p"/#{@account}/sites/#{@group}/resources/new"}>
+        <.add_button navigate={~p"/#{@account}/resources/new?site_id=#{@group}"}>
           Create
         </.add_button>
       </:action>
@@ -76,7 +76,7 @@ defmodule Web.Sites.Show do
           >
             <:col :let={resource} label="NAME">
               <.link
-                navigate={~p"/#{@account}/sites/#{@group}/resources/#{resource.id}"}
+                navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@group}"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
                 <%= resource.name %>
