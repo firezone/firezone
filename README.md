@@ -50,7 +50,7 @@ management with group-based policies that control access to individual
 applications, entire subnets, and everything in between.
 
 <p align="center">
-  ![architecture](https://github.com/firezone/firezone/assets/167144/5f0a61aa-bc84-4106-9b73-d6f8a01daebd)
+  <img alt="firezone architecture" width="500" src=(https://github.com/firezone/firezone/assets/167144/5f0a61aa-bc84-4106-9b73-d6f8a01daebd" />
 </p>
 
 <!-- TODO: New intro usage video
