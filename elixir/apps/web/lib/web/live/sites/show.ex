@@ -59,6 +59,10 @@ defmodule Web.Sites.Show do
             <:value><%= @group.name %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
+            <:label>Routing</:label>
+            <:value><%= pretty_print_routing(@group.routing) %></:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
             <:label>Created</:label>
             <:value>
               <.created_by account={@account} schema={@group} />
@@ -232,5 +236,15 @@ defmodule Web.Sites.Show do
     # TODO: make sure tokens are all deleted too!
     {:ok, _group} = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites")}
+  end
+
+  defp pretty_print_routing(routing) do
+    case routing do
+      :managed -> "Managed"
+      :self_hosted -> "Self-hosted"
+      :stun_only -> "STUN-only"
+      :turn_only -> "TURN-only"
+      _ -> "Unknown"
+    end
   end
 end

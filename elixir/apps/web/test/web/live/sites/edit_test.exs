@@ -77,7 +77,8 @@ defmodule Web.Live.Sites.EditTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "group[name]"
+             "group[name]",
+             "group[routing]"
            ]
   end
 

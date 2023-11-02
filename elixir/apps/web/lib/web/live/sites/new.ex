@@ -23,10 +23,17 @@ defmodule Web.Sites.New do
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>
+                <.input label="Name" field={@form[:name]} placeholder="Name of this Site" required />
+              </div>
+              <div>
                 <.input
-                  label="Name Prefix"
-                  field={@form[:name]}
-                  placeholder="Name of this Site"
+                  type="select"
+                  label="Routing"
+                  field={@form[:routing]}
+                  options={[
+                    [key: "Managed Relays", value: "managed"],
+                    [key: "No Relays (STUN only)", value: "stun_only"]
+                  ]}
                   required
                 />
               </div>

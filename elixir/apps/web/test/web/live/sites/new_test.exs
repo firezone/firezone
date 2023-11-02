@@ -55,7 +55,8 @@ defmodule Web.Live.Sites.NewTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "group[name]"
+             "group[name]",
+             "group[routing]"
            ]
   end
 
@@ -106,7 +107,7 @@ defmodule Web.Live.Sites.NewTest do
     identity: identity,
     conn: conn
   } do
-    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name])
+    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name, :routing])
 
     {:ok, lv, _html} =
       conn

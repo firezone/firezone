@@ -342,7 +342,7 @@ IO.puts("")
 gateway_group =
   account
   |> Gateways.Group.Changeset.create(
-    %{name: "mycro-aws-gws", tokens: [%{}]},
+    %{name: "mycro-aws-gws", routing: "managed", tokens: [%{}]},
     admin_subject
   )
   |> Repo.insert!()
