@@ -50,7 +50,7 @@ management with group-based policies that control access to individual
 applications, entire subnets, and everything in between.
 
 <p align="center">
-  <img alt="firezone architecture" width="1000" src="https://github.com/firezone/firezone/assets/167144/5f0a61aa-bc84-4106-9b73-d6f8a01daebd" />
+  <img width="1439" alt="architecture" src="https://github.com/firezone/firezone/assets/167144/48cd6a1e-2f3f-4ca7-969a-fc5b33e13d1c">
 </p>
 
 <!-- TODO: New intro usage video
@@ -93,9 +93,7 @@ product documentation, organized as follows:
 
 ## Frequently asked questions (FAQ)
 
-<strong>
 > Can I self-host Firezone?
-</strong>
 
 Our [license](#license) won't stop you from self-hosting the entire Firezone
 product top to bottom, but we can't dedicated the resources to make this a
@@ -123,16 +121,12 @@ self-host Firezone at this time.
 Otherwise, if you're hobbyist or developer and are looking to spin it up locally
 to contribute or experiment with, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-<strong>
 > How do I upgrade from 0.7?
-</strong>
 
 Unfortunately, you can't. The good news is Firezone 1.x is _much_ easier to
 setup and manage than 0.x and so you probably don't need to.
 
-<strong>
 > How long will 0.7 be supported until?
-</strong>
 
 Firezone 0.7 is current end-of-life and will stop receiving updates after
 <strong>January 31st, 2024</strong>.
