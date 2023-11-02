@@ -93,7 +93,7 @@ product documentation, organized as follows:
 
 ## Frequently asked questions (FAQ)
 
-> Can I self-host Firezone?
+> **Can I self-host Firezone?**
 
 Our [license](#license) won't stop you from self-hosting the entire Firezone
 product top to bottom, but we can't dedicated the resources to make this a
@@ -115,18 +115,18 @@ imposed by Apple and Google:
 - Android / ChromeOS
 
 Because it's impossible to select which client version to install from a
-particular app store, building Firezone entirely from source is the only way
+particular app store, building Firezone entirely from source is the only to way
 self-host Firezone at this time.
 
 Otherwise, if you're hobbyist or developer and are looking to spin it up locally
 to contribute or experiment with, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-> How do I upgrade from 0.7?
+> **How do I upgrade from 0.7?**
 
 Unfortunately, you can't. The good news is Firezone 1.x is _much_ easier to
 setup and manage than 0.x and so you probably don't need to.
 
-> How long will 0.7 be supported until?
+> **How long will 0.7 be supported until?**
 
 Firezone 0.7 is current end-of-life and will stop receiving updates after
 <strong>January 31st, 2024</strong>.
