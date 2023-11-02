@@ -14,6 +14,30 @@
         <item name="android:textColorPrimary">@color/neutral_900</item>
     </style>
 
+    <style name="AppTheme.Base.H1">
+        <item name="fontFamily">@font/fira_sans_bold</item>
+        <item name="android:textSize">@dimen/text_h1</item>
+        <item name="android:textColorPrimary">@color/neutral_900</item>
+    </style>
+
+    <style name="AppTheme.Base.H2">
+        <item name="fontFamily">@font/fira_sans_bold</item>
+        <item name="android:textSize">@dimen/text_h2</item>
+        <item name="android:textColorPrimary">@color/neutral_900</item>
+    </style>
+
+    <style name="AppTheme.Base.H3">
+        <item name="fontFamily">@font/fira_sans_bold</item>
+        <item name="android:textSize">@dimen/text_h3</item>
+        <item name="android:textColorPrimary">@color/neutral_900</item>
+    </style>
+
+    <style name="AppTheme.Base.H4">
+        <item name="fontFamily">@font/fira_sans_bold</item>
+        <item name="android:textSize">@dimen/text_h4</item>
+        <item name="android:textColorPrimary">@color/neutral_900</item>
+    </style>
+
     <style name="AppTheme.Base.H5">
         <item name="fontFamily">@font/fira_sans_bold</item>
         <item name="android:textSize">@dimen/text_h5</item>
