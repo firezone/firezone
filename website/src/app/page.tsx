@@ -11,7 +11,6 @@ import {
   HiWrenchScrewdriver,
   HiGlobeAlt,
 } from "react-icons/hi2";
-import JoinOurCommunity from "@/components/JoinOurCommunity";
 
 export const metadata: Metadata = {
   title: "Open-source Remote Access • Firezone",
@@ -32,12 +31,12 @@ export default function Page() {
             Deploy on your infrastructure and start onboarding users in minutes.
           </h2>
           <div className="flex mb-8 lg:mb-16 flex-row justify-center space-y-0 space-x-4">
-            <Link href="/docs/deploy">
+            <Link href="/product/early-access">
               <button
                 type="button"
                 className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-gradient-to-br from-accent-700 to-accent-600 hover:scale-105 duration-0 transform transition"
               >
-                Deploy now
+                Request early access
                 <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
               </button>
             </Link>
@@ -530,38 +529,6 @@ export default function Page() {
             >
               Explore the documentation
             </ActionLink>
-          </div>
-        </div>
-      </section>
-
-      <JoinOurCommunity />
-
-      <section className="border-t border-neutral-200 py-24 bg-gradient-to-b from-accent-800 to-accent-700">
-        <div className="flex flex-col px-4 justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight text-center font-bold text-neutral-50">
-            Ready to get started?
-          </h2>
-          <h3 className="my-4 font-medium text-xl max-w-screen-md tracking-tight text-center text-neutral-200 ">
-            Set up secure access and start onboarding users in minutes. Copy and
-            paste the command below on any Docker-supported host.
-          </h3>
-          <div className="mt-8">
-            <CodeBlock
-              language="bash"
-              codeString="bash <(curl -fsSL https://github.com/firezone/firezone/raw/legacy/scripts/install.sh)"
-            />
-          </div>
-          <p className="mt-8 border-y font-semibold text-xl w-12 max-w-screen-md text-center text-neutral-200 ">
-            OR
-          </p>
-          <div className="flex mt-8">
-            <button
-              type="button"
-              className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-gradient-to-br from-primary-500 to-primary-450 hover:scale-105 duration-0 transform transition"
-            >
-              <Link href="/contact/sales">Contact sales</Link>
-              <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
-            </button>
           </div>
         </div>
       </section>
