@@ -31,25 +31,6 @@ export default function RootLayout({
         <body className={public_sans.className}>
           <div className="min-h-screen h-auto antialiased">
             <RootNavbar />
-            <Banner active>
-              <p className="text-md font-medium tracking-tight text-center w-full text-neutral-50">
-                Announcing{" "}
-                <Link
-                  href="/blog/firezone-1-0"
-                  className="underline text-accent-500  hover:no-underline"
-                >
-                  Firezone 1.0
-                </Link>
-                : cloud, clients, and more.{" "}
-                <Link
-                  href="/product/early-access"
-                  className="group text-accent-500 items-center inline-flex underline hover:no-underline"
-                >
-                  Request early access
-                  <HiArrowLongRight className="group-hover:translate-x-0.5 group-hover:scale-105 duration-100 transform transition ml-1 w-5 h-5" />
-                </Link>
-              </p>
-            </Banner>
             {children}
             <Footer />
           </div>

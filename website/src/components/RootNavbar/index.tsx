@@ -4,7 +4,7 @@ import Link from "next/link";
 import SidebarToggle from "./SidebarToggle";
 import { Navbar } from "flowbite-react";
 import { usePathname } from "next/navigation";
-import DeployButton from "@/components/DeployButton";
+import RequestAccessButton from "@/components/RequestAccessButton";
 import { useEffect } from "react";
 import { initFlowbite, Dropdown } from "flowbite";
 import { HiChevronDown } from "react-icons/hi2";
@@ -178,7 +178,7 @@ export default function RootNavbar() {
               />
             </Link>
             <span className="mr-2">
-              <DeployButton />
+              <RequestAccessButton />
             </span>
           </div>
         </div>
