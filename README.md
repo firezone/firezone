@@ -93,14 +93,14 @@ product documentation, organized as follows:
 
 ## Frequently asked questions (FAQ)
 
-> **Can I self-host Firezone?**
+### Can I self-host Firezone?
 
 Our [license](#license) won't stop you from self-hosting the entire Firezone
 product top to bottom, but we can't dedicated the resources to make this a
 smooth experience and therefore don't support self-hosting the control plane at
 this time.
 
-If you have a business case requiring an onprem installation of Firezone please
+If you have a business case requiring an on-prem installation of Firezone please
 [get in touch](https://www.firezone.dev/contact/sales?utm_source=readme).
 
 If you're feeling especially adventurous and want to self-host Firezone for
@@ -121,12 +121,12 @@ self-host Firezone at this time.
 Otherwise, if you're hobbyist or developer and are looking to spin it up locally
 to contribute or experiment with, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-> **How do I upgrade from 0.7?**
+### How do I upgrade from 0.7?
 
 Unfortunately, you can't. The good news is Firezone 1.x is _much_ easier to
 setup and manage than 0.x and so you probably don't need to.
 
-> **How long will 0.7 be supported until?**
+### How long will 0.7 be supported until?
 
 **Firezone 0.7 is currently end-of-life and will stop receiving updates after
 January 31st, 2024.**
