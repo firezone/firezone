@@ -68,8 +68,8 @@ Firezone is:
   [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
 - **Scalable:** Deploy two or more gateways for automatic load balancing and
   failover.
-- **Private:** Tunnels are peer-to-peer so packets never route through Firezone
-  infrastructure.
+- **Private:** Peer-to-peer, end-to-end encrypted tunnels prevent packets from
+  routing through our infrastructure.
 - **Secure:** Zero attack surface thanks to Firezone's holepunching tech which
   establishes tunnels on-the-fly at the time of access.
 - **Flexible:** Authenticate users via email, Google Workspace, or OIDC and sync
@@ -88,11 +88,22 @@ Firezone is **not:**
 This is a monorepo containing the full Firezone product, marketing website, and
 product documentation, organized as follows:
 
-- [elixir/](./elixir): Control plane API and admin UI
-- [rust/](./rust): Data plane components and Linux / Windows clients
-- [swift/](./swift/apple): macOS / iOS clients
-- [kotlin/](./kotlin/android): Android / ChromeOS clients
-- [website/](./website): Marketing website and product documentation
+- [elixir](./elixir): Control plane and internal Elixir libraries:
+  - [elixir/apps/web](./elixir/apps/web): Admin UI
+  - [elixir/apps/api](./elixir/apps/api): API for Clients, Relays and Gateways.
+- [rust/](./rust): Data plane and internal Rust libraries:
+  - [rust/gateway](./rust/gateway): Gateway - Tunnel server based on WireGuard
+    and deployed to your infrastructure.
+  - [rust/relay](./rust/relay): Relay - STUN/TURN server to facilitate
+    holepunching.
+  - [rust/linux-client](./rust/linux-client): Linux client.
+- [swift/](./swift/apple): macOS / iOS clients.
+- [kotlin/](./kotlin/android): Android / ChromeOS clients.
+- [website/](./website): Marketing website and product documentation.
+- [terraform/](./terraform): Terraform files for our cloud infrastructure:
+  - [terraform/modules/gateway-google-cloud-compute](./terraform/modules/gateway-google-cloud-compute):
+    Example Terraform module for deploying a Gateway to a Google Compute
+    Regional Instance Group.
 
 ## Quickstart
 
