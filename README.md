@@ -1,7 +1,7 @@
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/firezone/firezone/assets/167144/267dad97-8f4e-4825-8581-71196ce01d3d">
-  <img alt="firezone logo" width="400" src="https://github.com/firezone/firezone/assets/167144/73a16cec-f7fd-4983-91ed-4fb8c372b578">
-</picture>
+<p align="center">
+  <img alt="firezone logo" width="400" src="https://github.com/firezone/firezone/assets/167144/73a16cec-f7fd-4983-91ed-4fb8c372b578#gh-dark-mode-only">
+  <img alt="firezone logo" width="400" src="https://github.com/firezone/firezone/assets/167144/267dad97-8f4e-4825-8581-71196ce01d3d#gh-light-mode-only">
+</p>
 <p align="center">
  <strong>A modern alternative to legacy VPNs.</strong>
 </p>
