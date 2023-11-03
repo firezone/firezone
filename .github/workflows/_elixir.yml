@@ -4,7 +4,7 @@ on:
 
 jobs:
   unit-test:
-    runs-on: ubuntu-22.04-firezone-4c
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
@@ -321,7 +321,7 @@ jobs:
   acceptance-test:
     permissions:
       checks: write
-    runs-on: ubuntu-22.04-firezone-4c
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
