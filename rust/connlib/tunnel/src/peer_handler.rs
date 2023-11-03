@@ -1,6 +1,7 @@
 use std::sync::Arc;
+use std::time::Duration;
 
-use connlib_shared::{Callbacks, Error, Result};
+use connlib_shared::Callbacks;
 use futures_util::SinkExt;
 use webrtc::data::data_channel::DataChannel;
 
@@ -18,15 +19,15 @@ where
         channel: Arc<DataChannel>,
     ) {
         loop {
-            let Some(device) = self.device.read().await.clone() else {
-                let err = Error::NoIface;
-                tracing::error!(?err);
-                let _ = self.callbacks().on_disconnect(Some(&err));
-                break;
+            let Some(device) = self.device.read().clone() else {
+                tracing::debug!("Device temporarily not available");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                continue;
             };
             let device_io = device.io;
 
-            let result = self.peer_handler(&peer, channel.clone(), device_io).await;
+            let result =
+                peer_handler(self.callbacks.clone(), &peer, channel.clone(), device_io).await;
 
             if matches!(result, Err(ref err) if err.raw_os_error() == Some(9)) {
                 tracing::warn!("bad_file_descriptor");
@@ -47,66 +48,51 @@ where
             .send(peer.conn_id)
             .await;
     }
+}
 
-    async fn peer_handler(
-        self: &Arc<Self>,
-        peer: &Arc<Peer<TRoleState::Id>>,
-        channel: Arc<DataChannel>,
-        device_io: DeviceIo,
-    ) -> std::io::Result<()> {
-        let mut src_buf = [0u8; MAX_UDP_SIZE];
-        let mut dst_buf = [0u8; MAX_UDP_SIZE];
-        while let Ok(size) = channel.read(&mut src_buf[..]).await {
-            tracing::trace!(target: "wire", action = "read", bytes = size, from = "peer");
+async fn peer_handler<TId>(
+    callbacks: impl Callbacks,
+    peer: &Arc<Peer<TId>>,
+    channel: Arc<DataChannel>,
+    device_io: DeviceIo,
+) -> std::io::Result<()>
+where
+    TId: Copy,
+{
+    let mut src_buf = [0u8; MAX_UDP_SIZE];
+    let mut dst_buf = [0u8; MAX_UDP_SIZE];
+    while let Ok(size) = channel.read(&mut src_buf[..]).await {
+        tracing::trace!(target: "wire", action = "read", bytes = size, from = "peer");
 
-            // TODO: Double check that this can only happen on closed channel
-            // I think it's possible to transmit a 0-byte message through the channel
-            // but we would never use that.
-            // We should keep track of an open/closed channel ourselves if we wanted to do it properly then.
-            if size == 0 {
-                break;
-            }
-
-            match self
-                .handle_peer_packet(peer, &channel, &device_io, &src_buf[..size], &mut dst_buf)
-                .await
-            {
-                Err(Error::Io(e)) => return Err(e),
-                Err(other) => {
-                    tracing::error!(error = ?other, "failed to handle peer packet");
-                    let _ = self.callbacks.on_error(&other);
-                }
-                _ => {}
-            }
+        // TODO: Double check that this can only happen on closed channel
+        // I think it's possible to transmit a 0-byte message through the channel
+        // but we would never use that.
+        // We should keep track of an open/closed channel ourselves if we wanted to do it properly then.
+        if size == 0 {
+            break;
         }
 
-        Ok(())
-    }
+        let src = &src_buf[..size];
 
-    #[inline(always)]
-    pub(crate) async fn handle_peer_packet(
-        self: &Arc<Self>,
-        peer: &Arc<Peer<TRoleState::Id>>,
-        channel: &DataChannel,
-        device_writer: &DeviceIo,
-        src: &[u8],
-        dst: &mut [u8],
-    ) -> Result<()> {
-        match peer.decapsulate(src, dst)? {
-            Some(WriteTo::Network(bytes)) => {
+        match peer.decapsulate(src, &mut dst_buf) {
+            Ok(Some(WriteTo::Network(bytes))) => {
                 for packet in bytes {
                     if let Err(e) = channel.write(&packet).await {
                         tracing::error!("Couldn't send packet to connected peer: {e}");
-                        let _ = self.callbacks.on_error(&e.into());
+                        let _ = callbacks.on_error(&e.into());
                     }
                 }
             }
-            Some(WriteTo::Resource(packet)) => {
-                device_writer.write(packet)?;
+            Ok(Some(WriteTo::Resource(packet))) => {
+                device_io.write(packet)?;
             }
-            None => {}
+            Ok(None) => {}
+            Err(other) => {
+                tracing::error!(error = ?other, "failed to handle peer packet");
+                let _ = callbacks.on_error(&other);
+            }
         }
-
-        Ok(())
     }
+
+    Ok(())
 }

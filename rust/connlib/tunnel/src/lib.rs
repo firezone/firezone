@@ -16,7 +16,7 @@ use pnet_packet::Packet;
 use hickory_resolver::proto::rr::RecordType;
 use parking_lot::{Mutex, RwLock};
 use peer::{Peer, PeerStats};
-use tokio::{task::AbortHandle, time::MissedTickBehavior};
+use tokio::time::MissedTickBehavior;
 use webrtc::{
     api::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
@@ -27,10 +27,11 @@ use webrtc::{
 };
 
 use futures::channel::mpsc;
+use futures_util::task::AtomicWaker;
 use futures_util::{SinkExt, StreamExt};
 use itertools::Itertools;
 use std::collections::VecDeque;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
 use std::{collections::HashSet, hash::Hash};
 use tokio::time::Interval;
@@ -45,12 +46,13 @@ use connlib_shared::{
 use device_channel::{DeviceIo, IfaceConfig};
 
 pub use client::ClientState;
+use connlib_shared::error::ConnlibError;
 pub use control_protocol::Request;
 pub use gateway::GatewayState;
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 use crate::ip_packet::MutableIpPacket;
-use connlib_shared::messages::SecretKey;
+use connlib_shared::messages::{ClientId, SecretKey};
 use index::IndexLfsr;
 
 mod bounded_queue;
@@ -64,7 +66,6 @@ mod ip_packet;
 mod peer;
 mod peer_handler;
 mod resource_table;
-mod tokio_util;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
@@ -108,35 +109,34 @@ impl From<connlib_shared::messages::Peer> for PeerConfig {
 struct Device {
     config: Arc<IfaceConfig>,
     io: DeviceIo,
-
-    buf: Box<[u8; MAX_UDP_SIZE]>,
 }
 
 impl Device {
-    async fn read(&mut self) -> io::Result<Option<MutableIpPacket<'_>>> {
-        let res = self.io.read(&mut self.buf[..self.config.mtu()]).await?;
-        tracing::trace!(target: "wire", action = "read", bytes = res, from = "iface");
+    fn poll_read<'b>(
+        &mut self,
+        buf: &'b mut [u8],
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+        let res = ready!(self.io.poll_read(&mut buf[..self.config.mtu()], cx))?;
 
         if res == 0 {
-            return Ok(None);
+            return Poll::Ready(Ok(None));
         }
 
-        Ok(Some(
-            MutableIpPacket::new(&mut self.buf[..res]).ok_or_else(|| {
+        Poll::Ready(Ok(Some(MutableIpPacket::new(&mut buf[..res]).ok_or_else(
+            || {
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
                     "received bytes are not an IP packet",
                 )
-            })?,
-        ))
+            },
+        )?)))
     }
 }
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
 pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     next_index: Mutex<IndexLfsr>,
-    // We use a tokio Mutex here since this is only read/write during config so there's no relevant performance impact
-    device: tokio::sync::RwLock<Option<Device>>,
     rate_limiter: Arc<RateLimiter>,
     private_key: StaticSecret,
     public_key: PublicKey,
@@ -145,7 +145,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCPeerConnection>>>,
     webrtc_api: API,
     callbacks: CallbackErrorFacade<CB>,
-    iface_handler_abort: Mutex<Option<AbortHandle>>,
 
     /// State that differs per role, i.e. clients vs gateways.
     role_state: Mutex<TRoleState>,
@@ -158,6 +157,142 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     mtu_refresh_interval: Mutex<Interval>,
 
     peers_to_stop: Mutex<VecDeque<TRoleState::Id>>,
+
+    device: RwLock<Option<Device>>,
+    read_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
+    write_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
+    no_device_waker: AtomicWaker,
+}
+
+impl<CB> Tunnel<CB, ClientState>
+where
+    CB: Callbacks + 'static,
+{
+    pub async fn next_event(&self) -> Result<Event<GatewayId>> {
+        std::future::poll_fn(|cx| loop {
+            {
+                let mut guard = self.device.write();
+
+                if let Some(device) = guard.as_mut() {
+                    match self.poll_device(device, cx) {
+                        Poll::Ready(Ok(Some(event))) => return Poll::Ready(Ok(event)),
+                        Poll::Ready(Ok(None)) => {
+                            tracing::info!("Device stopped");
+                            guard.take();
+                            continue;
+                        }
+                        Poll::Ready(Err(e)) => {
+                            guard.take(); // Ensure we don't poll a failed device again.
+                            return Poll::Ready(Err(e));
+                        }
+                        Poll::Pending => {}
+                    }
+                } else {
+                    self.no_device_waker.register(cx.waker());
+                }
+            }
+
+            match self.poll_next_event_common(cx) {
+                Poll::Ready(event) => return Poll::Ready(Ok(event)),
+                Poll::Pending => {}
+            }
+
+            return Poll::Pending;
+        })
+        .await
+    }
+
+    pub(crate) fn poll_device(
+        &self,
+        device: &mut Device,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Option<Event<GatewayId>>>> {
+        loop {
+            let mut read_guard = self.read_buf.lock();
+            let mut write_guard = self.write_buf.lock();
+            let read_buf = read_guard.as_mut_slice();
+            let write_buf = write_guard.as_mut_slice();
+
+            let Some(packet) = ready!(device.poll_read(read_buf, cx))? else {
+                return Poll::Ready(Ok(None));
+            };
+
+            let mut role_state = self.role_state.lock();
+
+            let packet = match role_state.handle_dns(packet) {
+                Ok(Some(response)) => {
+                    device.io.write(response)?;
+                    continue;
+                }
+                Ok(None) => continue,
+                Err(non_dns_packet) => non_dns_packet,
+            };
+
+            let dest = packet.destination();
+
+            let peers_by_ip = self.peers_by_ip.read();
+            let Some(peer) = peer_by_ip(&peers_by_ip, dest) else {
+                role_state.on_connection_intent(dest);
+                continue;
+            };
+
+            self.encapsulate(write_buf, packet, dest, peer);
+
+            continue;
+        }
+    }
+}
+
+impl<CB> Tunnel<CB, GatewayState>
+where
+    CB: Callbacks + 'static,
+{
+    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
+        let mut read_guard = self.read_buf.lock();
+        let mut write_guard = self.write_buf.lock();
+
+        let read_buf = read_guard.as_mut_slice();
+        let write_buf = write_guard.as_mut_slice();
+
+        loop {
+            {
+                let mut device = self.device.write();
+
+                match device.as_mut().map(|d| d.poll_read(read_buf, cx)) {
+                    Some(Poll::Ready(Ok(Some(packet)))) => {
+                        let dest = packet.destination();
+
+                        let peers_by_ip = self.peers_by_ip.read();
+                        let Some(peer) = peer_by_ip(&peers_by_ip, dest) else {
+                            continue;
+                        };
+
+                        self.encapsulate(write_buf, packet, dest, peer);
+
+                        continue;
+                    }
+                    Some(Poll::Ready(Ok(None))) => {
+                        tracing::info!("Device stopped");
+                        drop(device.take());
+                    }
+                    Some(Poll::Ready(Err(e))) => return Poll::Ready(Err(ConnlibError::Io(e))),
+                    Some(Poll::Pending) => {
+                        // device not ready for reading, moving on ..
+                    }
+                    None => {
+                        self.no_device_waker.register(cx.waker());
+                    }
+                }
+            }
+
+            match self.poll_next_event_common(cx) {
+                Poll::Ready(e) => return Poll::Ready(Ok(e)),
+                Poll::Pending => {}
+            }
+
+            return Poll::Pending;
+        }
+    }
 }
 
 pub struct ConnectedPeer<TId> {
@@ -195,11 +330,7 @@ where
         }
     }
 
-    pub async fn next_event(&self) -> Event<TRoleState::Id> {
-        std::future::poll_fn(|cx| self.poll_next_event(cx)).await
-    }
-
-    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
+    fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         loop {
             if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
                 let mut peers = self.peers_by_ip.write();
@@ -291,21 +422,9 @@ where
             }
 
             if self.mtu_refresh_interval.lock().poll_tick(cx).is_ready() {
-                // We use `try_read` to acquire a lock on the device because we are within a synchronous context here and cannot use `.await`.
-                // The device is only updated during `add_route` and `set_interface` which would be extremely unlucky to hit at the same time as this timer.
-                // Even if we hit this, we just wait for the next tick to update the MTU.
-                let device = match self.device.try_read().map(|d| d.clone()) {
-                    Ok(Some(device)) => device,
-                    Ok(None) => {
-                        let err = Error::ControlProtocolError;
-                        tracing::error!(?err, "get_iface_config");
-                        let _ = self.callbacks.on_error(&err);
-                        continue;
-                    }
-                    Err(_) => {
-                        tracing::debug!("Unlucky! Somebody is updating the device just as we are about to update its MTU, trying again on the next tick ...");
-                        continue;
-                    }
+                let Some(device) = self.device.read().clone() else {
+                    tracing::debug!("Device temporarily not available");
+                    continue;
                 };
 
                 tokio::spawn({
@@ -334,6 +453,40 @@ where
 
             return Poll::Pending;
         }
+    }
+
+    fn encapsulate(
+        &self,
+        write_buf: &mut [u8],
+        packet: MutableIpPacket,
+        dest: IpAddr,
+        peer: &ConnectedPeer<TRoleState::Id>,
+    ) {
+        let peer_id = peer.inner.conn_id;
+
+        match peer.inner.encapsulate(packet, dest, write_buf) {
+            Ok(None) => {}
+            Ok(Some(b)) => {
+                tokio::spawn({
+                    let channel = peer.channel.clone();
+                    let mut sender = self.stop_peer_command_sender.clone();
+
+                    async move {
+                        if let Err(e) = channel.write(&b).await {
+                            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+                            let _ = sender.send(peer_id).await;
+                        }
+                    }
+                });
+            }
+            Err(e) => {
+                tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+
+                if e.is_fatal_connection_error() {
+                    self.peers_to_stop.lock().push_back(peer_id);
+                }
+            }
+        };
     }
 }
 
@@ -403,7 +556,6 @@ where
         let next_index = Default::default();
         let peer_connections = Default::default();
         let device = Default::default();
-        let iface_handler_abort = Default::default();
 
         // ICE
         let mut media_engine = MediaEngine::default();
@@ -433,8 +585,9 @@ where
             next_index,
             webrtc_api,
             device,
+            read_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
+            write_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             callbacks: CallbackErrorFacade(callbacks),
-            iface_handler_abort,
             role_state: Default::default(),
             stop_peer_command_receiver: Mutex::new(stop_peer_command_receiver),
             stop_peer_command_sender,
@@ -442,6 +595,7 @@ where
             peer_refresh_interval: Mutex::new(peer_refresh_interval()),
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
             peers_to_stop: Default::default(),
+            no_device_waker: Default::default(),
         })
     }
 
