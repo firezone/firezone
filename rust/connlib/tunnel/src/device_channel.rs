@@ -23,7 +23,7 @@ pub struct Device {
 
 impl Device {
     pub(crate) fn poll_read<'b>(
-        &mut self,
+        &self,
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
