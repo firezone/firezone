@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use connlib_shared::{Callbacks, Error};
+use connlib_shared::Callbacks;
 use futures_util::SinkExt;
 use webrtc::data::data_channel::DataChannel;
 
