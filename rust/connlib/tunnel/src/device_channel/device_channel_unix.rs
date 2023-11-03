@@ -11,8 +11,7 @@ use tokio::io::{unix::AsyncFd, Ready};
 
 use tun::{IfaceDevice, IfaceStream};
 
-use crate::device_channel::Packet;
-use crate::Device;
+use crate::device_channel::{Device, Packet};
 
 mod tun;
 

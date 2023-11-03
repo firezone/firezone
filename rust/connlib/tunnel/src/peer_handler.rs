@@ -5,8 +5,9 @@ use connlib_shared::Callbacks;
 use futures_util::SinkExt;
 use webrtc::data::data_channel::DataChannel;
 
+use crate::device_channel::Device;
 use crate::peer::WriteTo;
-use crate::{device_channel::DeviceIo, peer::Peer, RoleState, Tunnel, MAX_UDP_SIZE};
+use crate::{peer::Peer, RoleState, Tunnel, MAX_UDP_SIZE};
 
 impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where
@@ -24,10 +25,7 @@ where
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 continue;
             };
-            let device_io = device.io;
-
-            let result =
-                peer_handler(self.callbacks.clone(), &peer, channel.clone(), device_io).await;
+            let result = peer_handler(self.callbacks.clone(), &peer, channel.clone(), device).await;
 
             if matches!(result, Err(ref err) if err.raw_os_error() == Some(9)) {
                 tracing::warn!("bad_file_descriptor");
@@ -54,7 +52,7 @@ async fn peer_handler<TId>(
     callbacks: impl Callbacks,
     peer: &Arc<Peer<TId>>,
     channel: Arc<DataChannel>,
-    device_io: DeviceIo,
+    device: Device,
 ) -> std::io::Result<()>
 where
     TId: Copy,
@@ -84,7 +82,7 @@ where
                 }
             }
             Ok(Some(WriteTo::Resource(packet))) => {
-                device_io.write(packet)?;
+                device.write(packet)?;
             }
             Ok(None) => {}
             Err(other) => {

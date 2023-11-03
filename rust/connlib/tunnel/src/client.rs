@@ -77,7 +77,7 @@ where
                 return Ok(());
             };
 
-            device.io.write(pkt)?;
+            device.write(pkt)?;
         }
 
         Ok(())

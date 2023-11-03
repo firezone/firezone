@@ -32,7 +32,7 @@ use futures_util::{SinkExt, StreamExt};
 use itertools::Itertools;
 use std::collections::VecDeque;
 use std::task::{ready, Context, Poll};
-use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
 use std::{collections::HashSet, hash::Hash};
 use tokio::time::Interval;
 use webrtc::data::data_channel::DataChannel;
@@ -43,8 +43,6 @@ use connlib_shared::{
     Result,
 };
 
-use device_channel::{DeviceIo, IfaceConfig};
-
 pub use client::ClientState;
 use connlib_shared::error::ConnlibError;
 pub use control_protocol::Request;
@@ -53,6 +51,7 @@ pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription
 
 use crate::ip_packet::MutableIpPacket;
 use connlib_shared::messages::{ClientId, SecretKey};
+use device_channel::Device;
 use index::IndexLfsr;
 
 mod bounded_queue;
@@ -103,34 +102,6 @@ impl From<connlib_shared::messages::Peer> for PeerConfig {
             ips: vec![value.ipv4.into(), value.ipv6.into()],
             preshared_key: value.preshared_key,
         }
-    }
-}
-#[derive(Clone)]
-struct Device {
-    config: Arc<IfaceConfig>,
-    io: DeviceIo,
-}
-
-impl Device {
-    fn poll_read<'b>(
-        &mut self,
-        buf: &'b mut [u8],
-        cx: &mut Context<'_>,
-    ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
-        let res = ready!(self.io.poll_read(&mut buf[..self.config.mtu()], cx))?;
-
-        if res == 0 {
-            return Poll::Ready(Ok(None));
-        }
-
-        Poll::Ready(Ok(Some(MutableIpPacket::new(&mut buf[..res]).ok_or_else(
-            || {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "received bytes are not an IP packet",
-                )
-            },
-        )?)))
     }
 }
 
@@ -221,7 +192,7 @@ where
 
             let packet = match role_state.handle_dns(packet) {
                 Ok(Some(response)) => {
-                    device.io.write(response)?;
+                    device.write(response)?;
                     continue;
                 }
                 Ok(None) => continue,
