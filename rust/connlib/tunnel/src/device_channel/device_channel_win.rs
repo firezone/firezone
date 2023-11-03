@@ -2,6 +2,7 @@ use crate::device_channel::Packet;
 use crate::Device;
 use connlib_shared::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
 use ip_network::IpNetwork;
+use std::task::{Context, Poll};
 
 #[derive(Clone)]
 pub(crate) struct DeviceIo;
@@ -9,7 +10,7 @@ pub(crate) struct DeviceIo;
 pub(crate) struct IfaceConfig;
 
 impl DeviceIo {
-    pub async fn read(&self, _: &mut [u8]) -> std::io::Result<usize> {
+    pub fn poll_read(&self, _: &mut [u8], _: &mut Context<'_>) -> Poll<std::io::Result<usize>> {
         todo!()
     }
 

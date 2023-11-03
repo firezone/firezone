@@ -173,7 +173,7 @@ impl Eventloop {
                 _ => {}
             }
 
-            match self.tunnel.poll_next_event(cx) {
+            match self.tunnel.poll_next_event(cx)? {
                 Poll::Ready(firezone_tunnel::Event::SignalIceCandidate {
                     conn_id: client,
                     candidate,

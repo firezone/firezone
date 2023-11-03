@@ -1,16 +1,18 @@
+use std::io;
 use std::sync::{
     atomic::{AtomicUsize, Ordering::Relaxed},
     Arc,
 };
+use std::task::{ready, Context, Poll};
 
 use connlib_shared::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
 use ip_network::IpNetwork;
-use tokio::io::{unix::AsyncFd, Interest};
+use tokio::io::{unix::AsyncFd, Ready};
 
 use tun::{IfaceDevice, IfaceStream};
 
 use crate::device_channel::Packet;
-use crate::{Device, MAX_UDP_SIZE};
+use crate::Device;
 
 mod tun;
 
@@ -23,16 +25,27 @@ pub(crate) struct IfaceConfig {
 pub(crate) struct DeviceIo(Arc<AsyncFd<IfaceStream>>);
 
 impl DeviceIo {
-    pub async fn read(&self, out: &mut [u8]) -> std::io::Result<usize> {
-        self.0
-            .async_io(Interest::READABLE, |inner| inner.read(out))
-            .await
+    pub fn poll_read(&self, out: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+        loop {
+            let mut guard = ready!(self.0.poll_read_ready(cx))?;
+
+            match guard.get_inner().read(out) {
+                Ok(n) => return Poll::Ready(Ok(n)),
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    // a read has blocked, but a write might still succeed.
+                    // clear only the read readiness.
+                    guard.clear_ready_matching(Ready::READABLE);
+                    continue;
+                }
+                Err(e) => return Poll::Ready(Err(e)),
+            }
+        }
     }
 
     // Note: write is synchronous because it's non-blocking
     // and some losiness is acceptable and increseases performance
     // since we don't block the reading loops.
-    pub fn write(&self, packet: Packet<'_>) -> std::io::Result<usize> {
+    pub fn write(&self, packet: Packet<'_>) -> io::Result<usize> {
         match packet {
             Packet::Ipv4(msg) => self.0.get_ref().write4(&msg),
             Packet::Ipv6(msg) => self.0.get_ref().write6(&msg),
@@ -65,11 +78,7 @@ impl IfaceConfig {
             iface,
             mtu: AtomicUsize::new(mtu),
         });
-        Ok(Some(Device {
-            io,
-            config,
-            buf: Box::new([0u8; MAX_UDP_SIZE]),
-        }))
+        Ok(Some(Device { io, config }))
     }
 }
 
@@ -86,9 +95,5 @@ pub(crate) async fn create_iface(
         mtu: AtomicUsize::new(mtu),
     });
 
-    Ok(Device {
-        io,
-        config,
-        buf: Box::new([0u8; MAX_UDP_SIZE]),
-    })
+    Ok(Device { io, config })
 }
