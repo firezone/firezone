@@ -1,5 +1,5 @@
 use async_compression::tokio::bufread::GzipEncoder;
-use std::net::{IpAddr, SocketAddr};
+use connlib_shared::messages::{DnsServer, IpDnsServer};
 use std::path::PathBuf;
 use std::{io, sync::Arc};
 
@@ -37,7 +37,7 @@ pub struct ControlPlane<CB: Callbacks> {
 }
 
 fn create_resolver(
-    upstream_dns: Vec<IpAddr>,
+    upstream_dns: Vec<DnsServer>,
     callbacks: &impl Callbacks,
 ) -> Option<TokioAsyncResolver> {
     let dns_servers = if upstream_dns.is_empty() {
@@ -48,13 +48,23 @@ fn create_resolver(
             return None;
         }
         dns_servers
+            .into_iter()
+            .map(|ip| {
+                DnsServer::IpPort(IpDnsServer {
+                    address: (ip, DNS_PORT).into(),
+                })
+            })
+            .collect()
     } else {
         upstream_dns
     };
 
     let mut resolver_config = ResolverConfig::new();
-    for ip in dns_servers.iter() {
-        let name_server = NameServerConfig::new(SocketAddr::new(*ip, DNS_PORT), Protocol::Udp);
+    for srv in dns_servers.iter() {
+        let name_server = match srv {
+            DnsServer::IpPort(srv) => NameServerConfig::new(srv.address, Protocol::Udp),
+        };
+
         resolver_config.add_name_server(name_server);
     }
 

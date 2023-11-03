@@ -1,5 +1,5 @@
 //! Message types that are used by both the gateway and client.
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use ip_network::IpNetwork;
@@ -203,6 +203,17 @@ pub struct ResourceDescriptionCidr {
     pub name: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(tag = "protocol", rename_all = "snake_case")]
+pub enum DnsServer {
+    IpPort(IpDnsServer),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct IpDnsServer {
+    pub address: SocketAddr,
+}
+
 /// Represents a wireguard interface configuration.
 ///
 /// Note that the ips are /32 for ipv4 and /128 for ipv6.
@@ -216,7 +227,7 @@ pub struct Interface {
     /// DNS that will be used to query for DNS that aren't within our resource list.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
-    pub upstream_dns: Vec<IpAddr>,
+    pub upstream_dns: Vec<DnsServer>,
 }
 
 /// A single relay
