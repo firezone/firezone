@@ -147,7 +147,7 @@ where
     /// - `gateway_public_key`: Public key of the gateway that is handling that resource for this connection.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn received_offer_response(
-        self: &Arc<Self>,
+        &self,
         resource_id: ResourceId,
         rtc_sdp: RTCSessionDescription,
         gateway_public_key: PublicKey,
