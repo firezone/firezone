@@ -38,6 +38,16 @@ where
         resource: ResourceDescription,
     ) -> Result<RTCSessionDescription> {
         let (peer_connection, receiver) = new_peer_connection(&self.webrtc_api, relays).await?;
+        peer_connection.set_remote_description(sdp_session).await?;
+
+        // TODO: remove tunnel IP from answer
+        let answer = peer_connection.create_answer(None).await?;
+        peer_connection.set_local_description(answer).await?;
+        let local_desc = peer_connection
+            .local_description()
+            .await
+            .ok_or(Error::ConnectionEstablishError)?;
+
         self.role_state
             .lock()
             .add_new_ice_receiver(client_id, receiver);
@@ -71,16 +81,6 @@ where
                 }))
             })
         }));
-
-        peer_connection.set_remote_description(sdp_session).await?;
-
-        // TODO: remove tunnel IP from answer
-        let answer = peer_connection.create_answer(None).await?;
-        peer_connection.set_local_description(answer).await?;
-        let local_desc = peer_connection
-            .local_description()
-            .await
-            .ok_or(Error::ConnectionEstablishError)?;
 
         Ok(local_desc)
     }
