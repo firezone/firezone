@@ -1,7 +1,6 @@
 use closeable::Closeable;
 use connlib_shared::{
-    messages::Interface as InterfaceConfig, CallbackErrorFacade, Callbacks, Error, Result,
-    DNS_SENTINEL,
+    messages::Interface as InterfaceConfig, Callbacks, Error, Result, DNS_SENTINEL,
 };
 use ip_network::IpNetwork;
 use libc::{
@@ -108,7 +107,7 @@ impl IfaceStream {
 impl IfaceDevice {
     pub async fn new(
         config: &InterfaceConfig,
-        callbacks: &CallbackErrorFacade<impl Callbacks>,
+        callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
         let fd = callbacks
             .on_set_interface_config(
@@ -175,7 +174,7 @@ impl IfaceDevice {
     pub async fn add_route(
         &self,
         route: IpNetwork,
-        callbacks: &CallbackErrorFacade<impl Callbacks>,
+        callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
         self.0.get_ref().close();
         let fd = callbacks.on_add_route(route)?.ok_or(Error::NoFd)?;

@@ -5,7 +5,7 @@ use std::sync::{
 };
 use std::task::{ready, Context, Poll};
 
-use connlib_shared::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
+use connlib_shared::{messages::Interface, Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use tokio::io::{unix::AsyncFd, Ready};
 
@@ -65,7 +65,7 @@ impl IfaceConfig {
     pub(crate) async fn add_route(
         &self,
         route: IpNetwork,
-        callbacks: &CallbackErrorFacade<impl Callbacks>,
+        callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>> {
         let Some((iface, stream)) = self.iface.add_route(route, callbacks).await? else {
             return Ok(None);
@@ -82,7 +82,7 @@ impl IfaceConfig {
 
 pub(crate) async fn create_iface(
     config: &Interface,
-    callbacks: &CallbackErrorFacade<impl Callbacks>,
+    callbacks: &impl Callbacks<Error = Error>,
 ) -> Result<Device> {
     let (iface, stream) = IfaceDevice::new(config, callbacks).await?;
     iface.up().await?;

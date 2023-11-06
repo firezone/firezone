@@ -1,6 +1,6 @@
 use crate::device_channel::Packet;
 use crate::Device;
-use connlib_shared::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
+use connlib_shared::{messages::Interface, Callbacks, Result};
 use ip_network::IpNetwork;
 use std::task::{Context, Poll};
 
@@ -30,15 +30,12 @@ impl IfaceConfig {
     pub(crate) async fn add_route(
         &self,
         _: IpNetwork,
-        _: &CallbackErrorFacade<impl Callbacks>,
+        _: &impl Callbacks,
     ) -> Result<Option<Device>> {
         todo!()
     }
 }
 
-pub(crate) async fn create_iface(
-    _: &Interface,
-    _: &CallbackErrorFacade<impl Callbacks>,
-) -> Result<Device> {
+pub(crate) async fn create_iface(_: &Interface, _: &impl Callbacks) -> Result<Device> {
     todo!()
 }
