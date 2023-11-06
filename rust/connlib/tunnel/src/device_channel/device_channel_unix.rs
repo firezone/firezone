@@ -73,10 +73,10 @@ impl IfaceConfig {
         };
         let io = DeviceIo(stream);
         let mtu = iface.mtu().await?;
-        let config = Arc::new(IfaceConfig {
+        let config = IfaceConfig {
             iface,
             mtu: AtomicUsize::new(mtu),
-        });
+        };
         Ok(Some(Device { io, config }))
     }
 }
@@ -89,10 +89,10 @@ pub(crate) async fn create_iface(
     iface.up().await?;
     let io = DeviceIo(stream);
     let mtu = iface.mtu().await?;
-    let config = Arc::new(IfaceConfig {
+    let config = IfaceConfig {
         iface,
         mtu: AtomicUsize::new(mtu),
-    });
+    };
 
     Ok(Device { io, config })
 }

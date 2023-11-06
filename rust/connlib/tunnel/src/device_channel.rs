@@ -12,11 +12,10 @@ use crate::ip_packet::MutableIpPacket;
 pub(crate) use device_channel::*;
 use std::borrow::Cow;
 use std::io;
-use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 
 pub struct Device {
-    pub(crate) config: Arc<IfaceConfig>, // TODO: Make private
+    pub(crate) config: IfaceConfig, // TODO: Make private
     io: DeviceIo,
 }
 
