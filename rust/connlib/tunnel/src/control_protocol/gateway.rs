@@ -104,7 +104,7 @@ where
                             }
                         }
 
-                        tokio::spawn(tunnel.clone().start_peer_handler(peer, data_channel));
+                        tokio::spawn(tunnel.start_peer_handler(peer, data_channel));
                     })
                 }))
             })
