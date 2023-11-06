@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::{
-    control::Reference,
     messages::{GatewayId, Key, Relay, RequestConnection, ResourceId},
     Callbacks,
 };
@@ -64,14 +63,9 @@ where
         resource_id: ResourceId,
         gateway_id: GatewayId,
         relays: Vec<Relay>,
-        reference: Option<Reference>,
+        reference: usize,
     ) -> Result<Request> {
         tracing::trace!("request_connection");
-
-        let reference: usize = reference
-            .ok_or(Error::InvalidReference)?
-            .parse()
-            .map_err(|_| Error::InvalidReference)?;
 
         if let Some(connection) = self.role_state.lock().attempt_to_reuse_connection(
             resource_id,

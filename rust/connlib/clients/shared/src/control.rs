@@ -160,6 +160,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     ) {
         let tunnel = Arc::clone(&self.tunnel);
         let mut control_signaler = self.phoenix_channel.clone();
+
+        let Some(Ok(reference)) = reference.clone().map(|r| r.parse()) else {
+            tracing::warn!("Failed to parse {reference:?} as usize");
+            return;
+        };
+
         tokio::spawn(async move {
             let err = match tunnel
                 .request_connection(resource_id, gateway_id, relays, reference)
