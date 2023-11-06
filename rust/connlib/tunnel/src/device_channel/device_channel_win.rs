@@ -4,7 +4,6 @@ use connlib_shared::{messages::Interface, CallbackErrorFacade, Callbacks, Result
 use ip_network::IpNetwork;
 use std::task::{Context, Poll};
 
-#[derive(Clone)]
 pub(crate) struct DeviceIo;
 
 pub(crate) struct IfaceConfig;

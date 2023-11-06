@@ -20,7 +20,6 @@ pub(crate) struct IfaceConfig {
     iface: IfaceDevice,
 }
 
-#[derive(Clone)]
 pub(crate) struct DeviceIo(Arc<AsyncFd<IfaceStream>>);
 
 impl DeviceIo {
