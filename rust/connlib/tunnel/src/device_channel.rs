@@ -17,7 +17,7 @@ use std::io;
 use std::task::{ready, Context, Poll};
 
 pub struct Device {
-    pub(crate) config: IfaceConfig, // TODO: Make private
+    config: IfaceConfig,
     io: DeviceIo,
 }
 
