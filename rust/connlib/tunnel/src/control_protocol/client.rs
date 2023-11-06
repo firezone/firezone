@@ -177,7 +177,7 @@ where
                     ));
                 }
 
-                tokio::spawn(tunnel.clone().start_peer_handler(peer, d));
+                tokio::spawn(tunnel.start_peer_handler(peer, d));
 
                 tunnel
                     .role_state

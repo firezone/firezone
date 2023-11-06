@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,45 +15,44 @@ where
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
-    pub(crate) async fn start_peer_handler(
-        self: Arc<Self>,
+    pub(crate) fn start_peer_handler(
+        &self,
         peer: Arc<Peer<TRoleState::Id>>,
         channel: Arc<DataChannel>,
-    ) {
+    ) -> impl Future<Output = ()> + Send + 'static {
         let device = Arc::clone(&self.device);
+        let callbacks = self.callbacks.clone();
+        let mut sender = self.stop_peer_command_sender.clone();
 
-        loop {
-            let Some(device) = device.load().clone() else {
-                tracing::debug!("Device temporarily not available");
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                continue;
-            };
-            let result =
-                peer_handler(self.callbacks.clone(), &peer, channel.clone(), &device).await;
+        async move {
+            loop {
+                let Some(device) = device.load().clone() else {
+                    tracing::debug!("Device temporarily not available");
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    continue;
+                };
+                let result = peer_handler(&callbacks, &peer, channel.clone(), &device).await;
 
-            if matches!(result, Err(ref err) if err.raw_os_error() == Some(9)) {
-                tracing::warn!("bad_file_descriptor");
-                continue;
+                if matches!(result, Err(ref err) if err.raw_os_error() == Some(9)) {
+                    tracing::warn!("bad_file_descriptor");
+                    continue;
+                }
+
+                if let Err(e) = result {
+                    tracing::error!(err = ?e, "peer_handle_error");
+                }
+
+                break;
             }
 
-            if let Err(e) = result {
-                tracing::error!(err = ?e, "peer_handle_error");
-            }
-
-            break;
+            tracing::debug!(peer = ?peer.stats(), "peer_stopped");
+            let _ = sender.send(peer.conn_id).await;
         }
-
-        tracing::debug!(peer = ?peer.stats(), "peer_stopped");
-        let _ = self
-            .stop_peer_command_sender
-            .clone()
-            .send(peer.conn_id)
-            .await;
     }
 }
 
 async fn peer_handler<TId>(
-    callbacks: impl Callbacks,
+    callbacks: &impl Callbacks,
     peer: &Arc<Peer<TId>>,
     channel: Arc<DataChannel>,
     device: &Device,
