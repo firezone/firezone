@@ -29,7 +29,7 @@ where
     /// # Returns
     /// An [RTCSessionDescription] of the local sdp, with candidates gathered.
     pub async fn set_peer_connection_request(
-        self: &Arc<Self>,
+        &self,
         sdp_session: RTCSessionDescription,
         peer: PeerConfig,
         relays: Vec<Relay>,
@@ -42,14 +42,13 @@ where
             .lock()
             .add_new_ice_receiver(client_id, receiver);
 
-        let tunnel = Arc::clone(self);
         self.peer_connections
             .lock()
             .insert(client_id, Arc::clone(&peer_connection));
 
         peer_connection.on_peer_connection_state_change(on_peer_connection_state_change_handler(
             client_id,
-            tunnel.stop_peer_command_sender.clone(),
+            self.stop_peer_command_sender.clone(),
         ));
 
         let sender = self
