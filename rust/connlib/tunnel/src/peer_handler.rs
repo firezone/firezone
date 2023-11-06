@@ -25,7 +25,8 @@ where
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 continue;
             };
-            let result = peer_handler(self.callbacks.clone(), &peer, channel.clone(), device).await;
+            let result =
+                peer_handler(self.callbacks.clone(), &peer, channel.clone(), &device).await;
 
             if matches!(result, Err(ref err) if err.raw_os_error() == Some(9)) {
                 tracing::warn!("bad_file_descriptor");
@@ -52,7 +53,7 @@ async fn peer_handler<TId>(
     callbacks: impl Callbacks,
     peer: &Arc<Peer<TId>>,
     channel: Arc<DataChannel>,
-    device: Device,
+    device: &Device,
 ) -> std::io::Result<()>
 where
     TId: Copy,

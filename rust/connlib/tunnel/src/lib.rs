@@ -129,7 +129,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
 
     peers_to_stop: Mutex<VecDeque<TRoleState::Id>>,
 
-    device: RwLock<Option<Device>>,
+    device: RwLock<Option<Arc<Device>>>,
     read_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
     write_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
     no_device_waker: AtomicWaker,
@@ -144,7 +144,7 @@ where
             {
                 let mut guard = self.device.write();
 
-                if let Some(device) = guard.as_mut() {
+                if let Some(device) = guard.as_ref() {
                     match self.poll_device(device, cx) {
                         Poll::Ready(Ok(Some(event))) => return Poll::Ready(Ok(event)),
                         Poll::Ready(Ok(None)) => {
@@ -175,7 +175,7 @@ where
 
     pub(crate) fn poll_device(
         &self,
-        device: &mut Device,
+        device: &Device,
         cx: &mut Context<'_>,
     ) -> Poll<Result<Option<Event<GatewayId>>>> {
         loop {

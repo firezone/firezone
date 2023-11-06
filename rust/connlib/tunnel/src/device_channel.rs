@@ -15,7 +15,6 @@ use std::io;
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 
-#[derive(Clone)]
 pub struct Device {
     pub(crate) config: Arc<IfaceConfig>, // TODO: Make private
     io: DeviceIo,

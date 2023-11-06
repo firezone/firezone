@@ -22,6 +22,7 @@ use ip_network_table::IpNetworkTable;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::Instant;
@@ -86,7 +87,7 @@ where
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        let device = create_iface(config, self.callbacks()).await?;
+        let device = Arc::new(create_iface(config, self.callbacks()).await?);
 
         *self.device.write() = Some(device.clone());
         self.no_device_waker.wake();
@@ -119,6 +120,7 @@ where
             .config
             .add_route(route, self.callbacks())
             .await?
+            .map(Arc::new)
             .unwrap_or(device); // Restore the old device.
         *self.device.write() = Some(new_device);
 
