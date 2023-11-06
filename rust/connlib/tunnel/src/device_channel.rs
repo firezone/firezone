@@ -9,7 +9,9 @@ mod device_channel;
 mod device_channel;
 
 use crate::ip_packet::MutableIpPacket;
+use connlib_shared::{Callbacks, Error};
 pub(crate) use device_channel::*;
+use ip_network::IpNetwork;
 use std::borrow::Cow;
 use std::io;
 use std::task::{ready, Context, Poll};
@@ -39,6 +41,14 @@ impl Device {
                 )
             },
         )?)))
+    }
+
+    pub(crate) async fn add_route(
+        &self,
+        route: IpNetwork,
+        callbacks: &impl Callbacks<Error = Error>,
+    ) -> Result<Option<Device>, Error> {
+        self.config.add_route(route, callbacks).await
     }
 
     pub fn write(&self, packet: Packet<'_>) -> io::Result<usize> {

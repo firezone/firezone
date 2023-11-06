@@ -71,9 +71,8 @@ where
                                 let _ = tunnel.callbacks().on_error(&e);
                                 return;
                             };
-                            let iface_config = &device.config;
                             for &ip in &peer_config.ips {
-                                if let Err(e) = iface_config.add_route(ip, tunnel.callbacks()).await
+                                if let Err(e) = device.add_route(ip, tunnel.callbacks()).await
                                 {
                                     let _ = tunnel.callbacks.on_error(&e);
                                 }

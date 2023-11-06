@@ -115,7 +115,6 @@ where
             .load()
             .as_ref()
             .ok_or(Error::ControlProtocolError)?
-            .config
             .add_route(route, self.callbacks())
             .await?;
 
