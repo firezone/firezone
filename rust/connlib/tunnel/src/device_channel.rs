@@ -51,6 +51,10 @@ impl Device {
         self.config.add_route(route, callbacks).await
     }
 
+    pub(crate) async fn refresh_mtu(&self) -> Result<usize, Error> {
+        self.config.refresh_mtu().await
+    }
+
     pub fn write(&self, packet: Packet<'_>) -> io::Result<usize> {
         self.io.write(packet)
     }

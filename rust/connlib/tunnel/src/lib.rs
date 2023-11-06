@@ -403,7 +403,7 @@ where
                     let callbacks = self.callbacks.clone();
 
                     async move {
-                        if let Err(e) = device.config.refresh_mtu().await {
+                        if let Err(e) = device.refresh_mtu().await {
                             tracing::error!(error = ?e, "refresh_mtu");
                             let _ = callbacks.on_error(&e);
                         }
