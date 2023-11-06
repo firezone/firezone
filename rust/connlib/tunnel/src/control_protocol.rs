@@ -6,6 +6,7 @@ use connlib_shared::{
     messages::{Relay, RequestConnection, ReuseConnection},
     Callbacks, Error, Result,
 };
+use webrtc::api::API;
 use webrtc::peer_connection::OnPeerConnectionStateChangeHdlrFn;
 use webrtc::{
     ice_transport::{
@@ -77,7 +78,7 @@ where
 
 #[tracing::instrument(level = "trace", skip(webrtc))]
 pub async fn new_peer_connection(
-    webrtc: &webrtc::api::API,
+    webrtc: &API,
     relays: Vec<Relay>,
 ) -> Result<(Arc<RTCPeerConnection>, mpsc::Receiver<RTCIceCandidateInit>)> {
     let config = RTCConfiguration {

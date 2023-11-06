@@ -41,6 +41,7 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
+use crate::control_protocol::on_peer_connection_state_change_handler;
 use crate::device_channel::Device;
 pub use control_protocol::Request;
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
@@ -106,7 +107,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     #[allow(clippy::type_complexity)]
     peers_by_ip: RwLock<IpNetworkTable<ConnectedPeer<TRoleState::Id>>>,
     peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCPeerConnection>>>,
-    webrtc_api: API,
+    webrtc_api: Arc<API>,
     callbacks: CallbackErrorFacade<CB>,
 
     /// State that differs per role, i.e. clients vs gateways.
@@ -380,6 +381,25 @@ where
 
                     tokio::spawn(self.start_peer_handler(peer, channel));
                 }
+                Poll::Ready(Either::Right(gateway::InternalEvent::ConnectionConfigured {
+                    client,
+                    reference,
+                    connection,
+                    local_sdp,
+                })) => {
+                    connection.on_peer_connection_state_change(
+                        on_peer_connection_state_change_handler(
+                            client,
+                            self.stop_peer_command_sender.clone(),
+                        ),
+                    );
+                    self.peer_connections.lock().insert(client, connection);
+                    return Poll::Ready(Ok(gateway::Event::ConnectionConfigured {
+                        client,
+                        reference,
+                        local_sdp,
+                    }));
+                }
                 _ => {}
             }
 
@@ -644,11 +664,13 @@ where
         setting_engine.detach_data_channels();
         setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
 
-        let webrtc_api = APIBuilder::new()
-            .with_media_engine(media_engine)
-            .with_interceptor_registry(registry)
-            .with_setting_engine(setting_engine)
-            .build();
+        let webrtc_api = Arc::new(
+            APIBuilder::new()
+                .with_media_engine(media_engine)
+                .with_interceptor_registry(registry)
+                .with_setting_engine(setting_engine)
+                .build(),
+        );
 
         let (stop_peer_command_sender, stop_peer_command_receiver) = mpsc::channel(10);
 

@@ -146,6 +146,7 @@ pub struct State {
     resources: ResourceTable<ResourceDescription>,
     dns_queries: BoundedQueue<DnsQuery<'static>>,
 
+    #[allow(clippy::type_complexity)]
     awaiting_data_channels: FuturesMap<
         (ResourceId, GatewayId),
         Result<(Arc<DataChannel>, StaticSecret), oneshot::Canceled>,

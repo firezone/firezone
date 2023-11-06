@@ -4,7 +4,6 @@ use crate::messages::{
 };
 use crate::CallbackHandler;
 use anyhow::Result;
-use connlib_shared::messages::ClientId;
 use connlib_shared::Error;
 use firezone_tunnel::{gateway, Tunnel};
 use phoenix_channel::PhoenixChannel;
@@ -12,7 +11,6 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
@@ -20,9 +18,6 @@ pub struct Eventloop {
     tunnel: Arc<Tunnel<CallbackHandler, gateway::State>>,
     portal: PhoenixChannel<IngressMessages, ()>,
 
-    // TODO: Strongly type request reference (currently `String`)
-    connection_request_tasks:
-        futures_bounded::FuturesMap<(ClientId, String), Result<RTCSessionDescription, Error>>,
     add_ice_candidate_tasks: futures_bounded::FuturesSet<Result<(), Error>>,
 
     print_stats_timer: tokio::time::Interval,
@@ -36,12 +31,7 @@ impl Eventloop {
         Self {
             tunnel,
             portal,
-
             // TODO: Pick sane values for timeouts and size.
-            connection_request_tasks: futures_bounded::FuturesMap::new(
-                Duration::from_secs(60),
-                100,
-            ),
             add_ice_candidate_tasks: futures_bounded::FuturesSet::new(Duration::from_secs(60), 100),
             print_stats_timer: tokio::time::interval(Duration::from_secs(10)),
         }
@@ -52,38 +42,6 @@ impl Eventloop {
     #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {
-            match self.connection_request_tasks.poll_unpin(cx) {
-                Poll::Ready(((client, reference), Ok(Ok(gateway_rtc_session_description)))) => {
-                    tracing::debug!(%client, %reference, "Connection is ready");
-
-                    let _id = self.portal.send(
-                        PHOENIX_TOPIC,
-                        EgressMessages::ConnectionReady(ConnectionReady {
-                            reference,
-                            gateway_rtc_session_description,
-                        }),
-                    );
-
-                    // TODO: If outbound request fails, cleanup connection.
-                    continue;
-                }
-                Poll::Ready(((client, _), Ok(Err(e)))) => {
-                    self.tunnel.cleanup_connection(client);
-                    tracing::debug!(%client, "Connection request failed: {:#}", anyhow::Error::new(e));
-
-                    continue;
-                }
-                Poll::Ready(((client, reference), Err(e))) => {
-                    tracing::debug!(
-                        %client,
-                        %reference,
-                        "Failed to establish connection: {:#}", anyhow::Error::new(e)
-                    );
-                    continue;
-                }
-                Poll::Pending => {}
-            }
-
             match self.add_ice_candidate_tasks.poll_unpin(cx) {
                 Poll::Ready(Ok(Ok(()))) => {
                     continue;
@@ -105,31 +63,15 @@ impl Eventloop {
                     msg: IngressMessages::RequestConnection(req),
                     ..
                 }) => {
-                    let tunnel = Arc::clone(&self.tunnel);
-
-                    match self.connection_request_tasks.try_push(
-                        (req.client.id, req.reference.clone()),
-                        async move {
-                            tunnel
-                                .set_peer_connection_request(
-                                    req.client.rtc_session_description,
-                                    req.client.peer.into(),
-                                    req.relays,
-                                    req.client.id,
-                                    req.expires_at,
-                                    req.resource,
-                                )
-                                .await
-                        },
-                    ) {
-                        Err(futures_bounded::PushError::BeyondCapacity(_)) => {
-                            tracing::warn!("Too many connections requests, dropping existing one");
-                        }
-                        Err(futures_bounded::PushError::Replaced(_)) => {
-                            debug_assert!(false, "Received a 2nd connection requested with the same reference from the same client");
-                        }
-                        Ok(()) => {}
-                    };
+                    self.tunnel.set_peer_connection_request(
+                        req.client.id,
+                        req.reference,
+                        req.client.rtc_session_description,
+                        req.client.peer.into(),
+                        req.relays,
+                        req.expires_at,
+                        req.resource,
+                    );
                     continue;
                 }
                 Poll::Ready(phoenix_channel::Event::InboundMessage {
@@ -188,6 +130,21 @@ impl Eventloop {
                         }),
                     );
                     continue;
+                }
+                Poll::Ready(gateway::Event::ConnectionConfigured {
+                    client,
+                    reference,
+                    local_sdp: gateway_rtc_session_description,
+                }) => {
+                    tracing::debug!(%client, %reference, "Connection is ready");
+
+                    let _id = self.portal.send(
+                        PHOENIX_TOPIC,
+                        EgressMessages::ConnectionReady(ConnectionReady {
+                            reference,
+                            gateway_rtc_session_description,
+                        }),
+                    );
                 }
                 Poll::Pending => {}
             }
