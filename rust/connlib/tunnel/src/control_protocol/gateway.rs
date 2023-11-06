@@ -66,7 +66,6 @@ where
                             let Some(device) = tunnel.device.load().clone() else {
                                 let e = Error::NoIface;
                                 tracing::error!(err = ?e, "channel_open");
-                                let _ = tunnel.callbacks().on_error(&e);
                                 return;
                             };
                             for &ip in &peer_config.ips {
@@ -75,7 +74,7 @@ where
                                         assert!(maybe_new_device.is_none(), "gateway does not run on android and thus never produces a new device upon `add_route`")
                                     }
                                     Err(e) => {
-                                        let _ = tunnel.callbacks.on_error(&e);
+                                        tracing::error!(err = ?e, "failed to add route");
                                     }
                                 }
                             }
