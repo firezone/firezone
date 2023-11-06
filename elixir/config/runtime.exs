@@ -65,6 +65,12 @@ if config_env() == :prod do
     client_logs_enabled: compile_config!(:instrumentation_client_logs_enabled),
     client_logs_bucket: compile_config!(:instrumentation_client_logs_bucket)
 
+  config :domain, :enabled_features,
+    traffic_filters: compile_config!(:feature_traffic_filters_enabled),
+    signups: compile_config!(:feature_signups_enabled),
+    flow_activities: compile_config!(:feature_flow_activities_enabled),
+    todos: compile_config!(:feature_todos_enabled)
+
   ###############################
   ##### Web #####################
   ###############################

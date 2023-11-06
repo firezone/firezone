@@ -300,4 +300,48 @@ defmodule Web.Live.Resources.NewTest do
 
     assert assert_redirect(lv, ~p"/#{account}/sites/#{group}?#resources")
   end
+
+  test "does not render traffic filter form", %{
+    account: account,
+    group: group,
+    identity: identity,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:traffic_filters, false)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+
+    form = form(lv, "form")
+
+    assert find_inputs(form) == ["resource[address]", "resource[name]"]
+  end
+
+  test "creates a resource on valid attrs when traffic filter form disabled", %{
+    account: account,
+    group: group,
+    identity: identity,
+    conn: conn
+  } do
+    attrs = %{
+      name: "foobar.com",
+      address: "foobar.com"
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+
+    lv
+    |> form("form", resource: attrs)
+    |> render_submit()
+
+    resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
+    assert %{connections: [connection]} = Repo.preload(resource, :connections)
+    assert connection.gateway_group_id == group.id
+    assert assert_redirect(lv, ~p"/#{account}/sites/#{group}?#resources")
+  end
 end

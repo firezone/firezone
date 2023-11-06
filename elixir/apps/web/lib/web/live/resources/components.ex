@@ -5,6 +5,13 @@ defmodule Web.Resources.Components do
   defp pretty_print_ports(ports), do: Enum.join(ports, ", ")
 
   def map_filters_form_attrs(attrs) do
+    attrs =
+      if !Domain.Config.traffic_filters_enabled?() do
+        Map.put(attrs, "filters", %{"all" => %{"enabled" => "true", "protocol" => "all"}})
+      else
+        attrs
+      end
+
     Map.update(attrs, "filters", [], fn filters ->
       filters =
         for {id, filter_attrs} <- filters,
