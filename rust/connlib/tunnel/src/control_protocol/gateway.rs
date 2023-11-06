@@ -5,10 +5,11 @@ use connlib_shared::{
     messages::{ClientId, Relay, ResourceDescription},
     Callbacks, Error, Result,
 };
+use futures_util::SinkExt;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 use crate::control_protocol::{new_peer_connection, on_peer_connection_state_change_handler};
-use crate::{gateway, peer::Peer, ConnectedPeer, PeerConfig, Tunnel};
+use crate::{gateway, PeerConfig, Tunnel};
 
 impl<CB> Tunnel<CB, gateway::State>
 where
@@ -41,7 +42,6 @@ where
             .lock()
             .add_new_ice_receiver(client_id, receiver);
 
-        let index = self.next_index();
         let tunnel = Arc::clone(self);
         self.peer_connections
             .lock()
@@ -52,58 +52,22 @@ where
             tunnel.stop_peer_command_sender.clone(),
         ));
 
+        let sender = self
+            .role_state
+            .lock()
+            .register_new_peer_connection(client_id, peer, resource, expires_at);
+
         peer_connection.on_data_channel(Box::new(move |d| {
             tracing::trace!("new_data_channel");
             let data_channel = Arc::clone(&d);
-            let peer_config = peer.clone();
-            let tunnel = Arc::clone(&tunnel);
-            let resource = resource.clone();
+            let mut sender = sender.clone();
             Box::pin(async move {
                 d.on_open(Box::new(move || {
-                    tracing::trace!(?peer_config.ips, "new_data_channel_open");
+                    tracing::trace!("new_data_channel_open");
                     Box::pin(async move {
-                        {
-                            let Some(device) = tunnel.device.load().clone() else {
-                                let e = Error::NoIface;
-                                tracing::error!(err = ?e, "channel_open");
-                                return;
-                            };
-                            for &ip in &peer_config.ips {
-                                match device.add_route(ip, tunnel.callbacks()).await {
-                                    Ok(maybe_new_device) => {
-                                        assert!(maybe_new_device.is_none(), "gateway does not run on android and thus never produces a new device upon `add_route`")
-                                    }
-                                    Err(e) => {
-                                        tracing::error!(err = ?e, "failed to add route");
-                                    }
-                                }
-                            }
-                        }
-
                         let data_channel = data_channel.detach().await.expect("only fails if not opened or not enabled, both of which are always true for us");
 
-                        let peer = Arc::new(Peer::new(
-                            tunnel.private_key.clone(),
-                            index,
-                            peer_config.clone(),
-                            client_id,
-                            Some((resource, expires_at)),
-                            tunnel.rate_limiter.clone()
-                        ));
-
-                        // Holding two mutexes here
-                        {
-                            let mut peers_by_ip = tunnel.peers_by_ip.write();
-
-                            for ip in peer_config.ips {
-                                peers_by_ip.insert(ip, ConnectedPeer {
-                                    inner: peer.clone(),
-                                    channel: data_channel.clone(),
-                                });
-                            }
-                        }
-
-                        tokio::spawn(tunnel.start_peer_handler(peer, data_channel));
+                        let _ = sender.send(data_channel).await;
                     })
                 }))
             })

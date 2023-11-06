@@ -317,8 +317,70 @@ where
                 continue;
             }
 
-            if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
-                return Poll::Ready(Ok(event));
+            match self.role_state.lock().poll_next_event(cx) {
+                Poll::Ready(Either::Left(event)) => {
+                    return Poll::Ready(Ok(event));
+                }
+                Poll::Ready(Either::Right(gateway::InternalEvent::NewPeer {
+                    id,
+                    channel,
+                    config,
+                    resource,
+                    expires_at,
+                })) => {
+                    {
+                        let Some(device) = self.device.load().clone() else {
+                            tracing::error!(
+                                "unable to initialize new peer because we don't have a device"
+                            );
+                            continue;
+                        };
+                        // A bit hacky to spawn here but it is not worth doing this clean because it will change very soon again.
+                        tokio::spawn({
+                            let ips = config.ips.clone();
+                            let callbacks = self.callbacks().clone();
+
+                            async move {
+                                for ip in ips {
+                                    match device.add_route(ip, &callbacks).await {
+                                        Ok(maybe_new_device) => {
+                                            assert!(maybe_new_device.is_none(), "gateway does not run on android and thus never produces a new device upon `add_route`")
+                                        }
+                                        Err(e) => {
+                                            tracing::error!(err = ?e, "failed to add route");
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    let peer = Arc::new(Peer::new(
+                        self.private_key.clone(),
+                        self.next_index(),
+                        config.clone(),
+                        id,
+                        Some((resource, expires_at)),
+                        self.rate_limiter.clone(),
+                    ));
+
+                    {
+                        let mut peers_by_ip = self.peers_by_ip.write();
+
+                        for ip in config.ips {
+                            peers_by_ip.insert(
+                                ip,
+                                ConnectedPeer {
+                                    inner: peer.clone(),
+                                    channel: channel.clone(),
+                                },
+                            );
+                        }
+                    }
+
+                    tokio::spawn(self.start_peer_handler(peer, channel));
+                }
+                _ => {}
             }
 
             if let Poll::Ready(Some(conn_id)) =
