@@ -65,7 +65,7 @@ where
                     tracing::trace!(?peer_config.ips, "new_data_channel_open");
                     Box::pin(async move {
                         {
-                            let Some(device) = tunnel.device.read().clone() else {
+                            let Some(device) = tunnel.device.load().clone() else {
                                 let e = Error::NoIface;
                                 tracing::error!(err = ?e, "channel_open");
                                 let _ = tunnel.callbacks().on_error(&e);

@@ -1216,6 +1216,7 @@ dependencies = [
 name = "firezone-tunnel"
 version = "1.20231001.0"
 dependencies = [
+ "arc-swap",
  "async-trait",
  "boringtun",
  "bytes",

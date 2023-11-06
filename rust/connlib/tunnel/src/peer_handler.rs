@@ -19,8 +19,10 @@ where
         peer: Arc<Peer<TRoleState::Id>>,
         channel: Arc<DataChannel>,
     ) {
+        let device = Arc::clone(&self.device);
+
         loop {
-            let Some(device) = self.device.read().clone() else {
+            let Some(device) = device.load().clone() else {
                 tracing::debug!("Device temporarily not available");
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 continue;

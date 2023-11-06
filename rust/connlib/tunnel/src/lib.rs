@@ -26,6 +26,7 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
+use arc_swap::ArcSwapOption;
 use futures::channel::mpsc;
 use futures_util::task::AtomicWaker;
 use futures_util::{SinkExt, StreamExt};
@@ -129,7 +130,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
 
     peers_to_stop: Mutex<VecDeque<TRoleState::Id>>,
 
-    device: RwLock<Option<Arc<Device>>>,
+    device: Arc<ArcSwapOption<Device>>,
     read_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
     write_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
     no_device_waker: AtomicWaker,
@@ -142,18 +143,18 @@ where
     pub async fn next_event(&self) -> Result<Event<GatewayId>> {
         std::future::poll_fn(|cx| loop {
             {
-                let mut guard = self.device.write();
+                let guard = self.device.load();
 
                 if let Some(device) = guard.as_ref() {
                     match self.poll_device(device, cx) {
                         Poll::Ready(Ok(Some(event))) => return Poll::Ready(Ok(event)),
                         Poll::Ready(Ok(None)) => {
                             tracing::info!("Device stopped");
-                            guard.take();
+                            self.device.store(None);
                             continue;
                         }
                         Poll::Ready(Err(e)) => {
-                            guard.take(); // Ensure we don't poll a failed device again.
+                            self.device.store(None); // Ensure we don't poll a failed device again.
                             return Poll::Ready(Err(e));
                         }
                         Poll::Pending => {}
@@ -227,9 +228,9 @@ where
 
         loop {
             {
-                let mut device = self.device.write();
+                let device = self.device.load();
 
-                match device.as_mut().map(|d| d.poll_read(read_buf, cx)) {
+                match device.as_ref().map(|d| d.poll_read(read_buf, cx)) {
                     Some(Poll::Ready(Ok(Some(packet)))) => {
                         let dest = packet.destination();
 
@@ -244,7 +245,7 @@ where
                     }
                     Some(Poll::Ready(Ok(None))) => {
                         tracing::info!("Device stopped");
-                        drop(device.take());
+                        self.device.store(None);
                     }
                     Some(Poll::Ready(Err(e))) => return Poll::Ready(Err(ConnlibError::Io(e))),
                     Some(Poll::Pending) => {
@@ -393,7 +394,7 @@ where
             }
 
             if self.mtu_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let Some(device) = self.device.read().clone() else {
+                let Some(device) = self.device.load().clone() else {
                     tracing::debug!("Device temporarily not available");
                     continue;
                 };

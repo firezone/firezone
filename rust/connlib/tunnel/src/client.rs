@@ -74,7 +74,7 @@ where
         query: IpPacket<'static>,
     ) -> connlib_shared::Result<()> {
         if let Some(pkt) = dns::build_response_from_resolve_result(query, response)? {
-            let Some(ref device) = *self.device.read() else {
+            let Some(ref device) = *self.device.load() else {
                 return Ok(());
             };
 
@@ -89,7 +89,7 @@ where
     pub async fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         let device = Arc::new(create_iface(config, self.callbacks()).await?);
 
-        *self.device.write() = Some(device.clone());
+        self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
 
         self.add_route(DNS_SENTINEL.into()).await?;
@@ -110,19 +110,18 @@ where
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn add_route(&self, route: IpNetwork) -> connlib_shared::Result<()> {
-        let device = self
+        let maybe_new_device = self
             .device
-            .write()
-            .take()
-            .ok_or(Error::ControlProtocolError)?;
-
-        let new_device = device
+            .load()
+            .as_ref()
+            .ok_or(Error::ControlProtocolError)?
             .config
             .add_route(route, self.callbacks())
-            .await?
-            .map(Arc::new)
-            .unwrap_or(device); // Restore the old device.
-        *self.device.write() = Some(new_device);
+            .await?;
+
+        if let Some(new_device) = maybe_new_device {
+            self.device.swap(Some(Arc::new(new_device)));
+        }
 
         Ok(())
     }
