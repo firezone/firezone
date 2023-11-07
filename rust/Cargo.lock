@@ -1289,9 +1289,9 @@ dependencies = [
 
 [[package]]
 name = "futures-bounded"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05bc732cbef458f0184de1c3aa7ae07c9dbbf419611b5b93ee5b0c9aacdc2e3d"
+checksum = "4a2b7bc3e71d5b3c6e1436bd600d88a7a9315b3589883018123646767ea2d522"
 dependencies = [
  "futures-timer",
  "futures-util",

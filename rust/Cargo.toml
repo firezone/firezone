@@ -24,7 +24,7 @@ tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
 hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
 webrtc = "0.9"
-futures-bounded = "0.2.0"
+futures-bounded = "0.2.1"
 
 connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}
