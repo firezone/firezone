@@ -65,7 +65,8 @@ resource "google_compute_instance" "demo" {
     && sudo usermod -aG docker $(whoami) \
     && sudo systemctl enable docker \
     && sudo systemctl start docker \
-    && sudo docker run -d --restart always --name=httpbin -p 80:80 kennethreitz/httpbin
+    && sudo docker run -d --restart always --name=httpbin -p 80:80 kennethreitz/httpbin \
+    && echo ${module.metabase.internal_ip} metabase.fz >> /etc/hosts
 EOT
 
   allow_stopping_for_update = true
@@ -128,6 +129,29 @@ resource "google_sql_database" "demo" {
   name     = "demo"
   instance = module.google-cloud-sql.master_instance_name
 }
+
+resource "google_compute_firewall" "demo-access-to-bi" {
+  project = module.google-cloud-project.project.project_id
+
+  name    = "demo-access-to-bi"
+  network = module.google-cloud-vpc.self_link
+
+  allow {
+    protocol = "tcp"
+  }
+
+  allow {
+    protocol = "udp"
+  }
+
+  allow {
+    protocol = "icmp"
+  }
+
+  source_ranges = [google_compute_subnetwork.apps.ip_cidr_range]
+  target_tags   = module.metabase.target_tags
+}
+
 
 resource "google_compute_firewall" "demo-ssh-ipv4" {
   project = module.google-cloud-project.project.project_id
