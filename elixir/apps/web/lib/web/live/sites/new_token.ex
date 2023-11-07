@@ -53,9 +53,19 @@ defmodule Web.Sites.NewToken do
     """
   end
 
+  defp version do
+    vsn =
+      Application.spec(:domain)
+      |> Keyword.fetch!(:vsn)
+      |> List.to_string()
+      |> Version.parse!()
+
+    "#{vsn.major}.#{vsn.minor}"
+  end
+
   defp docker_command(token) do
     """
-    docker run -d \\
+     docker run -d \\
       --restart=unless-stopped \\
       --pull=always \\
       --health-cmd="ip link | grep tun-firezone" \\
@@ -72,7 +82,7 @@ defmodule Web.Sites.NewToken do
       --env FIREZONE_ENABLE_MASQUERADE=1 \\
       --env FIREZONE_HOSTNAME="`hostname`" \\
       --env RUST_LOG="warn" \\
-      ghcr.io/firezone/gateway:${FIREZONE_VERSION:-1}
+      ghcr.io/firezone/gateway:#{version()}
     """
   end
 
@@ -85,8 +95,8 @@ defmodule Web.Sites.NewToken do
     [Service]
     Type=simple
     Environment="FIREZONE_TOKEN=#{token}"
-    Environment="FIREZONE_VERSION=1.20231001.0"
-    Environment="FIREZONE_HOSTNAME=`hostname`"
+    Environment="FIREZONE_VERSION=#{version()}"
+    Environment="FIREZONE_HOSTNAME=$(hostname)"
     Environment="FIREZONE_ENABLE_MASQUERADE=1"
     ExecStartPre=/bin/sh -c ' \\
       if [ -e /usr/local/bin/firezone-gateway ]; then \\

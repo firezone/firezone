@@ -59,41 +59,6 @@ defmodule Web.Sites.Show do
     </.section>
 
     <.section>
-      <:title>
-        Resources
-      </:title>
-      <:action>
-        <.add_button navigate={~p"/#{@account}/resources/new?site_id=#{@group}"}>
-          Create
-        </.add_button>
-      </:action>
-      <:content>
-        <div class="relative overflow-x-auto">
-          <.table
-            id="resources"
-            rows={Enum.reject(@group.connections, &is_nil(&1.resource))}
-            row_item={& &1.resource}
-          >
-            <:col :let={resource} label="NAME">
-              <.link
-                navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@group}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-              >
-                <%= resource.name %>
-              </.link>
-            </:col>
-            <:col :let={resource} label="ADDRESS">
-              <%= resource.address %>
-            </:col>
-            <:empty>
-              <div class="text-center text-slate-500 p-4">No resources to display</div>
-            </:empty>
-          </.table>
-        </div>
-      </:content>
-    </.section>
-
-    <.section>
       <:title>Gateways</:title>
       <:action>
         <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
@@ -123,7 +88,54 @@ defmodule Web.Sites.Show do
               <.connection_status schema={gateway} />
             </:col>
             <:empty>
-              <div class="text-center text-slate-500 p-4">No gateway instances to display</div>
+              <div class="flex justify-center text-center text-slate-500 p-4">
+                <div class="w-auto">
+                  <div class="pb-4">
+                    No gateway instances to display.
+                  </div>
+                  <div class="pb-4">
+                    Gateways
+                  </div>
+                  <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
+                    Deploy a Gateway
+                  </.add_button>
+                </div>
+              </div>
+            </:empty>
+          </.table>
+        </div>
+      </:content>
+    </.section>
+
+    <.section>
+      <:title>
+        Resources
+      </:title>
+      <:action>
+        <.add_button navigate={~p"/#{@account}/resources/new?site_id=#{@group}"}>
+          Create
+        </.add_button>
+      </:action>
+      <:content>
+        <div class="relative overflow-x-auto">
+          <.table
+            id="resources"
+            rows={Enum.reject(@group.connections, &is_nil(&1.resource))}
+            row_item={& &1.resource}
+          >
+            <:col :let={resource} label="NAME">
+              <.link
+                navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@group}"}
+                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              >
+                <%= resource.name %>
+              </.link>
+            </:col>
+            <:col :let={resource} label="ADDRESS">
+              <%= resource.address %>
+            </:col>
+            <:empty>
+              <div class="text-center text-slate-500 p-4">No resources to display</div>
             </:empty>
           </.table>
         </div>
