@@ -94,6 +94,10 @@ jobs:
         with:
           prerelease: true
           version: ${{ env.VERSION }}
+    outputs:
+      name: ${{ steps.update-release-draft.outputs.name }}
+      tag_name: ${{ steps.update-release-draft.outputs.tag_name }}
+      upload_url: ${{ steps.update-release-draft.outputs.upload_url }}
 
   build-push-release-artifacts:
     permissions:
@@ -139,6 +143,8 @@ jobs:
           tool: cross
       - name: Build release binaries
         run: |
+          set -xe
+
           cross build --release -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
           # Used for release artifact
@@ -147,7 +153,9 @@ jobs:
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/release/${{ matrix.name.package }} ${{ matrix.name.package }}
           sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
+          
           ls -la $BINARY_DEST_PATH
+          ls -la $BINARY_DEST_PATH.sha256sum.txt
       - name: Upload Release Assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -155,11 +163,19 @@ jobs:
           set -xe
 
           # Upload binary
-          gh release upload ${{ needs.update-release-draft.steps.update-release-draft.outputs.tag_name }} \
+          gh release upload ${{ needs.update-release-draft.outputs.tag_name }} \
             ${{ env.BINARY_DEST_PATH }} \
             ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
             --clobber \
             --repo ${{ github.repository }}
+      - name: Push binaries
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.update-release-draft.outputs.tag_name }}
+          prerelease: true
+          fail_on_unmatched_files: true
+          files: |
+            rust/${{ env.BINARY_DEST_PATH }}*
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
