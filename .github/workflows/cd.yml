@@ -155,20 +155,11 @@ jobs:
           set -xe
 
           # Upload binary
-          gh release upload --clobber \
-            --repo ${{ github.repository }} \
-            --name ${{ env.BINARY_DEST_PATH }} \
-            --label "Binary for ${{ matrix.arch.shortname }}" \
-            --file ${{ env.BINARY_DEST_PATH }} \
-            ${{ needs.update-release-draft.steps.update-release-draft.outputs.upload_url }}
-
-          # Upload checksum
-          gh release upload --clobber \
-            --repo ${{ github.repository }} \
-            --name ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
-            --label "SHA256 checksum for ${{ matrix.arch.shortname }}" \
-            --file ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
-            ${{ needs.update-release-draft.steps.update-release-draft.outputs.upload_url }}
+          gh release upload ${{ needs.update-release-draft.steps.update-release-draft.outputs.tag_name }} \
+            ${{ env.BINARY_DEST_PATH }} \
+            ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
+            --clobber \
+            --repo ${{ github.repository }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -195,7 +186,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }}
+          images:
+            ${{ steps.login.outputs.registry }}/firezone/${{
+            matrix.name.artifact }}
           tags: |
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}
@@ -215,7 +208,9 @@ jobs:
           cache-to: |
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.artifact }}:main,mode=max
           target: release
-          outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact}},push-by-digest=true,name-canonical=true,push=true
+          outputs:
+            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{
+            matrix.name.artifact}},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.artifact }}
@@ -259,7 +254,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name
+            }}
           tags: |
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}
