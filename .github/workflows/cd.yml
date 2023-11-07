@@ -94,6 +94,17 @@ jobs:
         with:
           prerelease: true
           version: ${{ env.VERSION }}
+      - name: Delete stale artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -xe
+
+          gh release view ${{ steps.update-release-draft.outputs.tag_name }} \
+            --repo ${{ github.repository }} \
+            --json assets \
+            --jq '.assets[] | .name' \
+            | xargs -I{} gh release delete-asset ${{ steps.update-release-draft.outputs.tag_name }} {} --repo ${{ github.repository }} --yes
     outputs:
       name: ${{ steps.update-release-draft.outputs.name }}
       tag_name: ${{ steps.update-release-draft.outputs.tag_name }}
@@ -156,26 +167,17 @@ jobs:
 
           ls -la $BINARY_DEST_PATH
           ls -la $BINARY_DEST_PATH.sha256sum.txt
-      # - name: Upload Release Assets
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   run: |
-      #     set -xe
+      - name: Upload Release Assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -xe
 
-      #     # Upload binary
-      #     gh release upload ${{ needs.update-release-draft.outputs.tag_name }} \
-      #       ${{ env.BINARY_DEST_PATH }} \
-      #       ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
-      #       --clobber \
-      #       --repo ${{ github.repository }}
-      - name: Push binaries
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.update-release-draft.outputs.tag_name }}
-          draft: true
-          fail_on_unmatched_files: true
-          files: |
-            rust/${{ env.BINARY_DEST_PATH }}*
+          gh release upload ${{ needs.update-release-draft.outputs.tag_name }} \
+            ${{ env.BINARY_DEST_PATH }} \
+            ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
+            --clobber \
+            --repo ${{ github.repository }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
