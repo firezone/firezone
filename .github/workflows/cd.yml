@@ -171,7 +171,7 @@ jobs:
       - name: Push binaries
         uses: softprops/action-gh-release@v1
         with:
-          name: ${{ needs.update-release-draft.steps.update-release-draft.outputs.name }}
+          tag_name: ${{ needs.update-release-draft.steps.update-release-draft.outputs.tag_name }}
           draft: true
           files: |
             rust/${{ env.BINARY_DEST_PATH }}*
