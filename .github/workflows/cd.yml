@@ -189,6 +189,14 @@ jobs:
         id: login
         with:
           project: firezone-staging
+      - name: Build Version Tags
+        run: |
+          set -xe
+          MAJOR_VERSION="${VERSION%%.*}"
+          MAJOR_MINOR_VERSION="${VERSION%.*}"
+
+          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> $GITHUB_ENV
+          echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> $GITHUB_ENV
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
@@ -197,6 +205,8 @@ jobs:
           tags: |
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}
+            type=raw,value=${{ env.MAJOR_VERSION }}
+            type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
       - name: Build and push release Docker images by digest
         id: build
         uses: docker/build-push-action@v5
