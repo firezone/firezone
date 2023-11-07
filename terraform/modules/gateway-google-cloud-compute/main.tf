@@ -46,6 +46,20 @@ locals {
     {
       name  = "FIREZONE_API_URL"
       value = var.api_url
+    },
+    # TODO: this is really confusing to set here, having explicit ID
+    # doesn't play well with horizontal replicas
+    {
+      name  = "FIREZONE_ID"
+      value = "$(hostname)"
+    },
+    {
+      name  = "FIREZONE_HOSTNAME"
+      value = "$(hostname)"
+    },
+    {
+      name  = "FIREZONE_ENABLE_MASQUERADE"
+      value = "1"
     }
   ], var.application_environment_variables)
 }
