@@ -209,6 +209,15 @@ resource "google_compute_subnetwork" "apps" {
 # Create SQL user and database
 resource "random_password" "firezone_db_password" {
   length = 16
+
+  min_lower   = 1
+  min_upper   = 1
+  min_numeric = 1
+  min_special = 1
+
+  lifecycle {
+    ignore_changes = [min_lower, min_upper, min_numeric, min_special]
+  }
 }
 
 resource "google_sql_user" "firezone" {
@@ -225,6 +234,7 @@ resource "google_sql_database" "firezone" {
 
   name     = "firezone"
   instance = module.google-cloud-sql.master_instance_name
+
 }
 
 # Create bucket for client logs

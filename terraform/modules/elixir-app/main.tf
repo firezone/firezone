@@ -633,7 +633,7 @@ resource "google_compute_global_forwarding_rule" "https_ipv6" {
 resource "google_compute_firewall" "http" {
   project = var.project_id
 
-  name    = "${local.application_name}-firewall-lb-to-instances"
+  name    = "${local.application_name}-firewall-lb-to-instances-ipv4"
   network = var.vpc_network
 
   source_ranges = local.google_load_balancer_ip_ranges

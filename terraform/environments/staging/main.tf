@@ -7,6 +7,10 @@ locals {
     "thomas@firezone.dev"
   ]
 
+  demo_access = [
+    "jeff@firezone.dev"
+  ]
+
   region            = "us-east1"
   availability_zone = "us-east1-d"
 
@@ -16,6 +20,10 @@ locals {
   # in the project github-iam-387915
   ci_iam_members = [
     "serviceAccount:github-actions@github-iam-387915.iam.gserviceaccount.com"
+  ]
+
+  iap_ipv4_ranges = [
+    "35.235.240.0/20"
   ]
 }
 
@@ -214,6 +222,15 @@ resource "google_compute_subnetwork" "apps" {
 # Deploy the web app to the GCE
 resource "random_password" "web_db_password" {
   length = 16
+
+  min_lower   = 1
+  min_upper   = 1
+  min_numeric = 1
+  min_special = 1
+
+  lifecycle {
+    ignore_changes = [min_lower, min_upper, min_numeric, min_special]
+  }
 }
 
 # TODO: raname it to "firezone"
@@ -232,7 +249,6 @@ resource "google_sql_database" "firezone" {
   name     = "firezone"
   instance = module.google-cloud-sql.master_instance_name
 }
-
 
 resource "google_storage_bucket" "client-logs" {
   project = module.google-cloud-project.project.project_id
