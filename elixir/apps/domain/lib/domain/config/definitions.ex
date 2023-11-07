@@ -610,11 +610,6 @@ defmodule Domain.Config.Definitions do
   ##############################################
 
   @doc """
-  Boolean flag to enable all features
-  """
-  defconfig(:all_features_enabled, :boolean, default: false)
-
-  @doc """
   Boolean flag to turn Sign-ups on/off.
   """
   defconfig(:feature_sign_up_enabled, :boolean, default: true)
