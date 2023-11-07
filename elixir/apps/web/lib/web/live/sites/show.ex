@@ -94,7 +94,9 @@ defmodule Web.Sites.Show do
                     No gateway instances to display.
                   </div>
                   <div class="pb-4">
-                    Gateways
+                    TODO: Gateways should be deployed to your infrastructure,
+                    all gateways within a site should be able to access all site resources,
+                    connections within a site will be load balanced if there are multiple gateways deployed.
                   </div>
                   <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
                     Deploy a Gateway
