@@ -6,10 +6,10 @@ defmodule Web.Resources.Components do
 
   def map_filters_form_attrs(attrs) do
     attrs =
-      if !Domain.Config.traffic_filters_enabled?() do
-        Map.put(attrs, "filters", %{"all" => %{"enabled" => "true", "protocol" => "all"}})
-      else
+      if Domain.Config.traffic_filters_enabled?() do
         attrs
+      else
+        Map.put(attrs, "filters", %{"all" => %{"enabled" => "true", "protocol" => "all"}})
       end
 
     Map.update(attrs, "filters", [], fn filters ->
