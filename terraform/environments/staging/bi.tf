@@ -67,7 +67,7 @@ module "metabase" {
     },
     {
       name  = "MB_DB_USER"
-      value = "name"
+      value = google_sql_user.metabase.name
     },
     {
       name  = "MB_DB_PASS"
