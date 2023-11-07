@@ -116,7 +116,8 @@ defmodule Domain.Config do
   ## Feature flag helpers
 
   defp feature_enabled?(feature) do
-    fetch_env!(:domain, :enabled_features) |> Keyword.fetch!(feature)
+    fetch_env!(:domain, :enabled_features)
+    |> Keyword.fetch!(feature)
   end
 
   def sign_up_enabled? do
