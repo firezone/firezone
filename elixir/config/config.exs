@@ -77,6 +77,8 @@ config :domain, :enabled_features,
   flow_activities: true,
   todos: true
 
+config :domain, docker_registry: "us-east1-docker.pkg.dev/firezone-staging/firezone"
+
 ###############################
 ##### Web #####################
 ###############################

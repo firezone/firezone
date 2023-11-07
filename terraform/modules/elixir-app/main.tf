@@ -40,6 +40,10 @@ locals {
       value = "Elixir.Domain.GoogleCloudPlatform"
     },
     {
+      name  = "DOCKER_REGISTRY"
+      value = "${var.container_registry}/${var.image_repo}"
+    },
+    {
       name = "PLATFORM_ADAPTER_CONFIG"
       value = jsonencode({
         project_id            = var.project_id

@@ -84,7 +84,7 @@ defmodule Web.Sites.NewToken do
       --env FIREZONE_ENABLE_MASQUERADE=1 \\
       --env FIREZONE_HOSTNAME="`hostname`" \\
       --env RUST_LOG="warn" \\
-      ghcr.io/firezone/gateway:#{version()}
+      #{Domain.Config.fetch_env!(:domain, :docker_registry)}/gateway:#{version()}
     """
   end
 

@@ -606,6 +606,12 @@ defmodule Domain.Config.Definitions do
   )
 
   ##############################################
+  ## Docker Registry
+  ##############################################
+
+  defconfig(:docker_registry, :string, default: "ghcr.io/firezone")
+
+  ##############################################
   ## Feature Flags
   ##############################################
 
