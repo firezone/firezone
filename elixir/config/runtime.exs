@@ -67,7 +67,7 @@ if config_env() == :prod do
 
   config :domain, :enabled_features,
     traffic_filters: compile_config!(:feature_traffic_filters_enabled),
-    signups: compile_config!(:feature_signups_enabled),
+    signups: compile_config!(:feature_sign_up_enabled),
     flow_activities: compile_config!(:feature_flow_activities_enabled),
     todos: compile_config!(:feature_todos_enabled)
 
