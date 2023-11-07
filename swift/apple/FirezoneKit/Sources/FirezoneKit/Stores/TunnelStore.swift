@@ -384,14 +384,10 @@ extension NETunnelProviderManager {
       let providerConfig = protocolConfiguration.providerConfiguration
     {
       let authBaseURLString =
-        (providerConfig[TunnelProviderKeys.keyAuthBaseURLString] as? String)
-        ?? AdvancedSettings.defaultValue.authBaseURLString
+        (providerConfig[TunnelProviderKeys.keyAuthBaseURLString] as? String) ?? ""
       let logFilter =
-        (providerConfig[TunnelProviderKeys.keyConnlibLogFilter] as? String)
-        ?? AdvancedSettings.defaultValue.connlibLogFilterString
-      let apiURLString =
-        protocolConfiguration.serverAddress
-        ?? AdvancedSettings.defaultValue.apiURLString
+        (providerConfig[TunnelProviderKeys.keyConnlibLogFilter] as? String) ?? ""
+      let apiURLString = protocolConfiguration.serverAddress ?? ""
 
       return AdvancedSettings(
         authBaseURLString: authBaseURLString,
