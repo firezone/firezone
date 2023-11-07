@@ -156,23 +156,22 @@ jobs:
 
           ls -la $BINARY_DEST_PATH
           ls -la $BINARY_DEST_PATH.sha256sum.txt
-      - name: Upload Release Assets
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -xe
+      # - name: Upload Release Assets
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   run: |
+      #     set -xe
 
-          # Upload binary
-          gh release upload ${{ needs.update-release-draft.outputs.tag_name }} \
-            ${{ env.BINARY_DEST_PATH }} \
-            ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
-            --clobber \
-            --repo ${{ github.repository }}
+      #     # Upload binary
+      #     gh release upload ${{ needs.update-release-draft.outputs.tag_name }} \
+      #       ${{ env.BINARY_DEST_PATH }} \
+      #       ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
+      #       --clobber \
+      #       --repo ${{ github.repository }}
       - name: Push binaries
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ needs.update-release-draft.outputs.tag_name }}
-          prerelease: true
           fail_on_unmatched_files: true
           files: |
             rust/${{ env.BINARY_DEST_PATH }}*
