@@ -7,6 +7,8 @@ defmodule Web.Sites.NewToken do
       {:ok, group} =
         Gateways.update_group(%{group | tokens: []}, %{tokens: [%{}]}, socket.assigns.subject)
 
+      :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
+
       {:ok, assign(socket, group: group)}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
@@ -132,5 +134,12 @@ defmodule Web.Sites.NewToken do
 
   defp encode_group_token(group) do
     Gateways.encode_token!(hd(group.tokens))
+  end
+
+  def handle_info(%Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _account_id}, socket) do
+    socket =
+      redirect(socket, to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.group}")
+
+    {:noreply, socket}
   end
 end
