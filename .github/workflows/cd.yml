@@ -149,23 +149,26 @@ jobs:
           sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
           ls -la $BINARY_DEST_PATH
       - name: Upload Release Assets
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.update-release-draft.steps.update-release-draft.outputs.upload_url }}
-          asset_path: rust/${{ env.BINARY_DEST_PATH }}
-          asset_name: ${{ matrix.name.package }}
-          asset_content_type: application/octet-stream
-      - name: Upload Release Assets (sha256sum)
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.update-release-draft.steps.update-release-draft.outputs.upload_url }}
-          asset_path: rust/${{ env.BINARY_DEST_PATH }}.sha256sum.txt
-          asset_name: ${{ matrix.name.package }}.sha256sum.txt
-          asset_content_type: text/plain
+        run: |
+          set -xe
+          
+          # Upload binary
+          gh release upload --clobber \
+            --repo ${{ github.repository }} \
+            --name ${{ env.BINARY_DEST_PATH }} \
+            --label "Binary for ${{ matrix.arch.shortname }}" \
+            --file ${{ env.BINARY_DEST_PATH }} \
+            ${{ needs.update-release-draft.steps.update-release-draft.outputs.upload_url }}
+            
+          # Upload checksum
+          gh release upload --clobber \
+            --repo ${{ github.repository }} \
+            --name ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
+            --label "SHA256 checksum for ${{ matrix.arch.shortname }}" \
+            --file ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
+            ${{ needs.update-release-draft.steps.update-release-draft.outputs.upload_url }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
