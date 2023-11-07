@@ -1,8 +1,7 @@
 defmodule Web.Resources.Edit do
   use Web, :live_view
   import Web.Resources.Components
-  alias Domain.Gateways
-  alias Domain.Resources
+  alias Domain.{Gateways, Resources, Config}
 
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <-
@@ -10,16 +9,17 @@ defmodule Web.Resources.Edit do
          {:ok, gateway_groups} <- Gateways.list_groups(socket.assigns.subject) do
       form = Resources.change_resource(resource, socket.assigns.subject) |> to_form()
 
-      {:ok,
-       assign(socket,
-         resource: resource,
-         gateway_groups: gateway_groups,
-         form: form,
-         params: Map.take(params, ["site_id"])
-       ),
-       temporary_assigns: [
-         form: %Phoenix.HTML.Form{}
-       ]}
+      socket =
+        assign(
+          socket,
+          resource: resource,
+          gateway_groups: gateway_groups,
+          form: form,
+          params: Map.take(params, ["site_id"]),
+          traffic_filters_enabled?: Config.traffic_filters_enabled?()
+        )
+
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end
@@ -53,7 +53,7 @@ defmodule Web.Resources.Edit do
               required
             />
 
-            <.filters_form form={@form[:filters]} />
+            <.filters_form :if={@traffic_filters_enabled?} form={@form[:filters]} />
 
             <.connections_form
               :if={is_nil(@params["site_id"])}
