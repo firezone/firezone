@@ -115,16 +115,25 @@ defmodule Domain.Config do
 
   ## Feature flag helpers
 
+  defp feature_enabled?(feature) do
+    fetch_env!(:domain, :enabled_features)
+    |> Keyword.fetch!(feature)
+  end
+
   def sign_up_enabled? do
-    compile_config!(Definitions, :feature_sign_up_enabled)
+    feature_enabled?(:signups)
   end
 
   def flow_activities_enabled? do
-    compile_config!(Definitions, :feature_flow_activities_enabled)
+    feature_enabled?(:flow_activities)
   end
 
   def todos_enabled? do
-    compile_config!(Definitions, :feature_todos_enabled)
+    feature_enabled?(:todos)
+  end
+
+  def traffic_filters_enabled? do
+    feature_enabled?(:traffic_filters)
   end
 
   ## Test helpers
@@ -178,6 +187,11 @@ defmodule Domain.Config do
         :error ->
           application_env
       end
+    end
+
+    def feature_flag_override(feature, value) do
+      enabled_features = fetch_env!(:domain, :enabled_features) |> Keyword.put(feature, value)
+      put_env_override(:enabled_features, enabled_features)
     end
 
     defp pdict_key_function(app, key), do: {app, key}

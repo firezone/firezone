@@ -314,4 +314,55 @@ defmodule Web.Live.Resources.EditTest do
 
     assert saved_filters == %{all: %{ports: ""}}
   end
+
+  test "does not render traffic filter form when traffic filters disabled", %{
+    account: account,
+    group: group,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:traffic_filters, false)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{group}")
+
+    form = form(lv, "form")
+
+    assert find_inputs(form) == ["resource[name]"]
+  end
+
+  test "updates a resource on valid attrs when traffic filters disabled", %{
+    account: account,
+    group: group,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:traffic_filters, false)
+
+    attrs = %{
+      name: "foobar.com"
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{group}")
+
+    assert lv
+           |> form("form", resource: attrs)
+           |> render_submit() ==
+             {:error,
+              {:live_redirect, %{to: ~p"/#{account}/sites/#{group}?#resources", kind: :push}}}
+
+    assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
+    assert saved_resource.name == attrs.name
+
+    assert saved_resource.filters == [
+             %Domain.Resources.Resource.Filter{protocol: :all, ports: []}
+           ]
+  end
 end

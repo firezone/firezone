@@ -5,6 +5,13 @@ defmodule Web.Resources.Components do
   defp pretty_print_ports(ports), do: Enum.join(ports, ", ")
 
   def map_filters_form_attrs(attrs) do
+    attrs =
+      if Domain.Config.traffic_filters_enabled?() do
+        attrs
+      else
+        Map.put(attrs, "filters", %{"all" => %{"enabled" => "true", "protocol" => "all"}})
+      end
+
     Map.update(attrs, "filters", [], fn filters ->
       filters =
         for {id, filter_attrs} <- filters,
@@ -150,6 +157,15 @@ defmodule Web.Resources.Components do
         </div>
       </div>
     </fieldset>
+    """
+  end
+
+  attr :form, :any, required: true
+
+  def beta_filters_form(assigns) do
+    ~H"""
+    <.input type="hidden" name={"#{@form.name}[all][protocol]"} value="all" />
+    <.input type="hidden" name={"#{@form.name}[all][enabled]"} value="true" />
     """
   end
 

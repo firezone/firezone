@@ -71,6 +71,12 @@ config :domain, Domain.Instrumentation,
   client_logs_enabled: true,
   client_logs_bucket: "logs"
 
+config :domain, :enabled_features,
+  traffic_filters: true,
+  signups: true,
+  flow_activities: true,
+  todos: true
+
 ###############################
 ##### Web #####################
 ###############################

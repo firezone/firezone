@@ -623,4 +623,9 @@ defmodule Domain.Config.Definitions do
   Boolean flag to turn UI TODOs on/off.
   """
   defconfig(:feature_todos_enabled, :boolean, default: false)
+
+  @doc """
+  Boolean flag to turn Resource traffic filters on/off.
+  """
+  defconfig(:feature_traffic_filters_enabled, :boolean, default: false)
 end
