@@ -86,6 +86,9 @@ jobs:
       contents: write
       # autolabeler
       pull-requests: write
+    concurrency:
+      group: "staging-draft-release-${{ github.workflow }}-${{ github.ref }}"
+      cancel-in-progress: true
     steps:
       - uses: release-drafter/release-drafter@v5
         id: update-release-draft
