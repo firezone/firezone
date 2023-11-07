@@ -153,7 +153,7 @@ jobs:
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/release/${{ matrix.name.package }} ${{ matrix.name.package }}
           sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
-          
+
           ls -la $BINARY_DEST_PATH
           ls -la $BINARY_DEST_PATH.sha256sum.txt
       - name: Upload Release Assets
