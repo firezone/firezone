@@ -28,6 +28,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     guard let controlPlaneURLString = protocolConfiguration.serverAddress else {
       Self.logger.error("serverAddress is missing")
+      DisconnectionReason.saveToDisk(
+        category: .badTunnelConfiguration,
+        errorMessage: "serverAddress is missing")
       completionHandler(
         PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
       return
@@ -35,6 +38,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     guard let tokenRef = protocolConfiguration.passwordReference else {
       Self.logger.error("passwordReference is missing")
+      DisconnectionReason.saveToDisk(
+        category: .badTunnelConfiguration,
+        errorMessage: "passwordReference is missing")
       completionHandler(
         PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("passwordReference"))
       return
@@ -45,6 +51,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     guard let connlibLogFilter = providerConfig?[TunnelProviderKeys.keyConnlibLogFilter] as? String
     else {
       Self.logger.error("connlibLogFilter is missing")
+      DisconnectionReason.saveToDisk(
+        category: .badTunnelConfiguration,
+        errorMessage: "connlibLogFilter is missing")
       completionHandler(
         PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("connlibLogFilter"))
       return
@@ -53,6 +62,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Task {
       let keychain = Keychain()
       guard let token = await keychain.load(persistentRef: tokenRef) else {
+        DisconnectionReason.saveToDisk(
+          category: .tokenNotFound,
+          errorMessage: "Token not found in keychain")
         completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
         return
       }

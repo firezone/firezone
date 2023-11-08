@@ -47,6 +47,10 @@ public struct SharedAccess {
     return nil
   }
 
+  public static var disconnectReasonFileURL: URL {
+    baseFolderURL.appendingPathComponent("disconnect_reason.json")
+  }
+
   private static func ensureDirectoryExists(at path: String) -> Bool {
     let fileManager = FileManager.default
     do {

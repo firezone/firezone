@@ -126,6 +126,9 @@ public class Adapter {
 
       self.logger.log("Adapter.start")
       guard case .stoppedTunnel = self.state else {
+        DisconnectionReason.saveToDisk(
+          category: .other,
+          errorMessage: "Adapter is in invalid state")
         completionHandler(.invalidState)
         return
       }
@@ -146,10 +149,12 @@ public class Adapter {
         )
       } catch let error {
         self.logger.error("Adapter.start: Error: \(error, privacy: .public)")
+        DisconnectionReason.saveToDisk(
+          category: .connlibConnectFailure,
+          errorMessage: error.localizedDescription)
         self.state = .stoppedTunnel
         completionHandler(AdapterError.connlibConnectError(error))
       }
-
     }
   }
 
@@ -184,6 +189,9 @@ public class Adapter {
             completionHandler()
           })
       case .stoppedTunnelTemporarily:
+        DisconnectionReason.saveToDisk(
+          category: .disconnectRequested,
+          errorMessage: "")
         self.state = .stoppedTunnel
         completionHandler()
       }
@@ -359,6 +367,9 @@ extension Adapter: CallbackHandlerDelegate {
       }
       networkSettings.apply(on: packetTunnelProvider, logger: self.logger) { error in
         if let error = error {
+          DisconnectionReason.saveToDisk(
+            category: .networkSettingsApplyFailure,
+            errorMessage: error.localizedDescription)
           onStarted?(AdapterError.setNetworkSettings(error))
           self.state = .stoppedTunnel
         } else {
@@ -449,10 +460,13 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.log("Adapter.onDisconnect")
+      self.logger.log("Adapter.onDisconnect: \(error ?? "No error", privacy: .public)")
       if let errorMessage = error {
         self.logger.error(
           "Connlib disconnected with unrecoverable error: \(errorMessage, privacy: .public)")
+        DisconnectionReason.saveToDisk(
+          category: .connlibDisconnected,
+          errorMessage: errorMessage)
         switch self.state {
         case .stoppingTunnel(session: _, let onStopped):
           onStopped?()
@@ -474,6 +488,9 @@ extension Adapter: CallbackHandlerDelegate {
         self.logger.log("Connlib disconnected")
         switch self.state {
         case .stoppingTunnel(session: _, let onStopped):
+          DisconnectionReason.saveToDisk(
+            category: .disconnectRequested,
+            errorMessage: "")
           onStopped?()
           self.state = .stoppedTunnel
         case .stoppingTunnelTemporarily(session: _, let onStopped):
@@ -481,6 +498,9 @@ extension Adapter: CallbackHandlerDelegate {
           self.state = .stoppedTunnelTemporarily
         default:
           // This should not happen
+          DisconnectionReason.saveToDisk(
+            category: .other,
+            errorMessage: "Connlib disconnected without specifying an error message")
           self.state = .stoppedTunnel
         }
       }
