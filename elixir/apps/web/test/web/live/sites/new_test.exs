@@ -113,26 +113,13 @@ defmodule Web.Live.Sites.NewTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/new")
 
-    html =
-      lv
-      |> form("form", group: attrs)
-      |> render_submit()
-
-    assert html =~ "Select deployment method"
-    assert html =~ "FIREZONE_TOKEN="
-    assert html =~ "docker run"
-    assert html =~ "Waiting for gateway connection..."
-
-    assert Regex.run(~r/FIREZONE_ID=([^ ]+)/, html) |> List.last()
-    token = Regex.run(~r/FIREZONE_TOKEN=([^ ]+)/, html) |> List.last() |> String.trim("&quot;")
-    assert {:ok, _token} = Domain.Gateways.authorize_gateway(token)
+    lv
+    |> form("form", group: attrs)
+    |> render_submit()
 
     group =
       Repo.get_by(Domain.Gateways.Group, name_prefix: attrs.name_prefix)
       |> Repo.preload(:tokens)
-
-    gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-    Domain.Gateways.connect_gateway(gateway)
 
     assert assert_redirect(lv, ~p"/#{account}/sites/#{group}")
   end

@@ -9,10 +9,6 @@ resource "google_artifact_registry_repository" "cache" {
 
   format = "DOCKER"
 
-  docker_config {
-    immutable_tags = false
-  }
-
   cleanup_policies {
     id     = "keep-latest-release"
     action = "KEEP"

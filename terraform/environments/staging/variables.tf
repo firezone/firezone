@@ -3,6 +3,11 @@ variable "image_tag" {
   description = "Image tag for all services. Notice: we assume all services are deployed with the same version"
 }
 
+variable "metabase_image_tag" {
+  type    = string
+  default = "v0.47.6"
+}
+
 variable "relay_token" {
   type    = string
   default = null

@@ -71,6 +71,8 @@ if config_env() == :prod do
     flow_activities: compile_config!(:feature_flow_activities_enabled),
     todos: compile_config!(:feature_todos_enabled)
 
+  config :domain, docker_registry: compile_config!(:docker_registry)
+
   ###############################
   ##### Web #####################
   ###############################
