@@ -106,6 +106,7 @@ final class TunnelStore: ObservableObject {
 
   func advancedSettings() -> AdvancedSettings? {
     guard let tunnel = tunnel else {
+      Self.logger.log("\(#function): Tunnel not initialized yet")
       return nil
     }
 
@@ -378,14 +379,23 @@ extension NETunnelProviderManager {
   }
 
   func advancedSettings() -> AdvancedSettings {
-    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol,
-      let providerConfig = protocolConfiguration.providerConfiguration
-    {
-      let authBaseURLString =
-        (providerConfig[TunnelProviderKeys.keyAuthBaseURLString] as? String) ?? ""
-      let logFilter =
-        (providerConfig[TunnelProviderKeys.keyConnlibLogFilter] as? String) ?? ""
-      let apiURLString = protocolConfiguration.serverAddress ?? ""
+    let defaultValue = AdvancedSettings.defaultValue
+    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
+      let apiURLString = protocolConfiguration.serverAddress ?? defaultValue.apiURLString
+      var authBaseURLString = defaultValue.authBaseURLString
+      var logFilter = defaultValue.connlibLogFilterString
+      if let providerConfig = protocolConfiguration.providerConfiguration {
+        if let authBaseURLStringInProviderConfig =
+          (providerConfig[TunnelProviderKeys.keyAuthBaseURLString] as? String)
+        {
+          authBaseURLString = authBaseURLStringInProviderConfig
+        }
+        if let logFilterInProviderConfig =
+          (providerConfig[TunnelProviderKeys.keyConnlibLogFilter] as? String)
+        {
+          logFilter = logFilterInProviderConfig
+        }
+      }
 
       return AdvancedSettings(
         authBaseURLString: authBaseURLString,
@@ -394,7 +404,7 @@ extension NETunnelProviderManager {
       )
     }
 
-    return AdvancedSettings.defaultValue
+    return defaultValue
   }
 
   func setConnlibLogFilter(_ logFiler: String) {
@@ -408,10 +418,8 @@ extension NETunnelProviderManager {
   }
 
   func saveAdvancedSettings(_ advancedSettings: AdvancedSettings) async throws {
-    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol,
-      let providerConfiguration = protocolConfiguration.providerConfiguration
-    {
-      var providerConfig = providerConfiguration
+    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
+      var providerConfig: [String: Any] = protocolConfiguration.providerConfiguration ?? [:]
 
       providerConfig[TunnelProviderKeys.keyAuthBaseURLString] =
         advancedSettings.authBaseURLString
