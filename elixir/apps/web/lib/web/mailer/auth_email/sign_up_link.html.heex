@@ -1,0 +1,36 @@
+<h3>Thank you for signing up for Firezone!</h3>
+
+<div>
+  <p>
+    Here is the <a href={@sign_in_url} target="_blank">sign-in link</a>
+    to access your account <b>"<%= @account.name %>"</b>.
+    It is valid for 15 minutes.
+  </p>
+
+  <small>
+    If the link didn't work, please copy this link and open it in your browser. <%= @sign_in_url %>
+  </small>
+</div>
+
+<div>
+  <p>In future you can always access the sign in form at the following URL:</p>
+
+  <small>
+    <%= @sign_in_form_url %>
+  </small>
+</div>
+
+<p>
+  If you did not request this action and have received this email in error, you can safely ignore
+  and discard this email. However, if you continue to receive multiple unsolicited emails of this nature,
+  we strongly recommend contacting your system administrator to report the issue.
+</p>
+
+<p>
+  <b>Request details:</b>
+  <br /> Time: <%= @sign_in_token_created_at %>
+  <br /> IP address: <%= @remote_ip %>
+  <br /> User Agent: <%= @user_agent %>
+  <br /> Account ID: <%= @account.id %>
+  <br /> Account Slug: <%= @account.slug %>
+</p>
