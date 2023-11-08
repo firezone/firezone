@@ -4,12 +4,20 @@ defmodule Web.Sites.NewToken do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <- Gateways.fetch_group_by_id(id, socket.assigns.subject) do
-      {:ok, group} =
-        Gateways.update_group(%{group | tokens: []}, %{tokens: [%{}]}, socket.assigns.subject)
+      {group, env} =
+        if connected?(socket) do
+          {:ok, group} =
+            Gateways.update_group(%{group | tokens: []}, %{tokens: [%{}]}, socket.assigns.subject)
 
-      :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
+          :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
 
-      {:ok, assign(socket, group: group)}
+          token = encode_group_token(group)
+          {group, env(token)}
+        else
+          {group, nil}
+        end
+
+      {:ok, assign(socket, group: group, env: env)}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -37,16 +45,16 @@ defmodule Web.Sites.NewToken do
           <div class="text-xl mb-2">
             Select deployment method:
           </div>
-          <.tabs id="deployment-instructions">
+          <.tabs :if={@env} id="deployment-instructions" phx-update="ignore">
             <:tab id="docker-instructions" label="Docker">
-              <.code_block id="code-sample-docker" class="w-full rounded-b" phx-no-format><%= docker_command(encode_group_token(@group)) %></.code_block>
+              <.code_block id="code-sample-docker" class="w-full rounded-b" phx-no-format><%= docker_command(@env) %></.code_block>
             </:tab>
             <:tab id="systemd-instructions" label="Systemd">
-              <.code_block id="code-sample-systemd" class="w-full rounded-b" phx-no-format><%= systemd_command(encode_group_token(@group)) %></.code_block>
+              <.code_block id="code-sample-systemd" class="w-full rounded-b" phx-no-format><%= systemd_command(@env) %></.code_block>
             </:tab>
           </.tabs>
 
-          <div class="mt-4 animate-pulse">
+          <div :if={@env} class="mt-4 animate-pulse">
             Waiting for gateway connection...
           </div>
         </div>
@@ -65,30 +73,46 @@ defmodule Web.Sites.NewToken do
     "#{vsn.major}.#{vsn.minor}"
   end
 
-  defp docker_command(token) do
-    """
-     docker run -d \\
-      --restart=unless-stopped \\
-      --pull=always \\
-      --health-cmd="ip link | grep tun-firezone" \\
-      --name=firezone-gateway \\
-      --cap-add=NET_ADMIN \\
-      --sysctl net.ipv4.ip_forward=1 \\
-      --sysctl net.ipv4.conf.all.src_valid_mark=1 \\
-      --sysctl net.ipv6.conf.all.disable_ipv6=0 \\
-      --sysctl net.ipv6.conf.all.forwarding=1 \\
-      --sysctl net.ipv6.conf.default.forwarding=1 \\
-      --device="/dev/net/tun:/dev/net/tun" \\
-      --env FIREZONE_ID="#{Ecto.UUID.generate()}" \\
-      --env FIREZONE_TOKEN="#{token}" \\
-      --env FIREZONE_ENABLE_MASQUERADE=1 \\
-      --env FIREZONE_HOSTNAME="`hostname`" \\
-      --env RUST_LOG="warn" \\
-      #{Domain.Config.fetch_env!(:domain, :docker_registry)}/gateway:#{version()}
-    """
+  defp env(token) do
+    api_url_override =
+      if api_url = Domain.Config.get_env(:web, :api_url_override) do
+        # if api_url = false do
+        {"FIREZONE_API_URL", api_url}
+      end
+
+    [
+      {"FIREZONE_ID", Ecto.UUID.generate()},
+      {"FIREZONE_TOKEN", token},
+      {"FIREZONE_ENABLE_MASQUERADE", "1"},
+      {"FIREZONE_HOSTNAME", "$(hostname)"},
+      api_url_override,
+      {"RUST_LOG", "warn"}
+    ]
+    |> Enum.reject(&is_nil/1)
   end
 
-  defp systemd_command(token) do
+  defp docker_command(env) do
+    [
+      "docker run -d",
+      "--restart=unless-stopped",
+      "--pull=always",
+      "--health-cmd=\"ip link | grep tun-firezone\"",
+      "--name=firezone-gateway",
+      "--cap-add=NET_ADMIN",
+      "--sysctl net.ipv4.ip_forward=1",
+      "--sysctl net.ipv4.conf.all.src_valid_mark=1",
+      "--sysctl net.ipv6.conf.all.disable_ipv6=0",
+      "--sysctl net.ipv6.conf.all.forwarding=1",
+      "--sysctl net.ipv6.conf.default.forwarding=1",
+      "--device=\"/dev/net/tun:/dev/net/tun\"",
+      Enum.map(env, fn {key, value} -> "--env #{key}=\"#{value}\"" end),
+      "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/gateway:#{version()}"
+    ]
+    |> List.flatten()
+    |> Enum.join(" \\\n  ")
+  end
+
+  defp systemd_command(env) do
     """
     [Unit]
     Description=Firezone Gateway
@@ -96,10 +120,7 @@ defmodule Web.Sites.NewToken do
 
     [Service]
     Type=simple
-    Environment="FIREZONE_TOKEN=#{token}"
-    Environment="FIREZONE_VERSION=#{version()}"
-    Environment="FIREZONE_HOSTNAME=$(hostname)"
-    Environment="FIREZONE_ENABLE_MASQUERADE=1"
+    #{Enum.map(env, fn {key, value} -> "Environment=\"#{key}=#{value}\"" end) |> Enum.join("\n")}
     ExecStartPre=/bin/sh -c ' \\
       if [ -e /usr/local/bin/firezone-gateway ]; then \\
         current_version=$(/usr/local/bin/firezone-gateway --version 2>&1 | awk "{print $NF}"); \\
@@ -110,11 +131,11 @@ defmodule Web.Sites.NewToken do
         arch=$(uname -m); \\
         case $$arch in \\
           aarch64) \\
-            bin_url="https://github.com/firezone/firezone/releases/download/${FIREZONE_VERSION}/gateway-aarch64-unknown-linux-musl-${FIREZONE_VERSION}" ;; \\
+            bin_url="https://github.com/firezone/firezone/releases/download/${FIREZONE_VERSION}/gateway-arm64" ;; \\
           armv7l) \\
-            bin_url="https://github.com/firezone/firezone/releases/download/${FIREZONE_VERSION}/gateway-armv7-unknown-linux-musleabihf-${FIREZONE_VERSION}" ;; \\
+            bin_url="https://github.com/firezone/firezone/releases/download/${FIREZONE_VERSION}/gateway-arm" ;; \\
           x86_64) \\
-            bin_url="https://github.com/firezone/firezone/releases/download/${FIREZONE_VERSION}/gateway-x86_64-unknown-linux-musl-${FIREZONE_VERSION}" ;; \\
+            bin_url="https://github.com/firezone/firezone/releases/download/${FIREZONE_VERSION}/gateway-x64" ;; \\
           *) \\
             echo "Unsupported architecture"; \\
             exit 1 ;; \\

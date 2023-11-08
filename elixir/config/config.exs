@@ -130,6 +130,8 @@ config :web, Web.Plugs.SecureHeaders,
     "connect-src 'self' https://firezone.statuspage.io"
   ]
 
+config :web, api_url_override: "ws://localhost:13001/"
+
 ###############################
 ##### API #####################
 ###############################
