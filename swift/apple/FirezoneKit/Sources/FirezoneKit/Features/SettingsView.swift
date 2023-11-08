@@ -78,7 +78,6 @@ public final class SettingsViewModel: ObservableObject {
         advancedSettings.isSavedToDisk = true
       }
       var isChanged = false
-      await authStore.setAuthBaseURL(authBaseURL, isChanged: &isChanged)
       if isChanged {
         try await updateTunnelAuthStatus(
           accountId: authStore.tunnelStore.tunnelAuthStatus.accountId() ?? "")
