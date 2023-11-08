@@ -244,7 +244,7 @@ defmodule Web.Sites.Show do
       :self_hosted -> "Self-hosted"
       :stun_only -> "STUN-only"
       :turn_only -> "TURN-only"
-      _ -> "Unknown"
+      _ -> raise "Unknown routing: #{inspect(routing)}"
     end
   end
 end
