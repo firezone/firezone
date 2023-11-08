@@ -65,17 +65,20 @@ where
                     tracing::trace!(?peer_config.ips, "new_data_channel_open");
                     Box::pin(async move {
                         {
-                            let Some(device) = tunnel.device.read().clone() else {
+                            let Some(device) = tunnel.device.load().clone() else {
                                 let e = Error::NoIface;
                                 tracing::error!(err = ?e, "channel_open");
                                 let _ = tunnel.callbacks().on_error(&e);
                                 return;
                             };
-                            let iface_config = device.config;
                             for &ip in &peer_config.ips {
-                                if let Err(e) = iface_config.add_route(ip, tunnel.callbacks()).await
-                                {
-                                    let _ = tunnel.callbacks.on_error(&e);
+                                match device.add_route(ip, tunnel.callbacks()).await {
+                                    Ok(maybe_new_device) => {
+                                        assert!(maybe_new_device.is_none(), "gateway does not run on android and thus never produces a new device upon `add_route`")
+                                    }
+                                    Err(e) => {
+                                        let _ = tunnel.callbacks.on_error(&e);
+                                    }
                                 }
                             }
                         }

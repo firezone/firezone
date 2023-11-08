@@ -27,6 +27,7 @@ chrono = { workspace = true }
 pnet_packet = { version = "0.34" }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true }
+arc-swap = "1.6.0"
 
 # TODO: research replacing for https://github.com/algesten/str0m
 webrtc = { workspace = true }

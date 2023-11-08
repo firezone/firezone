@@ -1,6 +1,5 @@
 use connlib_shared::{
-    messages::Interface as InterfaceConfig, CallbackErrorFacade, Callbacks, Error, Result,
-    DNS_SENTINEL,
+    messages::Interface as InterfaceConfig, Callbacks, Error, Result, DNS_SENTINEL,
 };
 use ip_network::IpNetwork;
 use libc::{
@@ -138,7 +137,7 @@ impl IfaceStream {
 impl IfaceDevice {
     pub async fn new(
         config: &InterfaceConfig,
-        callbacks: &CallbackErrorFacade<impl Callbacks>,
+        callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
         let mut info = ctl_info {
             ctl_id: 0,
@@ -241,7 +240,7 @@ impl IfaceDevice {
     pub async fn add_route(
         &self,
         route: IpNetwork,
-        callbacks: &CallbackErrorFacade<impl Callbacks>,
+        callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
         // This will always be None in macos
         callbacks.on_add_route(route)?;

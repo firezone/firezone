@@ -22,6 +22,7 @@ use ip_network_table::IpNetworkTable;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::Instant;
@@ -73,11 +74,11 @@ where
         query: IpPacket<'static>,
     ) -> connlib_shared::Result<()> {
         if let Some(pkt) = dns::build_response_from_resolve_result(query, response)? {
-            let Some(ref device) = *self.device.read() else {
+            let Some(ref device) = *self.device.load() else {
                 return Ok(());
             };
 
-            device.io.write(pkt)?;
+            device.write(pkt)?;
         }
 
         Ok(())
@@ -86,9 +87,9 @@ where
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        let device = create_iface(config, self.callbacks()).await?;
+        let device = Arc::new(create_iface(config, self.callbacks()).await?);
 
-        *self.device.write() = Some(device.clone());
+        self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
 
         self.add_route(DNS_SENTINEL.into()).await?;
@@ -109,18 +110,17 @@ where
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn add_route(&self, route: IpNetwork) -> connlib_shared::Result<()> {
-        let device = self
+        let maybe_new_device = self
             .device
-            .write()
-            .take()
-            .ok_or(Error::ControlProtocolError)?;
-
-        let new_device = device
-            .config
+            .load()
+            .as_ref()
+            .ok_or(Error::ControlProtocolError)?
             .add_route(route, self.callbacks())
-            .await?
-            .unwrap_or(device); // Restore the old device.
-        *self.device.write() = Some(new_device);
+            .await?;
+
+        if let Some(new_device) = maybe_new_device {
+            self.device.swap(Some(Arc::new(new_device)));
+        }
 
         Ok(())
     }

@@ -26,13 +26,14 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
+use arc_swap::ArcSwapOption;
 use futures::channel::mpsc;
 use futures_util::task::AtomicWaker;
 use futures_util::{SinkExt, StreamExt};
 use itertools::Itertools;
 use std::collections::VecDeque;
 use std::task::{ready, Context, Poll};
-use std::{collections::HashMap, fmt, io, net::IpAddr, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
 use std::{collections::HashSet, hash::Hash};
 use tokio::time::Interval;
 use webrtc::data::data_channel::DataChannel;
@@ -43,8 +44,6 @@ use connlib_shared::{
     Result,
 };
 
-use device_channel::{DeviceIo, IfaceConfig};
-
 pub use client::ClientState;
 use connlib_shared::error::ConnlibError;
 pub use control_protocol::Request;
@@ -53,6 +52,7 @@ pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription
 
 use crate::ip_packet::MutableIpPacket;
 use connlib_shared::messages::{ClientId, SecretKey};
+use device_channel::Device;
 use index::IndexLfsr;
 
 mod bounded_queue;
@@ -105,34 +105,6 @@ impl From<connlib_shared::messages::Peer> for PeerConfig {
         }
     }
 }
-#[derive(Clone)]
-struct Device {
-    config: Arc<IfaceConfig>,
-    io: DeviceIo,
-}
-
-impl Device {
-    fn poll_read<'b>(
-        &mut self,
-        buf: &'b mut [u8],
-        cx: &mut Context<'_>,
-    ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
-        let res = ready!(self.io.poll_read(&mut buf[..self.config.mtu()], cx))?;
-
-        if res == 0 {
-            return Poll::Ready(Ok(None));
-        }
-
-        Poll::Ready(Ok(Some(MutableIpPacket::new(&mut buf[..res]).ok_or_else(
-            || {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "received bytes are not an IP packet",
-                )
-            },
-        )?)))
-    }
-}
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
 pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
@@ -158,7 +130,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
 
     peers_to_stop: Mutex<VecDeque<TRoleState::Id>>,
 
-    device: RwLock<Option<Device>>,
+    device: Arc<ArcSwapOption<Device>>,
     read_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
     write_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
     no_device_waker: AtomicWaker,
@@ -171,18 +143,18 @@ where
     pub async fn next_event(&self) -> Result<Event<GatewayId>> {
         std::future::poll_fn(|cx| loop {
             {
-                let mut guard = self.device.write();
+                let guard = self.device.load();
 
-                if let Some(device) = guard.as_mut() {
+                if let Some(device) = guard.as_ref() {
                     match self.poll_device(device, cx) {
                         Poll::Ready(Ok(Some(event))) => return Poll::Ready(Ok(event)),
                         Poll::Ready(Ok(None)) => {
                             tracing::info!("Device stopped");
-                            guard.take();
+                            self.device.store(None);
                             continue;
                         }
                         Poll::Ready(Err(e)) => {
-                            guard.take(); // Ensure we don't poll a failed device again.
+                            self.device.store(None); // Ensure we don't poll a failed device again.
                             return Poll::Ready(Err(e));
                         }
                         Poll::Pending => {}
@@ -204,7 +176,7 @@ where
 
     pub(crate) fn poll_device(
         &self,
-        device: &mut Device,
+        device: &Device,
         cx: &mut Context<'_>,
     ) -> Poll<Result<Option<Event<GatewayId>>>> {
         loop {
@@ -221,7 +193,7 @@ where
 
             let packet = match role_state.handle_dns(packet) {
                 Ok(Some(response)) => {
-                    device.io.write(response)?;
+                    device.write(response)?;
                     continue;
                 }
                 Ok(None) => continue,
@@ -256,9 +228,9 @@ where
 
         loop {
             {
-                let mut device = self.device.write();
+                let device = self.device.load();
 
-                match device.as_mut().map(|d| d.poll_read(read_buf, cx)) {
+                match device.as_ref().map(|d| d.poll_read(read_buf, cx)) {
                     Some(Poll::Ready(Ok(Some(packet)))) => {
                         let dest = packet.destination();
 
@@ -273,7 +245,7 @@ where
                     }
                     Some(Poll::Ready(Ok(None))) => {
                         tracing::info!("Device stopped");
-                        drop(device.take());
+                        self.device.store(None);
                     }
                     Some(Poll::Ready(Err(e))) => return Poll::Ready(Err(ConnlibError::Io(e))),
                     Some(Poll::Pending) => {
@@ -422,7 +394,7 @@ where
             }
 
             if self.mtu_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let Some(device) = self.device.read().clone() else {
+                let Some(device) = self.device.load().clone() else {
                     tracing::debug!("Device temporarily not available");
                     continue;
                 };
@@ -431,7 +403,7 @@ where
                     let callbacks = self.callbacks.clone();
 
                     async move {
-                        if let Err(e) = device.config.refresh_mtu().await {
+                        if let Err(e) = device.refresh_mtu().await {
                             tracing::error!(error = ?e, "refresh_mtu");
                             let _ = callbacks.on_error(&e);
                         }
