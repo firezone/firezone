@@ -27,11 +27,10 @@ public final class SettingsViewModel: ObservableObject {
   public init() {
     accountSettings = AccountSettings()
     advancedSettings = AdvancedSettings.defaultValue
-    loadAccountSettings()
-    loadAdvancedSettings()
+    loadSettings()
   }
 
-  func loadAccountSettings() {
+  func loadSettings() {
     Task {
       authStore.tunnelStore.$tunnelAuthStatus
         .filter { $0.isInitialized }
@@ -39,6 +38,8 @@ public final class SettingsViewModel: ObservableObject {
         .sink { [weak self] tunnelAuthStatus in
           guard let self = self else { return }
           self.accountSettings = AccountSettings(accountId: tunnelAuthStatus.accountId() ?? "")
+          self.advancedSettings =
+            authStore.tunnelStore.advancedSettings() ?? AdvancedSettings.defaultValue
         }
         .store(in: &cancellables)
     }
@@ -430,8 +431,7 @@ public struct SettingsView: View {
   }
 
   func loadSettings() {
-    model.loadAccountSettings()
-    model.loadAdvancedSettings()
+    model.loadSettings()
     dismiss()
   }
 
