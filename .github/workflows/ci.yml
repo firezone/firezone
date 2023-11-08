@@ -120,9 +120,9 @@ jobs:
           push: true
           target: ${{ matrix.target }}
           tags: |
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.MAJOR_VERSION }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.MAJOR_MINOR_VERSION }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/firezone/{1}:{2}', steps.login.outputs.registry, matrix.image_name, env.MAJOR_VERSION) }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/firezone/{1}:{2}', steps.login.outputs.registry, matrix.image_name, env.MAJOR_MINOR_VERSION) }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/firezone/{1}:{2}-{3}', steps.login.outputs.registry, matrix.image_name, env.VERSION, github.sha) }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.BRANCH_TAG }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
 
