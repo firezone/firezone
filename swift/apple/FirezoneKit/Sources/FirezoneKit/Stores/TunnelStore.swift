@@ -356,10 +356,8 @@ extension NETunnelProviderManager {
   }
 
   func saveAuthStatus(_ authStatus: TunnelAuthStatus) async throws {
-    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol,
-      let providerConfiguration = protocolConfiguration.providerConfiguration
-    {
-      var providerConfig = providerConfiguration
+    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
+      var providerConfig: [String: Any] = protocolConfiguration.providerConfiguration ?? [:]
 
       switch authStatus {
       case .tunnelUninitialized, .accountNotSetup:
