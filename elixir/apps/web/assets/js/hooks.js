@@ -9,7 +9,10 @@ Hooks.Copy = {
     this.el.addEventListener("click", (ev) => {
       ev.preventDefault();
 
-      let text = ev.currentTarget.querySelector("[data-copy]").innerHTML.trim();
+      let inner_html = ev.currentTarget.querySelector("[data-copy]").innerHTML.trim();
+      let doc = new DOMParser().parseFromString(inner_html, "text/html");
+      let text = doc.documentElement.textContent;
+
       let cl = ev.currentTarget.querySelector("[data-icon]").classList
 
       navigator.clipboard.writeText(text).then(() => {
