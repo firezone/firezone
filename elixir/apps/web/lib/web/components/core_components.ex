@@ -107,7 +107,11 @@ defmodule Web.CoreComponents do
   def tabs(assigns) do
     ~H"""
     <div class="mb-4">
-      <div class="border-gray-200 dark:border-gray-700 bg-slate-50 rounded-t" {@rest}>
+      <div
+        class="border-gray-200 dark:border-gray-700 bg-slate-50 rounded-t"
+        id={"#{@id}-container"}
+        {@rest}
+      >
         <ul
           class="flex flex-wrap text-sm font-medium text-center"
           id={"#{@id}-ul"}
