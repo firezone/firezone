@@ -1,6 +1,4 @@
-use connlib_shared::{
-    messages::Interface as InterfaceConfig, CallbackErrorFacade, Callbacks, Error, Result,
-};
+use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use futures::TryStreamExt;
 use ip_network::IpNetwork;
 use libc::{
@@ -103,7 +101,7 @@ impl IfaceStream {
 impl IfaceDevice {
     pub async fn new(
         config: &InterfaceConfig,
-        cb: &CallbackErrorFacade<impl Callbacks>,
+        cb: &impl Callbacks,
     ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
         debug_assert!(IFACE_NAME.as_bytes().len() < IFNAMSIZ);
 
@@ -175,7 +173,7 @@ impl IfaceDevice {
     pub async fn add_route(
         &self,
         route: IpNetwork,
-        _callbacks: &CallbackErrorFacade<impl Callbacks>,
+        _: &impl Callbacks,
     ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
         let req = self
             .handle
@@ -215,11 +213,11 @@ impl IfaceDevice {
         Ok(None)
     }
 
-    #[tracing::instrument(level = "trace", skip(self, _callbacks))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_iface_config(
         &self,
         config: &InterfaceConfig,
-        _callbacks: &CallbackErrorFacade<impl Callbacks>,
+        _: &impl Callbacks,
     ) -> Result<()> {
         let ips = self
             .handle

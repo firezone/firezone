@@ -5,14 +5,13 @@ use std::sync::{
 };
 use std::task::{ready, Context, Poll};
 
-use connlib_shared::{messages::Interface, CallbackErrorFacade, Callbacks, Result};
+use connlib_shared::{messages::Interface, Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use tokio::io::{unix::AsyncFd, Ready};
 
 use tun::{IfaceDevice, IfaceStream};
 
-use crate::device_channel::Packet;
-use crate::Device;
+use crate::device_channel::{Device, Packet};
 
 mod tun;
 
@@ -21,7 +20,6 @@ pub(crate) struct IfaceConfig {
     iface: IfaceDevice,
 }
 
-#[derive(Clone)]
 pub(crate) struct DeviceIo(Arc<AsyncFd<IfaceStream>>);
 
 impl DeviceIo {
@@ -67,33 +65,33 @@ impl IfaceConfig {
     pub(crate) async fn add_route(
         &self,
         route: IpNetwork,
-        callbacks: &CallbackErrorFacade<impl Callbacks>,
+        callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>> {
         let Some((iface, stream)) = self.iface.add_route(route, callbacks).await? else {
             return Ok(None);
         };
         let io = DeviceIo(stream);
         let mtu = iface.mtu().await?;
-        let config = Arc::new(IfaceConfig {
+        let config = IfaceConfig {
             iface,
             mtu: AtomicUsize::new(mtu),
-        });
+        };
         Ok(Some(Device { io, config }))
     }
 }
 
 pub(crate) async fn create_iface(
     config: &Interface,
-    callbacks: &CallbackErrorFacade<impl Callbacks>,
+    callbacks: &impl Callbacks<Error = Error>,
 ) -> Result<Device> {
     let (iface, stream) = IfaceDevice::new(config, callbacks).await?;
     iface.up().await?;
     let io = DeviceIo(stream);
     let mtu = iface.mtu().await?;
-    let config = Arc::new(IfaceConfig {
+    let config = IfaceConfig {
         iface,
         mtu: AtomicUsize::new(mtu),
-    });
+    };
 
     Ok(Device { io, config })
 }
