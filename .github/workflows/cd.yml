@@ -208,8 +208,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{
-            matrix.name.artifact }}
+            ${{ steps.login.outputs.registry }}/firezone/${{matrix.name.artifact }}
           tags: |
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}
@@ -230,8 +229,7 @@ jobs:
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.artifact }}:main,mode=max
           target: release
           outputs:
-            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{
-            matrix.name.artifact}},push-by-digest=true,name-canonical=true,push=true
+            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{matrix.name.artifact}},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.artifact }}
@@ -270,16 +268,25 @@ jobs:
           path: /tmp/digests
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      - name: Build Version Tags
+        run: |
+          set -xe
+          MAJOR_VERSION="${VERSION%%.*}"
+          MAJOR_MINOR_VERSION="${VERSION%.*}"
+
+          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> $GITHUB_ENV
+          echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> $GITHUB_ENV
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name
-            }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
           tags: |
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}
+            type=raw,value=${{ env.MAJOR_VERSION }}
+            type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
       - name: Create manifest list and push
         working-directory: /tmp/digests/${{ matrix.image_name }}
         run: |
