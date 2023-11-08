@@ -57,6 +57,17 @@ final class TunnelStore: ObservableObject {
       Self.logger.log("\(#function): \(managers.count) tunnel managers found")
       if let tunnel = managers.first {
         Self.logger.log("\(#function): Tunnel already exists")
+        if let protocolConfig = (tunnel.protocolConfiguration as? NETunnelProviderProtocol) {
+          Self.logger.log(
+            "  serverAddress = \(protocolConfig.serverAddress ?? "")"
+          )
+          Self.logger.log(
+            "  providerConfig = \(protocolConfig.providerConfiguration ?? [:])"
+          )
+          Self.logger.log(
+            "  passwordReference = \(String(describing: protocolConfig.passwordReference))"
+          )
+        }
         self.tunnel = tunnel
         self.tunnelAuthStatus = tunnel.authStatus()
       } else {
