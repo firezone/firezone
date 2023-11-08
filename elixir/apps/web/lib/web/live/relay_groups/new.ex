@@ -193,7 +193,7 @@ defmodule Web.RelayGroups.New do
   defp systemd_command(env) do
     """
     [Unit]
-    Description=Firezone Gateway
+    Description=Firezone Relay
     After=network.target
 
     [Service]
