@@ -16,6 +16,8 @@ enum SettingsViewError: Error {
 }
 
 public final class SettingsViewModel: ObservableObject {
+  private let logger = Logger.make(for: SettingsViewModel.self)
+
   @Dependency(\.authStore) private var authStore
 
   @Published var accountSettings: AccountSettings
@@ -62,16 +64,16 @@ public final class SettingsViewModel: ObservableObject {
     }
   }
 
-  func loadAdvancedSettings() {
-    advancedSettings = authStore.tunnelStore.advancedSettings() ?? AdvancedSettings.defaultValue
-  }
-
   func saveAdvancedSettings() {
     Task {
       guard let authBaseURL = URL(string: advancedSettings.authBaseURLString) else {
         fatalError("Saved authBaseURL is invalid")
       }
-      try await authStore.tunnelStore.saveAdvancedSettings(advancedSettings)
+      do {
+        try await authStore.tunnelStore.saveAdvancedSettings(advancedSettings)
+      } catch {
+        logger.error("Error saving advanced settings to tunnel store: \(error, privacy: .public)")
+      }
       await MainActor.run {
         advancedSettings.isSavedToDisk = true
       }
@@ -96,7 +98,11 @@ public final class SettingsViewModel: ObservableObject {
         return await authStore.tunnelAuthStatusForAccount(accountId: accountId)
       }
     }()
-    try await authStore.tunnelStore.saveAuthStatus(tunnelAuthStatus)
+    do {
+      try await authStore.tunnelStore.saveAuthStatus(tunnelAuthStatus)
+    } catch {
+      logger.error("Error saving auth status to tunnel store: \(error, privacy: .public)")
+    }
   }
 }
 
