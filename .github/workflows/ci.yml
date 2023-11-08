@@ -95,6 +95,14 @@ jobs:
         id: login
         with:
           project: firezone-staging
+      - name: Build Version Tags
+        run: |
+          set -xe
+          MAJOR_VERSION="${VERSION%%.*}"
+          MAJOR_MINOR_VERSION="${VERSION%.*}"
+
+          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> $GITHUB_ENV
+          echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> $GITHUB_ENV
       - name: Build Docker images
         uses: docker/build-push-action@v5
         with:
@@ -112,6 +120,8 @@ jobs:
           push: true
           target: ${{ matrix.target }}
           tags: |
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.MAJOR_VERSION }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.MAJOR_MINOR_VERSION }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.BRANCH_TAG }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
