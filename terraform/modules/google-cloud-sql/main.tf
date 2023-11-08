@@ -60,7 +60,7 @@ resource "google_sql_database_instance" "master" {
     activation_policy = "ALWAYS"
     availability_type = var.database_highly_available ? "REGIONAL" : "ZONAL"
 
-    deletion_protection_enabled = var.database_name == "production" ? true : false
+    deletion_protection_enabled = strcontains(var.database_name, "-prod") ? true : false
 
     location_preference {
       zone = var.compute_availability_zone
