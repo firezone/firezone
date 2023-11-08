@@ -87,7 +87,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Sanitize github.ref_name
         run: |
-          REF="${{ github.ref_name }}" # `ref_name` contains `/` which is not a valid docker image tag.
+          # `ref_name` contains `/` which is not a valid docker image tag
+          REF="${{ github.ref_name }}"
           CACHE_TAG="${REF//\//-}"
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
           echo "BRANCH_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
@@ -95,14 +96,26 @@ jobs:
         id: login
         with:
           project: firezone-staging
-      - name: Build Version Tags
+      - name: Build Docker Tags
+        id: build_docker_tags
         run: |
           set -xe
-          MAJOR_VERSION="${VERSION%%.*}"
-          MAJOR_MINOR_VERSION="${VERSION%.*}"
 
-          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> $GITHUB_ENV
-          echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> $GITHUB_ENV
+          TAGS=""
+
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            MAJOR_VERSION="${VERSION%%.*}"
+            MAJOR_MINOR_VERSION="${VERSION%.*}"
+
+            TAGS="${TAGS},${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${MAJOR_VERSION}"
+            TAGS="${TAGS},${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${MAJOR_MINOR_VERSION}"
+            TAGS="${TAGS},${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}"
+          fi
+
+          TAGS="${TAGS},${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.BRANCH_TAG }}"
+          TAGS="${TAGS},${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}"
+
+          echo "::set-output name=tags::${TAGS}"
       - name: Build Docker images
         uses: docker/build-push-action@v5
         with:
@@ -119,12 +132,7 @@ jobs:
           file: ${{ matrix.context }}/Dockerfile
           push: true
           target: ${{ matrix.target }}
-          tags: |
-            ${{ github.ref == 'refs/heads/main' && format('{0}/firezone/{1}:{2}', steps.login.outputs.registry, matrix.image_name, env.MAJOR_VERSION) }}
-            ${{ github.ref == 'refs/heads/main' && format('{0}/firezone/{1}:{2}', steps.login.outputs.registry, matrix.image_name, env.MAJOR_MINOR_VERSION) }}
-            ${{ github.ref == 'refs/heads/main' && format('{0}/firezone/{1}:{2}-{3}', steps.login.outputs.registry, matrix.image_name, env.VERSION, github.sha) }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.BRANCH_TAG }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+          tags: ${{ steps.build_docker_tags.outputs.tags }}
 
   integration-tests:
     needs: build-images
