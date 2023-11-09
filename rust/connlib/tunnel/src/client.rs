@@ -26,7 +26,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::Instant;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
+use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 impl<CB> Tunnel<CB, ClientState>
 where
@@ -128,9 +128,9 @@ where
 
 /// [`Tunnel`] state specific to clients.
 pub struct ClientState {
-    active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidateInit>,
+    active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidate>,
     /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
-    waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidateInit>>,
+    waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidate>>,
 
     // TODO: Make private
     pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
@@ -139,6 +139,7 @@ pub struct ClientState {
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
 
     pub gateway_public_keys: HashMap<GatewayId, PublicKey>,
+    pub gateway_preshared_keys: HashMap<GatewayId, StaticSecret>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
     resources: ResourceTable<ResourceDescription>,
     dns_queries: BoundedQueue<DnsQuery<'static>>,
@@ -324,11 +325,7 @@ impl ClientState {
         self.resources_gateways.get(resource).copied()
     }
 
-    pub fn add_waiting_ice_receiver(
-        &mut self,
-        id: GatewayId,
-        receiver: Receiver<RTCIceCandidateInit>,
-    ) {
+    pub fn add_waiting_ice_receiver(&mut self, id: GatewayId, receiver: Receiver<RTCIceCandidate>) {
         self.waiting_for_sdp_from_gatway.insert(id, receiver);
     }
 
@@ -401,6 +398,7 @@ impl Default for ClientState {
             resources_gateways: Default::default(),
             resources: Default::default(),
             dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
+            gateway_preshared_keys: Default::default(),
         }
     }
 }

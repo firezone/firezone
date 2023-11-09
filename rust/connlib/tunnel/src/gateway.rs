@@ -9,7 +9,7 @@ use futures_bounded::{PushError, StreamMap};
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
+use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 impl<CB> Tunnel<CB, GatewayState>
 where
@@ -37,11 +37,11 @@ where
 
 /// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
-    candidate_receivers: StreamMap<ClientId, RTCIceCandidateInit>,
+    candidate_receivers: StreamMap<ClientId, RTCIceCandidate>,
 }
 
 impl GatewayState {
-    pub fn add_new_ice_receiver(&mut self, id: ClientId, receiver: Receiver<RTCIceCandidateInit>) {
+    pub fn add_new_ice_receiver(&mut self, id: ClientId, receiver: Receiver<RTCIceCandidate>) {
         match self.candidate_receivers.try_push(id, receiver) {
             Ok(()) => {}
             Err(PushError::BeyondCapacity(_)) => {

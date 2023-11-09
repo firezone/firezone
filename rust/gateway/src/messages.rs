@@ -4,9 +4,8 @@ use chrono::{serde::ts_seconds, DateTime, Utc};
 use connlib_shared::messages::{
     ActorId, ClientId, Interface, Peer, Relay, ResourceDescription, ResourceId,
 };
-use firezone_tunnel::RTCSessionDescription;
 use serde::{Deserialize, Serialize};
-use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
+use webrtc::ice_transport::{ice_candidate::RTCIceCandidate, ice_parameters::RTCIceParameters};
 
 // TODO: Should this have a resource?
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
@@ -24,7 +23,7 @@ pub struct Actor {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Client {
     pub id: ClientId,
-    pub rtc_session_description: RTCSessionDescription,
+    pub rtc_session_description: RTCIceParameters,
     pub peer: Peer,
 }
 
@@ -100,7 +99,7 @@ pub struct BroadcastClientIceCandidates {
     /// Client's id the ice candidates are meant for
     pub client_ids: Vec<ClientId>,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidateInit>,
+    pub candidates: Vec<RTCIceCandidate>,
 }
 
 /// A client's ice candidate message.
@@ -109,7 +108,7 @@ pub struct ClientIceCandidates {
     /// Client's id the ice candidates came from
     pub client_id: ClientId,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidateInit>,
+    pub candidates: Vec<RTCIceCandidate>,
 }
 
 // These messages can be sent from a gateway
@@ -128,7 +127,7 @@ pub enum EgressMessages {
 pub struct ConnectionReady {
     #[serde(rename = "ref")]
     pub reference: String,
-    pub gateway_rtc_session_description: RTCSessionDescription,
+    pub gateway_rtc_session_description: RTCIceParameters,
 }
 
 #[cfg(test)]

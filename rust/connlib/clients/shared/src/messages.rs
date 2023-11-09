@@ -1,6 +1,5 @@
 use std::{collections::HashSet, net::IpAddr};
 
-use firezone_tunnel::RTCSessionDescription;
 use serde::{Deserialize, Serialize};
 
 use connlib_shared::messages::{
@@ -8,7 +7,7 @@ use connlib_shared::messages::{
     ReuseConnection,
 };
 use url::Url;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
+use webrtc::ice_transport::{ice_candidate::RTCIceCandidate, ice_parameters::RTCIceParameters};
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct InitClient {
@@ -32,7 +31,7 @@ pub struct ConnectionDetails {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Connect {
-    pub gateway_rtc_session_description: RTCSessionDescription,
+    pub gateway_rtc_session_description: RTCIceParameters,
     pub resource_id: ResourceId,
     pub gateway_public_key: Key,
     pub persistent_keepalive: u64,
@@ -70,7 +69,7 @@ pub struct BroadcastGatewayIceCandidates {
     /// Gateway's id the ice candidates are meant for
     pub gateway_ids: Vec<GatewayId>,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidateInit>,
+    pub candidates: Vec<RTCIceCandidate>,
 }
 
 /// A gateway's ice candidate message.
@@ -79,7 +78,7 @@ pub struct GatewayIceCandidates {
     /// Gateway's id the ice candidates are from
     pub gateway_id: GatewayId,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidateInit>,
+    pub candidates: Vec<RTCIceCandidate>,
 }
 
 /// The replies that can arrive from the channel by a client

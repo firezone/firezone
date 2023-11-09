@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use connlib_shared::Callbacks;
 use futures_util::SinkExt;
-use webrtc::data::data_channel::DataChannel;
+use webrtc::mux::endpoint::Endpoint;
+use webrtc::util::Conn;
 
 use crate::device_channel::Device;
 use crate::peer::WriteTo;
@@ -18,7 +19,7 @@ where
     pub(crate) fn start_peer_handler(
         &self,
         peer: Arc<Peer<TRoleState::Id>>,
-        channel: Arc<DataChannel>,
+        channel: Arc<Endpoint>,
     ) -> impl Future<Output = ()> + Send + 'static {
         let device = Arc::clone(&self.device);
         let callbacks = self.callbacks.clone();
@@ -54,7 +55,7 @@ where
 async fn peer_handler<TId>(
     callbacks: &impl Callbacks,
     peer: &Arc<Peer<TId>>,
-    channel: Arc<DataChannel>,
+    channel: Arc<Endpoint>,
     device: &Device,
 ) -> std::io::Result<()>
 where
@@ -62,7 +63,7 @@ where
 {
     let mut src_buf = [0u8; MAX_UDP_SIZE];
     let mut dst_buf = [0u8; MAX_UDP_SIZE];
-    while let Ok(size) = channel.read(&mut src_buf[..]).await {
+    while let Ok(size) = channel.recv(&mut src_buf[..]).await {
         tracing::trace!(target: "wire", action = "read", bytes = size, from = "peer");
 
         // TODO: Double check that this can only happen on closed channel
@@ -78,9 +79,9 @@ where
         match peer.decapsulate(src, &mut dst_buf) {
             Ok(Some(WriteTo::Network(bytes))) => {
                 for packet in bytes {
-                    if let Err(e) = channel.write(&packet).await {
+                    if let Err(e) = channel.send(&packet).await {
                         tracing::error!("Couldn't send packet to connected peer: {e}");
-                        let _ = callbacks.on_error(&e.into());
+                        // let _ = callbacks.on_error(&e.into());
                     }
                 }
             }
