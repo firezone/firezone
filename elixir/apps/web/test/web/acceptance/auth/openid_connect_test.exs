@@ -46,6 +46,6 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     |> Vault.userpass_flow(oidc_login, oidc_password)
     |> assert_el(Query.css("#user-menu-button"))
     |> Auth.assert_authenticated(identity)
-    |> assert_path(~p"/#{account.slug}/actors")
+    |> assert_path(~p"/#{account.slug}/sites")
   end
 end
