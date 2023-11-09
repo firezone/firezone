@@ -30,7 +30,7 @@ defmodule Web.Auth do
         client_platform,
         client_csrf_token
       )
-      when not is_nil(client_platform) do
+      when not is_nil(client_platform) and client_platform != "" do
     platform_redirects =
       Domain.Config.fetch_env!(:web, __MODULE__)
       |> Keyword.fetch!(:platform_redirects)
