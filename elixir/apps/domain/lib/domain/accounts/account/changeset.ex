@@ -30,6 +30,16 @@ defmodule Domain.Accounts.Account.Changeset do
     |> validate_format(:slug, ~r/^[a-zA-Z0-9_]+$/,
       message: "can only contain letters, numbers, and underscores"
     )
+    |> validate_exclusion(:slug, [
+      "sign_up",
+      "sign_in",
+      "sign_out",
+      "account",
+      "admin",
+      "system",
+      "me",
+      "you"
+    ])
     |> validate_change(:slug, fn field, slug ->
       if valid_uuid?(slug) do
         [{field, "cannot be a valid UUID"}]

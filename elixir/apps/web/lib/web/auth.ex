@@ -428,7 +428,7 @@ defmodule Web.Auth do
     end)
   end
 
-  defp real_ip(socket) do
+  def real_ip(socket) do
     peer_data = Phoenix.LiveView.get_connect_info(socket, :peer_data)
     x_headers = Phoenix.LiveView.get_connect_info(socket, :x_headers)
 

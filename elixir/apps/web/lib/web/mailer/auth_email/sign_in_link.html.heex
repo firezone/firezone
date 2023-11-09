@@ -6,13 +6,13 @@
 
 <div :if={is_nil(@client_platform)}>
   <p>
-    Here is the <a href={@link} target="_blank">magic sign-in link</a>
+    Here is the <a href={@sign_in_url} target="_blank">magic sign-in link</a>
     you requested to sign in to <b>"<%= @account.name %>"</b>.
     It is valid for 15 minutes.
   </p>
 
   <small>
-    If the link didn't work, please copy this link and open it in your browser. <%= @link %>
+    If the link didn't work, please copy this link and open it in your browser: <%= @sign_in_url %>
   </small>
 </div>
 
