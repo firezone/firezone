@@ -606,10 +606,11 @@ defmodule Domain.Config.Definitions do
   )
 
   ##############################################
-  ## Docker Registry
+  ## Local development and Staging Helpers
   ##############################################
 
   defconfig(:docker_registry, :string, default: "ghcr.io/firezone")
+  defconfig(:api_url_override, :string, default: nil)
 
   ##############################################
   ## Feature Flags
