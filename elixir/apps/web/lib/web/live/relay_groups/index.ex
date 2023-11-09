@@ -55,6 +55,9 @@ defmodule Web.RelayGroups.Index do
                 navigate={~p"/#{@account}/relays/#{relay.id}"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
+                <code :if={relay.name} class="block text-xs">
+                  <%= relay.name %>
+                </code>
                 <code :if={relay.ipv4} class="block text-xs">
                   <%= relay.ipv4 %>
                 </code>

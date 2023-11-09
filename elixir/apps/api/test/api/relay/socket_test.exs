@@ -43,6 +43,19 @@ defmodule API.Relay.SocketTest do
       assert relay.last_seen_version == @connlib_version
     end
 
+    test "creates a new named relay" do
+      token = Fixtures.Relays.create_token()
+      encrypted_secret = Relays.encode_token!(token)
+
+      attrs =
+        connect_attrs(token: encrypted_secret)
+        |> Map.put("name", "us-east1-x381")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
+      assert relay = Map.fetch!(socket.assigns, :relay)
+      assert relay.name == "us-east1-x381"
+    end
+
     test "uses region code to put default coordinates" do
       token = Fixtures.Relays.create_token()
       encrypted_secret = Relays.encode_token!(token)
