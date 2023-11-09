@@ -156,7 +156,7 @@ defmodule Web.NavigationComponents do
       flex items-center p-2
       text-base font-medium text-gray-900
       rounded
-      #{String.starts_with?(@current_path, @navigate) && @active_class}
+      #{sidebar_item_active?(@current_path, @navigate) && @active_class}
       hover:bg-gray-100
       dark:text-white dark:hover:bg-gray-700 group]}>
         <.icon name={@icon} class={~w[
@@ -169,6 +169,12 @@ defmodule Web.NavigationComponents do
       </.link>
     </li>
     """
+  end
+
+  defp sidebar_item_active?(current_path, destination_path) do
+    [_, _slug_or_id, current_subpath] = String.split(current_path, "/", parts: 3)
+    [_, _slug_or_id, destination_subpath] = String.split(destination_path, "/", parts: 3)
+    String.starts_with?(current_subpath, destination_subpath)
   end
 
   attr :id, :string, required: true, doc: "ID of the nav group container"
