@@ -64,6 +64,10 @@ config :web, Web.Plugs.SecureHeaders,
     "connect-src 'self' data: https://firezone.statuspage.io"
   ]
 
+# Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`
+# to the `docker run` command. Works on Docker v20.10 and above.
+config :web, api_url_override: "ws://host.docker.internal:13001/"
+
 ###############################
 ##### API #####################
 ###############################

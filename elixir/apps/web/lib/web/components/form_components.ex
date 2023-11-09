@@ -384,7 +384,7 @@ defmodule Web.FormComponents do
 
   def add_button(assigns) do
     ~H"""
-    <.button style="primary" navigate={@navigate} icon="hero-plus">
+    <.button style="primary" class={@class} navigate={@navigate} icon="hero-plus">
       <%= render_slot(@inner_block) %>
     </.button>
     """

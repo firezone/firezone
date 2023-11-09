@@ -485,7 +485,11 @@ module "web" {
     {
       name  = "PHOENIX_HTTP_WEB_PORT"
       value = "8080"
-    }
+    },
+    {
+      name  = "API_URL_OVERRIDE"
+      value = "wss://api.${local.tld}"
+    },
   ], local.shared_application_environment_variables)
 
   application_labels = {

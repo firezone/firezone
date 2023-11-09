@@ -107,6 +107,8 @@ if config_env() == :prod do
     cookie_signing_salt: compile_config!(:cookie_signing_salt),
     cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
 
+  config :web, api_url_override: compile_config!(:api_url_override)
+
   ###############################
   ##### API #####################
   ###############################

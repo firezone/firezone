@@ -14,6 +14,12 @@ resource "random_password" "metabase_db_password" {
   min_special = 1
 }
 
+# This user can also be used to connect to the Firezone database,
+# but following SQL should be run manually using the Cloud SQL Proxy:
+#
+#   GRANT SELECT ON ALL TABLES IN SCHEMA public TO metabase;
+#   GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO metabase;
+#
 resource "google_sql_user" "metabase" {
   project = module.google-cloud-project.project.project_id
 
@@ -85,6 +91,10 @@ module "metabase" {
       name  = "MB_ANON_TRACKING_ENABLED"
       value = "false"
     },
+    # {
+    #   name = "MB_JETTY_PORT"
+    #   value = "80"
+    # }
   ]
 
   health_check = {
