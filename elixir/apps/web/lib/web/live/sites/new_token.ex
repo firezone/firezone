@@ -118,7 +118,6 @@ defmodule Web.Sites.NewToken do
   defp env(token) do
     api_url_override =
       if api_url = Domain.Config.get_env(:web, :api_url_override) do
-        # if api_url = false do
         {"FIREZONE_API_URL", api_url}
       end
 
