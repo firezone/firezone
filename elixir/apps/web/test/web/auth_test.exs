@@ -25,8 +25,8 @@ defmodule Web.AuthTest do
   end
 
   describe "signed_in_path/1" do
-    test "redirects to actors index after sign in as account admin", %{admin_subject: subject} do
-      assert signed_in_path(subject) == ~p"/#{subject.account.slug}/actors"
+    test "redirects to sites page after sign in as account admin", %{admin_subject: subject} do
+      assert signed_in_path(subject) == ~p"/#{subject.account.slug}/sites"
     end
   end
 
@@ -517,7 +517,7 @@ defmodule Web.AuthTest do
                on_mount(:redirect_if_user_is_authenticated, params, session, socket)
 
       assert updated_socket.redirected ==
-               {:redirect, %{to: ~p"/#{subject.account.slug}/actors"}}
+               {:redirect, %{to: ~p"/#{subject.account.slug}/sites"}}
     end
 
     test "doesn't redirect if there is no authenticated user", %{

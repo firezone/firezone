@@ -162,7 +162,7 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert redirected_to(conn) == ~p"/#{account.slug}/actors"
+      assert redirected_to(conn) == ~p"/#{account.slug}/sites"
     end
 
     test "renews the session when credentials are valid", %{conn: conn} do
@@ -736,7 +736,7 @@ defmodule Web.AuthControllerTest do
           "secret" => email_token
         })
 
-      assert redirected_to(conn) == ~p"/#{account.slug}/actors"
+      assert redirected_to(conn) == ~p"/#{account.slug}/sites"
     end
 
     test "redirects to the platform link when credentials are valid for account users", %{
@@ -1063,7 +1063,7 @@ defmodule Web.AuthControllerTest do
           "code" => "MyFakeCode"
         })
 
-      assert redirected_to(conn) == ~p"/#{account.slug}/actors"
+      assert redirected_to(conn) == ~p"/#{account.slug}/sites"
 
       assert %{
                "live_socket_id" => "actors_sessions:" <> socket_id,
