@@ -377,7 +377,7 @@ defmodule Web.AuthControllerTest do
                "info" => "Please use a client application to access Firezone."
              }
 
-      assert redirected_to(conn) == ~p"/#{account.id}"
+      assert redirected_to(conn) == ~p"/#{account}"
       assert is_nil(get_session(conn, :user_return_to))
     end
 

@@ -59,7 +59,7 @@ defmodule Web.Auth do
         :info,
         "Please use a client application to access Firezone."
       )
-      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}")
+      |> Phoenix.Controller.redirect(to: ~p"/#{subject.account}")
     end
   end
 
@@ -78,13 +78,13 @@ defmodule Web.Auth do
     |> Phoenix.Controller.redirect(to: redirect_to)
   end
 
-  def signed_in_redirect(conn, %Auth.Subject{} = _subject, _client_platform, _client_csrf_token) do
+  def signed_in_redirect(conn, %Auth.Subject{} = subject, _client_platform, _client_csrf_token) do
     conn
     |> Phoenix.Controller.put_flash(
       :info,
       "Please use a client application to access Firezone."
     )
-    |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}")
+    |> Phoenix.Controller.redirect(to: ~p"/#{subject.account}")
   end
 
   @doc """
