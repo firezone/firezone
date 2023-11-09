@@ -95,12 +95,6 @@ defmodule Web.Auth.SignIn do
         </div>
         <div class="mx-auto p-6 sm:p-8">
           <p class="py-2">
-            Don't have an account?
-            <a href={~p"/sign_up"} class="font-medium text-blue-600 hover:text-blue-500">
-              Sign up here.
-            </a>
-          </p>
-          <p class="py-2">
             <%= # TODO: Add link to client instructions docs %> Meant to sign in from a client instead?
             <a href="https://firezone.dev/docs" class="font-medium text-blue-600 hover:text-blue-500">
               Read the docs.
