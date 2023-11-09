@@ -38,7 +38,7 @@ defmodule Web.NavigationComponents do
           <.dropdown id="user-menu">
             <:button>
               <span class="sr-only">Open user menu</span>
-              <.gravatar size={25} email={@subject.identity.provider_identifier} class="rounded-full" />
+              <.gravatar size={25} email={get_identity_email(@subject.identity)} class="rounded-full" />
             </:button>
             <:dropdown>
               <.subject_dropdown subject={@subject} />
