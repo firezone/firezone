@@ -45,14 +45,12 @@ final class AuthStore: ObservableObject {
 
   let tunnelStore: TunnelStore
 
-  public var authBaseURL: URL
   private var cancellables = Set<AnyCancellable>()
 
   @Published private(set) var loginStatus: LoginStatus
 
   private init(tunnelStore: TunnelStore) {
     self.tunnelStore = tunnelStore
-    self.authBaseURL = AppInfoPlistConstants.authBaseURL
     self.loginStatus = .uninitialized
 
     Task {
@@ -67,6 +65,15 @@ final class AuthStore: ObservableObject {
         }
       }
       .store(in: &cancellables)
+  }
+
+  private var authBaseURL: URL {
+    if let advancedSettings = self.tunnelStore.advancedSettings(),
+      let url = URL(string: advancedSettings.authBaseURLString)
+    {
+      return url
+    }
+    return URL(string: AdvancedSettings.defaultValue.authBaseURLString)!
   }
 
   private func getLoginStatus(from tunnelAuthStatus: TunnelAuthStatus) async -> LoginStatus {
@@ -142,10 +149,5 @@ final class AuthStore: ObservableObject {
 
   func authURL(accountId: String) -> URL {
     self.authBaseURL.appendingPathComponent(accountId)
-  }
-
-  func setAuthBaseURL(_ authBaseURL: URL, isChanged: inout Bool) {
-    isChanged = (self.authBaseURL == authBaseURL)
-    self.authBaseURL = authBaseURL
   }
 }

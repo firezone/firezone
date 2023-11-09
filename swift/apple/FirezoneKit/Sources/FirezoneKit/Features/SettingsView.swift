@@ -16,6 +16,8 @@ enum SettingsViewError: Error {
 }
 
 public final class SettingsViewModel: ObservableObject {
+  private let logger = Logger.make(for: SettingsViewModel.self)
+
   @Dependency(\.authStore) private var authStore
 
   @Published var accountSettings: AccountSettings
@@ -27,11 +29,10 @@ public final class SettingsViewModel: ObservableObject {
   public init() {
     accountSettings = AccountSettings()
     advancedSettings = AdvancedSettings.defaultValue
-    loadAccountSettings()
-    loadAdvancedSettings()
+    loadSettings()
   }
 
-  func loadAccountSettings() {
+  func loadSettings() {
     Task {
       authStore.tunnelStore.$tunnelAuthStatus
         .filter { $0.isInitialized }
@@ -39,6 +40,8 @@ public final class SettingsViewModel: ObservableObject {
         .sink { [weak self] tunnelAuthStatus in
           guard let self = self else { return }
           self.accountSettings = AccountSettings(accountId: tunnelAuthStatus.accountId() ?? "")
+          self.advancedSettings =
+            authStore.tunnelStore.advancedSettings() ?? AdvancedSettings.defaultValue
         }
         .store(in: &cancellables)
     }
@@ -61,21 +64,20 @@ public final class SettingsViewModel: ObservableObject {
     }
   }
 
-  func loadAdvancedSettings() {
-    advancedSettings = authStore.tunnelStore.advancedSettings() ?? AdvancedSettings.defaultValue
-  }
-
   func saveAdvancedSettings() {
     Task {
       guard let authBaseURL = URL(string: advancedSettings.authBaseURLString) else {
         fatalError("Saved authBaseURL is invalid")
       }
-      try await authStore.tunnelStore.saveAdvancedSettings(advancedSettings)
+      do {
+        try await authStore.tunnelStore.saveAdvancedSettings(advancedSettings)
+      } catch {
+        logger.error("Error saving advanced settings to tunnel store: \(error, privacy: .public)")
+      }
       await MainActor.run {
         advancedSettings.isSavedToDisk = true
       }
       var isChanged = false
-      await authStore.setAuthBaseURL(authBaseURL, isChanged: &isChanged)
       if isChanged {
         try await updateTunnelAuthStatus(
           accountId: authStore.tunnelStore.tunnelAuthStatus.accountId() ?? "")
@@ -95,7 +97,11 @@ public final class SettingsViewModel: ObservableObject {
         return await authStore.tunnelAuthStatusForAccount(accountId: accountId)
       }
     }()
-    try await authStore.tunnelStore.saveAuthStatus(tunnelAuthStatus)
+    do {
+      try await authStore.tunnelStore.saveAuthStatus(tunnelAuthStatus)
+    } catch {
+      logger.error("Error saving auth status to tunnel store: \(error, privacy: .public)")
+    }
   }
 }
 
@@ -430,8 +436,7 @@ public struct SettingsView: View {
   }
 
   func loadSettings() {
-    model.loadAccountSettings()
-    model.loadAdvancedSettings()
+    model.loadSettings()
     dismiss()
   }
 
