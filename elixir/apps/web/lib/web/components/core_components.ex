@@ -769,7 +769,7 @@ defmodule Web.CoreComponents do
         "text-blue-800 dark:text-blue-300",
         "bg-blue-50 dark:bg-blue-600"
       ]}>
-        <%= get_in(@identity.provider_state, ["userinfo", "email"]) || @identity.provider_identifier %>
+        <%= get_identity_email(@identity) %>
       </span>
       <span :if={not is_nil(@identity.deleted_at)} class="text-sm">
         (deleted)
@@ -782,6 +782,10 @@ defmodule Web.CoreComponents do
       </span>
     </span>
     """
+  end
+
+  def get_identity_email(identity) do
+    get_in(identity.provider_state, ["userinfo", "email"]) || identity.provider_identifier
   end
 
   attr :account, :any, required: true
