@@ -31,6 +31,9 @@ defmodule Web.SignUp do
   end
 
   def mount(_params, _session, socket) do
+    user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
+    real_ip = Web.Auth.real_ip(socket)
+
     changeset =
       Registration.changeset(%Registration{}, %{
         account: %{slug: "placeholder"},
@@ -41,6 +44,8 @@ defmodule Web.SignUp do
       assign(socket,
         form: to_form(changeset),
         account: nil,
+        user_agent: user_agent,
+        real_ip: real_ip,
         sign_up_enabled?: Config.sign_up_enabled?()
       )
 
@@ -96,7 +101,7 @@ defmodule Web.SignUp do
     ~H"""
     <div class="space-y-6">
       <div class="text-center text-gray-900 dark:text-white">
-        Your account has been created!
+        Your account has been created! Please check your email for a sign in link.
       </div>
       <div class="text-center">
         <div class="px-12">
@@ -281,8 +286,18 @@ defmodule Web.SignUp do
         )
 
       case Domain.Repo.transaction(multi) do
-        {:ok, result} ->
-          socket = assign(socket, account: result.account)
+        {:ok, %{account: account, identity: identity}} ->
+          {:ok, _} =
+            Web.Mailer.AuthEmail.sign_up_link_email(
+              account,
+              identity,
+              identity.provider_virtual_state.sign_in_token,
+              socket.assigns.user_agent,
+              socket.assigns.real_ip
+            )
+            |> Web.Mailer.deliver()
+
+          socket = assign(socket, account: account)
           {:noreply, socket}
 
         {:error, :account, err_changeset, _effects_so_far} ->

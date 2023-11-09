@@ -1,7 +1,7 @@
 defmodule Web.Live.SignUpTest do
   use Web.ConnCase, async: true
 
-  test "renders signup form", %{conn: conn} do
+  test "renders sign up form", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
     form = form(lv, "form")
@@ -17,7 +17,7 @@ defmodule Web.Live.SignUpTest do
            ]
   end
 
-  test "creates new account", %{conn: conn} do
+  test "creates new account and sends a welcome email", %{conn: conn} do
     Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
 
     account_name = "FooBar"
@@ -37,6 +37,33 @@ defmodule Web.Live.SignUpTest do
 
     assert html =~ "Your account has been created!"
     assert html =~ account_name
+
+    account = Repo.one(Domain.Accounts.Account)
+    assert account.name == account_name
+
+    provider = Repo.one(Domain.Auth.Provider)
+    assert provider.account_id == account.id
+
+    actor = Repo.one(Domain.Actors.Actor)
+    assert actor.account_id == account.id
+    assert actor.name == "John Doe"
+
+    identity = Repo.one(Domain.Auth.Identity)
+    assert identity.account_id == account.id
+    assert identity.provider_identifier == "jdoe@test.local"
+
+    assert_email_sent(fn email ->
+      assert email.subject == "Welcome to Firezone"
+
+      verify_sign_in_token_path =
+        ~p"/#{account.id}/sign_in/providers/#{provider.id}/verify_sign_in_token"
+
+      assert email.text_body =~ "#{verify_sign_in_token_path}"
+      assert email.text_body =~ "identity_id=#{identity.id}"
+      assert email.text_body =~ "secret="
+
+      assert email.text_body =~ url(~p"/#{account.id}")
+    end)
   end
 
   test "renders changeset errors on input change", %{conn: conn} do
@@ -79,7 +106,7 @@ defmodule Web.Live.SignUpTest do
            }
   end
 
-  test "renders signup disabled message", %{conn: conn} do
+  test "renders sign up disabled message", %{conn: conn} do
     Domain.Config.feature_flag_override(:signups, false)
 
     {:ok, _lv, html} = live(conn, ~p"/sign_up")
