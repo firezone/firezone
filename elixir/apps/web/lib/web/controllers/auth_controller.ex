@@ -193,7 +193,7 @@ defmodule Web.AuthController do
   def redirect_to_idp(
         conn,
         %{
-          "account_id_or_slug" => account_id_or_slug,
+          "account_id_or_slug" => account_id,
           "provider_id" => provider_id
         } = params
       ) do
@@ -202,7 +202,7 @@ defmodule Web.AuthController do
       conn = put_session(conn, :client_csrf_token, params["client_csrf_token"])
 
       redirect_url =
-        url(~p"/#{account_id_or_slug}/sign_in/providers/#{provider.id}/handle_callback")
+        url(~p"/#{account_id}/sign_in/providers/#{provider.id}/handle_callback")
 
       redirect_to_idp(conn, redirect_url, provider)
     else
@@ -211,7 +211,7 @@ defmodule Web.AuthController do
 
         conn
         |> put_flash(:error, "You may not use this method to sign in.")
-        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+        |> redirect(to: ~p"/#{account_id}?#{redirect_params}")
     end
   end
 
@@ -231,7 +231,7 @@ defmodule Web.AuthController do
   This controller handles IdP redirect back to the Firezone when user signs in.
   """
   def handle_idp_callback(conn, %{
-        "account_id_or_slug" => account_id_or_slug,
+        "account_id_or_slug" => account_id,
         "provider_id" => provider_id,
         "state" => state,
         "code" => code
@@ -245,7 +245,7 @@ defmodule Web.AuthController do
 
     with {:ok, code_verifier, conn} <- verify_state_and_fetch_verifier(conn, provider_id, state) do
       payload = {
-        url(~p"/#{account_id_or_slug}/sign_in/providers/#{provider_id}/handle_callback"),
+        url(~p"/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"),
         code_verifier,
         code
       }
@@ -263,18 +263,18 @@ defmodule Web.AuthController do
         {:error, :not_found} ->
           conn
           |> put_flash(:error, "You may not use this method to sign in.")
-          |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+          |> redirect(to: ~p"/#{account_id}?#{redirect_params}")
 
         {:error, _reason} ->
           conn
           |> put_flash(:error, "You may not authenticate to this account.")
-          |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+          |> redirect(to: ~p"/#{account_id}?#{redirect_params}")
       end
     else
       {:error, :invalid_state, conn} ->
         conn
         |> put_flash(:error, "Your session has expired, please try again.")
-        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+        |> redirect(to: ~p"/#{account_id}?#{redirect_params}")
     end
   end
 

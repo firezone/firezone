@@ -70,7 +70,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.New do
       socket =
         redirect(socket,
           to:
-            ~p"/#{socket.assigns.account}/settings/identity_providers/openid_connect/#{provider}/redirect"
+            ~p"/#{socket.assigns.account.id}/settings/identity_providers/openid_connect/#{provider}/redirect"
         )
 
       {:noreply, socket}
