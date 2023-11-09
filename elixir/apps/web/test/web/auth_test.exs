@@ -49,6 +49,73 @@ defmodule Web.AuthTest do
     end
   end
 
+  describe "signed_in_redirect/4" do
+    test "redirects regular users to the platform url", %{conn: conn, user_subject: subject} do
+      redirected_to = conn |> signed_in_redirect(subject, "apple", "foo") |> redirected_to()
+      assert redirected_to =~ "firezone://handle_client_auth_callback?client_csrf_token=foo"
+
+      redirected_to = conn |> signed_in_redirect(subject, "android", "foo") |> redirected_to()
+      assert redirected_to =~ "/handle_client_auth_callback?client_csrf_token=foo"
+    end
+
+    test "redirects regular users to sign in if platform url is missing", %{
+      conn: init_conn,
+      user_subject: subject
+    } do
+      conn = init_conn |> fetch_flash() |> signed_in_redirect(subject, "", nil)
+      assert redirected_to(conn) == ~p"/#{subject.account.slug}"
+      assert conn.assigns.flash["info"] == "Please use a client application to access Firezone."
+
+      conn = init_conn |> fetch_flash() |> signed_in_redirect(subject, nil, "")
+      assert redirected_to(conn) == ~p"/#{subject.account.slug}"
+      assert conn.assigns.flash["info"] == "Please use a client application to access Firezone."
+    end
+
+    test "redirects admin user to the platform url", %{conn: conn, admin_subject: subject} do
+      redirected_to = conn |> signed_in_redirect(subject, "apple", "foo") |> redirected_to()
+      assert redirected_to =~ "firezone://handle_client_auth_callback?client_csrf_token=foo"
+
+      redirected_to = conn |> signed_in_redirect(subject, "android", "foo") |> redirected_to()
+      assert redirected_to =~ "/handle_client_auth_callback?client_csrf_token=foo"
+    end
+
+    test "redirects admin user to the post-login path if platform url is missing", %{
+      conn: conn,
+      admin_subject: subject
+    } do
+      redirected_to = conn |> signed_in_redirect(subject, "", nil) |> redirected_to()
+      assert redirected_to == ~p"/#{subject.account}/sites"
+
+      redirected_to = conn |> signed_in_redirect(subject, nil, "") |> redirected_to()
+      assert redirected_to == ~p"/#{subject.account}/sites"
+    end
+
+    test "redirects users to sign in if subject account doesn't match path param", %{
+      conn: conn,
+      admin_subject: subject
+    } do
+      init_conn =
+        %{conn | path_params: %{"account_id_or_slug" => "foo"}}
+        |> put_session(:test, "test")
+
+      conn = init_conn |> signed_in_redirect(subject, "apple", nil)
+      assert redirected_to(conn) == ~p"/foo"
+      refute get_session(conn, :test)
+
+      conn = init_conn |> signed_in_redirect(subject, "android", "bar")
+      assert redirected_to(conn) == ~p"/foo"
+      refute get_session(conn, :test)
+
+      conn = init_conn |> signed_in_redirect(subject, "", nil)
+      assert redirected_to(conn) == ~p"/foo"
+      refute get_session(conn, :test)
+
+      conn = init_conn |> signed_in_redirect(subject, nil, "")
+      assert redirected_to(conn) == ~p"/foo"
+      refute get_session(conn, :test)
+    end
+  end
+
   describe "sign_out/1" do
     test "erases session and cookies", %{conn: conn, admin_subject: subject} do
       {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
