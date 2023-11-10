@@ -152,7 +152,12 @@ export default function Footer() {
             WireGuard® is a registered trademark of Jason A. Donenfeld.
           </span>
         </div>
-        <hr className="mt-2 mb-6 border-neutral-200 sm:mx-auto lg:mb-8 lg:mt-4" />
+        <div className="sm:flex sm:items-center sm:justify-start lg:mt-2">
+          <span className="text-xs">
+            Firezone<sup>™</sup> is a registered trademark of Firezone, Inc.
+          </span>
+        </div>
+        <hr className="mt-2 mb-2 border-neutral-200 sm:mx-auto lg:mb-8 lg:mt-4" />
         <div className="sm:flex sm:items-center sm:justify-between">
           <span className="text-xs text-neutral-900 sm:text-center ">
             © 2023{" "}
