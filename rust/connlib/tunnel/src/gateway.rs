@@ -6,6 +6,7 @@ use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
@@ -38,6 +39,7 @@ where
 /// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
     candidate_receivers: StreamMap<ClientId, RTCIceCandidate>,
+    pub peer_queue: HashMap<ClientId, tokio::sync::mpsc::Sender<bytes::Bytes>>,
 }
 
 impl GatewayState {
@@ -61,6 +63,7 @@ impl Default for GatewayState {
                 Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
                 MAX_CONCURRENT_ICE_GATHERING,
             ),
+            peer_queue: Default::default(),
         }
     }
 }

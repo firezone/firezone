@@ -13,8 +13,11 @@ use webrtc::ice_transport::{
     ice_transport_state::RTCIceTransportState, RTCIceTransport,
 };
 
-use crate::control_protocol::{
-    new_ice_connection, on_peer_connection_state_change_handler, IceConnection,
+use crate::{
+    control_protocol::{
+        new_ice_connection, on_peer_connection_state_change_handler, IceConnection,
+    },
+    peer_handler, PEER_QUEUE_SIZE,
 };
 use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
 
@@ -139,6 +142,20 @@ where
             .new_endpoint(Box::new(|_| true))
             .await
             .ok_or(Error::ControlProtocolError)?;
+
+        let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
+
+        tokio::spawn({
+            let ep = ep.clone();
+            async move {
+                peer_handler::handle_packet(ep, peer_receiver).await;
+            }
+        });
+
+        self.role_state
+            .lock()
+            .peer_queue
+            .insert(gateway_id, peer_sender);
 
         {
             let mut peers_by_ip = self.peers_by_ip.write();

@@ -1,16 +1,17 @@
-use std::sync::Arc;
+use crate::{
+    control_protocol::on_peer_connection_state_change_handler, peer::Peer, peer_handler,
+    ConnectedPeer, GatewayState, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
+};
 
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{ClientId, Relay, ResourceDescription},
     Callbacks, Error, Result,
 };
+use std::sync::Arc;
 use webrtc::ice_transport::{
     ice_parameters::RTCIceParameters, ice_role::RTCIceRole, RTCIceTransport,
 };
-
-use crate::control_protocol::on_peer_connection_state_change_handler;
-use crate::{peer::Peer, ConnectedPeer, GatewayState, PeerConfig, Tunnel};
 
 use super::{new_ice_connection, IceConnection};
 
@@ -124,6 +125,19 @@ where
             .new_endpoint(Box::new(|_| true))
             .await
             .ok_or(Error::ControlProtocolError)?;
+        let (peer_queue, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
+        self.role_state
+            .lock()
+            .peer_queue
+            .insert(client_id, peer_queue);
+
+        tokio::spawn({
+            let ep = ep.clone();
+            async move {
+                peer_handler::handle_packet(ep, peer_receiver).await;
+            }
+        });
+
         {
             let mut peers_by_ip = self.peers_by_ip.write();
 

@@ -7,6 +7,7 @@ use boringtun::{
     x25519::{PublicKey, StaticSecret},
 };
 
+use bytes::Bytes;
 use connlib_shared::{messages::Key, CallbackErrorFacade, Callbacks, Error};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
@@ -68,6 +69,11 @@ mod resource_table;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
+// Why do we need such big channel? I have not the slightless idea
+// but if we make it smaller things get quite slower.
+// Since eventually we will have a UDP socket with try_send
+// I don't think there's a point to having this.
+const PEER_QUEUE_SIZE: usize = 1_000;
 
 /// For how long we will attempt to gather ICE candidates before aborting.
 ///
@@ -207,7 +213,13 @@ where
                 continue;
             };
 
-            self.encapsulate(write_buf, packet, dest, peer);
+            self.encapsulate(
+                write_buf,
+                packet,
+                dest,
+                peer,
+                role_state.peer_queue.get(&peer.inner.conn_id).unwrap(),
+            );
 
             continue;
         }
@@ -238,7 +250,17 @@ where
                             continue;
                         };
 
-                        self.encapsulate(write_buf, packet, dest, peer);
+                        self.encapsulate(
+                            write_buf,
+                            packet,
+                            dest,
+                            peer,
+                            self.role_state
+                                .lock()
+                                .peer_queue
+                                .get(&peer.inner.conn_id)
+                                .unwrap(),
+                        );
 
                         continue;
                     }
@@ -426,23 +448,25 @@ where
         packet: MutableIpPacket,
         dest: IpAddr,
         peer: &ConnectedPeer<TRoleState::Id>,
+        peer_queue: &tokio::sync::mpsc::Sender<Bytes>,
     ) {
         let peer_id = peer.inner.conn_id;
 
         match peer.inner.encapsulate(packet, dest, write_buf) {
             Ok(None) => {}
             Ok(Some(b)) => {
-                tokio::spawn({
-                    let channel = peer.channel.clone();
-                    let mut sender = self.stop_peer_command_sender.clone();
+                if peer_queue.try_send(b).is_err() {}
+                // tokio::spawn({
+                //     let channel = peer.channel.clone();
+                //     let mut sender = self.stop_peer_command_sender.clone();
 
-                    async move {
-                        if let Err(e) = channel.send(&b).await {
-                            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
-                            let _ = sender.send(peer_id).await;
-                        }
-                    }
-                });
+                //     async move {
+                //         if let Err(e) = channel.send(&b).await {
+                //             tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+                //             let _ = sender.send(peer_id).await;
+                //         }
+                //     }
+                // });
             }
             Err(e) => {
                 tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");

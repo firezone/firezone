@@ -143,6 +143,8 @@ pub struct ClientState {
     resources_gateways: HashMap<ResourceId, GatewayId>,
     resources: ResourceTable<ResourceDescription>,
     dns_queries: BoundedQueue<DnsQuery<'static>>,
+
+    pub peer_queue: HashMap<GatewayId, tokio::sync::mpsc::Sender<bytes::Bytes>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -399,6 +401,7 @@ impl Default for ClientState {
             resources: Default::default(),
             dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
             gateway_preshared_keys: Default::default(),
+            peer_queue: Default::default(),
         }
     }
 }

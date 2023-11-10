@@ -2,6 +2,7 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
+use bytes::Bytes;
 use connlib_shared::Callbacks;
 use futures_util::SinkExt;
 use webrtc::mux::endpoint::Endpoint;
@@ -97,4 +98,13 @@ where
     }
 
     Ok(())
+}
+
+pub(crate) async fn handle_packet(
+    ep: Arc<Endpoint>,
+    mut receiver: tokio::sync::mpsc::Receiver<Bytes>,
+) {
+    while let Some(packet) = receiver.recv().await {
+        if ep.send(&packet).await.is_err() {}
+    }
 }

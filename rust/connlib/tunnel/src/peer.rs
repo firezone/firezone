@@ -91,8 +91,7 @@ where
             peer_config.persistent_keepalive,
             index,
             Some(rate_limiter),
-        )
-        .expect("never actually fails"); // See https://github.com/cloudflare/boringtun/pull/366.
+        );
 
         let mut allowed_ips = IpNetworkTable::new();
         for ip in peer_config.ips {
