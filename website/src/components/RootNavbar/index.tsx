@@ -97,7 +97,7 @@ export default function RootNavbar() {
                 <li>
                   <Link
                     onClick={hideDropdown}
-                    href="/product/roadmap"
+                    href="https://github.com/orgs/firezone/projects/9/views/1"
                     className={
                       (p == "/product/roadmap"
                         ? "text-neutral-900 underline"
