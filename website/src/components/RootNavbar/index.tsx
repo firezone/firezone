@@ -97,13 +97,8 @@ export default function RootNavbar() {
                 <li>
                   <Link
                     onClick={hideDropdown}
-                    href="/product/roadmap"
-                    className={
-                      (p == "/product/roadmap"
-                        ? "text-neutral-900 underline"
-                        : "text-neutral-800") +
-                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
-                    }
+                    href="https://github.com/orgs/firezone/projects/9"
+                    className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                   >
                     Roadmap
                   </Link>

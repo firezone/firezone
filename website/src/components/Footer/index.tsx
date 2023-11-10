@@ -74,7 +74,7 @@ export default function Footer() {
                 </li>
                 <li className="mb-4">
                   <Link
-                    href="/product/roadmap"
+                    href="https://github.com/orgs/firezone/projects/9"
                     className="hover:underline hover:text-neutral-900"
                   >
                     Roadmap
