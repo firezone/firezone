@@ -12,7 +12,6 @@ defmodule Web.Resources.New do
           socket,
           gateway_groups: gateway_groups,
           form: to_form(changeset),
-          resource: nil,
           params: Map.take(params, ["site_id"]),
           traffic_filters_enabled?: Config.traffic_filters_enabled?()
         )
@@ -34,7 +33,7 @@ defmodule Web.Resources.New do
         Add Resource
       </:title>
 
-      <:content :if={is_nil(@resource)}>
+      <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Resource details</h2>
           <.form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="change">
@@ -72,47 +71,6 @@ defmodule Web.Resources.New do
           </.form>
         </div>
       </:content>
-
-      <:content :if={@resource}>
-        <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">
-            <.icon name="hero-check-circle" class="text-green-500 dark:text-green-400" />
-            Resource is created
-          </h2>
-
-          <p class="mb-4">
-            By default, nobody has access to the created Resource.
-          </p>
-
-          <div class="text-center">
-            <.add_button
-              navigate={
-                if site_id = @params["site_id"] do
-                  ~p"/#{@account}/policies/new?resource_id=#{@resource}&site_id=#{site_id}"
-                else
-                  ~p"/#{@account}/policies/new?resource_id=#{@resource}"
-                end
-              }
-              class="mb-4 mw-xs"
-            >
-              Create a Policy to grant access to this resource
-            </.add_button>
-
-            <.link
-              class="underline hover:underline"
-              navigate={
-                if site_id = @params["site_id"] do
-                  ~p"/#{@account}/sites/#{site_id}?#resources"
-                else
-                  ~p"/#{@account}/resources/#{@resource}"
-                end
-              }
-            >
-              I'll do it later..
-            </.link>
-          </div>
-        </div>
-      </:content>
     </.section>
     """
   end
@@ -140,7 +98,10 @@ defmodule Web.Resources.New do
 
     case Resources.create_resource(attrs, socket.assigns.subject) do
       {:ok, resource} ->
-        {:noreply, assign(socket, resource: resource)}
+        {:noreply,
+         push_navigate(socket,
+           to: ~p"/#{socket.assigns.account}/resources/#{resource}?#{socket.assigns.params}"
+         )}
 
       {:error, changeset} ->
         changeset = Map.put(changeset, :action, :validate)

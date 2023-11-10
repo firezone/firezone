@@ -271,17 +271,7 @@ defmodule Web.Live.Resources.NewTest do
 
     resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
 
-    assert has_element?(lv, "h2", "Resource is created")
-
-    skip_button = element(lv, "a", "I'll do it later..")
-
-    assert skip_button |> render() |> Floki.attribute("href") |> List.first() ==
-             "/#{account.id}/resources/#{resource.id}"
-
-    create_resource_button = element(lv, "a", "Create a Policy to grant access to this resource")
-
-    assert create_resource_button |> render() |> Floki.attribute("href") |> List.first() ==
-             "/#{account.id}/policies/new?resource_id=#{resource.id}"
+    assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}")
   end
 
   test "creates a resource on valid attrs and site_id set", %{
@@ -311,17 +301,7 @@ defmodule Web.Live.Resources.NewTest do
 
     resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
 
-    assert has_element?(lv, "h2", "Resource is created")
-
-    skip_button = element(lv, "a", "I'll do it later..")
-
-    assert skip_button |> render() |> Floki.attribute("href") |> List.first() ==
-             "/#{account.id}/sites/#{group.id}?#resources"
-
-    create_resource_button = element(lv, "a", "Create a Policy to grant access to this resource")
-
-    assert create_resource_button |> render() |> Floki.attribute("href") |> List.first() ==
-             "/#{account.id}/policies/new?resource_id=#{resource.id}&site_id=#{group.id}"
+    assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}?site_id=#{group.id}")
   end
 
   test "does not render traffic filter form", %{
@@ -366,6 +346,6 @@ defmodule Web.Live.Resources.NewTest do
     assert %{connections: [connection]} = Repo.preload(resource, :connections)
     assert connection.gateway_group_id == group.id
 
-    assert has_element?(lv, "h2", "Resource is created")
+    assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}?site_id=#{group.id}")
   end
 end
