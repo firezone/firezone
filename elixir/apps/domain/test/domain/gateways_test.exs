@@ -72,6 +72,29 @@ defmodule Domain.GatewaysTest do
     end
   end
 
+  describe "fetch_group_with_token/2" do
+    test "returns group associated with token", %{
+      account: account
+    } do
+      group = Fixtures.Gateways.create_group(account: account)
+      token = Fixtures.Gateways.create_token(group: group)
+
+      assert {:ok, fetched_group} = fetch_group_with_token(token)
+      assert fetched_group.id == group.id
+    end
+
+    test "does not return deleted group", %{
+      account: account
+    } do
+      group = Fixtures.Gateways.create_group(account: account)
+      token = Fixtures.Gateways.create_token(group: group)
+
+      Fixtures.Gateways.delete_group(group)
+
+      assert fetch_group_with_token(token) == {:error, :not_found}
+    end
+  end
+
   describe "list_groups/1" do
     test "returns empty list when there are no groups", %{subject: subject} do
       assert list_groups(subject) == {:ok, []}
@@ -982,6 +1005,24 @@ defmodule Domain.GatewaysTest do
 
     test "returns error when secret is invalid" do
       assert authorize_gateway(Ecto.UUID.generate()) == {:error, :invalid_token}
+    end
+  end
+
+  describe "relay_strategy/1" do
+    test "managed strategy" do
+      group = Fixtures.Gateways.create_group(routing: :managed)
+      assert {:managed, :turn} == relay_strategy([group])
+    end
+
+    test "stun_only strategy" do
+      group = Fixtures.Gateways.create_group(routing: :stun_only)
+      assert {:managed, :stun} == relay_strategy([group])
+    end
+
+    test "strictest strategy is returned" do
+      group1 = Fixtures.Gateways.create_group(routing: :managed)
+      group2 = Fixtures.Gateways.create_group(routing: :stun_only)
+      assert {:managed, :stun} == relay_strategy([group1, group2])
     end
   end
 end

@@ -16,6 +16,30 @@ defmodule Domain.Gateways do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  def fetch_group_with_token(%Token{} = token, opts \\ []) do
+    with true <- Validator.valid_uuid?(token.group_id) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+      Group.Query.by_id(token.group_id)
+      |> Repo.fetch()
+      |> case do
+        {:ok, group} ->
+          group =
+            group
+            |> Repo.preload(preload)
+            |> maybe_preload_online_status()
+
+          {:ok, group}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      false -> {:error, :not_found}
+      other -> other
+    end
+  end
+
   def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
          true <- Validator.valid_uuid?(id) do
@@ -279,7 +303,8 @@ defmodule Domain.Gateways do
     end
   end
 
-  def list_connected_gateways_for_resource(%Resources.Resource{} = resource) do
+  def list_connected_gateways_for_resource(%Resources.Resource{} = resource, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
     connected_gateways = Presence.list("gateways:#{resource.account_id}")
 
     gateways =
@@ -293,6 +318,7 @@ defmodule Domain.Gateways do
       |> Gateway.Query.by_account_id(resource.account_id)
       |> Gateway.Query.by_resource_id(resource.id)
       |> Repo.all()
+      |> Repo.preload(preload)
 
     {:ok, gateways}
   end
@@ -461,5 +487,22 @@ defmodule Domain.Gateways do
 
   defp fetch_config! do
     Domain.Config.fetch_env!(:domain, __MODULE__)
+  end
+
+  # Finds the most strict routing strategy for a given list of gateway groups.
+  def relay_strategy(gateway_groups) when is_list(gateway_groups) do
+    gateway_groups
+    |> Enum.map(fn group -> group.routing end)
+    |> Enum.reduce(fn routing_type, acc ->
+      cond do
+        acc == :stun_only -> :stun_only
+        routing_type == :stun_only -> :stun_only
+        true -> :managed
+      end
+    end)
+    |> case do
+      :stun_only -> {:managed, :stun}
+      :managed -> {:managed, :turn}
+    end
   end
 end

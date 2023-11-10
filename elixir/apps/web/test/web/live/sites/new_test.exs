@@ -87,7 +87,7 @@ defmodule Web.Live.Sites.NewTest do
     conn: conn
   } do
     other_gateway = Fixtures.Gateways.create_group(account: account)
-    attrs = %{name: other_gateway.name}
+    attrs = %{name: other_gateway.name, routing: "managed"}
 
     {:ok, lv, _html} =
       conn

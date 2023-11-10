@@ -37,7 +37,8 @@ defmodule API.Gateway.Socket do
         |> Map.put("last_seen_remote_ip_location_lon", location_lon)
 
       with {:ok, token} <- Gateways.authorize_gateway(encrypted_secret),
-           {:ok, gateway} <- Gateways.upsert_gateway(token, attrs) do
+           {:ok, gateway} <- Gateways.upsert_gateway(token, attrs),
+           {:ok, gateway_group} <- Gateways.fetch_group_with_token(token) do
         OpenTelemetry.Tracer.set_attributes(%{
           gateway_id: gateway.id,
           account_id: gateway.account_id
@@ -46,6 +47,7 @@ defmodule API.Gateway.Socket do
         socket =
           socket
           |> assign(:gateway, gateway)
+          |> assign(:gateway_group, gateway_group)
           |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
           |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 

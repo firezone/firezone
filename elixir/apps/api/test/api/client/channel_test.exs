@@ -262,14 +262,17 @@ defmodule API.Client.ChannelTest do
       global_relay =
         Fixtures.Relays.create_relay(
           group: global_relay_group,
-          ipv6: nil,
           last_seen_remote_ip_location_lat: 37,
           last_seen_remote_ip_location_lon: -120
         )
 
+      # Creating this Relay to verify it doesn't get returned when :managed routing option is selected
       relay = Fixtures.Relays.create_relay(account: account)
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      stamp_secret_global = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret_global)
 
       # Online Gateway
       :ok = Domain.Gateways.connect_gateway(gateway)
@@ -287,8 +290,8 @@ defmodule API.Client.ChannelTest do
       assert gateway_id == gateway.id
       assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
 
-      ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
-      ipv6_turn_uri = "turn:[#{relay.ipv6}]:#{relay.port}"
+      ipv4_turn_uri = "turn:#{global_relay.ipv4}:#{global_relay.port}"
+      ipv6_turn_uri = "turn:[#{global_relay.ipv6}]:#{global_relay.port}"
 
       assert [
                %{
@@ -316,12 +319,6 @@ defmodule API.Client.ChannelTest do
       assert expires_at == socket_expires_at
 
       assert is_binary(salt)
-
-      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
-
-      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
-      assert_reply ref, :ok, %{relays: relays}
-      assert length(relays) == 3
     end
   end
 

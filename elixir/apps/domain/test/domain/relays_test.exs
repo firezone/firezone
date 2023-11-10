@@ -497,8 +497,17 @@ defmodule Domain.RelaysTest do
     end
   end
 
-  describe "list_connected_relays_for_resource/1" do
-    test "returns empty list when there are no online relays", %{account: account} do
+  describe "list_connected_relays_for_resource/2" do
+    test "returns empty list when there are no managed relays online", %{account: account} do
+      resource = Fixtures.Resources.create_resource(account: account)
+      group = Fixtures.Relays.create_global_group()
+
+      Fixtures.Relays.create_relay(group: group)
+
+      assert list_connected_relays_for_resource(resource, :managed) == {:ok, []}
+    end
+
+    test "returns empty list when there are no self-hosted relays online", %{account: account} do
       resource = Fixtures.Resources.create_resource(account: account)
 
       Fixtures.Relays.create_relay(account: account)
@@ -506,7 +515,7 @@ defmodule Domain.RelaysTest do
       Fixtures.Relays.create_relay(account: account)
       |> Fixtures.Relays.delete_relay()
 
-      assert list_connected_relays_for_resource(resource) == {:ok, []}
+      assert list_connected_relays_for_resource(resource, :self_hosted) == {:ok, []}
     end
 
     test "returns list of connected account relays", %{account: account} do
@@ -516,7 +525,7 @@ defmodule Domain.RelaysTest do
 
       assert connect_relay(relay, stamp_secret) == :ok
 
-      assert {:ok, [connected_relay]} = list_connected_relays_for_resource(resource)
+      assert {:ok, [connected_relay]} = list_connected_relays_for_resource(resource, :self_hosted)
 
       assert connected_relay.id == relay.id
       assert connected_relay.stamp_secret == stamp_secret
@@ -530,7 +539,7 @@ defmodule Domain.RelaysTest do
 
       assert connect_relay(relay, stamp_secret) == :ok
 
-      assert {:ok, [connected_relay]} = list_connected_relays_for_resource(resource)
+      assert {:ok, [connected_relay]} = list_connected_relays_for_resource(resource, :managed)
 
       assert connected_relay.id == relay.id
       assert connected_relay.stamp_secret == stamp_secret

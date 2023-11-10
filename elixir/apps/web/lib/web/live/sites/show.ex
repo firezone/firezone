@@ -59,7 +59,7 @@ defmodule Web.Sites.Show do
             <:value><%= @group.name %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Routing</:label>
+            <:label>Data Routing</:label>
             <:value><%= pretty_print_routing(@group.routing) %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -240,10 +240,8 @@ defmodule Web.Sites.Show do
 
   defp pretty_print_routing(routing) do
     case routing do
-      :managed -> "Managed"
-      :self_hosted -> "Self-hosted"
-      :stun_only -> "STUN-only"
-      :turn_only -> "TURN-only"
+      :managed -> "Firezone Managed Relays"
+      :stun_only -> "No Relays"
       _ -> raise "Unknown routing: #{inspect(routing)}"
     end
   end

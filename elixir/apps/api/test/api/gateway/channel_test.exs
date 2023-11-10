@@ -8,6 +8,7 @@ defmodule API.Gateway.ChannelTest do
     subject = Fixtures.Auth.create_subject(identity: identity)
     client = Fixtures.Clients.create_client(subject: subject)
     gateway = Fixtures.Gateways.create_gateway(account: account)
+    {:ok, gateway_group} = Domain.Gateways.fetch_group_by_id(gateway.group_id, subject)
 
     resource =
       Fixtures.Resources.create_resource(
@@ -19,12 +20,15 @@ defmodule API.Gateway.ChannelTest do
       API.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         gateway: gateway,
+        gateway_group: gateway_group,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
       |> subscribe_and_join(API.Gateway.Channel, "gateway")
 
     relay = Fixtures.Relays.create_relay(account: account)
+    global_relay_group = Fixtures.Relays.create_global_group()
+    global_relay = Fixtures.Relays.create_relay(group: global_relay_group)
 
     %{
       account: account,
@@ -35,6 +39,7 @@ defmodule API.Gateway.ChannelTest do
       gateway: gateway,
       resource: resource,
       relay: relay,
+      global_relay: global_relay,
       socket: socket
     }
   end
@@ -137,7 +142,7 @@ defmodule API.Gateway.ChannelTest do
     test "pushes request_connection message", %{
       client: client,
       resource: resource,
-      relay: relay,
+      global_relay: global_relay,
       socket: socket
     } do
       channel_pid = self()
@@ -150,7 +155,7 @@ defmodule API.Gateway.ChannelTest do
       otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
 
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
 
       send(
         socket.channel_pid,
@@ -171,8 +176,8 @@ defmodule API.Gateway.ChannelTest do
       assert payload.flow_id == flow_id
       assert payload.actor == %{id: client.actor_id}
 
-      ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
-      ipv6_turn_uri = "turn:[#{relay.ipv6}]:#{relay.port}"
+      ipv4_turn_uri = "turn:#{global_relay.ipv4}:#{global_relay.port}"
+      ipv6_turn_uri = "turn:[#{global_relay.ipv6}]:#{global_relay.port}"
 
       assert [
                %{

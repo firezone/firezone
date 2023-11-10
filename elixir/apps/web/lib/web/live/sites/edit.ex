@@ -31,16 +31,47 @@ defmodule Web.Sites.Edit do
                 <.input label="Name" field={@form[:name]} placeholder="Name of this Site" required />
               </div>
               <div>
-                <.input
-                  type="select"
-                  label="Routing"
-                  field={@form[:routing]}
-                  options={[
-                    [key: "Managed Relays", value: "managed"],
-                    [key: "No Relays (STUN only)", value: "stun_only"]
-                  ]}
-                  required
-                />
+                <p class="text-lg text-slate-900 mb-2">
+                  Data Routing -
+                  <a
+                    class={[link_style(), "text-sm"]}
+                    href="https://www.firezone.dev/kb"
+                    target="_blank"
+                  >
+                    Read about routing in Firezone
+                  </a>
+                </p>
+                <div>
+                  <div>
+                    <.input
+                      id="routing-option-managed"
+                      type="radio"
+                      field={@form[:routing]}
+                      value="managed"
+                      label="Firezone Managed Relays"
+                      checked={@form[:routing].value == :managed}
+                      required
+                    />
+                    <p class="ml-6 mb-4 text-sm text-slate-500 dark:text-slate-400">
+                      Firezone will route connections through our managed Relays only if a direct connection to a Gateway is not possible.
+                      Firezone can never decrypt the contents of your traffic.
+                    </p>
+                  </div>
+                  <div>
+                    <.input
+                      id="routing-option-stun-only"
+                      type="radio"
+                      field={@form[:routing]}
+                      value="stun_only"
+                      label="Direct Only"
+                      checked={@form[:routing].value == :stun_only}
+                      required
+                    />
+                    <p class="ml-6 mb-4 text-sm text-gray-500 dark:text-gray-400">
+                      Firezone will enforce direct connections to all Gateways in this Site.  This could cause connectivity issues in rare cases.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
             <.submit_button>
