@@ -102,7 +102,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.EditTest do
               {:redirect,
                %{
                  to:
-                   ~p"/#{account}/settings/identity_providers/openid_connect/#{provider}/redirect"
+                   ~p"/#{account.id}/settings/identity_providers/openid_connect/#{provider}/redirect"
                }}}
 
     assert provider.name == provider_attrs.name

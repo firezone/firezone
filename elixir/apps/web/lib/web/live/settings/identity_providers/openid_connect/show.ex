@@ -54,7 +54,9 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
       <:action>
         <.button
           style="primary"
-          navigate={~p"/#{@account}/settings/identity_providers/openid_connect/#{@provider}/redirect"}
+          navigate={
+            ~p"/#{@account.id}/settings/identity_providers/openid_connect/#{@provider}/redirect"
+          }
           icon="hero-arrow-path"
         >
           Reconnect
