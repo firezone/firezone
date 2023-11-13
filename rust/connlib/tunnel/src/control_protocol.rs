@@ -1,5 +1,6 @@
 use futures::channel::mpsc;
 use futures_util::SinkExt;
+use std::future::Future;
 use std::sync::Arc;
 
 use connlib_shared::{messages::Relay, Callbacks, Error, Result};
@@ -31,19 +32,22 @@ where
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
-    pub async fn add_ice_candidate(
+    pub fn add_ice_candidate(
         &self,
         conn_id: TRoleState::Id,
         ice_candidate: RTCIceCandidateInit,
-    ) -> Result<()> {
-        let peer_connection = self
-            .peer_connections
-            .lock()
-            .get(&conn_id)
-            .ok_or(Error::ControlProtocolError)?
-            .clone();
-        peer_connection.add_ice_candidate(ice_candidate).await?;
-        Ok(())
+    ) -> impl Future<Output = Result<()>> {
+        let peer_connection = self.peer_connections.lock().get(&conn_id).cloned();
+
+        async move {
+            peer_connection
+                .ok_or(Error::ControlProtocolError)?
+                .clone()
+                .add_ice_candidate(ice_candidate)
+                .await?;
+
+            Ok(())
+        }
     }
 }
 
