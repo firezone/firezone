@@ -1,7 +1,7 @@
 use async_compression::tokio::bufread::GzipEncoder;
 use connlib_shared::messages::{RequestConnection, ReuseConnection};
+use std::io;
 use std::path::PathBuf;
-use std::{io, sync::Arc};
 
 use crate::messages::{
     BroadcastGatewayIceCandidates, Connect, ConnectionDetails, EgressMessages,
@@ -23,7 +23,7 @@ use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
 pub struct ControlPlane<CB: Callbacks> {
-    pub tunnel: Arc<Tunnel<CB, client::State>>,
+    pub tunnel: Tunnel<CB, client::State>,
     pub phoenix_channel: PhoenixSenderWithTopic,
     pub tunnel_init: Mutex<bool>,
 }
