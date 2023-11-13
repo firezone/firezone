@@ -207,7 +207,15 @@ where
 
                     tokio::spawn(self.start_peer_handler(peer, channel));
                 }
-                _ => {}
+                Poll::Ready(Either::Right(client::InternalEvent::ConnectionFailed(
+                    gateway,
+                    error,
+                ))) => {
+                    tracing::warn!(%gateway, "Connection failed: {error}");
+                    self.peers_to_stop.lock().push_back(gateway);
+                    continue;
+                }
+                Poll::Pending => {}
             }
 
             if let Poll::Ready(Some(conn_id)) =
