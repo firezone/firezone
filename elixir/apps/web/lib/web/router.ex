@@ -137,6 +137,7 @@ defmodule Web.Router do
         live "/", Index
         live "/new", New
         live "/:id/edit", Edit
+        live "/:id/new_token", NewToken
         live "/:id", Show
       end
 

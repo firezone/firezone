@@ -49,40 +49,46 @@ defmodule Web.RelayGroups.Show do
               </:value>
             </.vertical_table_row>
           </.vertical_table>
-          <!-- Relays table -->
-          <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
-            <div class="col-span-full mb-4 xl:mb-2">
-              <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
-                Relay Instances
-              </h1>
-            </div>
-          </div>
-          <div class="relative overflow-x-auto">
-            <.table id="relays" rows={@group.relays}>
-              <:col :let={relay} label="INSTANCE">
-                <.link
-                  navigate={~p"/#{@account}/relays/#{relay.id}"}
-                  class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-                >
-                  <code :if={relay.ipv4} class="block text-xs">
-                    <%= relay.ipv4 %>
-                  </code>
-                  <code :if={relay.ipv6} class="block text-xs">
-                    <%= relay.ipv6 %>
-                  </code>
-                </.link>
-              </:col>
-              <:col :let={relay} label="TOKEN CREATED AT">
-                <.created_by account={@account} schema={relay.token} />
-              </:col>
-              <:col :let={relay} label="STATUS">
-                <.connection_status schema={relay} />
-              </:col>
-              <:empty>
-                <div class="text-center text-slate-500 p-4">No relay instances to display</div>
-              </:empty>
-            </.table>
-          </div>
+        </div>
+      </:content>
+    </.section>
+
+    <.section>
+      <:title>Relays</:title>
+      <:action>
+        <.add_button navigate={~p"/#{@account}/relay_groups/#{@group}/new_token"}>
+          Deploy
+        </.add_button>
+      </:action>
+      <:content>
+        <div class="relative overflow-x-auto">
+          <.table id="relays" rows={@group.relays}>
+            <:col :let={relay} label="INSTANCE">
+              <.link
+                navigate={~p"/#{@account}/relays/#{relay.id}"}
+                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              >
+                <code :if={relay.name} class="block text-xs">
+                  <%= relay.name %>
+                </code>
+                <code :if={relay.ipv4} class="block text-xs">
+                  <%= relay.ipv4 %>
+                </code>
+                <code :if={relay.ipv6} class="block text-xs">
+                  <%= relay.ipv6 %>
+                </code>
+              </.link>
+            </:col>
+            <:col :let={relay} label="TOKEN CREATED AT">
+              <.created_by account={@account} schema={relay.token} />
+            </:col>
+            <:col :let={relay} label="STATUS">
+              <.connection_status schema={relay} />
+            </:col>
+            <:empty>
+              <div class="text-center text-slate-500 p-4">No relay instances to display</div>
+            </:empty>
+          </.table>
         </div>
       </:content>
     </.section>
