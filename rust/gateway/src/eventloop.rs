@@ -8,14 +8,13 @@ use connlib_shared::Error;
 use firezone_tunnel::{gateway, Tunnel};
 use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
-pub struct Eventloop {
-    tunnel: Arc<Tunnel<CallbackHandler, gateway::State>>,
+pub struct Eventloop<'t> {
+    tunnel: &'t Tunnel<CallbackHandler, gateway::State>,
     portal: PhoenixChannel<IngressMessages, ()>,
 
     add_ice_candidate_tasks: futures_bounded::FuturesSet<Result<(), Error>>,
@@ -23,9 +22,9 @@ pub struct Eventloop {
     print_stats_timer: tokio::time::Interval,
 }
 
-impl Eventloop {
+impl<'t> Eventloop<'t> {
     pub(crate) fn new(
-        tunnel: Arc<Tunnel<CallbackHandler, gateway::State>>,
+        tunnel: &'t Tunnel<CallbackHandler, gateway::State>,
         portal: PhoenixChannel<IngressMessages, ()>,
     ) -> Self {
         Self {
@@ -38,7 +37,7 @@ impl Eventloop {
     }
 }
 
-impl Eventloop {
+impl<'t> Eventloop<'t> {
     #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {

@@ -11,7 +11,6 @@ use phoenix_channel::SecureUrl;
 use secrecy::{Secret, SecretString};
 use std::convert::Infallible;
 use std::pin::pin;
-use std::sync::Arc;
 use tokio::signal::ctrl_c;
 use tokio_tungstenite::tungstenite;
 use tracing_subscriber::layer;
@@ -31,13 +30,13 @@ async fn main() -> Result<()> {
         SecretString::new(cli.common.token),
         cli.common.firezone_id,
     )?;
-    let tunnel = Arc::new(Tunnel::new(private_key, CallbackHandler).await?);
+    let tunnel = Tunnel::new(private_key, CallbackHandler).await?;
 
     let task = pin!(backoff::future::retry_notify(
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(None)
             .build(),
-        move || run(tunnel.clone(), connect_url.clone()).map_err(to_backoff),
+        || run(&tunnel, connect_url.clone()).map_err(to_backoff),
         |error, t| {
             tracing::warn!(retry_in = ?t, "Error connecting to portal: {error:#}");
         },
@@ -52,7 +51,7 @@ async fn main() -> Result<()> {
 }
 
 async fn run(
-    tunnel: Arc<Tunnel<CallbackHandler, gateway::State>>,
+    tunnel: &Tunnel<CallbackHandler, gateway::State>,
     connect_url: Url,
 ) -> Result<Infallible> {
     let (portal, init) = phoenix_channel::init::<InitGateway, _, _>(
