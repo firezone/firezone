@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
         SecretString::new(cli.common.token),
         cli.common.firezone_id,
     )?;
-    let tunnel = Tunnel::new(private_key, CallbackHandler).await?;
+    let tunnel = Tunnel::new(private_key, CallbackHandler)?;
 
     let task = pin!(backoff::future::retry_notify(
         ExponentialBackoffBuilder::default()

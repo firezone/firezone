@@ -148,7 +148,7 @@ where
             });
 
             let tunnel = fatal_error!(
-                Tunnel::new(private_key, callbacks.clone()).await,
+                Tunnel::new(private_key, callbacks.clone()),
                 runtime_stopper,
                 &callbacks
             );
