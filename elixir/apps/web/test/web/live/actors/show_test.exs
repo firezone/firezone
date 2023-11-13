@@ -59,6 +59,30 @@ defmodule Web.Live.Actors.ShowTest do
       }
     end
 
+    test "renders (you) next to subject actor title", %{
+      account: account,
+      actor: actor,
+      identity: identity,
+      conn: conn
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      assert html =~ "(you)"
+
+      other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: other_actor)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      refute html =~ "(you)"
+    end
+
     test "renders actor details", %{
       account: account,
       actor: actor,
@@ -73,6 +97,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> authorize_conn(identity)
         |> live(~p"/#{account}/actors/#{actor}")
 
+      assert html =~ actor.name
       assert html =~ "User"
 
       table =

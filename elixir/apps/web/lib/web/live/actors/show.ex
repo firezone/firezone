@@ -30,6 +30,7 @@ defmodule Web.Actors.Show do
     <.section>
       <:title>
         <%= actor_type(@actor.type) %>: <span class="font-bold"><%= @actor.name %></span>
+        <span :if={@actor.id == @subject.actor.id} class="text-gray-400">(you)</span>
       </:title>
       <:action>
         <.edit_button navigate={~p"/#{@account}/actors/#{@actor}/edit"}>
