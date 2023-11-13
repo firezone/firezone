@@ -171,20 +171,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 .request_connection(resource_id, gateway_id, relays, reference)
                 .await
             {
-                Ok(Some(Request::NewConnection(connection_request))) => {
-                    if let Err(err) = control_signaler
-                        // TODO: create a reference number and keep track for the response
-                        .send_with_ref(
-                            EgressMessages::RequestConnection(connection_request),
-                            resource_id,
-                        )
-                        .await
-                    {
-                        err
-                    } else {
-                        return;
-                    }
-                }
                 Ok(Some(Request::ReuseConnection(connection_request))) => {
                     if let Err(err) = control_signaler
                         // TODO: create a reference number and keep track for the response

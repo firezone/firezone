@@ -3,7 +3,7 @@ use futures_util::SinkExt;
 use std::sync::Arc;
 
 use connlib_shared::{
-    messages::{Relay, RequestConnection, ReuseConnection},
+    messages::{Relay, ReuseConnection},
     Callbacks, Error, Result,
 };
 use webrtc::api::API;
@@ -32,7 +32,6 @@ const MAX_RELAYS: usize = 2;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
 pub enum Request {
-    NewConnection(RequestConnection),
     ReuseConnection(ReuseConnection),
 }
 
