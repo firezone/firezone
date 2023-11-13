@@ -1,9 +1,9 @@
 defmodule Web.Auth do
   use Web, :verified_routes
-  alias Domain.Auth
+  alias Domain.{Auth, Accounts}
 
   def signed_in_path(%Auth.Subject{actor: %{type: :account_admin_user}} = subject) do
-    ~p"/#{subject.account.slug || subject.account}/sites"
+    ~p"/#{subject.account}/sites"
   end
 
   def put_subject_in_session(conn, %Auth.Subject{} = subject) do
@@ -24,13 +24,28 @@ defmodule Web.Auth do
   If the platform is known, we direct them to the application through a deep link or an app link;
   if not, we guide them to the install instructions accompanied by an error message.
   """
+
+  def signed_in_redirect(
+        %Plug.Conn{path_params: %{"account_id_or_slug" => account_id_or_slug}} = conn,
+        %Auth.Subject{account: %Accounts.Account{} = account},
+        _client_platform,
+        _client_csrf_token
+      )
+      when not is_nil(account_id_or_slug) and account_id_or_slug != account.id and
+             account_id_or_slug != account.slug do
+    conn
+    |> Web.Auth.renew_session()
+    |> Plug.Conn.delete_session(:user_return_to)
+    |> Phoenix.Controller.redirect(to: ~p"/#{account_id_or_slug}")
+  end
+
   def signed_in_redirect(
         conn,
         %Auth.Subject{} = subject,
         client_platform,
         client_csrf_token
       )
-      when not is_nil(client_platform) do
+      when not is_nil(client_platform) and client_platform != "" do
     platform_redirects =
       Domain.Config.fetch_env!(:web, __MODULE__)
       |> Keyword.fetch!(:platform_redirects)
@@ -59,7 +74,7 @@ defmodule Web.Auth do
         :info,
         "Please use a client application to access Firezone."
       )
-      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}")
+      |> Phoenix.Controller.redirect(to: ~p"/#{subject.account}")
     end
   end
 
@@ -78,13 +93,13 @@ defmodule Web.Auth do
     |> Phoenix.Controller.redirect(to: redirect_to)
   end
 
-  def signed_in_redirect(conn, %Auth.Subject{} = _subject, _client_platform, _client_csrf_token) do
+  def signed_in_redirect(conn, %Auth.Subject{} = subject, _client_platform, _client_csrf_token) do
     conn
     |> Phoenix.Controller.put_flash(
       :info,
       "Please use a client application to access Firezone."
     )
-    |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}")
+    |> Phoenix.Controller.redirect(to: ~p"/#{subject.account}")
   end
 
   @doc """

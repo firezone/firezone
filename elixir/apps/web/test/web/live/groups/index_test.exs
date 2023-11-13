@@ -46,7 +46,7 @@ defmodule Web.Live.Groups.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/groups")
 
-    assert button = Floki.find(html, "a[href='/#{account.id}/groups/new']")
+    assert button = Floki.find(html, "a[href='/#{account.slug}/groups/new']")
     assert Floki.text(button) =~ "Add Group"
   end
 

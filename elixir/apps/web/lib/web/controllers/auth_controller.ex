@@ -42,7 +42,7 @@ defmodule Web.AuthController do
         } = params
       ) do
     redirect_params =
-      Map.take(params, ["client_platform", "client_csrf_token"])
+      take_non_empty_params(params, ["client_platform", "client_csrf_token"])
 
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
          {:ok, subject} <-
@@ -94,7 +94,8 @@ defmodule Web.AuthController do
                preload: :account
              ),
            {:ok, identity} <- Domain.Auth.Adapters.Email.request_sign_in_token(identity) do
-        sign_in_link_params = Map.take(params, ["client_platform", "client_csrf_token"])
+        sign_in_link_params =
+          take_non_empty_params(params, ["client_platform", "client_csrf_token"])
 
         <<email_secret::binary-size(5), nonce::binary>> =
           identity.provider_virtual_state.sign_in_token
@@ -115,7 +116,8 @@ defmodule Web.AuthController do
       end
 
     redirect_params =
-      Map.take(params, ["client_platform", "client_csrf_token"])
+      params
+      |> take_non_empty_params(["client_platform", "client_csrf_token"])
       |> Map.put("provider_identifier", provider_identifier)
 
     conn
@@ -150,8 +152,8 @@ defmodule Web.AuthController do
     client_csrf_token = get_session(conn, :client_csrf_token) || params["client_csrf_token"]
 
     redirect_params =
-      put_if_not_nil(:client_platform, client_platform)
-      |> put_if_not_nil(:client_csrf_token, client_csrf_token)
+      put_if_not_empty(:client_platform, client_platform)
+      |> put_if_not_empty(:client_csrf_token, client_csrf_token)
 
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
          nonce = get_session(conn, :sign_in_nonce) || "=",
@@ -176,7 +178,7 @@ defmodule Web.AuthController do
         |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
 
       {:error, _reason} ->
-        redirect_params = put_if_not_nil(redirect_params, "provider_identifier", identity_id)
+        redirect_params = put_if_not_empty(redirect_params, "provider_identifier", identity_id)
 
         conn
         |> put_flash(:error, "The sign in link is invalid or expired.")
@@ -202,12 +204,12 @@ defmodule Web.AuthController do
       conn = put_session(conn, :client_csrf_token, params["client_csrf_token"])
 
       redirect_url =
-        url(~p"/#{account_id_or_slug}/sign_in/providers/#{provider.id}/handle_callback")
+        url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
 
       redirect_to_idp(conn, redirect_url, provider)
     else
       {:error, :not_found} ->
-        redirect_params = Map.take(params, ["client_platform", "client_csrf_token"])
+        redirect_params = take_non_empty_params(params, ["client_platform", "client_csrf_token"])
 
         conn
         |> put_flash(:error, "You may not use this method to sign in.")
@@ -231,7 +233,7 @@ defmodule Web.AuthController do
   This controller handles IdP redirect back to the Firezone when user signs in.
   """
   def handle_idp_callback(conn, %{
-        "account_id_or_slug" => account_id_or_slug,
+        "account_id_or_slug" => account_id,
         "provider_id" => provider_id,
         "state" => state,
         "code" => code
@@ -240,12 +242,12 @@ defmodule Web.AuthController do
     client_csrf_token = get_session(conn, :client_csrf_token)
 
     redirect_params =
-      put_if_not_nil(:client_platform, client_platform)
-      |> put_if_not_nil(:client_csrf_token, client_csrf_token)
+      put_if_not_empty(:client_platform, client_platform)
+      |> put_if_not_empty(:client_csrf_token, client_csrf_token)
 
     with {:ok, code_verifier, conn} <- verify_state_and_fetch_verifier(conn, provider_id, state) do
       payload = {
-        url(~p"/#{account_id_or_slug}/sign_in/providers/#{provider_id}/handle_callback"),
+        url(~p"/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"),
         code_verifier,
         code
       }
@@ -263,18 +265,18 @@ defmodule Web.AuthController do
         {:error, :not_found} ->
           conn
           |> put_flash(:error, "You may not use this method to sign in.")
-          |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+          |> redirect(to: ~p"/#{account_id}?#{redirect_params}")
 
         {:error, _reason} ->
           conn
           |> put_flash(:error, "You may not authenticate to this account.")
-          |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+          |> redirect(to: ~p"/#{account_id}?#{redirect_params}")
       end
     else
       {:error, :invalid_state, conn} ->
         conn
         |> put_flash(:error, "Your session has expired, please try again.")
-        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+        |> redirect(to: ~p"/#{account_id}?#{redirect_params}")
     end
   end
 
@@ -353,7 +355,12 @@ defmodule Web.AuthController do
     )
   end
 
-  defp put_if_not_nil(map \\ %{}, key, value)
-  defp put_if_not_nil(map, _key, nil), do: map
-  defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
+  defp take_non_empty_params(map, keys) do
+    map |> Map.take(keys) |> Map.reject(fn {_key, value} -> value in ["", nil] end)
+  end
+
+  defp put_if_not_empty(map \\ %{}, key, value)
+  defp put_if_not_empty(map, _key, ""), do: map
+  defp put_if_not_empty(map, _key, nil), do: map
+  defp put_if_not_empty(map, key, value), do: Map.put(map, key, value)
 end

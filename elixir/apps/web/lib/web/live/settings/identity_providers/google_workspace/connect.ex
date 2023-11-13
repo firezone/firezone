@@ -12,7 +12,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
     with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id) do
       redirect_url =
         url(
-          ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}/handle_callback"
+          ~p"/#{provider.account_id}/settings/identity_providers/google_workspace/#{provider}/handle_callback"
         )
 
       Web.AuthController.redirect_to_idp(conn, redirect_url, provider)
@@ -36,7 +36,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
            Web.AuthController.verify_state_and_fetch_verifier(conn, provider_id, state) do
       payload = {
         url(
-          ~p"/#{account}/settings/identity_providers/google_workspace/#{provider_id}/handle_callback"
+          ~p"/#{account.id}/settings/identity_providers/google_workspace/#{provider_id}/handle_callback"
         ),
         code_verifier,
         code

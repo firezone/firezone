@@ -72,7 +72,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.Connect do
 
       callback_url =
         url(
-          ~p"/#{account}/settings/identity_providers/openid_connect/#{provider.id}/handle_callback"
+          ~p"/#{account.id}/settings/identity_providers/openid_connect/#{provider.id}/handle_callback"
         )
 
       {state, verifier} = conn.cookies["fz_auth_state_#{provider.id}"] |> :erlang.binary_to_term()

@@ -46,7 +46,7 @@ defmodule Web.Live.Resources.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources")
 
-    assert button = Floki.find(html, "a[href='/#{account.id}/resources/new']")
+    assert button = Floki.find(html, "a[href='/#{account.slug}/resources/new']")
     assert Floki.text(button) =~ "Add Resource"
   end
 

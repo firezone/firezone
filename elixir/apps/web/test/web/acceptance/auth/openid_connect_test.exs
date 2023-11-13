@@ -17,7 +17,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     |> click(Query.link("Sign in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
     |> assert_el(Query.text("#{account.name} Admin Portal"))
-    |> assert_path(~p"/#{account}")
+    |> assert_path(~p"/#{account.id}")
     |> assert_el(Query.text("You may not authenticate to this account."))
   end
 

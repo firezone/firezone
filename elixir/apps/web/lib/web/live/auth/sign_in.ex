@@ -17,8 +17,8 @@ defmodule Web.Auth.SignIn do
         end)
         |> Map.drop([:token])
 
-      query_params = Map.take(params, ["client_platform", "client_csrf_token"])
-      session_params = Map.take(session, ["client_platform", "client_csrf_token"])
+      query_params = take_non_empty_params(params, ["client_platform", "client_csrf_token"])
+      session_params = take_non_empty_params(session, ["client_platform", "client_csrf_token"])
       params = Map.merge(session_params, query_params)
 
       {:ok, socket,
@@ -32,6 +32,10 @@ defmodule Web.Auth.SignIn do
       _other ->
         raise Web.LiveErrors.NotFoundError
     end
+  end
+
+  defp take_non_empty_params(map, keys) do
+    map |> Map.take(keys) |> Map.reject(fn {_key, value} -> value in ["", nil] end)
   end
 
   def render(assigns) do

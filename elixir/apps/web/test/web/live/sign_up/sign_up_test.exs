@@ -56,13 +56,13 @@ defmodule Web.Live.SignUpTest do
       assert email.subject == "Welcome to Firezone"
 
       verify_sign_in_token_path =
-        ~p"/#{account.id}/sign_in/providers/#{provider.id}/verify_sign_in_token"
+        ~p"/#{account}/sign_in/providers/#{provider.id}/verify_sign_in_token"
 
       assert email.text_body =~ "#{verify_sign_in_token_path}"
       assert email.text_body =~ "identity_id=#{identity.id}"
       assert email.text_body =~ "secret="
 
-      assert email.text_body =~ url(~p"/#{account.id}")
+      assert email.text_body =~ url(~p"/#{account}")
     end)
   end
 

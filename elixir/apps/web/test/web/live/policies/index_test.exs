@@ -46,7 +46,7 @@ defmodule Web.Live.Policies.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/policies")
 
-    assert button = Floki.find(html, "a[href='/#{account.id}/policies/new']")
+    assert button = Floki.find(html, "a[href='/#{account.slug}/policies/new']")
     assert Floki.text(button) =~ "Add Policy"
   end
 

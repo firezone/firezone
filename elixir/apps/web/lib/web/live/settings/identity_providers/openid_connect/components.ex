@@ -17,10 +17,10 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
           ><%= scope %></.code_block> Please make sure that OAuth client has following redirect URL's whitelisted: <.code_block
             :for={
               {type, redirect_url} <- [
-                sign_in: url(~p"/#{@account}/sign_in/providers/#{@id}/handle_callback"),
+                sign_in: url(~p"/#{@account.id}/sign_in/providers/#{@id}/handle_callback"),
                 connect:
                   url(
-                    ~p"/#{@account}/settings/identity_providers/google_workspace/#{@id}/handle_callback"
+                    ~p"/#{@account.id}/settings/identity_providers/google_workspace/#{@id}/handle_callback"
                   )
               ]
             }
