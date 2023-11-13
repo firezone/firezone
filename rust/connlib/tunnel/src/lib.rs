@@ -684,13 +684,6 @@ where
     /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     pub async fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
-        let public_key = (&private_key).into();
-        let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
-        let peers_by_ip = RwLock::new(IpNetworkTable::new());
-        let next_index = Default::default();
-        let peer_connections = Default::default();
-        let device = Default::default();
-
         // ICE
         let mut media_engine = MediaEngine::default();
 
@@ -712,15 +705,17 @@ where
 
         let (stop_peer_command_sender, stop_peer_command_receiver) = mpsc::channel(10);
 
+        let public_key = PublicKey::from(&private_key);
+
         Ok(Self {
-            rate_limiter,
+            rate_limiter: Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT)),
             private_key,
-            peer_connections,
+            peer_connections: Default::default(),
             public_key,
-            peers_by_ip,
-            next_index,
+            peers_by_ip: RwLock::new(IpNetworkTable::new()),
+            next_index: Default::default(),
             webrtc_api,
-            device,
+            device: Default::default(),
             read_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             write_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             callbacks: CallbackErrorFacade(callbacks),
