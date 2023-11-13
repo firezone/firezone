@@ -1,6 +1,6 @@
 defmodule Domain.Flows do
   alias Domain.{Repo, Validator}
-  alias Domain.{Auth, Accounts, Clients, Gateways, Resources, Policies}
+  alias Domain.{Auth, Accounts, Actors, Clients, Gateways, Resources, Policies}
   alias Domain.Flows.{Authorizer, Flow, Activity}
   require Ecto.Query
 
@@ -81,6 +81,11 @@ defmodule Domain.Flows do
 
   def list_flows_for(%Clients.Client{} = client, %Auth.Subject{} = subject, opts) do
     Flow.Query.by_client_id(client.id)
+    |> list_flows(subject, opts)
+  end
+
+  def list_flows_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject, opts) do
+    Flow.Query.by_actor_id(actor.id)
     |> list_flows(subject, opts)
   end
 
