@@ -203,7 +203,7 @@ defmodule Web.Gateways.Show do
     {:ok, _gateway} = Gateways.delete_gateway(socket.assigns.gateway, socket.assigns.subject)
 
     socket =
-      redirect(socket,
+      push_navigate(socket,
         to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.gateway.group}"
       )
 

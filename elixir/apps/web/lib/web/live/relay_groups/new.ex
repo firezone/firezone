@@ -54,7 +54,7 @@ defmodule Web.RelayGroups.New do
 
     with {:ok, group} <-
            Relays.create_group(attrs, socket.assigns.subject) do
-      {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/relay_groups/#{group}")}
+      {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/relay_groups/#{group}")}
     else
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}

@@ -176,10 +176,11 @@ defmodule Web.Live.Clients.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/clients/#{client}")
 
-    assert lv
-           |> element("button", "Delete Client")
-           |> render_click() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/clients"}}}
+    lv
+    |> element("button", "Delete Client")
+    |> render_click()
+
+    assert_redirected(lv, ~p"/#{account}/clients")
 
     assert Repo.get(Domain.Clients.Client, client.id).deleted_at
   end

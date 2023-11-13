@@ -102,7 +102,9 @@ defmodule Web.Actors.Users.NewIdentity do
              attrs,
              socket.assigns.subject
            ) do
-      socket = redirect(socket, to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}")
+      socket =
+        push_navigate(socket, to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}")
+
       {:noreply, socket}
     else
       {:error, changeset} ->

@@ -184,7 +184,7 @@ defmodule Web.Actors.Show do
 
   def handle_event("delete", _params, socket) do
     with {:ok, _actor} <- Actors.delete_actor(socket.assigns.actor, socket.assigns.subject) do
-      {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/actors")}
+      {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/actors")}
     else
       {:error, :cant_delete_the_last_admin} ->
         {:noreply, put_flash(socket, :error, "You can't delete the last admin of an account.")}

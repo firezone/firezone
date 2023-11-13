@@ -79,7 +79,7 @@ defmodule Web.Actors.ServiceAccounts.New do
              socket.assigns.subject
            ) do
       socket =
-        redirect(socket,
+        push_navigate(socket,
           to: ~p"/#{socket.assigns.account}/actors/service_accounts/#{actor}/new_identity"
         )
 

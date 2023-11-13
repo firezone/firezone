@@ -162,10 +162,11 @@ defmodule Web.Live.Gateways.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/gateways/#{gateway}")
 
-    assert lv
-           |> element("button", "Delete Gateway")
-           |> render_click() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/sites/#{gateway.group}"}}}
+    lv
+    |> element("button", "Delete Gateway")
+    |> render_click()
+
+    assert_redirected(lv, ~p"/#{account}/sites/#{gateway.group}")
 
     assert Repo.get(Domain.Gateways.Gateway, gateway.id).deleted_at
   end

@@ -109,7 +109,9 @@ defmodule Web.RelayGroups.Show do
 
   def handle_info(%Phoenix.Socket.Broadcast{topic: "relay_groups:" <> _account_id}, socket) do
     socket =
-      redirect(socket, to: ~p"/#{socket.assigns.account}/relay_groups/#{socket.assigns.group}")
+      push_navigate(socket,
+        to: ~p"/#{socket.assigns.account}/relay_groups/#{socket.assigns.group}"
+      )
 
     {:noreply, socket}
   end
@@ -117,6 +119,6 @@ defmodule Web.RelayGroups.Show do
   def handle_event("delete", _params, socket) do
     # TODO: make sure tokens are all deleted too!
     {:ok, _group} = Relays.delete_group(socket.assigns.group, socket.assigns.subject)
-    {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/relay_groups")}
+    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/relay_groups")}
   end
 end

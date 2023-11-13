@@ -197,10 +197,11 @@ defmodule Web.Live.Actors.EditTest do
         |> authorize_conn(identity)
         |> live(~p"/#{account}/actors/#{actor}/edit")
 
-      assert lv
-             |> form("form", actor: attrs)
-             |> render_submit() ==
-               {:error, {:redirect, %{to: ~p"/#{account}/actors/#{actor}"}}}
+      lv
+      |> form("form", actor: attrs)
+      |> render_submit()
+
+      assert_redirected(lv, ~p"/#{account}/actors/#{actor}")
 
       assert actor = Repo.get_by(Domain.Actors.Actor, id: actor.id) |> Repo.preload(:memberships)
       assert actor.name == attrs.name

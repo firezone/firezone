@@ -103,7 +103,7 @@ defmodule Web.Policies.New do
         {:noreply,
          push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}?#resources")}
       else
-        {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
+        {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
       end
     else
       {:error, %Ecto.Changeset{} = changeset} ->

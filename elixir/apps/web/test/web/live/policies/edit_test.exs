@@ -146,10 +146,11 @@ defmodule Web.Live.Policies.EditTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/policies/#{policy}/edit")
 
-    assert lv
-           |> form("form", policy: attrs)
-           |> render_submit() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/policies/#{policy}"}}}
+    lv
+    |> form("form", policy: attrs)
+    |> render_submit()
+
+    assert_redirected(lv, ~p"/#{account}/policies/#{policy}")
 
     assert policy = Repo.get_by(Domain.Policies.Policy, id: policy.id)
     assert policy.description == attrs.description

@@ -217,7 +217,7 @@ defmodule Web.Sites.Show do
 
   def handle_info(%Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _account_id}, socket) do
     socket =
-      redirect(socket, to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.group}")
+      push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.group}")
 
     {:noreply, socket}
   end
@@ -225,6 +225,6 @@ defmodule Web.Sites.Show do
   def handle_event("delete", _params, socket) do
     # TODO: make sure tokens are all deleted too!
     {:ok, _group} = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
-    {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/sites")}
+    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites")}
   end
 end

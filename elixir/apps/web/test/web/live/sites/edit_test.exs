@@ -143,10 +143,11 @@ defmodule Web.Live.Sites.EditTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{group}/edit")
 
-    assert lv
-           |> form("form", group: attrs)
-           |> render_submit() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/sites/#{group}"}}}
+    lv
+    |> form("form", group: attrs)
+    |> render_submit()
+
+    assert_redirected(lv, ~p"/#{account}/sites/#{group}")
 
     assert group = Repo.get_by(Domain.Gateways.Group, id: group.id)
     assert group.name_prefix == attrs.name_prefix

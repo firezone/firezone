@@ -162,6 +162,6 @@ defmodule Web.Clients.Show do
 
   def handle_event("delete", _params, socket) do
     {:ok, _client} = Clients.delete_client(socket.assigns.client, socket.assigns.subject)
-    {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/clients")}
+    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/clients")}
   end
 end

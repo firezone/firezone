@@ -59,7 +59,7 @@ defmodule Web.RelayGroups.Edit do
   def handle_event("submit", %{"group" => attrs}, socket) do
     with {:ok, group} <-
            Relays.update_group(socket.assigns.group, attrs, socket.assigns.subject) do
-      socket = redirect(socket, to: ~p"/#{socket.assigns.account}/relay_groups/#{group}")
+      socket = push_navigate(socket, to: ~p"/#{socket.assigns.account}/relay_groups/#{group}")
       {:noreply, socket}
     else
       {:error, changeset} ->

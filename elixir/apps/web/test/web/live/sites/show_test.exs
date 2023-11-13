@@ -264,10 +264,11 @@ defmodule Web.Live.Sites.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{group}")
 
-    assert lv
-           |> element("button", "Delete")
-           |> render_click() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/sites"}}}
+    lv
+    |> element("button", "Delete")
+    |> render_click()
+
+    assert_redirected(lv, ~p"/#{account}/sites")
 
     assert Repo.get(Domain.Gateways.Group, group.id).deleted_at
   end

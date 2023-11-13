@@ -55,7 +55,7 @@ defmodule Web.Sites.New do
 
     with {:ok, group} <-
            Gateways.create_group(attrs, socket.assigns.subject) do
-      {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/sites/#{group}")}
+      {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{group}")}
     else
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}

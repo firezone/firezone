@@ -141,7 +141,7 @@ defmodule Web.Relays.Show do
     {:ok, _relay} = Relays.delete_relay(socket.assigns.relay, socket.assigns.subject)
 
     socket =
-      redirect(socket,
+      push_navigate(socket,
         to: ~p"/#{socket.assigns.account}/relay_groups/#{socket.assigns.relay.group}"
       )
 

@@ -144,10 +144,11 @@ defmodule Web.Live.Clients.EditTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/clients/#{client}/edit")
 
-    assert lv
-           |> form("form", client: attrs)
-           |> render_submit() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/clients/#{client}"}}}
+    lv
+    |> form("form", client: attrs)
+    |> render_submit()
+
+    assert_redirected(lv, ~p"/#{account}/clients/#{client}")
 
     assert client = Repo.get_by(Domain.Clients.Client, id: client.id)
     assert client.name == attrs.name
