@@ -99,12 +99,9 @@ impl Eventloop {
                     for candidate in candidates {
                         tracing::debug!(client = %client_id, candidate = %candidate.candidate, "Adding ICE candidate from client");
 
-                        let tunnel = Arc::clone(&self.tunnel);
                         if self
                             .add_ice_candidate_tasks
-                            .try_push(async move {
-                                tunnel.add_ice_candidate(client_id, candidate).await
-                            })
+                            .try_push(self.tunnel.add_ice_candidate(client_id, candidate))
                             .is_err()
                         {
                             tracing::debug!("Received too many ICE candidates, dropping some");
