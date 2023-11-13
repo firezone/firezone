@@ -3,12 +3,20 @@ defmodule Web.Resources.Index do
   alias Domain.Resources
 
   def mount(_params, _session, socket) do
-    {_, resources} =
-      Resources.list_resources(socket.assigns.subject,
-        preload: [:gateway_groups, policies: [:actor_group]]
-      )
-
-    {:ok, assign(socket, resources: resources)}
+    with {:ok, resources} <-
+           Resources.list_resources(socket.assigns.subject,
+             preload: [:gateway_groups]
+           ),
+         {:ok, resource_actor_groups_peek} <-
+           Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
+      {:ok,
+       assign(socket,
+         resources: resources,
+         resource_actor_groups_peek: resource_actor_groups_peek
+       )}
+    else
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    end
   end
 
   def render(assigns) do
@@ -53,10 +61,33 @@ defmodule Web.Resources.Index do
                 </.badge>
               </.link>
             </:col>
-            <:col :let={resource} label="AUTHORIZED GROUPS">
-              <.link :for={policy <- resource.policies} navigate={~p"/#{@account}/policies/#{policy}"}>
-                <.badge><%= policy.actor_group.name %></.badge>
-              </.link>
+            <:col :let={resource} label="Authorized groups">
+              <.peek peek={Map.fetch!(@resource_actor_groups_peek, resource.id)}>
+                <:empty>
+                  None,
+                  <.link
+                    class={link_style() ++ ["px-1"]}
+                    navigate={~p"/#{@account}/policies/new?resource_id=#{resource}"}
+                  >
+                    create a Policy
+                  </.link>
+                  to grant access.
+                </:empty>
+
+                <:item :let={group}>
+                  <.link class={link_style()} navigate={~p"/#{@account}/groups/#{group.id}"}>
+                    <.badge>
+                      <%= group.name %>
+                    </.badge>
+                  </.link>
+                </:item>
+
+                <:tail :let={count}>
+                  <span class="inline-block whitespace-nowrap">
+                    and <%= count %> more.
+                  </span>
+                </:tail>
+              </.peek>
             </:col>
             <:empty>
               <div class="flex justify-center text-center text-slate-500 p-4">

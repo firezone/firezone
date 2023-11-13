@@ -2,6 +2,7 @@ defmodule Domain.ResourcesTest do
   use Domain.DataCase, async: true
   import Domain.Resources
   alias Domain.Resources
+  alias Domain.Actors
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -485,6 +486,124 @@ defmodule Domain.ResourcesTest do
                       ]}
                    ]
                  ]}}
+    end
+  end
+
+  describe "peek_resource_actor_groups/3" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "returns count of authorized groups and first 3 items", %{
+      account: account,
+      subject: subject
+    } do
+      resource1 = Fixtures.Resources.create_resource(account: account)
+      Fixtures.Policies.create_policy(account: account, resource: resource1)
+      Fixtures.Policies.create_policy(account: account, resource: resource1)
+      Fixtures.Policies.create_policy(account: account, resource: resource1)
+      Fixtures.Policies.create_policy(account: account, resource: resource1)
+
+      resource2 = Fixtures.Resources.create_resource(account: account)
+
+      assert {:ok, peek} = peek_resource_actor_groups([resource1, resource2], 3, subject)
+
+      assert length(Map.keys(peek)) == 2
+
+      assert peek[resource1.id].count == 4
+      assert length(peek[resource1.id].items) == 3
+      assert [%Actors.Group{} | _] = peek[resource1.id].items
+
+      assert peek[resource2.id].count == 0
+      assert Enum.empty?(peek[resource2.id].items)
+    end
+
+    test "returns count of policies per resource and first LIMIT actors", %{
+      account: account,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      Fixtures.Policies.create_policy(account: account, resource: resource)
+      Fixtures.Policies.create_policy(account: account, resource: resource)
+
+      other_resource = Fixtures.Resources.create_resource(account: account)
+      Fixtures.Policies.create_policy(account: account, resource: other_resource)
+
+      assert {:ok, peek} = peek_resource_actor_groups([resource], 1, subject)
+      assert length(peek[resource.id].items) == 1
+    end
+
+    test "ignores deleted policies", %{
+      account: account,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      policy = Fixtures.Policies.create_policy(account: account, resource: resource)
+      Fixtures.Policies.delete_policy(policy)
+
+      assert {:ok, peek} = peek_resource_actor_groups([resource], 3, subject)
+      assert peek[resource.id].count == 0
+      assert Enum.empty?(peek[resource.id].items)
+    end
+
+    test "ignores other policies", %{
+      account: account,
+      subject: subject
+    } do
+      Fixtures.Policies.create_policy(account: account)
+      Fixtures.Policies.create_policy(account: account)
+
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      assert {:ok, peek} = peek_resource_actor_groups([resource], 1, subject)
+      assert peek[resource.id].count == 0
+      assert Enum.empty?(peek[resource.id].items)
+    end
+
+    test "returns empty map on empty actors", %{subject: subject} do
+      assert peek_resource_actor_groups([], 1, subject) == {:ok, %{}}
+    end
+
+    test "returns empty map on empty groups", %{account: account, subject: subject} do
+      resource = Fixtures.Resources.create_resource(account: account)
+      assert {:ok, peek} = peek_resource_actor_groups([resource], 3, subject)
+      assert length(Map.keys(peek)) == 1
+      assert peek[resource.id].count == 0
+      assert Enum.empty?(peek[resource.id].items)
+    end
+
+    test "does not allow peeking into other accounts", %{
+      subject: subject
+    } do
+      other_account = Fixtures.Accounts.create_account()
+      resource = Fixtures.Resources.create_resource(account: other_account)
+      Fixtures.Policies.create_policy(account: other_account, resource: resource)
+
+      assert {:ok, peek} = peek_resource_actor_groups([resource], 3, subject)
+      assert Map.has_key?(peek, resource.id)
+      assert peek[resource.id].count == 0
+      assert Enum.empty?(peek[resource.id].items)
+    end
+
+    test "returns error when subject has no permission to manage groups", %{
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert peek_resource_actor_groups([], 3, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Resources.Authorizer.manage_resources_permission()]]}}
     end
   end
 

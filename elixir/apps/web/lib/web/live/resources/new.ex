@@ -32,6 +32,7 @@ defmodule Web.Resources.New do
       <:title>
         Add Resource
       </:title>
+
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Resource details</h2>
@@ -97,13 +98,10 @@ defmodule Web.Resources.New do
 
     case Resources.create_resource(attrs, socket.assigns.subject) do
       {:ok, resource} ->
-        if site_id = socket.assigns.params["site_id"] do
-          {:noreply,
-           push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}?#resources")}
-        else
-          {:noreply,
-           push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources/#{resource.id}")}
-        end
+        {:noreply,
+         push_navigate(socket,
+           to: ~p"/#{socket.assigns.account}/resources/#{resource}?#{socket.assigns.params}"
+         )}
 
       {:error, changeset} ->
         changeset = Map.put(changeset, :action, :validate)

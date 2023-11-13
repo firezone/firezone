@@ -114,10 +114,68 @@ defmodule Web.Live.Resources.ShowTest do
     assert table["name"] =~ resource.name
     assert table["address"] =~ resource.address
     assert table["created"] =~ actor.name
+    assert table["authorized groups"] == "None, create a Policy to grant access."
 
     for filter <- resource.filters do
       assert String.downcase(table["traffic filtering rules"]) =~ Atom.to_string(filter.protocol)
     end
+  end
+
+  test "renders authorized groups peek", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    policies =
+      [
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource
+        ),
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource
+        ),
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource
+        )
+      ]
+      |> Repo.preload(:actor_group)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}")
+
+    table =
+      lv
+      |> element("#resource")
+      |> render()
+      |> vertical_table_to_map()
+
+    for policy <- policies do
+      assert table["authorized groups"] =~ policy.actor_group.name
+    end
+
+    Fixtures.Policies.create_policy(
+      account: account,
+      resource: resource
+    )
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}")
+
+    table =
+      lv
+      |> element("#resource")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["authorized groups"] =~ "and 1 more"
   end
 
   test "renders gateways table", %{

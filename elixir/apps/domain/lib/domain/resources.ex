@@ -123,6 +123,17 @@ defmodule Domain.Resources do
     end
   end
 
+  def peek_resource_actor_groups(resources, limit, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
+      ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
+
+      Resource.Query.by_id({:in, ids})
+      |> Authorizer.for_subject(subject)
+      |> Resource.Query.preload_few_actor_groups_for_each_resource(limit)
+      |> Repo.peek(resources)
+    end
+  end
+
   def new_resource(%Accounts.Account{} = account, attrs \\ %{}) do
     Resource.Changeset.create(account, attrs)
   end

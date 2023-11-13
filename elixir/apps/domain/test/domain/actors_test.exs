@@ -229,6 +229,30 @@ defmodule Domain.ActorsTest do
       assert peek[group.id].count == 0
       assert Enum.empty?(peek[group.id].items)
     end
+
+    test "does not allow peeking into other accounts", %{
+      subject: subject
+    } do
+      other_account = Fixtures.Accounts.create_account()
+      group = Fixtures.Actors.create_group(account: other_account)
+      Fixtures.Actors.create_membership(account: other_account, group: group)
+
+      assert {:ok, peek} = peek_group_actors([group], 3, subject)
+      assert Map.has_key?(peek, group.id)
+      assert peek[group.id].count == 0
+      assert Enum.empty?(peek[group.id].items)
+    end
+
+    test "returns error when subject has no permission to manage groups", %{
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert peek_group_actors([], 3, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+    end
   end
 
   describe "peek_actor_groups/3" do
@@ -323,6 +347,30 @@ defmodule Domain.ActorsTest do
       assert length(Map.keys(peek)) == 1
       assert peek[actor.id].count == 0
       assert Enum.empty?(peek[actor.id].items)
+    end
+
+    test "does not allow peeking into other accounts", %{
+      subject: subject
+    } do
+      other_account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: other_account)
+      Fixtures.Actors.create_membership(account: other_account, actor: actor)
+
+      assert {:ok, peek} = peek_actor_groups([actor], 3, subject)
+      assert Map.has_key?(peek, actor.id)
+      assert peek[actor.id].count == 0
+      assert Enum.empty?(peek[actor.id].items)
+    end
+
+    test "returns error when subject has no permission to manage groups", %{
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert peek_actor_groups([], 3, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
     end
   end
 

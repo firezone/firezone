@@ -61,6 +61,33 @@ defmodule Web.Live.Policies.NewTest do
            ]
   end
 
+  test "renders form with pre-set resource_id", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    resource = Fixtures.Resources.create_resource(account: account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/new?resource_id=#{resource.id}")
+
+    form = form(lv, "form")
+
+    assert find_inputs(form) == [
+             "policy[actor_group_id]",
+             "policy[description]",
+             "policy[resource_id]"
+           ]
+
+    disabled_input = render(form) |> Floki.find("select[name='policy[resource_id]']")
+    assert Floki.attribute(disabled_input, "disabled") == ["disabled"]
+
+    assert disabled_input |> Floki.find("option[selected=selected]") |> Floki.attribute("value") ==
+             [resource.id]
+  end
+
   test "renders changeset errors on input change", %{
     account: account,
     identity: identity,
@@ -123,7 +150,7 @@ defmodule Web.Live.Policies.NewTest do
            }
   end
 
-  test "creates a new policy on valid attrs and redirects", %{
+  test "creates a new policy on valid attrs and redirects to policy page", %{
     account: account,
     identity: identity,
     conn: conn
@@ -149,5 +176,63 @@ defmodule Web.Live.Policies.NewTest do
     policy = Repo.get_by(Domain.Policies.Policy, attrs)
 
     assert assert_redirect(lv, ~p"/#{account}/policies/#{policy}")
+  end
+
+  test "creates a new policy on valid attrs and pre-set resource_id", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    group = Fixtures.Actors.create_group(account: account)
+    resource = Fixtures.Resources.create_resource(account: account)
+
+    attrs =
+      Fixtures.Policies.policy_attrs()
+      |> Map.take([:name])
+      |> Map.put(:actor_group_id, group.id)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/new?resource_id=#{resource}")
+
+    assert lv
+           |> form("form", policy: attrs)
+           |> render_submit()
+
+    policy = Repo.get_by(Domain.Policies.Policy, attrs)
+    assert policy.resource_id == resource.id
+
+    assert assert_redirect(lv, ~p"/#{account}/policies/#{policy}")
+  end
+
+  test "redirects back to site when a new policy is created with pre-set site_id", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    group = Fixtures.Actors.create_group(account: account)
+    resource = Fixtures.Resources.create_resource(account: account)
+
+    gateway_group = Fixtures.Gateways.create_group(account: account)
+
+    attrs =
+      Fixtures.Policies.policy_attrs()
+      |> Map.take([:name])
+      |> Map.put(:actor_group_id, group.id)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/new?site_id=#{gateway_group.id}")
+
+    assert lv
+           |> form("form", policy: attrs)
+           |> render_submit()
+
+    policy = Repo.get_by(Domain.Policies.Policy, attrs)
+    assert policy.resource_id == resource.id
+
+    assert assert_redirect(lv, ~p"/#{account}/sites/#{gateway_group}?#resources")
   end
 end

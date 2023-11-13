@@ -89,4 +89,21 @@ defmodule Domain.Repo do
 
     {:ok, preview}
   end
+
+  @doc """
+  Similar to `peek/2` but only returns count of assocs.
+  """
+  def counts(queryable, ids) do
+    ids = Enum.uniq(ids)
+    preview = Map.new(ids, fn id -> {id, 0} end)
+
+    preview =
+      queryable
+      |> all()
+      |> Enum.reduce(preview, fn %{id: id, count: count}, acc ->
+        Map.put(acc, id, count)
+      end)
+
+    {:ok, preview}
+  end
 end
