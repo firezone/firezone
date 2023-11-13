@@ -158,7 +158,6 @@ where
                 tunnel: Arc::new(tunnel),
                 phoenix_channel: connection.sender_with_topic("client".to_owned()),
                 tunnel_init: Mutex::new(false),
-                fallback_resolver: parking_lot::Mutex::new(None),
             };
 
             tokio::spawn(async move {

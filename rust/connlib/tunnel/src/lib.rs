@@ -41,12 +41,11 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
-use crate::client::Event;
+use crate::client::{Event, InternalEvent};
 use crate::control_protocol::on_peer_connection_state_change_handler;
 use crate::device_channel::Device;
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
-mod bounded_queue;
 mod control_protocol;
 mod device_channel;
 mod dns;
@@ -229,6 +228,22 @@ where
                         key,
                         desc,
                     }));
+                }
+                Poll::Ready(Either::Right(InternalEvent::DnsLookupComplete { query, result })) => {
+                    let response = match dns::build_response_from_resolve_result(query, result) {
+                        Ok(Some(response)) => response,
+                        Ok(None) => continue,
+                        Err(e) => {
+                            tracing::warn!("DNS lookup failed: {e}");
+                            continue;
+                        }
+                    };
+
+                    let Some(ref device) = *self.device.load() else {
+                        continue;
+                    };
+
+                    device.write(response)?;
                 }
                 Poll::Pending => {}
             }

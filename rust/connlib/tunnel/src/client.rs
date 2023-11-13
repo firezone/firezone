@@ -1,4 +1,3 @@
-use crate::bounded_queue::BoundedQueue;
 use crate::control_protocol::new_peer_connection;
 use crate::device_channel::{create_iface, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
@@ -10,17 +9,21 @@ use crate::{
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
-    GatewayId, Interface as InterfaceConfig, Key, Relay, ResourceDescription, ResourceId, SecretKey,
+    DnsServer, GatewayId, Interface as InterfaceConfig, IpDnsServer, Key, Relay,
+    ResourceDescription, ResourceId, SecretKey,
 };
 use connlib_shared::{Callbacks, DNS_SENTINEL};
 use either::Either;
 use futures::channel::{mpsc, oneshot};
 use futures::stream;
-use futures_bounded::{FuturesMap, PushError, StreamMap};
+use futures_bounded::{FuturesMap, FuturesSet, PushError, StreamMap};
 use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
 use futures_util::{FutureExt, StreamExt};
+use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
+use hickory_resolver::error::{ResolveError, ResolveResult};
 use hickory_resolver::lookup::Lookup;
+use hickory_resolver::TokioAsyncResolver;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use rand_core::OsRng;
@@ -78,24 +81,6 @@ where
         Ok(())
     }
 
-    /// Writes the response to a DNS lookup
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn write_dns_lookup_response(
-        &self,
-        response: hickory_resolver::error::ResolveResult<Lookup>,
-        query: IpPacket<'static>,
-    ) -> connlib_shared::Result<()> {
-        if let Some(pkt) = dns::build_response_from_resolve_result(query, response)? {
-            let Some(ref device) = *self.device.load() else {
-                return Ok(());
-            };
-
-            device.write(pkt)?;
-        }
-
-        Ok(())
-    }
-
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
@@ -105,6 +90,8 @@ where
         self.no_device_waker.wake();
 
         self.add_route(DNS_SENTINEL.into()).await?;
+        self.role_state.lock().resolver =
+            create_resolver(config.upstream_dns.clone(), self.callbacks());
 
         self.callbacks.on_tunnel_ready()?;
 
@@ -153,7 +140,7 @@ pub struct State {
     pub gateway_public_keys: HashMap<GatewayId, PublicKey>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
     resources: ResourceTable<ResourceDescription>,
-    dns_queries: BoundedQueue<DnsQuery<'static>>,
+    dns_queries: FuturesSet<(Result<Lookup, ResolveError>, IpPacket<'static>)>,
 
     #[allow(clippy::type_complexity)]
     awaiting_data_channels: FuturesMap<
@@ -177,6 +164,8 @@ pub struct State {
         FuturesUnordered<BoxFuture<'static, Result<(ResourceId, GatewayId), oneshot::Canceled>>>,
 
     queued_events: VecDeque<Event>,
+
+    resolver: Option<TokioAsyncResolver>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -221,7 +210,7 @@ impl State {
         match dns::parse(&self.resources, packet.as_immutable()) {
             Some(dns::ResolveStrategy::LocalResponse(pkt)) => Ok(Some(pkt)),
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
-                self.add_pending_dns_query(query);
+                self.add_dns_query(query);
 
                 Ok(None)
             }
@@ -508,8 +497,21 @@ impl State {
         }
     }
 
-    pub fn add_pending_dns_query(&mut self, query: DnsQuery) {
-        if self.dns_queries.push_back(query.into_owned()).is_err() {
+    pub fn add_dns_query(&mut self, query: DnsQuery) {
+        let query = query.into_owned();
+
+        let Some(resolver) = self.resolver.clone() else {
+            tracing::warn!("No DNS resolver configured");
+            return;
+        };
+
+        let result = self.dns_queries.try_push(async move {
+            let result = resolver.lookup(query.name, query.record_type).await;
+
+            (result, query.query)
+        });
+
+        if result.is_err() {
             tracing::warn!("Too many DNS queries, dropping new ones");
         }
     }
@@ -645,11 +647,21 @@ impl State {
                 Poll::Pending => {}
             }
 
-            return self
-                .dns_queries
-                .poll(cx)
-                .map(Event::DnsQuery)
-                .map(Either::Left);
+            match self.dns_queries.poll_unpin(cx) {
+                Poll::Ready(Ok((result, query))) => {
+                    return Poll::Ready(Either::Right(InternalEvent::DnsLookupComplete {
+                        result,
+                        query,
+                    }))
+                }
+                Poll::Ready(Err(e)) => {
+                    tracing::warn!("DNS lookup timed out: {e}");
+                    continue;
+                }
+                Poll::Pending => {}
+            }
+
+            return Poll::Pending;
         }
     }
 }
@@ -668,11 +680,12 @@ impl Default for State {
             gateway_public_keys: Default::default(),
             resources_gateways: Default::default(),
             resources: Default::default(),
-            dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
+            dns_queries: FuturesSet::new(Duration::from_secs(60), DNS_QUERIES_QUEUE_SIZE),
             awaiting_data_channels: FuturesMap::new(Duration::from_secs(60), 100),
             connection_setup: FuturesMap::new(Duration::from_secs(60), 100),
             failed_connection_listeners: Default::default(),
             queued_events: Default::default(),
+            resolver: None,
         }
     }
 }
@@ -695,6 +708,11 @@ pub(crate) enum InternalEvent {
         config: PeerConfig,
         id: GatewayId,
         channel: Arc<DataChannel>,
+    },
+    DnsLookupComplete {
+        // TODO: Technically we only need the IP header.
+        query: IpPacket<'static>,
+        result: ResolveResult<Lookup>,
     },
 }
 
@@ -719,5 +737,44 @@ pub enum Event {
         gateway: GatewayId,
         resource: ResourceId,
     },
-    DnsQuery(DnsQuery<'static>),
+}
+
+fn create_resolver(
+    upstream_dns: Vec<DnsServer>,
+    callbacks: &impl Callbacks,
+) -> Option<TokioAsyncResolver> {
+    const DNS_PORT: u16 = 53;
+
+    let dns_servers = if upstream_dns.is_empty() {
+        let Ok(Some(dns_servers)) = callbacks.get_system_default_resolvers() else {
+            return None;
+        };
+        if dns_servers.is_empty() {
+            return None;
+        }
+        dns_servers
+            .into_iter()
+            .map(|ip| {
+                DnsServer::IpPort(IpDnsServer {
+                    address: (ip, DNS_PORT).into(),
+                })
+            })
+            .collect()
+    } else {
+        upstream_dns
+    };
+
+    let mut resolver_config = ResolverConfig::new();
+    for srv in dns_servers.iter() {
+        let name_server = match srv {
+            DnsServer::IpPort(srv) => NameServerConfig::new(srv.address, Protocol::Udp),
+        };
+
+        resolver_config.add_name_server(name_server);
+    }
+
+    Some(TokioAsyncResolver::tokio(
+        resolver_config,
+        Default::default(),
+    ))
 }
