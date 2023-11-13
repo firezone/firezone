@@ -171,7 +171,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 .request_connection(resource_id, gateway_id, relays, reference)
                 .await
             {
-                Ok(Request::NewConnection(connection_request)) => {
+                Ok(Some(Request::NewConnection(connection_request))) => {
                     if let Err(err) = control_signaler
                         // TODO: create a reference number and keep track for the response
                         .send_with_ref(
@@ -185,7 +185,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         return;
                     }
                 }
-                Ok(Request::ReuseConnection(connection_request)) => {
+                Ok(Some(Request::ReuseConnection(connection_request))) => {
                     if let Err(err) = control_signaler
                         // TODO: create a reference number and keep track for the response
                         .send_with_ref(
@@ -199,6 +199,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         return;
                     }
                 }
+                Ok(None) => return,
                 Err(err) => err,
             };
 

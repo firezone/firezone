@@ -64,7 +64,7 @@ where
         gateway_id: GatewayId,
         relays: Vec<Relay>,
         reference: usize,
-    ) -> Result<Request> {
+    ) -> Result<Option<Request>> {
         tracing::trace!("request_connection");
 
         if let Some(connection) = self.role_state.lock().attempt_to_reuse_connection(
@@ -73,7 +73,7 @@ where
             reference,
             &mut self.peers_by_ip.write(),
         )? {
-            return Ok(Request::ReuseConnection(connection));
+            return Ok(Some(Request::ReuseConnection(connection)));
         }
 
         let peer_connection = {
@@ -123,12 +123,12 @@ where
             })
         }));
 
-        Ok(Request::NewConnection(RequestConnection {
+        Ok(Some(Request::NewConnection(RequestConnection {
             resource_id,
             gateway_id,
             client_preshared_key: Secret::new(Key(preshared_key.to_bytes())),
             client_rtc_session_description: offer,
-        }))
+        })))
     }
 
     /// Called when a response to [Tunnel::request_connection] is ready.
