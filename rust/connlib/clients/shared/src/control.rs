@@ -158,17 +158,18 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }: ConnectionDetails,
         reference: Option<Reference>,
     ) {
-        let tunnel = Arc::clone(&self.tunnel);
-
         let Some(Ok(reference)) = reference.clone().map(|r| r.parse()) else {
             tracing::warn!("Failed to parse {reference:?} as usize");
             return;
         };
 
-        if let Err(err) = tunnel.request_connection(resource_id, gateway_id, relays, reference) {
-            tunnel.cleanup_connection(resource_id);
+        if let Err(err) = self
+            .tunnel
+            .request_connection(resource_id, gateway_id, relays, reference)
+        {
+            self.tunnel.cleanup_connection(resource_id);
             tracing::error!("Error request connection details: {err}");
-            let _ = tunnel.callbacks().on_error(&err);
+            let _ = self.tunnel.callbacks().on_error(&err);
         }
     }
 
