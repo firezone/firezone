@@ -3,7 +3,7 @@ defmodule Web.Auth do
   alias Domain.{Auth, Accounts}
 
   def signed_in_path(%Auth.Subject{actor: %{type: :account_admin_user}} = subject) do
-    ~p"/#{subject.account.slug || subject.account}/sites"
+    ~p"/#{subject.account}/sites"
   end
 
   def put_subject_in_session(conn, %Auth.Subject{} = subject) do
