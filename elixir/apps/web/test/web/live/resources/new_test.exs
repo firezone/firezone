@@ -242,7 +242,7 @@ defmodule Web.Live.Resources.NewTest do
            }
   end
 
-  test "creates a resource on valid attrs", %{
+  test "creates a resource on valid attrs and no site_id set", %{
     account: account,
     identity: identity,
     conn: conn
@@ -270,10 +270,11 @@ defmodule Web.Live.Resources.NewTest do
     |> render_submit()
 
     resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
+
     assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}")
   end
 
-  test "redirects to a site when site_id query param is set", %{
+  test "creates a resource on valid attrs and site_id set", %{
     account: account,
     identity: identity,
     group: group,
@@ -298,7 +299,9 @@ defmodule Web.Live.Resources.NewTest do
     |> form("form", resource: attrs)
     |> render_submit()
 
-    assert assert_redirect(lv, ~p"/#{account}/sites/#{group}?#resources")
+    resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
+
+    assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}?site_id=#{group.id}")
   end
 
   test "does not render traffic filter form", %{
@@ -342,6 +345,7 @@ defmodule Web.Live.Resources.NewTest do
     resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
     assert %{connections: [connection]} = Repo.preload(resource, :connections)
     assert connection.gateway_group_id == group.id
-    assert assert_redirect(lv, ~p"/#{account}/sites/#{group}?#resources")
+
+    assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}?site_id=#{group.id}")
   end
 end

@@ -6,8 +6,10 @@ defmodule Web.Resources.Show do
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <-
            Resources.fetch_resource_by_id(id, socket.assigns.subject,
-             preload: [:gateway_groups, created_by_identity: [:actor]]
+             preload: [:gateway_groups, :policies, created_by_identity: [:actor]]
            ),
+         {:ok, actor_groups_peek} <-
+           Resources.peek_resource_actor_groups([resource], 3, socket.assigns.subject),
          {:ok, flows} <-
            Flows.list_flows_for(resource, socket.assigns.subject,
              preload: [client: [:actor], gateway: [:group], policy: [:resource, :actor_group]]
@@ -16,9 +18,11 @@ defmodule Web.Resources.Show do
         assign(
           socket,
           resource: resource,
+          actor_groups_peek: Map.fetch!(actor_groups_peek, resource.id),
           flows: flows,
           params: Map.take(params, ["site_id"]),
-          todos_enabled?: Config.todos_enabled?()
+          todos_enabled?: Config.todos_enabled?(),
+          traffic_filters_enabled?: Config.traffic_filters_enabled?()
         )
 
       {:ok, socket}
@@ -64,6 +68,72 @@ defmodule Web.Resources.Show do
               </:value>
             </.vertical_table_row>
             <.vertical_table_row>
+              <:label>
+                Authorized groups
+              </:label>
+              <:value>
+                <.peek peek={@actor_groups_peek}>
+                  <:empty>
+                    <.icon
+                      name="hero-exclamation-triangle"
+                      class="text-red-500 dark:text-red-400 mr-1"
+                    /> None,
+                    <.link
+                      class={link_style() ++ ["px-1"]}
+                      navigate={
+                        if site_id = @params["site_id"] do
+                          ~p"/#{@account}/policies/new?resource_id=#{@resource}&site_id=#{site_id}"
+                        else
+                          ~p"/#{@account}/policies/new?resource_id=#{@resource}"
+                        end
+                      }
+                    >
+                      create a Policy
+                    </.link>
+                    to grant access.
+                  </:empty>
+
+                  <:item :let={group}>
+                    <.link
+                      class={link_style()}
+                      navigate={~p"/#{@account}/groups/#{group.id}?#{@params}"}
+                    >
+                      <.badge>
+                        <%= group.name %>
+                      </.badge>
+                    </.link>
+                  </:item>
+
+                  <:tail :let={count}>
+                    <span class="inline-block whitespace-nowrap">
+                      and <%= count %> more.
+                    </span>
+                  </:tail>
+
+                  <:call_to_action>
+                    <.link
+                      class={[
+                        "text-gray-600",
+                        "dark:text-gray-500",
+                        "hover:underline",
+                        "dark:hover:underline",
+                        "relative"
+                      ]}
+                      navigate={
+                        if site_id = @params["site_id"] do
+                          ~p"/#{@account}/policies/new?resource_id=#{@resource}&site_id=#{site_id}"
+                        else
+                          ~p"/#{@account}/policies/new?resource_id=#{@resource}"
+                        end
+                      }
+                    >
+                      <.icon name="hero-plus w-3 h-3 absolute bottom-1" />
+                    </.link>
+                  </:call_to_action>
+                </.peek>
+              </:value>
+            </.vertical_table_row>
+            <.vertical_table_row :if={@traffic_filters_enabled?}>
               <:label>
                 Traffic Filtering Rules
               </:label>

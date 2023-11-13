@@ -1,6 +1,6 @@
 defmodule Web.Sites.Show do
   use Web, :live_view
-  alias Domain.Gateways
+  alias Domain.{Gateways, Resources}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
@@ -10,14 +10,17 @@ defmodule Web.Sites.Show do
                connections: [:resource],
                created_by_identity: [:actor]
              ]
-           ) do
+           ),
+         resources = Enum.map(group.connections, & &1.resource),
+         {:ok, resource_actor_groups_peek} <-
+           Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
       group = %{
         group
         | gateways: Enum.sort_by(group.gateways, &{&1.online?, &1.name_suffix}, :desc)
       }
 
       :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
-      {:ok, assign(socket, group: group)}
+      {:ok, assign(socket, group: group, resource_actor_groups_peek: resource_actor_groups_peek)}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -141,6 +144,37 @@ defmodule Web.Sites.Show do
             </:col>
             <:col :let={resource} label="ADDRESS">
               <%= resource.address %>
+            </:col>
+            <:col :let={resource} label="Authorized groups">
+              <.peek peek={Map.fetch!(@resource_actor_groups_peek, resource.id)}>
+                <:empty>
+                  None,
+                  <.link
+                    class={link_style() ++ ["px-1"]}
+                    navigate={~p"/#{@account}/policies/new?resource_id=#{resource}&site_id=#{@group}"}
+                  >
+                    create a Policy
+                  </.link>
+                  to grant access.
+                </:empty>
+
+                <:item :let={group}>
+                  <.link
+                    class={link_style()}
+                    navigate={~p"/#{@account}/groups/#{group.id}?site_id=#{@group}"}
+                  >
+                    <.badge>
+                      <%= group.name %>
+                    </.badge>
+                  </.link>
+                </:item>
+
+                <:tail :let={count}>
+                  <span class="inline-block whitespace-nowrap">
+                    and <%= count %> more.
+                  </span>
+                </:tail>
+              </.peek>
             </:col>
             <:empty>
               <div class="flex flex-col items-center justify-center text-center text-slate-500 p-4">
