@@ -44,7 +44,6 @@ use webrtc::{
 use crate::client::Event;
 use crate::control_protocol::on_peer_connection_state_change_handler;
 use crate::device_channel::Device;
-pub use control_protocol::Request;
 pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 mod bounded_queue;

@@ -2,10 +2,7 @@ use futures::channel::mpsc;
 use futures_util::SinkExt;
 use std::sync::Arc;
 
-use connlib_shared::{
-    messages::{Relay, ReuseConnection},
-    Callbacks, Error, Result,
-};
+use connlib_shared::{messages::Relay, Callbacks, Error, Result};
 use webrtc::api::API;
 use webrtc::peer_connection::OnPeerConnectionStateChangeHdlrFn;
 use webrtc::{
@@ -28,12 +25,6 @@ const ICE_CANDIDATE_BUFFER: usize = 100;
 // We should use not more than 1-2 relays (WebRTC in Firefox breaks at 5) due to combinatoric
 // complexity of checking all the ICE candidate pairs
 const MAX_RELAYS: usize = 2;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(clippy::large_enum_variant)]
-pub enum Request {
-    ReuseConnection(ReuseConnection),
-}
 
 impl<CB, TRoleState> Tunnel<CB, TRoleState>
 where

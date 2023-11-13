@@ -1,5 +1,5 @@
 use async_compression::tokio::bufread::GzipEncoder;
-use connlib_shared::messages::{DnsServer, IpDnsServer, RequestConnection};
+use connlib_shared::messages::{DnsServer, IpDnsServer, RequestConnection, ReuseConnection};
 use std::path::PathBuf;
 use std::{io, sync::Arc};
 
@@ -15,7 +15,7 @@ use connlib_shared::{
     Result,
 };
 
-use firezone_tunnel::{client, Request, Tunnel};
+use firezone_tunnel::{client, Tunnel};
 use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
@@ -159,40 +159,17 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         reference: Option<Reference>,
     ) {
         let tunnel = Arc::clone(&self.tunnel);
-        let mut control_signaler = self.phoenix_channel.clone();
 
         let Some(Ok(reference)) = reference.clone().map(|r| r.parse()) else {
             tracing::warn!("Failed to parse {reference:?} as usize");
             return;
         };
 
-        tokio::spawn(async move {
-            let err = match tunnel
-                .request_connection(resource_id, gateway_id, relays, reference)
-                .await
-            {
-                Ok(Some(Request::ReuseConnection(connection_request))) => {
-                    if let Err(err) = control_signaler
-                        // TODO: create a reference number and keep track for the response
-                        .send_with_ref(
-                            EgressMessages::ReuseConnection(connection_request),
-                            resource_id,
-                        )
-                        .await
-                    {
-                        err
-                    } else {
-                        return;
-                    }
-                }
-                Ok(None) => return,
-                Err(err) => err,
-            };
-
+        if let Err(err) = tunnel.request_connection(resource_id, gateway_id, relays, reference) {
             tunnel.cleanup_connection(resource_id);
             tracing::error!("Error request connection details: {err}");
             let _ = tunnel.callbacks().on_error(&err);
-        });
+        }
     }
 
     async fn add_ice_candidate(
@@ -363,6 +340,24 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     )
                     .await
                 {
+                    self.tunnel.cleanup_connection(resource);
+                    tracing::error!("Failed to request connection: {err}");
+                }
+            }
+            Ok(client::Event::ReuseConnection { gateway, resource }) => {
+                if let Err(err) = self
+                    .phoenix_channel
+                    // TODO: create a reference number and keep track for the response
+                    .send_with_ref(
+                        EgressMessages::ReuseConnection(ReuseConnection {
+                            resource_id: resource,
+                            gateway_id: gateway,
+                        }),
+                        resource,
+                    )
+                    .await
+                {
+                    self.tunnel.cleanup_connection(resource);
                     tracing::error!("Failed to request connection: {err}");
                 }
             }

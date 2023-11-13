@@ -10,8 +10,7 @@ use crate::{
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
-    GatewayId, Interface as InterfaceConfig, Key, Relay, ResourceDescription, ResourceId,
-    ReuseConnection, SecretKey,
+    GatewayId, Interface as InterfaceConfig, Key, Relay, ResourceDescription, ResourceId, SecretKey,
 };
 use connlib_shared::{Callbacks, DNS_SENTINEL};
 use either::Either;
@@ -27,7 +26,7 @@ use ip_network_table::IpNetworkTable;
 use rand_core::OsRng;
 use secrecy::Secret;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -176,6 +175,8 @@ pub struct State {
     >,
     failed_connection_listeners:
         FuturesUnordered<BoxFuture<'static, Result<(ResourceId, GatewayId), oneshot::Canceled>>>,
+
+    queued_events: VecDeque<Event>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -295,13 +296,15 @@ impl State {
             .push(failed_receiver.boxed());
     }
 
-    pub(crate) fn attempt_to_reuse_connection(
+    pub(crate) fn request_connection(
         &mut self,
         resource: ResourceId,
         gateway: GatewayId,
         expected_attempts: usize,
+        relays: Vec<Relay>,
+        webrtc: Arc<webrtc::api::API>,
         connected_peers: &mut IpNetworkTable<ConnectedPeer<GatewayId>>,
-    ) -> Result<Option<ReuseConnection>, ConnlibError> {
+    ) -> Result<(), ConnlibError> {
         if self.is_connected_to(resource, connected_peers) {
             return Err(Error::UnexpectedConnectionDetails);
         }
@@ -336,7 +339,9 @@ impl State {
                 channel: p.channel.clone(),
             })
         }) else {
-            return Ok(None);
+            self.new_peer_connection(webrtc, relays, resource, gateway);
+
+            return Ok(());
         };
 
         for ip in desc.ips() {
@@ -352,10 +357,10 @@ impl State {
         self.awaiting_connection.remove(&resource);
         self.awaiting_connection_timers.remove(resource);
 
-        Ok(Some(ReuseConnection {
-            resource_id: resource,
-            gateway_id: gateway,
-        }))
+        self.queued_events
+            .push_back(Event::ReuseConnection { gateway, resource });
+
+        Ok(())
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -514,6 +519,10 @@ impl State {
         cx: &mut Context<'_>,
     ) -> Poll<Either<Event, InternalEvent>> {
         loop {
+            if let Some(event) = self.queued_events.pop_front() {
+                return Poll::Ready(Either::Left(event));
+            }
+
             match self.awaiting_data_channels.poll_unpin(cx) {
                 Poll::Ready(((resource_id, gateway_id), Ok(Ok((channel, p_key))))) => {
                     let peer_config = match self.create_peer_config_for_new_connection(
@@ -663,6 +672,7 @@ impl Default for State {
             awaiting_data_channels: FuturesMap::new(Duration::from_secs(60), 100),
             connection_setup: FuturesMap::new(Duration::from_secs(60), 100),
             failed_connection_listeners: Default::default(),
+            queued_events: Default::default(),
         }
     }
 }
@@ -704,6 +714,10 @@ pub enum Event {
         resource: ResourceId,
         key: SecretKey,
         desc: RTCSessionDescription,
+    },
+    ReuseConnection {
+        gateway: GatewayId,
+        resource: ResourceId,
     },
     DnsQuery(DnsQuery<'static>),
 }

@@ -5,7 +5,7 @@ use connlib_shared::{
 };
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
-use crate::{client, Error, Request, Result, Tunnel};
+use crate::{client, Error, Result, Tunnel};
 
 impl<CB> Tunnel<CB, client::State>
 where
@@ -13,29 +13,25 @@ where
 {
     /// Initiate an ice connection request.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn request_connection(
+    pub fn request_connection(
         &self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
         relays: Vec<Relay>,
         reference: usize,
-    ) -> Result<Option<Request>> {
+    ) -> Result<()> {
         tracing::trace!("request_connection");
 
-        let mut role_state = self.role_state.lock();
-
-        if let Some(connection) = role_state.attempt_to_reuse_connection(
+        self.role_state.lock().request_connection(
             resource_id,
             gateway_id,
             reference,
+            relays,
+            self.webrtc_api.clone(),
             &mut self.peers_by_ip.write(),
-        )? {
-            return Ok(Some(Request::ReuseConnection(connection)));
-        }
+        )?;
 
-        role_state.new_peer_connection(self.webrtc_api.clone(), relays, resource_id, gateway_id);
-
-        Ok(None)
+        Ok(())
     }
 
     /// Called when a response to [Tunnel::request_connection] is ready.
