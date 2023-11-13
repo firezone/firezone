@@ -1,4 +1,5 @@
 use crate::bounded_queue::BoundedQueue;
+use crate::control_protocol::new_peer_connection;
 use crate::device_channel::{create_iface, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::resource_table::ResourceTable;
@@ -9,27 +10,36 @@ use crate::{
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
-    GatewayId, Interface as InterfaceConfig, Key, ResourceDescription, ResourceId, ReuseConnection,
-    SecretKey,
+    GatewayId, Interface as InterfaceConfig, Key, Relay, ResourceDescription, ResourceId,
+    ReuseConnection, SecretKey,
 };
 use connlib_shared::{Callbacks, DNS_SENTINEL};
 use either::Either;
-use futures::channel::mpsc::Receiver;
-use futures::channel::oneshot;
+use futures::channel::{mpsc, oneshot};
 use futures::stream;
 use futures_bounded::{FuturesMap, PushError, StreamMap};
+use futures_util::future::BoxFuture;
+use futures_util::stream::FuturesUnordered;
+use futures_util::{FutureExt, StreamExt};
 use hickory_resolver::lookup::Lookup;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
+use rand_core::OsRng;
+use secrecy::Secret;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::io;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::Instant;
 use webrtc::data::data_channel::DataChannel;
+use webrtc::data_channel::data_channel_init::RTCDataChannelInit;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
+use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
+use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
+use webrtc::peer_connection::RTCPeerConnection;
 
 impl<CB> Tunnel<CB, State>
 where
@@ -133,7 +143,7 @@ where
 pub struct State {
     active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidateInit>,
     /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
-    waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidateInit>>,
+    waiting_for_sdp_from_gatway: HashMap<GatewayId, mpsc::Receiver<RTCIceCandidateInit>>,
 
     // TODO: Make private
     pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
@@ -151,6 +161,21 @@ pub struct State {
         (ResourceId, GatewayId),
         Result<(Arc<DataChannel>, StaticSecret), oneshot::Canceled>,
     >,
+    #[allow(clippy::type_complexity)]
+    connection_setup: FuturesMap<
+        (ResourceId, GatewayId),
+        Result<
+            (
+                Arc<RTCPeerConnection>,
+                mpsc::Receiver<RTCIceCandidateInit>,
+                SecretKey,
+                RTCSessionDescription,
+            ),
+            ConnlibError,
+        >,
+    >,
+    failed_connection_listeners:
+        FuturesUnordered<BoxFuture<'static, Result<(ResourceId, GatewayId), oneshot::Canceled>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -201,6 +226,73 @@ impl State {
             }
             None => Err(packet),
         }
+    }
+
+    pub(crate) fn new_peer_connection(
+        &mut self,
+        webrtc_api: Arc<webrtc::api::API>,
+        relays: Vec<Relay>,
+        resource_id: ResourceId,
+        gateway_id: GatewayId,
+    ) {
+        let (failed_sender, failed_receiver) = oneshot::channel();
+        let preshared_key = StaticSecret::random_from_rng(OsRng);
+
+        let data_channel_sender =
+            self.register_new_data_channel(resource_id, gateway_id, preshared_key.clone());
+
+        // TODO: Error handling.
+        let _ = self.connection_setup.try_push((resource_id, gateway_id), async move {
+            let (peer_connection, ice_candidate_receiver) =
+                new_peer_connection(&webrtc_api, relays).await?;
+
+            peer_connection.on_peer_connection_state_change({
+                let mut sender = Some(failed_sender); // We only need the sender once, hence use a `oneshot`.
+
+                Box::new(move |state| {
+                    let sender = sender.take();
+                    Box::pin(async move {
+                        tracing::trace!("peer_state");
+                        if state == RTCPeerConnectionState::Failed {
+                            if let Some(sender) = sender {
+                                let _ = sender.send((resource_id, gateway_id));
+                            }
+                        }
+                    })
+                })
+            });
+
+            let data_channel = peer_connection
+                .create_data_channel(
+                    "data",
+                    Some(RTCDataChannelInit {
+                        ordered: Some(false),
+                        max_retransmits: Some(0),
+                        ..Default::default()
+                    }),
+                )
+                .await?;
+            let offer = peer_connection.create_offer(None).await?;
+            peer_connection.set_local_description(offer.clone()).await?;
+
+            let d = Arc::clone(&data_channel);
+
+            data_channel.on_open(Box::new(move || {
+                Box::pin(async move {
+                    tracing::trace!("new_data_channel_opened");
+
+                    let d = d.detach().await.expect(
+                        "only fails if not opened or not enabled, both of which are always true for us",
+                    );
+                    let _ = data_channel_sender.send(d); // Ignore error if receiver is gone.
+                })
+            }));
+
+            Ok((peer_connection, ice_candidate_receiver, Secret::new(Key(preshared_key.to_bytes())), offer))
+        });
+
+        self.failed_connection_listeners
+            .push(failed_receiver.boxed());
     }
 
     pub(crate) fn attempt_to_reuse_connection(
@@ -359,7 +451,7 @@ impl State {
     pub fn add_waiting_ice_receiver(
         &mut self,
         id: GatewayId,
-        receiver: Receiver<RTCIceCandidateInit>,
+        receiver: mpsc::Receiver<RTCIceCandidateInit>,
     ) {
         self.waiting_for_sdp_from_gatway.insert(id, receiver);
     }
@@ -506,6 +598,44 @@ impl State {
                 Poll::Pending => {}
             }
 
+            match self.failed_connection_listeners.poll_next_unpin(cx) {
+                Poll::Ready(Some(Ok((resource, gateway)))) => {
+                    self.on_connection_failed(resource);
+                    return Poll::Ready(Either::Right(InternalEvent::ConnectionFailed(
+                        gateway,
+                        ConnlibError::Other("Failed to set up connection"),
+                    )));
+                }
+                Poll::Ready(Some(Err(_))) => {
+                    // Connection got de-allocated before it failed, nothing to do ...
+                    continue;
+                }
+                Poll::Ready(None) | Poll::Pending => {}
+            }
+
+            match self.connection_setup.poll_unpin(cx) {
+                Poll::Ready(((resource, gateway), Ok(Ok((conn, ice_receiver, key, desc))))) => {
+                    self.add_waiting_ice_receiver(gateway, ice_receiver);
+                    return Poll::Ready(Either::Right(InternalEvent::ConnectionConfigured {
+                        gateway,
+                        resource,
+                        key,
+                        desc,
+                        conn,
+                    }));
+                }
+                Poll::Ready(((_, gateway), Ok(Err(e)))) => {
+                    return Poll::Ready(Either::Right(InternalEvent::ConnectionFailed(gateway, e)));
+                }
+                Poll::Ready(((_, gateway), Err(_))) => {
+                    return Poll::Ready(Either::Right(InternalEvent::ConnectionFailed(
+                        gateway,
+                        ConnlibError::Io(io::ErrorKind::TimedOut.into()),
+                    )));
+                }
+                Poll::Pending => {}
+            }
+
             return self
                 .dns_queries
                 .poll(cx)
@@ -531,6 +661,8 @@ impl Default for State {
             resources: Default::default(),
             dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
             awaiting_data_channels: FuturesMap::new(Duration::from_secs(60), 100),
+            connection_setup: FuturesMap::new(Duration::from_secs(60), 100),
+            failed_connection_listeners: Default::default(),
         }
     }
 }
@@ -539,8 +671,16 @@ impl RoleState for State {
     type Id = GatewayId;
 }
 
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum InternalEvent {
     ConnectionFailed(GatewayId, ConnlibError),
+    ConnectionConfigured {
+        gateway: GatewayId,
+        resource: ResourceId,
+        key: SecretKey,
+        desc: RTCSessionDescription,
+        conn: Arc<RTCPeerConnection>,
+    },
     NewPeer {
         config: PeerConfig,
         id: GatewayId,
@@ -548,6 +688,7 @@ pub(crate) enum InternalEvent {
     },
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum Event {
     SignalIceCandidate {
         conn_id: GatewayId,
@@ -557,6 +698,12 @@ pub enum Event {
         resource: ResourceDescription,
         connected_gateway_ids: HashSet<GatewayId>,
         reference: usize,
+    },
+    NewConnection {
+        gateway: GatewayId,
+        resource: ResourceId,
+        key: SecretKey,
+        desc: RTCSessionDescription,
     },
     DnsQuery(DnsQuery<'static>),
 }

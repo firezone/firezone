@@ -41,6 +41,7 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
+use crate::client::Event;
 use crate::control_protocol::on_peer_connection_state_change_handler;
 use crate::device_channel::Device;
 pub use control_protocol::Request;
@@ -214,6 +215,21 @@ where
                     tracing::warn!(%gateway, "Connection failed: {error}");
                     self.peers_to_stop.lock().push_back(gateway);
                     continue;
+                }
+                Poll::Ready(Either::Right(client::InternalEvent::ConnectionConfigured {
+                    gateway,
+                    conn,
+                    resource,
+                    key,
+                    desc,
+                })) => {
+                    self.peer_connections.lock().insert(gateway, conn);
+                    return Poll::Ready(Ok(Event::NewConnection {
+                        gateway,
+                        resource,
+                        key,
+                        desc,
+                    }));
                 }
                 Poll::Pending => {}
             }

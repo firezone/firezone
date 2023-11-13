@@ -1,5 +1,5 @@
 use async_compression::tokio::bufread::GzipEncoder;
-use connlib_shared::messages::{DnsServer, IpDnsServer};
+use connlib_shared::messages::{DnsServer, IpDnsServer, RequestConnection};
 use std::path::PathBuf;
 use std::{io, sync::Arc};
 
@@ -356,6 +356,29 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             }
             Err(e) => {
                 tracing::error!("Tunnel failed: {e}");
+            }
+            Ok(client::Event::NewConnection {
+                gateway,
+                resource,
+                key,
+                desc,
+            }) => {
+                if let Err(err) = self
+                    .phoenix_channel
+                    // TODO: create a reference number and keep track for the response
+                    .send_with_ref(
+                        EgressMessages::RequestConnection(RequestConnection {
+                            gateway_id: gateway,
+                            resource_id: resource,
+                            client_preshared_key: key,
+                            client_rtc_session_description: desc,
+                        }),
+                        resource,
+                    )
+                    .await
+                {
+                    tracing::error!("Failed to request connection: {err}");
+                }
             }
         }
     }

@@ -1,62 +1,19 @@
 use std::sync::Arc;
 
-use boringtun::x25519::{PublicKey, StaticSecret};
+use boringtun::x25519::PublicKey;
 use connlib_shared::{
-    messages::{GatewayId, Key, Relay, RequestConnection, ResourceId},
+    messages::{GatewayId, Relay, ResourceId},
     Callbacks,
 };
-use rand_core::OsRng;
-use secrecy::Secret;
-use webrtc::{
-    data_channel::data_channel_init::RTCDataChannelInit,
-    peer_connection::{
-        peer_connection_state::RTCPeerConnectionState,
-        sdp::session_description::RTCSessionDescription, RTCPeerConnection,
-    },
-};
+use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
-use crate::control_protocol::new_peer_connection;
 use crate::{client, Error, Request, Result, Tunnel};
-
-#[tracing::instrument(level = "trace", skip(tunnel))]
-fn set_connection_state_update<CB>(
-    tunnel: &Arc<Tunnel<CB, client::State>>,
-    peer_connection: &Arc<RTCPeerConnection>,
-    gateway_id: GatewayId,
-    resource_id: ResourceId,
-) where
-    CB: Callbacks + 'static,
-{
-    let tunnel = Arc::clone(tunnel);
-    peer_connection.on_peer_connection_state_change(Box::new(
-        move |state: RTCPeerConnectionState| {
-            let tunnel = Arc::clone(&tunnel);
-            Box::pin(async move {
-                tracing::trace!("peer_state");
-                if state == RTCPeerConnectionState::Failed {
-                    tunnel.role_state.lock().on_connection_failed(resource_id);
-                    tunnel.peer_connections.lock().remove(&gateway_id);
-                }
-            })
-        },
-    ));
-}
 
 impl<CB> Tunnel<CB, client::State>
 where
     CB: Callbacks + 'static,
 {
     /// Initiate an ice connection request.
-    ///
-    /// Given a resource id and a list of relay creates a [RequestConnection]
-    /// and prepares the tunnel to handle the connection once initiated.
-    ///
-    /// # Parameters
-    /// - `resource_id`: Id of the resource we are going to request the connection to.
-    /// - `relays`: The list of relays used for that connection.
-    ///
-    /// # Returns
-    /// A [RequestConnection] that should be sent to the gateway through the control-plane.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn request_connection(
         self: &Arc<Self>,
@@ -67,7 +24,9 @@ where
     ) -> Result<Option<Request>> {
         tracing::trace!("request_connection");
 
-        if let Some(connection) = self.role_state.lock().attempt_to_reuse_connection(
+        let mut role_state = self.role_state.lock();
+
+        if let Some(connection) = role_state.attempt_to_reuse_connection(
             resource_id,
             gateway_id,
             reference,
@@ -76,59 +35,9 @@ where
             return Ok(Some(Request::ReuseConnection(connection)));
         }
 
-        let peer_connection = {
-            let (peer_connection, receiver) = new_peer_connection(&self.webrtc_api, relays).await?;
-            self.role_state
-                .lock()
-                .add_waiting_ice_receiver(gateway_id, receiver);
-            let peer_connection = Arc::new(peer_connection);
-            let mut peer_connections = self.peer_connections.lock();
-            peer_connections.insert(gateway_id, Arc::clone(&peer_connection));
-            peer_connection
-        };
+        role_state.new_peer_connection(self.webrtc_api.clone(), relays, resource_id, gateway_id);
 
-        set_connection_state_update(self, &peer_connection, gateway_id, resource_id);
-
-        let data_channel = peer_connection
-            .create_data_channel(
-                "data",
-                Some(RTCDataChannelInit {
-                    ordered: Some(false),
-                    max_retransmits: Some(0),
-                    ..Default::default()
-                }),
-            )
-            .await?;
-        let offer = peer_connection.create_offer(None).await?;
-        peer_connection.set_local_description(offer.clone()).await?;
-
-        let preshared_key = StaticSecret::random_from_rng(OsRng);
-        let p_key = preshared_key.clone();
-
-        let sender =
-            self.role_state
-                .lock()
-                .register_new_data_channel(resource_id, gateway_id, p_key);
-
-        let d = Arc::clone(&data_channel);
-
-        data_channel.on_open(Box::new(move || {
-            Box::pin(async move {
-                tracing::trace!("new_data_channel_opened");
-
-                let d = d.detach().await.expect(
-                    "only fails if not opened or not enabled, both of which are always true for us",
-                );
-                let _ = sender.send(d); // Ignore error if receiver is gone.
-            })
-        }));
-
-        Ok(Some(Request::NewConnection(RequestConnection {
-            resource_id,
-            gateway_id,
-            client_preshared_key: Secret::new(Key(preshared_key.to_bytes())),
-            client_rtc_session_description: offer,
-        })))
+        Ok(None)
     }
 
     /// Called when a response to [Tunnel::request_connection] is ready.
