@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use boringtun::x25519::PublicKey;
 use connlib_shared::{
     messages::{GatewayId, Relay, ResourceId},
@@ -16,7 +14,7 @@ where
     /// Initiate an ice connection request.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn request_connection(
-        self: &Arc<Self>,
+        &self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
         relays: Vec<Relay>,
