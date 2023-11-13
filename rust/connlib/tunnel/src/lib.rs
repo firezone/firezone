@@ -767,10 +767,7 @@ fn mtu_refresh_interval() -> Interval {
     interval
 }
 
-/// Dedicated trait for abstracting over the different ICE states.
-///
-/// By design, this trait does not allow any operations apart from advancing via [`RoleState::poll_next_event`].
-/// The state should only be modified when the concrete type is known, e.g. [`State`] or [`State`].
+/// Dedicated trait for abstracting over the different role states.
 pub trait RoleState: Default + Send + 'static {
     type Id: fmt::Debug + fmt::Display + Eq + Hash + Copy + Unpin + Send + Sync + 'static;
 }
