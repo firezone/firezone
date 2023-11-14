@@ -591,6 +591,10 @@ defmodule Web.CoreComponents do
   slot :separator, required: false, doc: "the slot for the separator"
   slot :tail, required: true, doc: "the slots to render to show the remaining count"
 
+  slot :call_to_action,
+    required: false,
+    doc: "the slot to render to show the call to action after the peek"
+
   def peek(assigns) do
     ~H"""
     <div class="flex flex-wrap gap-y-2">
@@ -609,6 +613,8 @@ defmodule Web.CoreComponents do
         <%= if @peek.count > length(@peek.items) do %>
           <%= render_slot(@tail, @peek.count - length(@peek.items)) %>
         <% end %>
+
+        <%= render_slot(@call_to_action) %>
       <% end %>
     </div>
     """

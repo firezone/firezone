@@ -61,6 +61,7 @@ defmodule Domain.Actors do
 
       Group.Query.by_id({:in, ids})
       |> Group.Query.preload_few_actors_for_each_group(limit)
+      |> Authorizer.for_subject(subject)
       |> Repo.peek(groups)
     end
   end
@@ -71,6 +72,7 @@ defmodule Domain.Actors do
 
       Actor.Query.by_id({:in, ids})
       |> Actor.Query.preload_few_groups_for_each_actor(limit)
+      |> Authorizer.for_subject(subject)
       |> Repo.peek(actors)
     end
   end

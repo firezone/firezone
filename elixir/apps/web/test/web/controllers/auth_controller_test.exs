@@ -377,7 +377,7 @@ defmodule Web.AuthControllerTest do
                "info" => "Please use a client application to access Firezone."
              }
 
-      assert redirected_to(conn) == ~p"/#{account.id}"
+      assert redirected_to(conn) == ~p"/#{account}"
       assert is_nil(get_session(conn, :user_return_to))
     end
 
@@ -442,7 +442,7 @@ defmodule Web.AuthControllerTest do
         assert email.subject == "Firezone Sign In Link"
 
         verify_sign_in_token_path =
-          ~p"/#{account.id}/sign_in/providers/#{provider.id}/verify_sign_in_token"
+          ~p"/#{account}/sign_in/providers/#{provider.id}/verify_sign_in_token"
 
         assert email.text_body =~ "#{verify_sign_in_token_path}"
         assert email.text_body =~ "identity_id=#{identity.id}"
