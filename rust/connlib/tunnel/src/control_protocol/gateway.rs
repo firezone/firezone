@@ -45,7 +45,6 @@ where
             ice_transport: ice,
             ice_candidate_rx,
         } = new_ice_connection(&self.webrtc_api, relays).await?;
-        self.role_state.lock().candidate_receivers.remove(client_id);
         self.role_state
             .lock()
             .add_new_ice_receiver(client_id, ice_candidate_rx);
