@@ -54,7 +54,7 @@ locals {
       value = "$(hostname)"
     },
     {
-      name  = "FIREZONE_HOSTNAME"
+      name  = "FIREZONE_NAME"
       value = "$(hostname)"
     },
     {
