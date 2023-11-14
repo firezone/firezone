@@ -1,4 +1,4 @@
-defmodule Web.Auth.SignInTest do
+defmodule Web.SignInTest do
   use Web.ConnCase, async: true
 
   test "renders active providers on the page", %{conn: conn} do

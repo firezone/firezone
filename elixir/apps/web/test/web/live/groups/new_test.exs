@@ -118,14 +118,13 @@ defmodule Web.Live.Groups.NewTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/groups/new")
 
-    result =
-      lv
-      |> form("form", group: attrs)
-      |> render_submit()
+    lv
+    |> form("form", group: attrs)
+    |> render_submit()
 
     assert group = Repo.get_by(Domain.Actors.Group, name: attrs.name)
 
-    assert result == {:error, {:redirect, %{to: ~p"/#{account}/groups/#{group}/edit_actors"}}}
+    assert_redirected(lv, ~p"/#{account}/groups/#{group}/edit_actors")
 
     assert group.name == attrs.name
     refute group.provider_id

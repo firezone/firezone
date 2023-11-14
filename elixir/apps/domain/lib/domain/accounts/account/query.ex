@@ -6,7 +6,13 @@ defmodule Domain.Accounts.Account.Query do
     # |> where([account: account], is_nil(account.deleted_at))
   end
 
-  def by_id(queryable \\ all(), id) do
+  def by_id(queryable \\ all(), id)
+
+  def by_id(queryable, {:in, ids}) do
+    where(queryable, [account: account], account.id in ^ids)
+  end
+
+  def by_id(queryable, id) do
     where(queryable, [account: account], account.id == ^id)
   end
 

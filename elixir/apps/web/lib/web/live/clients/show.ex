@@ -124,7 +124,7 @@ defmodule Web.Clients.Show do
               navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
               class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
             >
-              <%= flow.gateway.group.name_prefix %>-<%= flow.gateway.name_suffix %>
+              <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
@@ -162,6 +162,6 @@ defmodule Web.Clients.Show do
 
   def handle_event("delete", _params, socket) do
     {:ok, _client} = Clients.delete_client(socket.assigns.client, socket.assigns.subject)
-    {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/clients")}
+    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/clients")}
   end
 end

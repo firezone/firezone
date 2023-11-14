@@ -154,10 +154,11 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/openid_connect/#{provider}")
 
-    assert lv
-           |> element("button", "Delete Identity Provider")
-           |> render_click() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/settings/identity_providers"}}}
+    lv
+    |> element("button", "Delete Identity Provider")
+    |> render_click()
+
+    assert_redirected(lv, ~p"/#{account}/settings/identity_providers")
 
     assert Repo.get(Domain.Auth.Provider, provider.id).deleted_at
   end

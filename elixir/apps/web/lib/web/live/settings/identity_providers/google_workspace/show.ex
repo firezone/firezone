@@ -112,7 +112,9 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
 
   def handle_event("delete", _params, socket) do
     {:ok, _provider} = Auth.delete_provider(socket.assigns.provider, socket.assigns.subject)
-    {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/settings/identity_providers")}
+
+    {:noreply,
+     push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/identity_providers")}
   end
 
   def handle_event("enable", _params, socket) do

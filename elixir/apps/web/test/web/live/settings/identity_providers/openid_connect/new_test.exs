@@ -88,16 +88,13 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.NewTest do
         }
       )
 
-    result = render_submit(form)
+    render_submit(form)
     assert provider = Repo.get_by(Domain.Auth.Provider, name: provider_attrs.name)
 
-    assert result ==
-             {:error,
-              {:redirect,
-               %{
-                 to:
-                   ~p"/#{account.id}/settings/identity_providers/openid_connect/#{provider}/redirect"
-               }}}
+    assert_redirected(
+      lv,
+      ~p"/#{account.id}/settings/identity_providers/openid_connect/#{provider}/redirect"
+    )
 
     assert provider.name == provider_attrs.name
     assert provider.adapter == :openid_connect

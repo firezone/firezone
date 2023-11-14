@@ -57,7 +57,7 @@ defmodule Web.Resources.Index do
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
                 <.badge type="info">
-                  <%= gateway_group.name_prefix %>
+                  <%= gateway_group.name %>
                 </.badge>
               </.link>
             </:col>

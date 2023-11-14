@@ -75,7 +75,7 @@ defmodule Web.Actors.Edit do
     attrs = map_actor_form_memberships_attr(attrs)
 
     with {:ok, actor} <- Actors.update_actor(socket.assigns.actor, attrs, socket.assigns.subject) do
-      socket = redirect(socket, to: ~p"/#{socket.assigns.account}/actors/#{actor}")
+      socket = push_navigate(socket, to: ~p"/#{socket.assigns.account}/actors/#{actor}")
       {:noreply, socket}
     else
       {:error, :unauthorized} ->

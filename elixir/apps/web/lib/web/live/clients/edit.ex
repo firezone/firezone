@@ -57,7 +57,7 @@ defmodule Web.Clients.Edit do
   def handle_event("submit", %{"client" => attrs}, socket) do
     with {:ok, client} <-
            Clients.update_client(socket.assigns.client, attrs, socket.assigns.subject) do
-      socket = redirect(socket, to: ~p"/#{socket.assigns.account}/clients/#{client}")
+      socket = push_navigate(socket, to: ~p"/#{socket.assigns.account}/clients/#{client}")
       {:noreply, socket}
     else
       {:error, changeset} ->

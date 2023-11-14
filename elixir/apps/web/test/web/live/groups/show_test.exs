@@ -275,10 +275,11 @@ defmodule Web.Live.Groups.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/groups/#{group}")
 
-    assert lv
-           |> element("button", "Delete Group")
-           |> render_click() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/groups"}}}
+    lv
+    |> element("button", "Delete Group")
+    |> render_click()
+
+    assert_redirected(lv, ~p"/#{account}/groups")
 
     assert Repo.get(Domain.Actors.Group, group.id).deleted_at
   end

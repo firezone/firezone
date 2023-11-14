@@ -54,7 +54,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Edit do
     with {:ok, provider} <-
            Auth.update_provider(socket.assigns.provider, attrs, socket.assigns.subject) do
       socket =
-        redirect(socket,
+        push_navigate(socket,
           to:
             ~p"/#{socket.assigns.account.id}/settings/identity_providers/google_workspace/#{provider}/redirect"
         )

@@ -121,7 +121,7 @@ defmodule Domain.GatewaysTest do
   describe "new_group/0" do
     test "returns group changeset" do
       assert %Ecto.Changeset{data: %Gateways.Group{}, changes: changes} = new_group()
-      assert Map.has_key?(changes, :name_prefix)
+      assert Map.has_key?(changes, :name)
       assert Enum.count(changes) == 1
     end
   end
@@ -134,31 +134,31 @@ defmodule Domain.GatewaysTest do
 
     test "returns error on invalid attrs", %{account: account, subject: subject} do
       attrs = %{
-        name_prefix: String.duplicate("A", 65)
+        name: String.duplicate("A", 65)
       }
 
       assert {:error, changeset} = create_group(attrs, subject)
 
       assert errors_on(changeset) == %{
                tokens: ["can't be blank"],
-               name_prefix: ["should be at most 64 character(s)"]
+               name: ["should be at most 64 character(s)"]
              }
 
-      Fixtures.Gateways.create_group(account: account, name_prefix: "foo")
-      attrs = %{name_prefix: "foo", tokens: [%{}]}
+      Fixtures.Gateways.create_group(account: account, name: "foo")
+      attrs = %{name: "foo", tokens: [%{}]}
       assert {:error, changeset} = create_group(attrs, subject)
-      assert "has already been taken" in errors_on(changeset).name_prefix
+      assert "has already been taken" in errors_on(changeset).name
     end
 
     test "creates a group", %{subject: subject} do
       attrs = %{
-        name_prefix: "foo",
+        name: "foo",
         tokens: [%{}]
       }
 
       assert {:ok, group} = create_group(attrs, subject)
       assert group.id
-      assert group.name_prefix == "foo"
+      assert group.name == "foo"
 
       assert group.created_by == :identity
       assert group.created_by_identity_id == subject.identity.id
@@ -190,7 +190,7 @@ defmodule Domain.GatewaysTest do
 
       assert changeset = change_group(group, group_attrs)
       assert changeset.valid?
-      assert changeset.changes == %{name_prefix: group_attrs.name_prefix}
+      assert changeset.changes == %{name: group_attrs.name}
     end
   end
 
@@ -199,41 +199,41 @@ defmodule Domain.GatewaysTest do
       subject: subject
     } do
       group = Fixtures.Gateways.create_group()
-      attrs = %{name_prefix: nil}
+      attrs = %{name: nil}
 
       assert {:error, changeset} = update_group(group, attrs, subject)
 
-      assert errors_on(changeset) == %{name_prefix: ["can't be blank"]}
+      assert errors_on(changeset) == %{name: ["can't be blank"]}
     end
 
     test "returns error on invalid attrs", %{account: account, subject: subject} do
       group = Fixtures.Gateways.create_group(account: account)
 
       attrs = %{
-        name_prefix: String.duplicate("A", 65)
+        name: String.duplicate("A", 65)
       }
 
       assert {:error, changeset} = update_group(group, attrs, subject)
 
       assert errors_on(changeset) == %{
-               name_prefix: ["should be at most 64 character(s)"]
+               name: ["should be at most 64 character(s)"]
              }
 
-      Fixtures.Gateways.create_group(account: account, name_prefix: "foo")
-      attrs = %{name_prefix: "foo"}
+      Fixtures.Gateways.create_group(account: account, name: "foo")
+      attrs = %{name: "foo"}
       assert {:error, changeset} = update_group(group, attrs, subject)
-      assert "has already been taken" in errors_on(changeset).name_prefix
+      assert "has already been taken" in errors_on(changeset).name
     end
 
     test "updates a group", %{account: account, subject: subject} do
       group = Fixtures.Gateways.create_group(account: account)
 
       attrs = %{
-        name_prefix: "foo"
+        name: "foo"
       }
 
       assert {:ok, group} = update_group(group, attrs, subject)
-      assert group.name_prefix == "foo"
+      assert group.name == "foo"
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -536,7 +536,7 @@ defmodule Domain.GatewaysTest do
       assert changeset = change_gateway(gateway, gateway_attrs)
       assert %Ecto.Changeset{data: %Domain.Gateways.Gateway{}} = changeset
 
-      assert changeset.changes == %{name_suffix: gateway_attrs.name_suffix}
+      assert changeset.changes == %{name: gateway_attrs.name}
     end
   end
 
@@ -585,7 +585,7 @@ defmodule Domain.GatewaysTest do
 
       assert {:ok, gateway} = upsert_gateway(token, attrs)
 
-      assert gateway.name_suffix
+      assert gateway.name
       assert gateway.public_key == attrs.public_key
 
       assert gateway.token_id == token.id
@@ -627,7 +627,7 @@ defmodule Domain.GatewaysTest do
 
       assert Repo.aggregate(Gateways.Gateway, :count, :id) == 1
 
-      assert updated_gateway.name_suffix
+      assert updated_gateway.name
       assert updated_gateway.last_seen_remote_ip.address == attrs.last_seen_remote_ip
       assert updated_gateway.last_seen_remote_ip != gateway.last_seen_remote_ip
       assert updated_gateway.last_seen_user_agent == attrs.last_seen_user_agent
@@ -710,11 +710,11 @@ defmodule Domain.GatewaysTest do
   describe "update_gateway/3" do
     test "updates gateways", %{account: account, subject: subject} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      attrs = %{name_suffix: "Foo"}
+      attrs = %{name: "Foo"}
 
       assert {:ok, gateway} = update_gateway(gateway, attrs, subject)
 
-      assert gateway.name_suffix == attrs.name_suffix
+      assert gateway.name == attrs.name
     end
 
     test "does not allow to reset required fields to empty values", %{
@@ -722,24 +722,24 @@ defmodule Domain.GatewaysTest do
       subject: subject
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      attrs = %{name_suffix: nil}
+      attrs = %{name: nil}
 
       assert {:error, changeset} = update_gateway(gateway, attrs, subject)
 
-      assert errors_on(changeset) == %{name_suffix: ["can't be blank"]}
+      assert errors_on(changeset) == %{name: ["can't be blank"]}
     end
 
     test "returns error on invalid attrs", %{account: account, subject: subject} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
       attrs = %{
-        name_suffix: String.duplicate("a", 256)
+        name: String.duplicate("a", 256)
       }
 
       assert {:error, changeset} = update_gateway(gateway, attrs, subject)
 
       assert errors_on(changeset) == %{
-               name_suffix: ["should be at most 8 character(s)"]
+               name: ["should be at most 8 character(s)"]
              }
     end
 
@@ -749,7 +749,7 @@ defmodule Domain.GatewaysTest do
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
-      fields = Gateways.Gateway.__schema__(:fields) -- [:name_suffix]
+      fields = Gateways.Gateway.__schema__(:fields) -- [:name]
       value = -1
 
       for field <- fields do

@@ -4,7 +4,7 @@ defmodule Web.Sites.New do
 
   def mount(_params, _session, socket) do
     changeset = Gateways.new_group()
-    {:ok, assign(socket, form: to_form(changeset), group: nil)}
+    {:ok, assign(socket, form: to_form(changeset))}
   end
 
   def render(assigns) do
@@ -15,20 +15,17 @@ defmodule Web.Sites.New do
     </.breadcrumbs>
 
     <.section>
-      <:title :if={is_nil(@group)}>
+      <:title>
         Add a new Site
-      </:title>
-      <:title :if={not is_nil(@group)}>
-        Deploy your Gateway
       </:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
-          <.form :if={is_nil(@group)} for={@form} phx-change={:change} phx-submit={:submit}>
+          <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>
                 <.input
                   label="Name Prefix"
-                  field={@form[:name_prefix]}
+                  field={@form[:name]}
                   placeholder="Name of this Site"
                   required
                 />
@@ -58,7 +55,7 @@ defmodule Web.Sites.New do
 
     with {:ok, group} <-
            Gateways.create_group(attrs, socket.assigns.subject) do
-      {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/sites/#{group}")}
+      {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{group}")}
     else
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}

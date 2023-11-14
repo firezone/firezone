@@ -51,7 +51,9 @@ defmodule Web.Groups.New do
   def handle_event("submit", %{"group" => attrs}, socket) do
     with {:ok, group} <-
            Actors.create_group(attrs, socket.assigns.subject) do
-      socket = redirect(socket, to: ~p"/#{socket.assigns.account}/groups/#{group}/edit_actors")
+      socket =
+        push_navigate(socket, to: ~p"/#{socket.assigns.account}/groups/#{group}/edit_actors")
+
       {:noreply, socket}
     else
       {:error, changeset} ->

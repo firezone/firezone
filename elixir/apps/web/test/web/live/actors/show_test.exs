@@ -46,6 +46,45 @@ defmodule Web.Live.Actors.ShowTest do
     assert breadcrumbs =~ actor.name
   end
 
+  test "renders logs table", %{
+    conn: conn
+  } do
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    client = Fixtures.Clients.create_client(account: account, actor: actor)
+
+    flow =
+      Fixtures.Flows.create_flow(
+        account: account,
+        client: client
+      )
+
+    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/actors/#{actor}")
+
+    [row] =
+      lv
+      |> element("#flows")
+      |> render()
+      |> table_to_map()
+
+    assert row["authorized at"]
+    assert row["expires at"]
+    assert row["policy"] =~ flow.policy.actor_group.name
+    assert row["policy"] =~ flow.policy.resource.name
+
+    assert row["client (ip)"] ==
+             "#{flow.client.name} (#{client.last_seen_remote_ip})"
+
+    assert row["gateway (ip)"] ==
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
+  end
+
   describe "users" do
     setup do
       account = Fixtures.Accounts.create_account()
@@ -57,6 +96,30 @@ defmodule Web.Live.Actors.ShowTest do
         actor: actor,
         identity: identity
       }
+    end
+
+    test "renders (you) next to subject actor title", %{
+      account: account,
+      actor: actor,
+      identity: identity,
+      conn: conn
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      assert html =~ "(you)"
+
+      other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: other_actor)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      refute html =~ "(you)"
     end
 
     test "renders actor details", %{
@@ -73,6 +136,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> authorize_conn(identity)
         |> live(~p"/#{account}/actors/#{actor}")
 
+      assert html =~ actor.name
       assert html =~ "User"
 
       table =

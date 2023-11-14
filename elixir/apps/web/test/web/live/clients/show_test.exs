@@ -144,7 +144,7 @@ defmodule Web.Live.Clients.ShowTest do
     assert row["policy"] =~ flow.policy.resource.name
 
     assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name_prefix}-#{flow.gateway.name_suffix} (189.172.73.153)"
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
   end
 
   test "allows editing clients", %{
@@ -176,10 +176,11 @@ defmodule Web.Live.Clients.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/clients/#{client}")
 
-    assert lv
-           |> element("button", "Delete Client")
-           |> render_click() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/clients"}}}
+    lv
+    |> element("button", "Delete Client")
+    |> render_click()
+
+    assert_redirected(lv, ~p"/#{account}/clients")
 
     assert Repo.get(Domain.Clients.Client, client.id).deleted_at
   end

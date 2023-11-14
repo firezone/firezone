@@ -55,7 +55,7 @@ defmodule Web.Live.Sites.NewTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "group[name_prefix]"
+             "group[name]"
            ]
   end
 
@@ -64,7 +64,7 @@ defmodule Web.Live.Sites.NewTest do
     identity: identity,
     conn: conn
   } do
-    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name_prefix])
+    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
       conn
@@ -73,9 +73,9 @@ defmodule Web.Live.Sites.NewTest do
 
     lv
     |> form("form", group: attrs)
-    |> validate_change(%{group: %{name_prefix: String.duplicate("a", 256)}}, fn form, _html ->
+    |> validate_change(%{group: %{name: String.duplicate("a", 256)}}, fn form, _html ->
       assert form_validation_errors(form) == %{
-               "group[name_prefix]" => ["should be at most 64 character(s)"]
+               "group[name]" => ["should be at most 64 character(s)"]
              }
     end)
   end
@@ -86,7 +86,7 @@ defmodule Web.Live.Sites.NewTest do
     conn: conn
   } do
     other_gateway = Fixtures.Gateways.create_group(account: account)
-    attrs = %{name_prefix: other_gateway.name_prefix}
+    attrs = %{name: other_gateway.name}
 
     {:ok, lv, _html} =
       conn
@@ -97,7 +97,7 @@ defmodule Web.Live.Sites.NewTest do
            |> form("form", group: attrs)
            |> render_submit()
            |> form_validation_errors() == %{
-             "group[name_prefix]" => ["has already been taken"]
+             "group[name]" => ["has already been taken"]
            }
   end
 
@@ -106,7 +106,7 @@ defmodule Web.Live.Sites.NewTest do
     identity: identity,
     conn: conn
   } do
-    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name_prefix])
+    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
       conn
@@ -118,7 +118,7 @@ defmodule Web.Live.Sites.NewTest do
     |> render_submit()
 
     group =
-      Repo.get_by(Domain.Gateways.Group, name_prefix: attrs.name_prefix)
+      Repo.get_by(Domain.Gateways.Group, name: attrs.name)
       |> Repo.preload(:tokens)
 
     assert assert_redirect(lv, ~p"/#{account}/sites/#{group}")

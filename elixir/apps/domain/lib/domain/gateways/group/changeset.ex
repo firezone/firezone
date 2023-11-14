@@ -3,7 +3,7 @@ defmodule Domain.Gateways.Group.Changeset do
   alias Domain.{Auth, Accounts}
   alias Domain.Gateways
 
-  @fields ~w[name_prefix]a
+  @fields ~w[name]a
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Gateways.Group{account: account}
@@ -35,11 +35,11 @@ defmodule Domain.Gateways.Group.Changeset do
   defp changeset(%Gateways.Group{} = group, attrs) do
     group
     |> cast(attrs, @fields)
-    |> trim_change(:name_prefix)
-    |> put_default_value(:name_prefix, &Domain.NameGenerator.generate/0)
+    |> trim_change(:name)
+    |> put_default_value(:name, &Domain.NameGenerator.generate/0)
     |> validate_required(@fields)
-    |> validate_length(:name_prefix, min: 1, max: 64)
-    |> unique_constraint(:name_prefix, name: :gateway_groups_account_id_name_prefix_index)
+    |> validate_length(:name, min: 1, max: 64)
+    |> unique_constraint(:name, name: :gateway_groups_account_id_name_index)
   end
 
   def delete(%Gateways.Group{} = group) do

@@ -197,7 +197,7 @@ defmodule Web.Live.Resources.ShowTest do
       |> table_to_map()
 
     for gateway_group <- gateway_groups do
-      assert gateway_group["name"] =~ group.name_prefix
+      assert gateway_group["name"] =~ group.name
       # TODO: check that status is being rendered
     end
   end
@@ -234,7 +234,7 @@ defmodule Web.Live.Resources.ShowTest do
     assert row["policy"] =~ flow.policy.resource.name
 
     assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name_prefix}-#{flow.gateway.name_suffix} (189.172.73.153)"
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
 
     assert row["client, actor (ip)"] =~ flow.client.name
     assert row["client, actor (ip)"] =~ "owned by #{flow.client.actor.name}"

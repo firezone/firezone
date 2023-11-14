@@ -25,7 +25,19 @@ defmodule Domain.Flows.Flow.Query do
     where(queryable, [flows: flows], flows.client_id == ^client_id)
   end
 
+  def by_actor_id(queryable \\ all(), actor_id) do
+    queryable
+    |> with_joined_client()
+    |> where([client: client], client.actor_id == ^actor_id)
+  end
+
   def by_gateway_id(queryable \\ all(), gateway_id) do
     where(queryable, [flows: flows], flows.gateway_id == ^gateway_id)
+  end
+
+  def with_joined_client(queryable \\ all()) do
+    with_named_binding(queryable, :client, fn queryable, binding ->
+      join(queryable, :inner, [flows: flows], client in assoc(flows, ^binding), as: ^binding)
+    end)
   end
 end

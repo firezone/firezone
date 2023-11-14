@@ -13,14 +13,22 @@ Hooks.Copy = {
       let doc = new DOMParser().parseFromString(inner_html, "text/html");
       let text = doc.documentElement.textContent;
 
-      let cl = ev.currentTarget.querySelector("[data-icon]").classList
+      let content = ev.currentTarget.querySelector("[data-content]")
+      let icon_cl = ev.currentTarget.querySelector("[data-icon]").classList
 
       navigator.clipboard.writeText(text).then(() => {
-        cl.add("hero-clipboard-document-check");
-        cl.add("text-green-500");
-        cl.remove("hero-clipboard-document");
-        cl.remove("text-gray-500");
-      })
+        icon_cl.add("hero-clipboard-document-check");
+        icon_cl.add("text-green-500");
+        icon_cl.remove("hero-clipboard-document");
+        content.innerHTML = "Copied"
+      });
+
+      setTimeout(() => {
+        icon_cl.remove("hero-clipboard-document-check");
+        icon_cl.remove("text-green-500");
+        icon_cl.add("hero-clipboard-document");
+        content.innerHTML = "Copy"
+      }, 2000);
     });
   },
 }

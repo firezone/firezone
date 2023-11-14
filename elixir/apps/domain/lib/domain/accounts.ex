@@ -3,6 +3,15 @@ defmodule Domain.Accounts do
   alias Domain.Auth
   alias Domain.Accounts.{Authorizer, Account}
 
+  def list_accounts_by_ids(ids) do
+    if Enum.all?(ids, &Validator.valid_uuid?/1) do
+      Account.Query.by_id({:in, ids})
+      |> Repo.list()
+    else
+      {:ok, []}
+    end
+  end
+
   def fetch_account_by_id(id, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_accounts_permission()),
          true <- Validator.valid_uuid?(id) do

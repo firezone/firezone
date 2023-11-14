@@ -76,8 +76,8 @@ defmodule Web.Live.Sites.IndexTest do
       |> table_to_map()
 
     assert row == %{
-             "site" => group.name_prefix,
-             "gateways" => gateway.name_suffix,
+             "site" => group.name,
+             "gateways" => gateway.name,
              "resources" => resource.name
            }
   end

@@ -62,8 +62,8 @@ defmodule Web.Live.Gateways.ShowTest do
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Sites"
-    assert breadcrumbs =~ gateway.group.name_prefix
-    assert breadcrumbs =~ gateway.name_suffix
+    assert breadcrumbs =~ gateway.group.name
+    assert breadcrumbs =~ gateway.name
   end
 
   test "renders gateway details", %{
@@ -83,8 +83,8 @@ defmodule Web.Live.Gateways.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["site"] =~ gateway.group.name_prefix
-    assert table["instance name"] =~ gateway.name_suffix
+    assert table["site"] =~ gateway.group.name
+    assert table["name"] =~ gateway.name
     assert table["last seen"]
     assert table["last seen remote ip"] =~ to_string(gateway.last_seen_remote_ip)
     assert table["status"] =~ "Offline"
@@ -162,10 +162,11 @@ defmodule Web.Live.Gateways.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/gateways/#{gateway}")
 
-    assert lv
-           |> element("button", "Delete Gateway")
-           |> render_click() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/sites/#{gateway.group}"}}}
+    lv
+    |> element("button", "Delete Gateway")
+    |> render_click()
+
+    assert_redirected(lv, ~p"/#{account}/sites/#{gateway.group}")
 
     assert Repo.get(Domain.Gateways.Gateway, gateway.id).deleted_at
   end

@@ -4,6 +4,10 @@ defmodule Domain.Policies.Policy.Query do
   def all do
     from(policies in Domain.Policies.Policy, as: :policies)
     |> where([policies: policies], is_nil(policies.deleted_at))
+    |> with_joined_actor_group()
+    |> where([actor_group: actor_group], is_nil(actor_group.deleted_at))
+    |> with_joined_resource()
+    |> where([resource: resource], is_nil(resource.deleted_at))
   end
 
   def by_id(queryable \\ all(), id) do
@@ -40,6 +44,14 @@ defmodule Domain.Policies.Policy.Query do
   def with_joined_actor_group(queryable \\ all()) do
     with_named_binding(queryable, :actor_group, fn queryable, binding ->
       join(queryable, :inner, [policies: policies], actor_group in assoc(policies, ^binding),
+        as: ^binding
+      )
+    end)
+  end
+
+  def with_joined_resource(queryable \\ all()) do
+    with_named_binding(queryable, :resource, fn queryable, binding ->
+      join(queryable, :inner, [policies: policies], resource in assoc(policies, ^binding),
         as: ^binding
       )
     end)

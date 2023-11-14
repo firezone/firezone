@@ -52,10 +52,12 @@ defmodule Web.AuthTest do
   describe "signed_in_redirect/4" do
     test "redirects regular users to the platform url", %{conn: conn, user_subject: subject} do
       redirected_to = conn |> signed_in_redirect(subject, "apple", "foo") |> redirected_to()
-      assert redirected_to =~ "firezone://handle_client_auth_callback?client_csrf_token=foo"
+      assert redirected_to =~ "firezone://handle_client_auth_callback"
+      assert redirected_to =~ "client_csrf_token=foo"
 
       redirected_to = conn |> signed_in_redirect(subject, "android", "foo") |> redirected_to()
-      assert redirected_to =~ "/handle_client_auth_callback?client_csrf_token=foo"
+      assert redirected_to =~ "/handle_client_auth_callback?"
+      assert redirected_to =~ "client_csrf_token=foo"
     end
 
     test "redirects regular users to sign in if platform url is missing", %{
@@ -73,10 +75,12 @@ defmodule Web.AuthTest do
 
     test "redirects admin user to the platform url", %{conn: conn, admin_subject: subject} do
       redirected_to = conn |> signed_in_redirect(subject, "apple", "foo") |> redirected_to()
-      assert redirected_to =~ "firezone://handle_client_auth_callback?client_csrf_token=foo"
+      assert redirected_to =~ "firezone://handle_client_auth_callback?"
+      assert redirected_to =~ "client_csrf_token=foo"
 
       redirected_to = conn |> signed_in_redirect(subject, "android", "foo") |> redirected_to()
-      assert redirected_to =~ "/handle_client_auth_callback?client_csrf_token=foo"
+      assert redirected_to =~ "/handle_client_auth_callback?"
+      assert redirected_to =~ "client_csrf_token=foo"
     end
 
     test "redirects admin user to the post-login path if platform url is missing", %{

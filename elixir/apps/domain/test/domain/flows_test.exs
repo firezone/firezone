@@ -273,6 +273,7 @@ defmodule Domain.FlowsTest do
 
   describe "list_flows_for/2" do
     test "returns empty list when there are no flows", %{
+      actor: actor,
       client: client,
       gateway: gateway,
       resource: resource,
@@ -281,11 +282,13 @@ defmodule Domain.FlowsTest do
     } do
       assert list_flows_for(policy, subject) == {:ok, []}
       assert list_flows_for(resource, subject) == {:ok, []}
+      assert list_flows_for(actor, subject) == {:ok, []}
       assert list_flows_for(client, subject) == {:ok, []}
       assert list_flows_for(gateway, subject) == {:ok, []}
     end
 
     test "does not list flows from other accounts", %{
+      actor: actor,
       client: client,
       gateway: gateway,
       resource: resource,
@@ -296,12 +299,14 @@ defmodule Domain.FlowsTest do
 
       assert list_flows_for(policy, subject) == {:ok, []}
       assert list_flows_for(resource, subject) == {:ok, []}
+      assert list_flows_for(actor, subject) == {:ok, []}
       assert list_flows_for(client, subject) == {:ok, []}
       assert list_flows_for(gateway, subject) == {:ok, []}
     end
 
-    test "returns all authorized flows", %{
+    test "returns all authorized flows for a given entity", %{
       account: account,
+      actor: actor,
       client: client,
       gateway: gateway,
       resource: resource,
@@ -320,12 +325,33 @@ defmodule Domain.FlowsTest do
 
       assert list_flows_for(policy, subject) == {:ok, [flow]}
       assert list_flows_for(resource, subject) == {:ok, [flow]}
+      assert list_flows_for(actor, subject) == {:ok, [flow]}
       assert list_flows_for(client, subject) == {:ok, [flow]}
       assert list_flows_for(gateway, subject) == {:ok, [flow]}
     end
 
+    test "does not return authorized flow of other entities", %{
+      account: account,
+      actor: actor,
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      other_client = Fixtures.Clients.create_client(account: account)
+      Fixtures.Flows.create_flow(account: account, client: other_client, subject: subject)
+
+      assert list_flows_for(policy, subject) == {:ok, []}
+      assert list_flows_for(resource, subject) == {:ok, []}
+      assert list_flows_for(actor, subject) == {:ok, []}
+      assert list_flows_for(client, subject) == {:ok, []}
+      assert list_flows_for(gateway, subject) == {:ok, []}
+    end
+
     test "returns error when subject has no permission to view flows", %{
       client: client,
+      actor: actor,
       gateway: gateway,
       resource: resource,
       policy: policy,
@@ -340,6 +366,7 @@ defmodule Domain.FlowsTest do
       assert list_flows_for(policy, subject) == expected_error
       assert list_flows_for(resource, subject) == expected_error
       assert list_flows_for(client, subject) == expected_error
+      assert list_flows_for(actor, subject) == expected_error
       assert list_flows_for(gateway, subject) == expected_error
     end
   end
