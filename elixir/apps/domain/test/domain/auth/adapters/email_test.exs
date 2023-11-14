@@ -5,7 +5,7 @@ defmodule Domain.Auth.Adapters.EmailTest do
 
   describe "identity_changeset/2" do
     setup do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
@@ -42,7 +42,7 @@ defmodule Domain.Auth.Adapters.EmailTest do
 
   describe "provider_changeset/1" do
     test "returns changeset as is" do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
       account = Fixtures.Accounts.create_account()
       changeset = %Ecto.Changeset{data: %Domain.Auth.Provider{account_id: account.id}}
@@ -59,7 +59,7 @@ defmodule Domain.Auth.Adapters.EmailTest do
 
   describe "ensure_provisioned/1" do
     test "does nothing for a provider" do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider()
       assert ensure_provisioned(provider) == {:ok, provider}
     end
@@ -67,7 +67,7 @@ defmodule Domain.Auth.Adapters.EmailTest do
 
   describe "ensure_deprovisioned/1" do
     test "does nothing for a provider" do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider()
       assert ensure_deprovisioned(provider) == {:ok, provider}
     end
@@ -96,7 +96,7 @@ defmodule Domain.Auth.Adapters.EmailTest do
 
   describe "verify_secret/2" do
     setup do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)

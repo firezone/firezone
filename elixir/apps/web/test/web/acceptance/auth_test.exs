@@ -4,7 +4,7 @@ defmodule Web.Acceptance.AuthTest do
   feature "renders all sign in options", %{session: session} do
     account = Fixtures.Accounts.create_account()
 
-    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     Fixtures.Auth.create_userpass_provider(account: account)
     Fixtures.Auth.create_email_provider(account: account)
