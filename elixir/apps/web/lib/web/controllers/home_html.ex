@@ -13,7 +13,10 @@ defmodule Web.HomeHTML do
               Welcome to Firezone
             </h1>
 
-            <h3 class="text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl dark:text-white">
+            <h3
+              :if={@accounts != []}
+              class="text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl dark:text-white"
+            >
               Recently used accounts
             </h3>
 
