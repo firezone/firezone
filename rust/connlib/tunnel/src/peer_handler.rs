@@ -82,7 +82,6 @@ where
                 for packet in bytes {
                     if let Err(e) = channel.send(&packet).await {
                         tracing::error!("Couldn't send packet to connected peer: {e}");
-                        // let _ = callbacks.on_error(&e.into());
                     }
                 }
             }
@@ -105,6 +104,8 @@ pub(crate) async fn handle_packet(
     mut receiver: tokio::sync::mpsc::Receiver<Bytes>,
 ) {
     while let Some(packet) = receiver.recv().await {
-        if ep.send(&packet).await.is_err() {}
+        if ep.send(&packet).await.is_err() {
+            tracing::warn!(target: "wire", action = "dropped", "endpoint failure");
+        }
     }
 }

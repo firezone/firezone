@@ -458,18 +458,9 @@ where
             Ok(None) => {}
             Ok(Some(b)) => {
                 tracing::trace!(target: "wire", action = "writing", to = "peer", %dest);
-                if peer_queue.try_send(b).is_err() {}
-                // tokio::spawn({
-                //     let channel = peer.channel.clone();
-                //     let mut sender = self.stop_peer_command_sender.clone();
-
-                //     async move {
-                //         if let Err(e) = channel.send(&b).await {
-                //             tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
-                //             let _ = sender.send(peer_id).await;
-                //         }
-                //     }
-                // });
+                if peer_queue.try_send(b).is_err() {
+                    tracing::warn!(target: "wire", action = "dropped", to = "peer", %dest);
+                }
             }
             Err(e) => {
                 tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
