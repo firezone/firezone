@@ -1,4 +1,4 @@
-defmodule Web.Auth.Email do
+defmodule Web.SignIn.Email do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
 
   def mount(

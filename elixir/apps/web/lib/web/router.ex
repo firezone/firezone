@@ -75,11 +75,11 @@ defmodule Web.Router do
         Web.Sandbox,
         {Web.Auth, :redirect_if_user_is_authenticated}
       ] do
-      live "/", Auth.SignIn
+      live "/", SignIn
 
       # Adapter-specific routes
       ## Email
-      live "/sign_in/providers/email/:provider_id", Auth.Email
+      live "/sign_in/providers/email/:provider_id", SignIn.Email
     end
 
     scope "/sign_in/providers/:provider_id" do

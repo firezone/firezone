@@ -1,4 +1,4 @@
-defmodule Web.Auth.EmailTest do
+defmodule Web.SignIn.EmailTest do
   use Web.ConnCase, async: true
 
   setup do
