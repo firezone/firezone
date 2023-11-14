@@ -11,7 +11,10 @@ defmodule Web.Sites.Show do
                created_by_identity: [:actor]
              ]
            ),
-         resources = Enum.map(group.connections, & &1.resource),
+         resources =
+           group.connections
+           |> Enum.reject(&is_nil(&1.resource))
+           |> Enum.map(& &1.resource),
          {:ok, resource_actor_groups_peek} <-
            Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
       group = %{
