@@ -63,7 +63,7 @@ defmodule Web.Live.Gateways.ShowTest do
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Sites"
     assert breadcrumbs =~ gateway.group.name
-    assert breadcrumbs =~ gateway.hostname
+    assert breadcrumbs =~ gateway.name
   end
 
   test "renders gateway details", %{
@@ -84,7 +84,7 @@ defmodule Web.Live.Gateways.ShowTest do
       |> vertical_table_to_map()
 
     assert table["site"] =~ gateway.group.name
-    assert table["hostname"] =~ gateway.hostname
+    assert table["name"] =~ gateway.name
     assert table["last seen"]
     assert table["last seen remote ip"] =~ to_string(gateway.last_seen_remote_ip)
     assert table["status"] =~ "Offline"

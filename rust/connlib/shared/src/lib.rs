@@ -36,8 +36,8 @@ pub fn login_url(
     device_id: String,
 ) -> Result<(Url, StaticSecret)> {
     let private_key = StaticSecret::random_from_rng(rand::rngs::OsRng);
-    // FIXME: read FIREZONE_HOSTNAME from env (eg. for gateways) and resolve system hostname for rest
-    let hostname: String = thread_rng()
+    // FIXME: read FIREZONE_NAME from env (eg. for gateways) and use system hostname by default
+    let name: String = thread_rng()
         .sample_iter(&Alphanumeric)
         .take(8)
         .map(char::from)
@@ -53,7 +53,7 @@ pub fn login_url(
         },
         &Key(PublicKey::from(&private_key).to_bytes()),
         &external_id,
-        &hostname,
+        &name,
     )?;
 
     Ok((url, private_key))
@@ -104,7 +104,7 @@ fn get_websocket_path(
     mode: &str,
     public_key: &Key,
     external_id: &str,
-    hostname: &str,
+    name: &str,
 ) -> Result<Url> {
     set_ws_scheme(&mut api_url)?;
 
@@ -121,7 +121,7 @@ fn get_websocket_path(
         query_pairs.append_pair("token", secret.expose_secret());
         query_pairs.append_pair("public_key", &public_key.to_string());
         query_pairs.append_pair("external_id", external_id);
-        query_pairs.append_pair("hostname", hostname);
+        query_pairs.append_pair("name", name);
     }
 
     Ok(api_url)

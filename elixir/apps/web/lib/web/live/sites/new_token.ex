@@ -183,7 +183,7 @@ defmodule Web.Sites.NewToken do
       "--sysctl net.ipv6.conf.default.forwarding=1",
       "--device=\"/dev/net/tun:/dev/net/tun\"",
       Enum.map(env, fn {key, value} -> "--env #{key}=\"#{value}\"" end),
-      "--env FIREZONE_HOSTNAME=$(hostname)",
+      "--env FIREZONE_NAME=$(hostname)",
       "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/gateway:#{version()}"
     ]
     |> List.flatten()
@@ -227,7 +227,7 @@ defmodule Web.Sites.NewToken do
       fi \\
     '
     ExecStartPre=/usr/bin/chmod +x /usr/local/bin/firezone-gateway
-    ExecStart=FIREZONE_HOSTNAME=$(hostname) /usr/local/bin/firezone-gateway
+    ExecStart=FIREZONE_NAME=$(hostname) /usr/local/bin/firezone-gateway
     Restart=always
     RestartSec=3
 

@@ -234,7 +234,7 @@ defmodule Web.Live.Resources.ShowTest do
     assert row["policy"] =~ flow.policy.resource.name
 
     assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.hostname} (189.172.73.153)"
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
 
     assert row["client, actor (ip)"] =~ flow.client.name
     assert row["client, actor (ip)"] =~ "owned by #{flow.client.actor.name}"

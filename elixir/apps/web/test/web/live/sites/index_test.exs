@@ -77,7 +77,7 @@ defmodule Web.Live.Sites.IndexTest do
 
     assert row == %{
              "site" => group.name,
-             "gateways" => gateway.hostname,
+             "gateways" => gateway.name,
              "resources" => resource.name
            }
   end

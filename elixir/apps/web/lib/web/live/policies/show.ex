@@ -124,7 +124,7 @@ defmodule Web.Policies.Show do
           </:col>
           <:col :let={flow} label="GATEWAY (IP)">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={link_style()}>
-              <%= flow.gateway.group.name %>-<%= flow.gateway.hostname %>
+              <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>

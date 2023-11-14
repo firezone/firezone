@@ -1,8 +1,8 @@
-defmodule Domain.Repo.Migrations.ReplaceGatewayNameSuffixWithHostname do
+defmodule Domain.Repo.Migrations.RenameGatewayNameSuffixToName do
   use Ecto.Migration
 
   def change do
-    rename(table(:gateways), :name_suffix, to: :hostname)
+    rename(table(:gateways), :name_suffix, to: :name)
 
     drop(
       index(:gateways, [:account_id, :group_id, :name_suffix],

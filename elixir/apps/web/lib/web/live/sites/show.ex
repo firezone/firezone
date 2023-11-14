@@ -19,7 +19,7 @@ defmodule Web.Sites.Show do
            Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
       group = %{
         group
-        | gateways: Enum.sort_by(group.gateways, &{&1.online?, &1.hostname}, :desc)
+        | gateways: Enum.sort_by(group.gateways, &{&1.online?, &1.name}, :desc)
       }
 
       :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
@@ -79,7 +79,7 @@ defmodule Web.Sites.Show do
                 navigate={~p"/#{@account}/gateways/#{gateway.id}"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
-                <%= gateway.hostname %>
+                <%= gateway.name %>
               </.link>
             </:col>
             <:col :let={gateway} label="REMOTE IP">

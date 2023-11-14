@@ -536,7 +536,7 @@ defmodule Domain.GatewaysTest do
       assert changeset = change_gateway(gateway, gateway_attrs)
       assert %Ecto.Changeset{data: %Domain.Gateways.Gateway{}} = changeset
 
-      assert changeset.changes == %{hostname: gateway_attrs.hostname}
+      assert changeset.changes == %{name: gateway_attrs.name}
     end
   end
 
@@ -585,7 +585,7 @@ defmodule Domain.GatewaysTest do
 
       assert {:ok, gateway} = upsert_gateway(token, attrs)
 
-      assert gateway.hostname
+      assert gateway.name
       assert gateway.public_key == attrs.public_key
 
       assert gateway.token_id == token.id
@@ -627,7 +627,7 @@ defmodule Domain.GatewaysTest do
 
       assert Repo.aggregate(Gateways.Gateway, :count, :id) == 1
 
-      assert updated_gateway.hostname
+      assert updated_gateway.name
       assert updated_gateway.last_seen_remote_ip.address == attrs.last_seen_remote_ip
       assert updated_gateway.last_seen_remote_ip != gateway.last_seen_remote_ip
       assert updated_gateway.last_seen_user_agent == attrs.last_seen_user_agent
@@ -710,11 +710,11 @@ defmodule Domain.GatewaysTest do
   describe "update_gateway/3" do
     test "updates gateways", %{account: account, subject: subject} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      attrs = %{hostname: "Foo"}
+      attrs = %{name: "Foo"}
 
       assert {:ok, gateway} = update_gateway(gateway, attrs, subject)
 
-      assert gateway.hostname == attrs.hostname
+      assert gateway.name == attrs.name
     end
 
     test "does not allow to reset required fields to empty values", %{
@@ -722,24 +722,24 @@ defmodule Domain.GatewaysTest do
       subject: subject
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      attrs = %{hostname: nil}
+      attrs = %{name: nil}
 
       assert {:error, changeset} = update_gateway(gateway, attrs, subject)
 
-      assert errors_on(changeset) == %{hostname: ["can't be blank"]}
+      assert errors_on(changeset) == %{name: ["can't be blank"]}
     end
 
     test "returns error on invalid attrs", %{account: account, subject: subject} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
       attrs = %{
-        hostname: String.duplicate("a", 256)
+        name: String.duplicate("a", 256)
       }
 
       assert {:error, changeset} = update_gateway(gateway, attrs, subject)
 
       assert errors_on(changeset) == %{
-               hostname: ["should be at most 8 character(s)"]
+               name: ["should be at most 8 character(s)"]
              }
     end
 
@@ -749,7 +749,7 @@ defmodule Domain.GatewaysTest do
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
-      fields = Gateways.Gateway.__schema__(:fields) -- [:hostname]
+      fields = Gateways.Gateway.__schema__(:fields) -- [:name]
       value = -1
 
       for field <- fields do

@@ -123,7 +123,7 @@ defmodule Web.Live.Sites.ShowTest do
     |> element("#gateways")
     |> render()
     |> table_to_map()
-    |> with_table_row("instance", gateway.hostname, fn row ->
+    |> with_table_row("instance", gateway.name, fn row ->
       assert row["token created at"] =~ actor.name
       assert row["status"] =~ "Offline"
     end)
@@ -147,7 +147,7 @@ defmodule Web.Live.Sites.ShowTest do
     |> element("#gateways")
     |> render()
     |> table_to_map()
-    |> with_table_row("instance", gateway.hostname, fn row ->
+    |> with_table_row("instance", gateway.name, fn row ->
       assert gateway.last_seen_remote_ip
       assert row["remote ip"] =~ to_string(gateway.last_seen_remote_ip)
       assert row["status"] =~ "Online"

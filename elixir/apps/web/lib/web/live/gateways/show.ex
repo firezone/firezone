@@ -38,12 +38,12 @@ defmodule Web.Gateways.Show do
         Gateways
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/gateways/#{@gateway}"}>
-        <%= @gateway.hostname %>
+        <%= @gateway.name %>
       </.breadcrumb>
     </.breadcrumbs>
     <.section>
       <:title>
-        Gateway: <code><%= @gateway.hostname %></code>
+        Gateway: <code><%= @gateway.name %></code>
       </:title>
       <:content>
         <.vertical_table id="gateway">
@@ -59,8 +59,8 @@ defmodule Web.Gateways.Show do
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Hostname</:label>
-            <:value><%= @gateway.hostname %></:value>
+            <:label>Name</:label>
+            <:value><%= @gateway.name %></:value>
           </.vertical_table_row>
           <.vertical_table_row :if={@todos_enabled?}>
             <:label>Connectivity</:label>

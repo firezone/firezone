@@ -92,7 +92,7 @@ defmodule Web.Sites.Index do
                   navigate={~p"/#{@account}/gateways/#{gateway}"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline inline-block"
                   phx-no-format
-                ><%= gateway.hostname %></.link>
+                ><%= gateway.name %></.link>
               </:item>
 
               <:tail :let={count}>
