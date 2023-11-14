@@ -11,12 +11,15 @@ defmodule Web.Sites.Show do
                created_by_identity: [:actor]
              ]
            ),
-         resources = Enum.map(group.connections, & &1.resource),
+         resources =
+           group.connections
+           |> Enum.reject(&is_nil(&1.resource))
+           |> Enum.map(& &1.resource),
          {:ok, resource_actor_groups_peek} <-
            Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
       group = %{
         group
-        | gateways: Enum.sort_by(group.gateways, &{&1.online?, &1.name_suffix}, :desc)
+        | gateways: Enum.sort_by(group.gateways, &{&1.online?, &1.name}, :desc)
       }
 
       :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
@@ -31,13 +34,13 @@ defmodule Web.Sites.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        <%= @group.name_prefix %>
+        <%= @group.name %>
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Site: <code><%= @group.name_prefix %></code>
+        Site: <code><%= @group.name %></code>
       </:title>
       <:action>
         <.edit_button navigate={~p"/#{@account}/sites/#{@group}/edit"}>
@@ -49,7 +52,7 @@ defmodule Web.Sites.Show do
         <.vertical_table id="group">
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @group.name_prefix %></:value>
+            <:value><%= @group.name %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Created</:label>
@@ -76,7 +79,7 @@ defmodule Web.Sites.Show do
                 navigate={~p"/#{@account}/gateways/#{gateway.id}"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
-                <%= gateway.name_suffix %>
+                <%= gateway.name %>
               </.link>
             </:col>
             <:col :let={gateway} label="REMOTE IP">
@@ -217,7 +220,7 @@ defmodule Web.Sites.Show do
 
   def handle_info(%Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _account_id}, socket) do
     socket =
-      redirect(socket, to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.group}")
+      push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.group}")
 
     {:noreply, socket}
   end
@@ -225,6 +228,6 @@ defmodule Web.Sites.Show do
   def handle_event("delete", _params, socket) do
     # TODO: make sure tokens are all deleted too!
     {:ok, _group} = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
-    {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/sites")}
+    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites")}
   end
 end

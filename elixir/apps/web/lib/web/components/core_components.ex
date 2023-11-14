@@ -70,12 +70,23 @@ defmodule Web.CoreComponents do
         data-copy
         phx-no-format
       ><%= render_slot(@inner_block) %></code>
-      <.icon name="hero-clipboard-document" data-icon class={~w[
+
+      <span class={~w[
           absolute bottom-1 right-1
-          h-5 w-5
+          text-gray-400
           transition
-          text-gray-500 group-hover:text-white
-        ]} />
+          cursor-pointer
+          rounded
+          px-2
+          focus:ring-4 focus:outline-none
+          text-white
+          bg-accent-400
+          hover:bg-accent-500
+          focus:ring-accent-300
+        ]}>
+        <.icon name="hero-clipboard-document" data-icon class="h-4 w-4" />
+        <span data-content>Copy</span>
+      </span>
     </div>
     """
   end
@@ -486,6 +497,27 @@ defmodule Web.CoreComponents do
     """
   end
 
+  def icon(%{name: "spinner"} = assigns) do
+    ~H"""
+    <svg
+      class={["inline-block", @class]}
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      {@rest}
+    >
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+      </circle>
+      <path
+        class="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      >
+      </path>
+    </svg>
+    """
+  end
+
   @doc """
   Renders Gravatar img tag.
   """
@@ -714,6 +746,40 @@ defmodule Web.CoreComponents do
     >
       <%= if @schema.online?, do: "Online", else: "Offline" %>
     </.badge>
+    """
+  end
+
+  attr :navigate, :string, required: true
+  attr :connected?, :boolean, required: true
+  attr :type, :string, required: true
+
+  def initial_connection_status(assigns) do
+    ~H"""
+    <.link
+      class={[
+        "mx-4 my-6 h-8",
+        "flex items-center justify-center",
+        "font-medium text-sm text-white",
+        "rounded-full",
+        (@connected? && "bg-green-500") || "bg-orange-400 cursor-progress"
+      ]}
+      navigate={@navigate}
+      {
+        if @connected? do
+          %{}
+        else
+          %{"data-confirm" => "Do you want to skip waiting for #{@type} to be connected?"}
+        end
+      }
+    >
+      <span :if={not @connected?}>
+        <.icon name="spinner" class="animate-spin h-3.5 w-3.5 mr-1" /> Waiting for connection...
+      </span>
+
+      <span :if={@connected?}>
+        <.icon name="hero-check" class="h-3.5 w-3.5" /> Connected, click to continue
+      </span>
+    </.link>
     """
   end
 

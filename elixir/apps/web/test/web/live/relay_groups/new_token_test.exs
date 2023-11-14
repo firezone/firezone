@@ -1,11 +1,11 @@
-defmodule Web.Live.Sites.NewTokenTest do
+defmodule Web.Live.RelayGroups.NewTokenTest do
   use Web.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-    group = Fixtures.Gateways.create_group(account: account)
+    group = Fixtures.Relays.create_group(account: account)
 
     %{
       account: account,
@@ -15,7 +15,7 @@ defmodule Web.Live.Sites.NewTokenTest do
     }
   end
 
-  test "creates a new group on valid attrs and redirects when gateway is connected", %{
+  test "creates a new group on valid attrs and redirects when relay is connected", %{
     account: account,
     identity: identity,
     group: group,
@@ -24,22 +24,24 @@ defmodule Web.Live.Sites.NewTokenTest do
     {:ok, lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/sites/#{group}/new_token")
+      |> live(~p"/#{account}/relay_groups/#{group}/new_token")
 
     assert html =~ "Select deployment method"
     assert html =~ "FIREZONE_TOKEN="
+    assert html =~ "PUBLIC_IP4_ADDR="
+    assert html =~ "PUBLIC_IP6_ADDR="
     assert html =~ "docker run"
     assert html =~ "Waiting for connection..."
 
     assert Regex.run(~r/FIREZONE_ID=([^ ]+)/, html) |> List.last()
     token = Regex.run(~r/FIREZONE_TOKEN=([^ ]+)/, html) |> List.last() |> String.trim("&quot;")
 
-    :ok = Domain.Gateways.subscribe_for_gateways_presence_in_group(group)
-    gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-    assert {:ok, _token} = Domain.Gateways.authorize_gateway(token)
-    Domain.Gateways.connect_gateway(gateway)
+    :ok = Domain.Relays.subscribe_for_relays_presence_in_group(group)
+    relay = Fixtures.Relays.create_relay(account: account, group: group)
+    assert {:ok, _token} = Domain.Relays.authorize_relay(token)
+    Domain.Relays.connect_relay(relay, "foo")
 
-    assert_receive %Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _group_id}
+    assert_receive %Phoenix.Socket.Broadcast{topic: "relay_groups:" <> _group_id}
 
     assert element(lv, "#deployment-instructions")
            |> render() =~ "Connected, click to continue"

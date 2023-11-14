@@ -28,14 +28,14 @@ defmodule Web.Relays.Show do
         <%= @relay.group.name %>
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/relays/#{@relay}"}>
-        <%= @relay.ipv4 || @relay.ipv6 %>
+        <%= @relay.name || @relay.ipv4 || @relay.ipv6 %>
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Relay:
-        <.intersperse_blocks>
+        Relay: <span :if={@relay.name}><%= @relay.name %></span>
+        <.intersperse_blocks :if={is_nil(@relay.name)}>
           <:separator>,&nbsp;</:separator>
 
           <:item :for={ip <- [@relay.ipv4, @relay.ipv6]} :if={not is_nil(ip)}>
@@ -49,6 +49,10 @@ defmodule Web.Relays.Show do
             <.vertical_table_row>
               <:label>Instance Group Name</:label>
               <:value><%= @relay.group.name %></:value>
+            </.vertical_table_row>
+            <.vertical_table_row>
+              <:label>Name</:label>
+              <:value><%= @relay.name %></:value>
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>Remote IPv4</:label>
@@ -137,7 +141,7 @@ defmodule Web.Relays.Show do
     {:ok, _relay} = Relays.delete_relay(socket.assigns.relay, socket.assigns.subject)
 
     socket =
-      redirect(socket,
+      push_navigate(socket,
         to: ~p"/#{socket.assigns.account}/relay_groups/#{socket.assigns.relay.group}"
       )
 

@@ -1,4 +1,4 @@
-defmodule Web.Acceptance.Auth.EmailTest do
+defmodule Web.Acceptance.SignIn.EmailTest do
   use Web.AcceptanceCase, async: true
 
   feature "renders success on invalid email to prevent enumeration attacks", %{session: session} do

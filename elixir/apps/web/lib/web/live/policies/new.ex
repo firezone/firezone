@@ -53,7 +53,7 @@ defmodule Web.Policies.New do
               type="select"
               options={
                 Enum.map(@resources, fn resource ->
-                  group_names = resource.gateway_groups |> Enum.map(& &1.name_prefix)
+                  group_names = resource.gateway_groups |> Enum.map(& &1.name)
 
                   [
                     key: "#{resource.name} - #{Enum.join(group_names, ",")}",
@@ -103,7 +103,7 @@ defmodule Web.Policies.New do
         {:noreply,
          push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}?#resources")}
       else
-        {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
+        {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
       end
     else
       {:error, %Ecto.Changeset{} = changeset} ->

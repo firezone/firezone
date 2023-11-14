@@ -1,7 +1,7 @@
 defmodule Web.Actors.Show do
   use Web, :live_view
   import Web.Actors.Components
-  alias Domain.Auth
+  alias Domain.{Auth, Flows}
   alias Domain.Actors
 
   def mount(%{"id" => id}, _session, socket) do
@@ -9,10 +9,21 @@ defmodule Web.Actors.Show do
            Actors.fetch_actor_by_id(id, socket.assigns.subject,
              preload: [
                identities: [:provider, created_by_identity: [:actor]],
-               groups: [:provider]
+               groups: [:provider],
+               clients: []
              ]
+           ),
+         {:ok, flows} <-
+           Flows.list_flows_for(actor, socket.assigns.subject,
+             preload: [gateway: [:group], client: [], policy: [:resource, :actor_group]]
            ) do
-      {:ok, assign(socket, actor: actor), temporary_assigns: [page_title: actor.name]}
+      {:ok,
+       assign(socket,
+         actor: actor,
+         flows: flows,
+         page_title: actor.name,
+         flow_activities_enabled?: Domain.Config.flow_activities_enabled?()
+       )}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -30,6 +41,7 @@ defmodule Web.Actors.Show do
     <.section>
       <:title>
         <%= actor_type(@actor.type) %>: <span class="font-bold"><%= @actor.name %></span>
+        <span :if={@actor.id == @subject.actor.id} class="text-gray-400">(you)</span>
       </:title>
       <:action>
         <.edit_button navigate={~p"/#{@account}/actors/#{@actor}/edit"}>
@@ -145,6 +157,80 @@ defmodule Web.Actors.Show do
       </:content>
     </.section>
 
+    <.section>
+      <:title>Clients</:title>
+
+      <:content>
+        <.table id="clients" rows={@actor.clients} row_id={&"client-#{&1.id}"}>
+          <:col :let={client} label="NAME">
+            <.link
+              navigate={~p"/#{@account}/clients/#{client.id}"}
+              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+            >
+              <%= client.name %>
+            </.link>
+          </:col>
+          <:col :let={client} label="STATUS">
+            <.connection_status schema={client} />
+          </:col>
+          <:empty>
+            <div class="text-center text-slate-500 p-4">No clients to display</div>
+            <div class="text-center text-slate-500 mb-4">
+              Clients are created automatically when user connects to a resource.
+            </div>
+          </:empty>
+        </.table>
+      </:content>
+    </.section>
+
+    <.section>
+      <:title>Authorizations</:title>
+      <:content>
+        <.table id="flows" rows={@flows} row_id={&"flows-#{&1.id}"}>
+          <:col :let={flow} label="AUTHORIZED AT">
+            <.relative_datetime datetime={flow.inserted_at} />
+          </:col>
+          <:col :let={flow} label="EXPIRES AT">
+            <.relative_datetime datetime={flow.expires_at} />
+          </:col>
+          <:col :let={flow} label="POLICY">
+            <.link
+              navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
+              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+            >
+              <Web.Policies.Components.policy_name policy={flow.policy} />
+            </.link>
+          </:col>
+          <:col :let={flow} label="CLIENT (IP)">
+            <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={link_style()}>
+              <%= flow.client.name %>
+            </.link>
+            (<%= flow.client_remote_ip %>)
+          </:col>
+          <:col :let={flow} label="GATEWAY (IP)">
+            <.link
+              navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
+              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+            >
+              <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
+            </.link>
+            (<%= flow.gateway_remote_ip %>)
+          </:col>
+          <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
+            <.link
+              navigate={~p"/#{@account}/flows/#{flow.id}"}
+              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+            >
+              Show
+            </.link>
+          </:col>
+          <:empty>
+            <div class="text-center text-slate-500 p-4">No authorizations to display</div>
+          </:empty>
+        </.table>
+      </:content>
+    </.section>
+
     <.danger_zone>
       <:action>
         <.delete_button
@@ -184,7 +270,7 @@ defmodule Web.Actors.Show do
 
   def handle_event("delete", _params, socket) do
     with {:ok, _actor} <- Actors.delete_actor(socket.assigns.actor, socket.assigns.subject) do
-      {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/actors")}
+      {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/actors")}
     else
       {:error, :cant_delete_the_last_admin} ->
         {:noreply, put_flash(socket, :error, "You can't delete the last admin of an account.")}
@@ -196,7 +282,8 @@ defmodule Web.Actors.Show do
       actor = %{
         actor
         | identities: socket.assigns.actor.identities,
-          groups: socket.assigns.actor.groups
+          groups: socket.assigns.actor.groups,
+          clients: socket.assigns.actor.clients
       }
 
       socket =
@@ -217,7 +304,8 @@ defmodule Web.Actors.Show do
     actor = %{
       actor
       | identities: socket.assigns.actor.identities,
-        groups: socket.assigns.actor.groups
+        groups: socket.assigns.actor.groups,
+        clients: socket.assigns.actor.clients
     }
 
     socket =
@@ -235,10 +323,15 @@ defmodule Web.Actors.Show do
     {:ok, actor} =
       Actors.fetch_actor_by_id(socket.assigns.actor.id, socket.assigns.subject,
         preload: [
-          identities: [:provider, created_by_identity: [:actor]],
-          groups: []
+          identities: [:provider, created_by_identity: [:actor]]
         ]
       )
+
+    actor = %{
+      actor
+      | groups: socket.assigns.actor.groups,
+        clients: socket.assigns.actor.clients
+    }
 
     socket =
       socket

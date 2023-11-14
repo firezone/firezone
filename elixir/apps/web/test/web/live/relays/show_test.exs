@@ -126,10 +126,11 @@ defmodule Web.Live.Relays.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/relays/#{relay}")
 
-    assert lv
-           |> element("button", "Delete Relay")
-           |> render_click() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/relay_groups/#{relay.group}"}}}
+    lv
+    |> element("button", "Delete Relay")
+    |> render_click()
+
+    assert_redirected(lv, ~p"/#{account}/relay_groups/#{relay.group}")
 
     assert Repo.get(Domain.Relays.Relay, relay.id).deleted_at
   end

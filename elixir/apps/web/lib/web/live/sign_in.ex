@@ -1,4 +1,4 @@
-defmodule Web.Auth.SignIn do
+defmodule Web.SignIn do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
   alias Domain.{Auth, Accounts}
 

@@ -172,7 +172,7 @@ defmodule Web.Resources.Show do
               navigate={~p"/#{@account}/sites/#{gateway_group}"}
               class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
             >
-              <%= gateway_group.name_prefix %>
+              <%= gateway_group.name %>
             </.link>
           </:col>
           <:empty>
@@ -223,7 +223,7 @@ defmodule Web.Resources.Show do
               navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
               class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
             >
-              <%= flow.gateway.group.name_prefix %>-<%= flow.gateway.name_suffix %>
+              <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>

@@ -69,7 +69,7 @@ defmodule Web.Policies.Edit do
   def handle_event("submit", %{"policy" => policy_params}, socket) do
     with {:ok, policy} <-
            Policies.update_policy(socket.assigns.policy, policy_params, socket.assigns.subject) do
-      {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
+      {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
     else
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}

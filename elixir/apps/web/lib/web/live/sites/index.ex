@@ -36,7 +36,7 @@ defmodule Web.Sites.Index do
               navigate={~p"/#{@account}/sites/#{group}"}
               class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
             >
-              <%= group.name_prefix %>
+              <%= group.name %>
             </.link>
           </:col>
 
@@ -92,7 +92,7 @@ defmodule Web.Sites.Index do
                   navigate={~p"/#{@account}/gateways/#{gateway}"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline inline-block"
                   phx-no-format
-                ><%= gateway.name_suffix %></.link>
+                ><%= gateway.name %></.link>
               </:item>
 
               <:tail :let={count}>

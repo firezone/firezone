@@ -113,22 +113,11 @@ defmodule Web.Live.RelayGroups.NewTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/relay_groups/new")
 
-    html =
-      lv
-      |> form("form", group: attrs)
-      |> render_submit()
+    lv
+    |> form("form", group: attrs)
+    |> render_submit()
 
-    assert html =~ "Select deployment method"
-    assert html =~ "FIREZONE_TOKEN="
-    assert html =~ "docker run"
-    assert html =~ "Waiting for relay connection..."
-
-    token = Regex.run(~r/FIREZONE_TOKEN=&quot;([^ ]+)&quot;/, html) |> List.last()
-    assert {:ok, _token} = Domain.Relays.authorize_relay(token)
-
-    group = Repo.get_by(Domain.Relays.Group, name: attrs.name) |> Repo.preload(:tokens)
-    relay = Fixtures.Relays.create_relay(account: account, group: group)
-    Domain.Relays.connect_relay(relay, "foo")
+    group = Repo.get_by(Domain.Relays.Group, name: attrs.name)
 
     assert assert_redirect(lv, ~p"/#{account}/relay_groups/#{group}")
   end
