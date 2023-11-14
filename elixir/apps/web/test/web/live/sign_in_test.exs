@@ -60,5 +60,6 @@ defmodule Web.SignInTest do
 
     assert html =~ ~s|value="ios"|
     assert html =~ ~s|value="csrf-token"|
+    refute html =~ ~s|Meant to sign in from a client instead?|
   end
 end
