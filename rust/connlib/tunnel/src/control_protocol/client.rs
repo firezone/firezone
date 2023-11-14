@@ -34,11 +34,22 @@ fn set_connection_state_update<CB>(
     ice.on_connection_state_change(Box::new(move |state| {
         let tunnel = Arc::clone(&tunnel);
         tracing::trace!(%state, "peer_state");
-        if state == RTCIceTransportState::Failed {
-            tunnel.role_state.lock().on_connection_failed(resource_id);
-            tunnel.peer_connections.lock().remove(&gateway_id);
-        }
-        Box::pin(async {})
+        Box::pin(async move {
+            if state == RTCIceTransportState::Failed {
+                // There's a really unlikely race condition but this line needs to be before on_connection_failed.
+                // if we clear up the gateway awaiting flag before removing the connection a new connection could be
+                // established that replaces this one and this line removes it.
+                let ice = tunnel.peer_connections.lock().remove(&gateway_id);
+
+                if let Some(ice) = ice {
+                    if let Err(err) = ice.stop().await {
+                        tracing::warn!(%err, "couldn't stop ice transport: {err:#}");
+                    }
+                }
+
+                tunnel.role_state.lock().on_connection_failed(resource_id);
+            }
+        })
     }));
 }
 
@@ -152,6 +163,11 @@ where
             }
         });
 
+        ice.on_connection_state_change(on_peer_connection_state_change_handler(
+            gateway_id,
+            self.stop_peer_command_sender.clone(),
+        ));
+
         self.role_state
             .lock()
             .peer_queue
@@ -175,11 +191,6 @@ where
                 .gateway_awaiting_connection
                 .remove(&gateway_id);
         }
-
-        ice.on_connection_state_change(on_peer_connection_state_change_handler(
-            gateway_id,
-            self.stop_peer_command_sender.clone(),
-        ));
 
         tokio::spawn(self.start_peer_handler(peer, ep));
 

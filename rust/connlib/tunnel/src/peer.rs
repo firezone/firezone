@@ -185,7 +185,6 @@ where
     pub(crate) fn encapsulate(
         &self,
         mut packet: MutableIpPacket,
-        dest: IpAddr,
         buf: &mut [u8],
     ) -> Result<Option<Bytes>> {
         if let Some(resource) = self.get_translation(packet.to_immutable().source()) {

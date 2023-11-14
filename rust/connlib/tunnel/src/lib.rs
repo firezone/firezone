@@ -454,7 +454,7 @@ where
     ) {
         let peer_id = peer.inner.conn_id;
 
-        match peer.inner.encapsulate(packet, dest, write_buf) {
+        match peer.inner.encapsulate(packet, write_buf) {
             Ok(None) => {}
             Ok(Some(b)) => {
                 tracing::trace!(target: "wire", action = "writing", to = "peer", %dest);

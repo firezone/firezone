@@ -239,11 +239,12 @@ impl ClientState {
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
         self.awaiting_connection.remove(&resource);
+        self.awaiting_connection_timers.remove(resource);
+
         let Some(gateway) = self.resources_gateways.remove(&resource) else {
             return;
         };
         self.gateway_awaiting_connection.remove(&gateway);
-        self.awaiting_connection_timers.remove(resource);
     }
 
     pub fn on_connection_intent(&mut self, destination: IpAddr) {
