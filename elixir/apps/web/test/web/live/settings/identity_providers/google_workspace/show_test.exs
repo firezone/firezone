@@ -239,6 +239,6 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
            |> render()
            |> Floki.attribute("href")
            |> hd() ==
-             ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}/redirect"
+             ~p"/#{account.id}/settings/identity_providers/google_workspace/#{provider}/redirect"
   end
 end

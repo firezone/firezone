@@ -74,7 +74,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
 
       callback_url =
         url(
-          ~p"/#{account}/settings/identity_providers/google_workspace/#{provider.id}/handle_callback"
+          ~p"/#{account.id}/settings/identity_providers/google_workspace/#{provider.id}/handle_callback"
         )
 
       {state, verifier} = conn.cookies["fz_auth_state_#{provider.id}"] |> :erlang.binary_to_term()

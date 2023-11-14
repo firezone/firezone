@@ -56,7 +56,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Edit do
       socket =
         redirect(socket,
           to:
-            ~p"/#{socket.assigns.account}/settings/identity_providers/google_workspace/#{provider}/redirect"
+            ~p"/#{socket.assigns.account.id}/settings/identity_providers/google_workspace/#{provider}/redirect"
         )
 
       {:noreply, socket}
