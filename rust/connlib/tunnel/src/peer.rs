@@ -210,8 +210,6 @@ where
             _ => panic!("Unexpected result from `encapsulate`"),
         };
 
-        tracing::trace!(target: "wire", action = "writing", from = "iface", to = %dest);
-
         Ok(Some(Bytes::copy_from_slice(packet)))
     }
 

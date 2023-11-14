@@ -194,6 +194,8 @@ where
                 return Poll::Ready(Ok(None));
             };
 
+            tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination());
+
             let mut role_state = self.role_state.lock();
 
             let packet = match role_state.handle_dns(packet) {
@@ -455,6 +457,7 @@ where
         match peer.inner.encapsulate(packet, dest, write_buf) {
             Ok(None) => {}
             Ok(Some(b)) => {
+                tracing::trace!(target: "wire", action = "writing", to = "peer", %dest);
                 if peer_queue.try_send(b).is_err() {}
                 // tokio::spawn({
                 //     let channel = peer.channel.clone();
