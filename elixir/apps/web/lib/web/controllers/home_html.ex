@@ -24,7 +24,7 @@ defmodule Web.HomeHTML do
               <.account_button :for={account <- @accounts} account={account} />
             </div>
 
-            <.separator if={@accounts != []} />
+            <.separator :if={@accounts != []} />
 
             <.form :let={f} for={%{}} action={~p"/"} class="space-y-4 lg:space-y-6">
               <.input
