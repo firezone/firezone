@@ -22,6 +22,14 @@ defmodule Web.Router do
     plug :accepts, ["html", "xml"]
   end
 
+  pipeline :home do
+    plug :accepts, ["html", "xml"]
+    plug :fetch_session
+    plug :protect_from_forgery
+    plug :fetch_live_flash
+    plug :put_root_layout, {Web.Layouts, :root}
+  end
+
   pipeline :ensure_authenticated_admin do
     plug :ensure_authenticated
     plug :ensure_authenticated_actor_type, :account_admin_user
@@ -34,9 +42,15 @@ defmodule Web.Router do
   end
 
   scope "/", Web do
+    pipe_through :home
+
+    get "/", HomeController, :home
+    post "/", HomeController, :redirect_to_sign_in
+  end
+
+  scope "/", Web do
     pipe_through :public
 
-    get "/", RedirectController, :home
     get "/healthz", HealthController, :healthz
   end
 

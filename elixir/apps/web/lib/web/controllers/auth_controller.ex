@@ -3,17 +3,6 @@ defmodule Web.AuthController do
   alias Web.Auth
   alias Domain.Auth.Adapters.OpenIDConnect
 
-  # This is the cookie which will store recent account ids
-  # that the user has signed in to.
-  @remember_me_cookie_name "fz_recent_account_ids"
-  @remember_me_cookie_options [
-    sign: true,
-    max_age: 365 * 24 * 60 * 60,
-    same_site: "Lax",
-    secure: true,
-    http_only: true
-  ]
-
   # This is the cookie which will be used to store the
   # state and code verifier for OpenID Connect IdP's
   @state_cookie_key_prefix "fz_auth_state_"
@@ -320,39 +309,15 @@ defmodule Web.AuthController do
   end
 
   defp delete_recent_account(%{assigns: %{subject: subject}} = conn) do
-    update_recent_accounts(conn, fn recent_account_ids ->
+    Auth.update_recent_account_ids(conn, fn recent_account_ids ->
       recent_account_ids -- [subject.account.id]
     end)
   end
 
   defp persist_recent_account(conn, %Domain.Accounts.Account{} = account) do
-    update_recent_accounts(conn, fn recent_account_ids ->
+    Auth.update_recent_account_ids(conn, fn recent_account_ids ->
       [account.id] ++ recent_account_ids
     end)
-  end
-
-  defp update_recent_accounts(conn, callback) when is_function(callback, 1) do
-    conn = fetch_cookies(conn, signed: [@remember_me_cookie_name])
-
-    recent_account_ids =
-      if recent_account_ids = Map.get(conn.cookies, @remember_me_cookie_name) do
-        :erlang.binary_to_term(recent_account_ids, [:safe])
-      else
-        []
-      end
-
-    recent_account_ids =
-      recent_account_ids
-      |> callback.()
-      |> Enum.take(5)
-      |> :erlang.term_to_binary()
-
-    put_resp_cookie(
-      conn,
-      @remember_me_cookie_name,
-      recent_account_ids,
-      @remember_me_cookie_options
-    )
   end
 
   defp take_non_empty_params(map, keys) do

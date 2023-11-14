@@ -2,6 +2,18 @@ defmodule Web.Auth do
   use Web, :verified_routes
   alias Domain.{Auth, Accounts}
 
+  # This is the cookie which will store recent account ids
+  # that the user has signed in to.
+  @remember_me_cookie_name "fz_recent_account_ids"
+  @remember_me_cookie_options [
+    sign: true,
+    max_age: 365 * 24 * 60 * 60,
+    same_site: "Lax",
+    secure: true,
+    http_only: true
+  ]
+  @remember_last_account_ids 5
+
   def signed_in_path(%Auth.Subject{actor: %{type: :account_admin_user}} = subject) do
     ~p"/#{subject.account}/sites"
   end
@@ -130,6 +142,37 @@ defmodule Web.Auth do
     |> Plug.Conn.configure_session(renew: true)
     |> Plug.Conn.clear_session()
     |> Plug.Conn.put_session(:preferred_locale, preferred_locale)
+  end
+
+  ###########################
+  ## Controller Helpers
+  ###########################
+
+  def list_recent_account_ids(conn) do
+    conn = Plug.Conn.fetch_cookies(conn, signed: [@remember_me_cookie_name])
+
+    if recent_account_ids = Map.get(conn.cookies, @remember_me_cookie_name) do
+      {:ok, :erlang.binary_to_term(recent_account_ids, [:safe]), conn}
+    else
+      {:ok, [], conn}
+    end
+  end
+
+  def update_recent_account_ids(conn, callback) when is_function(callback, 1) do
+    {:ok, recent_account_ids, conn} = list_recent_account_ids(conn)
+
+    recent_account_ids =
+      recent_account_ids
+      |> callback.()
+      |> Enum.take(@remember_last_account_ids)
+      |> :erlang.term_to_binary()
+
+    Plug.Conn.put_resp_cookie(
+      conn,
+      @remember_me_cookie_name,
+      recent_account_ids,
+      @remember_me_cookie_options
+    )
   end
 
   ###########################
