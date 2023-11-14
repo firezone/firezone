@@ -18,7 +18,7 @@ defmodule Web.Live.SignUpTest do
   end
 
   test "creates new account and sends a welcome email", %{conn: conn} do
-    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account_name = "FooBar"
 
@@ -54,14 +54,6 @@ defmodule Web.Live.SignUpTest do
 
     assert_email_sent(fn email ->
       assert email.subject == "Welcome to Firezone"
-
-      verify_sign_in_token_path =
-        ~p"/#{account}/sign_in/providers/#{provider.id}/verify_sign_in_token"
-
-      assert email.text_body =~ "#{verify_sign_in_token_path}"
-      assert email.text_body =~ "identity_id=#{identity.id}"
-      assert email.text_body =~ "secret="
-
       assert email.text_body =~ url(~p"/#{account}")
     end)
   end

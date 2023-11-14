@@ -47,7 +47,9 @@ defmodule Web.SignIn do
         <div class="w-full col-span-6 mx-auto bg-white rounded shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
             <h1 class="text-xl text-center font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl dark:text-white">
-              <%= @account.name %> Admin Portal
+              <span>
+                Sign into <%= @account.name %>
+              </span>
             </h1>
 
             <.flash flash={@flash} kind={:error} />
@@ -97,7 +99,7 @@ defmodule Web.SignIn do
             </.intersperse_blocks>
           </div>
         </div>
-        <div class="mx-auto p-6 sm:p-8">
+        <div :if={is_nil(@params["client_platform"])} class="mx-auto p-6 sm:p-8">
           <p class="py-2">
             <%= # TODO: Add link to client instructions docs %> Meant to sign in from a client instead?
             <a href="https://firezone.dev/docs" class="font-medium text-blue-600 hover:text-blue-500">

@@ -27,7 +27,7 @@ defmodule Domain.AuthTest do
     test "returns error when provider is deleted" do
       account = Fixtures.Accounts.create_account()
       Fixtures.Auth.create_userpass_provider(account: account)
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
 
       identity =
@@ -44,7 +44,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns provider" do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider()
       assert {:ok, fetched_provider} = fetch_provider_by_id(provider.id)
       assert fetched_provider.id == provider.id
@@ -141,7 +141,7 @@ defmodule Domain.AuthTest do
     test "returns error when provider is disabled" do
       account = Fixtures.Accounts.create_account()
       Fixtures.Auth.create_userpass_provider(account: account)
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
 
       identity =
@@ -167,7 +167,7 @@ defmodule Domain.AuthTest do
     test "returns error when provider is deleted" do
       account = Fixtures.Accounts.create_account()
       Fixtures.Auth.create_userpass_provider(account: account)
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
 
       identity =
@@ -184,7 +184,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns provider" do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider()
       assert {:ok, fetched_provider} = fetch_active_provider_by_id(provider.id)
       assert fetched_provider.id == provider.id
@@ -195,7 +195,7 @@ defmodule Domain.AuthTest do
     test "returns all not soft-deleted providers for a given account" do
       account = Fixtures.Accounts.create_account()
 
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       Fixtures.Auth.create_userpass_provider(account: account)
       email_provider = Fixtures.Auth.create_email_provider(account: account)
       token_provider = Fixtures.Auth.create_token_provider(account: account)
@@ -235,7 +235,7 @@ defmodule Domain.AuthTest do
     test "returns active providers for a given account" do
       account = Fixtures.Accounts.create_account()
 
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       userpass_provider = Fixtures.Auth.create_userpass_provider(account: account)
       email_provider = Fixtures.Auth.create_email_provider(account: account)
       token_provider = Fixtures.Auth.create_token_provider(account: account)
@@ -459,7 +459,7 @@ defmodule Domain.AuthTest do
     test "returns error if email provider is already enabled", %{
       account: account
     } do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       Fixtures.Auth.create_email_provider(account: account)
       attrs = Fixtures.Auth.provider_attrs(adapter: :email)
       assert {:error, changeset} = create_provider(account, attrs)
@@ -510,7 +510,7 @@ defmodule Domain.AuthTest do
     } do
       attrs = Fixtures.Auth.provider_attrs()
 
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
       assert {:ok, provider} = create_provider(account, attrs)
 
@@ -529,7 +529,7 @@ defmodule Domain.AuthTest do
     test "returns error when email provider is disabled", %{
       account: account
     } do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, nil)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, false)
       attrs = Fixtures.Auth.provider_attrs()
 
       assert {:error, changeset} = create_provider(account, attrs)
@@ -571,7 +571,7 @@ defmodule Domain.AuthTest do
 
     test "persists identity that created the provider", %{account: account} do
       attrs = Fixtures.Auth.provider_attrs()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
       actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
@@ -714,7 +714,7 @@ defmodule Domain.AuthTest do
   describe "disable_provider/2" do
     setup do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
@@ -861,7 +861,7 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
 
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
       {:ok, provider} = disable_provider(provider, subject)
 
@@ -896,7 +896,7 @@ defmodule Domain.AuthTest do
     test "does not allow to enable providers in other accounts", %{
       subject: subject
     } do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider()
       assert enable_provider(provider, subject) == {:error, :not_found}
     end
@@ -916,7 +916,7 @@ defmodule Domain.AuthTest do
   describe "delete_provider/2" do
     setup do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
@@ -1326,7 +1326,7 @@ defmodule Domain.AuthTest do
   describe "upsert_identity/3" do
     test "creates an identity" do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
       provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
 
@@ -1354,7 +1354,7 @@ defmodule Domain.AuthTest do
 
     test "updates existing identity" do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
       provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
       actor = Fixtures.Actors.create_actor(account: account, provider: provider)
@@ -1378,7 +1378,7 @@ defmodule Domain.AuthTest do
 
     test "returns error when identifier is invalid" do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
@@ -1401,7 +1401,7 @@ defmodule Domain.AuthTest do
   describe "new_identity/3" do
     setup do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
       actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
 
@@ -1451,7 +1451,7 @@ defmodule Domain.AuthTest do
   describe "create_identity/4" do
     test "creates an identity" do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
       provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
 
@@ -1470,7 +1470,7 @@ defmodule Domain.AuthTest do
 
     test "returns error on missing permissions" do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
@@ -1527,7 +1527,7 @@ defmodule Domain.AuthTest do
 
     test "returns error when identifier is invalid" do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
@@ -1548,7 +1548,7 @@ defmodule Domain.AuthTest do
 
     test "updates existing identity" do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
       provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
       actor = Fixtures.Actors.create_actor(account: account, provider: provider)
@@ -1570,7 +1570,7 @@ defmodule Domain.AuthTest do
   describe "replace_identity/3" do
     setup do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
@@ -1662,7 +1662,7 @@ defmodule Domain.AuthTest do
   describe "delete_identity/2" do
     setup do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
 
       actor =
@@ -1781,7 +1781,7 @@ defmodule Domain.AuthTest do
   describe "delete_actor_identities/1" do
     setup do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
 
       %{
@@ -1815,7 +1815,7 @@ defmodule Domain.AuthTest do
   describe "sign_in/5" do
     setup do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
       user_agent = Fixtures.Auth.user_agent()
       remote_ip = Fixtures.Auth.remote_ip()
@@ -2329,7 +2329,7 @@ defmodule Domain.AuthTest do
   describe "sign_in/2" do
     setup do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
       user_agent = Fixtures.Auth.user_agent()
       remote_ip = Fixtures.Auth.remote_ip()
@@ -2503,7 +2503,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns identity and url without changes for other providers" do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
@@ -2614,7 +2614,7 @@ defmodule Domain.AuthTest do
     test "returns error when subject has no access to given provider", %{
       subject: subject
     } do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider()
       assert ensure_has_access_to(subject, provider) == {:error, :unauthorized}
     end
@@ -2623,7 +2623,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       account: account
     } do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
       assert ensure_has_access_to(subject, provider) == :ok
     end

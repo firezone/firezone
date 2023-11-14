@@ -4,27 +4,26 @@
   Dear Firezone user,
 </p>
 
-<div :if={is_nil(@client_platform)}>
-  <p>
-    Here is the <a href={@sign_in_url} target="_blank">magic sign-in link</a>
-    you requested to sign in to <b>"<%= @account.name %>"</b>.
-    It is valid for 15 minutes.
-  </p>
-
-  <small>
-    If the link didn't work, please copy this link and open it in your browser: <%= @sign_in_url %>
-  </small>
-</div>
-
-<div :if={not is_nil(@client_platform)}>
+<div>
   <p>
     Please copy the code and paste it into the Firezone application to proceed with
     signing in to <b>"<%= @account.name %>"</b>:
   </p>
+
   <p style="font-weight:bold; margin-top:1rem; margin-bottom:1rem;">
     <code><%= @secret %></code>
   </p>
-  <p>It is valid for 15 minutes.</p>
+
+  <p>
+    or click on the <a href={@sign_in_url} target="_blank">magic sign-in link</a>
+    if you are on the same device where you are trying to sign in.
+  </p>
+
+  <p>
+    <small>
+      This email is valid for 15 minutes.
+    </small>
+  </p>
 </div>
 
 <p>

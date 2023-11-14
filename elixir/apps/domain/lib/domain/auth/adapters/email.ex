@@ -42,15 +42,10 @@ defmodule Domain.Auth.Adapters.Email do
 
   @impl true
   def provider_changeset(%Ecto.Changeset{} = changeset) do
-    %{
-      outbound_email_adapter: outbound_email_adapter
-    } =
-      Domain.Config.fetch_resolved_configs!(changeset.data.account_id, [:outbound_email_adapter])
-
-    if is_nil(outbound_email_adapter) do
-      Ecto.Changeset.add_error(changeset, :adapter, "email adapter is not configured")
-    else
+    if Domain.Config.fetch_env!(:domain, :outbound_email_adapter_configured?) do
       changeset
+    else
+      Ecto.Changeset.add_error(changeset, :adapter, "email adapter is not configured")
     end
   end
 

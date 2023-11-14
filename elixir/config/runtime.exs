@@ -73,6 +73,8 @@ if config_env() == :prod do
 
   config :domain, docker_registry: compile_config!(:docker_registry)
 
+  config :domain, outbound_email_adapter_configured?: !!compile_config!(:outbound_email_adapter)
+
   ###############################
   ##### Web #####################
   ###############################

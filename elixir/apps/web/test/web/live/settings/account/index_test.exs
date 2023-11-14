@@ -2,7 +2,7 @@ defmodule Web.Live.Settings.Account.IndexTest do
   use Web.ConnCase, async: true
 
   setup do
-    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
     identity = Fixtures.Auth.create_identity(account: account, actor: [type: :account_admin_user])

@@ -79,6 +79,8 @@ config :domain, :enabled_features,
 
 config :domain, docker_registry: "us-east1-docker.pkg.dev/firezone-staging/firezone"
 
+config :domain, outbound_email_adapter_configured?: false
+
 ###############################
 ##### Web #####################
 ###############################
