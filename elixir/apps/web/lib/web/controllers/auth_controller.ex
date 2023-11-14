@@ -295,7 +295,6 @@ defmodule Web.AuthController do
       Domain.Auth.sign_out(subject.identity, url(~p"/#{account_id_or_slug}?#{redirect_params}"))
 
     conn
-    |> delete_recent_account()
     |> Auth.sign_out()
     |> redirect(external: redirect_url)
   end
@@ -306,12 +305,6 @@ defmodule Web.AuthController do
     conn
     |> Auth.sign_out()
     |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
-  end
-
-  defp delete_recent_account(%{assigns: %{subject: subject}} = conn) do
-    Auth.update_recent_account_ids(conn, fn recent_account_ids ->
-      recent_account_ids -- [subject.account.id]
-    end)
   end
 
   defp persist_recent_account(conn, %Domain.Accounts.Account{} = account) do
