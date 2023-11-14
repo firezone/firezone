@@ -38,7 +38,7 @@ where
 
 /// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
-    candidate_receivers: StreamMap<ClientId, RTCIceCandidate>,
+    pub candidate_receivers: StreamMap<ClientId, RTCIceCandidate>,
     pub peer_queue: HashMap<ClientId, tokio::sync::mpsc::Sender<bytes::Bytes>>,
 }
 
@@ -75,10 +75,11 @@ impl RoleState for GatewayState {
         loop {
             match ready!(self.candidate_receivers.poll_next_unpin(cx)) {
                 (conn_id, Some(Ok(c))) => {
+                    tracing::trace!(%c, "candidate event!");
                     return Poll::Ready(Event::SignalIceCandidate {
                         conn_id,
                         candidate: c,
-                    })
+                    });
                 }
                 (id, Some(Err(e))) => {
                     tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}")

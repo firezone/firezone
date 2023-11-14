@@ -328,6 +328,7 @@ where
     fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         loop {
             if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
+                // TODO: drop peer_queue
                 let mut peers = self.peers_by_ip.write();
 
                 let Some(peer_to_remove) = peers
@@ -401,7 +402,7 @@ where
 
                     tokio::spawn(async move {
                         if let Err(e) = peer_channel.send(&bytes).await {
-                            tracing::error!("Failed to send packet to peer: {e:?}");
+                            tracing::error!("Failed to send packet to peer: {e:#}");
                             let _ = stop_command_sender.send(conn_id).await;
                         }
                     });

@@ -1,6 +1,5 @@
 use crate::{
-    control_protocol::on_peer_connection_state_change_handler, peer::Peer, peer_handler,
-    ConnectedPeer, GatewayState, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
+    peer::Peer, peer_handler, ConnectedPeer, GatewayState, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
 };
 
 use chrono::{DateTime, Utc};
@@ -46,19 +45,16 @@ where
             ice_transport: ice,
             ice_candidate_rx,
         } = new_ice_connection(&self.webrtc_api, relays).await?;
+        self.role_state.lock().candidate_receivers.remove(client_id);
         self.role_state
             .lock()
             .add_new_ice_receiver(client_id, ice_candidate_rx);
 
-        let tunnel = Arc::clone(self);
         self.peer_connections
             .lock()
             .insert(client_id, Arc::clone(&ice));
 
-        ice.on_connection_state_change(on_peer_connection_state_change_handler(
-            client_id,
-            tunnel.stop_peer_command_sender.clone(),
-        ));
+        ice.on_connection_state_change(Box::new(|_| Box::pin(async {})));
 
         let tunnel = self.clone();
         tokio::spawn(async move {
@@ -66,12 +62,17 @@ where
                 .start(&remote_params, Some(RTCIceRole::Controlled))
                 .await
             {
-                tracing::warn!(%client_id, err = ?e, "Can't start ice connection: {e:#}")
+                tracing::warn!(%client_id, err = ?e, "Can't start ice connection: {e:#}");
+                tunnel.peer_connections.lock().remove(&client_id);
+                let _ = ice.stop().await;
+                return;
             }
+
             if let Err(e) = tunnel
                 .new_tunnel(peer, client_id, resource, expires_at, ice)
                 .await
             {
+                // TODO: cleanup
                 tracing::warn!(%client_id, err = ?e, "Can't start tunnel: {e:#}")
             }
         });

@@ -6,12 +6,12 @@ use connlib_shared::{
     messages::{Relay, RequestConnection, ReuseConnection},
     Callbacks, Error, Result,
 };
+use webrtc::ice_transport::RTCIceTransport;
 use webrtc::ice_transport::{
     ice_candidate::RTCIceCandidate, ice_gatherer::RTCIceGatherOptions,
-    ice_parameters::RTCIceParameters, OnConnectionStateChangeHdlrFn,
+    ice_parameters::RTCIceParameters,
 };
 use webrtc::ice_transport::{ice_credential_type::RTCIceCredentialType, ice_server::RTCIceServer};
-use webrtc::ice_transport::{ice_transport_state::RTCIceTransportState, RTCIceTransport};
 
 use crate::{RoleState, Tunnel};
 
@@ -53,28 +53,6 @@ where
     }
 }
 
-pub fn on_peer_connection_state_change_handler<TId>(
-    conn_id: TId,
-    stop_command_sender: mpsc::Sender<TId>,
-) -> OnConnectionStateChangeHdlrFn
-where
-    TId: Copy + Send + Sync + 'static,
-{
-    Box::new(move |state| {
-        let mut sender = stop_command_sender.clone();
-
-        tracing::trace!(?state, "peer_state_update");
-        Box::pin(async move {
-            if matches!(
-                state,
-                RTCIceTransportState::Failed | RTCIceTransportState::Closed
-            ) {
-                let _ = sender.send(conn_id).await;
-            }
-        })
-    })
-}
-
 pub(crate) struct IceConnection {
     pub ice_params: RTCIceParameters,
     pub ice_transport: Arc<RTCIceTransport>,
@@ -111,15 +89,17 @@ pub(crate) async fn new_ice_connection(
 
     let (ice_candidate_tx, ice_candidate_rx) = mpsc::channel(ICE_CANDIDATE_BUFFER);
 
+    let g = gatherer.clone();
     gatherer.on_local_candidate(Box::new(move |candidate| {
         let Some(candidate) = candidate else {
+            g.on_local_candidate(Box::new(|_| Box::pin(async {})));
             return Box::pin(async {});
         };
 
         let mut ice_candidate_tx = ice_candidate_tx.clone();
         Box::pin(async move {
             if ice_candidate_tx.send(candidate).await.is_err() {
-                debug_assert!(false, "receiver was dropped before sender")
+                debug_assert!(false, "receiver was dropped before sender");
             }
         })
     }));

@@ -14,9 +14,7 @@ use webrtc::ice_transport::{
 };
 
 use crate::{
-    control_protocol::{
-        new_ice_connection, on_peer_connection_state_change_handler, IceConnection,
-    },
+    control_protocol::{new_ice_connection, IceConnection},
     peer_handler, PEER_QUEUE_SIZE,
 };
 use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
@@ -163,10 +161,7 @@ where
             }
         });
 
-        ice.on_connection_state_change(on_peer_connection_state_change_handler(
-            gateway_id,
-            self.stop_peer_command_sender.clone(),
-        ));
+        ice.on_connection_state_change(Box::new(|_| Box::pin(async {})));
 
         self.role_state
             .lock()
@@ -239,13 +234,17 @@ where
                 .start(&rtc_ice_params, Some(RTCIceRole::Controlling))
                 .await
             {
-                tracing::warn!(%gateway_id, err = ?e, "Can't start ice connection: {e:#}")
+                tracing::warn!(%gateway_id, err = ?e, "Can't start ice connection: {e:#}");
+                tunnel.peer_connections.lock().remove(&gateway_id);
+                let _ = peer_connection.stop().await;
+                return;
             }
 
             if let Err(e) = tunnel
                 .new_tunnel(resource_id, gateway_id, &peer_connection)
                 .await
             {
+                // TODO: cleanup
                 tracing::warn!(%gateway_id, err = ?e, "Can't start tunnel: {e:#}")
             }
         });
