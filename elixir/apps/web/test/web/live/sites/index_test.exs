@@ -46,7 +46,7 @@ defmodule Web.Live.Sites.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites")
 
-    assert button = Floki.find(html, "a[href='/#{account.id}/sites/new']")
+    assert button = Floki.find(html, "a[href='/#{account.slug}/sites/new']")
     assert Floki.text(button) =~ "Add Site"
   end
 

@@ -2,7 +2,7 @@ defmodule Web.Policies.New do
   use Web, :live_view
   alias Domain.{Resources, Actors, Policies}
 
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     with {:ok, resources} <-
            Resources.list_resources(socket.assigns.subject, preload: [:gateway_groups]),
          {:ok, actor_groups} <- Actors.list_groups(socket.assigns.subject) do
@@ -12,6 +12,8 @@ defmodule Web.Policies.New do
         assign(socket,
           resources: resources,
           actor_groups: actor_groups,
+          params: Map.take(params, ["site_id"]),
+          resource_id: params["resource_id"],
           page_title: "Add Policy",
           form: form
         )
@@ -59,7 +61,8 @@ defmodule Web.Policies.New do
                   ]
                 end)
               }
-              value={@form[:resource_id].value}
+              value={@resource_id || @form[:resource_id].value}
+              disabled={not is_nil(@resource_id)}
               required
             />
             <.input
@@ -83,7 +86,9 @@ defmodule Web.Policies.New do
 
   def handle_event("validate", %{"policy" => policy_params}, socket) do
     form =
-      Policies.new_policy(policy_params, socket.assigns.subject)
+      policy_params
+      |> put_default_policy_params(socket)
+      |> Policies.new_policy(socket.assigns.subject)
       |> Map.put(:action, :validate)
       |> to_form()
 
@@ -91,12 +96,27 @@ defmodule Web.Policies.New do
   end
 
   def handle_event("submit", %{"policy" => policy_params}, socket) do
+    policy_params = put_default_policy_params(policy_params, socket)
+
     with {:ok, policy} <- Policies.create_policy(policy_params, socket.assigns.subject) do
-      {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
+      if site_id = socket.assigns.params["site_id"] do
+        {:noreply,
+         push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}?#resources")}
+      else
+        {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
+      end
     else
       {:error, %Ecto.Changeset{} = changeset} ->
         form = to_form(changeset)
         {:noreply, assign(socket, form: form)}
+    end
+  end
+
+  defp put_default_policy_params(attrs, socket) do
+    if resource_id = socket.assigns.resource_id do
+      Map.put(attrs, "resource_id", resource_id)
+    else
+      attrs
     end
   end
 end

@@ -107,7 +107,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.EditTest do
               {:redirect,
                %{
                  to:
-                   ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}/redirect"
+                   ~p"/#{account.id}/settings/identity_providers/google_workspace/#{provider}/redirect"
                }}}
 
     assert provider.name == provider_attrs.name

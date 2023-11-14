@@ -18,10 +18,23 @@ defmodule Domain.Policies.Policy.Query do
     where(queryable, [policies: policies], policies.resource_id == ^resource_id)
   end
 
+  def by_resource_ids(queryable \\ all(), resource_ids) do
+    where(queryable, [policies: policies], policies.resource_id in ^resource_ids)
+  end
+
   def by_actor_id(queryable \\ all(), actor_id) do
     queryable
     |> with_joined_memberships()
     |> where([memberships: memberships], memberships.actor_id == ^actor_id)
+  end
+
+  def count_by_resource_id(queryable \\ all()) do
+    queryable
+    |> group_by([policies: policies], policies.resource_id)
+    |> select([policies: policies], %{
+      resource_id: policies.resource_id,
+      count: count(policies.id)
+    })
   end
 
   def with_joined_actor_group(queryable \\ all()) do

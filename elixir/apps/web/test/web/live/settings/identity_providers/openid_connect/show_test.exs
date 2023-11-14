@@ -178,6 +178,6 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
            |> render()
            |> Floki.attribute("href")
            |> hd() ==
-             ~p"/#{account}/settings/identity_providers/openid_connect/#{provider}/redirect"
+             ~p"/#{account.id}/settings/identity_providers/openid_connect/#{provider}/redirect"
   end
 end

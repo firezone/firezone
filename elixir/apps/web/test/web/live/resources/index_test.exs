@@ -46,7 +46,7 @@ defmodule Web.Live.Resources.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources")
 
-    assert button = Floki.find(html, "a[href='/#{account.id}/resources/new']")
+    assert button = Floki.find(html, "a[href='/#{account.slug}/resources/new']")
     assert Floki.text(button) =~ "Add Resource"
   end
 
@@ -78,8 +78,75 @@ defmodule Web.Live.Resources.IndexTest do
       assert row["name"] =~ resource.name
       assert row["address"] =~ resource.address
       assert row["sites"] =~ group.name_prefix
+      assert row["authorized groups"] == "None, create a Policy to grant access."
+    end)
+  end
+
+  test "renders authorized groups peek", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    group = Fixtures.Gateways.create_group(account: account)
+
+    resource =
+      Fixtures.Resources.create_resource(
+        account: account,
+        connections: [%{gateway_group_id: group.id}]
+      )
+
+    policies =
+      [
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource
+        ),
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource
+        ),
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource
+        )
+      ]
+      |> Repo.preload(:actor_group)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources")
+
+    resource_rows =
+      lv
+      |> element("#resources")
+      |> render()
+      |> table_to_map()
+
+    Enum.each(resource_rows, fn row ->
+      for policy <- policies do
+        assert row["authorized groups"] =~ policy.actor_group.name
+      end
     end)
 
-    # TODO: add assertion for Authorized Groups column
+    Fixtures.Policies.create_policy(
+      account: account,
+      resource: resource
+    )
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources")
+
+    resource_rows =
+      lv
+      |> element("#resources")
+      |> render()
+      |> table_to_map()
+
+    Enum.each(resource_rows, fn row ->
+      assert row["authorized groups"] =~ "and 1 more"
+    end)
   end
 end

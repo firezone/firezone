@@ -22,6 +22,7 @@ defmodule Domain.Resources.Resource do
     has_many :gateway_groups, through: [:connections, :gateway_group]
 
     has_many :policies, Domain.Policies.Policy, where: [deleted_at: nil]
+    has_many :actor_groups, through: [:policies, :actor_group]
     field :authorized_by_policy, :map, virtual: true
 
     field :created_by, Ecto.Enum, values: ~w[identity]a
