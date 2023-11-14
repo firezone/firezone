@@ -124,7 +124,7 @@ defmodule Web.Clients.Show do
               navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
               class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
             >
-              <%= flow.gateway.group.name_prefix %>-<%= flow.gateway.name_suffix %>
+              <%= flow.gateway.group.name %>-<%= flow.gateway.hostname %>
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>

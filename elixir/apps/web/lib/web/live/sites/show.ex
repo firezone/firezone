@@ -16,7 +16,7 @@ defmodule Web.Sites.Show do
            Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
       group = %{
         group
-        | gateways: Enum.sort_by(group.gateways, &{&1.online?, &1.name_suffix}, :desc)
+        | gateways: Enum.sort_by(group.gateways, &{&1.online?, &1.hostname}, :desc)
       }
 
       :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
@@ -31,13 +31,13 @@ defmodule Web.Sites.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        <%= @group.name_prefix %>
+        <%= @group.name %>
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Site: <code><%= @group.name_prefix %></code>
+        Site: <code><%= @group.name %></code>
       </:title>
       <:action>
         <.edit_button navigate={~p"/#{@account}/sites/#{@group}/edit"}>
@@ -49,7 +49,7 @@ defmodule Web.Sites.Show do
         <.vertical_table id="group">
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @group.name_prefix %></:value>
+            <:value><%= @group.name %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Created</:label>
@@ -76,7 +76,7 @@ defmodule Web.Sites.Show do
                 navigate={~p"/#{@account}/gateways/#{gateway.id}"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
-                <%= gateway.name_suffix %>
+                <%= gateway.hostname %>
               </.link>
             </:col>
             <:col :let={gateway} label="REMOTE IP">

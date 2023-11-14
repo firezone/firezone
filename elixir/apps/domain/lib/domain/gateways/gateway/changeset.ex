@@ -3,7 +3,7 @@ defmodule Domain.Gateways.Gateway.Changeset do
   alias Domain.Version
   alias Domain.Gateways
 
-  @upsert_fields ~w[external_id name_suffix public_key
+  @upsert_fields ~w[external_id hostname public_key
                     last_seen_user_agent
                     last_seen_remote_ip
                     last_seen_remote_ip_location_region
@@ -20,8 +20,8 @@ defmodule Domain.Gateways.Gateway.Changeset do
                               last_seen_version
                               last_seen_at
                               updated_at]a
-  @update_fields ~w[name_suffix]a
-  @required_fields ~w[external_id name_suffix public_key
+  @update_fields ~w[hostname]a
+  @required_fields ~w[external_id hostname public_key
                     last_seen_user_agent last_seen_remote_ip]a
 
   # WireGuard base64-encoded string length
@@ -35,7 +35,7 @@ defmodule Domain.Gateways.Gateway.Changeset do
   def upsert(%Gateways.Token{} = token, attrs) do
     %Gateways.Gateway{}
     |> cast(attrs, @upsert_fields)
-    |> put_default_value(:name_suffix, fn ->
+    |> put_default_value(:hostname, fn ->
       Domain.Crypto.random_token(5, encoder: :user_friendly)
     end)
     |> changeset()
@@ -43,7 +43,6 @@ defmodule Domain.Gateways.Gateway.Changeset do
     |> validate_base64(:public_key)
     |> validate_length(:public_key, is: @key_length)
     |> unique_constraint(:public_key, name: :gateways_account_id_public_key_index)
-    |> unique_constraint(:name_suffix, name: :gateways_account_id_group_id_name_suffix_index)
     |> unique_constraint(:ipv4)
     |> unique_constraint(:ipv6)
     |> put_change(:last_seen_at, DateTime.utc_now())
@@ -76,9 +75,9 @@ defmodule Domain.Gateways.Gateway.Changeset do
 
   defp changeset(changeset) do
     changeset
-    |> trim_change(:name_suffix)
-    |> validate_length(:name_suffix, min: 1, max: 8)
-    |> unique_constraint(:name_suffix, name: :gateways_group_id_name_suffix_index)
+    |> trim_change(:hostname)
+    |> validate_length(:hostname, min: 1, max: 8)
+    |> unique_constraint(:hostname, name: :gateways_group_id_hostname_index)
     |> unique_constraint([:public_key])
     |> unique_constraint(:external_id)
   end

@@ -62,8 +62,8 @@ defmodule Web.Live.Gateways.ShowTest do
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Sites"
-    assert breadcrumbs =~ gateway.group.name_prefix
-    assert breadcrumbs =~ gateway.name_suffix
+    assert breadcrumbs =~ gateway.group.name
+    assert breadcrumbs =~ gateway.hostname
   end
 
   test "renders gateway details", %{
@@ -83,8 +83,8 @@ defmodule Web.Live.Gateways.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["site"] =~ gateway.group.name_prefix
-    assert table["instance name"] =~ gateway.name_suffix
+    assert table["site"] =~ gateway.group.name
+    assert table["hostname"] =~ gateway.hostname
     assert table["last seen"]
     assert table["last seen remote ip"] =~ to_string(gateway.last_seen_remote_ip)
     assert table["status"] =~ "Offline"

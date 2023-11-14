@@ -76,7 +76,7 @@ defmodule Web.Flows.Show do
             <:label>Gateway</:label>
             <:value>
               <.link navigate={~p"/#{@account}/gateways/#{@flow.gateway_id}"} class={link_style()}>
-                <%= @flow.gateway.group.name_prefix %>-<%= @flow.gateway.name_suffix %>
+                <%= @flow.gateway.group.name %>-<%= @flow.gateway.hostname %>
               </.link>
               <div>
                 Remote IP: <%= @flow.gateway_remote_ip %>

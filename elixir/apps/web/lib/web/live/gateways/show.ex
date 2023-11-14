@@ -32,18 +32,18 @@ defmodule Web.Gateways.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}"}>
-        <%= @gateway.group.name_prefix %>
+        <%= @gateway.group.name %>
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}?#gateways"}>
         Gateways
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/gateways/#{@gateway}"}>
-        <%= @gateway.name_suffix %>
+        <%= @gateway.hostname %>
       </.breadcrumb>
     </.breadcrumbs>
     <.section>
       <:title>
-        Gateway: <code><%= @gateway.name_suffix %></code>
+        Gateway: <code><%= @gateway.hostname %></code>
       </:title>
       <:content>
         <.vertical_table id="gateway">
@@ -54,13 +54,13 @@ defmodule Web.Gateways.Show do
                 navigate={~p"/#{@account}/sites/#{@gateway.group}"}
                 class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
               >
-                <%= @gateway.group.name_prefix %>
+                <%= @gateway.group.name %>
               </.link>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Instance Name</:label>
-            <:value><%= @gateway.name_suffix %></:value>
+            <:label>Hostname</:label>
+            <:value><%= @gateway.hostname %></:value>
           </.vertical_table_row>
           <.vertical_table_row :if={@todos_enabled?}>
             <:label>Connectivity</:label>

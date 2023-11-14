@@ -25,7 +25,7 @@ defmodule Web.Sites.New do
               <div>
                 <.input
                   label="Name Prefix"
-                  field={@form[:name_prefix]}
+                  field={@form[:name]}
                   placeholder="Name of this Site"
                   required
                 />

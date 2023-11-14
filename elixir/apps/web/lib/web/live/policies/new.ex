@@ -53,7 +53,7 @@ defmodule Web.Policies.New do
               type="select"
               options={
                 Enum.map(@resources, fn resource ->
-                  group_names = resource.gateway_groups |> Enum.map(& &1.name_prefix)
+                  group_names = resource.gateway_groups |> Enum.map(& &1.name)
 
                   [
                     key: "#{resource.name} - #{Enum.join(group_names, ",")}",

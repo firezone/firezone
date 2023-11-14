@@ -144,7 +144,7 @@ defmodule Web.Live.Clients.ShowTest do
     assert row["policy"] =~ flow.policy.resource.name
 
     assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name_prefix}-#{flow.gateway.name_suffix} (189.172.73.153)"
+             "#{flow.gateway.group.name}-#{flow.gateway.hostname} (189.172.73.153)"
   end
 
   test "allows editing clients", %{

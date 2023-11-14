@@ -82,7 +82,7 @@ defmodule Web.Live.Actors.ShowTest do
              "#{flow.client.name} (#{client.last_seen_remote_ip})"
 
     assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name_prefix}-#{flow.gateway.name_suffix} (189.172.73.153)"
+             "#{flow.gateway.group.name}-#{flow.gateway.hostname} (189.172.73.153)"
   end
 
   describe "users" do

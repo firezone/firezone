@@ -226,7 +226,7 @@ defmodule Web.Resources.Components do
               class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
               target="_blank"
             >
-              <%= gateway_group.name_prefix %>
+              <%= gateway_group.name %>
             </.link>
           </div>
         </div>
