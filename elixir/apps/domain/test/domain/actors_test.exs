@@ -1690,7 +1690,7 @@ defmodule Domain.ActorsTest do
         Task.async(fn ->
           allow_child_sandbox_access(test_pid)
 
-          Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+          Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
           account = Fixtures.Accounts.create_account()
           provider = Fixtures.Auth.create_email_provider(account: account)
@@ -1924,7 +1924,7 @@ defmodule Domain.ActorsTest do
         Task.async(fn ->
           allow_child_sandbox_access(test_pid)
 
-          Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+          Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
           account = Fixtures.Accounts.create_account()
           provider = Fixtures.Auth.create_email_provider(account: account)

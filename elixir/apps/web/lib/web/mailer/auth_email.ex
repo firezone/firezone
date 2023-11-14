@@ -9,21 +9,9 @@ defmodule Web.Mailer.AuthEmail do
   def sign_up_link_email(
         %Domain.Accounts.Account{} = account,
         %Domain.Auth.Identity{} = identity,
-        email_secret,
         user_agent,
         remote_ip
       ) do
-    params =
-      %{
-        identity_id: identity.id,
-        secret: email_secret
-      }
-
-    sign_in_url =
-      url(
-        ~p"/#{account}/sign_in/providers/#{identity.provider_id}/verify_sign_in_token?#{params}"
-      )
-
     sign_in_form_url = url(~p"/#{account}")
 
     default_email()
@@ -31,12 +19,6 @@ defmodule Web.Mailer.AuthEmail do
     |> to(identity.provider_identifier)
     |> render_body(__MODULE__, :sign_up_link,
       account: account,
-      sign_in_token_created_at:
-        Cldr.DateTime.to_string!(identity.provider_state["sign_in_token_created_at"], Web.CLDR,
-          format: :short
-        ) <> " UTC",
-      secret: email_secret,
-      sign_in_url: sign_in_url,
       sign_in_form_url: sign_in_form_url,
       user_agent: user_agent,
       remote_ip: "#{:inet.ntoa(remote_ip)}"
