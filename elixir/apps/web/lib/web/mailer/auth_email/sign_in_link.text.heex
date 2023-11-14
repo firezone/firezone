@@ -1,18 +1,16 @@
 Dear Firezone user,
-<%= if is_nil(@client_platform) do %>
-Here is the magic sign-in link you requested to sign in to "<%= @account.name %>":
 
-<%= @sign_in_url %>
-
-Please copy this link and open it in your browser. It is valid for 15 minutes.
-<% else %>
 Please copy the code and paste it into the Firezone application to proceed with
 the sign in to "<%= @account.name %>":
 
 <%= @secret %>
 
-It is valid for 15 minutes.
-<% end %>
+or click on the magic sign-in if you are on the same device where you are trying to sign in:
+
+<%= @sign_in_url %>
+
+This email is valid for 15 minutes.
+
 If you did not request this action and have received this email in error, you can safely ignore
 and discard this email. However, if you continue to receive multiple unsolicited emails of this nature,
 we strongly recommend contacting your system administrator to report the issue.
