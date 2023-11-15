@@ -138,6 +138,7 @@ fn start_handlers<TId>(
 ) where
     TId: Copy + Send + Sync + fmt::Debug + 'static,
 {
+    ice.on_connection_state_change(Box::new(|_| Box::pin(async {})));
     tokio::spawn({
         async move {
             // If this fails receiver will be dropped and the connection will expire at some point

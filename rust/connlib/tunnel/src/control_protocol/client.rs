@@ -102,7 +102,7 @@ where
             .add_waiting_ice_receiver(gateway_id, ice_candidate_rx);
         {
             let mut peer_connections = self.peer_connections.lock();
-            peer_connections.insert(gateway_id, Arc::clone(&ice_transport));
+            pee.insert(gateway_id, Arc::clone(&ice_transport));
         }
 
         set_connection_state_update(self, &ice_transport, gateway_id, resource_id);
@@ -151,7 +151,6 @@ where
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
-        ice.on_connection_state_change(Box::new(|_| Box::pin(async {})));
         start_handlers(
             Arc::clone(&self.device),
             self.callbacks.clone(),
@@ -227,6 +226,7 @@ where
                 .and_then(|_| tunnel.new_tunnel(resource_id, gateway_id, peer_connection))
             {
                 tracing::warn!(%gateway_id, err = ?e, "Can't start tunnel: {e:#}");
+                tunnel.role_state.lock().on_connection_failed(resource_id);
                 let peer_connection = tunnel.peer_connections.lock().remove(&gateway_id);
                 if let Some(peer_connection) = peer_connection {
                     let _ = peer_connection.stop().await;

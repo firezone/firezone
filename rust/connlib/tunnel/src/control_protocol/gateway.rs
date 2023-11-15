@@ -55,26 +55,19 @@ where
             .lock()
             .insert(client_id, Arc::clone(&ice));
 
-        ice.on_connection_state_change(Box::new(|_| Box::pin(async {})));
-
         let tunnel = self.clone();
         tokio::spawn(async move {
             if let Err(e) = ice
-                .start(&remote_params, Some(RTCIceRole::Controlled))
+                .start(&remote_params, Some(RTCIceRole::Controlling))
                 .await
+                .map_err(Into::into)
+                .and_then(|_| tunnel.new_tunnel(peer, client_id, resource, expires_at, ice))
             {
-                tracing::warn!(%client_id, err = ?e, "Can't start ice connection: {e:#}");
-                tunnel.peer_connections.lock().remove(&client_id);
-                let _ = ice.stop().await;
-                return;
-            }
-
-            if let Err(e) = tunnel
-                .new_tunnel(peer, client_id, resource, expires_at, ice)
-                .await
-            {
-                // TODO: cleanup
-                tracing::warn!(%client_id, err = ?e, "Can't start tunnel: {e:#}")
+                tracing::warn!(%client_id, err = ?e, "Can't start tunnel: {e:#}");
+                let peer_connection = tunnel.peer_connections.lock().remove(&client_id);
+                if let Some(peer_connection) = peer_connection {
+                    let _ = peer_connection.stop().await;
+                }
             }
         });
 
@@ -97,7 +90,7 @@ where
         }
     }
 
-    async fn new_tunnel(
+    fn new_tunnel(
         &self,
         peer_config: PeerConfig,
         client_id: ClientId,
@@ -106,12 +99,17 @@ where
         ice: Arc<RTCIceTransport>,
     ) -> Result<()> {
         tracing::trace!(?peer_config.ips, "new_data_channel_open");
-        {
-            let device = self.device.load().clone().ok_or(Error::NoIface)?;
-            for &ip in &peer_config.ips {
-                assert!(device.add_route(ip, self.callbacks()).await?.is_none(),  "gateway does not run on android and thus never produces a new device upon `add_route`");
+        let device = self.device.load().clone().ok_or(Error::NoIface)?;
+        let callbacks = self.callbacks.clone();
+        let ips = peer_config.ips.clone();
+        // Worst thing if this is not run before peers_by_ip is that some packets are lost to the default route
+        tokio::spawn(async move {
+            for ip in ips {
+                if let Ok(res) = device.add_route(ip, &callbacks).await {
+                    assert!(res.is_none(),  "gateway does not run on android and thus never produces a new device upon `add_route`");
+                }
             }
-        }
+        });
 
         let peer = Arc::new(Peer::new(
             self.private_key.clone(),
