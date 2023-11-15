@@ -15,12 +15,11 @@ use webrtc::ice_transport::{
 
 use crate::{
     control_protocol::{new_ice_connection, IceConnection},
-    peer_handler::{self, start_peer_handler},
     PEER_QUEUE_SIZE,
 };
 use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
 
-use super::insert_peers;
+use super::{insert_peers, start_handlers};
 
 #[tracing::instrument(level = "trace", skip(tunnel, ice))]
 fn set_connection_state_update<CB>(
@@ -153,19 +152,13 @@ where
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
         ice.on_connection_state_change(Box::new(|_| Box::pin(async {})));
-        tokio::spawn({
-            let device = Arc::clone(&self.device);
-            let callbacks = self.callbacks.clone();
-            let peer = peer.clone();
-            async move {
-                let Some(ep) = ice.new_endpoint(Box::new(|_| true)).await else {
-                    tracing::error!(%gateway_id, "Failed to create endpoint");
-                    return;
-                };
-                tokio::spawn(start_peer_handler(device, callbacks, peer, ep.clone()));
-                tokio::spawn(peer_handler::handle_packet(ep, peer_receiver));
-            }
-        });
+        start_handlers(
+            Arc::clone(&self.device),
+            self.callbacks.clone(),
+            peer.clone(),
+            ice,
+            peer_receiver,
+        );
 
         self.role_state
             .lock()

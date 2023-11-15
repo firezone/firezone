@@ -1,8 +1,10 @@
+use arc_swap::ArcSwapOption;
+use bytes::Bytes;
 use futures::channel::mpsc;
 use futures_util::SinkExt;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use connlib_shared::{
     messages::{Relay, RequestConnection, ReuseConnection},
@@ -15,7 +17,7 @@ use webrtc::ice_transport::{
 };
 use webrtc::ice_transport::{ice_credential_type::RTCIceCredentialType, ice_server::RTCIceServer};
 
-use crate::{ConnectedPeer, RoleState, Tunnel};
+use crate::{device_channel::Device, peer::Peer, peer_handler, ConnectedPeer, RoleState, Tunnel};
 
 mod client;
 mod gateway;
@@ -125,4 +127,31 @@ fn insert_peers<TId: Copy>(
     for ip in ips {
         peers_by_ip.insert(*ip, peer.clone());
     }
+}
+
+fn start_handlers<TId>(
+    device: Arc<ArcSwapOption<Device>>,
+    callbacks: impl Callbacks + 'static,
+    peer: Arc<Peer<TId>>,
+    ice: Arc<RTCIceTransport>,
+    peer_receiver: tokio::sync::mpsc::Receiver<Bytes>,
+) where
+    TId: Copy + Send + Sync + fmt::Debug + 'static,
+{
+    tokio::spawn({
+        async move {
+            // If this fails receiver will be dropped and the connection will expire at some point
+            // this will not fail though, since this is always called after start ice
+            let Some(ep) = ice.new_endpoint(Box::new(|_| true)).await else {
+                return;
+            };
+            tokio::spawn(peer_handler::start_peer_handler(
+                device,
+                callbacks,
+                peer,
+                ep.clone(),
+            ));
+            tokio::spawn(peer_handler::handle_packet(ep, peer_receiver));
+        }
+    });
 }

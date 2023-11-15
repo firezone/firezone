@@ -1,6 +1,7 @@
 use crate::{
-    control_protocol::insert_peers, peer::Peer, peer_handler, ConnectedPeer, GatewayState,
-    PeerConfig, Tunnel, PEER_QUEUE_SIZE,
+    control_protocol::{insert_peers, start_handlers},
+    peer::Peer,
+    ConnectedPeer, GatewayState, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
 };
 
 use chrono::{DateTime, Utc};
@@ -128,35 +129,22 @@ where
             .peer_queue
             .insert(client_id, peer_sender.clone());
 
-        tokio::spawn({
-            let device = Arc::clone(&self.device);
-            let callbacks = self.callbacks.clone();
-            let peer = peer.clone();
-            async move {
-                let Some(ep) = ice.new_endpoint(Box::new(|_| true)).await else {
-                    tracing::error!(%client_id, "Failed to create endpoint");
-                    return;
-                };
-                tokio::spawn(peer_handler::start_peer_handler(
-                    device,
-                    callbacks,
-                    peer,
-                    ep.clone(),
-                ));
-                tokio::spawn(peer_handler::handle_packet(ep, peer_receiver));
-            }
-        });
+        start_handlers(
+            Arc::clone(&self.device),
+            self.callbacks.clone(),
+            peer.clone(),
+            ice,
+            peer_receiver,
+        );
 
-        {
-            insert_peers(
-                &mut self.peers_by_ip.write(),
-                &peer_config.ips,
-                ConnectedPeer {
-                    inner: peer,
-                    channel: peer_sender,
-                },
-            )
-        }
+        insert_peers(
+            &mut self.peers_by_ip.write(),
+            &peer_config.ips,
+            ConnectedPeer {
+                inner: peer,
+                channel: peer_sender,
+            },
+        );
 
         Ok(())
     }
