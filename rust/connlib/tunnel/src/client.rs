@@ -19,6 +19,7 @@ use futures_bounded::{PushError, StreamMap};
 use hickory_resolver::lookup::Lookup;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
+use rand_core::OsRng;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
@@ -333,8 +334,16 @@ impl ClientState {
         self.resources_gateways.get(resource).copied()
     }
 
-    pub fn add_waiting_ice_receiver(&mut self, id: GatewayId, receiver: Receiver<RTCIceCandidate>) {
+    pub fn add_waiting_gateway(
+        &mut self,
+        id: GatewayId,
+        receiver: Receiver<RTCIceCandidate>,
+    ) -> StaticSecret {
         self.waiting_for_sdp_from_gatway.insert(id, receiver);
+        let preshared_key = StaticSecret::random_from_rng(OsRng);
+        self.gateway_preshared_keys
+            .insert(id, preshared_key.clone());
+        preshared_key
     }
 
     pub fn activate_ice_candidate_receiver(&mut self, id: GatewayId, key: PublicKey) {

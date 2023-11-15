@@ -97,19 +97,15 @@ where
             ice_transport,
             ice_candidate_rx,
         } = new_ice_connection(&self.webrtc_api, relays).await?;
-        self.role_state
+        let preshared_key = self
+            .role_state
             .lock()
-            .add_waiting_ice_receiver(gateway_id, ice_candidate_rx);
+            .add_waiting_gateway(gateway_id, ice_candidate_rx);
         self.peer_connections
             .lock()
             .insert(gateway_id, Arc::clone(&ice_transport));
 
         set_connection_state_update(self, &ice_transport, gateway_id, resource_id);
-        let preshared_key = StaticSecret::random_from_rng(OsRng);
-        self.role_state
-            .lock()
-            .gateway_preshared_keys
-            .insert(gateway_id, preshared_key.clone());
 
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
