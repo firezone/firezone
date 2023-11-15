@@ -171,6 +171,8 @@ where
             .insert(gateway_id, peer_sender.clone());
 
         {
+            // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
+            // before inserting finishes.
             let mut peers_by_ip = self.peers_by_ip.write();
 
             for ip in peer_config.ips {
@@ -182,17 +184,13 @@ where
                     },
                 );
             }
-
-            self.role_state
-                .lock()
-                .gateway_awaiting_connection
-                .remove(&gateway_id);
         }
 
+        // Note: worst that can happen if peer_by_ip has been updated but the awaiting_* locks haven't is that we lose a reuse connection and it has to be retried.
+        // This is very unlikely and not an error and not having both locks at the same time greatly reduce the chance of a deadlock.
         self.role_state
             .lock()
-            .awaiting_connection
-            .remove(&resource_id);
+            .on_connection_success(&gateway_id, &resource_id);
 
         Ok(())
     }

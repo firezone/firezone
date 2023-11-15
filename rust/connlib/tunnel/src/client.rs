@@ -247,6 +247,11 @@ impl ClientState {
         self.gateway_awaiting_connection.remove(&gateway);
     }
 
+    pub fn on_connection_success(&mut self, gateway_id: &GatewayId, resource_id: &ResourceId) {
+        self.gateway_awaiting_connection.remove(gateway_id);
+        self.awaiting_connection.remove(resource_id);
+    }
+
     pub fn on_connection_intent(&mut self, destination: IpAddr) {
         if self.is_awaiting_connection_to(destination) {
             return;
