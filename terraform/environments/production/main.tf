@@ -406,6 +406,11 @@ locals {
     {
       name  = "OUTBOUND_EMAIL_ADAPTER_OPTS"
       value = "{\"api_key\":\"${var.postmark_server_api_token}\"}"
+    },
+    # Feature Flags
+    {
+      name  = "FEATURE_SIGN_UP_ENABLED"
+      value = false
     }
   ]
 }
