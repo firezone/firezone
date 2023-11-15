@@ -1,0 +1,88 @@
+import Image from "next/image";
+
+# Quickstart Guide
+
+Welcome to the quickstart guide for Firezone
+
+<Image
+  src="/images/firezone-v1-architecture-simple.png"
+  alt="Firezone simplified architecture"
+  width={900}
+  height={50}
+  className="mx-auto shadow rounded"
+/>
+
+
+## Prerequisites
+
+* Firezone account (Don't have an account? Get one here https://app.firezone.dev/sign_up)
+* Resource you want to give users secure access to (e.g. prod server, database, SaaS application, subnet, etc...)
+* Server or VM (with the ability to deploy a docker container or Linux application) that can connect to both the resource, and the internet
+
+## Summary
+
+1. **Sign in to your Firezone Admin Portal**
+
+1. **Create a Site** -  Sites are where admins manage resources, and gateways that enable access to those resources (e.g. US-West, Chicago-office).
+
+1. **Deploy a Gateway** - Gateways are site-specific, and provide connectivity between the Firezone client and resources in a Site.
+
+1. **Add a Resource** - A resource is anything you'd like to give users secure access to (e.g. a server/VM, database, subnet).
+
+1. **Create a Policy for each Resource** - A policy defines which user-groups can access a Resource (note: access is default-deny, which means a user can't access a Resource until a Policy permitting access is created).
+
+1. **Download the Firezone Client**
+
+This quickstart guide illustrates a simple Firezone setup. Firezone supports more complex deployments, but we like to start with the basics.
+
+Instructions below follow the same order as the summary above. If you follow the instructions sequentially from top to bottom, you should end up with a working Firezone network that looks like the architecture diagram at the top of this guide.
+
+
+### Signing In
+
+In your browser, visit your custom sign-in URL, which can be found in the "Welcome to Firezone" email sent after you created your account.  Once on the sign-in page, enter your email and click the sign-in button.  You'll receive another email with a magic link and a token.  You may either click the magic link to be signed in automatically or you may copy the token value and enter it in to the form on the sign-in page.
+
+
+### Create a Site
+
+When you log in to the admin portal, you'll land on the Sites page. The first step will be to create a Site by clicking the 'Add Site' button. We'll auto-generate a name for the site, but you should consider renaming it something relevant like `Production`, `US-West`, or `Chicago-office`. After the site is created, you'll be forwarded to the Site Details page where you can continue the setup process.
+
+
+### Deploy a Gateway
+
+Gateways run on your infrastructure (server, VM, etc.) and must have access to the internet as well as the resource you'd like to share.
+
+On the Site Details page, click the 'Deploy a Gateway' button. You will be shown 2 options to deploy a Gateway: `Docker` or `Systemd` (choose whichever method you prefer, and follow the instruction on that page).
+
+When a Gateway has been successfully deployed, you will be notified deployment page and given the option to be redirected to the Site Details page where the gateway will now be listed and shown as online.
+
+
+### Add a Resource
+
+A Resource is anything the site-gateway can reach, that you'd like to give users access to. Examples include servers, databases, subnets, etc...
+
+On the Site Details page, click on the 'Create a Resource' button.  You will now be able to enter the `name` and `address` for a Resource.  The `name` can be anything you choose, and the `address` must be one of the following:
+
+- IP address
+- Fully Qualified Domain Name (FQDN)
+- CIDR Range
+
+After creation, you'll need to create a policy authorizing user-group(s) to access the resource. Users cannot access a resource unless they are members of a group that has access.
+
+
+### Create a Policy
+
+Navigate to the Policies page by clicking the 'Policies' button in the left-side menu bar. Select a resource, and choose which groups can access that resource. Save the policy.
+
+
+### Download the Firezone Client
+
+When you're finished in the Admin Portal, you can connect to available resources by downloading the Firezone Client App, and signing in.
+
+To download the app...
+
+After installing the app, go to 'Settings' and enter your 'Account ID' (aka account slug), and apply changes. If you don't recall your Account ID, you can refer back to the "Welcome to Firezone" email that was sent when you signed up.
+
+To sign in, close the settings window, click "Sign In" in the Firezone app, and authenticate your account.
+
+You now have secure access to resources shown in the "Resources" section. Enjoy!
