@@ -25,14 +25,12 @@ use webrtc::{
     },
     ice_transport::{ice_candidate::RTCIceCandidate, RTCIceTransport},
     interceptor::registry::Registry,
-    mux::endpoint::Endpoint,
-    util::Conn,
 };
 
 use arc_swap::ArcSwapOption;
 use futures::channel::mpsc;
 use futures_util::task::AtomicWaker;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use itertools::Itertools;
 use std::collections::VecDeque;
 use std::task::{ready, Context, Poll};
@@ -292,7 +290,7 @@ where
 
 pub struct ConnectedPeer<TId> {
     inner: Arc<Peer<TId>>,
-    channel: Arc<Endpoint>,
+    channel: tokio::sync::mpsc::Sender<Bytes>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -329,6 +327,7 @@ where
         loop {
             if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
                 // TODO: drop peer_queue
+                // self.role_state.lock().cleanup_peer(conn_id);
                 let mut peers = self.peers_by_ip.write();
 
                 let Some(peer_to_remove) = peers
@@ -338,11 +337,8 @@ where
                     continue;
                 };
 
-                let peer = peers.remove(peer_to_remove).expect("just found it");
+                peers.remove(peer_to_remove);
 
-                let channel = peer.channel.clone();
-
-                tokio::spawn(async move { channel.close().await });
                 if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
                     tokio::spawn({
                         let callbacks = self.callbacks.clone();
@@ -398,12 +394,10 @@ where
                     };
 
                     let peer_channel = peer.channel.clone();
-                    let mut stop_command_sender = self.stop_peer_command_sender.clone();
 
                     tokio::spawn(async move {
-                        if let Err(e) = peer_channel.send(&bytes).await {
+                        if let Err(e) = peer_channel.send(bytes).await {
                             tracing::error!("Failed to send packet to peer: {e:#}");
-                            let _ = stop_command_sender.send(conn_id).await;
                         }
                     });
                 }

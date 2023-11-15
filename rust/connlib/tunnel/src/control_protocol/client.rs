@@ -15,7 +15,8 @@ use webrtc::ice_transport::{
 
 use crate::{
     control_protocol::{new_ice_connection, IceConnection},
-    peer_handler, PEER_QUEUE_SIZE,
+    peer_handler::{self, start_peer_handler},
+    PEER_QUEUE_SIZE,
 };
 use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
 
@@ -118,11 +119,11 @@ where
         }))
     }
 
-    async fn new_tunnel(
+    fn new_tunnel(
         &self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
-        ice: &RTCIceTransport,
+        ice: Arc<RTCIceTransport>,
     ) -> Result<()> {
         let p_key = self
             .role_state
@@ -147,26 +148,27 @@ where
             self.rate_limiter.clone(),
         ));
 
-        let ep = ice
-            .new_endpoint(Box::new(|_| true))
-            .await
-            .ok_or(Error::ControlProtocolError)?;
-
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
+        ice.on_connection_state_change(Box::new(|_| Box::pin(async {})));
         tokio::spawn({
-            let ep = ep.clone();
+            let device = Arc::clone(&self.device);
+            let callbacks = self.callbacks.clone();
+            let peer = peer.clone();
             async move {
-                peer_handler::handle_packet(ep, peer_receiver).await;
+                let Some(ep) = ice.new_endpoint(Box::new(|_| true)).await else {
+                    tracing::error!(%gateway_id, "Failed to create endpoint");
+                    return;
+                };
+                tokio::spawn(start_peer_handler(device, callbacks, peer, ep.clone()));
+                tokio::spawn(peer_handler::handle_packet(ep, peer_receiver));
             }
         });
-
-        ice.on_connection_state_change(Box::new(|_| Box::pin(async {})));
 
         self.role_state
             .lock()
             .peer_queue
-            .insert(gateway_id, peer_sender);
+            .insert(gateway_id, peer_sender.clone());
 
         {
             let mut peers_by_ip = self.peers_by_ip.write();
@@ -176,7 +178,7 @@ where
                     ip,
                     ConnectedPeer {
                         inner: peer.clone(),
-                        channel: ep.clone(),
+                        channel: peer_sender.clone(),
                     },
                 );
             }
@@ -186,8 +188,6 @@ where
                 .gateway_awaiting_connection
                 .remove(&gateway_id);
         }
-
-        tokio::spawn(self.start_peer_handler(peer, ep));
 
         self.role_state
             .lock()
@@ -240,10 +240,7 @@ where
                 return;
             }
 
-            if let Err(e) = tunnel
-                .new_tunnel(resource_id, gateway_id, &peer_connection)
-                .await
-            {
+            if let Err(e) = tunnel.new_tunnel(resource_id, gateway_id, peer_connection) {
                 // TODO: cleanup
                 tracing::warn!(%gateway_id, err = ?e, "Can't start tunnel: {e:#}")
             }

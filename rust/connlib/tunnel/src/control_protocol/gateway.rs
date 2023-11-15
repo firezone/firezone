@@ -121,20 +121,28 @@ where
         ));
 
         // Holding two mutexes here
-        let ep = ice
-            .new_endpoint(Box::new(|_| true))
-            .await
-            .ok_or(Error::ControlProtocolError)?;
         let (peer_queue, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
         self.role_state
             .lock()
             .peer_queue
-            .insert(client_id, peer_queue);
+            .insert(client_id, peer_queue.clone());
 
         tokio::spawn({
-            let ep = ep.clone();
+            let device = Arc::clone(&self.device);
+            let callbacks = self.callbacks.clone();
+            let peer = peer.clone();
             async move {
-                peer_handler::handle_packet(ep, peer_receiver).await;
+                let Some(ep) = ice.new_endpoint(Box::new(|_| true)).await else {
+                    tracing::error!(%client_id, "Failed to create endpoint");
+                    return;
+                };
+                tokio::spawn(peer_handler::start_peer_handler(
+                    device,
+                    callbacks,
+                    peer,
+                    ep.clone(),
+                ));
+                tokio::spawn(peer_handler::handle_packet(ep, peer_receiver));
             }
         });
 
@@ -146,13 +154,12 @@ where
                     ip,
                     ConnectedPeer {
                         inner: peer.clone(),
-                        channel: ep.clone(),
+                        channel: peer_queue.clone(),
                     },
                 );
             }
         }
 
-        tokio::spawn(self.start_peer_handler(peer, ep));
         Ok(())
     }
 }

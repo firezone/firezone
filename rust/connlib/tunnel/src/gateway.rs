@@ -75,7 +75,6 @@ impl RoleState for GatewayState {
         loop {
             match ready!(self.candidate_receivers.poll_next_unpin(cx)) {
                 (conn_id, Some(Ok(c))) => {
-                    tracing::trace!(%c, "candidate event!");
                     return Poll::Ready(Event::SignalIceCandidate {
                         conn_id,
                         candidate: c,

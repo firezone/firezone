@@ -1,56 +1,46 @@
-use std::future::Future;
+use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
+use arc_swap::ArcSwapOption;
 use bytes::Bytes;
 use connlib_shared::Callbacks;
-use futures_util::SinkExt;
 use webrtc::mux::endpoint::Endpoint;
 use webrtc::util::Conn;
 
 use crate::device_channel::Device;
 use crate::peer::WriteTo;
-use crate::{peer::Peer, RoleState, Tunnel, MAX_UDP_SIZE};
+use crate::{peer::Peer, MAX_UDP_SIZE};
 
-impl<CB, TRoleState> Tunnel<CB, TRoleState>
-where
-    CB: Callbacks + 'static,
-    TRoleState: RoleState,
+pub(crate) async fn start_peer_handler<TId>(
+    device: Arc<ArcSwapOption<Device>>,
+    callbacks: impl Callbacks + 'static,
+    peer: Arc<Peer<TId>>,
+    channel: Arc<Endpoint>,
+) where
+    TId: Copy + fmt::Debug + Send + Sync + 'static,
 {
-    pub(crate) fn start_peer_handler(
-        &self,
-        peer: Arc<Peer<TRoleState::Id>>,
-        channel: Arc<Endpoint>,
-    ) -> impl Future<Output = ()> + Send + 'static {
-        let device = Arc::clone(&self.device);
-        let callbacks = self.callbacks.clone();
-        let mut sender = self.stop_peer_command_sender.clone();
+    loop {
+        let Some(device) = device.load().clone() else {
+            tracing::debug!("Device temporarily not available");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            continue;
+        };
+        let result = peer_handler(&callbacks, &peer, channel.clone(), &device).await;
 
-        async move {
-            loop {
-                let Some(device) = device.load().clone() else {
-                    tracing::debug!("Device temporarily not available");
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                    continue;
-                };
-                let result = peer_handler(&callbacks, &peer, channel.clone(), &device).await;
-
-                if matches!(result, Err(ref err) if err.raw_os_error() == Some(9)) {
-                    tracing::warn!("bad_file_descriptor");
-                    continue;
-                }
-
-                if let Err(e) = result {
-                    tracing::error!(err = ?e, "peer_handle_error");
-                }
-
-                break;
-            }
-
-            tracing::debug!(peer = ?peer.stats(), "peer_stopped");
-            let _ = sender.send(peer.conn_id).await;
+        if matches!(result, Err(ref err) if err.raw_os_error() == Some(9)) {
+            tracing::warn!("bad_file_descriptor");
+            continue;
         }
+
+        if let Err(e) = result {
+            tracing::error!(err = ?e, "peer_handle_error");
+        }
+
+        break;
     }
+
+    tracing::debug!(peer = ?peer.stats(), "peer_stopped");
 }
 
 async fn peer_handler<TId>(
@@ -108,4 +98,10 @@ pub(crate) async fn handle_packet(
             tracing::warn!(target: "wire", action = "dropped", "endpoint failure");
         }
     }
+
+    if ep.close().await.is_err() {
+        tracing::warn!("failed to close endpoint");
+    }
+
+    tracing::trace!("closed endpoint");
 }
