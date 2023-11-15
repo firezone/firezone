@@ -102,7 +102,7 @@ where
             .add_waiting_ice_receiver(gateway_id, ice_candidate_rx);
         {
             let mut peer_connections = self.peer_connections.lock();
-            pee.insert(gateway_id, Arc::clone(&ice_transport));
+            peer_connections.insert(gateway_id, Arc::clone(&ice_transport));
         }
 
         set_connection_state_update(self, &ice_transport, gateway_id, resource_id);
