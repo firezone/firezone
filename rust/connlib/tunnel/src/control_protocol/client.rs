@@ -223,16 +223,14 @@ where
             if let Err(e) = peer_connection
                 .start(&rtc_ice_params, Some(RTCIceRole::Controlling))
                 .await
+                .map_err(Into::into)
+                .and_then(|_| tunnel.new_tunnel(resource_id, gateway_id, peer_connection))
             {
-                tracing::warn!(%gateway_id, err = ?e, "Can't start ice connection: {e:#}");
-                tunnel.peer_connections.lock().remove(&gateway_id);
-                let _ = peer_connection.stop().await;
-                return;
-            }
-
-            if let Err(e) = tunnel.new_tunnel(resource_id, gateway_id, peer_connection) {
-                // TODO: cleanup
-                tracing::warn!(%gateway_id, err = ?e, "Can't start tunnel: {e:#}")
+                tracing::warn!(%gateway_id, err = ?e, "Can't start tunnel: {e:#}");
+                let peer_connection = tunnel.peer_connections.lock().remove(&gateway_id);
+                if let Some(peer_connection) = peer_connection {
+                    let _ = peer_connection.stop().await;
+                }
             }
         });
 

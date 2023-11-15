@@ -122,7 +122,6 @@ where
             self.rate_limiter.clone(),
         ));
 
-        // Holding two mutexes here
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
         self.role_state
             .lock()
