@@ -32,7 +32,7 @@ where
     /// - `client_id`: UUID of the remote client.
     ///
     /// # Returns
-    /// An [RTCSessionDescription] of the local sdp, with candidates gathered.
+    /// An [RTCIceParameters] of the local sdp, with candidates gathered.
     pub async fn set_peer_connection_request(
         self: &Arc<Self>,
         remote_params: RTCIceParameters,
@@ -58,7 +58,7 @@ where
         let tunnel = self.clone();
         tokio::spawn(async move {
             if let Err(e) = ice
-                .start(&remote_params, Some(RTCIceRole::Controlling))
+                .start(&remote_params, Some(RTCIceRole::Controlled))
                 .await
                 .map_err(Into::into)
                 .and_then(|_| tunnel.new_tunnel(peer, client_id, resource, expires_at, ice))
@@ -121,10 +121,6 @@ where
         ));
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
-        self.role_state
-            .lock()
-            .peer_queue
-            .insert(client_id, peer_sender.clone());
 
         start_handlers(
             Arc::clone(&self.device),

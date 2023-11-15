@@ -208,13 +208,7 @@ where
                 continue;
             };
 
-            self.encapsulate(
-                write_buf,
-                packet,
-                dest,
-                peer,
-                role_state.peer_queue.get(&peer.inner.conn_id).unwrap(),
-            );
+            self.encapsulate(write_buf, packet, dest, peer);
 
             continue;
         }
@@ -245,17 +239,7 @@ where
                             continue;
                         };
 
-                        self.encapsulate(
-                            write_buf,
-                            packet,
-                            dest,
-                            peer,
-                            self.role_state
-                                .lock()
-                                .peer_queue
-                                .get(&peer.inner.conn_id)
-                                .unwrap(),
-                        );
+                        self.encapsulate(write_buf, packet, dest, peer);
 
                         continue;
                     }
@@ -322,8 +306,6 @@ where
     fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         loop {
             if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
-                // TODO: drop peer_queue
-                // self.role_state.lock().cleanup_peer(conn_id);
                 let mut peers = self.peers_by_ip.write();
 
                 let Some(peer_to_remove) = peers
@@ -433,7 +415,6 @@ where
         packet: MutableIpPacket,
         dest: IpAddr,
         peer: &ConnectedPeer<TRoleState::Id>,
-        peer_queue: &tokio::sync::mpsc::Sender<Bytes>,
     ) {
         let peer_id = peer.inner.conn_id;
 
@@ -441,7 +422,7 @@ where
             Ok(None) => {}
             Ok(Some(b)) => {
                 tracing::trace!(target: "wire", action = "writing", to = "peer", %dest);
-                if peer_queue.try_send(b).is_err() {
+                if peer.channel.try_send(b).is_err() {
                     tracing::warn!(target: "wire", action = "dropped", to = "peer", %dest);
                 }
             }

@@ -153,11 +153,6 @@ where
             peer_receiver,
         );
 
-        self.role_state
-            .lock()
-            .peer_queue
-            .insert(gateway_id, peer_sender.clone());
-
         // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
         // before inserting finishes.
         insert_peers(
