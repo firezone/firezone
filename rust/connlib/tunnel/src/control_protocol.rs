@@ -1,5 +1,7 @@
 use futures::channel::mpsc;
 use futures_util::SinkExt;
+use ip_network::IpNetwork;
+use ip_network_table::IpNetworkTable;
 use std::sync::Arc;
 
 use connlib_shared::{
@@ -13,7 +15,7 @@ use webrtc::ice_transport::{
 };
 use webrtc::ice_transport::{ice_credential_type::RTCIceCredentialType, ice_server::RTCIceServer};
 
-use crate::{RoleState, Tunnel};
+use crate::{ConnectedPeer, RoleState, Tunnel};
 
 mod client;
 mod gateway;
@@ -113,4 +115,14 @@ pub(crate) async fn new_ice_connection(
         ice_transport,
         ice_candidate_rx,
     })
+}
+
+fn insert_peers<TId: Copy>(
+    peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId>>,
+    ips: &Vec<IpNetwork>,
+    peer: ConnectedPeer<TId>,
+) {
+    for ip in ips {
+        peers_by_ip.insert(*ip, peer.clone());
+    }
 }

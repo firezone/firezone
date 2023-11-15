@@ -20,6 +20,8 @@ use crate::{
 };
 use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
 
+use super::insert_peers;
+
 #[tracing::instrument(level = "trace", skip(tunnel, ice))]
 fn set_connection_state_update<CB>(
     tunnel: &Arc<Tunnel<CB, ClientState>>,
@@ -173,17 +175,14 @@ where
         {
             // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
             // before inserting finishes.
-            let mut peers_by_ip = self.peers_by_ip.write();
-
-            for ip in peer_config.ips {
-                peers_by_ip.insert(
-                    ip,
-                    ConnectedPeer {
-                        inner: peer.clone(),
-                        channel: peer_sender.clone(),
-                    },
-                );
-            }
+            insert_peers(
+                &mut self.peers_by_ip.write(),
+                &peer_config.ips,
+                ConnectedPeer {
+                    inner: peer,
+                    channel: peer_sender,
+                },
+            )
         }
 
         // Note: worst that can happen if peer_by_ip has been updated but the awaiting_* locks haven't is that we lose a reuse connection and it has to be retried.

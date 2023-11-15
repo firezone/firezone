@@ -288,6 +288,7 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct ConnectedPeer<TId> {
     inner: Arc<Peer<TId>>,
     channel: tokio::sync::mpsc::Sender<Bytes>,

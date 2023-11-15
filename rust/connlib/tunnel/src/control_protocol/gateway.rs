@@ -1,5 +1,6 @@
 use crate::{
-    peer::Peer, peer_handler, ConnectedPeer, GatewayState, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
+    control_protocol::insert_peers, peer::Peer, peer_handler, ConnectedPeer, GatewayState,
+    PeerConfig, Tunnel, PEER_QUEUE_SIZE,
 };
 
 use chrono::{DateTime, Utc};
@@ -121,11 +122,11 @@ where
         ));
 
         // Holding two mutexes here
-        let (peer_queue, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
+        let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
         self.role_state
             .lock()
             .peer_queue
-            .insert(client_id, peer_queue.clone());
+            .insert(client_id, peer_sender.clone());
 
         tokio::spawn({
             let device = Arc::clone(&self.device);
@@ -147,17 +148,14 @@ where
         });
 
         {
-            let mut peers_by_ip = self.peers_by_ip.write();
-
-            for ip in peer_config.ips {
-                peers_by_ip.insert(
-                    ip,
-                    ConnectedPeer {
-                        inner: peer.clone(),
-                        channel: peer_queue.clone(),
-                    },
-                );
-            }
+            insert_peers(
+                &mut self.peers_by_ip.write(),
+                &peer_config.ips,
+                ConnectedPeer {
+                    inner: peer,
+                    channel: peer_sender,
+                },
+            )
         }
 
         Ok(())
