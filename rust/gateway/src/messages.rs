@@ -154,8 +154,9 @@ mod test {
                         "preshared_key": "sMeTuiJ3mezfpVdan948CmisIWbwBZ1z7jBNnbVtfVg="
                     },
                     "rtc_session_description": {
-                        "sdp": "v=0\r\no=- 8696424395893049643 650344226 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\na=fingerprint:sha-256 AF:57:6F:03:CA:BD:0E:6E:F0:26:BA:B4:36:FE:2E:48:2D:FA:B7:39:84:BA:9E:FB:3F:DC:1F:46:ED:18:01:40\r\na=group:BUNDLE 0\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 0.0.0.0\r\na=setup:actpass\r\na=mid:0\r\na=sendrecv\r\na=sctp-port:5000\r\na=ice-ufrag:KOLSoUEJdNfpgLoM\r\na=ice-pwd:WvOTEYbBZwpRgERbKVjkPGsGwZsUoyKQ\r\na=candidate:312688668 1 udp 2130706431 172.28.0.100 46924 typ host\r\na=candidate:312688668 2 udp 2130706431 172.28.0.100 46924 typ host\r\na=candidate:1090862588 1 udp 2130706431 100.114.114.30 32969 typ host\r\na=candidate:1090862588 2 udp 2130706431 100.114.114.30 32969 typ host\r\na=candidate:2835903154 1 udp 1694498815 172.28.0.100 59817 typ srflx raddr 0.0.0.0 rport 59817\r\na=candidate:2835903154 2 udp 1694498815 172.28.0.100 59817 typ srflx raddr 0.0.0.0 rport 59817\r\na=candidate:2835903154 1 udp 1694498815 172.28.0.100 45350 typ srflx raddr 0.0.0.0 rport 45350\r\na=candidate:2835903154 2 udp 1694498815 172.28.0.100 45350 typ srflx raddr 0.0.0.0 rport 45350\r\na=candidate:167090039 1 udp 2130706431 :: 55852 typ host\r\na=candidate:167090039 2 udp 2130706431 :: 55852 typ host\r\na=end-of-candidates\r\n",
-                        "type": "offer"
+                        "ice_lite":false,
+                        "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
+                        "username_fragment": "PvCPFevCOgkvVCtH"
                     }
                 },
                 "resource": {

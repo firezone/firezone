@@ -181,8 +181,9 @@ mod test {
                     "resource_id": "ea6570d1-47c7-49d2-9dc3-efff1c0c9e0b",
                     "gateway_public_key": "dvy0IwyxAi+txSbAdT7WKgf7K4TekhKzrnYwt5WfbSM=",
                     "gateway_rtc_session_description": {
-                        "sdp": "v=0\\r\\no=- 6423047867593421607 871431568 IN IP4 0.0.0.0\\r\\ns=-\\r\\nt=0 0\\r\\na=fingerprint:sha-256 65:8C:0B:EC:C5:B8:AB:2C:C7:47:F6:1A:6F:C3:4F:70:C7:06:34:84:FE:4E:FD:E5:C4:D2:4F:7C:ED:AF:0D:17\\r\\na=group:BUNDLE 0\\r\\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\\r\\nc=IN IP4 0.0.0.0\\r\\na=setup:active\\r\\na=mid:0\\r\\na=sendrecv\\r\\na=sctp-port:5000\\r\\na=ice-ufrag:zDSijpzITpzCfjbw\\r\\na=ice-pwd:QGufrJIKwqRjhDsNTdddVLFXmvGQJxke\\r\\na=candidate:167090039 1 udp 2130706431 :: 33628 typ host\\r\\na=candidate:167090039 2 udp 2130706431 :: 33628 typ host\\r\\na=candidate:1081386133 1 udp 2130706431 100.102.249.43 51575 typ host\\r\\na=candidate:1081386133 2 udp 2130706431 100.102.249.43 51575 typ host\\r\\na=candidate:1290078212 1 udp 2130706431 172.28.0.7 58698 typ host\\r\\na=candidate:1290078212 2 udp 2130706431 172.28.0.7 58698 typ host\\r\\na=candidate:349389859 1 udp 2130706431 172.20.0.3 51567 typ host\\r\\na=candidate:349389859 2 udp 2130706431 172.20.0.3 51567 typ host\\r\\na=candidate:936829106 1 udp 1694498815 172.28.0.7 35458 typ srflx raddr 0.0.0.0 rport 35458\\r\\na=candidate:936829106 2 udp 1694498815 172.28.0.7 35458 typ srflx raddr 0.0.0.0 rport 35458\\r\\na=candidate:936829106 1 udp 1694498815 172.28.0.7 46603 typ srflx raddr 0.0.0.0 rport 46603\\r\\na=candidate:936829106 2 udp 1694498815 172.28.0.7 46603 typ srflx raddr 0.0.0.0 rport 46603\\r\\na=end-of-candidates\\r\\n",
-                        "type": "answer"
+                        "ice_lite":false,
+                        "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
+                        "username_fragment": "PvCPFevCOgkvVCtH"
                     },
                     "persistent_keepalive": 25
                 }
