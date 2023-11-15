@@ -96,7 +96,7 @@ where
     }
 
     async fn new_tunnel(
-        self: Arc<Self>,
+        &self,
         peer_config: PeerConfig,
         client_id: ClientId,
         resource: ResourceDescription,
@@ -152,7 +152,7 @@ where
             }
         }
 
-        tokio::spawn(self.clone().start_peer_handler(peer, ep));
+        tokio::spawn(self.start_peer_handler(peer, ep));
         Ok(())
     }
 }

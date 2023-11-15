@@ -89,20 +89,22 @@ pub(crate) async fn new_ice_connection(
 
     let (ice_candidate_tx, ice_candidate_rx) = mpsc::channel(ICE_CANDIDATE_BUFFER);
 
-    let g = gatherer.clone();
-    gatherer.on_local_candidate(Box::new(move |candidate| {
-        let Some(candidate) = candidate else {
-            g.on_local_candidate(Box::new(|_| Box::pin(async {})));
-            return Box::pin(async {});
-        };
+    gatherer.on_local_candidate({
+        let gatherer = gatherer.clone();
+        Box::new(move |candidate| {
+            let Some(candidate) = candidate else {
+                gatherer.on_local_candidate(Box::new(|_| Box::pin(async {})));
+                return Box::pin(async {});
+            };
 
-        let mut ice_candidate_tx = ice_candidate_tx.clone();
-        Box::pin(async move {
-            if ice_candidate_tx.send(candidate).await.is_err() {
-                debug_assert!(false, "receiver was dropped before sender");
-            }
+            let mut ice_candidate_tx = ice_candidate_tx.clone();
+            Box::pin(async move {
+                if ice_candidate_tx.send(candidate).await.is_err() {
+                    debug_assert!(false, "receiver was dropped before sender");
+                }
+            })
         })
-    }));
+    });
 
     gatherer.gather().await?;
 

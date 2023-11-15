@@ -119,7 +119,7 @@ where
     }
 
     async fn new_tunnel(
-        self: &Arc<Self>,
+        &self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
         ice: &RTCIceTransport,
@@ -206,7 +206,7 @@ where
     /// - `rtc_sdp`: Remote SDP.
     /// - `gateway_public_key`: Public key of the gateway that is handling that resource for this connection.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn received_offer_response(
+    pub fn received_offer_response(
         self: &Arc<Self>,
         resource_id: ResourceId,
         rtc_ice_params: RTCIceParameters,
