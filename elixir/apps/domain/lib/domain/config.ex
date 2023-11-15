@@ -136,6 +136,10 @@ defmodule Domain.Config do
     feature_enabled?(:traffic_filters)
   end
 
+  def relay_admin_enabled? do
+    feature_enabled?(:relay_admin)
+  end
+
   ## Test helpers
 
   if Mix.env() != :test do

@@ -5,12 +5,13 @@ defmodule Web.RelayGroups.Index do
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
 
-    with {:ok, groups} <-
-           Relays.list_groups(subject, preload: [:relays]) do
+    with true <- Domain.Config.relay_admin_enabled?(),
+         {:ok, groups} <- Relays.list_groups(subject, preload: [:relays]) do
       :ok = Relays.subscribe_for_relays_presence_in_account(socket.assigns.account)
       {:ok, assign(socket, groups: groups)}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _feature_disabled -> raise Web.LiveErrors.NotFoundError
     end
   end
 

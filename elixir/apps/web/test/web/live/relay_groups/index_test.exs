@@ -99,4 +99,18 @@ defmodule Web.Live.RelayGroups.IndexTest do
       assert row["status"] =~ "Online"
     end)
   end
+
+  test "renders not found error when relay_admin feature flag is false", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:relay_admin, false)
+
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/relay_groups")
+    end
+  end
 end

@@ -3,7 +3,8 @@ defmodule Web.Relays.Show do
   alias Domain.{Relays, Config}
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, relay} <-
+    with true <- Domain.Config.relay_admin_enabled?(),
+         {:ok, relay} <-
            Relays.fetch_relay_by_id(id, socket.assigns.subject, preload: :group) do
       :ok = Relays.subscribe_for_relays_presence_in_group(relay.group)
 
@@ -17,6 +18,7 @@ defmodule Web.Relays.Show do
       {:ok, assign(socket, relay: relay)}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _feature_disabled -> raise Web.LiveErrors.NotFoundError
     end
   end
 

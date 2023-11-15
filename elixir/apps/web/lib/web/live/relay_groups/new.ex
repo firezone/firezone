@@ -3,8 +3,12 @@ defmodule Web.RelayGroups.New do
   alias Domain.Relays
 
   def mount(_params, _session, socket) do
-    changeset = Relays.new_group()
-    {:ok, assign(socket, form: to_form(changeset))}
+    with true <- Domain.Config.relay_admin_enabled?() do
+      changeset = Relays.new_group()
+      {:ok, assign(socket, form: to_form(changeset))}
+    else
+      _feature_disabled -> raise Web.LiveErrors.NotFoundError
+    end
   end
 
   def render(assigns) do

@@ -134,4 +134,19 @@ defmodule Web.Live.Relays.ShowTest do
 
     assert Repo.get(Domain.Relays.Relay, relay.id).deleted_at
   end
+
+  test "renders not found error when relay_admin feature flag is false", %{
+    account: account,
+    identity: identity,
+    relay: relay,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:relay_admin, false)
+
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/relays/#{relay}")
+    end
+  end
 end

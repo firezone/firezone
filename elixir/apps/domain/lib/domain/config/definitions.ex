@@ -635,4 +635,9 @@ defmodule Domain.Config.Definitions do
   Boolean flag to turn Resource traffic filters on/off.
   """
   defconfig(:feature_traffic_filters_enabled, :boolean, default: false)
+
+  @doc """
+  Boolean flag to turn Relay Admin functionality on/off.
+  """
+  defconfig(:feature_relay_admin_enabled, :boolean, default: false)
 end
