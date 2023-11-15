@@ -165,6 +165,11 @@ jobs:
             execute: |
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
+          - test_name: iperf report
+            setup: echo 'Noop'
+            execute: |
+              docker compose exec -it client timeout 60 \
+              sh -c 'iperf3 -R -c 172.20.0.110' >> $GITHUB_STEP_SUMMARY
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
