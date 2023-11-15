@@ -28,9 +28,7 @@ use webrtc::{
 };
 
 use arc_swap::ArcSwapOption;
-use futures::channel::mpsc;
 use futures_util::task::AtomicWaker;
-use futures_util::StreamExt;
 use itertools::Itertools;
 use std::collections::VecDeque;
 use std::task::{ready, Context, Poll};
@@ -123,9 +121,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
 
     /// State that differs per role, i.e. clients vs gateways.
     role_state: Mutex<TRoleState>,
-
-    stop_peer_command_receiver: Mutex<mpsc::Receiver<TRoleState::Id>>,
-    stop_peer_command_sender: mpsc::Sender<TRoleState::Id>,
 
     rate_limit_reset_interval: Mutex<Interval>,
     peer_refresh_interval: Mutex<Interval>,
@@ -428,14 +423,6 @@ where
                 return Poll::Ready(event);
             }
 
-            if let Poll::Ready(Some(conn_id)) =
-                self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
-            {
-                self.peers_to_stop.lock().push_back(conn_id);
-
-                continue;
-            }
-
             return Poll::Pending;
         }
     }
@@ -552,8 +539,6 @@ where
             .with_setting_engine(setting_engine)
             .build();
 
-        let (stop_peer_command_sender, stop_peer_command_receiver) = mpsc::channel(10);
-
         Ok(Self {
             rate_limiter,
             private_key,
@@ -567,8 +552,6 @@ where
             write_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             callbacks: CallbackErrorFacade(callbacks),
             role_state: Default::default(),
-            stop_peer_command_receiver: Mutex::new(stop_peer_command_receiver),
-            stop_peer_command_sender,
             rate_limit_reset_interval: Mutex::new(rate_limit_reset_interval()),
             peer_refresh_interval: Mutex::new(peer_refresh_interval()),
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),

@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
-use boringtun::x25519::{PublicKey, StaticSecret};
+use boringtun::x25519::PublicKey;
 use connlib_shared::{
     control::Reference,
     messages::{GatewayId, Key, Relay, RequestConnection, ResourceId},
     Callbacks,
 };
-use rand_core::OsRng;
 use secrecy::Secret;
 use webrtc::ice_transport::{
     ice_parameters::RTCIceParameters, ice_role::RTCIceRole,
@@ -159,18 +158,16 @@ where
             .peer_queue
             .insert(gateway_id, peer_sender.clone());
 
-        {
-            // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
-            // before inserting finishes.
-            insert_peers(
-                &mut self.peers_by_ip.write(),
-                &peer_config.ips,
-                ConnectedPeer {
-                    inner: peer,
-                    channel: peer_sender,
-                },
-            )
-        }
+        // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
+        // before inserting finishes.
+        insert_peers(
+            &mut self.peers_by_ip.write(),
+            &peer_config.ips,
+            ConnectedPeer {
+                inner: peer,
+                channel: peer_sender,
+            },
+        );
 
         // Note: worst that can happen if peer_by_ip has been updated but the awaiting_* locks haven't is that we lose a reuse connection and it has to be retried.
         // This is very unlikely and not an error and not having both locks at the same time greatly reduce the chance of a deadlock.
