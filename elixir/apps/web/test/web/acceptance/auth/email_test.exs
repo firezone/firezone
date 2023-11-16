@@ -48,9 +48,9 @@ defmodule Web.Acceptance.SignIn.EmailTest do
     |> assert_el(Query.text("Please check your email"))
     |> click(Query.link("Open Local"))
     |> click(Query.link("Firezone Sign In Link"))
-    |> assert_el(Query.text("HTML body preview:"))
+    |> assert_el(Query.text("Text body"))
 
-    email_text = text(session, Query.css(".body-text"))
+    email_text = text(session, Query.css("body"))
     [link] = Regex.run(~r|http://localhost[^ \n\s]*|, email_text)
 
     session
