@@ -1,4 +1,5 @@
 use clap::Args;
+use tracing_log::LogTracer;
 use tracing_subscriber::{
     fmt, prelude::__tracing_subscriber_SubscriberExt, EnvFilter, Layer, Registry,
 };
@@ -19,6 +20,7 @@ where
         .with(additional_layer.with_filter(EnvFilter::from_default_env()))
         .with(fmt::layer().with_filter(EnvFilter::from_default_env()));
     tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
+    LogTracer::init().unwrap();
 }
 
 /// Arguments common to all Firezone CLI components.

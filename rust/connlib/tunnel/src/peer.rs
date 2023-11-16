@@ -91,8 +91,7 @@ where
             peer_config.persistent_keepalive,
             index,
             Some(rate_limiter),
-        )
-        .expect("never actually fails"); // See https://github.com/cloudflare/boringtun/pull/366.
+        );
 
         let mut allowed_ips = IpNetworkTable::new();
         for ip in peer_config.ips {
@@ -186,7 +185,6 @@ where
     pub(crate) fn encapsulate(
         &self,
         mut packet: MutableIpPacket,
-        dest: IpAddr,
         buf: &mut [u8],
     ) -> Result<Option<Bytes>> {
         if let Some(resource) = self.get_translation(packet.to_immutable().source()) {
@@ -210,8 +208,6 @@ where
             TunnResult::WriteToNetwork(b) => b,
             _ => panic!("Unexpected result from `encapsulate`"),
         };
-
-        tracing::trace!(target: "wire", action = "writing", from = "iface", to = %dest);
 
         Ok(Some(Bytes::copy_from_slice(packet)))
     }

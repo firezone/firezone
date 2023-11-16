@@ -107,7 +107,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn connect(
+    pub fn connect(
         &mut self,
         Connect {
             gateway_rtc_session_description,
@@ -116,15 +116,11 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             ..
         }: Connect,
     ) {
-        if let Err(e) = self
-            .tunnel
-            .received_offer_response(
-                resource_id,
-                gateway_rtc_session_description,
-                gateway_public_key.0.into(),
-            )
-            .await
-        {
+        if let Err(e) = self.tunnel.received_offer_response(
+            resource_id,
+            gateway_rtc_session_description,
+            gateway_public_key.0.into(),
+        ) {
             let _ = self.tunnel.callbacks().on_error(&e);
         }
     }
@@ -228,7 +224,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Messages::ConnectionDetails(connection_details) => {
                 self.connection_details(connection_details, reference)
             }
-            Messages::Connect(connect) => self.connect(connect).await,
+            Messages::Connect(connect) => self.connect(connect),
             Messages::ResourceAdded(resource) => self.add_resource(resource).await,
             Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
             Messages::ResourceUpdated(resource) => self.update_resource(resource),

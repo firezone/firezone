@@ -1,25 +1,23 @@
+use arc_swap::ArcSwapOption;
+use bytes::Bytes;
 use futures::channel::mpsc;
 use futures_util::SinkExt;
-use std::sync::Arc;
+use ip_network::IpNetwork;
+use ip_network_table::IpNetworkTable;
+use std::{fmt, sync::Arc};
 
 use connlib_shared::{
     messages::{Relay, RequestConnection, ReuseConnection},
     Callbacks, Error, Result,
 };
-use webrtc::data_channel::OnCloseHdlrFn;
-use webrtc::peer_connection::OnPeerConnectionStateChangeHdlrFn;
-use webrtc::{
-    ice_transport::{
-        ice_candidate::RTCIceCandidateInit, ice_credential_type::RTCIceCredentialType,
-        ice_server::RTCIceServer,
-    },
-    peer_connection::{
-        configuration::RTCConfiguration, peer_connection_state::RTCPeerConnectionState,
-        RTCPeerConnection,
-    },
+use webrtc::ice_transport::RTCIceTransport;
+use webrtc::ice_transport::{
+    ice_candidate::RTCIceCandidate, ice_gatherer::RTCIceGatherOptions,
+    ice_parameters::RTCIceParameters,
 };
+use webrtc::ice_transport::{ice_credential_type::RTCIceCredentialType, ice_server::RTCIceServer};
 
-use crate::{RoleState, Tunnel};
+use crate::{device_channel::Device, peer::Peer, peer_handler, ConnectedPeer, RoleState, Tunnel};
 
 mod client;
 mod gateway;
@@ -44,7 +42,7 @@ where
     pub async fn add_ice_candidate(
         &self,
         conn_id: TRoleState::Id,
-        ice_candidate: RTCIceCandidateInit,
+        ice_candidate: RTCIceCandidate,
     ) -> Result<()> {
         let peer_connection = self
             .peer_connections
@@ -52,53 +50,25 @@ where
             .get(&conn_id)
             .ok_or(Error::ControlProtocolError)?
             .clone();
-        peer_connection.add_ice_candidate(ice_candidate).await?;
+        peer_connection
+            .add_remote_candidate(Some(ice_candidate))
+            .await?;
         Ok(())
     }
 }
 
-pub fn on_peer_connection_state_change_handler<TId>(
-    conn_id: TId,
-    stop_command_sender: mpsc::Sender<TId>,
-) -> OnPeerConnectionStateChangeHdlrFn
-where
-    TId: Copy + Send + Sync + 'static,
-{
-    Box::new(move |state| {
-        let mut sender = stop_command_sender.clone();
-
-        tracing::trace!(?state, "peer_state_update");
-        Box::pin(async move {
-            if state == RTCPeerConnectionState::Failed {
-                let _ = sender.send(conn_id).await;
-            }
-        })
-    })
-}
-
-pub fn on_dc_close_handler<TId>(
-    conn_id: TId,
-    stop_command_sender: mpsc::Sender<TId>,
-) -> OnCloseHdlrFn
-where
-    TId: Copy + Send + Sync + 'static,
-{
-    Box::new(move || {
-        let mut sender = stop_command_sender.clone();
-
-        tracing::debug!("channel_closed");
-        Box::pin(async move {
-            let _ = sender.send(conn_id).await;
-        })
-    })
+pub(crate) struct IceConnection {
+    pub ice_params: RTCIceParameters,
+    pub ice_transport: Arc<RTCIceTransport>,
+    pub ice_candidate_rx: mpsc::Receiver<RTCIceCandidate>,
 }
 
 #[tracing::instrument(level = "trace", skip(webrtc))]
-pub async fn new_peer_connection(
+pub(crate) async fn new_ice_connection(
     webrtc: &webrtc::api::API,
     relays: Vec<Relay>,
-) -> Result<(Arc<RTCPeerConnection>, mpsc::Receiver<RTCIceCandidateInit>)> {
-    let config = RTCConfiguration {
+) -> Result<IceConnection> {
+    let config = RTCIceGatherOptions {
         ice_servers: relays
             .into_iter()
             .map(|srv| match srv {
@@ -110,7 +80,6 @@ pub async fn new_peer_connection(
                     urls: vec![turn.uri],
                     username: turn.username,
                     credential: turn.password,
-                    // TODO: check what this is used for
                     credential_type: RTCIceCredentialType::Password,
                 },
             })
@@ -119,30 +88,71 @@ pub async fn new_peer_connection(
         ..Default::default()
     };
 
-    let peer_connection = Arc::new(webrtc.new_peer_connection(config).await?);
+    let gatherer = Arc::new(webrtc.new_ice_gatherer(config)?);
+    let ice_transport = Arc::new(webrtc.new_ice_transport(Arc::clone(&gatherer)));
 
     let (ice_candidate_tx, ice_candidate_rx) = mpsc::channel(ICE_CANDIDATE_BUFFER);
 
-    peer_connection.on_ice_candidate(Box::new(move |candidate| {
-        let Some(candidate) = candidate else {
-            return Box::pin(async {});
-        };
-
-        let mut ice_candidate_tx = ice_candidate_tx.clone();
-        Box::pin(async move {
-            let ice_candidate = match candidate.to_json() {
-                Ok(ice_candidate) => ice_candidate,
-                Err(e) => {
-                    tracing::warn!("Failed to serialize ICE candidate to JSON: {e}",);
-                    return;
-                }
+    gatherer.on_local_candidate({
+        let gatherer = gatherer.clone();
+        Box::new(move |candidate| {
+            let Some(candidate) = candidate else {
+                gatherer.on_local_candidate(Box::new(|_| Box::pin(async {})));
+                return Box::pin(async {});
             };
 
-            if ice_candidate_tx.send(ice_candidate).await.is_err() {
-                debug_assert!(false, "receiver was dropped before sender")
-            }
+            let mut ice_candidate_tx = ice_candidate_tx.clone();
+            Box::pin(async move {
+                if ice_candidate_tx.send(candidate).await.is_err() {
+                    debug_assert!(false, "receiver was dropped before sender");
+                }
+            })
         })
-    }));
+    });
 
-    Ok((peer_connection, ice_candidate_rx))
+    gatherer.gather().await?;
+
+    Ok(IceConnection {
+        ice_params: gatherer.get_local_parameters().await?,
+        ice_transport,
+        ice_candidate_rx,
+    })
+}
+
+fn insert_peers<TId: Copy>(
+    peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId>>,
+    ips: &Vec<IpNetwork>,
+    peer: ConnectedPeer<TId>,
+) {
+    for ip in ips {
+        peers_by_ip.insert(*ip, peer.clone());
+    }
+}
+
+fn start_handlers<TId>(
+    device: Arc<ArcSwapOption<Device>>,
+    callbacks: impl Callbacks + 'static,
+    peer: Arc<Peer<TId>>,
+    ice: Arc<RTCIceTransport>,
+    peer_receiver: tokio::sync::mpsc::Receiver<Bytes>,
+) where
+    TId: Copy + Send + Sync + fmt::Debug + 'static,
+{
+    ice.on_connection_state_change(Box::new(|_| Box::pin(async {})));
+    tokio::spawn({
+        async move {
+            // If this fails receiver will be dropped and the connection will expire at some point
+            // this will not fail though, since this is always called after start ice
+            let Some(ep) = ice.new_endpoint(Box::new(|_| true)).await else {
+                return;
+            };
+            tokio::spawn(peer_handler::start_peer_handler(
+                device,
+                callbacks,
+                peer,
+                ep.clone(),
+            ));
+            tokio::spawn(peer_handler::handle_packet(ep, peer_receiver));
+        }
+    });
 }
