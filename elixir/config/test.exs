@@ -37,6 +37,15 @@ config :web, Web.Endpoint,
   url: [port: 13_100],
   server: true
 
+config :web, Web.Plugs.SecureHeaders,
+  csp_policy: [
+    "default-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/",
+    "img-src 'self' data: https://www.gravatar.com",
+    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/",
+    "connect-src 'self' data: https://firezone.statuspage.io"
+  ]
+
 ###############################
 ##### API #####################
 ###############################
