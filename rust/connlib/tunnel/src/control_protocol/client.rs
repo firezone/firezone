@@ -127,7 +127,6 @@ where
             .get(&gateway_id)
             .ok_or(Error::ControlProtocolError)?
             .clone();
-        let index = self.next_index();
 
         let peer_config = self
             .role_state
@@ -136,7 +135,7 @@ where
 
         let peer = Arc::new(Peer::new(
             self.private_key.clone(),
-            index,
+            self.next_index(),
             peer_config.clone(),
             gateway_id,
             None,
