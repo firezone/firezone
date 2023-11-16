@@ -185,7 +185,8 @@ jobs:
             web \
             client \
             relay \
-            gateway
+            gateway \
+            iperf3
       - name: Setup ${{ matrix.test_name }} test
         run: ${{ matrix.setup }}
       - name: Execute ${{ matrix.test_name }} test
