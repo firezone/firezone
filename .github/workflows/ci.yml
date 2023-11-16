@@ -153,23 +153,21 @@ jobs:
           # - Test IPv6
           # - Test end-to-end critical paths
           - test_name: Relayed flow
+            artifact_name: relayed
             setup: |
               #  Disallow traffic between gateway and client container
-              sudo iptables -I FORWARD 1 -s  172.28.0.100 -d 172.28.0.105 -j DROP
-              sudo iptables -I FORWARD 1 -s  172.28.0.105 -d 172.28.0.100 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
 
             execute: |
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
           - test_name: Basic flow
+            artifact_name: direct
             setup: echo 'Noop'
             execute: |
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-          - test_name: iperf report
-            setup: echo 'Noop'
-            execute: |
-
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
@@ -192,17 +190,17 @@ jobs:
         run: ${{ matrix.setup }}
       - name: Execute ${{ matrix.test_name }} test
         run: ${{ matrix.execute }}
-      - name: Perfomance Test
+      - name: ${{ matrix.test_name }} Perfomance Test
         run: |
           mkdir -p /tmp/iperf3results
-          docker compose exec -it client /bin/sh -c 'apk add iperf3 && iperf3 -R -c --json 172.20.0.110' >> /tmp/iperf3results/tcp_server2client.json
-          docker compose exec -it client /bin/sh -c 'apk add iperf3 && iperf3 -c --json 172.20.0.110' >> /tmp/iperf3results/tcp_client2server.json
-          docker compose exec -it client /bin/sh -c 'apk add iperf3 && iperf3 -u -b 0 -R -c --json 172.20.0.110' >> /tmp/iperf3results/tcp_server2client.json
-          docker compose exec -it client /bin/sh -c 'apk add iperf3 && iperf3 -u -b 0 -c --json 172.20.0.110' >> /tmp/iperf3results/udp_client2server.json
-      - name: Save Perfomance Test Results
+          docker compose exec -it client /bin/sh -c 'iperf3 -R -c --json 172.20.0.110' >> /tmp/iperf3results/tcp_server2client.json
+          docker compose exec -it client /bin/sh -c 'iperf3 -c --json 172.20.0.110' >> /tmp/iperf3results/tcp_client2server.json
+          docker compose exec -it client /bin/sh -c 'iperf3 -u -b 0 -R -c --json 172.20.0.110' >> /tmp/iperf3results/tcp_server2client.json
+          docker compose exec -it client /bin/sh -c 'iperf3 -u -b 0 -c --json 172.20.0.110' >> /tmp/iperf3results/udp_client2server.json
+      - name: Save ${{ matrix.test_name }} Perfomance Test Results
         uses: actions/upload-artifact@v3
         with:
-          name: iperf3results
+          name: ${{ matrix.artifact_name }}-iperf3results
           path: /tmp/iperf3results
       - name: Show Client logs
         if: "!cancelled()"
