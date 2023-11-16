@@ -19,6 +19,7 @@ use firezone_tunnel::{client, Request, Tunnel};
 use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
+use str0m::Candidate;
 use tokio::io::BufReader;
 use tokio::sync::Mutex;
 use tokio_util::codec::{BytesCodec, FramedRead};
@@ -106,7 +107,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
+    // #[tracing::instrument(level = "trace", skip(self))]
     pub fn connect(
         &mut self,
         Connect {
@@ -127,18 +128,18 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     let _ = self.tunnel.callbacks().on_error(&e);
                 }
             }
-            GatewayResponse::ResourceAccepted(gateway_payload) => {
-                if let Err(e) = self
-                    .tunnel
-                    .received_domain_parameters(resource_id, gateway_payload.domain_response)
-                {
-                    let _ = self.tunnel.callbacks().on_error(&e);
-                }
+            GatewayResponse::ResourceAccepted(_gateway_payload) => {
+                // TODO
+                // if let Err(e) = self
+                //     .tunnel
+                //     .received_domain_parameters(resource_id, gateway_payload.domain_response)
+                // {
+                //     let _ = self.tunnel.callbacks().on_error(&e);
+                // }
             }
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     pub fn add_resource(&self, resource_description: ResourceDescription) {
         if let Err(e) = self.tunnel.add_resource(resource_description) {
             tracing::error!(message = "Can't add resource", error = ?e);
@@ -170,10 +171,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         let tunnel = Arc::clone(&self.tunnel);
         let mut control_signaler = self.phoenix_channel.clone();
         tokio::spawn(async move {
-            let err = match tunnel
-                .request_connection(resource_id, gateway_id, relays, reference)
-                .await
-            {
+            let err = match tunnel.request_connection(resource_id, gateway_id, relays) {
                 Ok(Request::NewConnection(connection_request)) => {
                     if let Err(err) = control_signaler
                         // TODO: create a reference number and keep track for the response
@@ -211,7 +209,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         });
     }
 
-    async fn add_ice_candidate(
+    fn add_ice_candidate(
         &self,
         GatewayIceCandidates {
             gateway_id,
@@ -219,14 +217,15 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }: GatewayIceCandidates,
     ) {
         for candidate in candidates {
-            if let Err(e) = self.tunnel.add_ice_candidate(gateway_id, candidate).await {
-                tracing::error!(err = ?e,"add_ice_candidate");
-                let _ = self.tunnel.callbacks().on_error(&e);
-            }
+            let Ok(candidate) = Candidate::from_sdp_string(&candidate) else {
+                continue;
+            };
+
+            self.tunnel.add_ice_candidate(gateway_id, candidate);
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
+    // #[tracing::instrument(level = "trace", skip(self))]
     pub async fn handle_message(
         &mut self,
         msg: Messages,
@@ -241,7 +240,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Messages::ResourceAdded(resource) => self.add_resource(resource),
             Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
             Messages::ResourceUpdated(resource) => self.update_resource(resource),
-            Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate).await,
+            Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate),
             Messages::SignedLogUrl(url) => {
                 let Some(path) = self.tunnel.callbacks().roll_log_file() else {
                     return Ok(());
@@ -293,7 +292,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     pub async fn stats_event(&mut self) {
-        tracing::debug!(target: "tunnel_state", stats = ?self.tunnel.stats());
+        // tracing::debug!(target: "tunnel_state", stats = ?self.tunnel.stats());
     }
 
     pub async fn request_log_upload_url(&mut self) {
@@ -313,7 +312,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     .send(EgressMessages::BroadcastIceCandidates(
                         BroadcastGatewayIceCandidates {
                             gateway_ids: vec![conn_id],
-                            candidates: vec![candidate],
+                            candidates: vec![candidate.to_sdp_string()],
                         },
                     ))
                     .await
@@ -322,20 +321,16 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 }
             }
             Ok(client::Event::ConnectionIntent {
-                resource,
+                resource_id,
                 connected_gateway_ids,
-                reference,
             }) => {
                 if let Err(e) = self
                     .phoenix_channel
                     .clone()
-                    .send_with_ref(
-                        EgressMessages::PrepareConnection {
-                            resource_id: resource.id(),
-                            connected_gateway_ids,
-                        },
-                        reference,
-                    )
+                    .send(EgressMessages::PrepareConnection {
+                        resource_id,
+                        connected_gateway_ids,
+                    })
                     .await
                 {
                     tracing::error!("Failed to prepare connection: {e}");

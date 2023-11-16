@@ -7,7 +7,6 @@ use connlib_shared::messages::{
     ResourceId, ReuseConnection,
 };
 use url::Url;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct InitClient {
@@ -23,28 +22,19 @@ pub struct RemoveResource {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ConnectionDetails {
-    pub relays: Vec<Relay>,
+    pub relays: Vec<Relay>, // TODO: It would be easier if STUN and TURN server were split instead of an enum.
     pub resource_id: ResourceId,
     pub gateway_id: GatewayId,
     pub gateway_remote_ip: IpAddr,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Connect {
     pub gateway_payload: GatewayResponse,
     pub resource_id: ResourceId,
     pub gateway_public_key: Key,
     pub persistent_keepalive: u64,
 }
-
-// Just because RTCSessionDescription doesn't implement partialeq
-impl PartialEq for Connect {
-    fn eq(&self, other: &Self) -> bool {
-        self.resource_id == other.resource_id && self.gateway_public_key == other.gateway_public_key
-    }
-}
-
-impl Eq for Connect {}
 
 // These messages are the messages that can be received
 // by a client.
@@ -69,7 +59,7 @@ pub struct BroadcastGatewayIceCandidates {
     /// Gateway's id the ice candidates are meant for
     pub gateway_ids: Vec<GatewayId>,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidate>,
+    pub candidates: Vec<String>,
 }
 
 /// A gateway's ice candidate message.
@@ -78,7 +68,7 @@ pub struct GatewayIceCandidates {
     /// Gateway's id the ice candidates are from
     pub gateway_id: GatewayId,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidate>,
+    pub candidates: Vec<String>,
 }
 
 /// The replies that can arrive from the channel by a client
@@ -203,6 +193,52 @@ mod test {
         let _: PhoenixMessage<IngressMessages, ReplyMessages> =
             serde_json::from_str(message).unwrap();
     }
+
+    #[test]
+    fn deserialize_init_client() {
+        let message = r#"{
+  "interface": {
+    "ipv6": "fd00:2021:1111::f:e31e",
+    "ipv4": "100.88.253.145",
+    "upstream_dns": []
+  },
+  "resources": [
+    {
+      "id": "0a08df62-4ba5-4fce-b506-2e5bf48747f1",
+      "name": "t.firez.one",
+      "type": "dns",
+      "address": "t.firez.one"
+    },
+    {
+      "id": "2ad35211-ce03-49e9-9f80-743c4405cc9a",
+      "name": "google.com",
+      "type": "dns",
+      "address": "google.com"
+    },
+    {
+      "id": "422018ff-4198-44fb-9992-004b7ebace80",
+      "name": "MyCorp Network",
+      "type": "cidr",
+      "address": "172.20.0.0/16"
+    },
+    {
+      "id": "abc0161a-f140-4b90-b533-7f9505da2e9a",
+      "name": "ping.firez.one",
+      "type": "dns",
+      "address": "ping.firez.one"
+    },
+    {
+      "id": "e8ad7024-aa76-4841-a5ae-ef286af25e32",
+      "name": "ip6only",
+      "type": "dns",
+      "address": "ip6only.me"
+    }
+  ]
+}
+"#;
+        let _: InitClient = serde_json::from_str(message).unwrap();
+    }
+
     #[test]
     fn init_phoenix_message() {
         let m = PhoenixMessage::new(

@@ -44,6 +44,23 @@ pub fn encode(channel: u16, data: &[u8]) -> Vec<u8> {
     to_bytes(channel, data.len() as u16, data)
 }
 
+/// Encode the channel data header (number + length) to the given slice.
+///
+/// Returns the total length of the packet (i.e. the encoded header + data).
+pub fn encode_header_to_slice(channel: u16, data: &[u8], mut slice: &mut [u8]) -> usize {
+    assert_eq!(slice.len(), 4);
+    let payload_length = data.len();
+
+    debug_assert!(channel > 0x400);
+    debug_assert!(channel < 0x7FFF);
+    debug_assert!(payload_length <= u16::MAX as usize);
+
+    slice.put_u16(channel);
+    slice.put_u16(payload_length as u16);
+
+    4 + payload_length
+}
+
 fn to_bytes(channel: u16, len: u16, payload: &[u8]) -> Vec<u8> {
     let mut message = BytesMut::with_capacity(HEADER_LEN + (len as usize));
 

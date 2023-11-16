@@ -1,12 +1,12 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use redis::AsyncCommands;
+use std::future::poll_fn;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::task::Poll;
 use std::time::Duration;
+use stun_codec::rfc5389::attributes::Username;
+use tokio::io::ReadBuf;
 use tokio::net::UdpSocket;
-use webrtc::turn::client::*;
-use webrtc::turn::Error;
-use webrtc::util::Conn;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -15,12 +15,12 @@ async fn main() -> Result<()> {
     let redis_client = redis::Client::open("redis://localhost:6379")?;
     let mut redis_connection = redis_client.get_async_connection().await?;
 
-    let turn_client = new_turn_client().await?;
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let relay_conn = turn_client.allocate().await?;
-    let relay_addr = relay_conn.local_addr()?;
+    let socket = UdpSocket::bind("127.0.0.1:0").await?;
+    let relay_addr = "127.0.0.1:3478".parse()?;
 
-    println!("Allocated relay address: {relay_addr}");
+    let mut buf = [0u8; 65536];
 
     let gateway_addr = redis_connection
         .blpop::<_, (String, String)>("gateway_addr", 10)
@@ -30,50 +30,71 @@ async fn main() -> Result<()> {
 
     println!("Retrieved gateway address: {gateway_addr}");
 
-    // The webrtc-rs client has no concept of explicitly creating a channel.
-    // Instead, it will implicitly create one when trying to send data to a remote.
-    relay_conn.send_to(b"HOLEPUNCH", gateway_addr).await?;
+    let mut allocation = firezone_relay::client::Allocation::new(
+        relay_addr,
+        Username::new("2000000000:client".to_owned()).unwrap(),
+        "+Qou8TSjw9q3JMnWET7MbFsQh/agwz/LURhpfX7a0hE".to_owned(),
+    );
 
-    // `webrtc-ts` does not block on the creation of the channel binding.
-    // Wait for some amount of time here to avoid race conditions.
-    tokio::time::sleep(Duration::from_millis(10)).await;
+    poll_fn(|cx| loop {
+        let mut buf = ReadBuf::new(&mut buf);
+        if let Poll::Ready(from) = socket.poll_recv_from(cx, &mut buf)? {
+            if allocation.handle_input(from, buf.filled()) && allocation.mapped_address().is_some()
+            {
+                break Poll::Ready(anyhow::Ok(()));
+            }
+            continue;
+        }
 
-    println!("Created channel to gateway");
+        if let Poll::Ready(transmit) = allocation.poll(cx) {
+            socket.try_send_to(&transmit.payload, transmit.dst)?;
+            continue;
+        }
 
-    // Now that our relay connection is active, share the address with the gateway.
-    redis_connection
-        .rpush("client_relay_addr", relay_addr.to_string())
-        .await?;
-
-    println!("Pushed relay address to gateway");
-
-    // The actual test:
-    // Wait for an incoming packets and echo them back until the test harness kills us.
-
-    loop {
-        let mut buf = [0u8; 32];
-        let (_, sender) = relay_conn.recv_from(&mut buf).await?;
-
-        println!("Received buffer from {sender}: {}", hex::encode(buf));
-
-        relay_conn.send_to(&buf, sender).await?;
-    }
-}
-
-async fn new_turn_client() -> Result<Client, Error> {
-    let client = Client::new(ClientConfig {
-        stun_serv_addr: "localhost:3478".to_owned(),
-        turn_serv_addr: "localhost:3478".to_owned(),
-        username: "2000000000:client".to_owned(), // 2000000000 expires in 2033, plenty of time
-        password: "+Qou8TSjw9q3JMnWET7MbFsQh/agwz/LURhpfX7a0hE".to_owned(),
-        realm: "firezone".to_owned(),
-        software: String::new(),
-        rto_in_ms: 0,
-        conn: Arc::new(UdpSocket::bind("127.0.0.1:0").await?),
-        vnet: None,
+        return Poll::Pending;
     })
     .await?;
 
-    client.listen().await?;
-    Ok(client)
+    let binding = allocation.bind_channel(gateway_addr).unwrap();
+
+    redis_connection
+        .rpush::<_, _, ()>(
+            "client_relay_addr",
+            allocation.ip4_socket().unwrap().to_string(),
+        )
+        .await
+        .unwrap();
+
+    poll_fn::<Result<()>, _>(|cx| loop {
+        let mut buf = ReadBuf::new(&mut buf);
+        match socket.poll_recv_from(cx, &mut buf)? {
+            Poll::Ready(from) => {
+                let packet = buf.filled();
+                if allocation.handle_input(from, packet) {
+                    continue;
+                }
+
+                if binding.decapsulate(from, packet).is_some() {
+                    socket.try_send_to(buf.filled(), from)?;
+                    continue;
+                };
+
+                return Poll::Ready(Err(anyhow!("Unexpected traffic from {from}")));
+            }
+            Poll::Pending => {}
+        }
+
+        match allocation.poll(cx) {
+            Poll::Ready(transmit) => {
+                socket.try_send_to(&transmit.payload, transmit.dst)?;
+                continue;
+            }
+            Poll::Pending => {}
+        }
+
+        return Poll::Pending;
+    })
+    .await?;
+
+    Ok(())
 }

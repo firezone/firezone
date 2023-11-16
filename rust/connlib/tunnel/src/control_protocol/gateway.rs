@@ -1,184 +1,44 @@
-use crate::{
-    control_protocol::{insert_peers, start_handlers},
-    gateway,
-    peer::{PacketTransformGateway, Peer},
-    ConnectedPeer, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
-};
-
+use crate::{gateway, PeerConfig, Tunnel};
 use chrono::{DateTime, Utc};
 use connlib_shared::{
-    messages::{
-        ClientId, ClientPayload, ConnectionAccepted, DomainResponse, Relay, ResourceAccepted,
-        ResourceDescription,
-    },
-    Callbacks, Dname, Error, Result,
+    messages::{ClientId, Relay, ResourceDescription},
+    Callbacks, Result,
 };
-use ip_network::IpNetwork;
-use std::{net::ToSocketAddrs, sync::Arc};
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
-use webrtc::ice_transport::{
-    ice_role::RTCIceRole, ice_transport_state::RTCIceTransportState, RTCIceTransport,
-};
-
-use super::{new_ice_connection, IceConnection};
-
-#[tracing::instrument(level = "trace", skip(ice))]
-fn set_connection_state_update(ice: &Arc<RTCIceTransport>, client_id: ClientId) {
-    let ice = ice.clone();
-    ice.on_connection_state_change({
-        let ice = ice.clone();
-        Box::new(move |state| {
-            tracing::trace!(%state, "peer_state");
-            let ice = ice.clone();
-            Box::pin(async move {
-                if state == RTCIceTransportState::Failed {
-                    if let Err(e) = ice.stop().await {
-                        tracing::warn!(err = ?e, "Couldn't stop ice client: {e:#}");
-                    }
-                }
-            })
-        })
-    });
-}
+use std::sync::Arc;
+use str0m::ice::IceCreds;
+use str0m::Candidate;
 
 impl<CB> Tunnel<CB, gateway::State>
 where
     CB: Callbacks + 'static,
 {
-    pub async fn add_ice_candidate(
-        &self,
-        conn_id: ClientId,
-        ice_candidate: RTCIceCandidate,
-    ) -> Result<()> {
-        tracing::info!(%ice_candidate, %conn_id, "adding new remote candidate");
-
-        let peer_connection = self
-            .peer_connections
+    pub fn add_ice_candidate(&self, client: ClientId, candidate: Candidate) {
+        self.role_state
             .lock()
-            .get(&conn_id)
-            .ok_or(Error::ControlProtocolError)?
-            .clone();
-        peer_connection
-            .add_remote_candidate(Some(ice_candidate))
-            .await?;
-        Ok(())
+            .add_remote_candidate(client, candidate);
     }
-}
 
-impl<CB> Tunnel<CB, gateway::State>
-where
-    CB: Callbacks + 'static,
-{
     /// Accept a connection request from a client.
-    ///
-    /// Sets a connection to a remote SDP, creates the local SDP
-    /// and returns it.
-    ///
-    /// # Parameters
-    /// - `sdp_session`: Remote session description.
-    /// - `peer`: Configuration for the remote peer.
-    /// - `relays`: List of relays to use with this connection.
-    /// - `client_id`: UUID of the remote client.
-    ///
-    /// # Returns
-    /// The connection details
-    pub async fn set_peer_connection_request(
+    pub fn set_peer_connection_request(
         self: &Arc<Self>,
-        client_payload: ClientPayload,
+        remote_credentials: IceCreds,
         peer: PeerConfig,
         relays: Vec<Relay>,
         client_id: ClientId,
-        expires_at: DateTime<Utc>,
-        resource: ResourceDescription,
-    ) -> Result<ConnectionAccepted> {
-        let IceConnection {
-            ice_parameters: local_params,
-            ice_transport: ice,
-            ice_candidate_rx,
-        } = new_ice_connection(&self.webrtc_api, relays).await?;
-        self.role_state
-            .lock()
-            .add_new_ice_receiver(client_id, ice_candidate_rx);
+        _expires_at: DateTime<Utc>,
+        _resource: ResourceDescription, // TODO: Do I need to use this? I think we concluded that we will receive another `allow_access` call from the portal later.
+    ) -> Result<IceCreds> {
+        let local_params = self.role_state.lock().make_new_connection(
+            self.ip4_socket.local_addr()?, // TODO: We also need to handle IPv6 here!
+            client_id,
+            relays,
+            remote_credentials,
+            peer.preshared_key,
+            peer.public_key,
+            peer.ips,
+        );
 
-        set_connection_state_update(&ice, client_id);
-
-        let previous_ice = self
-            .peer_connections
-            .lock()
-            .insert(client_id, Arc::clone(&ice));
-        if let Some(ice) = previous_ice {
-            // If we had a previous on-going connection we stop it.
-            // Note that ice.stop also closes the gatherer.
-            // we only have to do this on the gateway because clients can query
-            // twice for initiating connections since they can close/reopen suddenly
-            // however, gateways never initiate connection requests
-            let _ = ice.stop().await;
-        }
-
-        let resource_addresses = match &resource {
-            ResourceDescription::Dns(_) => {
-                let Some(domain) = client_payload.domain.clone() else {
-                    return Err(Error::ControlProtocolError);
-                };
-                (domain.to_string(), 0)
-                    .to_socket_addrs()?
-                    .map(|addrs| addrs.ip().into())
-                    .collect()
-            }
-            ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
-        };
-
-        {
-            let resource_addresses = resource_addresses.clone();
-            let tunnel = self.clone();
-            tokio::spawn(async move {
-                if let Err(e) = ice
-                    .start(&client_payload.ice_parameters, Some(RTCIceRole::Controlled))
-                    .await
-                    .map_err(Into::into)
-                    .and_then(|_| {
-                        tunnel.new_tunnel(
-                            peer,
-                            client_id,
-                            resource,
-                            expires_at,
-                            ice.clone(),
-                            resource_addresses,
-                        )
-                    })
-                {
-                    tracing::warn!(%client_id, err = ?e, "Can't start tunnel: {e:#}");
-                    {
-                        let mut peer_connections = tunnel.peer_connections.lock();
-                        if let Some(peer_connection) = peer_connections.get(&client_id).cloned() {
-                            // We need to re-check this since it might have been replaced in between.
-                            if matches!(
-                                peer_connection.state(),
-                                RTCIceTransportState::Failed
-                                    | RTCIceTransportState::Disconnected
-                                    | RTCIceTransportState::Closed
-                            ) {
-                                peer_connections.remove(&client_id);
-                            }
-                        }
-                    }
-
-                    // We only need to stop here because in case tunnel.new_tunnel failed.
-                    let _ = ice.stop().await;
-                }
-            });
-        }
-
-        Ok(ConnectionAccepted {
-            ice_parameters: local_params,
-            domain_response: client_payload.domain.map(|domain| DomainResponse {
-                domain,
-                address: resource_addresses
-                    .into_iter()
-                    .map(|ip| ip.network_address())
-                    .collect(),
-            }),
-        })
+        Ok(local_params)
     }
 
     pub fn allow_access(
@@ -186,101 +46,9 @@ where
         resource: ResourceDescription,
         client_id: ClientId,
         expires_at: DateTime<Utc>,
-        domain: Option<Dname>,
-    ) -> Option<ResourceAccepted> {
-        if let Some((_, peer)) = self
-            .role_state
+    ) {
+        self.role_state
             .lock()
-            .peers_by_ip
-            .iter_mut()
-            .find(|(_, p)| p.inner.conn_id == client_id)
-        {
-            let addresses = match &resource {
-                ResourceDescription::Dns(_) => {
-                    let Some(ref domain) = domain else {
-                        return None;
-                    };
-
-                    (domain.to_string(), 0)
-                        .to_socket_addrs()
-                        .ok()?
-                        .map(|a| a.ip())
-                        .map(Into::into)
-                        .collect()
-                }
-                ResourceDescription::Cidr(cidr) => vec![cidr.address],
-            };
-
-            for address in &addresses {
-                peer.inner
-                    .transform
-                    .add_resource(*address, resource.clone(), expires_at);
-            }
-
-            if let Some(domain) = domain {
-                return Some(ResourceAccepted {
-                    domain_response: DomainResponse {
-                        domain,
-                        address: addresses.iter().map(|i| i.network_address()).collect(),
-                    },
-                });
-            }
-        }
-
-        None
-    }
-
-    fn new_tunnel(
-        &self,
-        peer_config: PeerConfig,
-        client_id: ClientId,
-        resource: ResourceDescription,
-        expires_at: DateTime<Utc>,
-        ice: Arc<RTCIceTransport>,
-        resource_addresses: Vec<IpNetwork>,
-    ) -> Result<()> {
-        tracing::trace!(?peer_config.ips, "new_data_channel_open");
-        let device = self.device.load().clone().ok_or(Error::NoIface)?;
-        let callbacks = self.callbacks.clone();
-        for ip in &peer_config.ips {
-            if let Ok(res) = device.add_route(*ip, &callbacks) {
-                assert!(res.is_none(),  "gateway does not run on android and thus never produces a new device upon `add_route`");
-            }
-        }
-
-        let peer = Arc::new(Peer::new(
-            self.private_key.clone(),
-            self.next_index(),
-            peer_config.clone(),
-            client_id,
-            self.rate_limiter.clone(),
-            PacketTransformGateway::default(),
-        ));
-
-        for address in resource_addresses {
-            peer.transform
-                .add_resource(address, resource.clone(), expires_at);
-        }
-
-        let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
-
-        start_handlers(
-            Arc::clone(&self.device),
-            self.callbacks.clone(),
-            peer.clone(),
-            ice,
-            peer_receiver,
-        );
-
-        insert_peers(
-            &mut self.role_state.lock().peers_by_ip,
-            &peer_config.ips,
-            ConnectedPeer {
-                inner: peer,
-                channel: peer_sender,
-            },
-        );
-
-        Ok(())
+            .allow_access(client_id, resource, expires_at);
     }
 }

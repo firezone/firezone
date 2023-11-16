@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
         SecretString::new(cli.common.token),
         cli.common.firezone_id,
     )?;
-    let tunnel = Arc::new(Tunnel::new(private_key, CallbackHandler)?);
+    let tunnel = Arc::new(Tunnel::gateway(private_key, CallbackHandler)?);
 
     let task = pin!(backoff::future::retry_notify(
         ExponentialBackoffBuilder::default()

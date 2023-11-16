@@ -1,9 +1,9 @@
 use anyhow::Result;
 use redis::AsyncCommands;
+use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::net::UdpSocket;
-use webrtc::turn::Error;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -28,13 +28,15 @@ async fn main() -> Result<()> {
 
     println!("Client's relay address is {relay_addr}");
 
-    tokio::time::timeout(Duration::from_secs(5), ping_pong(socket, relay_addr)).await??;
+    tokio::time::sleep(Duration::from_millis(500)).await; // Hack to wait for binding to be active.
+
+    tokio::time::timeout(Duration::from_secs(60), ping_pong(socket, relay_addr)).await??;
 
     Ok(())
 }
 
-async fn ping_pong(socket: UdpSocket, relay_addr: SocketAddr) -> Result<(), Error> {
-    for _ in 0..1000 {
+async fn ping_pong(socket: UdpSocket, relay_addr: SocketAddr) -> io::Result<()> {
+    for _ in 0..20 {
         let ping = rand::random::<[u8; 32]>();
 
         socket.send_to(&ping, relay_addr).await?;
@@ -47,6 +49,8 @@ async fn ping_pong(socket: UdpSocket, relay_addr: SocketAddr) -> Result<(), Erro
         println!("Received pong from client: {}", hex::encode(pong));
 
         assert_eq!(ping, pong);
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
 
     Ok(())

@@ -6,11 +6,14 @@ mod sleep;
 mod time_events;
 mod udp_socket;
 
+pub mod client;
+
 pub mod health_check;
 #[cfg(feature = "proptest")]
 pub mod proptest;
 
 pub use allocation::Allocation;
+pub use auth::FIREZONE;
 pub use net_ext::{IpAddrExt, SocketAddrExt};
 pub use server::{
     channel_data, Allocate, AllocationId, Attribute, Binding, ChannelBind, ClientMessage, Command,

@@ -25,9 +25,10 @@ tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
 hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
-webrtc = "0.9"
+str0m = "0.4.0"
 futures-bounded = "0.2.1"
 domain = { version = "0.9", features = ["serde"] }
+stun_codec = "0.3.4"
 
 connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}
@@ -38,11 +39,12 @@ firezone-windows-client = { path = "windows-client/src-tauri"}
 firezone-cli-utils = { path = "firezone-cli-utils"}
 connlib-shared = { path = "connlib/shared"}
 firezone-tunnel = { path = "connlib/tunnel"}
+firezone-relay = { path = "relay"}
 phoenix-channel = { path = "phoenix-channel"}
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" } # Contains unreleased patches we need (bump of x25519-dalek)
-webrtc = { git = "https://github.com/firezone/webrtc", branch = "expose-new-endpoint" }
+str0m = { git = "https://github.com/thomaseizinger/str0m", branch = "main" }
 
 [profile.release]
 strip = true

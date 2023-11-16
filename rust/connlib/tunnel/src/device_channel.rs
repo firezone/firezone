@@ -18,7 +18,6 @@ mod tun;
 #[path = "device_channel/tun_android.rs"]
 mod tun;
 
-use crate::ip_packet::MutableIpPacket;
 use crate::DnsFallbackStrategy;
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::Interface;
@@ -26,13 +25,15 @@ use connlib_shared::{Callbacks, Error};
 use ip_network::IpNetwork;
 use std::borrow::Cow;
 use std::io;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
+use std::time::Duration;
 use tun::Tun;
 
 pub struct Device {
-    mtu: AtomicUsize,
+    mtu: usize,
     tun: Tun,
+
+    mtu_refresh_interval: tokio::time::Interval,
 }
 
 impl Device {
@@ -43,9 +44,13 @@ impl Device {
         dns: DnsFallbackStrategy,
     ) -> Result<Device, ConnlibError> {
         let tun = Tun::new(config, callbacks, dns)?;
-        let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
+        let mtu = ioctl::interface_mtu_by_name(tun.name())?;
 
-        Ok(Device { mtu, tun })
+        Ok(Device {
+            mtu,
+            tun,
+            mtu_refresh_interval: tokio::time::interval(Duration::from_secs(30)),
+        })
     }
 
     #[cfg(target_family = "windows")]
@@ -56,43 +61,39 @@ impl Device {
     ) -> Result<Device, ConnlibError> {
         Ok(Device {
             tun: Tun::new(),
-            mtu: AtomicUsize::default(), // Dummy value for now.
+            mtu: 0, // Dummy value for now.
+            mtu_refresh_interval: tokio::time::interval(Duration::from_secs(30)),
         })
     }
 
     #[cfg(target_family = "unix")]
     pub(crate) fn poll_read<'b>(
-        &self,
+        &mut self,
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
-        let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
+    ) -> Poll<io::Result<Option<&'b mut [u8]>>> {
+        if self.mtu_refresh_interval.poll_tick(cx).is_ready() {
+            let mtu = ioctl::interface_mtu_by_name(self.tun.name())
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            self.mtu = mtu;
+        }
+
+        let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu], cx))?;
 
         if n == 0 {
             return Poll::Ready(Ok(None));
         }
 
-        Poll::Ready(Ok(Some(MutableIpPacket::new(&mut buf[..n]).ok_or_else(
-            || {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "received bytes are not an IP packet",
-                )
-            },
-        )?)))
+        Poll::Ready(Ok(Some(&mut buf[..n])))
     }
 
     #[cfg(target_family = "windows")]
     pub(crate) fn poll_read<'b>(
-        &self,
+        &mut self,
         _: &'b mut [u8],
         _: &mut Context<'_>,
-    ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+    ) -> Poll<io::Result<Option<&'b mut [u8]>>> {
         Poll::Pending
-    }
-
-    pub(crate) fn mtu(&self) -> usize {
-        self.mtu.load(Ordering::Relaxed)
     }
 
     #[cfg(target_family = "unix")]
@@ -104,9 +105,13 @@ impl Device {
         let Some(tun) = self.tun.add_route(route, callbacks)? else {
             return Ok(None);
         };
-        let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
+        let mtu = ioctl::interface_mtu_by_name(tun.name())?;
 
-        Ok(Some(Device { mtu, tun }))
+        Ok(Some(Device {
+            mtu,
+            tun,
+            mtu_refresh_interval: tokio::time::interval(Duration::from_secs(30)),
+        }))
     }
 
     #[cfg(target_family = "windows")]
@@ -116,19 +121,6 @@ impl Device {
         _: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
         Ok(None)
-    }
-
-    #[cfg(target_family = "unix")]
-    pub(crate) fn refresh_mtu(&self) -> Result<usize, Error> {
-        let mtu = ioctl::interface_mtu_by_name(self.tun.name())?;
-        self.mtu.store(mtu, Ordering::Relaxed);
-
-        Ok(mtu)
-    }
-
-    #[cfg(target_family = "windows")]
-    pub(crate) fn refresh_mtu(&self) -> Result<usize, Error> {
-        Ok(0)
     }
 
     pub fn write(&self, packet: Packet<'_>) -> io::Result<usize> {

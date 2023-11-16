@@ -57,3 +57,13 @@ impl<T> BoundedQueue<T> {
         Ok(())
     }
 }
+
+impl<T> Extend<T> for BoundedQueue<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        for i in iter {
+            if self.push_back(i).is_err() {
+                return;
+            }
+        }
+    }
+}

@@ -119,7 +119,6 @@ where
     ///
     // TODO: this is not very elegant but it was the easiest way to do reset the exponential backoff for now
     /// Furthermore, it calls the given callback once it connects to the portal.
-    #[tracing::instrument(level = "trace", skip(self, after_connection_ends))]
     pub async fn start(
         &mut self,
         topics: Vec<String>,
@@ -205,7 +204,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(handler))]
+    // #[tracing::instrument(level = "trace", skip(handler))]
     async fn message_process(handler: &F, message: tungstenite::Message) {
         tracing::trace!("{message:?}");
 

@@ -27,11 +27,13 @@ chrono = { workspace = true }
 pnet_packet = { version = "0.34" }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true }
-arc-swap = "1.6.0"
-bimap = "0.6"
-
-# TODO: research replacing for https://github.com/algesten/str0m
-webrtc = { workspace = true }
+firezone-relay = { workspace = true }
+str0m = { workspace = true }
+either = "1.9.0"
+bimap = "0.6.3"
+stun_codec = { workspace = true }
+hex = "0.4.3"
+socket2 = "0.5.4"
 
 # Needed for Android logging until tracing is fixed
 log = "0.4"
@@ -40,7 +42,7 @@ log = "0.4"
 [target.'cfg(target_os = "linux")'.dependencies]
 netlink-packet-route = { version = "0.17", default-features = false }
 netlink-packet-core = { version = "0.7", default-features = false }
-rtnetlink = { version = "0.13" }
+rtnetlink = { version = "0.13", default-features = false, features = ["tokio_socket"] }
 
 # Android tunnel dependencies
 [target.'cfg(target_os = "android")'.dependencies]

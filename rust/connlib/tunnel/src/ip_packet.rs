@@ -41,13 +41,13 @@ impl<'a> MutableIpPacket<'a> {
         Some(packet)
     }
 
-    #[inline]
-    pub(crate) fn destination(&self) -> IpAddr {
-        match self {
-            MutableIpPacket::MutableIpv4Packet(i) => i.get_destination().into(),
-            MutableIpPacket::MutableIpv6Packet(i) => i.get_destination().into(),
-        }
-    }
+    // #[inline]
+    // pub(crate) fn destination(&self) -> IpAddr {
+    //     match self {
+    //         MutableIpPacket::MutableIpv4Packet(i) => i.get_destination().into(),
+    //         MutableIpPacket::MutableIpv6Packet(i) => i.get_destination().into(),
+    //     }
+    // }
 
     #[inline]
     pub(crate) fn update_checksum(&mut self) {
@@ -97,12 +97,12 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
-    pub(crate) fn as_immutable(&self) -> IpPacket<'_> {
-        match self {
-            Self::MutableIpv4Packet(p) => IpPacket::Ipv4Packet(p.to_immutable()),
-            Self::MutableIpv6Packet(p) => IpPacket::Ipv6Packet(p.to_immutable()),
-        }
-    }
+    // pub(crate) fn as_immutable(&self) -> IpPacket<'_> {
+    //     match self {
+    //         Self::MutableIpv4Packet(p) => IpPacket::Ipv4Packet(p.to_immutable()),
+    //         Self::MutableIpv6Packet(p) => IpPacket::Ipv6Packet(p.to_immutable()),
+    //     }
+    // }
 
     pub(crate) fn as_udp(&mut self) -> Option<MutableUdpPacket> {
         self.to_immutable()
@@ -161,7 +161,7 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
-    #[inline]
+    // #[inline]
     pub(crate) fn set_dst(&mut self, dst: IpAddr) {
         match (self, dst) {
             (Self::MutableIpv4Packet(p), IpAddr::V4(d)) => p.set_destination(d),
@@ -170,14 +170,14 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
-    #[inline]
-    pub(crate) fn set_src(&mut self, src: IpAddr) {
-        match (self, src) {
-            (Self::MutableIpv4Packet(p), IpAddr::V4(s)) => p.set_source(s),
-            (Self::MutableIpv6Packet(p), IpAddr::V6(s)) => p.set_source(s),
-            _ => {}
-        }
-    }
+    // #[inline]
+    // pub(crate) fn set_src(&mut self, src: IpAddr) {
+    //     match (self, src) {
+    //         (Self::MutableIpv4Packet(p), IpAddr::V4(s)) => p.set_source(s),
+    //         (Self::MutableIpv6Packet(p), IpAddr::V6(s)) => p.set_source(s),
+    //         _ => {}
+    //     }
+    // }
 
     pub(crate) fn set_len(&mut self, total_len: usize, payload_len: usize) {
         match self {
@@ -200,6 +200,16 @@ pub enum IpPacket<'a> {
 }
 
 impl<'a> IpPacket<'a> {
+    pub(crate) fn new(data: &'a [u8]) -> Option<IpPacket<'a>> {
+        let packet = match data[0] >> 4 {
+            4 => Ipv4Packet::new(data)?.into(),
+            6 => Ipv6Packet::new(data)?.into(),
+            _ => return None,
+        };
+
+        Some(packet)
+    }
+
     pub(crate) fn owned(data: Vec<u8>) -> Option<IpPacket<'static>> {
         let packet = match data[0] >> 4 {
             4 => Ipv4Packet::owned(data)?.into(),
@@ -210,10 +220,10 @@ impl<'a> IpPacket<'a> {
         Some(packet)
     }
 
-    pub(crate) fn to_owned(&self) -> IpPacket<'static> {
-        // This should never fail as the provided buffer is a vec (unless oom)
-        IpPacket::owned(self.packet().to_vec()).unwrap()
-    }
+    // pub(crate) fn to_owned(&self) -> IpPacket<'static> {
+    //     // This should never fail as the provided buffer is a vec (unless oom)
+    //     IpPacket::owned(self.packet().to_vec()).unwrap()
+    // }
 
     pub(crate) fn version(&self) -> Version {
         match self {
@@ -247,6 +257,12 @@ impl<'a> IpPacket<'a> {
             .flatten()
     }
 
+    pub(crate) fn source(&self) -> IpAddr {
+        match self {
+            Self::Ipv4Packet(p) => p.get_source().into(),
+            Self::Ipv6Packet(p) => p.get_source().into(),
+        }
+    }
     pub(crate) fn destination(&self) -> IpAddr {
         match self {
             Self::Ipv4Packet(p) => p.get_destination().into(),

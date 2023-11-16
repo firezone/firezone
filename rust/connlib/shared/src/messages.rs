@@ -5,8 +5,9 @@ use chrono::{serde::ts_seconds, DateTime, Utc};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
+use str0m::ice::IceCreds;
+use stun_codec::rfc5389::attributes::Username;
 use uuid::Uuid;
-use webrtc::ice_transport::ice_parameters::RTCIceParameters;
 
 mod key;
 
@@ -18,6 +19,11 @@ use crate::Dname;
 pub struct GatewayId(Uuid);
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct ResourceId(Uuid);
+
+impl ResourceId {
+    pub const DUMMY: ResourceId = ResourceId(Uuid::nil());
+}
+
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct ClientId(Uuid);
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +87,8 @@ impl PartialEq for Peer {
     }
 }
 
+impl Eq for Peer {}
+
 /// Represent a connection request from a client to a given resource.
 ///
 /// While this is a client-only message it's hosted in common since the tunnel
@@ -99,8 +107,16 @@ pub struct RequestConnection {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ClientPayload {
-    pub ice_parameters: RTCIceParameters,
+    #[serde(with = "IceCredsDef")]
+    pub ice_parameters: IceCreds,
     pub domain: Option<Dname>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "IceCreds")]
+struct IceCredsDef {
+    pub ufrag: String,
+    pub pass: String,
 }
 
 /// Represent a request to reuse an existing gateway connection from a client to a given resource.
@@ -139,25 +155,26 @@ pub struct DomainResponse {
     pub address: Vec<IpAddr>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 pub struct ConnectionAccepted {
-    pub ice_parameters: RTCIceParameters,
+    #[serde(with = "IceCredsDef")]
+    pub ice_parameters: IceCreds,
     pub domain_response: Option<DomainResponse>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 pub struct ResourceAccepted {
     pub domain_response: DomainResponse,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 pub enum GatewayResponse {
     ConnectionAccepted(ConnectionAccepted),
     ResourceAccepted(ResourceAccepted),
 }
 
 /// Description of a resource that maps to a DNS record.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
     pub id: ResourceId,
@@ -233,6 +250,33 @@ pub enum Relay {
     Stun(Stun),
     /// TURN type of relay
     Turn(Turn),
+}
+
+// TODO: Ideally we do this using `serde`.
+impl Relay {
+    pub fn try_to_stun(&self) -> Option<SocketAddr> {
+        match self {
+            Relay::Stun(Stun { uri }) => uri.trim_start_matches("stun:").parse::<SocketAddr>().ok(),
+            Relay::Turn(_) => None,
+        }
+    }
+
+    pub fn try_to_turn(&self) -> Option<(SocketAddr, Username, String)> {
+        match self {
+            Relay::Stun(_) => None,
+            Relay::Turn(Turn {
+                uri,
+                username,
+                password,
+                ..
+            }) => {
+                let relay_addr = uri.trim_start_matches("turn:").parse::<SocketAddr>().ok()?;
+                let username = Username::new(username.to_owned()).ok()?;
+
+                Some((relay_addr, username, password.to_owned()))
+            }
+        }
+    }
 }
 
 /// Represent a TURN relay

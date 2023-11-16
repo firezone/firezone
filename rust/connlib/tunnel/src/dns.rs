@@ -1,7 +1,7 @@
 use crate::client::DnsResource;
 use crate::device_channel::Packet;
 use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
-use crate::{get_v4, get_v6, DnsFallbackStrategy, DnsQuery};
+use crate::DnsFallbackStrategy;
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::ResourceDescriptionDns;
 use connlib_shared::{Dname, DNS_SENTINEL};
@@ -30,27 +30,55 @@ pub(crate) enum ResolveStrategy<T, U, V> {
     DeferredResponse(V),
 }
 
-struct DnsQueryParams {
-    name: String,
-    record_type: RecordType,
+#[derive(Debug)]
+pub struct Query<'a> {
+    pub name: String,
+    pub record_type: RecordType,
+    // We could be much more efficient with this field,
+    // we only need the header to create the response.
+    pub query: IpPacket<'a>,
 }
 
-impl DnsQueryParams {
-    fn into_query(self, query: IpPacket) -> DnsQuery {
-        DnsQuery {
-            name: self.name,
-            record_type: self.record_type,
+impl<'a> Query<'a> {
+    pub(crate) fn into_owned(self) -> Query<'static> {
+        let Self {
+            name,
+            record_type,
+            query,
+        } = self;
+        let buf = query.packet().to_vec();
+        let query =
+            IpPacket::owned(buf).expect("We are constructing the ip packet from an ip packet");
+
+        Query {
+            name,
+            record_type,
             query,
         }
     }
 }
 
-impl<T, V> ResolveStrategy<T, DnsQueryParams, V> {
-    fn forward(name: String, record_type: Rtype) -> ResolveStrategy<T, DnsQueryParams, V> {
-        ResolveStrategy::ForwardQuery(DnsQueryParams {
+impl<T, V> ResolveStrategy<T, QueryParams, V> {
+    fn forward(name: String, record_type: Rtype) -> ResolveStrategy<T, QueryParams, V> {
+        ResolveStrategy::ForwardQuery(QueryParams {
             name,
             record_type: u16::from(record_type).into(),
         })
+    }
+}
+
+struct QueryParams {
+    name: String,
+    record_type: RecordType,
+}
+
+impl QueryParams {
+    fn into_query(self, query: IpPacket) -> Query {
+        Query {
+            name: self.name,
+            record_type: self.record_type,
+            query,
+        }
     }
 }
 
@@ -62,9 +90,11 @@ impl<T, V> ResolveStrategy<T, DnsQueryParams, V> {
 pub(crate) fn parse<'a>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<DnsResource, Vec<IpAddr>>,
-    packet: IpPacket<'a>,
+    packet: &'a [u8],
     resolve_strategy: DnsFallbackStrategy,
-) -> Option<ResolveStrategy<Packet<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
+) -> Option<ResolveStrategy<Packet<'static>, Query<'a>, (DnsResource, Rtype)>> {
+    let packet = IpPacket::new(packet)?;
+
     if packet.destination() != IpAddr::from(DNS_SENTINEL) {
         return None;
     }
@@ -109,14 +139,14 @@ pub(crate) fn create_local_answer<'a>(ips: &[IpAddr], packet: IpPacket<'a>) -> O
         Rtype::A => RecordData::A(
             ips.iter()
                 .copied()
-                .filter_map(get_v4)
+                .filter_map(crate::get_v4)
                 .map(domain::rdata::A::new)
                 .collect(),
         ),
         Rtype::Aaaa => RecordData::Aaaa(
             ips.iter()
                 .copied()
-                .filter_map(get_v6)
+                .filter_map(crate::get_v6)
                 .map(domain::rdata::Aaaa::new)
                 .collect(),
         ),
@@ -244,7 +274,7 @@ fn resource_from_question<N: ToDname>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<DnsResource, Vec<IpAddr>>,
     question: &Question<N>,
-) -> Option<ResolveStrategy<RecordData<Dname>, DnsQueryParams, DnsResource>> {
+) -> Option<ResolveStrategy<RecordData<Dname>, QueryParams, DnsResource>> {
     let name = ToDname::to_vec(question.qname());
     let qtype = question.qtype();
 
@@ -267,7 +297,7 @@ fn resource_from_question<N: ToDname>(
             Some(ResolveStrategy::LocalResponse(RecordData::A(
                 ips.iter()
                     .cloned()
-                    .filter_map(get_v4)
+                    .filter_map(crate::get_v4)
                     .map(domain::rdata::A::new)
                     .collect(),
             )))
@@ -287,7 +317,7 @@ fn resource_from_question<N: ToDname>(
             Some(ResolveStrategy::LocalResponse(RecordData::Aaaa(
                 ips.iter()
                     .cloned()
-                    .filter_map(get_v6)
+                    .filter_map(crate::get_v6)
                     .map(domain::rdata::Aaaa::new)
                     .collect(),
             )))

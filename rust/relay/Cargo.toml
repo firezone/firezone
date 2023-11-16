@@ -10,10 +10,11 @@ anyhow = "1.0.75"
 clap = { version = "4.4.7", features = ["derive", "env"] }
 bytecodec = "0.4.15"
 futures = "0.3.29"
+futures-bounded = "0.2.3"
 hex = "0.4.3"
 hex-literal = "0.4.1"
 rand = "0.8.5"
-stun_codec = "0.3.4"
+stun_codec = { workspace = true }
 tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread", "net", "time"] }
 tracing = { workspace = true, features = ["log"] }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json", "fmt"] }
@@ -38,9 +39,9 @@ serde = { version = "1.0.190", features = ["derive"] }
 trackable = "1.3.0"
 socket2 = "0.5.5"
 axum = { version = "0.6.20", default-features = false, features = ["http1", "tokio"] }
+bimap = "0.6.3"
 
 [dev-dependencies]
-webrtc = { workspace = true }
 redis = { version = "0.23.3", default-features = false, features = ["tokio-comp"] }
 difference = "2.0.0"
 

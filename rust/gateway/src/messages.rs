@@ -1,14 +1,12 @@
-use chrono::{serde::ts_seconds, DateTime, Utc};
-use connlib_shared::{
-    messages::{
-        ActorId, ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay,
-        ResourceDescription, ResourceId,
-    },
-    Dname,
-};
-use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
+
+use chrono::{serde::ts_seconds, DateTime, Utc};
+use connlib_shared::messages::{
+    ActorId, ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay, ResourceDescription,
+    ResourceId,
+};
+use connlib_shared::Dname;
+use serde::{Deserialize, Serialize};
 
 // TODO: Should this have a resource?
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
@@ -23,22 +21,12 @@ pub struct Actor {
     pub id: ActorId,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Client {
     pub id: ClientId,
     pub payload: ClientPayload,
     pub peer: Peer,
 }
-
-// rtc_sdp is ignored from eq since RTCSessionDescription doesn't implement this
-// this will probably be changed in the future.
-impl PartialEq for Client {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id && self.peer == other.peer
-    }
-}
-
-impl Eq for Client {}
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct RequestConnection {
@@ -105,7 +93,7 @@ pub struct BroadcastClientIceCandidates {
     /// Client's id the ice candidates are meant for
     pub client_ids: Vec<ClientId>,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidate>,
+    pub candidates: Vec<String>,
 }
 
 /// A client's ice candidate message.
@@ -114,7 +102,7 @@ pub struct ClientIceCandidates {
     /// Client's id the ice candidates came from
     pub client_id: ClientId,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidate>,
+    pub candidates: Vec<String>,
 }
 
 // These messages can be sent from a gateway
@@ -151,47 +139,53 @@ mod test {
             "event": "request_connection",
             "payload": {
                 "client": {
-                    "id": "3a25ff38-f8d7-47de-9b30-c7c40c206083",
-                    "peer": {
-                        "ipv6": "fd00:2021:1111::3a:ab1b",
-                        "public_key": "OR2dYCLwMEtwqtjOxSm4SU7BbHJDfM8ZCqK7HKXXxDw=",
-                        "ipv4": "100.114.114.30",
-                        "persistent_keepalive": 25,
-                        "preshared_key": "sMeTuiJ3mezfpVdan948CmisIWbwBZ1z7jBNnbVtfVg="
-                    },
-                    "payload": {
-                        "ice_parameters": {
-                            "ice_lite":false,
-                            "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
-                            "username_fragment": "PvCPFevCOgkvVCtH"
-                        }
+                  "id": "5a3fdcdf-425d-4997-921b-5fa87441e03c",
+                  "peer": {
+                    "ipv6": "fd00:2021:1111::d:b6b5",
+                    "public_key": "E5oyYdkzRoQ3tkk62DtsNBdvLSmjLgqqEzFe1N+mvQA=",
+                    "ipv4": "100.66.111.33",
+                    "persistent_keepalive": 25,
+                    "preshared_key": "zbxh6XtSCMmjEuUMOifgG+rfJAfq4bWBAwa+XaKHDYs="
+                  },
+                  "payload": {
+                    "domain": null,
+                    "ice_parameters": {
+                      "pass": "VAx4BSFsJNXluHa2Tujk3E",
+                      "ufrag": "bKzr"
                     }
+                  }
                 },
                 "resource": {
-                    "id": "ea6570d1-47c7-49d2-9dc3-efff1c0c9e0b",
-                    "name": "172.20.0.1/16",
-                    "type": "cidr",
-                    "address": "172.20.0.0/16"
+                  "id": "4b6dbf34-9ed7-453d-947f-c4e92833c31e",
+                  "name": "MyCorp Network",
+                  "type": "cidr",
+                  "address": "172.20.0.0/16",
+                  "filters": []
                 },
-                "ref": "78e1159d-9dc6-480d-b2ef-1fcec2cd5730",
-                "expires_at": 1719367575,
+                "ref": "dfa04c93-710b-4594-933b-b8586250f0c3",
+                "expires_at": 1702881277,
                 "actor": {
-                    "id": "3b1d86a0-4737-4814-8add-cfec42669511"
+                  "id": "c4a781f7-94c3-4fac-b0d8-c1f04490e84b"
                 },
                 "relays": [
-                    {
-                        "type": "stun",
-                        "uri": "stun:172.28.0.101:3478"
-                    },
-                    {
-                        "type": "turn",
-                        "username": "1719367575:ZQHcVGkdnfgGmcP1",
-                        "password": "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg",
-                        "uri": "turn:172.28.0.101:3478",
-                        "expires_at": 1719367575
-                    }
-                ]
-            }
+                  {
+                    "type": "turn",
+                    "username": "1702881277:yjma2TJfzV92orcb0ehCpQ",
+                    "password": "zxGXBR8M/qzJxlJy1qZChO/oXl61DgzLn578HF7T9jU",
+                    "uri": "turn:172.28.0.101:3478",
+                    "expires_at": 1702881277
+                  },
+                  {
+                    "type": "turn",
+                    "username": "1702881277:l0FW-zjmaPxuE6uDg_yfKQ",
+                    "password": "75+qea9mT473920qxt8otzrW1WL87J1uddFW03uvKY8",
+                    "uri": "turn:[fcff:3990:3990::101]:3478",
+                    "expires_at": 1702881277
+                  }
+                ],
+                "flow_id": "6400fb21-58cc-48b7-b7c7-a35cf06a778e"
+              }
+            
         }"#;
         // TODO: We are just testing we can deserialize for now.
         let _: PhoenixMessage<IngressMessages, ()> = serde_json::from_str(message).unwrap();
