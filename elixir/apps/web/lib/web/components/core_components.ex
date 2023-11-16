@@ -55,6 +55,7 @@ defmodule Web.CoreComponents do
   attr :id, :string, required: true
   attr :class, :string, default: ""
   slot :inner_block, required: true
+  attr :rest, :global
 
   def code_block(assigns) do
     ~H"""
@@ -64,7 +65,7 @@ defmodule Web.CoreComponents do
       space-x-4 p-4 pl-6
       bg-gray-800
       relative
-    ], @class]}>
+    ], @class]} {@rest}>
       <code
         class="block w-full no-scrollbar whitespace-pre overflow-x-auto rounded-b"
         data-copy

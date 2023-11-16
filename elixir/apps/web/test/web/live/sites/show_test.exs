@@ -106,7 +106,7 @@ defmodule Web.Live.Sites.ShowTest do
     assert table["created"] =~ actor.name
   end
 
-  test "renders gateways table", %{
+  test "renders online gateways table", %{
     account: account,
     actor: actor,
     identity: identity,
@@ -114,18 +114,26 @@ defmodule Web.Live.Sites.ShowTest do
     gateway: gateway,
     conn: conn
   } do
+    :ok = Domain.Gateways.connect_gateway(gateway)
+    Fixtures.Gateways.create_gateway(account: account, group: group)
+
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{group}")
 
-    lv
-    |> element("#gateways")
-    |> render()
-    |> table_to_map()
+    rows =
+      lv
+      |> element("#gateways")
+      |> render()
+      |> table_to_map()
+
+    assert length(rows) == 1
+
+    rows
     |> with_table_row("instance", gateway.name, fn row ->
       assert row["token created at"] =~ actor.name
-      assert row["status"] =~ "Offline"
+      assert row["status"] =~ "Online"
     end)
   end
 
