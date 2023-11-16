@@ -69,13 +69,7 @@ defmodule Web.Sites.Gateways.Index do
               </div>
               <div>
                 <p>
-                  Gateways serve as a termination point for all VPN connections within a site, they must be deployed
-                  to your infrastructure to enable VPN connectivity.
-                </p>
-                <p>
-                  If site has more than one gateway deployed,
-                  connections will be load balanced between them. Because of this, all gateways within a site must
-                  be able to access all site resources.
+                  Deploy gateways to terminate connections to your site's resources. All gateways deployed within a site must be able to reach all its resources.
                 </p>
               </div>
             </div>

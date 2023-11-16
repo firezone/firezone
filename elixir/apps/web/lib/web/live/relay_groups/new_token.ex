@@ -213,7 +213,7 @@ defmodule Web.RelayGroups.NewToken do
     [Unit]
     Description=Firezone Relay
     After=network.target
-    Documentation=https://www.firezone.dev/docs
+    Documentation=https://www.firezone.dev/kb
 
     [Service]
     Type=simple

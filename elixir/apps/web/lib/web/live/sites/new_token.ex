@@ -201,7 +201,7 @@ defmodule Web.Sites.NewToken do
     [Unit]
     Description=Firezone Gateway
     After=network.target
-    Documentation=https://www.firezone.dev/docs
+    Documentation=https://www.firezone.dev/kb
 
     [Service]
     Type=simple
