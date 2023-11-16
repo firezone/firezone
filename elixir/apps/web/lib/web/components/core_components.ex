@@ -112,6 +112,8 @@ defmodule Web.CoreComponents do
   slot :tab, required: true, doc: "Tab content" do
     attr :id, :string, required: true, doc: "ID of the tab"
     attr :label, :any, required: true, doc: "Display label for the tab"
+    attr :selected, :boolean, doc: "Whether the tab is selected"
+    attr :phx_click, :any, doc: "Phoenix click event"
   end
 
   attr :rest, :global
@@ -122,6 +124,7 @@ defmodule Web.CoreComponents do
       <div
         class="border-gray-200 dark:border-gray-700 bg-slate-50 rounded-t"
         id={"#{@id}-container"}
+        phx-hook="Tabs"
         {@rest}
       >
         <ul
@@ -142,7 +145,9 @@ defmodule Web.CoreComponents do
                 type="button"
                 role="tab"
                 aria-controls={tab.id}
-                aria-selected="false"
+                aria-selected={(Map.get(tab, :selected) && "true") || "false"}
+                phx-click={Map.get(tab, :phx_click)}
+                phx-value-id={tab.id}
               >
                 <%= tab.label %>
               </button>

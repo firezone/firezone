@@ -17,7 +17,13 @@ defmodule Web.Sites.NewToken do
           {group, nil}
         end
 
-      {:ok, assign(socket, group: group, env: env, connected?: false)}
+      {:ok,
+       assign(socket,
+         group: group,
+         env: env,
+         connected?: false,
+         selected_tab: "docker-instructions"
+       )}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -42,8 +48,14 @@ defmodule Web.Sites.NewToken do
           <div class="text-xl mb-2">
             Select deployment method:
           </div>
+
           <.tabs :if={@env} id="deployment-instructions">
-            <:tab id="docker-instructions" label="Docker">
+            <:tab
+              id="docker-instructions"
+              label="Docker"
+              phx_click="tab_selected"
+              selected={@selected_tab == "docker-instructions"}
+            >
               <p class="pl-4 mb-2">
                 Copy-paste this command to your server:
               </p>
@@ -75,7 +87,12 @@ defmodule Web.Sites.NewToken do
 
               <.code_block id="code-sample-docker3" class="w-full rounded-b" phx-no-format>docker logs firezone-gateway</.code_block>
             </:tab>
-            <:tab id="systemd-instructions" label="Systemd">
+            <:tab
+              id="systemd-instructions"
+              label="Systemd"
+              phx_click="tab_selected"
+              selected={@selected_tab == "systemd-instructions"}
+            >
               <p class="pl-4 mb-2">
                 1. Create a systemd unit file with the following content:
               </p>
@@ -255,6 +272,10 @@ defmodule Web.Sites.NewToken do
     [Install]
     WantedBy=multi-user.target
     """
+  end
+
+  def handle_event("tab_selected", %{"id" => id}, socket) do
+    {:noreply, assign(socket, selected_tab: id)}
   end
 
   def handle_info(%Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _group_id}, socket) do
