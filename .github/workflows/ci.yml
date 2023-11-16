@@ -168,7 +168,7 @@ jobs:
           - test_name: iperf report
             setup: echo 'Noop'
             execute: |
-              docker compose exec -it client sh - c 'apk add iperf3' && \
+              docker compose exec -it client /bin/sh -c 'apk add iperf3' && \
               docker compose exec -it client timeout 60 \
               sh -c 'iperf3 -R -c 172.20.0.110' >> $GITHUB_STEP_SUMMARY
     steps:
