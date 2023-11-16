@@ -246,11 +246,6 @@ impl ClientState {
         self.gateway_awaiting_connection.remove(&gateway);
     }
 
-    pub fn on_connection_success(&mut self, gateway_id: &GatewayId, resource_id: &ResourceId) {
-        self.gateway_awaiting_connection.remove(gateway_id);
-        self.awaiting_connection.remove(resource_id);
-    }
-
     pub fn on_connection_intent(&mut self, destination: IpAddr) {
         if self.is_awaiting_connection_to(destination) {
             return;
@@ -325,12 +320,18 @@ impl ClientState {
             .get_by_id(&resource)
             .ok_or(Error::ControlProtocolError)?;
 
-        Ok(PeerConfig {
+        let config = PeerConfig {
             persistent_keepalive: None,
             public_key,
             ips: desc.ips(),
             preshared_key: SecretKey::new(Key(shared_key.to_bytes())),
-        })
+        };
+
+        // Tidy up state once everything succeeded.
+        self.gateway_awaiting_connection.remove(&gateway);
+        self.awaiting_connection.remove(&resource);
+
+        Ok(config)
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {

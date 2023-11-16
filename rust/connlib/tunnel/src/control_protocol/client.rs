@@ -155,12 +155,6 @@ where
             },
         );
 
-        // Note: worst that can happen if peer_by_ip has been updated but the awaiting_* locks haven't is that we lose a reuse connection and it has to be retried.
-        // This is very unlikely and not an error and not having both locks at the same time greatly reduce the chance of a deadlock.
-        self.role_state
-            .lock()
-            .on_connection_success(&gateway_id, &resource_id);
-
         Ok(())
     }
 
