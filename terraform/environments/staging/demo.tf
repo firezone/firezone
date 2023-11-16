@@ -66,7 +66,8 @@ resource "google_compute_instance" "demo" {
     && sudo systemctl enable docker \
     && sudo systemctl start docker \
     && sudo docker run -d --restart always --name=httpbin -p 80:80 kennethreitz/httpbin \
-    && echo ${module.metabase.internal_ip} metabase.fz >> /etc/hosts
+    && echo ${module.metabase.internal_ip} metabase.fz >> /etc/hosts \
+    && echo 127.0.0.1 host.firezone.local >> /etc/hosts
 EOT
 
   allow_stopping_for_update = true
