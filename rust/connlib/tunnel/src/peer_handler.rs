@@ -1,60 +1,52 @@
-use std::future::Future;
+use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
+use arc_swap::ArcSwapOption;
+use bytes::Bytes;
 use connlib_shared::Callbacks;
-use futures_util::SinkExt;
-use webrtc::data::data_channel::DataChannel;
+use webrtc::mux::endpoint::Endpoint;
+use webrtc::util::Conn;
 
 use crate::device_channel::Device;
 use crate::peer::WriteTo;
-use crate::{peer::Peer, RoleState, Tunnel, MAX_UDP_SIZE};
+use crate::{peer::Peer, MAX_UDP_SIZE};
 
-impl<CB, TRoleState> Tunnel<CB, TRoleState>
-where
-    CB: Callbacks + 'static,
-    TRoleState: RoleState,
+pub(crate) async fn start_peer_handler<TId>(
+    device: Arc<ArcSwapOption<Device>>,
+    callbacks: impl Callbacks + 'static,
+    peer: Arc<Peer<TId>>,
+    channel: Arc<Endpoint>,
+) where
+    TId: Copy + fmt::Debug + Send + Sync + 'static,
 {
-    pub(crate) fn start_peer_handler(
-        &self,
-        peer: Arc<Peer<TRoleState::Id>>,
-        channel: Arc<DataChannel>,
-    ) -> impl Future<Output = ()> + Send + 'static {
-        let device = Arc::clone(&self.device);
-        let callbacks = self.callbacks.clone();
-        let mut sender = self.stop_peer_command_sender.clone();
+    loop {
+        let Some(device) = device.load().clone() else {
+            tracing::debug!("Device temporarily not available");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            continue;
+        };
+        let result = peer_handler(&callbacks, &peer, channel.clone(), &device).await;
 
-        async move {
-            loop {
-                let Some(device) = device.load().clone() else {
-                    tracing::debug!("Device temporarily not available");
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                    continue;
-                };
-                let result = peer_handler(&callbacks, &peer, channel.clone(), &device).await;
-
-                if matches!(result, Err(ref err) if err.raw_os_error() == Some(9)) {
-                    tracing::warn!("bad_file_descriptor");
-                    continue;
-                }
-
-                if let Err(e) = result {
-                    tracing::error!(err = ?e, "peer_handle_error");
-                }
-
-                break;
-            }
-
-            tracing::debug!(peer = ?peer.stats(), "peer_stopped");
-            let _ = sender.send(peer.conn_id).await;
+        if matches!(result, Err(ref err) if err.raw_os_error() == Some(9)) {
+            tracing::warn!("bad_file_descriptor");
+            continue;
         }
+
+        if let Err(e) = result {
+            tracing::error!(err = ?e, "peer_handle_error");
+        }
+
+        break;
     }
+
+    tracing::debug!(peer = ?peer.stats(), "peer_stopped");
 }
 
 async fn peer_handler<TId>(
     callbacks: &impl Callbacks,
     peer: &Arc<Peer<TId>>,
-    channel: Arc<DataChannel>,
+    channel: Arc<Endpoint>,
     device: &Device,
 ) -> std::io::Result<()>
 where
@@ -62,7 +54,7 @@ where
 {
     let mut src_buf = [0u8; MAX_UDP_SIZE];
     let mut dst_buf = [0u8; MAX_UDP_SIZE];
-    while let Ok(size) = channel.read(&mut src_buf[..]).await {
+    while let Ok(size) = channel.recv(&mut src_buf[..]).await {
         tracing::trace!(target: "wire", action = "read", bytes = size, from = "peer");
 
         // TODO: Double check that this can only happen on closed channel
@@ -78,9 +70,8 @@ where
         match peer.decapsulate(src, &mut dst_buf) {
             Ok(Some(WriteTo::Network(bytes))) => {
                 for packet in bytes {
-                    if let Err(e) = channel.write(&packet).await {
+                    if let Err(e) = channel.send(&packet).await {
                         tracing::error!("Couldn't send packet to connected peer: {e}");
-                        let _ = callbacks.on_error(&e.into());
                     }
                 }
             }
@@ -96,4 +87,21 @@ where
     }
 
     Ok(())
+}
+
+pub(crate) async fn handle_packet(
+    ep: Arc<Endpoint>,
+    mut receiver: tokio::sync::mpsc::Receiver<Bytes>,
+) {
+    while let Some(packet) = receiver.recv().await {
+        if ep.send(&packet).await.is_err() {
+            tracing::warn!(target: "wire", action = "dropped", "endpoint failure");
+        }
+    }
+
+    if ep.close().await.is_err() {
+        tracing::warn!("failed to close endpoint");
+    }
+
+    tracing::trace!("closed endpoint");
 }

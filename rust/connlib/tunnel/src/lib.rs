@@ -7,6 +7,7 @@ use boringtun::{
     x25519::{PublicKey, StaticSecret},
 };
 
+use bytes::Bytes;
 use connlib_shared::{messages::Key, CallbackErrorFacade, Callbacks, Error};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
@@ -22,22 +23,18 @@ use webrtc::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
         setting_engine::SettingEngine, APIBuilder, API,
     },
+    ice_transport::{ice_candidate::RTCIceCandidate, RTCIceTransport},
     interceptor::registry::Registry,
-    peer_connection::RTCPeerConnection,
 };
 
 use arc_swap::ArcSwapOption;
-use futures::channel::mpsc;
 use futures_util::task::AtomicWaker;
-use futures_util::{SinkExt, StreamExt};
 use itertools::Itertools;
 use std::collections::VecDeque;
 use std::task::{ready, Context, Poll};
 use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
 use std::{collections::HashSet, hash::Hash};
 use tokio::time::Interval;
-use webrtc::data::data_channel::DataChannel;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 
 use connlib_shared::{
     messages::{GatewayId, ResourceDescription},
@@ -48,7 +45,6 @@ pub use client::ClientState;
 use connlib_shared::error::ConnlibError;
 pub use control_protocol::Request;
 pub use gateway::GatewayState;
-pub use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 use crate::ip_packet::MutableIpPacket;
 use connlib_shared::messages::{ClientId, SecretKey};
@@ -69,6 +65,11 @@ mod resource_table;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
+// Why do we need such big channel? I have not the slightless idea
+// but if we make it smaller things get quite slower.
+// Since eventually we will have a UDP socket with try_send
+// I don't think there's a point to having this.
+const PEER_QUEUE_SIZE: usize = 1_000;
 
 /// For how long we will attempt to gather ICE candidates before aborting.
 ///
@@ -114,15 +115,12 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     public_key: PublicKey,
     #[allow(clippy::type_complexity)]
     peers_by_ip: RwLock<IpNetworkTable<ConnectedPeer<TRoleState::Id>>>,
-    peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCPeerConnection>>>,
+    peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCIceTransport>>>,
     webrtc_api: API,
     callbacks: CallbackErrorFacade<CB>,
 
     /// State that differs per role, i.e. clients vs gateways.
     role_state: Mutex<TRoleState>,
-
-    stop_peer_command_receiver: Mutex<mpsc::Receiver<TRoleState::Id>>,
-    stop_peer_command_sender: mpsc::Sender<TRoleState::Id>,
 
     rate_limit_reset_interval: Mutex<Interval>,
     peer_refresh_interval: Mutex<Interval>,
@@ -188,6 +186,8 @@ where
             let Some(packet) = ready!(device.poll_read(read_buf, cx))? else {
                 return Poll::Ready(Ok(None));
             };
+
+            tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination());
 
             let mut role_state = self.role_state.lock();
 
@@ -267,9 +267,10 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct ConnectedPeer<TId> {
     inner: Arc<Peer<TId>>,
-    channel: Arc<DataChannel>,
+    channel: tokio::sync::mpsc::Sender<Bytes>,
 }
 
 // TODO: For now we only use these fields with debug
@@ -314,16 +315,13 @@ where
                     continue;
                 };
 
-                let peer = peers.remove(peer_to_remove).expect("just found it");
+                peers.remove(peer_to_remove);
 
-                let channel = peer.channel.clone();
-
-                tokio::spawn(async move { channel.close().await });
                 if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
                     tokio::spawn({
                         let callbacks = self.callbacks.clone();
                         async move {
-                            if let Err(e) = conn.close().await {
+                            if let Err(e) = conn.stop().await {
                                 tracing::warn!(%conn_id, error = ?e, "Can't close peer");
                                 let _ = callbacks.on_error(&e.into());
                             }
@@ -373,19 +371,11 @@ where
                         }
                     };
 
-                    let callbacks = self.callbacks.clone();
                     let peer_channel = peer.channel.clone();
-                    let mut stop_command_sender = self.stop_peer_command_sender.clone();
 
                     tokio::spawn(async move {
-                        if let Err(e) = peer_channel.write(&bytes).await {
-                            let err = e.into();
-                            tracing::error!("Failed to send packet to peer: {err:?}");
-                            let _ = callbacks.on_error(&err);
-
-                            if err.is_fatal_connection_error() {
-                                let _ = stop_command_sender.send(conn_id).await;
-                            }
+                        if let Err(e) = peer_channel.send(bytes).await {
+                            tracing::error!("Failed to send packet to peer: {e:#}");
                         }
                     });
                 }
@@ -415,14 +405,6 @@ where
                 return Poll::Ready(event);
             }
 
-            if let Poll::Ready(Some(conn_id)) =
-                self.stop_peer_command_receiver.lock().poll_next_unpin(cx)
-            {
-                self.peers_to_stop.lock().push_back(conn_id);
-
-                continue;
-            }
-
             return Poll::Pending;
         }
     }
@@ -436,20 +418,13 @@ where
     ) {
         let peer_id = peer.inner.conn_id;
 
-        match peer.inner.encapsulate(packet, dest, write_buf) {
+        match peer.inner.encapsulate(packet, write_buf) {
             Ok(None) => {}
             Ok(Some(b)) => {
-                tokio::spawn({
-                    let channel = peer.channel.clone();
-                    let mut sender = self.stop_peer_command_sender.clone();
-
-                    async move {
-                        if let Err(e) = channel.write(&b).await {
-                            tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
-                            let _ = sender.send(peer_id).await;
-                        }
-                    }
-                });
+                tracing::trace!(target: "wire", action = "writing", to = "peer", %dest);
+                if peer.channel.try_send(b).is_err() {
+                    tracing::warn!(target: "wire", action = "dropped", to = "peer", %dest);
+                }
             }
             Err(e) => {
                 tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
@@ -500,7 +475,7 @@ impl<'a> DnsQuery<'a> {
 pub enum Event<TId> {
     SignalIceCandidate {
         conn_id: TId,
-        candidate: RTCIceCandidateInit,
+        candidate: RTCIceCandidate,
     },
     ConnectionIntent {
         resource: ResourceDescription,
@@ -537,7 +512,6 @@ where
         let mut registry = Registry::new();
         registry = register_default_interceptors(registry, &mut media_engine)?;
         let mut setting_engine = SettingEngine::default();
-        setting_engine.detach_data_channels();
         setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
 
         let webrtc_api = APIBuilder::new()
@@ -545,8 +519,6 @@ where
             .with_interceptor_registry(registry)
             .with_setting_engine(setting_engine)
             .build();
-
-        let (stop_peer_command_sender, stop_peer_command_receiver) = mpsc::channel(10);
 
         Ok(Self {
             rate_limiter,
@@ -561,8 +533,6 @@ where
             write_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             callbacks: CallbackErrorFacade(callbacks),
             role_state: Default::default(),
-            stop_peer_command_receiver: Mutex::new(stop_peer_command_receiver),
-            stop_peer_command_sender,
             rate_limit_reset_interval: Mutex::new(rate_limit_reset_interval()),
             peer_refresh_interval: Mutex::new(peer_refresh_interval()),
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),

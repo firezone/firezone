@@ -12,7 +12,7 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
+use webrtc::ice_transport::ice_parameters::RTCIceParameters;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
@@ -22,7 +22,7 @@ pub struct Eventloop {
 
     // TODO: Strongly type request reference (currently `String`)
     connection_request_tasks:
-        futures_bounded::FuturesMap<(ClientId, String), Result<RTCSessionDescription, Error>>,
+        futures_bounded::FuturesMap<(ClientId, String), Result<RTCIceParameters, Error>>,
     add_ice_candidate_tasks: futures_bounded::FuturesSet<Result<(), Error>>,
 
     print_stats_timer: tokio::time::Interval,
@@ -155,7 +155,7 @@ impl Eventloop {
                     ..
                 }) => {
                     for candidate in candidates {
-                        tracing::debug!(client = %client_id, candidate = %candidate.candidate, "Adding ICE candidate from client");
+                        tracing::debug!(client = %client_id, %candidate, "Adding ICE candidate from client");
 
                         let tunnel = Arc::clone(&self.tunnel);
                         if self
@@ -178,7 +178,7 @@ impl Eventloop {
                     conn_id: client,
                     candidate,
                 }) => {
-                    tracing::debug!(%client, candidate = %candidate.candidate, "Sending ICE candidate to client");
+                    tracing::debug!(%client, %candidate, "Sending ICE candidate to client");
 
                     let _id = self.portal.send(
                         PHOENIX_TOPIC,

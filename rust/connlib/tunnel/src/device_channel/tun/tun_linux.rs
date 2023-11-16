@@ -6,7 +6,7 @@ use libc::{
     IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN, IFNAMSIZ, O_NONBLOCK, O_RDWR,
 };
 use netlink_packet_route::{rtnl::link::nlas::Nla, RT_SCOPE_UNIVERSE};
-use rtnetlink::{new_connection, Handle};
+use rtnetlink::{new_connection, Error::NetlinkError, Handle};
 use std::{
     ffi::{c_int, c_short, c_uchar},
     io,
@@ -20,6 +20,7 @@ const TUNSETIFF: u64 = 0x4004_54ca;
 const TUN_FILE: &[u8] = b"/dev/net/tun\0";
 const RT_PROT_STATIC: u8 = 4;
 const DEFAULT_MTU: u32 = 1280;
+const FILE_ALREADY_EXISTS: i32 = -17;
 
 #[repr(C)]
 union IfrIfru {
@@ -182,35 +183,26 @@ impl IfaceDevice {
             .output_interface(self.interface_index)
             .protocol(RT_PROT_STATIC)
             .scope(RT_SCOPE_UNIVERSE);
-        match route {
+        let res = match route {
             IpNetwork::V4(ipnet) => {
                 req.v4()
                     .destination_prefix(ipnet.network_address(), ipnet.netmask())
                     .execute()
-                    .await?
+                    .await
             }
             IpNetwork::V6(ipnet) => {
                 req.v6()
                     .destination_prefix(ipnet.network_address(), ipnet.netmask())
                     .execute()
-                    .await?
+                    .await
             }
-        }
-        /*
-        TODO: This works for ignoring the error but the route isn't added afterwards
-        let's try removing all routes on init for the given interface I think that will work.
-        match res {
-            Ok(_)
-            | Err(rtnetlink::Error::NetlinkError(netlink_packet_core::error::ErrorMessage {
-                code: NETLINK_ERROR_FILE_EXISTS,
-                ..
-            })) => Ok(()),
+        };
 
+        match res {
+            Ok(_) => Ok(None),
+            Err(NetlinkError(err)) if err.raw_code() == FILE_ALREADY_EXISTS => Ok(None),
             Err(err) => Err(err.into()),
         }
-        */
-
-        Ok(None)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
