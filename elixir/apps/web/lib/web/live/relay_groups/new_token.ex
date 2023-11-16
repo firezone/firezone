@@ -42,7 +42,7 @@ defmodule Web.RelayGroups.NewToken do
           <div class="text-xl mb-2">
             Select deployment method:
           </div>
-          <.tabs :if={@env} id="deployment-instructions" phx-update="ignore">
+          <.tabs :if={@env} id="deployment-instructions">
             <:tab id="docker-instructions" label="Docker">
               <p class="pl-4 mb-2">
                 Copy-paste this command to your server and replace <code>PUBLIC_IP4_ADDR</code>
@@ -50,7 +50,12 @@ defmodule Web.RelayGroups.NewToken do
                 with your public IP addresses:
               </p>
 
-              <.code_block id="code-sample-docker1" class="w-full rounded-b" phx-no-format><%= docker_command(@env) %></.code_block>
+              <.code_block
+                id="code-sample-docker1"
+                class="w-full rounded-b"
+                phx-no-format
+                phx-update="ignore"
+              ><%= docker_command(@env) %></.code_block>
 
               <.initial_connection_status
                 :if={@env}
@@ -91,7 +96,12 @@ defmodule Web.RelayGroups.NewToken do
                 with your public IP addresses::
               </p>
 
-              <.code_block id="code-sample-systemd2" class="w-full rounded-b" phx-no-format><%= systemd_command(@env) %></.code_block>
+              <.code_block
+                id="code-sample-systemd2"
+                class="w-full rounded-b"
+                phx-no-format
+                phx-update="ignore"
+              ><%= systemd_command(@env) %></.code_block>
 
               <p class="pl-4 mb-2 mt-4">
                 3. Save by pressing <kbd>Ctrl</kbd>+<kbd>X</kbd>, then <kbd>Y</kbd>, then <kbd>Enter</kbd>.
@@ -183,6 +193,7 @@ defmodule Web.RelayGroups.NewToken do
       "--health-cmd=\"lsof -i UDP | grep firezone-relay\"",
       "--name=firezone-relay",
       "--cap-add=NET_ADMIN",
+      "--volume /etc/firezone",
       "--sysctl net.ipv4.ip_forward=1",
       "--sysctl net.ipv4.conf.all.src_valid_mark=1",
       "--sysctl net.ipv6.conf.all.disable_ipv6=0",
@@ -202,9 +213,13 @@ defmodule Web.RelayGroups.NewToken do
     [Unit]
     Description=Firezone Relay
     After=network.target
+    Documentation=https://www.firezone.dev/docs
 
     [Service]
     Type=simple
+    User=firezone
+    Group=firezone
+    ExecStartPre=/bin/sh -c 'id -u firezone &>/dev/null || useradd -r -s /bin/false firezone'
     #{Enum.map_join(env, "\n", fn {key, value} -> "Environment=\"#{key}=#{value}\"" end)}
     ExecStartPre=/bin/sh -c ' \\
       remote_version=$(curl -Ls \\
@@ -233,7 +248,18 @@ defmodule Web.RelayGroups.NewToken do
         chmod +x /usr/local/bin/firezone-relay; \\
       fi \\
     '
+    ExecStartPre=/usr/bin/mkdir -p /etc/firezone
+    ExecStartPre=/usr/bin/chown firezone:firezone /etc/firezone
+    ExecStartPre=/usr/bin/chmod 0755 /etc/firezone
     ExecStartPre=/usr/bin/chmod +x /usr/local/bin/firezone-relay
+    AmbientCapabilities=CAP_NET_ADMIN
+    CapabilityBoundingSet=CAP_NET_ADMIN
+    PrivateTmp=true
+    ProtectSystem=full
+    ReadWritePaths=/etc/firezone
+    NoNewPrivileges=true
+    TimeoutStartSec=15s
+    TimeoutStopSec=15s
     ExecStart=FIREZONE_NAME=$(hostname) /usr/local/bin/firezone-relay
     Restart=always
     RestartSec=3
