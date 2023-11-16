@@ -177,7 +177,7 @@ impl WrappedSession {
             device_id,
             CallbackHandler {
                 inner: Arc::new(callback_handler),
-                handle: init_logging(log_dir.into(), log_filter.clone()),
+                handle: init_logging(log_dir.into(), log_filter),
             },
         )
         .map_err(|err| err.to_string())?;
