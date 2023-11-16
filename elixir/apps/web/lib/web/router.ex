@@ -162,6 +162,11 @@ defmodule Web.Router do
       scope "/sites", Sites do
         live "/", Index
         live "/new", New
+
+        scope "/:id/gateways", Gateways do
+          live "/", Index
+        end
+
         live "/:id/new_token", NewToken
         live "/:id/edit", Edit
         live "/:id", Show

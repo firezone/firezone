@@ -236,6 +236,49 @@ defmodule Domain.Gateways do
     end)
   end
 
+  # TODO: this should be replaced with a filter in list_gateways
+  def list_gateways_for_group(%Group{} = group, %Auth.Subject{} = subject, opts \\ []) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+      {:ok, gateways} =
+        Gateway.Query.all()
+        |> Gateway.Query.by_group_id(group.id)
+        |> Authorizer.for_subject(subject)
+        |> Repo.list()
+
+      gateways =
+        gateways
+        |> Repo.preload(preload)
+        |> preload_online_statuses(subject.account.id)
+
+      {:ok, gateways}
+    end
+  end
+
+  # TODO: this should be replaced with a filter in list_gateways
+  def list_connected_gateways_for_group(%Group{} = group, %Auth.Subject{} = subject, opts \\ []) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
+      connected_gateways = Presence.list("gateway_groups:#{group.id}")
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+      {:ok, gateways} =
+        connected_gateways
+        |> Map.keys()
+        |> Gateway.Query.by_ids()
+        |> Gateway.Query.by_group_id(group.id)
+        |> Authorizer.for_subject(subject)
+        |> Repo.list()
+
+      gateways =
+        gateways
+        |> Enum.map(&%{&1 | online?: true})
+        |> Repo.preload(preload)
+
+      {:ok, gateways}
+    end
+  end
+
   def list_connected_gateways_for_resource(%Resources.Resource{} = resource) do
     connected_gateways = Presence.list("gateways:#{resource.account_id}")
 

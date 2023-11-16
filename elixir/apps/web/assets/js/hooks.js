@@ -1,8 +1,19 @@
 import StatusPage from "../vendor/status_page"
+import { initTabs } from "flowbite";
 
 let Hooks = {}
 
 // Copy to clipboard
+
+Hooks.Tabs = {
+  mounted() {
+    initTabs();
+  },
+
+  updated() {
+    initTabs();
+  }
+}
 
 Hooks.Copy = {
   mounted() {
