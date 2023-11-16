@@ -306,8 +306,13 @@ impl ClientState {
         &mut self,
         resource: ResourceId,
         gateway: GatewayId,
-        shared_key: StaticSecret,
     ) -> Result<PeerConfig, ConnlibError> {
+        let shared_key = self
+            .gateway_preshared_keys
+            .get(&gateway)
+            .ok_or(Error::ControlProtocolError)?
+            .clone();
+
         let Some(public_key) = self.gateway_public_keys.remove(&gateway) else {
             self.awaiting_connection.remove(&resource);
             self.gateway_awaiting_connection.remove(&gateway);

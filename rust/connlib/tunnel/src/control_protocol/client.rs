@@ -120,18 +120,10 @@ where
         gateway_id: GatewayId,
         ice: Arc<RTCIceTransport>,
     ) -> Result<()> {
-        let p_key = self
-            .role_state
-            .lock()
-            .gateway_preshared_keys
-            .get(&gateway_id)
-            .ok_or(Error::ControlProtocolError)?
-            .clone();
-
         let peer_config = self
             .role_state
             .lock()
-            .create_peer_config_for_new_connection(resource_id, gateway_id, p_key)?;
+            .create_peer_config_for_new_connection(resource_id, gateway_id)?;
 
         let peer = Arc::new(Peer::new(
             self.private_key.clone(),
