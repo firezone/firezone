@@ -59,10 +59,10 @@ config :phoenix_live_reload, :dirs, [
 
 config :web, Web.Plugs.SecureHeaders,
   csp_policy: [
-    "default-src 'self' 'nonce-${nonce}'",
+    "default-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/",
     "img-src 'self' data: https://www.gravatar.com",
     "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/",
     "connect-src 'self' data: https://firezone.statuspage.io"
   ]
 

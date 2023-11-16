@@ -77,7 +77,26 @@ defmodule Web.Live.Sites.IndexTest do
 
     assert row == %{
              "site" => group.name,
-             "gateways" => gateway.name,
+             "online gateways" => "None",
+             "resources" => resource.name
+           }
+
+    :ok = Domain.Gateways.connect_gateway(gateway)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/sites")
+
+    [row] =
+      lv
+      |> element("#groups")
+      |> render()
+      |> table_to_map()
+
+    assert row == %{
+             "site" => group.name,
+             "online gateways" => gateway.name,
              "resources" => resource.name
            }
   end
