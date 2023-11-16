@@ -150,10 +150,10 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> file_logger::Handle {
     let (file_layer, handle) = file_logger::layer(&log_dir);
 
     let _ = tracing_subscriber::registry()
-        .with(tracing_oslog::OsLogger::new(
-            "dev.firezone.firezone",
-            "connlib",
-        ))
+        .with(
+            tracing_oslog::OsLogger::new("dev.firezone.firezone", "connlib")
+                .with_filter(EnvFilter::new(log_filter.clone())),
+        )
         .with(file_layer.with_filter(EnvFilter::new(log_filter)))
         .try_init();
 
