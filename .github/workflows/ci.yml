@@ -281,16 +281,6 @@ jobs:
             | Client to Server | ` + tcp_client2server_sum_received_bits_per_second + ` | ` + tcp_client2server_sum_sent_bits_per_second + ` | ` + tcp_client2server_sum_sent_retransmits + ` |
             | Server to Client | ` + tcp_server2client_sum_received_bits_per_second + ` | ` + tcp_server2client_sum_sent_bits_per_second + ` | ` + tcp_server2client_sum_sent_retransmits + ` |
 
-            #### Client to Server
-            Received: ` + tcp_client2server_sum_received_bits_per_second + `
-            Sent: ` + tcp_client2server_sum_sent_bits_per_second + `
-            Retransmits: ` + tcp_client2server_sum_sent_retransmits + `
-
-            #### Server to Client
-            Received: ` + tcp_server2client_sum_received_bits_per_second + `
-            Sent: ` + tcp_server2client_sum_sent_bits_per_second + `
-            Retransmits: ` + tcp_server2client_sum_sent_retransmits + `
-
             ### UDP
 
             | Direction        | Bits/s                                        | Jitter                                  | Lost                                       |
@@ -298,15 +288,6 @@ jobs:
             | Client to Server | ` + udp_client2server_sum_bits_per_second + ` | ` + udp_client2server_sum_jitter_ms + ` | ` + udp_server2client_sum_lost_percent + ` |
             | Server to Client | ` + udp_server2client_sum_bits_per_second + ` | ` + udp_server2client_sum_jitter_ms + ` | ` + udp_client2server_sum_lost_percent + ` |
 
-            #### Client to Server
-            ` + udp_client2server_sum_bits_per_second + `
-            Jitter: ` + udp_client2server_sum_jitter_ms + `
-            Lost: ` + udp_server2client_sum_lost_percent + `
-
-            #### Server to Client
-            Received: ` + udp_server2client_sum_bits_per_second + `
-            Jitter: ` + udp_server2client_sum_jitter_ms + `
-            Lost: ` + udp_client2server_sum_lost_percent + `
             `;
 
             // 3. Delete previous comment so PR timeline makes sense
