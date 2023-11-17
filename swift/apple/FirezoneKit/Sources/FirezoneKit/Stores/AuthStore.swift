@@ -7,6 +7,7 @@
 import Combine
 import Dependencies
 import Foundation
+import NetworkExtension
 import OSLog
 
 extension AuthStore: DependencyKey {
@@ -48,6 +49,7 @@ final class AuthStore: ObservableObject {
   private var cancellables = Set<AnyCancellable>()
 
   @Published private(set) var loginStatus: LoginStatus
+  private var status: NEVPNStatus = .invalid
 
   private init(tunnelStore: TunnelStore) {
     self.tunnelStore = tunnelStore
@@ -62,6 +64,31 @@ final class AuthStore: ObservableObject {
         guard let self = self else { return }
         Task {
           self.loginStatus = await self.getLoginStatus(from: tunnelAuthStatus)
+        }
+      }
+      .store(in: &cancellables)
+
+    tunnelStore.$status
+      .sink { [weak self] status in
+        guard let self = self else { return }
+        Task {
+          let previousStatus = self.status
+          if status == .disconnected
+            && (previousStatus != .disconnected && previousStatus != .invalid)
+          {
+            self.logger.log("\(#function): Disconnected")
+            if let disconnectionReason = DisconnectionReason.loadFromDisk() {
+              self.logger.log(
+                "\(#function): Disconnection reason: \(disconnectionReason, privacy: .public)"
+              )
+              if disconnectionReason.category.needsSignout {
+                self.signOut()
+              }
+            } else {
+              self.logger.log("\(#function): Disconnection reason not found")
+            }
+          }
+          self.status = status
         }
       }
       .store(in: &cancellables)
@@ -124,7 +151,7 @@ final class AuthStore: ObservableObject {
     try await signIn(accountId: accountId)
   }
 
-  func signOut() async throws {
+  func signOut() {
     logger.trace("\(#function)")
 
     guard case .signedIn = self.loginStatus else {
