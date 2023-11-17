@@ -220,11 +220,11 @@ jobs:
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_bits_per_second=" + (.end.sum.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
-      # - name: Save ${{ matrix.test_name }} Perfomance Test Results
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: ${{ matrix.artifact_name }}-iperf3results
-      #     path: /tmp/iperf3results
+      - name: Save ${{ matrix.test_name }} Perfomance Test Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.artifact_name }}-iperf3results
+          path: /tmp/iperf3results
       # - name: Download main branch ${{ matrix.test_name }} Perfomance Test Results
       #   id: download-artifact
       #   uses: dawidd6/action-download-artifact@v2
