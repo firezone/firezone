@@ -75,6 +75,9 @@ CMD $PACKAGE
 # Build an image for GitHub Actions which includes debug asserts
 FROM runtime AS debug
 
+RUN set -xe \
+  && apk add --no-cache iperf3
+
 ARG TARGET
 COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .
 
