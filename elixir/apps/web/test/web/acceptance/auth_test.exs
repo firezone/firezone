@@ -4,7 +4,7 @@ defmodule Web.Acceptance.AuthTest do
   feature "renders all sign in options", %{session: session} do
     account = Fixtures.Accounts.create_account()
 
-    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     Fixtures.Auth.create_userpass_provider(account: account)
     Fixtures.Auth.create_email_provider(account: account)
@@ -15,7 +15,7 @@ defmodule Web.Acceptance.AuthTest do
 
     session
     |> visit(~p"/#{account}")
-    |> assert_el(Query.text("#{account.name} Admin Portal"))
+    |> assert_el(Query.text("Sign into #{account.name}"))
     |> assert_el(Query.link("Sign in with #{openid_connect_provider.name}"))
     |> assert_el(Query.text("Sign in with username and password"))
     |> assert_el(Query.text("Sign in with a magic link"))

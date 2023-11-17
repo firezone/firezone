@@ -4,8 +4,7 @@ defmodule Domain.Gateways.Gateway do
   schema "gateways" do
     field :external_id, :string
 
-    # TODO: hostname
-    field :name_suffix, :string
+    field :name, :string
 
     field :public_key, :string
 

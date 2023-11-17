@@ -59,7 +59,7 @@ defmodule Web.Live.Sites.EditTest do
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Sites"
-    assert breadcrumbs =~ group.name_prefix
+    assert breadcrumbs =~ group.name
     assert breadcrumbs =~ "Edit"
   end
 
@@ -77,7 +77,7 @@ defmodule Web.Live.Sites.EditTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "group[name_prefix]"
+             "group[name]"
            ]
   end
 
@@ -96,14 +96,14 @@ defmodule Web.Live.Sites.EditTest do
 
     lv
     |> form("form", group: attrs)
-    |> validate_change(%{group: %{name_prefix: String.duplicate("a", 256)}}, fn form, _html ->
+    |> validate_change(%{group: %{name: String.duplicate("a", 256)}}, fn form, _html ->
       assert form_validation_errors(form) == %{
-               "group[name_prefix]" => ["should be at most 64 character(s)"]
+               "group[name]" => ["should be at most 64 character(s)"]
              }
     end)
-    |> validate_change(%{group: %{name_prefix: ""}}, fn form, _html ->
+    |> validate_change(%{group: %{name: ""}}, fn form, _html ->
       assert form_validation_errors(form) == %{
-               "group[name_prefix]" => ["can't be blank"]
+               "group[name]" => ["can't be blank"]
              }
     end)
   end
@@ -115,7 +115,7 @@ defmodule Web.Live.Sites.EditTest do
     conn: conn
   } do
     other_group = Fixtures.Gateways.create_group(account: account)
-    attrs = %{name_prefix: other_group.name_prefix}
+    attrs = %{name: other_group.name}
 
     {:ok, lv, _html} =
       conn
@@ -126,7 +126,7 @@ defmodule Web.Live.Sites.EditTest do
            |> form("form", group: attrs)
            |> render_submit()
            |> form_validation_errors() == %{
-             "group[name_prefix]" => ["has already been taken"]
+             "group[name]" => ["has already been taken"]
            }
   end
 
@@ -136,19 +136,20 @@ defmodule Web.Live.Sites.EditTest do
     group: group,
     conn: conn
   } do
-    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name_prefix])
+    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{group}/edit")
 
-    assert lv
-           |> form("form", group: attrs)
-           |> render_submit() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/sites/#{group}"}}}
+    lv
+    |> form("form", group: attrs)
+    |> render_submit()
+
+    assert_redirected(lv, ~p"/#{account}/sites/#{group}")
 
     assert group = Repo.get_by(Domain.Gateways.Group, id: group.id)
-    assert group.name_prefix == attrs.name_prefix
+    assert group.name == attrs.name
   end
 end

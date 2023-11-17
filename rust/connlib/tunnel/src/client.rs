@@ -19,6 +19,7 @@ use futures_bounded::{PushError, StreamMap};
 use hickory_resolver::lookup::Lookup;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
+use rand_core::OsRng;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
@@ -26,7 +27,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::Instant;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
+use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 impl<CB> Tunnel<CB, ClientState>
 where
@@ -128,9 +129,9 @@ where
 
 /// [`Tunnel`] state specific to clients.
 pub struct ClientState {
-    active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidateInit>,
+    active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidate>,
     /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
-    waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidateInit>>,
+    waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidate>>,
 
     // TODO: Make private
     pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
@@ -139,6 +140,7 @@ pub struct ClientState {
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
 
     pub gateway_public_keys: HashMap<GatewayId, PublicKey>,
+    pub gateway_preshared_keys: HashMap<GatewayId, StaticSecret>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
     resources: ResourceTable<ResourceDescription>,
     dns_queries: BoundedQueue<DnsQuery<'static>>,
@@ -236,11 +238,12 @@ impl ClientState {
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
         self.awaiting_connection.remove(&resource);
+        self.awaiting_connection_timers.remove(resource);
+
         let Some(gateway) = self.resources_gateways.remove(&resource) else {
             return;
         };
         self.gateway_awaiting_connection.remove(&gateway);
-        self.awaiting_connection_timers.remove(resource);
     }
 
     pub fn on_connection_intent(&mut self, destination: IpAddr) {
@@ -298,8 +301,13 @@ impl ClientState {
         &mut self,
         resource: ResourceId,
         gateway: GatewayId,
-        shared_key: StaticSecret,
     ) -> Result<PeerConfig, ConnlibError> {
+        let shared_key = self
+            .gateway_preshared_keys
+            .get(&gateway)
+            .ok_or(Error::ControlProtocolError)?
+            .clone();
+
         let Some(public_key) = self.gateway_public_keys.remove(&gateway) else {
             self.awaiting_connection.remove(&resource);
             self.gateway_awaiting_connection.remove(&gateway);
@@ -312,24 +320,34 @@ impl ClientState {
             .get_by_id(&resource)
             .ok_or(Error::ControlProtocolError)?;
 
-        Ok(PeerConfig {
+        let config = PeerConfig {
             persistent_keepalive: None,
             public_key,
             ips: desc.ips(),
             preshared_key: SecretKey::new(Key(shared_key.to_bytes())),
-        })
+        };
+
+        // Tidy up state once everything succeeded.
+        self.gateway_awaiting_connection.remove(&gateway);
+        self.awaiting_connection.remove(&resource);
+
+        Ok(config)
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
         self.resources_gateways.get(resource).copied()
     }
 
-    pub fn add_waiting_ice_receiver(
+    pub fn add_waiting_gateway(
         &mut self,
         id: GatewayId,
-        receiver: Receiver<RTCIceCandidateInit>,
-    ) {
+        receiver: Receiver<RTCIceCandidate>,
+    ) -> StaticSecret {
         self.waiting_for_sdp_from_gatway.insert(id, receiver);
+        let preshared_key = StaticSecret::random_from_rng(OsRng);
+        self.gateway_preshared_keys
+            .insert(id, preshared_key.clone());
+        preshared_key
     }
 
     pub fn activate_ice_candidate_receiver(&mut self, id: GatewayId, key: PublicKey) {
@@ -401,6 +419,7 @@ impl Default for ClientState {
             resources_gateways: Default::default(),
             resources: Default::default(),
             dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
+            gateway_preshared_keys: Default::default(),
         }
     }
 }

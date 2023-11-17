@@ -2,7 +2,7 @@ defmodule Web.AuthControllerTest do
   use Web.ConnCase, async: true
 
   setup do
-    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     %{}
   end
 
@@ -1168,7 +1168,7 @@ defmodule Web.AuthControllerTest do
 
   describe "sign_out/2" do
     test "redirects to the sign in page and renews the session", %{conn: conn} do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
@@ -1182,9 +1182,6 @@ defmodule Web.AuthControllerTest do
 
       assert redirected_to(conn) == url(~p"/#{account}")
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
-
-      assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
-      assert :erlang.binary_to_term(fz_recent_account_ids) == []
     end
 
     test "redirects to the IdP sign out page", %{conn: conn} do
@@ -1210,7 +1207,7 @@ defmodule Web.AuthControllerTest do
     end
 
     test "broadcasts to the given live_socket_id", %{conn: conn} do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
@@ -1229,8 +1226,8 @@ defmodule Web.AuthControllerTest do
       assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^live_socket_id}
     end
 
-    test "removes current account id from list of recent ones", %{conn: conn} do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    test "does not remove current account id from list of recent ones", %{conn: conn} do
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
@@ -1270,8 +1267,7 @@ defmodule Web.AuthControllerTest do
       assert redirected_to(conn) == url(~p"/#{account}")
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
 
-      assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
-      assert :erlang.binary_to_term(fz_recent_account_ids) == []
+      assert %{"fz_recent_account_ids" => ^signed_state} = conn.cookies
     end
 
     test "works even if user is already logged out", %{conn: conn} do
@@ -1290,7 +1286,7 @@ defmodule Web.AuthControllerTest do
   end
 
   test "keeps up to 5 recent accounts the used signed in to", %{conn: conn} do
-    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     {conn, account_ids} =
       Enum.reduce(1..6, {conn, []}, fn _i, {conn, account_ids} ->

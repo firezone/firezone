@@ -1,34 +1,7 @@
 # Deploy our dogfood gateways
 locals {
-  gateways_region = "us-central1"
-  gateways_zones  = ["us-central1-b"]
-}
-
-resource "google_compute_network" "gateways" {
-  project = module.google-cloud-project.project.project_id
-  name    = "gateways"
-
-  routing_mode = "GLOBAL"
-
-  auto_create_subnetworks = false
-
-  depends_on = [
-    module.api
-  ]
-}
-
-resource "google_compute_subnetwork" "gateways" {
-  project = module.google-cloud-project.project.project_id
-
-  name   = "gateways"
-  region = local.gateways_region
-
-  network = google_compute_network.gateways.self_link
-
-  stack_type               = "IPV4_IPV6"
-  ip_cidr_range            = "10.101.0.0/24"
-  ipv6_access_type         = "EXTERNAL"
-  private_ip_google_access = true
+  gateways_region = local.region
+  gateways_zones  = [local.availability_zone]
 }
 
 module "gateways" {
@@ -37,8 +10,8 @@ module "gateways" {
   source     = "../../modules/gateway-google-cloud-compute"
   project_id = module.google-cloud-project.project.project_id
 
-  compute_network    = google_compute_network.gateways.self_link
-  compute_subnetwork = google_compute_subnetwork.gateways.self_link
+  compute_network    = module.google-cloud-vpc.id
+  compute_subnetwork = google_compute_subnetwork.tools.self_link
 
   compute_instance_type               = "n1-standard-1"
   compute_region                      = local.gateways_region
@@ -78,50 +51,34 @@ module "gateways" {
   token   = var.gateway_token
 }
 
+# Allow gateways to access the Metabase
+resource "google_compute_firewall" "gateways-metabase-access" {
+  count = var.gateway_token != null ? 1 : 0
 
-# Allow inbound traffic
-# resource "google_compute_firewall" "ingress-ipv4" {
-#   count = var.gateway_token != null ? 1 : 0
+  project = module.google-cloud-project.project.project_id
 
-#   project = module.google-cloud-project.project.project_id
+  name      = "gateways-metabase-access"
+  network   = module.google-cloud-vpc.id
+  direction = "INGRESS"
 
-#   name      = "gateways-ingress-ipv4"
-#   network   = google_compute_network.network.self_link
-#   direction = "INGRESS"
+  source_tags = module.gateways[0].target_tags
+  target_tags = module.metabase.target_tags
 
-#   target_tags   = module.gateways[0].target_tags
-#   source_ranges = ["0.0.0.0/0"]
+  allow {
+    protocol = "tcp"
+  }
+}
 
-#   allow {
-#     protocol = "udp"
-#   }
-# }
-
-# resource "google_compute_firewall" "ingress-ipv6" {
-#   count = var.gateway_token != null ? 1 : 0
-
-#   project = module.google-cloud-project.project.project_id
-
-#   name      = "gateways-ingress-ipv6"
-#   network   = google_compute_network.network.self_link
-#   direction = "INGRESS"
-
-#   target_tags   = module.gateways[0].target_tags
-#   source_ranges = ["::/0"]
-
-#   allow {
-#     protocol = "udp"
-#   }
-# }
+# curl "http://metabase.c.firezone-prod.internal:3000/" -v
 
 # Allow outbound traffic
-resource "google_compute_firewall" "egress-ipv4" {
+resource "google_compute_firewall" "gateways-egress-ipv4" {
   count = var.gateway_token != null ? 1 : 0
 
   project = module.google-cloud-project.project.project_id
 
   name      = "gateways-egress-ipv4"
-  network   = google_compute_network.gateways.self_link
+  network   = module.google-cloud-vpc.id
   direction = "EGRESS"
 
   target_tags        = module.gateways[0].target_tags
@@ -132,13 +89,13 @@ resource "google_compute_firewall" "egress-ipv4" {
   }
 }
 
-resource "google_compute_firewall" "egress-ipv6" {
+resource "google_compute_firewall" "gateways-egress-ipv6" {
   count = var.gateway_token != null ? 1 : 0
 
   project = module.google-cloud-project.project.project_id
 
   name      = "gateways-egress-ipv6"
-  network   = google_compute_network.gateways.self_link
+  network   = module.google-cloud-vpc.id
   direction = "EGRESS"
 
   target_tags        = module.gateways[0].target_tags
@@ -155,7 +112,7 @@ resource "google_compute_firewall" "gateways-ssh-ipv4" {
   project = module.google-cloud-project.project.project_id
 
   name    = "gateways-ssh-ipv4"
-  network = google_compute_network.gateways.self_link
+  network = module.google-cloud-vpc.id
 
   allow {
     protocol = "tcp"
@@ -173,6 +130,6 @@ resource "google_compute_firewall" "gateways-ssh-ipv4" {
   }
 
   # Only allows connections using IAP
-  source_ranges = ["35.235.240.0/20"]
+  source_ranges = local.iap_ipv4_ranges
   target_tags   = module.gateways[0].target_tags
 }

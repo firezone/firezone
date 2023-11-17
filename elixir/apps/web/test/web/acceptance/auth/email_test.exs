@@ -1,8 +1,8 @@
-defmodule Web.Acceptance.Auth.EmailTest do
+defmodule Web.Acceptance.SignIn.EmailTest do
   use Web.AcceptanceCase, async: true
 
   feature "renders success on invalid email to prevent enumeration attacks", %{session: session} do
-    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
     Fixtures.Auth.create_email_provider(account: account)
@@ -18,7 +18,7 @@ defmodule Web.Acceptance.Auth.EmailTest do
   end
 
   feature "allows to log in using email link", %{session: session} do
-    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
     provider = Fixtures.Auth.create_email_provider(account: account)
@@ -48,9 +48,9 @@ defmodule Web.Acceptance.Auth.EmailTest do
     |> assert_el(Query.text("Please check your email"))
     |> click(Query.link("Open Local"))
     |> click(Query.link("Firezone Sign In Link"))
-    |> assert_el(Query.text("HTML body preview:"))
+    |> assert_el(Query.text("Text body"))
 
-    email_text = text(session, Query.css(".body-text"))
+    email_text = text(session, Query.css("body"))
     [link] = Regex.run(~r|http://localhost[^ \n\s]*|, email_text)
 
     session

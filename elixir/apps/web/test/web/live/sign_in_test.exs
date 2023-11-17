@@ -1,8 +1,8 @@
-defmodule Web.Auth.SignInTest do
+defmodule Web.SignInTest do
   use Web.ConnCase, async: true
 
   test "renders active providers on the page", %{conn: conn} do
-    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
 
@@ -47,7 +47,7 @@ defmodule Web.Auth.SignInTest do
   end
 
   test "takes client params from session", %{conn: conn} do
-    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     account = Fixtures.Accounts.create_account()
     Fixtures.Auth.create_email_provider(account: account)
 
@@ -60,5 +60,6 @@ defmodule Web.Auth.SignInTest do
 
     assert html =~ ~s|value="ios"|
     assert html =~ ~s|value="csrf-token"|
+    refute html =~ ~s|Meant to sign in from a client instead?|
   end
 end

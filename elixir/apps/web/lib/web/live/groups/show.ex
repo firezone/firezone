@@ -116,6 +116,6 @@ defmodule Web.Groups.Show do
 
   def handle_event("delete", _params, socket) do
     {:ok, _group} = Actors.delete_group(socket.assigns.group, socket.assigns.subject)
-    {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/groups")}
+    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/groups")}
   end
 end

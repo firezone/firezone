@@ -36,7 +36,7 @@ defmodule Web.Sites.Index do
               navigate={~p"/#{@account}/sites/#{group}"}
               class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
             >
-              <%= group.name_prefix %>
+              <%= group.name %>
             </.link>
           </:col>
 
@@ -76,8 +76,9 @@ defmodule Web.Sites.Index do
             </.peek>
           </:col>
 
-          <:col :let={group} label="gateways">
-            <% peek = %{count: length(group.gateways), items: Enum.take(group.gateways, 5)} %>
+          <:col :let={group} label="online gateways">
+            <% gateways = Enum.filter(group.gateways, & &1.online?)
+            peek = %{count: length(gateways), items: Enum.take(gateways, 5)} %>
             <.peek peek={peek}>
               <:empty>
                 None
@@ -92,7 +93,7 @@ defmodule Web.Sites.Index do
                   navigate={~p"/#{@account}/gateways/#{gateway}"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline inline-block"
                   phx-no-format
-                ><%= gateway.name_suffix %></.link>
+                ><%= gateway.name %></.link>
               </:item>
 
               <:tail :let={count}>

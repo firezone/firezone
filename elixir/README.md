@@ -62,10 +62,10 @@ Now you can verify that it's working by connecting to a websocket:
   <summary>Gateway</summary>
 
 ```bash
-# Note: The token value below is an example.  The token value you will need is generated and printed out when seeding the database, as described earlier in the document.
+# Note: The token value below is an example. The token value you will need is generated and printed out when seeding the database, as described earlier in the document.
 ❯ export GATEWAY_TOKEN_FROM_SEEDS="SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAJXr4emIAWIAAVGA.jz0s-NohxgdAXeRMjIQ9kLBOyd7CmKXWi2FHY-Op8GM"
 
-❯ websocat --header="User-Agent: iOS/12.7 (iPhone) connlib/0.7.412" "ws://127.0.0.1:13000/gateway/websocket?token=${GATEWAY_TOKEN_FROM_SEEDS}&external_id=thisisrandomandpersistent&name_suffix=kkX1&public_key=kceI60D6PrwOIiGoVz6hD7VYCgD1H57IVQlPJTTieUE="
+❯ websocat --header="User-Agent: iOS/12.7 (iPhone) connlib/0.7.412" "ws://127.0.0.1:13000/gateway/websocket?token=${GATEWAY_TOKEN_FROM_SEEDS}&external_id=thisisrandomandpersistent&name=kkX1&public_key=kceI60D6PrwOIiGoVz6hD7VYCgD1H57IVQlPJTTieUE="
 
 # After this you need to join the `gateway` topic.
 # For details on this structure see https://hexdocs.pm/phoenix/Phoenix.Socket.Message.html
@@ -80,7 +80,7 @@ Now you can verify that it's working by connecting to a websocket:
   <summary>Relay</summary>
 
 ```bash
-# Note: The token value below is an example.  The token value you will need is generated and printed out when seeding the database, as described earlier in the document.
+# Note: The token value below is an example. The token value you will need is generated and printed out when seeding the database, as described earlier in the document.
 ❯ export RELAY_TOKEN_FROM_SEEDS="SFMyNTY.g2gDaAJtAAAAJDcyODZiNTNkLTA3M2UtNGM0MS05ZmYxLWNjODQ1MWRhZDI5OW0AAABARVg3N0dhMEhLSlVWTGdjcE1yTjZIYXRkR25mdkFEWVFyUmpVV1d5VHFxdDdCYVVkRVUzbzktRmJCbFJkSU5JS24GAMDq4emIAWIAAVGA.fLlZsUMS0VJ4RCN146QzUuINmGubpsxoyIf3uhRHdiQ"
 
 ❯ websocat --header="User-Agent: Linux/5.2.6 (Debian; x86_64) relay/0.7.412" "ws://127.0.0.1:8081/relay/websocket?token=${RELAY_TOKEN_FROM_SEEDS}&ipv4=24.12.79.100&ipv6=4d36:aa7f:473c:4c61:6b9e:2416:9917:55cc"
@@ -101,16 +101,16 @@ Now you can verify that it's working by connecting to a websocket:
   <summary>Client</summary>
 
 ```bash
-# Note: The token value below is an example.  The token value you will need is generated and printed out when seeding the database, as described earlier in the document.
+# Note: The token value below is an example. The token value you will need is generated and printed out when seeding the database, as described earlier in the document.
 ❯ export CLIENT_TOKEN_FROM_SEEDS="SFMyNTY.g2gDaAN3CGlkZW50aXR5bQAAACQ3ZGE3ZDFjZC0xMTFjLTQ0YTctYjVhYy00MDI3YjlkMjMwZTV3Bmlnbm9yZW4GAJhGr7WKAWIACTqA.mrPu5eFVwkfRml7zzHb5uYfosLGaYVHq03-wE02xUNc"
 
 # Panel will only accept token if it's coming with this User-Agent header and from IP 172.28.0.1
 ❯ export CLIENT_USER_AGENT="iOS/12.5 (iPhone) connlib/0.7.412"
 
-❯ websocat --header="User-Agent: ${CLIENT_USER_AGENT}" "ws://127.0.0.1:8081/client/websocket?token=${CLIENT_TOKEN_FROM_SEEDS}&external_id=thisisrandomandpersistent&name_suffix=kkX1&public_key=kceI60D6PrwOIiGoVz6hD7VYCgD1H57IVQlPJTTieUE="
+❯ websocat --header="User-Agent: ${CLIENT_USER_AGENT}" "ws://127.0.0.1:8081/client/websocket?token=${CLIENT_TOKEN_FROM_SEEDS}&external_id=thisisrandomandpersistent&name=kkX1&public_key=kceI60D6PrwOIiGoVz6hD7VYCgD1H57IVQlPJTTieUE="
 
 # Here is what you will see in docker logs firezone-api-1
-# firezone-api-1  | {"domain":["elixir"],"erl_level":"info","logging.googleapis.com/sourceLocation":{"file":"lib/phoenix/logger.ex","line":306,"function":"Elixir.Phoenix.Logger.phoenix_socket_connected/4"},"message":"CONNECTED TO API.Client.Socket in 83ms\n  Transport: :websocket\n  Serializer: Phoenix.Socket.V1.JSONSerializer\n  Parameters: %{\"external_id\" => \"thisisrandomandpersistent\", \"name_suffix\" => \"kkX1\", \"public_key\" => \"[FILTERED]\", \"token\" => \"[FILTERED]\"}","severity":"INFO","time":"2023-06-23T21:01:49.566Z"}
+# firezone-api-1  | {"domain":["elixir"],"erl_level":"info","logging.googleapis.com/sourceLocation":{"file":"lib/phoenix/logger.ex","line":306,"function":"Elixir.Phoenix.Logger.phoenix_socket_connected/4"},"message":"CONNECTED TO API.Client.Socket in 83ms\n  Transport: :websocket\n  Serializer: Phoenix.Socket.V1.JSONSerializer\n  Parameters: %{\"external_id\" => \"thisisrandomandpersistent\", \"name\" => \"kkX1\", \"public_key\" => \"[FILTERED]\", \"token\" => \"[FILTERED]\"}","severity":"INFO","time":"2023-06-23T21:01:49.566Z"}
 
 # After this you need to join the `client` topic and pass a `stamp_secret` in the payload.
 # For details on this structure see https://hexdocs.pm/phoenix/Phoenix.Socket.Message.html

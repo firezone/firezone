@@ -91,6 +91,38 @@ defmodule Domain.PoliciesTest do
       assert list_policies(subject) == {:ok, []}
     end
 
+    test "does not list policies for deleted resources", %{account: account, subject: subject} do
+      resource =
+        Fixtures.Resources.create_resource(account: account)
+        |> Fixtures.Resources.delete_resource()
+
+      actor_group = Fixtures.Actors.create_group(account: account)
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        resource: resource,
+        actor_group: actor_group
+      )
+
+      assert list_policies(subject) == {:ok, []}
+    end
+
+    test "does not list policies for deleted actor groups", %{account: account, subject: subject} do
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      actor_group =
+        Fixtures.Actors.create_group(account: account)
+        |> Fixtures.Actors.delete_group()
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        resource: resource,
+        actor_group: actor_group
+      )
+
+      assert list_policies(subject) == {:ok, []}
+    end
+
     test "returns all policies for account admin subject", %{account: account} do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)

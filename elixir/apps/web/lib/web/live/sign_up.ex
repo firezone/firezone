@@ -291,7 +291,6 @@ defmodule Web.SignUp do
             Web.Mailer.AuthEmail.sign_up_link_email(
               account,
               identity,
-              identity.provider_virtual_state.sign_in_token,
               socket.assigns.user_agent,
               socket.assigns.real_ip
             )

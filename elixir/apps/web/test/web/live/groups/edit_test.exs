@@ -167,10 +167,11 @@ defmodule Web.Live.Groups.EditTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/groups/#{group}/edit")
 
-    assert lv
-           |> form("form", group: attrs)
-           |> render_submit() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/groups/#{group}"}}}
+    lv
+    |> form("form", group: attrs)
+    |> render_submit()
+
+    assert_redirected(lv, ~p"/#{account}/groups/#{group}")
 
     assert group = Repo.get_by(Domain.Actors.Group, id: group.id)
     assert group.name == attrs.name

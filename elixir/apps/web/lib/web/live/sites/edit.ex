@@ -16,13 +16,13 @@ defmodule Web.Sites.Edit do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        <%= @group.name_prefix %>
+        <%= @group.name %>
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}/edit"}>Edit</.breadcrumb>
     </.breadcrumbs>
 
     <.section>
-      <:title>Edit Site: <code><%= @group.name_prefix %></code></:title>
+      <:title>Edit Site: <code><%= @group.name %></code></:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
@@ -30,7 +30,7 @@ defmodule Web.Sites.Edit do
               <div>
                 <.input
                   label="Name Prefix"
-                  field={@form[:name_prefix]}
+                  field={@form[:name]}
                   placeholder="Name of this Site"
                   required
                 />
@@ -57,7 +57,7 @@ defmodule Web.Sites.Edit do
   def handle_event("submit", %{"group" => attrs}, socket) do
     with {:ok, group} <-
            Gateways.update_group(socket.assigns.group, attrs, socket.assigns.subject) do
-      socket = redirect(socket, to: ~p"/#{socket.assigns.account}/sites/#{group}")
+      socket = push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{group}")
       {:noreply, socket}
     else
       {:error, changeset} ->

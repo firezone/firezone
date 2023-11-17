@@ -11,13 +11,19 @@ defmodule Web.Sites.NewToken do
 
           :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
 
-          token = encode_group_token(group)
+          token = Gateways.encode_token!(hd(group.tokens))
           {group, env(token)}
         else
           {group, nil}
         end
 
-      {:ok, assign(socket, group: group, env: env)}
+      {:ok,
+       assign(socket,
+         group: group,
+         env: env,
+         connected?: false,
+         selected_tab: "docker-instructions"
+       )}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -28,16 +34,13 @@ defmodule Web.Sites.NewToken do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        <%= @group.name_prefix %>
+        <%= @group.name %>
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}/new_token"}>Deploy</.breadcrumb>
     </.breadcrumbs>
 
     <.section>
-      <:title :if={is_nil(@group)}>
-        Add a new Site
-      </:title>
-      <:title :if={not is_nil(@group)}>
+      <:title>
         Deploy your Gateway
       </:title>
       <:content>
@@ -45,26 +48,67 @@ defmodule Web.Sites.NewToken do
           <div class="text-xl mb-2">
             Select deployment method:
           </div>
-          <.tabs :if={@env} id="deployment-instructions" phx-update="ignore">
-            <:tab id="docker-instructions" label="Docker">
+
+          <.tabs :if={@env} id="deployment-instructions">
+            <:tab
+              id="docker-instructions"
+              label="Docker"
+              phx_click="tab_selected"
+              selected={@selected_tab == "docker-instructions"}
+            >
               <p class="pl-4 mb-2">
                 Copy-paste this command to your server:
               </p>
 
-              <.code_block id="code-sample-docker" class="w-full rounded-b" phx-no-format><%= docker_command(@env) %></.code_block>
+              <.code_block id="code-sample-docker1" class="w-full" phx-no-format phx-update="ignore"><%= docker_command(@env) %></.code_block>
+
+              <.initial_connection_status
+                :if={@env}
+                type="gateway"
+                navigate={~p"/#{@account}/sites/#{@group}"}
+                connected?={@connected?}
+              />
+
+              <hr />
+
+              <p class="pl-4 mb-2 mt-4 text-xl font-semibold">
+                Troubleshooting
+              </p>
+
+              <p class="pl-4 mb-2 mt-4">
+                Check the container status:
+              </p>
+
+              <.code_block id="code-sample-docker2" class="w-full" phx-no-format>docker ps --filter "name=firezone-gateway"</.code_block>
+
+              <p class="pl-4 mb-2 mt-4">
+                Check the container logs:
+              </p>
+
+              <.code_block id="code-sample-docker3" class="w-full rounded-b" phx-no-format>docker logs firezone-gateway</.code_block>
             </:tab>
-            <:tab id="systemd-instructions" label="Systemd">
+            <:tab
+              id="systemd-instructions"
+              label="Systemd"
+              phx_click="tab_selected"
+              selected={@selected_tab == "systemd-instructions"}
+            >
               <p class="pl-4 mb-2">
                 1. Create a systemd unit file with the following content:
               </p>
 
-              <.code_block id="code-sample-systemd" class="w-full" phx-no-format>sudo nano /etc/systemd/system/firezone-gateway.service</.code_block>
+              <.code_block id="code-sample-systemd1" class="w-full" phx-no-format>sudo nano /etc/systemd/system/firezone-gateway.service</.code_block>
 
               <p class="pl-4 mb-2 mt-4">
                 2. Copy-paste the following content into the file:
               </p>
 
-              <.code_block id="code-sample-systemd" class="w-full rounded-b" phx-no-format><%= systemd_command(@env) %></.code_block>
+              <.code_block
+                id="code-sample-systemd2"
+                class="w-full rounded-b"
+                phx-no-format
+                phx-update="ignore"
+              ><%= systemd_command(@env) %></.code_block>
 
               <p class="pl-4 mb-2 mt-4">
                 3. Save by pressing <kbd>Ctrl</kbd>+<kbd>X</kbd>, then <kbd>Y</kbd>, then <kbd>Enter</kbd>.
@@ -74,31 +118,46 @@ defmodule Web.Sites.NewToken do
                 4. Reload systemd configuration:
               </p>
 
-              <.code_block id="code-sample-systemd" class="w-full" phx-no-format>sudo systemctl daemon-reload</.code_block>
+              <.code_block id="code-sample-systemd4" class="w-full" phx-no-format>sudo systemctl daemon-reload</.code_block>
 
               <p class="pl-4 mb-2 mt-4">
                 5. Start the service:
               </p>
 
-              <.code_block id="code-sample-systemd" class="w-full" phx-no-format>sudo systemctl start firezone-gateway</.code_block>
+              <.code_block id="code-sample-systemd5" class="w-full" phx-no-format>sudo systemctl start firezone-gateway</.code_block>
 
               <p class="pl-4 mb-2 mt-4">
                 6. Enable the service to start on boot:
               </p>
 
-              <.code_block id="code-sample-systemd" class="w-full" phx-no-format>sudo systemctl enable firezone-gateway</.code_block>
+              <.code_block id="code-sample-systemd6" class="w-full" phx-no-format>sudo systemctl enable firezone-gateway</.code_block>
 
-              <p class="pl-4 mb-2 mt-4">
-                7. Check the status of the service:
+              <.initial_connection_status
+                :if={@env}
+                type="gateway"
+                navigate={~p"/#{@account}/sites/#{@group}"}
+                connected?={@connected?}
+              />
+
+              <hr />
+
+              <p class="pl-4 mb-2 mt-4 text-xl font-semibold">
+                Troubleshooting
               </p>
 
-              <.code_block id="code-sample-systemd" class="w-full rounded-b" phx-no-format>sudo systemctl status firezone-gateway</.code_block>
+              <p class="pl-4 mb-2 mt-4">
+                Check the status of the service:
+              </p>
+
+              <.code_block id="code-sample-systemd7" class="w-full rounded-b" phx-no-format>sudo systemctl status firezone-gateway</.code_block>
+
+              <p class="pl-4 mb-2 mt-4">
+                Check the logs:
+              </p>
+
+              <.code_block id="code-sample-systemd8" class="w-full rounded-b" phx-no-format>sudo journalctl -u firezone-gateway.service</.code_block>
             </:tab>
           </.tabs>
-
-          <div :if={@env} class="mt-4 animate-pulse text-center">
-            Waiting for gateway connection...
-          </div>
         </div>
       </:content>
     </.section>
@@ -139,6 +198,7 @@ defmodule Web.Sites.NewToken do
       "--health-cmd=\"ip link | grep tun-firezone\"",
       "--name=firezone-gateway",
       "--cap-add=NET_ADMIN",
+      "--volume /etc/firezone",
       "--sysctl net.ipv4.ip_forward=1",
       "--sysctl net.ipv4.conf.all.src_valid_mark=1",
       "--sysctl net.ipv6.conf.all.disable_ipv6=0",
@@ -146,7 +206,7 @@ defmodule Web.Sites.NewToken do
       "--sysctl net.ipv6.conf.default.forwarding=1",
       "--device=\"/dev/net/tun:/dev/net/tun\"",
       Enum.map(env, fn {key, value} -> "--env #{key}=\"#{value}\"" end),
-      "--env FIREZONE_HOSTNAME=$(hostname)",
+      "--env FIREZONE_NAME=$(hostname)",
       "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/gateway:#{version()}"
     ]
     |> List.flatten()
@@ -158,9 +218,13 @@ defmodule Web.Sites.NewToken do
     [Unit]
     Description=Firezone Gateway
     After=network.target
+    Documentation=https://www.firezone.dev/kb
 
     [Service]
     Type=simple
+    User=firezone
+    Group=firezone
+    ExecStartPre=/bin/sh -c 'id -u firezone &>/dev/null || useradd -r -s /bin/false firezone'
     #{Enum.map_join(env, "\n", fn {key, value} -> "Environment=\"#{key}=#{value}\"" end)}
     ExecStartPre=/bin/sh -c ' \\
       remote_version=$(curl -Ls \\
@@ -189,8 +253,19 @@ defmodule Web.Sites.NewToken do
         chmod +x /usr/local/bin/firezone-gateway; \\
       fi \\
     '
+    ExecStartPre=/usr/bin/mkdir -p /etc/firezone
+    ExecStartPre=/usr/bin/chown firezone:firezone /etc/firezone
+    ExecStartPre=/usr/bin/chmod 0755 /etc/firezone
     ExecStartPre=/usr/bin/chmod +x /usr/local/bin/firezone-gateway
-    ExecStart=FIREZONE_HOSTNAME=$(hostname) /usr/local/bin/firezone-gateway
+    AmbientCapabilities=CAP_NET_ADMIN
+    CapabilityBoundingSet=CAP_NET_ADMIN
+    PrivateTmp=true
+    ProtectSystem=full
+    ReadWritePaths=/etc/firezone
+    NoNewPrivileges=true
+    TimeoutStartSec=15s
+    TimeoutStopSec=15s
+    ExecStart=FIREZONE_NAME=$(hostname) /usr/local/bin/firezone-gateway
     Restart=always
     RestartSec=3
 
@@ -199,14 +274,11 @@ defmodule Web.Sites.NewToken do
     """
   end
 
-  defp encode_group_token(group) do
-    Gateways.encode_token!(hd(group.tokens))
+  def handle_event("tab_selected", %{"id" => id}, socket) do
+    {:noreply, assign(socket, selected_tab: id)}
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _account_id}, socket) do
-    socket =
-      redirect(socket, to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.group}")
-
-    {:noreply, socket}
+  def handle_info(%Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _group_id}, socket) do
+    {:noreply, assign(socket, connected?: true)}
   end
 end

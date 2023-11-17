@@ -2,7 +2,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.EditTest do
   use Web.ConnCase, async: true
 
   setup do
-    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
 
@@ -94,16 +94,13 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.EditTest do
         }
       )
 
-    result = render_submit(form)
+    render_submit(form)
     assert provider = Repo.get_by(Domain.Auth.Provider, name: provider_attrs.name)
 
-    assert result ==
-             {:error,
-              {:redirect,
-               %{
-                 to:
-                   ~p"/#{account.id}/settings/identity_providers/openid_connect/#{provider}/redirect"
-               }}}
+    assert_redirected(
+      lv,
+      ~p"/#{account.id}/settings/identity_providers/openid_connect/#{provider}/redirect"
+    )
 
     assert provider.name == provider_attrs.name
     assert provider.adapter == :openid_connect

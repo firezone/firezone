@@ -6,21 +6,28 @@ defmodule Web.Sites.Show do
     with {:ok, group} <-
            Gateways.fetch_group_by_id(id, socket.assigns.subject,
              preload: [
-               gateways: [token: [created_by_identity: [:actor]]],
                connections: [:resource],
                created_by_identity: [:actor]
              ]
            ),
-         resources = Enum.map(group.connections, & &1.resource),
+         {:ok, gateways} <-
+           Gateways.list_connected_gateways_for_group(group, socket.assigns.subject,
+             preload: [token: [created_by_identity: [:actor]]]
+           ),
+         resources =
+           group.connections
+           |> Enum.reject(&is_nil(&1.resource))
+           |> Enum.map(& &1.resource),
          {:ok, resource_actor_groups_peek} <-
            Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
-      group = %{
-        group
-        | gateways: Enum.sort_by(group.gateways, &{&1.online?, &1.name_suffix}, :desc)
-      }
-
       :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
-      {:ok, assign(socket, group: group, resource_actor_groups_peek: resource_actor_groups_peek)}
+
+      {:ok,
+       assign(socket,
+         group: group,
+         gateways: gateways,
+         resource_actor_groups_peek: resource_actor_groups_peek
+       )}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -31,13 +38,13 @@ defmodule Web.Sites.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        <%= @group.name_prefix %>
+        <%= @group.name %>
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Site: <code><%= @group.name_prefix %></code>
+        Site: <code><%= @group.name %></code>
       </:title>
       <:action>
         <.edit_button navigate={~p"/#{@account}/sites/#{@group}/edit"}>
@@ -49,7 +56,7 @@ defmodule Web.Sites.Show do
         <.vertical_table id="group">
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @group.name_prefix %></:value>
+            <:value><%= @group.name %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Created</:label>
@@ -62,7 +69,12 @@ defmodule Web.Sites.Show do
     </.section>
 
     <.section>
-      <:title>Gateways</:title>
+      <:title>
+        Online Gateways
+        <.link class={["text-sm", link_style()]} navigate={~p"/#{@account}/sites/#{@group}/gateways"}>
+          see all <.icon name="hero-arrow-right" class="w-2 h-2" />
+        </.link>
+      </:title>
       <:action>
         <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
           Deploy
@@ -70,13 +82,13 @@ defmodule Web.Sites.Show do
       </:action>
       <:content>
         <div class="relative overflow-x-auto">
-          <.table id="gateways" rows={@group.gateways}>
+          <.table id="gateways" rows={@gateways}>
             <:col :let={gateway} label="INSTANCE">
               <.link
                 navigate={~p"/#{@account}/gateways/#{gateway.id}"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
-                <%= gateway.name_suffix %>
+                <%= gateway.name %>
               </.link>
             </:col>
             <:col :let={gateway} label="REMOTE IP">
@@ -93,7 +105,7 @@ defmodule Web.Sites.Show do
             <:empty>
               <div class="flex flex-col items-center justify-center text-center text-slate-500 p-4">
                 <div class="pb-4">
-                  No gateway instances to display.
+                  No gateways to display.
                 </div>
                 <div class="pb-4">
                   <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
@@ -102,13 +114,7 @@ defmodule Web.Sites.Show do
                 </div>
                 <div>
                   <p>
-                    Gateways serve as a termination point for all VPN connections within a site, they must be deployed
-                    to your infrastructure to enable VPN connectivity.
-                  </p>
-                  <p>
-                    If site has more than one gateway deployed,
-                    connections will be load balanced between them. Because of this, all gateways within a site must
-                    be able to access all site resources.
+                    Deploy gateways to terminate connections to your site's resources. All gateways deployed within a site must be able to reach all its resources.
                   </p>
                 </div>
               </div>
@@ -217,7 +223,7 @@ defmodule Web.Sites.Show do
 
   def handle_info(%Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _account_id}, socket) do
     socket =
-      redirect(socket, to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.group}")
+      push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.group}")
 
     {:noreply, socket}
   end
@@ -225,6 +231,6 @@ defmodule Web.Sites.Show do
   def handle_event("delete", _params, socket) do
     # TODO: make sure tokens are all deleted too!
     {:ok, _group} = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
-    {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/sites")}
+    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites")}
   end
 end

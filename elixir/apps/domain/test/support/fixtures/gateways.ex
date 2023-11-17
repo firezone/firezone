@@ -4,7 +4,7 @@ defmodule Domain.Fixtures.Gateways do
 
   def group_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
-      name_prefix: "group-#{unique_integer()}",
+      name: "group-#{unique_integer()}",
       tokens: [%{}]
     })
   end
@@ -71,7 +71,7 @@ defmodule Domain.Fixtures.Gateways do
   def gateway_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
       external_id: Ecto.UUID.generate(),
-      name_suffix: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
+      name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
       public_key: unique_public_key(),
       last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
       last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}},

@@ -19,6 +19,7 @@ use parking_lot::{Mutex, RwLock};
 use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 
+use crate::MAX_UDP_SIZE;
 use crate::{
     device_channel, ip_packet::MutableIpPacket, resource_table::ResourceTable, PeerConfig,
 };
@@ -91,8 +92,7 @@ where
             peer_config.persistent_keepalive,
             index,
             Some(rate_limiter),
-        )
-        .expect("never actually fails"); // See https://github.com/cloudflare/boringtun/pull/366.
+        );
 
         let mut allowed_ips = IpNetworkTable::new();
         for ip in peer_config.ips {
@@ -186,7 +186,6 @@ where
     pub(crate) fn encapsulate(
         &self,
         mut packet: MutableIpPacket,
-        dest: IpAddr,
         buf: &mut [u8],
     ) -> Result<Option<Bytes>> {
         if let Some(resource) = self.get_translation(packet.to_immutable().source()) {
@@ -211,8 +210,6 @@ where
             _ => panic!("Unexpected result from `encapsulate`"),
         };
 
-        tracing::trace!(target: "wire", action = "writing", from = "iface", to = %dest);
-
         Ok(Some(Bytes::copy_from_slice(packet)))
     }
 
@@ -229,9 +226,7 @@ where
             TunnResult::WriteToNetwork(packet) => {
                 let mut packets = VecDeque::from([Bytes::copy_from_slice(packet)]);
 
-                // Boringtun requires us to call `decapsulate` repeatedly if it returned `WriteToNetwork`.
-                // However, for the repeated calls, we only need a buffer of at most 148 bytes which we can easily allocate on the stack.
-                let mut buf = [0u8; 148];
+                let mut buf = [0u8; MAX_UDP_SIZE];
 
                 while let TunnResult::WriteToNetwork(packet) =
                     tunnel.decapsulate(None, &[], &mut buf)

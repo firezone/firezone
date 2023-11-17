@@ -1,13 +1,6 @@
 Thank you for signing up for Firezone!
 
-
-Here is the sign-in link to access your account "<%= @account.name %>":
-
-<%= @sign_in_url %>
-
-Please copy this link and open it in your browser. It is valid for 15 minutes.
-
-In future you can always access the sign in form at the following URL:
+You can sign in to your account "<%= @account.name %>" using following link:
 
 <%= @sign_in_form_url %>
 
@@ -16,7 +9,6 @@ and discard this email. However, if you continue to receive multiple unsolicited
 we strongly recommend contacting your system administrator to report the issue.
 
 Request details:
-  Time: <%= @sign_in_token_created_at %>
   IP address: <%= @remote_ip %>
   User Agent: <%= @user_agent %>
   Account ID: <%= @account.id %>

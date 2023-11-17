@@ -11,6 +11,10 @@ locals {
   availability_zone = "us-east1-d"
 
   tld = "firezone.dev"
+
+  iap_ipv4_ranges = [
+    "35.235.240.0/20"
+  ]
 }
 
 terraform {
@@ -198,6 +202,23 @@ resource "google_compute_subnetwork" "apps" {
   stack_type = "IPV4_IPV6"
 
   ip_cidr_range = "10.128.0.0/20"
+  region        = local.region
+  network       = module.google-cloud-vpc.id
+
+  ipv6_access_type = "EXTERNAL"
+
+  private_ip_google_access = true
+}
+
+# Create VPN subnet for tooling instances
+resource "google_compute_subnetwork" "tools" {
+  project = module.google-cloud-project.project.project_id
+
+  name = "tooling"
+
+  stack_type = "IPV4_IPV6"
+
+  ip_cidr_range = "10.129.0.0/20"
   region        = local.region
   network       = module.google-cloud-vpc.id
 
@@ -406,6 +427,11 @@ locals {
     {
       name  = "OUTBOUND_EMAIL_ADAPTER_OPTS"
       value = "{\"api_key\":\"${var.postmark_server_api_token}\"}"
+    },
+    # Feature Flags
+    {
+      name  = "FEATURE_SIGN_UP_ENABLED"
+      value = false
     }
   ]
 }
@@ -748,7 +774,7 @@ resource "google_compute_firewall" "portal-ssh-ipv4" {
   }
 
   # Only allows connections using IAP
-  source_ranges = ["35.235.240.0/20"]
+  source_ranges = local.iap_ipv4_ranges
   target_tags   = concat(module.web.target_tags, module.api.target_tags)
 }
 
@@ -776,7 +802,7 @@ resource "google_compute_firewall" "relays-ssh-ipv4" {
   }
 
   # Only allows connections using IAP
-  source_ranges = ["35.235.240.0/20"]
+  source_ranges = local.iap_ipv4_ranges
   target_tags   = module.relays[0].target_tags
 }
 

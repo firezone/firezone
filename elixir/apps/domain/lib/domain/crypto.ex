@@ -53,7 +53,7 @@ defmodule Domain.Crypto do
 
   defp replace_ambiguous_characters("", acc), do: acc
 
-  for {mapping, replacement} <- Enum.zip(~c"-+/lO0=", ~c"ptusxyz") do
+  for {mapping, replacement} <- Enum.zip(~c"-+/lO0=_", ~c"ptusxyzw") do
     defp replace_ambiguous_characters(<<unquote(mapping)::utf8, rest::binary>>, acc),
       do: replace_ambiguous_characters(rest, <<acc::binary, unquote(replacement)::utf8>>)
   end

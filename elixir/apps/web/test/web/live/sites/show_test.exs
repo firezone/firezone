@@ -64,7 +64,7 @@ defmodule Web.Live.Sites.ShowTest do
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Sites"
-    assert breadcrumbs =~ group.name_prefix
+    assert breadcrumbs =~ group.name
   end
 
   test "allows editing gateway groups", %{
@@ -102,11 +102,11 @@ defmodule Web.Live.Sites.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["name"] =~ group.name_prefix
+    assert table["name"] =~ group.name
     assert table["created"] =~ actor.name
   end
 
-  test "renders gateways table", %{
+  test "renders online gateways table", %{
     account: account,
     actor: actor,
     identity: identity,
@@ -114,18 +114,26 @@ defmodule Web.Live.Sites.ShowTest do
     gateway: gateway,
     conn: conn
   } do
+    :ok = Domain.Gateways.connect_gateway(gateway)
+    Fixtures.Gateways.create_gateway(account: account, group: group)
+
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{group}")
 
-    lv
-    |> element("#gateways")
-    |> render()
-    |> table_to_map()
-    |> with_table_row("instance", gateway.name_suffix, fn row ->
+    rows =
+      lv
+      |> element("#gateways")
+      |> render()
+      |> table_to_map()
+
+    assert length(rows) == 1
+
+    rows
+    |> with_table_row("instance", gateway.name, fn row ->
       assert row["token created at"] =~ actor.name
-      assert row["status"] =~ "Offline"
+      assert row["status"] =~ "Online"
     end)
   end
 
@@ -147,7 +155,7 @@ defmodule Web.Live.Sites.ShowTest do
     |> element("#gateways")
     |> render()
     |> table_to_map()
-    |> with_table_row("instance", gateway.name_suffix, fn row ->
+    |> with_table_row("instance", gateway.name, fn row ->
       assert gateway.last_seen_remote_ip
       assert row["remote ip"] =~ to_string(gateway.last_seen_remote_ip)
       assert row["status"] =~ "Online"
@@ -181,7 +189,7 @@ defmodule Web.Live.Sites.ShowTest do
     Enum.each(resource_rows, fn row ->
       assert row["name"] =~ resource.name
       assert row["address"] =~ resource.address
-      assert row["sites"] =~ group.name_prefix
+      assert row["sites"] =~ group.name
       assert row["authorized groups"] == "None, create a Policy to grant access."
     end)
   end
@@ -264,10 +272,11 @@ defmodule Web.Live.Sites.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{group}")
 
-    assert lv
-           |> element("button", "Delete")
-           |> render_click() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/sites"}}}
+    lv
+    |> element("button", "Delete")
+    |> render_click()
+
+    assert_redirected(lv, ~p"/#{account}/sites")
 
     assert Repo.get(Domain.Gateways.Group, group.id).deleted_at
   end

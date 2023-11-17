@@ -2,7 +2,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
   use Web.ConnCase, async: true
 
   setup do
-    Domain.Config.put_system_env_override(:outbound_email_adapter, Swoosh.Adapters.Postmark)
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
@@ -154,10 +154,11 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/openid_connect/#{provider}")
 
-    assert lv
-           |> element("button", "Delete Identity Provider")
-           |> render_click() ==
-             {:error, {:redirect, %{to: ~p"/#{account}/settings/identity_providers"}}}
+    lv
+    |> element("button", "Delete Identity Provider")
+    |> render_click()
+
+    assert_redirected(lv, ~p"/#{account}/settings/identity_providers")
 
     assert Repo.get(Domain.Auth.Provider, provider.id).deleted_at
   end

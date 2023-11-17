@@ -211,9 +211,11 @@ defmodule Web.Live.Groups.EditActorsTest do
     |> element("#actor-#{service_account.id} button", "Add")
     |> render_click()
 
-    assert lv
-           |> element("button", "Save")
-           |> render_click() == {:error, {:redirect, %{to: ~p"/#{account}/groups/#{group}"}}}
+    lv
+    |> element("button", "Save")
+    |> render_click()
+
+    assert_redirected(lv, ~p"/#{account}/groups/#{group}")
 
     group = Repo.preload(group, :actors, force: true)
     group_actor_ids = Enum.map(group.actors, & &1.id)

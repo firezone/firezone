@@ -1,48 +1,55 @@
 use std::sync::Arc;
 
-use boringtun::x25519::{PublicKey, StaticSecret};
+use boringtun::x25519::PublicKey;
 use connlib_shared::{
     control::Reference,
     messages::{GatewayId, Key, Relay, RequestConnection, ResourceId},
     Callbacks,
 };
-use rand_core::OsRng;
 use secrecy::Secret;
-use webrtc::{
-    data_channel::data_channel_init::RTCDataChannelInit,
-    peer_connection::{
-        peer_connection_state::RTCPeerConnectionState,
-        sdp::session_description::RTCSessionDescription, RTCPeerConnection,
-    },
+use webrtc::ice_transport::{
+    ice_parameters::RTCIceParameters, ice_role::RTCIceRole,
+    ice_transport_state::RTCIceTransportState, RTCIceTransport,
 };
 
-use crate::control_protocol::{
-    new_peer_connection, on_dc_close_handler, on_peer_connection_state_change_handler,
+use crate::{
+    control_protocol::{new_ice_connection, IceConnection},
+    PEER_QUEUE_SIZE,
 };
 use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
 
-#[tracing::instrument(level = "trace", skip(tunnel))]
+use super::{insert_peers, start_handlers};
+
+#[tracing::instrument(level = "trace", skip(tunnel, ice))]
 fn set_connection_state_update<CB>(
     tunnel: &Arc<Tunnel<CB, ClientState>>,
-    peer_connection: &Arc<RTCPeerConnection>,
+    ice: &Arc<RTCIceTransport>,
     gateway_id: GatewayId,
     resource_id: ResourceId,
 ) where
     CB: Callbacks + 'static,
 {
     let tunnel = Arc::clone(tunnel);
-    peer_connection.on_peer_connection_state_change(Box::new(
-        move |state: RTCPeerConnectionState| {
-            let tunnel = Arc::clone(&tunnel);
-            Box::pin(async move {
-                tracing::trace!("peer_state");
-                if state == RTCPeerConnectionState::Failed {
-                    tunnel.role_state.lock().on_connection_failed(resource_id);
-                    tunnel.peer_connections.lock().remove(&gateway_id);
+    ice.on_connection_state_change(Box::new(move |state| {
+        let tunnel = Arc::clone(&tunnel);
+        tracing::trace!(%state, "peer_state");
+        Box::pin(async move {
+            if state == RTCIceTransportState::Failed {
+                // There's a really unlikely race condition but this line needs to be before on_connection_failed.
+                // if we clear up the gateway awaiting flag before removing the connection a new connection could be
+                // established that replaces this one and this line removes it.
+                let ice = tunnel.peer_connections.lock().remove(&gateway_id);
+
+                if let Some(ice) = ice {
+                    if let Err(err) = ice.stop().await {
+                        tracing::warn!(%err, "couldn't stop ice transport: {err:#}");
+                    }
                 }
-            })
-        },
-    ));
+
+                tunnel.role_state.lock().on_connection_failed(resource_id);
+            }
+        })
+    }));
 }
 
 impl<CB> Tunnel<CB, ClientState>
@@ -84,118 +91,71 @@ where
             return Ok(Request::ReuseConnection(connection));
         }
 
-        let peer_connection = {
-            let (peer_connection, receiver) = new_peer_connection(&self.webrtc_api, relays).await?;
-            self.role_state
-                .lock()
-                .add_waiting_ice_receiver(gateway_id, receiver);
-            let peer_connection = Arc::new(peer_connection);
-            let mut peer_connections = self.peer_connections.lock();
-            peer_connections.insert(gateway_id, Arc::clone(&peer_connection));
-            peer_connection
-        };
+        let IceConnection {
+            ice_params,
+            ice_transport,
+            ice_candidate_rx,
+        } = new_ice_connection(&self.webrtc_api, relays).await?;
+        let preshared_key = self
+            .role_state
+            .lock()
+            .add_waiting_gateway(gateway_id, ice_candidate_rx);
+        self.peer_connections
+            .lock()
+            .insert(gateway_id, Arc::clone(&ice_transport));
 
-        set_connection_state_update(self, &peer_connection, gateway_id, resource_id);
-
-        let data_channel = peer_connection
-            .create_data_channel(
-                "data",
-                Some(RTCDataChannelInit {
-                    ordered: Some(false),
-                    max_retransmits: Some(0),
-                    ..Default::default()
-                }),
-            )
-            .await?;
-        let d = Arc::clone(&data_channel);
-
-        let tunnel = Arc::clone(self);
-
-        let preshared_key = StaticSecret::random_from_rng(OsRng);
-        let p_key = preshared_key.clone();
-        data_channel.on_open(Box::new(move || {
-            Box::pin(async move {
-                tracing::trace!("new_data_channel_opened");
-                let index = tunnel.next_index();
-
-                let peer_config = match tunnel
-                    .role_state
-                    .lock()
-                    .create_peer_config_for_new_connection(resource_id, gateway_id, p_key)
-                {
-                    Ok(c) => c,
-                    Err(e) => {
-                        tunnel.peer_connections.lock().remove(&gateway_id);
-
-                        tracing::warn!(err = ?e, "channel_open");
-                        let _ = tunnel.callbacks.on_error(&e);
-                        return;
-                    }
-                };
-
-                d.on_close(on_dc_close_handler(
-                    gateway_id,
-                    tunnel.stop_peer_command_sender.clone(),
-                ));
-                let d = d.detach().await.expect(
-                    "only fails if not opened or not enabled, both of which are always true for us",
-                );
-
-                let peer = Arc::new(Peer::new(
-                    tunnel.private_key.clone(),
-                    index,
-                    peer_config.clone(),
-                    gateway_id,
-                    None,
-                    tunnel.rate_limiter.clone(),
-                ));
-
-                {
-                    let mut peers_by_ip = tunnel.peers_by_ip.write();
-
-                    for ip in peer_config.ips {
-                        peers_by_ip.insert(
-                            ip,
-                            ConnectedPeer {
-                                inner: peer.clone(),
-                                channel: d.clone(),
-                            },
-                        );
-                    }
-
-                    tunnel
-                        .role_state
-                        .lock()
-                        .gateway_awaiting_connection
-                        .remove(&gateway_id);
-                }
-
-                if let Some(conn) = tunnel.peer_connections.lock().get(&gateway_id) {
-                    conn.on_peer_connection_state_change(on_peer_connection_state_change_handler(
-                        gateway_id,
-                        tunnel.stop_peer_command_sender.clone(),
-                    ));
-                }
-
-                tokio::spawn(tunnel.start_peer_handler(peer, d));
-
-                tunnel
-                    .role_state
-                    .lock()
-                    .awaiting_connection
-                    .remove(&resource_id);
-            })
-        }));
-
-        let offer = peer_connection.create_offer(None).await?;
-        peer_connection.set_local_description(offer.clone()).await?;
+        set_connection_state_update(self, &ice_transport, gateway_id, resource_id);
 
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
             gateway_id,
             client_preshared_key: Secret::new(Key(preshared_key.to_bytes())),
-            client_rtc_session_description: offer,
+            client_rtc_session_description: ice_params,
         }))
+    }
+
+    fn new_tunnel(
+        &self,
+        resource_id: ResourceId,
+        gateway_id: GatewayId,
+        ice: Arc<RTCIceTransport>,
+    ) -> Result<()> {
+        let peer_config = self
+            .role_state
+            .lock()
+            .create_peer_config_for_new_connection(resource_id, gateway_id)?;
+
+        let peer = Arc::new(Peer::new(
+            self.private_key.clone(),
+            self.next_index(),
+            peer_config.clone(),
+            gateway_id,
+            None,
+            self.rate_limiter.clone(),
+        ));
+
+        let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
+
+        start_handlers(
+            Arc::clone(&self.device),
+            self.callbacks.clone(),
+            peer.clone(),
+            ice,
+            peer_receiver,
+        );
+
+        // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
+        // before inserting finishes.
+        insert_peers(
+            &mut self.peers_by_ip.write(),
+            &peer_config.ips,
+            ConnectedPeer {
+                inner: peer,
+                channel: peer_sender,
+            },
+        );
+
+        Ok(())
     }
 
     /// Called when a response to [Tunnel::request_connection] is ready.
@@ -207,10 +167,10 @@ where
     /// - `rtc_sdp`: Remote SDP.
     /// - `gateway_public_key`: Public key of the gateway that is handling that resource for this connection.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn received_offer_response(
+    pub fn received_offer_response(
         self: &Arc<Self>,
         resource_id: ResourceId,
-        rtc_sdp: RTCSessionDescription,
+        rtc_ice_params: RTCIceParameters,
         gateway_public_key: PublicKey,
     ) -> Result<()> {
         let gateway_id = self
@@ -224,11 +184,27 @@ where
             .get(&gateway_id)
             .ok_or(Error::UnknownResource)?
             .clone();
-        peer_connection.set_remote_description(rtc_sdp).await?;
 
         self.role_state
             .lock()
             .activate_ice_candidate_receiver(gateway_id, gateway_public_key);
+        let tunnel = self.clone();
+        // RTCIceTransport::start blocks until there's an ice connection.
+        tokio::spawn(async move {
+            if let Err(e) = peer_connection
+                .start(&rtc_ice_params, Some(RTCIceRole::Controlling))
+                .await
+                .map_err(Into::into)
+                .and_then(|_| tunnel.new_tunnel(resource_id, gateway_id, peer_connection))
+            {
+                tracing::warn!(%gateway_id, err = ?e, "Can't start tunnel: {e:#}");
+                tunnel.role_state.lock().on_connection_failed(resource_id);
+                let peer_connection = tunnel.peer_connections.lock().remove(&gateway_id);
+                if let Some(peer_connection) = peer_connection {
+                    let _ = peer_connection.stop().await;
+                }
+            }
+        });
 
         Ok(())
     }

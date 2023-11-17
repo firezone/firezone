@@ -22,6 +22,14 @@ defmodule Web.Router do
     plug :accepts, ["html", "xml"]
   end
 
+  pipeline :home do
+    plug :accepts, ["html", "xml"]
+    plug :fetch_session
+    plug :protect_from_forgery
+    plug :fetch_live_flash
+    plug :put_root_layout, {Web.Layouts, :root}
+  end
+
   pipeline :ensure_authenticated_admin do
     plug :ensure_authenticated
     plug :ensure_authenticated_actor_type, :account_admin_user
@@ -34,9 +42,15 @@ defmodule Web.Router do
   end
 
   scope "/", Web do
+    pipe_through :home
+
+    get "/", HomeController, :home
+    post "/", HomeController, :redirect_to_sign_in
+  end
+
+  scope "/", Web do
     pipe_through :public
 
-    get "/", RedirectController, :home
     get "/healthz", HealthController, :healthz
   end
 
@@ -61,11 +75,11 @@ defmodule Web.Router do
         Web.Sandbox,
         {Web.Auth, :redirect_if_user_is_authenticated}
       ] do
-      live "/", Auth.SignIn
+      live "/", SignIn
 
       # Adapter-specific routes
       ## Email
-      live "/sign_in/providers/email/:provider_id", Auth.Email
+      live "/sign_in/providers/email/:provider_id", SignIn.Email
     end
 
     scope "/sign_in/providers/:provider_id" do
@@ -137,6 +151,7 @@ defmodule Web.Router do
         live "/", Index
         live "/new", New
         live "/:id/edit", Edit
+        live "/:id/new_token", NewToken
         live "/:id", Show
       end
 
@@ -147,6 +162,11 @@ defmodule Web.Router do
       scope "/sites", Sites do
         live "/", Index
         live "/new", New
+
+        scope "/:id/gateways", Gateways do
+          live "/", Index
+        end
+
         live "/:id/new_token", NewToken
         live "/:id/edit", Edit
         live "/:id", Show

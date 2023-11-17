@@ -1,4 +1,4 @@
-defmodule Web.Auth.Email do
+defmodule Web.SignIn.Email do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
 
   def mount(
@@ -43,27 +43,9 @@ defmodule Web.Auth.Email do
             <.flash flash={@flash} kind={:error} phx-click={JS.hide(transition: "fade-out")} />
             <.flash flash={@flash} kind={:info} phx-click={JS.hide(transition: "fade-out")} />
 
-            <div :if={is_nil(@client_platform)}>
+            <div>
               <p>
-                Should the provided email be registered, a sign-in link will be dispatched to your email account.
-                Please click this link to proceed with your login.
-              </p>
-              <.resend
-                account_id_or_slug={@account_id_or_slug}
-                provider_id={@provider_id}
-                provider_identifier={@provider_identifier}
-                client_platform={@client_platform}
-                client_csrf_token={@client_csrf_token}
-              />
-              <div class="flex">
-                <.dev_email_provider_link url="https://mail.google.com/mail/" name="Gmail" />
-                <.email_provider_link url="https://mail.google.com/mail/" name="Gmail" />
-                <.email_provider_link url="https://outlook.live.com/mail/" name="Outlook" />
-              </div>
-            </div>
-            <div :if={not is_nil(@client_platform)}>
-              <p>
-                Should the provided email be registered, a sign-in token will be dispatched to your email account.
+                Should the provided email be registered, a sign-in link and token are dispatched to your email account.
                 Please copy and paste this token into the form below to proceed with your login.
               </p>
 
@@ -117,6 +99,11 @@ defmodule Web.Auth.Email do
                 use a different Sign In method
               </.link>
               .
+            </div>
+            <div class="flex">
+              <.dev_email_provider_link url="https://mail.google.com/mail/" name="Gmail" />
+              <.email_provider_link url="https://mail.google.com/mail/" name="Gmail" />
+              <.email_provider_link url="https://outlook.live.com/mail/" name="Outlook" />
             </div>
           </div>
         </div>

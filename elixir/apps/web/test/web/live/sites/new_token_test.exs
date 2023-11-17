@@ -29,15 +29,19 @@ defmodule Web.Live.Sites.NewTokenTest do
     assert html =~ "Select deployment method"
     assert html =~ "FIREZONE_TOKEN="
     assert html =~ "docker run"
-    assert html =~ "Waiting for gateway connection..."
+    assert html =~ "Waiting for connection..."
 
     assert Regex.run(~r/FIREZONE_ID=([^ ]+)/, html) |> List.last()
     token = Regex.run(~r/FIREZONE_TOKEN=([^ ]+)/, html) |> List.last() |> String.trim("&quot;")
-    assert {:ok, _token} = Domain.Gateways.authorize_gateway(token)
 
+    :ok = Domain.Gateways.subscribe_for_gateways_presence_in_group(group)
     gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+    assert {:ok, _token} = Domain.Gateways.authorize_gateway(token)
     Domain.Gateways.connect_gateway(gateway)
 
-    assert assert_redirect(lv, ~p"/#{account}/sites/#{group}")
+    assert_receive %Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _group_id}
+
+    assert element(lv, "#deployment-instructions")
+           |> render() =~ "Connected, click to continue"
   end
 end

@@ -11,6 +11,8 @@ config :domain, Domain.Repo,
   port: String.to_integer(System.get_env("DATABASE_PORT", "5432")),
   password: System.get_env("DATABASE_PASSWORD", "postgres")
 
+config :domain, outbound_email_adapter_configured?: true
+
 ###############################
 ##### Web #####################
 ###############################
@@ -57,10 +59,10 @@ config :phoenix_live_reload, :dirs, [
 
 config :web, Web.Plugs.SecureHeaders,
   csp_policy: [
-    "default-src 'self' 'nonce-${nonce}'",
+    "default-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/",
     "img-src 'self' data: https://www.gravatar.com",
     "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/",
     "connect-src 'self' data: https://firezone.statuspage.io"
   ]
 
