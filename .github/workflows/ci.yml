@@ -239,6 +239,7 @@ jobs:
           if_no_artifact_found: fail
       - name: "Generate main branch metrics"
         id: main-perfomance-test
+        if: ${{ github.event_name == 'pull_request' }}
         run: |
           cat /tmp/iperf3results-main/tcp_server2client.json | jq -r '"tcp_server2client_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results-main/tcp_server2client.json | jq -r '"tcp_server2client_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
