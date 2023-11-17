@@ -320,7 +320,7 @@ jobs:
 
             function getDiffPercents(main, current)
             {
-                let diff = 100 - current / (main / 100);
+                let diff = -1 * (100 - current / (main / 100));
 
                 if (diff > 0) {
                     return "+" + diff.toFixed(0) + "%";
