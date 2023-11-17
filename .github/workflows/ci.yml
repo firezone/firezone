@@ -228,6 +228,8 @@ jobs:
       - name: Download main branch ${{ matrix.test_name }} Perfomance Test Results
         id: download-artifact
         if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -xe
 
