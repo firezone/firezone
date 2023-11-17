@@ -19,6 +19,7 @@ use parking_lot::{Mutex, RwLock};
 use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 
+use crate::MAX_UDP_SIZE;
 use crate::{
     device_channel, ip_packet::MutableIpPacket, resource_table::ResourceTable, PeerConfig,
 };
@@ -225,9 +226,7 @@ where
             TunnResult::WriteToNetwork(packet) => {
                 let mut packets = VecDeque::from([Bytes::copy_from_slice(packet)]);
 
-                // Boringtun requires us to call `decapsulate` repeatedly if it returned `WriteToNetwork`.
-                // However, for the repeated calls, we only need a buffer of at most 148 bytes which we can easily allocate on the stack.
-                let mut buf = [0u8; 148];
+                let mut buf = [0u8; MAX_UDP_SIZE];
 
                 while let TunnResult::WriteToNetwork(packet) =
                     tunnel.decapsulate(None, &[], &mut buf)
