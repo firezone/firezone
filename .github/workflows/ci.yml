@@ -140,6 +140,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      pull-requests: write
     env:
       VERSION: ${{ github.sha }}
     strategy:
@@ -199,10 +200,18 @@ jobs:
           docker compose exec -it client /bin/sh -c 'iperf3 -u -b 0 -R -c 172.20.0.110 --json' >> /tmp/iperf3results/tcp_server2client.json
           docker compose exec -it client /bin/sh -c 'iperf3 -u -b 0 -c 172.20.0.110 --json' >> /tmp/iperf3results/udp_client2server.json
 
-          cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_sum_sent_retransmits=" + (.end.sum_sent.retransmits|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_sum_sent_retransmits=" + (.end.sum_sent.retransmits|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_sent_retransmits=" + (.end.sum_sent.retransmits|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_sent_retransmits=" + (.end.sum_sent.retransmits|tostring)' >> "$GITHUB_OUTPUT"
       - name: Save ${{ matrix.test_name }} Perfomance Test Results
         uses: actions/upload-artifact@v3
         with:
@@ -245,26 +254,45 @@ jobs:
               return bytes.toFixed(dp) + ' ' + units[u];
             }
 
-            const tcp_client2server_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.tcp_client2server_bits_per_second }})
-            const tcp_server2client_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.tcp_server2client_bits_per_second }})
-            const udp_client2server_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_client2server_bits_per_second }})
-            const udp_server2client_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_server2client_bits_per_second }})
+            const tcp_server2client_sum_received_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.tcp_server2client_sum_received_bits_per_second }})
+            const tcp_server2client_sum_sent_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.tcp_server2client_sum_sent_bits_per_second }})
+            const tcp_server2client_sum_sent_retransmits = ${{ steps.perfomance-test.outputs.tcp_server2client_sum_sent_retransmits }}
+
+            const tcp_client2server_sum_received_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.tcp_client2server_sum_received_bits_per_second }})
+            const tcp_client2server_sum_sent_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.tcp_client2server_sum_sent_bits_per_second }})
+            const tcp_client2server_sum_sent_retransmits = ${{ steps.perfomance-test.outputs.tcp_client2server_sum_sent_retransmits }}
+
+            const udp_server2client_sum_received_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_server2client_sum_received_bits_per_second }})
+            const udp_server2client_sum_sent_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_server2client_sum_sent_bits_per_second }})
+            const udp_server2client_sum_sent_retransmits = ${{ steps.perfomance-test.outputs.udp_server2client_sum_sent_retransmits }}
+
+            const udp_client2server_sum_received_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_client2server_sum_received_bits_per_second }})
+            const udp_client2server_sum_sent_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_client2server_sum_sent_bits_per_second }})
+            const udp_client2server_sum_sent_retransmits = ${{ steps.perfomance-test.outputs.udp_client2server_sum_sent_retransmits }}
 
             const output = `## Perfomance Test Results
 
             ### TCP
             #### Client to Server
-            ` + tcp_client2server_bits_per_second + `
+            Received: ` + tcp_client2server_sum_received_bits_per_second + `
+            Sent: ` + tcp_client2server_sum_sent_bits_per_second + `
+            Retransmits: ` + tcp_client2server_sum_sent_retransmits + `
 
             #### Server to Client
-            ${{ steps.perfomance-test.outputs.tcp_server2client_bits_per_second }}
+            Received: ` + tcp_server2client_sum_received_bits_per_second + `
+            Sent: ` + tcp_server2client_sum_sent_bits_per_second + `
+            Retransmits: ` + tcp_server2client_sum_sent_retransmits + `
 
             ### UDP
             #### Client to Server
-            ${{ steps.perfomance-test.outputs.udp_client2server_bits_per_second }}
+            Received: ` + udp_client2server_sum_received_bits_per_second + `
+            Sent: ` + udp_client2server_sum_sent_bits_per_second + `
+            Retransmits: ` + udp_client2server_sum_sent_retransmits + `
 
             #### Server to Client
-            ${{ steps.perfomance-test.outputs.udp_server2client_bits_per_second }}
+            Received: ` + udp_server2client_sum_received_bits_per_second + `
+            Sent: ` + udp_server2client_sum_sent_bits_per_second + `
+            Retransmits: ` + udp_server2client_sum_sent_retransmits + `
             `;
             // 3. Delete previous comment so PR timeline makes sense
             if (botComment) {
