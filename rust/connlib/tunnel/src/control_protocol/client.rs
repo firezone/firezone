@@ -110,7 +110,7 @@ where
             resource_id,
             gateway_id,
             client_preshared_key: Secret::new(Key(preshared_key.to_bytes())),
-            client_rtc_session_description: ice_params,
+            client_payload: ice_params,
         }))
     }
 

@@ -92,7 +92,7 @@ pub struct RequestConnection {
     /// The preshared key the client generated for the connection that it is trying to establish.
     pub client_preshared_key: SecretKey,
     /// Client's local RTC Session Description that the client will use for this connection.
-    pub client_rtc_session_description: RTCIceParameters,
+    pub client_payload: RTCIceParameters,
 }
 
 /// Represent a request to reuse an existing gateway connection from a client to a given resource.

@@ -23,7 +23,7 @@ pub struct Actor {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Client {
     pub id: ClientId,
-    pub rtc_session_description: RTCIceParameters,
+    pub payload: RTCIceParameters,
     pub peer: Peer,
 }
 
@@ -127,7 +127,7 @@ pub enum EgressMessages {
 pub struct ConnectionReady {
     #[serde(rename = "ref")]
     pub reference: String,
-    pub gateway_rtc_session_description: RTCIceParameters,
+    pub gateway_payload: RTCIceParameters,
 }
 
 #[cfg(test)]
@@ -153,7 +153,7 @@ mod test {
                         "persistent_keepalive": 25,
                         "preshared_key": "sMeTuiJ3mezfpVdan948CmisIWbwBZ1z7jBNnbVtfVg="
                     },
-                    "rtc_session_description": {
+                    "payload": {
                         "ice_lite":false,
                         "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
                         "username_fragment": "PvCPFevCOgkvVCtH"

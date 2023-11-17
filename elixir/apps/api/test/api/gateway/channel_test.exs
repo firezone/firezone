@@ -75,21 +75,25 @@ defmodule API.Gateway.ChannelTest do
       relay: relay,
       socket: socket
     } do
+      channel_pid = self()
+      socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
       flow_id = Ecto.UUID.generate()
+      client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
       send(
         socket.channel_pid,
-        {:allow_access,
+        {:allow_access, {channel_pid, socket_ref},
          %{
            client_id: client.id,
            resource_id: resource.id,
            flow_id: flow_id,
-           authorization_expires_at: expires_at
+           authorization_expires_at: expires_at,
+           client_payload: client_payload
          }, otel_ctx}
       )
 
@@ -149,7 +153,7 @@ defmodule API.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
-      rtc_session_description = "RTC_SD"
+      client_payload = "RTC_SD"
       flow_id = Ecto.UUID.generate()
 
       otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
@@ -165,7 +169,7 @@ defmodule API.Gateway.ChannelTest do
            resource_id: resource.id,
            flow_id: flow_id,
            authorization_expires_at: expires_at,
-           client_rtc_session_description: rtc_session_description,
+           client_payload: client_payload,
            client_preshared_key: preshared_key
          }, otel_ctx}
       )
@@ -226,10 +230,11 @@ defmodule API.Gateway.ChannelTest do
                  preshared_key: preshared_key,
                  public_key: client.public_key
                },
-               rtc_session_description: rtc_session_description
+               payload: client_payload
              }
 
-      assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
+      assert DateTime.from_unix!(payload.expires_at) ==
+               DateTime.truncate(expires_at, :second)
     end
 
     test "pushes request_connection message with self-hosted relays", %{
@@ -455,7 +460,7 @@ defmodule API.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
       gateway_public_key = gateway.public_key
-      rtc_session_description = "RTC_SD"
+      payload = "RTC_SD"
       flow_id = Ecto.UUID.generate()
 
       otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
@@ -471,7 +476,7 @@ defmodule API.Gateway.ChannelTest do
            resource_id: resource.id,
            authorization_expires_at: expires_at,
            flow_id: flow_id,
-           client_rtc_session_description: rtc_session_description,
+           client_payload: payload,
            client_preshared_key: preshared_key
          }, otel_ctx}
       )
@@ -481,13 +486,13 @@ defmodule API.Gateway.ChannelTest do
       push_ref =
         push(socket, "connection_ready", %{
           "ref" => ref,
-          "gateway_rtc_session_description" => rtc_session_description
+          "gateway_payload" => payload
         })
 
       assert_reply push_ref, :ok
 
-      assert_receive {:connect, ^socket_ref, resource_id, ^gateway_public_key,
-                      ^rtc_session_description, _opentelemetry_ctx}
+      assert_receive {:connect, ^socket_ref, resource_id, ^gateway_public_key, ^payload,
+                      _opentelemetry_ctx}
 
       assert resource_id == resource.id
     end

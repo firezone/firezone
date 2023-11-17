@@ -31,7 +31,7 @@ pub struct ConnectionDetails {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Connect {
-    pub gateway_rtc_session_description: RTCIceParameters,
+    pub gateway_payload: RTCIceParameters,
     pub resource_id: ResourceId,
     pub gateway_public_key: Key,
     pub persistent_keepalive: u64,
@@ -180,7 +180,7 @@ mod test {
                 "response": {
                     "resource_id": "ea6570d1-47c7-49d2-9dc3-efff1c0c9e0b",
                     "gateway_public_key": "dvy0IwyxAi+txSbAdT7WKgf7K4TekhKzrnYwt5WfbSM=",
-                    "gateway_rtc_session_description": {
+                    "gateway_payload": {
                         "ice_lite":false,
                         "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
                         "username_fragment": "PvCPFevCOgkvVCtH"

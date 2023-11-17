@@ -98,7 +98,7 @@ defmodule API.Client.Channel do
   # This message is sent by the gateway when it is ready
   # to accept the connection from the client
   def handle_info(
-        {:connect, socket_ref, resource_id, gateway_public_key, rtc_session_description,
+        {:connect, socket_ref, resource_id, gateway_public_key, payload,
          {opentelemetry_ctx, opentelemetry_span_ctx}},
         socket
       ) do
@@ -113,7 +113,7 @@ defmodule API.Client.Channel do
            resource_id: resource_id,
            persistent_keepalive: 25,
            gateway_public_key: gateway_public_key,
-           gateway_rtc_session_description: rtc_session_description
+           gateway_payload: payload
          }}
       )
 
@@ -227,7 +227,8 @@ defmodule API.Client.Channel do
         "reuse_connection",
         %{
           "gateway_id" => gateway_id,
-          "resource_id" => resource_id
+          "resource_id" => resource_id,
+          "payload" => payload
         } = attrs,
         socket
       ) do
@@ -250,12 +251,13 @@ defmodule API.Client.Channel do
         :ok =
           API.Gateway.Channel.broadcast(
             gateway,
-            {:allow_access,
+            {:allow_access, {self(), socket_ref(socket)},
              %{
                client_id: socket.assigns.client.id,
                resource_id: resource.id,
                flow_id: flow.id,
-               authorization_expires_at: socket.assigns.subject.expires_at
+               authorization_expires_at: socket.assigns.subject.expires_at,
+               client_payload: payload
              }, {opentelemetry_ctx, opentelemetry_span_ctx}}
           )
 
@@ -278,7 +280,7 @@ defmodule API.Client.Channel do
         %{
           "gateway_id" => gateway_id,
           "resource_id" => resource_id,
-          "client_rtc_session_description" => client_rtc_session_description,
+          "client_payload" => client_payload,
           "client_preshared_key" => preshared_key
         },
         socket
@@ -309,7 +311,7 @@ defmodule API.Client.Channel do
                resource_id: resource.id,
                flow_id: flow.id,
                authorization_expires_at: socket.assigns.subject.expires_at,
-               client_rtc_session_description: client_rtc_session_description,
+               client_payload: client_payload,
                client_preshared_key: preshared_key
              }, {opentelemetry_ctx, opentelemetry_span_ctx}}
           )

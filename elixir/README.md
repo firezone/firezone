@@ -125,7 +125,7 @@ Now you can verify that it's working by connecting to a websocket:
 {"ref":"unique_prepare_connection_ref","topic":"client","event":"phx_reply","payload":{"status":"ok","response":{"relays":[{"type":"stun","uri":"stun:172.28.0.101:3478"},{"type":"turn","username":"1719090081:UVxHhieTJWaD8_Sg","password":"Ml65XDZyYpuBiEIvk/q0Zy6EEJ1ZwGa4pWztXFP+tOo","uri":"turn:172.28.0.101:3478","expires_at":1719090081}],"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b"}}}
 
 # Initiate connection to a resource
-❯ {"event":"request_connection","topic":"client","payload":{"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b","client_rtc_session_description":"RTC_SD","client_preshared_key":"+HapiGI5UdeRjKuKTwk4ZPPYpCnlXHvvqebcIevL+2A="},"ref":"unique_request_connection_ref"}
+❯ {"event":"request_connection","topic":"client","payload":{"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b","client_payload":"RTC_SD","client_preshared_key":"+HapiGI5UdeRjKuKTwk4ZPPYpCnlXHvvqebcIevL+2A="},"ref":"unique_request_connection_ref"}
 
 ```
 

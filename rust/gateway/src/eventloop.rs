@@ -53,14 +53,14 @@ impl Eventloop {
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {
             match self.connection_request_tasks.poll_unpin(cx) {
-                Poll::Ready(((client, reference), Ok(Ok(gateway_rtc_session_description)))) => {
+                Poll::Ready(((client, reference), Ok(Ok(gateway_payload)))) => {
                     tracing::debug!(%client, %reference, "Connection is ready");
 
                     let _id = self.portal.send(
                         PHOENIX_TOPIC,
                         EgressMessages::ConnectionReady(ConnectionReady {
                             reference,
-                            gateway_rtc_session_description,
+                            gateway_payload,
                         }),
                     );
 
@@ -112,7 +112,7 @@ impl Eventloop {
                         async move {
                             tunnel
                                 .set_peer_connection_request(
-                                    req.client.rtc_session_description,
+                                    req.client.payload,
                                     req.client.peer.into(),
                                     req.relays,
                                     req.client.id,

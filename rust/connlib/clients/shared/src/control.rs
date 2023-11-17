@@ -110,7 +110,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     pub fn connect(
         &mut self,
         Connect {
-            gateway_rtc_session_description,
+            gateway_payload,
             resource_id,
             gateway_public_key,
             ..
@@ -118,7 +118,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     ) {
         if let Err(e) = self.tunnel.received_offer_response(
             resource_id,
-            gateway_rtc_session_description,
+            gateway_payload,
             gateway_public_key.0.into(),
         ) {
             let _ = self.tunnel.callbacks().on_error(&e);
