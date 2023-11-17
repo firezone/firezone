@@ -286,7 +286,7 @@ jobs:
           REPO="${{ github.repository }}"
           WORKFLOW="cd.yml"
           ARTIFACT_NAME="db-dump"
-          DESTINATION="elixir/apps/domain/priv/repo"
+          DESTINATION="apps/domain/priv/repo"
 
           ARTIFACTS_URL=$(
             gh api \
