@@ -230,7 +230,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v2
         if: ${{ github.event_name == 'pull_request' }}
         with:
-          branch: performance-report
+          branch: main
           name: ${{ matrix.artifact_name }}-iperf3results
           path: /tmp/iperf3results-main
           search_artifacts: false
