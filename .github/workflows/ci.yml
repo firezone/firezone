@@ -233,7 +233,7 @@ jobs:
         run: |
           set -xe
 
-          ORG="${{ github.repository_owner }}}}"
+          ORG="${{ github.repository_owner }}"
           REPO="${{ github.repository }}"
           WORKFLOW="cd.yml"
           ARTIFACT_NAME="${{ matrix.artifact_name }}-iperf3results"
