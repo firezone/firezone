@@ -199,10 +199,10 @@ jobs:
           docker compose exec -it client /bin/sh -c 'iperf3 -u -b 0 -R -c 172.20.0.110 --json' >> /tmp/iperf3results/tcp_server2client.json
           docker compose exec -it client /bin/sh -c 'iperf3 -u -b 0 -c 172.20.0.110 --json' >> /tmp/iperf3results/udp_client2server.json
 
-          cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_bits_per_second=" + .end.sum_received.bits_per_second' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_bits_per_second=" + .end.sum_sent.bits_per_second' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_bits_per_second=" + .end.sum_received.bits_per_second' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_bits_per_second=" + .end.sum_sent.bits_per_second' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
       - name: Save ${{ matrix.test_name }} Perfomance Test Results
         uses: actions/upload-artifact@v3
         with:
