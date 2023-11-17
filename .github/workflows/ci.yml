@@ -302,7 +302,7 @@ jobs:
                 } else if (diff == 0) {
                     return "0%";
                 } else {
-                    return "-" + diff.to_fixed(0) + "%";
+                    return diff.to_fixed(0) + "%";
                 }
             }
 
