@@ -21,7 +21,6 @@ defmodule Web.Resources.Show do
           actor_groups_peek: Map.fetch!(actor_groups_peek, resource.id),
           flows: flows,
           params: Map.take(params, ["site_id"]),
-          todos_enabled?: Config.todos_enabled?(),
           traffic_filters_enabled?: Config.traffic_filters_enabled?()
         )
 

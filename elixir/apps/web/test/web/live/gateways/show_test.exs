@@ -114,43 +114,6 @@ defmodule Web.Live.Gateways.ShowTest do
     assert table["status"] =~ "Online"
   end
 
-  test "renders logs table", %{
-    account: account,
-    identity: identity,
-    gateway: gateway,
-    conn: conn
-  } do
-    flow =
-      Fixtures.Flows.create_flow(
-        account: account,
-        gateway: gateway
-      )
-
-    flow =
-      Repo.preload(flow, client: [:actor], gateway: [:group], policy: [:actor_group, :resource])
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/gateways/#{gateway}")
-
-    [row] =
-      lv
-      |> element("#flows")
-      |> render()
-      |> table_to_map()
-
-    assert row["authorized at"]
-    assert row["expires at"]
-    assert row["remote ip"] == to_string(gateway.last_seen_remote_ip)
-    assert row["policy"] =~ flow.policy.actor_group.name
-    assert row["policy"] =~ flow.policy.resource.name
-
-    assert row["client, actor (ip)"] =~ flow.client.name
-    assert row["client, actor (ip)"] =~ "owned by #{flow.client.actor.name}"
-    assert row["client, actor (ip)"] =~ to_string(flow.client_remote_ip)
-  end
-
   test "allows deleting gateways", %{
     account: account,
     gateway: gateway,

@@ -1,24 +1,16 @@
 defmodule Web.Gateways.Show do
   use Web, :live_view
-  import Web.Policies.Components
-  alias Domain.{Gateways, Flows, Config}
+  alias Domain.Gateways
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, gateway} <-
-           Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: :group),
-         {:ok, flows} <-
-           Flows.list_flows_for(gateway, socket.assigns.subject,
-             preload: [client: [:actor], policy: [:resource, :actor_group]]
-           ) do
+           Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: :group) do
       :ok = Gateways.subscribe_for_gateways_presence_in_group(gateway.group)
 
       socket =
         assign(
           socket,
-          gateway: gateway,
-          flows: flows,
-          todos_enabled?: Config.todos_enabled?(),
-          flow_activities_enabled?: Config.flow_activities_enabled?()
+          gateway: gateway
         )
 
       {:ok, socket}
@@ -61,10 +53,6 @@ defmodule Web.Gateways.Show do
           <.vertical_table_row>
             <:label>Name</:label>
             <:value><%= @gateway.name %></:value>
-          </.vertical_table_row>
-          <.vertical_table_row :if={@todos_enabled?}>
-            <:label>Connectivity</:label>
-            <:value>TODO: Peer to Peer</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Status</:label>
@@ -111,60 +99,6 @@ defmodule Web.Gateways.Show do
         </.vertical_table_row>
         -->
         </.vertical_table>
-      </:content>
-    </.section>
-
-    <.section>
-      <:title>
-        Authorizations
-      </:title>
-      <:content>
-        <.table id="flows" rows={@flows} row_id={&"flows-#{&1.id}"}>
-          <:col :let={flow} label="AUTHORIZED AT">
-            <.relative_datetime datetime={flow.inserted_at} />
-          </:col>
-          <:col :let={flow} label="EXPIRES AT">
-            <.relative_datetime datetime={flow.expires_at} />
-          </:col>
-          <:col :let={flow} label="REMOTE IP">
-            <%= flow.gateway_remote_ip %>
-          </:col>
-          <:col :let={flow} label="POLICY">
-            <.link
-              navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-            >
-              <.policy_name policy={flow.policy} />
-            </.link>
-          </:col>
-          <:col :let={flow} label="CLIENT, ACTOR (IP)">
-            <.link
-              navigate={~p"/#{@account}/clients/#{flow.client_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-            >
-              <%= flow.client.name %>
-            </.link>
-            owned by
-            <.link
-              navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-            >
-              <%= flow.client.actor.name %>
-            </.link>
-            (<%= flow.client_remote_ip %>)
-          </:col>
-          <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
-            <.link
-              navigate={~p"/#{@account}/flows/#{flow.id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-            >
-              Show
-            </.link>
-          </:col>
-          <:empty>
-            <div class="text-center text-slate-500 p-4">No authorizations to display</div>
-          </:empty>
-        </.table>
       </:content>
     </.section>
 
