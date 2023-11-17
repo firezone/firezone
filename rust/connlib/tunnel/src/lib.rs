@@ -513,6 +513,7 @@ where
         registry = register_default_interceptors(registry, &mut media_engine)?;
         let mut setting_engine = SettingEngine::default();
         setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
+        setting_engine.set_receive_mtu(MAX_UDP_SIZE);
 
         let webrtc_api = APIBuilder::new()
             .with_media_engine(media_engine)
