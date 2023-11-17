@@ -195,7 +195,8 @@ jobs:
         run: |
           set -xe
 
-          sed -i 's/RUST_LOG=[^ ]*/RUST_LOG=error/g' docker-compose.yml
+          sed -i 's/^\(\s*\)RUST_LOG=[^\n]*/\1RUST_LOG=error/' docker-compose.yml
+          cat docker-compose.yml | grep RUST_LOG
           docker compose restart client
           docker compose restart gateway
           docker compose restart relay
@@ -298,9 +299,11 @@ jobs:
                 let diff = 100 - current / (main / 100);
 
                 if (diff > 0) {
-                    return "+" + diff;
+                    return "+" + diff + "%";
+                } else if (diff == 0) {
+                    return "0%";
                 } else {
-                    return diff.toString();
+                    return "-" + diff + "%";
                 }
             }
 
