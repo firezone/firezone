@@ -298,11 +298,11 @@ jobs:
                 let diff = 100 - current / (main / 100);
 
                 if (diff > 0) {
-                    return "+" + diff.to_fixed(0) + "%";
+                    return "+" + diff.toFixed(0) + "%";
                 } else if (diff == 0) {
                     return "0%";
                 } else {
-                    return diff.to_fixed(0) + "%";
+                    return diff.toFixed(0) + "%";
                 }
             }
 
@@ -315,12 +315,12 @@ jobs:
             let tcp_client2server_sum_sent_retransmits = ${{ steps.perfomance-test.outputs.tcp_client2server_sum_sent_retransmits }} + ' (' + getDiffPercents(${{ steps.main-perfomance-test.outputs.tcp_client2server_sum_sent_retransmits }}, ${{ steps.perfomance-test.outputs.tcp_client2server_sum_sent_retransmits }}) + ')';
 
             let udp_server2client_sum_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_server2client_sum_bits_per_second }}) + ' (' + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_server2client_sum_bits_per_second }}, ${{ steps.perfomance-test.outputs.udp_server2client_sum_bits_per_second }}) + ')';
-            let udp_server2client_sum_jitter_ms = ${{ steps.perfomance-test.outputs.udp_server2client_sum_jitter_ms }}.to_fixed(2) + "ms (" + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_server2client_sum_jitter_ms }}, ${{ steps.perfomance-test.outputs.udp_server2client_sum_jitter_ms }}) + ')';
-            let udp_server2client_sum_lost_percent = ${{ steps.perfomance-test.outputs.udp_server2client_sum_lost_percent }}.to_fixed(2) + "% (" + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_server2client_sum_lost_percent }}, ${{ steps.perfomance-test.outputs.udp_server2client_sum_lost_percent }}) + ')';
+            let udp_server2client_sum_jitter_ms = ${{ steps.perfomance-test.outputs.udp_server2client_sum_jitter_ms }}.toFixed(2) + "ms (" + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_server2client_sum_jitter_ms }}, ${{ steps.perfomance-test.outputs.udp_server2client_sum_jitter_ms }}) + ')';
+            let udp_server2client_sum_lost_percent = ${{ steps.perfomance-test.outputs.udp_server2client_sum_lost_percent }}.toFixed(2) + "% (" + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_server2client_sum_lost_percent }}, ${{ steps.perfomance-test.outputs.udp_server2client_sum_lost_percent }}) + ')';
 
             let udp_client2server_sum_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_client2server_sum_bits_per_second }}) + ' (' + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_client2server_sum_bits_per_second }}, ${{ steps.perfomance-test.outputs.udp_client2server_sum_bits_per_second }}) + ')';
-            let udp_client2server_sum_jitter_ms = ${{ steps.perfomance-test.outputs.udp_client2server_sum_jitter_ms }}.to_fixed(2) + "ms (" + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_client2server_sum_jitter_ms }}, ${{ steps.perfomance-test.outputs.udp_client2server_sum_jitter_ms }}) + ')';
-            let udp_client2server_sum_lost_percent = ${{ steps.perfomance-test.outputs.udp_client2server_sum_lost_percent }}.to_fixed(2) + "% (" + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_client2server_sum_lost_percent }}, ${{ steps.perfomance-test.outputs.udp_client2server_sum_lost_percent }}) + ')';
+            let udp_client2server_sum_jitter_ms = ${{ steps.perfomance-test.outputs.udp_client2server_sum_jitter_ms }}.toFixed(2) + "ms (" + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_client2server_sum_jitter_ms }}, ${{ steps.perfomance-test.outputs.udp_client2server_sum_jitter_ms }}) + ')';
+            let udp_client2server_sum_lost_percent = ${{ steps.perfomance-test.outputs.udp_client2server_sum_lost_percent }}.toFixed(2) + "% (" + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_client2server_sum_lost_percent }}, ${{ steps.perfomance-test.outputs.udp_client2server_sum_lost_percent }}) + ')';
 
             const output = `## ${{ matrix.test_name }} Perfomance Test Results
 
