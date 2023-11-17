@@ -67,10 +67,10 @@ jobs:
             echo "Retagging ${image} from ${SOURCE_TAG}"
 
             docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.MAJOR_VERSION }}
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.MAJOR_MINOR_VERSION }}
             docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}-${{ inputs.tag || github.sha }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_VERSION}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_MINOR_VERSION}
 
             docker push --all-tags ${{ steps.login-production.outputs.registry }}/firezone/${image}
           done
