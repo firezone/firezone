@@ -497,7 +497,7 @@ where
     /// - `private_key`: wireguard's private key.
     /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
-    pub async fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
+    pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
         let public_key = (&private_key).into();
         let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
         let next_index = Default::default();
