@@ -57,6 +57,8 @@ jobs:
         run: |
           set -xe
           IMAGES=(relay api gateway web)
+          MAJOR_VERSION="${VERSION%%.*}"
+          MAJOR_MINOR_VERSION="${VERSION%.*}"
 
           for image in "${IMAGES[@]}"; do
             SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
@@ -66,6 +68,8 @@ jobs:
 
             docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
             docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.MAJOR_VERSION }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.MAJOR_MINOR_VERSION }}
             docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}-${{ inputs.tag || github.sha }}
 
             docker push --all-tags ${{ steps.login-production.outputs.registry }}/firezone/${image}
