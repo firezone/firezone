@@ -195,21 +195,29 @@ jobs:
         run: |
           set -xe
           mkdir -p /tmp/iperf3results
+          docker compose restart iperf3
+          docker compose restart client
           docker compose exec -it client /bin/sh -c 'iperf3 -R -c 172.20.0.110 --json' >> /tmp/iperf3results/tcp_server2client.json
           cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_sum_sent_retransmits=" + (.end.sum_sent.retransmits|tostring)' >> "$GITHUB_OUTPUT"
 
+          docker compose restart iperf3
+          docker compose restart client
           docker compose exec -it client /bin/sh -c 'iperf3 -c 172.20.0.110 --json' >> /tmp/iperf3results/tcp_client2server.json
           cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_sum_sent_retransmits=" + (.end.sum_sent.retransmits|tostring)' >> "$GITHUB_OUTPUT"
 
+          docker compose restart iperf3
+          docker compose restart client
           docker compose exec -it client /bin/sh -c 'iperf3 -u -b 0 -R -c 172.20.0.110 --json' >> /tmp/iperf3results/udp_server2client.json
           cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_sent_lost_percent=" + (.end.sum_sent.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
 
+          docker compose restart iperf3
+          docker compose restart client
           docker compose exec -it client /bin/sh -c 'iperf3 -u -b 0 -c 172.20.0.110 --json' >> /tmp/iperf3results/udp_client2server.json
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
@@ -274,6 +282,13 @@ jobs:
 
             const output = `## Perfomance Test Results
 
+            | Test Type | Direction        | Received                                               | Sent                                               | Retransmits / Packet Loss %                     |
+            |-----------|------------------|--------------------------------------------------------|----------------------------------------------------|-------------------------------------------------|
+            | TCP       | Client to Server | ` + tcp_client2server_sum_received_bits_per_second + ` | ` + tcp_client2server_sum_sent_bits_per_second + ` | ` + tcp_client2server_sum_sent_retransmits + `  |
+            | TCP       | Server to Client | ` + tcp_server2client_sum_received_bits_per_second + ` | ` + tcp_server2client_sum_sent_bits_per_second + ` | ` + tcp_server2client_sum_sent_retransmits + `  |
+            | UDP       | Client to Server | ` + udp_client2server_sum_received_bits_per_second + ` | ` + udp_client2server_sum_sent_bits_per_second + ` | ` + udp_server2client_sum_sent_lost_percent + ` |
+            | UDP       | Server to Client | ` + udp_server2client_sum_received_bits_per_second + ` | ` + udp_server2client_sum_sent_bits_per_second + ` | ` + udp_client2server_sum_sent_lost_percent + ` |
+
             ### TCP
             #### Client to Server
             Received: ` + tcp_client2server_sum_received_bits_per_second + `
@@ -289,12 +304,12 @@ jobs:
             #### Client to Server
             Received: ` + udp_client2server_sum_received_bits_per_second + `
             Sent: ` + udp_client2server_sum_sent_bits_per_second + `
-            Retransmits: ` + udp_client2server_sum_sent_retransmits + `
+            Retransmits: ` + udp_server2client_sum_sent_lost_percent + `
 
             #### Server to Client
             Received: ` + udp_server2client_sum_received_bits_per_second + `
             Sent: ` + udp_server2client_sum_sent_bits_per_second + `
-            Retransmits: ` + udp_server2client_sum_sent_retransmits + `
+            Retransmits: ` + udp_client2server_sum_sent_lost_percent + `
             `;
             // 3. Delete previous comment so PR timeline makes sense
             if (botComment) {
