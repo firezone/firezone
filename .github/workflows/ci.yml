@@ -194,6 +194,12 @@ jobs:
         id: perfomance-test
         run: |
           set -xe
+
+          sed -i 's/RUST_LOG=[^ ]*/RUST_LOG=error/g' docker-compose.yml
+          docker compose restart client
+          docker compose restart gateway
+          docker compose restart relay
+
           mkdir -p /tmp/iperf3results
           docker compose exec --env RUST_LOG=error -it client /bin/sh -c 'iperf3 -R -c 172.20.0.110 --json' >> /tmp/iperf3results/tcp_server2client.json
           cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
