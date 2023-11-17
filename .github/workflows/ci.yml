@@ -195,7 +195,7 @@ jobs:
         run: |
           set -xe
 
-          sed -i 's/^\(\s*\)RUST_LOG=[^\n]*/\1RUST_LOG=error/' docker-compose.yml
+          sed -i 's/^\(\s*\)RUST_LOG:.*$/\1RUST_LOG: error/' docker-compose.yml
           cat docker-compose.yml | grep RUST_LOG
           docker compose restart client
           docker compose restart gateway
