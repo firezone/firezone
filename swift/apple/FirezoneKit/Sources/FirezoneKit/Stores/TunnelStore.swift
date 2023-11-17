@@ -92,11 +92,7 @@ final class TunnelStore: ObservableObject {
       fatalError("Tunnel not initialized yet")
     }
 
-    let wasConnected =
-      (tunnel.connection.status == .connected || tunnel.connection.status == .connecting)
-    if wasConnected {
-      stop()
-    }
+    stop()
 
     try await tunnel.saveAuthStatus(tunnelAuthStatus)
     self.tunnelAuthStatus = tunnelAuthStatus
@@ -107,11 +103,7 @@ final class TunnelStore: ObservableObject {
       fatalError("Tunnel not initialized yet")
     }
 
-    let wasConnected =
-      (tunnel.connection.status == .connected || tunnel.connection.status == .connecting)
-    if wasConnected {
-      stop()
-    }
+    stop()
 
     try await tunnel.saveAdvancedSettings(advancedSettings)
   }
@@ -172,8 +164,12 @@ final class TunnelStore: ObservableObject {
     }
 
     TunnelStore.logger.trace("\(#function)")
-    let session = castToSession(tunnel.connection)
-    session.stopTunnel()
+
+    let status = tunnel.connection.status
+    if status == .connected || status == .connecting {
+      let session = castToSession(tunnel.connection)
+      session.stopTunnel()
+    }
   }
 
   func stopAndSignOut() async throws -> Keychain.PersistentRef? {
@@ -183,8 +179,12 @@ final class TunnelStore: ObservableObject {
     }
 
     TunnelStore.logger.trace("\(#function)")
-    let session = castToSession(tunnel.connection)
-    session.stopTunnel()
+
+    let status = tunnel.connection.status
+    if status == .connected || status == .connecting {
+      let session = castToSession(tunnel.connection)
+      session.stopTunnel()
+    }
 
     if case .signedIn(let authBaseURL, let accountId, let tokenReference) = self.tunnelAuthStatus {
       try await saveAuthStatus(.signedOut(authBaseURL: authBaseURL, accountId: accountId))
