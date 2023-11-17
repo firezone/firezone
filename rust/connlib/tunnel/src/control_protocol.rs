@@ -8,7 +8,7 @@ use std::{fmt, sync::Arc};
 
 use connlib_shared::{
     messages::{Relay, RequestConnection, ReuseConnection},
-    Callbacks, Error, Result,
+    Callbacks, Result,
 };
 use webrtc::ice_transport::{
     ice_candidate::RTCIceCandidate, ice_gatherer::RTCIceGatherOptions,
@@ -20,7 +20,7 @@ use webrtc::ice_transport::{ice_credential_type::RTCIceCredentialType, ice_serve
 use crate::{
     device_channel::Device,
     peer::{PacketTransform, Peer},
-    peer_handler, ConnectedPeer, RoleState, Tunnel,
+    peer_handler, ConnectedPeer,
 };
 
 mod client;
@@ -37,30 +37,6 @@ const MAX_HOST_CANDIDATES: usize = 8;
 pub enum Request {
     NewConnection(RequestConnection),
     ReuseConnection(ReuseConnection),
-}
-
-impl<CB, TRoleState> Tunnel<CB, TRoleState>
-where
-    CB: Callbacks + 'static,
-    TRoleState: RoleState,
-{
-    pub async fn add_ice_candidate(
-        &self,
-        conn_id: TRoleState::Id,
-        ice_candidate: RTCIceCandidate,
-    ) -> Result<()> {
-        tracing::info!(%ice_candidate, %conn_id, "adding new remote candidate");
-        let peer_connection = self
-            .peer_connections
-            .lock()
-            .get(&conn_id)
-            .ok_or(Error::ControlProtocolError)?
-            .clone();
-        peer_connection
-            .add_remote_candidate(Some(ice_candidate))
-            .await?;
-        Ok(())
-    }
 }
 
 pub(crate) struct IceConnection {

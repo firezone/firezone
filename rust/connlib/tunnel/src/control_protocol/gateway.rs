@@ -15,6 +15,7 @@ use connlib_shared::{
 };
 use ip_network::IpNetwork;
 use std::{net::ToSocketAddrs, sync::Arc};
+use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 use webrtc::ice_transport::{
     ice_role::RTCIceRole, ice_transport_state::RTCIceTransportState, RTCIceTransport,
 };
@@ -38,6 +39,30 @@ fn set_connection_state_update(ice: &Arc<RTCIceTransport>, client_id: ClientId) 
             })
         })
     });
+}
+
+impl<CB> Tunnel<CB, gateway::State>
+where
+    CB: Callbacks + 'static,
+{
+    pub async fn add_ice_candidate(
+        &self,
+        conn_id: ClientId,
+        ice_candidate: RTCIceCandidate,
+    ) -> Result<()> {
+        tracing::info!(%ice_candidate, %conn_id, "adding new remote candidate");
+
+        let peer_connection = self
+            .peer_connections
+            .lock()
+            .get(&conn_id)
+            .ok_or(Error::ControlProtocolError)?
+            .clone();
+        peer_connection
+            .add_remote_candidate(Some(ice_candidate))
+            .await?;
+        Ok(())
+    }
 }
 
 impl<CB> Tunnel<CB, gateway::State>
