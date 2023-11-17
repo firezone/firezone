@@ -212,16 +212,16 @@ jobs:
           docker compose restart iperf3
           docker compose restart client
           docker compose exec -it client /bin/sh -c 'iperf3 -u -b 0 -R -c 172.20.0.110 --json' >> /tmp/iperf3results/udp_server2client.json
-          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_sent_lost_percent=" + (.end.sum_sent.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_bits_per_second=" + (.end.sum.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
 
           docker compose restart iperf3
           docker compose restart client
           docker compose exec -it client /bin/sh -c 'iperf3 -u -b 0 -c 172.20.0.110 --json' >> /tmp/iperf3results/udp_client2server.json
-          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_sent_lost_percent=" + (.end.sum_sent.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_bits_per_second=" + (.end.sum.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
       - name: Save ${{ matrix.test_name }} Perfomance Test Results
         uses: actions/upload-artifact@v3
         with:
@@ -242,7 +242,7 @@ jobs:
             });
 
             const botComment = comments.find(comment => {
-              return comment.user.type === 'Bot' && comment.body.includes('Perfomance Test Results')
+              return comment.user.type === 'Bot' && comment.body.includes('${{ matrix.test_name }} Perfomance Test Results')
             });
 
             function humanFileSize(bytes, dp=1) {
@@ -272,24 +272,23 @@ jobs:
             const tcp_client2server_sum_sent_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.tcp_client2server_sum_sent_bits_per_second }});
             const tcp_client2server_sum_sent_retransmits = ${{ steps.perfomance-test.outputs.tcp_client2server_sum_sent_retransmits }};
 
-            const udp_server2client_sum_received_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_server2client_sum_received_bits_per_second }});
-            const udp_server2client_sum_sent_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_server2client_sum_sent_bits_per_second }});
-            const udp_server2client_sum_sent_lost_percent = "${{ steps.perfomance-test.outputs.udp_server2client_sum_sent_lost_percent }}%";
+            const udp_server2client_sum_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_server2client_sum_bits_per_second }});
+            const udp_server2client_sum_jitter_ms = humanFileSize(${{ steps.perfomance-test.outputs.udp_server2client_sum_jitter_ms }});
+            const udp_server2client_sum_lost_percent = "${{ steps.perfomance-test.outputs.udp_server2client_sum_lost_percent }}%";
 
-            const udp_client2server_sum_received_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_client2server_sum_received_bits_per_second }});
-            const udp_client2server_sum_sent_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_client2server_sum_sent_bits_per_second }});
-            const udp_client2server_sum_sent_lost_percent = "${{ steps.perfomance-test.outputs.udp_client2server_sum_sent_lost_percent }}%";
+            const udp_client2server_sum_bits_per_second = humanFileSize(${{ steps.perfomance-test.outputs.udp_client2server_sum_bits_per_second }});
+            const udp_client2server_sum_jitter_ms = "${{ steps.perfomance-test.outputs.udp_client2server_sum_jitter_ms }} ms";
+            const udp_client2server_sum_lost_percent = "${{ steps.perfomance-test.outputs.udp_client2server_sum_lost_percent }}%";
 
-            const output = `## Perfomance Test Results
-
-            | Test Type | Direction        | Received                                               | Sent                                               | Retransmits / Packet Loss %                     |
-            |-----------|------------------|--------------------------------------------------------|----------------------------------------------------|-------------------------------------------------|
-            | TCP       | Client to Server | ` + tcp_client2server_sum_received_bits_per_second + ` | ` + tcp_client2server_sum_sent_bits_per_second + ` | ` + tcp_client2server_sum_sent_retransmits + `  |
-            | TCP       | Server to Client | ` + tcp_server2client_sum_received_bits_per_second + ` | ` + tcp_server2client_sum_sent_bits_per_second + ` | ` + tcp_server2client_sum_sent_retransmits + `  |
-            | UDP       | Client to Server | ` + udp_client2server_sum_received_bits_per_second + ` | ` + udp_client2server_sum_sent_bits_per_second + ` | ` + udp_server2client_sum_sent_lost_percent + ` |
-            | UDP       | Server to Client | ` + udp_server2client_sum_received_bits_per_second + ` | ` + udp_server2client_sum_sent_bits_per_second + ` | ` + udp_client2server_sum_sent_lost_percent + ` |
+            const output = `## ${{ matrix.test_name }} Perfomance Test Results
 
             ### TCP
+
+            | Direction        | Received                                               | Sent                                               | Retransmits                                    |
+            |------------------|--------------------------------------------------------|----------------------------------------------------|------------------------------------------------|
+            | Client to Server | ` + tcp_client2server_sum_received_bits_per_second + ` | ` + tcp_client2server_sum_sent_bits_per_second + ` | ` + tcp_client2server_sum_sent_retransmits + ` |
+            | Server to Client | ` + tcp_server2client_sum_received_bits_per_second + ` | ` + tcp_server2client_sum_sent_bits_per_second + ` | ` + tcp_server2client_sum_sent_retransmits + ` |
+
             #### Client to Server
             Received: ` + tcp_client2server_sum_received_bits_per_second + `
             Sent: ` + tcp_client2server_sum_sent_bits_per_second + `
@@ -301,16 +300,23 @@ jobs:
             Retransmits: ` + tcp_server2client_sum_sent_retransmits + `
 
             ### UDP
+
+            | Direction        | Bits/s                                        | Jitter                                  | Lost                                       |
+            |------------------|-----------------------------------------------|-----------------------------------------|--------------------------------------------|
+            | Client to Server | ` + udp_client2server_sum_bits_per_second + ` | ` + udp_client2server_sum_jitter_ms + ` | ` + udp_server2client_sum_lost_percent + ` |
+            | Server to Client | ` + udp_server2client_sum_bits_per_second + ` | ` + udp_server2client_sum_jitter_ms + ` | ` + udp_client2server_sum_lost_percent + ` |
+
             #### Client to Server
-            Received: ` + udp_client2server_sum_received_bits_per_second + `
-            Sent: ` + udp_client2server_sum_sent_bits_per_second + `
-            Retransmits: ` + udp_server2client_sum_sent_lost_percent + `
+            ` + udp_client2server_sum_bits_per_second + `
+            Jitter: ` + udp_client2server_sum_jitter_ms + `
+            Lost: ` + udp_server2client_sum_lost_percent + `
 
             #### Server to Client
-            Received: ` + udp_server2client_sum_received_bits_per_second + `
-            Sent: ` + udp_server2client_sum_sent_bits_per_second + `
-            Retransmits: ` + udp_client2server_sum_sent_lost_percent + `
+            Received: ` + udp_server2client_sum_bits_per_second + `
+            Jitter: ` + udp_server2client_sum_jitter_ms + `
+            Lost: ` + udp_client2server_sum_lost_percent + `
             `;
+
             // 3. Delete previous comment so PR timeline makes sense
             if (botComment) {
               github.rest.issues.deleteComment({
@@ -319,6 +325,7 @@ jobs:
                 comment_id: botComment.id,
               });
             }
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
