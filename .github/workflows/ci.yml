@@ -225,37 +225,36 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}-iperf3results
           path: /tmp/iperf3results
-      # - name: Download main branch ${{ matrix.test_name }} Perfomance Test Results
-      #   id: download-artifact
-      #   uses: dawidd6/action-download-artifact@v2
-      #   if: ${{ github.event_name == 'pull_request' }}
-      #   with:
-      #     branch: performance-report
-      #     name: ${{ matrix.artifact_name }}-iperf3results
-      #     path: /tmp/iperf3results-main
-      #     search_artifacts: false
-      #     workflow: ci.yml
-      #     workflow_conclusion: completed
-      #     if_no_artifact_found: fail
+      - name: Download main branch ${{ matrix.test_name }} Perfomance Test Results
+        id: download-artifact
+        uses: dawidd6/action-download-artifact@v2
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          branch: performance-report
+          name: ${{ matrix.artifact_name }}-iperf3results
+          path: /tmp/iperf3results-main
+          search_artifacts: false
+          workflow: ci.yml
+          workflow_conclusion: completed
+          if_no_artifact_found: fail
       - name: "Generate main branch metrics"
         id: main-perfomance-test
         run: |
-          # TODO: replace iperf3results-main to iperf3results before merging to main
-          cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_sum_sent_retransmits=" + (.end.sum_sent.retransmits|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results-main/tcp_server2client.json | jq -r '"tcp_server2client_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results-main/tcp_server2client.json | jq -r '"tcp_server2client_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results-main/tcp_server2client.json | jq -r '"tcp_server2client_sum_sent_retransmits=" + (.end.sum_sent.retransmits|tostring)' >> "$GITHUB_OUTPUT"
 
-          cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_sum_sent_retransmits=" + (.end.sum_sent.retransmits|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results-main/tcp_client2server.json | jq -r '"tcp_client2server_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results-main/tcp_client2server.json | jq -r '"tcp_client2server_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results-main/tcp_client2server.json | jq -r '"tcp_client2server_sum_sent_retransmits=" + (.end.sum_sent.retransmits|tostring)' >> "$GITHUB_OUTPUT"
 
-          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_bits_per_second=" + (.end.sum.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results-main/udp_server2client.json | jq -r '"udp_server2client_sum_bits_per_second=" + (.end.sum.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results-main/udp_server2client.json | jq -r '"udp_server2client_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results-main/udp_server2client.json | jq -r '"udp_server2client_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
 
-          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_bits_per_second=" + (.end.sum.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
-          cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results-main/udp_client2server.json | jq -r '"udp_client2server_sum_bits_per_second=" + (.end.sum.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results-main/udp_client2server.json | jq -r '"udp_client2server_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
+          cat /tmp/iperf3results-main/udp_client2server.json | jq -r '"udp_client2server_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
       - name: Update PR
         uses: actions/github-script@v6
         id: perf-comment
