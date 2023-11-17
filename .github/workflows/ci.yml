@@ -197,9 +197,8 @@ jobs:
 
           sed -i 's/^\(\s*\)RUST_LOG:.*$/\1RUST_LOG: error/' docker-compose.yml
           cat docker-compose.yml | grep RUST_LOG
-          docker compose restart client
-          docker compose restart gateway
-          docker compose restart relay
+          docker compose down client gateway relay
+          docker compose up -d client gateway relay
 
           mkdir -p /tmp/iperf3results
           docker compose exec --env RUST_LOG=error -it client /bin/sh -c 'iperf3 -R -c 172.20.0.110 --json' >> /tmp/iperf3results/tcp_server2client.json
