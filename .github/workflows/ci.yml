@@ -276,14 +276,14 @@ jobs:
 
             ### TCP
 
-            | Direction        | Received                                               | Sent                                               | Retransmits                                    |
+            | Direction        | Received/s                                             | Sent/s                                             | Retransmits                                    |
             |------------------|--------------------------------------------------------|----------------------------------------------------|------------------------------------------------|
             | Client to Server | ` + tcp_client2server_sum_received_bits_per_second + ` | ` + tcp_client2server_sum_sent_bits_per_second + ` | ` + tcp_client2server_sum_sent_retransmits + ` |
             | Server to Client | ` + tcp_server2client_sum_received_bits_per_second + ` | ` + tcp_server2client_sum_sent_bits_per_second + ` | ` + tcp_server2client_sum_sent_retransmits + ` |
 
             ### UDP
 
-            | Direction        | Bits/s                                        | Jitter                                  | Lost                                       |
+            | Direction        | Total/s                                       | Jitter                                  | Lost                                       |
             |------------------|-----------------------------------------------|-----------------------------------------|--------------------------------------------|
             | Client to Server | ` + udp_client2server_sum_bits_per_second + ` | ` + udp_client2server_sum_jitter_ms + ` | ` + udp_server2client_sum_lost_percent + ` |
             | Server to Client | ` + udp_server2client_sum_bits_per_second + ` | ` + udp_server2client_sum_jitter_ms + ` | ` + udp_client2server_sum_lost_percent + ` |
