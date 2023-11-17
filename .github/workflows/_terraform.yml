@@ -58,10 +58,7 @@ jobs:
         uses: hashicorp/tfc-workflows-github/actions/plan-output@v1.0.4
         id: plan-output
         with:
-          plan:
-            ${{
-            fromJSON(steps.plan-run.outputs.payload).data.relationships.plan.data.id
-            }}
+          plan: ${{ fromJSON(steps.plan-run.outputs.payload).data.relationships.plan.data.id }}
       - name: Update PR
         uses: actions/github-script@v6
         id: plan-comment
