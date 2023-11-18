@@ -9,7 +9,7 @@ export default function Footer() {
     <footer className="relative bg-white border-t">
       <div className="mx-auto w-full max-w-screen-xl p-4 py-6 lg:py-8">
         <div className="md:flex md:justify-between">
-          <div className="mb-6 md:mb-0">
+          <div className="flex justify-between md:w-1/2 w-full mb-6 md:mb-0">
             <Link href="/">
               <Image
                 width={150}
@@ -17,6 +17,15 @@ export default function Footer() {
                 src="/images/logo-text.svg"
                 className="h-auto"
                 alt="Firezone Logo"
+              />
+            </Link>
+            <Link href="https://www.ycombinator.com/companies/firezone">
+              <Image
+                width={150}
+                height={150}
+                src="/images/yc-logo.svg"
+                className="h-auto"
+                alt="YC Logo"
               />
             </Link>
           </div>
