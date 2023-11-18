@@ -169,15 +169,13 @@ pub struct State {
     active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidate>,
     /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
     waiting_for_sdp_from_gateway: HashMap<GatewayId, Receiver<RTCIceCandidate>>,
-
-    // TODO: Make private
-    pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
-    pub gateway_awaiting_connection: HashSet<GatewayId>,
+    awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
+    gateway_awaiting_connection: HashSet<GatewayId>,
 
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
 
-    pub gateway_public_keys: HashMap<GatewayId, PublicKey>,
-    pub gateway_preshared_keys: HashMap<GatewayId, StaticSecret>,
+    gateway_public_keys: HashMap<GatewayId, PublicKey>,
+    gateway_preshared_keys: HashMap<GatewayId, StaticSecret>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
 
     pub dns_resources_internal_ips: HashMap<DnsResource, Vec<IpAddr>>,
