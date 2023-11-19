@@ -77,15 +77,15 @@ final class AuthStore: ObservableObject {
             && (previousStatus != .disconnected && previousStatus != .invalid)
           {
             self.logger.log("\(#function): Disconnected")
-            if let disconnectionReason = DisconnectionReason.loadFromDisk() {
+            if let tsEvent = TunnelShutdownEvent.loadFromDisk() {
               self.logger.log(
-                "\(#function): Disconnection reason: \(disconnectionReason, privacy: .public)"
+                "\(#function): Tunnel shutdown event: \(tsEvent, privacy: .public)"
               )
-              if disconnectionReason.category.needsSignout {
+              if tsEvent.needsSignout {
                 self.signOut()
               }
             } else {
-              self.logger.log("\(#function): Disconnection reason not found")
+              self.logger.log("\(#function): Tunnel shutdown event not found")
             }
           }
           self.status = status

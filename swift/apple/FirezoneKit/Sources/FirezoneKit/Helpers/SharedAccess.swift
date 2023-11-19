@@ -47,8 +47,8 @@ public struct SharedAccess {
     return nil
   }
 
-  public static var disconnectReasonFileURL: URL {
-    baseFolderURL.appendingPathComponent("disconnect_reason.json")
+  public static var tunnelShutdownEventFileURL: URL {
+    baseFolderURL.appendingPathComponent("tunnel_shutdown_event_data.json")
   }
 
   private static func ensureDirectoryExists(at path: String) -> Bool {

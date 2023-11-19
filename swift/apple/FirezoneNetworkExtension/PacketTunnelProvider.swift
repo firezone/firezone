@@ -107,8 +107,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
   }
 
-  func handleTunnelShutdown(dueTo category: DisconnectionReason.Category, errorMessage: String) {
-    DisconnectionReason.saveToDisk(category: category, errorMessage: errorMessage)
+  func handleTunnelShutdown(dueTo reason: TunnelShutdownEvent.Reason, errorMessage: String) {
+    TunnelShutdownEvent.saveToDisk(reason: reason, errorMessage: errorMessage)
   }
 }
 
