@@ -28,8 +28,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     guard let controlPlaneURLString = protocolConfiguration.serverAddress else {
       Self.logger.error("serverAddress is missing")
-      DisconnectionReason.saveToDisk(
-        category: .badTunnelConfiguration,
+      self.handleTunnelShutdown(
+        dueTo: .badTunnelConfiguration,
         errorMessage: "serverAddress is missing")
       completionHandler(
         PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
@@ -38,8 +38,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     guard let tokenRef = protocolConfiguration.passwordReference else {
       Self.logger.error("passwordReference is missing")
-      DisconnectionReason.saveToDisk(
-        category: .badTunnelConfiguration,
+      self.handleTunnelShutdown(
+        dueTo: .badTunnelConfiguration,
         errorMessage: "passwordReference is missing")
       completionHandler(
         PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("passwordReference"))
@@ -51,8 +51,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     guard let connlibLogFilter = providerConfig?[TunnelProviderKeys.keyConnlibLogFilter] as? String
     else {
       Self.logger.error("connlibLogFilter is missing")
-      DisconnectionReason.saveToDisk(
-        category: .badTunnelConfiguration,
+      self.handleTunnelShutdown(
+        dueTo: .badTunnelConfiguration,
         errorMessage: "connlibLogFilter is missing")
       completionHandler(
         PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("connlibLogFilter"))
@@ -62,8 +62,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Task {
       let keychain = Keychain()
       guard let token = await keychain.load(persistentRef: tokenRef) else {
-        DisconnectionReason.saveToDisk(
-          category: .tokenNotFound,
+        self.handleTunnelShutdown(
+          dueTo: .tokenNotFound,
           errorMessage: "Token not found in keychain")
         completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
         return
@@ -105,6 +105,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       displayableResources in
       completionHandler?(displayableResources?.toData())
     }
+  }
+
+  func handleTunnelShutdown(dueTo category: DisconnectionReason.Category, errorMessage: String) {
+    DisconnectionReason.saveToDisk(category: category, errorMessage: errorMessage)
   }
 }
 

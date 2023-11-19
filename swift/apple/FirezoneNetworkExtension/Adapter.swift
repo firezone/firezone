@@ -54,7 +54,7 @@ private enum AdapterState: CustomStringConvertible {
 }
 
 // Loosely inspired from WireGuardAdapter from WireGuardKit
-public class Adapter {
+class Adapter {
 
   typealias StartTunnelCompletionHandler = ((AdapterError?) -> Void)
   typealias StopTunnelCompletionHandler = (() -> Void)
@@ -67,7 +67,7 @@ public class Adapter {
   private var networkSettings: NetworkSettings?
 
   /// Packet tunnel provider.
-  private weak var packetTunnelProvider: NEPacketTunnelProvider?
+  private weak var packetTunnelProvider: PacketTunnelProvider?
 
   /// Network routes monitor.
   private var networkMonitor: NWPathMonitor?
@@ -92,9 +92,9 @@ public class Adapter {
   private let logFilter: String
   private let connlibLogFolderPath: String
 
-  public init(
+  init(
     controlPlaneURLString: String, token: String,
-    logFilter: String, packetTunnelProvider: NEPacketTunnelProvider
+    logFilter: String, packetTunnelProvider: PacketTunnelProvider
   ) {
     self.controlPlaneURLString = controlPlaneURLString
     self.token = token
@@ -126,8 +126,8 @@ public class Adapter {
 
       self.logger.log("Adapter.start")
       guard case .stoppedTunnel = self.state else {
-        DisconnectionReason.saveToDisk(
-          category: .other,
+        packetTunnelProvider?.handleTunnelShutdown(
+          dueTo: .other,
           errorMessage: "Adapter is in invalid state")
         completionHandler(.invalidState)
         return
@@ -149,8 +149,8 @@ public class Adapter {
         )
       } catch let error {
         self.logger.error("Adapter.start: Error: \(error, privacy: .public)")
-        DisconnectionReason.saveToDisk(
-          category: .connlibConnectFailure,
+        packetTunnelProvider?.handleTunnelShutdown(
+          dueTo: .connlibConnectFailure,
           errorMessage: error.localizedDescription)
         self.state = .stoppedTunnel
         completionHandler(AdapterError.connlibConnectError(error))
@@ -165,8 +165,8 @@ public class Adapter {
 
       self.logger.log("Adapter.stop")
 
-      DisconnectionReason.saveToDisk(
-        category: (reason == .userInitiated) ? .stoppedByUser : .stopped,
+      packetTunnelProvider?.handleTunnelShutdown(
+        dueTo: (reason == .userInitiated) ? .stoppedByUser : .stopped,
         errorMessage: "\(reason)")
 
       switch self.state {
@@ -368,8 +368,8 @@ extension Adapter: CallbackHandlerDelegate {
       }
       networkSettings.apply(on: packetTunnelProvider, logger: self.logger) { error in
         if let error = error {
-          DisconnectionReason.saveToDisk(
-            category: .networkSettingsApplyFailure,
+          packetTunnelProvider.handleTunnelShutdown(
+            dueTo: .networkSettingsApplyFailure,
             errorMessage: error.localizedDescription)
           onStarted?(AdapterError.setNetworkSettings(error))
           self.state = .stoppedTunnel
@@ -478,8 +478,8 @@ extension Adapter: CallbackHandlerDelegate {
         case .stoppedTunnelTemporarily:
           self.state = .stoppedTunnel
         default:
-          DisconnectionReason.saveToDisk(
-            category: .connlibDisconnected,
+          packetTunnelProvider?.handleTunnelShutdown(
+            dueTo: .connlibDisconnected,
             errorMessage: errorMessage)
           self.packetTunnelProvider?.cancelTunnelWithError(
             AdapterError.connlibFatalError(errorMessage))
