@@ -109,6 +109,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   func handleTunnelShutdown(dueTo reason: TunnelShutdownEvent.Reason, errorMessage: String) {
     TunnelShutdownEvent.saveToDisk(reason: reason, errorMessage: errorMessage)
+    if reason.needsAlert {
+      displayMessage(
+        "The Firezone tunnel shutdown because of: \(reason)\n\n\(errorMessage)",
+        completionHandler: { _ in }
+      )
+    }
   }
 }
 

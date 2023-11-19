@@ -16,14 +16,24 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
   private static let logger = Logger.make(for: TunnelShutdownEvent.self)
 
   public enum Reason: String, Codable {
-    case stopped
-    case stoppedByUser
-    case connlibConnectFailure
-    case connlibDisconnected
-    case badTunnelConfiguration
-    case tokenNotFound
-    case networkSettingsApplyFailure
-    case other
+    case stopped = "Stopped by OS"
+    case stoppedByUser = "Stopped by user"
+    case connlibConnectFailure = "connlib connect failure"
+    case connlibDisconnected = "connlib disconnected"
+    case badTunnelConfiguration = "Bad tunnel configuration"
+    case tokenNotFound = "Token not found"
+    case networkSettingsApplyFailure = "Network settings apply failure"
+    case invalidAdapterState = "Invalid Adapter state"
+
+    public var needsAlert: Bool {
+      switch self {
+      case .stoppedByUser, .connlibConnectFailure, .connlibDisconnected,
+        .badTunnelConfiguration, .tokenNotFound:
+        return false
+      case .stopped, .networkSettingsApplyFailure, .invalidAdapterState:
+        return true
+      }
+    }
   }
 
   public let reason: TunnelShutdownEvent.Reason
@@ -33,7 +43,7 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
   public var needsSignout: Bool {
     switch reason {
     case .stopped, .stoppedByUser,
-      .networkSettingsApplyFailure, .other:
+      .networkSettingsApplyFailure, .invalidAdapterState:
       return false
     case .connlibConnectFailure, .connlibDisconnected,
       .badTunnelConfiguration, .tokenNotFound:

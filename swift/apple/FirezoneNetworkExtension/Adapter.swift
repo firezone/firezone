@@ -127,7 +127,7 @@ class Adapter {
       self.logger.log("Adapter.start")
       guard case .stoppedTunnel = self.state else {
         packetTunnelProvider?.handleTunnelShutdown(
-          dueTo: .other,
+          dueTo: .invalidAdapterState,
           errorMessage: "Adapter is in invalid state")
         completionHandler(.invalidState)
         return
