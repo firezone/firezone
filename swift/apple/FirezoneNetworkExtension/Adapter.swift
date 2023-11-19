@@ -159,11 +159,15 @@ public class Adapter {
   }
 
   /// Stop the tunnel
-  public func stop(completionHandler: @escaping () -> Void) {
+  public func stop(reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
       self.logger.log("Adapter.stop")
+
+      DisconnectionReason.saveToDisk(
+        category: (reason == .userInitiated) ? .stoppedByUser : .stopped,
+        errorMessage: "\(reason)")
 
       switch self.state {
       case .stoppedTunnel, .stoppingTunnel:
@@ -189,9 +193,6 @@ public class Adapter {
             completionHandler()
           })
       case .stoppedTunnelTemporarily:
-        DisconnectionReason.saveToDisk(
-          category: .disconnectRequested,
-          errorMessage: "")
         self.state = .stoppedTunnel
         completionHandler()
       }
@@ -464,9 +465,6 @@ extension Adapter: CallbackHandlerDelegate {
       if let errorMessage = error {
         self.logger.error(
           "Connlib disconnected with unrecoverable error: \(errorMessage, privacy: .public)")
-        DisconnectionReason.saveToDisk(
-          category: .connlibDisconnected,
-          errorMessage: errorMessage)
         switch self.state {
         case .stoppingTunnel(session: _, let onStopped):
           onStopped?()
@@ -480,6 +478,9 @@ extension Adapter: CallbackHandlerDelegate {
         case .stoppedTunnelTemporarily:
           self.state = .stoppedTunnel
         default:
+          DisconnectionReason.saveToDisk(
+            category: .connlibDisconnected,
+            errorMessage: errorMessage)
           self.packetTunnelProvider?.cancelTunnelWithError(
             AdapterError.connlibFatalError(errorMessage))
           self.state = .stoppedTunnel
@@ -488,19 +489,12 @@ extension Adapter: CallbackHandlerDelegate {
         self.logger.log("Connlib disconnected")
         switch self.state {
         case .stoppingTunnel(session: _, let onStopped):
-          DisconnectionReason.saveToDisk(
-            category: .disconnectRequested,
-            errorMessage: "")
           onStopped?()
           self.state = .stoppedTunnel
         case .stoppingTunnelTemporarily(session: _, let onStopped):
           onStopped?()
           self.state = .stoppedTunnelTemporarily
         default:
-          // This should not happen
-          DisconnectionReason.saveToDisk(
-            category: .other,
-            errorMessage: "Connlib disconnected without specifying an error message")
           self.state = .stoppedTunnel
         }
       }

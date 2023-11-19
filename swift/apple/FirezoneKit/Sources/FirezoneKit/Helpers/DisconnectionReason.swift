@@ -16,7 +16,8 @@ public struct DisconnectionReason: Codable, CustomStringConvertible {
   private static let logger = Logger.make(for: DisconnectionReason.self)
 
   public enum Category: String, Codable {
-    case disconnectRequested
+    case stopped
+    case stoppedByUser
     case connlibConnectFailure
     case connlibDisconnected
     case badTunnelConfiguration
@@ -26,7 +27,8 @@ public struct DisconnectionReason: Codable, CustomStringConvertible {
 
     var needsSignout: Bool {
       switch self {
-      case .disconnectRequested, .networkSettingsApplyFailure, .other:
+      case .stopped, .stoppedByUser,
+        .networkSettingsApplyFailure, .other:
         return false
       case .connlibConnectFailure, .connlibDisconnected,
         .badTunnelConfiguration, .tokenNotFound:
