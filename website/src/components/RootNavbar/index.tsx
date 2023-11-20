@@ -4,7 +4,7 @@ import Link from "next/link";
 import SidebarToggle from "./SidebarToggle";
 import { Navbar } from "flowbite-react";
 import { usePathname } from "next/navigation";
-import RequestAccessButton from "@/components/RequestAccessButton";
+import RequestDemoButton from "@/components/RequestDemoButton";
 import { useEffect } from "react";
 import { initFlowbite, Dropdown } from "flowbite";
 import { HiChevronDown } from "react-icons/hi2";
@@ -135,17 +135,6 @@ export default function RootNavbar() {
                 </li>
               </ul>
             </div>
-            <Link
-              className={
-                (p.startsWith("/contact/sales")
-                  ? "text-neutral-900 underline"
-                  : "text-neutral-800") +
-                " p-1 mr-1 font-medium hover:text-neutral-900 hover:underline"
-              }
-              href="/contact/sales"
-            >
-              Contact
-            </Link>
           </div>
           <div className="hidden md:flex items-center lg:order-2">
             <Link
@@ -173,7 +162,7 @@ export default function RootNavbar() {
               />
             </Link>
             <span className="mr-2">
-              <RequestAccessButton />
+              <RequestDemoButton />
             </span>
           </div>
         </div>
