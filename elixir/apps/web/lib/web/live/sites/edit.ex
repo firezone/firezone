@@ -35,7 +35,7 @@ defmodule Web.Sites.Edit do
                   Data Routing -
                   <a
                     class={[link_style(), "text-sm"]}
-                    href="https://www.firezone.dev/kb"
+                    href="https://www.firezone.dev/kb?utm_source=product"
                     target="_blank"
                   >
                     Read about routing in Firezone
@@ -68,7 +68,7 @@ defmodule Web.Sites.Edit do
                       required
                     />
                     <p class="ml-6 mb-4 text-sm text-gray-500 dark:text-gray-400">
-                      Firezone will enforce direct connections to all Gateways in this Site.  This could cause connectivity issues in rare cases.
+                      Firezone will enforce direct connections to all Gateways in this Site. This could cause connectivity issues in rare cases.
                     </p>
                   </div>
                 </div>
