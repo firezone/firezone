@@ -250,7 +250,7 @@ export default function Page() {
             <p className="text-xl text-neutral-800 my-4">
               Firezone establishes secure, direct tunnels between your users and
               gateways, then gets out of the way. Gateways are deployed on your
-              infrastructure, so you maintain full control over your data at all
+              infrastructure, so you retain full control over your data at all
               times.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
