@@ -129,25 +129,51 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Create a site
+                  Create a{" "}
+                  <Link
+                    className="text-accent-500 underline hover:no-underline"
+                    href="/kb/learn/concepts/site?utm_source=website"
+                  >
+                    site
+                  </Link>
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Deploy one or more gateways
+                  Deploy one or more{" "}
+                  <Link
+                    className="text-accent-500 underline hover:no-underline"
+                    href="/kb/learn/concepts/gateway?utm_source=website"
+                  >
+                    gateways
+                  </Link>
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Add a subnet, host or service
+                  Add a{" "}
+                  <Link
+                    className="text-accent-500 underline hover:no-underline"
+                    href="/kb/learn/concepts/resource?utm_source=website"
+                  >
+                    resource
+                  </Link>{" "}
+                  (e.g. subnet, host or service)
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Choose which user groups have access
+                  Choose which{" "}
+                  <Link
+                    className="text-accent-500 underline hover:no-underline"
+                    href="/kb/learn/concepts/group?utm_source=website"
+                  >
+                    user groups
+                  </Link>{" "}
+                  have access
                 </span>
               </li>
             </ul>
@@ -184,7 +210,7 @@ export default function Page() {
             <p className="text-xl text-neutral-800 my-4">
               Firezone is fast and dependable so your team is always connected
               to the resources they need most. It works on all major platforms
-              and stays connected even when switching networks.
+              and stays connected even when switching WiFi networks.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
@@ -276,7 +302,7 @@ export default function Page() {
               <p>
                 <strong>Resource-level access policies</strong> that update in{" "}
                 <strong className="text-primary-450">real-time</strong> based on
-                changes from your identity provider.
+                changes from your IdP.
               </p>
             </li>
             <li className="flex space-x-5">
@@ -301,8 +327,7 @@ export default function Page() {
         </div>
         <div className="mx-4 mb-8 flex flex-col justify-center items-center">
           <h2 className="inline-block mb-4 text-4xl justify-center text-center tracking-tight font-bold text-neutral-900 ">
-            That works <span className="text-primary-450">with</span> your
-            identity provider
+            That works <span className="text-primary-450">with</span> your IdP
           </h2>
           <div className="mx-auto gap-4 max-w-screen-md grid justify-items-center sm:grid-cols-2 pt-8 px-8">
             <div className="text-center">
@@ -423,7 +448,7 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Authenticate with virtually any identity provider
+                  Authenticate with virtually any IdP
                 </span>
               </li>
               <li className="flex space-x-2.5">
