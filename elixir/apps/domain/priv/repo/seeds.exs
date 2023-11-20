@@ -294,6 +294,51 @@ all_group
 
 IO.puts("")
 
+{:ok, global_relay_group} =
+  Relays.create_global_group(%{
+    name: "fz-global-relays",
+    tokens: [%{}]
+  })
+
+global_relay_group_token = hd(global_relay_group.tokens)
+
+global_relay_group_token =
+  maybe_repo_update.(global_relay_group_token,
+    id: "c1038e22-0215-4977-9f6c-f65621e0008f",
+    hash:
+      "$argon2id$v=19$m=65536,t=3,p=4$XBzQrgdRFH5XhiTfWFcGWA$PTTy4D7xtahPbvGTgZLgGS8qHnfd8LJKWAnTdhB4yww",
+    value:
+      "Obnnb37dBtNQccCU-fBYu1h8NafAp0KyoOwlo2TTIy60ofokIlV60spa12G5pIG-RVKj5qwHVEh1k9n8xBcf9A"
+  )
+
+IO.puts("Created global relay groups:")
+IO.puts("  #{global_relay_group.name} token: #{Relays.encode_token!(global_relay_group_token)}")
+
+IO.puts("")
+
+{:ok, global_relay} =
+  Relays.upsert_relay(global_relay_group_token, %{
+    ipv4: {189, 172, 72, 111},
+    ipv6: {0, 0, 0, 0, 0, 0, 0, 1},
+    last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+    last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 72, 111}}
+  })
+
+for i <- 1..5 do
+  {:ok, _global_relay} =
+    Relays.upsert_relay(global_relay_group_token, %{
+      ipv4: {189, 172, 72, 111 + i},
+      ipv6: {0, 0, 0, 0, 0, 0, 0, i},
+      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+      last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 72, 111 + i}}
+    })
+end
+
+IO.puts("Created global relays:")
+IO.puts("  Group #{global_relay_group.name}:")
+IO.puts("    IPv4: #{global_relay.ipv4} IPv6: #{global_relay.ipv6}")
+IO.puts("")
+
 relay_group =
   account
   |> Relays.Group.Changeset.create(
