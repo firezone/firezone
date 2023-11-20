@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import ActionLink from "@/components/ActionLink";
 import {
+  HiFingerPrint,
   HiArrowLongRight,
   HiCheck,
   HiShieldCheck,
@@ -134,19 +135,19 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Add one or more gateways
+                  Deploy one or more gateways
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Connect a resource or service
+                  Add a subnet, host or service
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Choose which user groups can access each resource
+                  Choose which user groups have access
                 </span>
               </li>
             </ul>
@@ -189,7 +190,7 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Automatic NAT traversal
+                  Automaitic NAT traversal
                 </span>
               </li>
               <li className="flex space-x-2.5">
@@ -221,10 +222,10 @@ export default function Page() {
               MAINTAIN CONTROL
             </h4>
             <p className="text-xl text-neutral-800 my-4">
-              Firezone establishes secure, end-to-end encrypted tunnels between
-              your users and gateways, then gets out of the way. Gateways are
-              deployed on your infrastructure, so you maintain full control over
-              your data at all times.
+              Firezone establishes secure, direct tunnels between your users and
+              gateways, then gets out of the way. Gateways are deployed on your
+              infrastructure, so you maintain full control over your data at all
+              times.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
@@ -242,16 +243,10 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Customize resource-level access policies
+                  Enforce direct connections between users and resources
                 </span>
               </li>
             </ul>
-            <ActionLink
-              className="inline-flex items-center text-accent-600 hover:underline text-lg mt-8"
-              href="/docs/deploy"
-            >
-              Explore the deployment docs
-            </ActionLink>
           </div>
           <Image
             className="rounded shadow-md"
@@ -280,7 +275,7 @@ export default function Page() {
               <HiShieldCheck className="text-accent-600 flex-shrink-0 w-7 h-7" />
               <p>
                 <strong>Resource-level access policies</strong> that update in{" "}
-                <strong className="text-primary-500">real-time</strong> based on
+                <strong className="text-primary-450">real-time</strong> based on
                 changes from your identity provider.
               </p>
             </li>
@@ -288,8 +283,8 @@ export default function Page() {
               <HiShieldCheck className="text-accent-600 flex-shrink-0 w-7 h-7" />
               <p>
                 <strong>NAT hole punching</strong> means{" "}
-                <strong className="text-primary-500">no</strong> exposed attack
-                surface and <strong className="text-primary-500">zero</strong>{" "}
+                <strong className="text-primary-450">no</strong> exposed attack
+                surface and <strong className="text-primary-450">zero</strong>{" "}
                 firewall configuration required.
               </p>
             </li>
@@ -298,17 +293,54 @@ export default function Page() {
               <p>
                 <strong>Self-hosted gateways</strong> and configurable routing
                 rules ensure data-plane traffic passes{" "}
-                <strong className="text-primary-500">only</strong> through your
+                <strong className="text-primary-450">only</strong> through your
                 infrastructure.
               </p>
             </li>
           </ul>
         </div>
-        <div className="mx-4 flex flex-col justify-center items-center">
-          <h2 className="mb-4 text-4xl justify-center text-center tracking-tight font-bold text-neutral-900 ">
-            That works <span className="text-primary-500">with</span> your
+        <div className="mx-4 mb-8 flex flex-col justify-center items-center">
+          <h2 className="inline-block mb-4 text-4xl justify-center text-center tracking-tight font-bold text-neutral-900 ">
+            That works <span className="text-primary-450">with</span> your
             identity provider
           </h2>
+          <div className="mx-auto gap-4 max-w-screen-md grid justify-items-center sm:grid-cols-2 pt-8 px-8">
+            <div className="text-center">
+              <Image
+                width={96}
+                height={96}
+                className="mx-auto mb-4"
+                alt="fingerprint icon"
+                src="/images/fingerprint.svg"
+              />
+              <h3 className="justify-center text-xl tracking-tight font-bold text-neutral-900 ">
+                Enforce 2FA / MFA
+              </h3>
+              <p className="mt-4 text-neutral-900 text-lg">
+                Add SSO with any OIDC-compatible identity provider (IdP) to
+                limit connections to current and authenticated users only.
+              </p>
+            </div>
+            <div className="text-center">
+              <Image
+                width={96}
+                height={96}
+                className="mx-auto mb-4"
+                alt="user group sync icon"
+                src="/images/user-group-sync.svg"
+              />
+              <h3 className="justify-center text-xl tracking-tight font-bold text-neutral-900 ">
+                Sync users & groups<sup className="text-xs">*</sup>
+              </h3>
+              <p className="mt-4 text-neutral-900 text-lg">
+                Sync IdP users and groups to ensure active employees can access
+                your network, and revoke access when employees leave.
+              </p>
+              <p className="mt-2 text-neutral-900 text-xs">
+                * Currently available for Google Workspace
+              </p>
+            </div>
+          </div>
         </div>
         <div className="mx-auto gap-8 max-w-screen-xl grid justify-items-center sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 px-16 pt-8">
           <Link href="/docs/authenticate/oidc/keycloak/">
@@ -368,10 +400,10 @@ export default function Page() {
             How customers are using Firezone
           </h2>
         </div>
-        <div className="gap-4 items-center pt-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-8 sm:pt-16 lg:px-6 ">
-          <div className="bg-neutral-100 p-8 rounded shadow-md">
+        <div className="gap-4 items-center pt-8 px-4 mx-auto max-w-screen-xl md:grid md:grid-cols-2 xl:gap-8 sm:pt-16 lg:px-6 ">
+          <div className="bg-neutral-100 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
-              <HiHome className="flex-shrink-0 w-5 h-5 text-primary-450" />
+              <HiShieldCheck className=" lex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
                 VPN Replacement
               </h3>
@@ -408,9 +440,9 @@ export default function Page() {
               </li>
             </ul>
           </div>
-          <div className="bg-neutral-100 p-8 rounded shadow-md">
+          <div className="bg-neutral-100 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
-              <HiRocketLaunch className="flex-shrink-0 w-5 h-5 text-primary-450" />
+              <HiRocketLaunch className="flex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
                 Infrastructure Access
               </h3>
@@ -447,9 +479,9 @@ export default function Page() {
               </li>
             </ul>
           </div>
-          <div className="bg-neutral-100 p-8 rounded shadow-md">
+          <div className="bg-neutral-100 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
-              <HiGlobeAlt className=" lex-shrink-0 w-5 h-5 text-primary-450" />
+              <HiGlobeAlt className=" lex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
                 Internet Security
               </h3>
@@ -486,9 +518,9 @@ export default function Page() {
               </li>
             </ul>
           </div>
-          <div className="bg-neutral-100 p-8 rounded shadow-md">
+          <div className="bg-neutral-100 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
-              <HiWrenchScrewdriver className=" lex-shrink-0 w-5 h-5 text-primary-450" />
+              <HiHome className="flex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
                 Homelab Access
               </h3>
@@ -508,6 +540,12 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
+                  Authenticate with Magic link or OIDC
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
                   Reliable NAT traversal
                 </span>
               </li>
@@ -518,6 +556,34 @@ export default function Page() {
                 </span>
               </li>
             </ul>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-t border-neutral-200 py-24 bg-gradient-to-b from-accent-800 to-accent-700">
+        <div className="flex flex-col px-4 justify-center items-center">
+          <h2 className="mb-4 text-4xl tracking-tight text-center font-bold text-neutral-50">
+            Ready to get started?
+          </h2>
+          <h3 className="my-4 font-medium text-xl max-w-screen-md tracking-tight text-center text-neutral-200 ">
+            Give your team secure access to company resources in minutes.
+          </h3>
+          <div className="w-full max-w-screen-sm flex justify-between mt-8">
+            <button
+              type="button"
+              className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-normal text-center text-neutral-900 rounded bg-neutral-50 hover:scale-105 duration-0 transform transition"
+            >
+              <Link href="/product/early-access">
+                Register for early access
+              </Link>
+            </button>
+            <button
+              type="button"
+              className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-gradient-to-br from-primary-500 to-primary-450 hover:scale-105 duration-0 transform transition"
+            >
+              <Link href="/contact/sales">Request demo</Link>
+              <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
+            </button>
           </div>
         </div>
       </section>
