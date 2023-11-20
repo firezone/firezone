@@ -180,7 +180,6 @@ jobs:
             api \
             web \
             client \
-            global_relay \
             relay \
             gateway
       - name: Setup ${{ matrix.test_name }} test
