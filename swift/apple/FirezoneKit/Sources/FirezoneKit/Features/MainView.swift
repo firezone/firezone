@@ -60,13 +60,7 @@ import SwiftUI
     }
 
     func signOutButtonTapped() {
-      Task {
-        do {
-          try await appStore.auth.signOut()
-        } catch {
-          logger.error("Error signing out: \(String(describing: error))")
-        }
-      }
+      appStore.auth.signOut()
     }
 
     func startTunnel() async {

@@ -58,8 +58,6 @@ final class AppStore: ObservableObject {
 
   private func signOutAndStopTunnel() {
     tunnel.stop()
-    Task {
-      try? await auth.signOut()
-    }
+    auth.signOut()
   }
 }

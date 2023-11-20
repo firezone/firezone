@@ -225,13 +225,7 @@
     }
 
     @objc private func signOutButtonTapped() {
-      Task {
-        do {
-          try await appStore?.auth.signOut()
-        } catch {
-          logger.error("error signing out: \(String(describing: error))")
-        }
-      }
+      appStore?.auth.signOut()
     }
 
     @objc private func settingsButtonTapped() {
