@@ -182,15 +182,15 @@ export default function Page() {
               RELIABLE ACCESS
             </h4>
             <p className="text-xl text-neutral-800 my-4">
-              Firezone is fast and dependable which means your team is always
-              connected to the resources they need most. It works on all major
-              platforms and stays connected even when switching networks.
+              Firezone is fast and dependable so your team is always connected
+              to the resources they need most. It works on all major platforms
+              and stays connected even when switching networks.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Automaitic NAT traversal
+                  Automatic NAT traversal
                 </span>
               </li>
               <li className="flex space-x-2.5">
