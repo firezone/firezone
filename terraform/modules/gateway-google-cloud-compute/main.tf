@@ -48,10 +48,6 @@ locals {
       value = var.api_url
     },
     {
-      name  = "FIREZONE_NAME"
-      value = "$(hostname)"
-    },
-    {
       name  = "FIREZONE_ENABLE_MASQUERADE"
       value = "1"
     }
