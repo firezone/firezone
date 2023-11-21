@@ -6,7 +6,7 @@ defmodule Domain.Repo.Migrations.AddRoutingToGatewayGroup do
       add(:routing, :string)
     end
 
-    execute("UPDATE gateway_groups SET routing = 'all'")
+    execute("UPDATE gateway_groups SET routing = 'managed'")
 
     execute("ALTER TABLE gateway_groups ALTER COLUMN routing SET NOT NULL")
   end

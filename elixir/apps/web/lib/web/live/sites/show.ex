@@ -1,5 +1,6 @@
 defmodule Web.Sites.Show do
   use Web, :live_view
+  import Web.Sites.Components
   alias Domain.{Gateways, Resources}
 
   def mount(%{"id" => id}, _session, socket) do
@@ -236,13 +237,5 @@ defmodule Web.Sites.Show do
     # TODO: make sure tokens are all deleted too!
     {:ok, _group} = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites")}
-  end
-
-  defp pretty_print_routing(routing) do
-    case routing do
-      :managed -> "Firezone Managed Relays"
-      :stun_only -> "No Relays"
-      _ -> raise "Unknown routing: #{inspect(routing)}"
-    end
   end
 end

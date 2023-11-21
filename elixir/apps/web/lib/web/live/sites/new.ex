@@ -1,5 +1,6 @@
 defmodule Web.Sites.New do
   use Web, :live_view
+  import Web.Sites.Components
   alias Domain.Gateways
 
   def mount(_params, _session, socket) do
@@ -43,7 +44,7 @@ defmodule Web.Sites.New do
                       type="radio"
                       field={@form[:routing]}
                       value="managed"
-                      label="Firezone Managed Relays"
+                      label={pretty_print_routing(:managed)}
                       checked={@form[:routing].value == :managed}
                       required
                     />
@@ -58,7 +59,7 @@ defmodule Web.Sites.New do
                       type="radio"
                       field={@form[:routing]}
                       value="stun_only"
-                      label="Direct Only"
+                      label={pretty_print_routing(:stun_only)}
                       checked={@form[:routing].value == :stun_only}
                       required
                     />

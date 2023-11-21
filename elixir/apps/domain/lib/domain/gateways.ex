@@ -16,17 +16,14 @@ defmodule Domain.Gateways do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  def fetch_group_with_token(%Token{} = token, opts \\ []) do
-    with true <- Validator.valid_uuid?(token.group_id) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
-      Group.Query.by_id(token.group_id)
+  def fetch_group_by_id(id) do
+    with true <- Validator.valid_uuid?(id) do
+      Group.Query.by_id(id)
       |> Repo.fetch()
       |> case do
         {:ok, group} ->
           group =
             group
-            |> Repo.preload(preload)
             |> maybe_preload_online_status()
 
           {:ok, group}
@@ -491,17 +488,23 @@ defmodule Domain.Gateways do
 
   # Finds the most strict routing strategy for a given list of gateway groups.
   def relay_strategy(gateway_groups) when is_list(gateway_groups) do
+    strictness = [
+      stun_only: 3,
+      self_hosted: 2,
+      managed: 1
+    ]
+
     gateway_groups
-    |> Enum.map(fn group -> group.routing end)
-    |> Enum.reduce(fn routing_type, acc ->
-      cond do
-        acc == :stun_only -> :stun_only
-        routing_type == :stun_only -> :stun_only
-        true -> :managed
-      end
+    |> Enum.max_by(fn %{routing: routing} ->
+      Keyword.fetch!(strictness, routing)
     end)
-    |> case do
+    |> relay_strategy_mapping()
+  end
+
+  defp relay_strategy_mapping(%Group{} = group) do
+    case group.routing do
       :stun_only -> {:managed, :stun}
+      :self_hosted -> {:self_hosted, :turn}
       :managed -> {:managed, :turn}
     end
   end

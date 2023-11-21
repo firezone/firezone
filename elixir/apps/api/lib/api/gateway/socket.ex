@@ -38,7 +38,7 @@ defmodule API.Gateway.Socket do
 
       with {:ok, token} <- Gateways.authorize_gateway(encrypted_secret),
            {:ok, gateway} <- Gateways.upsert_gateway(token, attrs),
-           {:ok, gateway_group} <- Gateways.fetch_group_with_token(token) do
+           {:ok, gateway_group} <- Gateways.fetch_group_by_id(gateway.group_id) do
         OpenTelemetry.Tracer.set_attributes(%{
           gateway_id: gateway.id,
           account_id: gateway.account_id

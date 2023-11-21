@@ -72,26 +72,27 @@ defmodule Domain.GatewaysTest do
     end
   end
 
-  describe "fetch_group_with_token/2" do
-    test "returns group associated with token", %{
-      account: account
-    } do
-      group = Fixtures.Gateways.create_group(account: account)
-      token = Fixtures.Gateways.create_token(group: group)
+  describe "fetch_group_by_id/1" do
+    test "returns error when UUID is invalid" do
+      assert fetch_group_by_id("foo") == {:error, :not_found}
+    end
 
-      assert {:ok, fetched_group} = fetch_group_with_token(token)
+    test "does not return deleted groups", %{account: account} do
+      group =
+        Fixtures.Gateways.create_group(account: account)
+        |> Fixtures.Gateways.delete_group()
+
+      assert fetch_group_by_id(group.id) == {:error, :not_found}
+    end
+
+    test "returns group by id", %{account: account} do
+      group = Fixtures.Gateways.create_group(account: account)
+      assert {:ok, fetched_group} = fetch_group_by_id(group.id)
       assert fetched_group.id == group.id
     end
 
-    test "does not return deleted group", %{
-      account: account
-    } do
-      group = Fixtures.Gateways.create_group(account: account)
-      token = Fixtures.Gateways.create_token(group: group)
-
-      Fixtures.Gateways.delete_group(group)
-
-      assert fetch_group_with_token(token) == {:error, :not_found}
+    test "returns error when group does not exist" do
+      assert fetch_group_by_id(Ecto.UUID.generate()) == {:error, :not_found}
     end
   end
 
@@ -1020,9 +1021,17 @@ defmodule Domain.GatewaysTest do
     end
 
     test "strictest strategy is returned" do
-      group1 = Fixtures.Gateways.create_group(routing: :managed)
-      group2 = Fixtures.Gateways.create_group(routing: :stun_only)
-      assert {:managed, :stun} == relay_strategy([group1, group2])
+      managed_group = Fixtures.Gateways.create_group(routing: :managed)
+      self_hosted_group = Fixtures.Gateways.create_group(routing: :self_hosted)
+      stun_only_group = Fixtures.Gateways.create_group(routing: :stun_only)
+
+      assert {:managed, :stun} ==
+               relay_strategy([managed_group, self_hosted_group, stun_only_group])
+
+      assert {:self_hosted, :turn} == relay_strategy([managed_group, self_hosted_group])
+      assert {:managed, :stun} == relay_strategy([managed_group, stun_only_group])
+      assert {:managed, :stun} == relay_strategy([self_hosted_group, stun_only_group])
+      assert {:managed, :turn} == relay_strategy([managed_group])
     end
   end
 end
