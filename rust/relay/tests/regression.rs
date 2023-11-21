@@ -1,7 +1,7 @@
 use bytecodec::{DecodeExt, EncodeExt};
 use firezone_relay::{
-    AddressFamily, Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData,
-    ClientMessage, Command, IpStack, Refresh, Server,
+    AddressFamily, Allocate, AllocationId, Attribute, Binding, ChannelBind, ClientMessage, Command,
+    IpStack, Refresh, Server,
 };
 use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
@@ -359,11 +359,7 @@ fn ping_pong_relay(
     let now = now + Duration::from_secs(1);
 
     server.assert_commands(
-        from_client(
-            source,
-            ChannelData::new(channel.value(), client_to_peer_ping.as_ref()),
-            now,
-        ),
+        from_client(source, (channel.value(), client_to_peer_ping.as_ref()), now),
         [forward(peer, &client_to_peer_ping, 49152)],
     );
 
@@ -371,7 +367,8 @@ fn ping_pong_relay(
         from_peer(peer, peer_to_client_ping.as_ref(), 49152),
         [send_channel_data(
             source,
-            ChannelData::new(channel.value(), peer_to_client_ping.as_ref()),
+            channel.value(),
+            peer_to_client_ping.as_ref(),
         )],
     );
 }
@@ -470,7 +467,7 @@ impl TestServer {
                     FreeAllocation(port, family) => {
                         format!("to free allocation on port {port} for address family {family}")
                     }
-                    Output::SendChannelData((peer, _)) => {
+                    Output::SendChannelData((peer, _, _)) => {
                         format!("to send channel data from {peer} to client")
                     }
                     Output::Forward((peer, _, _)) => format!("to forward data to peer {peer}"),
@@ -533,10 +530,11 @@ impl TestServer {
                     )
                 }
                 (
-                    Output::SendChannelData((peer, channeldata)),
+                    Output::SendChannelData((peer, channel, data)),
                     Command::SendMessage { recipient, payload },
                 ) => {
-                    let expected_channel_data = hex::encode(channeldata.to_bytes());
+                    let expected_channel_data =
+                        hex::encode(firezone_relay::channel_data::encode(channel, data));
                     let actual_message = hex::encode(payload);
 
                     assert_eq!(expected_channel_data, actual_message);
@@ -662,7 +660,7 @@ fn forward_time_to<'a>(when: SystemTime) -> Input<'a> {
 #[derive(Debug)]
 enum Output<'a> {
     SendMessage((SocketAddr, Message<Attribute>)),
-    SendChannelData((SocketAddr, ChannelData<'a>)),
+    SendChannelData((SocketAddr, u16, &'a [u8])),
     Forward((SocketAddr, Vec<u8>, u16)),
     Wake(SystemTime),
     CreateAllocation(u16, AddressFamily),
@@ -673,8 +671,8 @@ fn send_message<'a>(source: impl Into<SocketAddr>, message: Message<Attribute>) 
     Output::SendMessage((source.into(), message))
 }
 
-fn send_channel_data(source: impl Into<SocketAddr>, message: ChannelData) -> Output {
-    Output::SendChannelData((source.into(), message))
+fn send_channel_data(source: impl Into<SocketAddr>, channel: u16, data: &[u8]) -> Output {
+    Output::SendChannelData((source.into(), channel, data))
 }
 
 fn forward(source: impl Into<SocketAddr>, data: &[u8], port: u16) -> Output {

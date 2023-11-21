@@ -13,7 +13,7 @@ pub mod proptest;
 pub use allocation::Allocation;
 pub use net_ext::{IpAddrExt, SocketAddrExt};
 pub use server::{
-    Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, Command,
+    channel_data, Allocate, AllocationId, Attribute, Binding, ChannelBind, ClientMessage, Command,
     CreatePermission, Refresh, Server,
 };
 pub use sleep::Sleep;

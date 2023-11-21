@@ -1,7 +1,6 @@
-mod channel_data;
+pub mod channel_data;
 mod client_message;
 
-pub use crate::server::channel_data::ChannelData;
 pub use crate::server::client_message::{
     Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
 };
@@ -266,8 +265,8 @@ where
                 self.handle_binding_request(request, sender);
                 return;
             }
-            ClientMessage::ChannelData(msg) => {
-                self.handle_channel_data_message(msg, sender, now);
+            ClientMessage::ChannelData { number, data } => {
+                self.handle_channel_data_message(number, data, sender, now);
                 return;
             }
         };
@@ -347,7 +346,7 @@ where
 
         self.data_relayed_counter.add(bytes.len() as u64, &[]);
 
-        let data = ChannelData::new(*channel_number, bytes).to_bytes();
+        let data = channel_data::encode(*channel_number, bytes);
 
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(&data);
@@ -693,20 +692,15 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, message), fields(allocation_id, %sender, channel = %message.channel(), recipient), level = "error")]
+    #[tracing::instrument(skip(self, data), fields(allocation_id, %sender, recipient), level = "error")]
     fn handle_channel_data_message(
         &mut self,
-        message: ChannelData,
+        channel: u16,
+        data: &[u8],
         sender: SocketAddr,
         _: SystemTime,
     ) {
-        let channel_number = message.channel();
-        let data = message.data();
-
-        let Some(channel) = self
-            .channels_by_client_and_number
-            .get(&(sender, channel_number))
-        else {
+        let Some(channel) = self.channels_by_client_and_number.get(&(sender, channel)) else {
             tracing::debug!(target: "relay", "Channel does not exist, refusing to forward data");
             return;
         };

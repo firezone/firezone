@@ -1,5 +1,4 @@
 use crate::auth::{generate_password, split_username, systemtime_from_unix, FIREZONE};
-use crate::server::channel_data::ChannelData;
 use crate::server::UDP_TRANSPORT;
 use crate::Attribute;
 use bytecodec::DecodeExt;
@@ -80,7 +79,11 @@ impl Decoder {
                     }
                 }
             }
-            Some(64..=79) => Ok(Ok(ClientMessage::ChannelData(ChannelData::parse(input)?))),
+            Some(64..=79) => {
+                let (number, data) = crate::channel_data::decode(input)?;
+
+                Ok(Ok(ClientMessage::ChannelData { number, data }))
+            }
             Some(other) => Err(Error::UnknownMessageType(*other)),
             None => Err(Error::Eof),
         }
@@ -89,7 +92,7 @@ impl Decoder {
 
 #[derive(derive_more::From)]
 pub enum ClientMessage<'a> {
-    ChannelData(ChannelData<'a>),
+    ChannelData { number: u16, data: &'a [u8] },
     Binding(Binding),
     Allocate(Allocate),
     Refresh(Refresh),
@@ -105,7 +108,7 @@ impl<'a> ClientMessage<'a> {
             ClientMessage::Refresh(request) => Some(request.transaction_id),
             ClientMessage::ChannelBind(request) => Some(request.transaction_id),
             ClientMessage::CreatePermission(request) => Some(request.transaction_id),
-            ClientMessage::ChannelData(_) => None,
+            ClientMessage::ChannelData { .. } => None,
         }
     }
 }
