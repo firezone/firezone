@@ -1015,6 +1015,11 @@ defmodule Domain.GatewaysTest do
       assert {:managed, :turn} == relay_strategy([group])
     end
 
+    test "self-hosted strategy" do
+      group = Fixtures.Gateways.create_group(routing: :self_hosted)
+      assert {:self_hosted, :turn} == relay_strategy([group])
+    end
+
     test "stun_only strategy" do
       group = Fixtures.Gateways.create_group(routing: :stun_only)
       assert {:managed, :stun} == relay_strategy([group])
