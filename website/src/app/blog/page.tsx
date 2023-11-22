@@ -19,10 +19,27 @@ export default function Page() {
             Blog
           </h1>
           <p className="text-neutral-900 text-lg sm:text-xl ">
-            Announcements, tutorials, and more from the Firezone team.
+            Announcements, insights, and more from the Firezone team.
           </p>
         </div>
         <div className="grid divide-y">
+          <SummaryCard
+            title="Secure remote access makes remote work a win-win"
+            date="November 17, 2023"
+            href="/blog/secure-access"
+            authorName="Jeff Spencer"
+            authorAvatarSrc={gravatar("jeff@firezone.dev")}
+            type="Insights"
+          >
+            <p>
+              The number of employees working remotely is accelerating, so
+              secure remote access should be a large part of any organization’s
+              cybersecurity strategy. Secure remote access lets remote and
+              hybrid employees work from anywhere in the world, on any device,
+              without compromising your organization’s network, data, and system
+              security.
+            </p>
+          </SummaryCard>
           <SummaryCard
             title="Firezone 1.0"
             date="July 15, 2023"

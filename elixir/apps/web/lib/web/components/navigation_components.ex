@@ -30,7 +30,7 @@ defmodule Web.NavigationComponents do
           >
             <img src={~p"/images/logo.svg"} class="mr-3 h-8" alt="Firezone Logo" />
             <span class="self-center text-2xl font-semibold whitespace-nowrap dark:text-white">
-              firezone
+              Firezone
             </span>
           </a>
         </div>

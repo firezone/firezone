@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Post from "@/components/Blog/Post";
 import Content from "./readme.mdx";
 import { Metadata } from "next";
