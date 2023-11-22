@@ -33,15 +33,6 @@ defmodule Domain.Resources.Resource.Changeset do
     )
   end
 
-  def finalize_create(%Resource{} = resource, ipv4, ipv6) do
-    resource
-    |> change()
-    |> put_change(:ipv4, ipv4)
-    |> put_change(:ipv6, ipv6)
-    |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
-    |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
-  end
-
   defp validate_address(changeset) do
     if has_errors?(changeset, :type) do
       changeset

@@ -728,7 +728,7 @@ defmodule Domain.ResourcesTest do
 
       attrs = %{"address" => "100.64.0.0/8", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "can not be in the CIDR 100.64.0.0/10" in errors_on(changeset).address
+      assert "can not be in the CIDR 100.64.0.0/11" in errors_on(changeset).address
 
       attrs = %{"address" => "fd00:2021:1111::/102", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
@@ -777,9 +777,6 @@ defmodule Domain.ResourcesTest do
       assert resource.name == attrs.address
       assert resource.account_id == account.id
 
-      refute is_nil(resource.ipv4)
-      refute is_nil(resource.ipv6)
-
       assert resource.created_by == :identity
       assert resource.created_by_identity_id == subject.identity.id
 
@@ -816,9 +813,6 @@ defmodule Domain.ResourcesTest do
       assert resource.name == attrs.address
       assert resource.account_id == account.id
 
-      assert is_nil(resource.ipv4)
-      assert is_nil(resource.ipv6)
-
       assert [
                %Domain.Resources.Connection{
                  resource_id: resource_id,
@@ -837,59 +831,6 @@ defmodule Domain.ResourcesTest do
              ] = resource.filters
 
       assert Repo.aggregate(Domain.Network.Address, :count) == address_count
-    end
-
-    test "does not allow to reuse IP addresses within an account", %{
-      account: account,
-      subject: subject
-    } do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      attrs =
-        Fixtures.Resources.resource_attrs(
-          connections: [
-            %{gateway_group_id: gateway.group_id}
-          ]
-        )
-
-      assert {:ok, resource} = create_resource(attrs, subject)
-
-      addresses =
-        Domain.Network.Address
-        |> Repo.all()
-        |> Enum.map(fn %Domain.Network.Address{address: address, type: type} ->
-          %{address: address, type: type}
-        end)
-
-      assert %{address: resource.ipv4, type: :ipv4} in addresses
-      assert %{address: resource.ipv6, type: :ipv6} in addresses
-
-      assert_raise Ecto.ConstraintError, fn ->
-        Fixtures.Network.create_address(address: resource.ipv4, account: account)
-      end
-
-      assert_raise Ecto.ConstraintError, fn ->
-        Fixtures.Network.create_address(address: resource.ipv6, account: account)
-      end
-    end
-
-    test "ip addresses are unique per account", %{
-      account: account,
-      subject: subject
-    } do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      attrs =
-        Fixtures.Resources.resource_attrs(
-          connections: [
-            %{gateway_group_id: gateway.group_id}
-          ]
-        )
-
-      assert {:ok, resource} = create_resource(attrs, subject)
-
-      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv4)
-      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv6)
     end
 
     test "returns error when subject has no permission to create resources", %{

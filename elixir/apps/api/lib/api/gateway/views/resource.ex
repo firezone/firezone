@@ -7,8 +7,6 @@ defmodule API.Gateway.Views.Resource do
       type: :dns,
       address: resource.address,
       name: resource.name,
-      ipv4: resource.ipv4,
-      ipv6: resource.ipv6,
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
   end
