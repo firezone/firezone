@@ -1,7 +1,5 @@
 import { Metadata } from "next";
 import CustomerLogos from "@/components/CustomerLogos";
-import RequestAccessButton from "@/components/RequestAccessButton";
-import RequestDemoButton from "@/components/RequestDemoButton";
 import { HiCheck } from "react-icons/hi2";
 import Link from "next/link";
 
@@ -389,109 +387,219 @@ export default function Page() {
                   <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 </td>
               </tr>
+              <tr>
+                <td></td>
+                <td className="px-6 py-14">
+                  <Link href="/product/early-access">
+                    <button
+                      type="button"
+                      className="w-48 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-md py-2.5 bg-gradient-to-br from-accent-700 to-accent-600"
+                    >
+                      Request early access
+                    </button>
+                  </Link>
+                </td>
+                <td className="px-6 py-14">
+                  <Link href="/contact/sales">
+                    <button
+                      type="button"
+                      className="w-48 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-md py-2.5 bg-gradient-to-br from-accent-700 to-accent-600"
+                    >
+                      Request a demo
+                    </button>
+                  </Link>
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
       </section>
-      <section className="bg-neutral-100 border-t border-neutral-200 py-14">
-        <div className="mx-auto max-w-screen-md">
+      <section className="bg-neutral-100 border-t border-neutral-200 p-14">
+        <div className="mx-auto max-w-screen-sm">
           <h2 className="mb-14 justify-center text-4xl font-semibold text-neutral-900">
-            Frequently Asked Questions
+            Frequently asked questions
           </h2>
 
-          <blockquote className="text-lg italic p-4 my-4 border-s-4 border-neutral-300">
+          <div className="px-4 w-full mb-14">
+            <ol className="list-decimal">
+              <li>
+                <Link
+                  href="#how-long"
+                  className="hover:underline text-accent-500"
+                >
+                  How long does it take to set up Firezone?
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="#rip-replace"
+                  className="hover:underline text-accent-500"
+                >
+                  Do I need to rip and replace my current VPN with Firezone?
+                </Link>
+              </li>
+              <li>
+                <Link href="#data" className="hover:underline text-accent-500">
+                  What happens to my data with Firezone enabled?
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="#change-plan"
+                  className="hover:underline text-accent-500"
+                >
+                  How do I cancel or change my plan?
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="#when-billed"
+                  className="hover:underline text-accent-500"
+                >
+                  When will I be billed?
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="#payment-methods"
+                  className="hover:underline text-accent-500"
+                >
+                  What payment methods are available?
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="#special-pricing"
+                  className="hover:underline text-accent-500"
+                >
+                  Do you offer special pricing for nonprofits and educational
+                  institutions?
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="#special-pricing"
+                  className="hover:underline text-accent-500"
+                >
+                  Other than using Firezone, is there anything I can do to
+                  improve my cybersecurity?
+                </Link>
+              </li>
+            </ol>
+          </div>
+
+          <a id="how-long" className="pt-8"></a>
+          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
             <p>How long does it take to set up Firezone?</p>
           </blockquote>
-          <p>
+          <p className="mb-8">
             Firezone can be set up in less than 10 minutes, and gateways can be
-            added by running a simple Docker command. Visit our docs for more
-            information and step by step instructions.
+            added by running a simple Docker command.{" "}
+            <Link href="/kb" className="hover:underline text-accent-500">
+              Visit our docs
+            </Link>{" "}
+            for more information and step by step instructions.
           </p>
 
-          <blockquote>
-            <p>
-              How will my employees and contractors be affected if I set up
-              Firezone?
-            </p>
+          <a id="rip-replace" className="pt-8"></a>
+          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
+            <p>Do I need to rip and replace my current VPN with Firezone?</p>
           </blockquote>
-          <p>
-            Firezone can be installed alongside your current access solutions,
-            so users won’t experience any interruptions. Employees can switch to
-            Firezone by downloading and activating the client. Since no other
-            changes are necessary, employees can keep accessing the resources
-            they need (without any assistance from IT).
+          <p className="mb-8">
+            No. As long they're set up to access different resources, you can
+            run Firezone alongside your existing remote access solutions, and
+            switch over whenever you’re ready. There’s no need for any downtime
+            or unnecessary disruptions.
           </p>
 
-          <blockquote>
-            <p>Do I need to remove my current VPN to use Firezone?</p>
-          </blockquote>
-          <p>
-            No, you can run Firezone alongside your existing VPN, and switch
-            over whenever you’re ready. There’s no need for any downtime or
-            unnecessary disruptions.
-          </p>
-
-          <blockquote>
+          <a id="data" className="pt-8"></a>
+          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
             <p>What happens to my data with Firezone enabled?</p>
           </blockquote>
-          <p>
+          <p className="mb-8">
             Network traffic is always end-to-end encrypted, and by default,
             routes directly to gateways running on your infrastructure. If you
-            have managed relays enabled, encrypted data may pass through our
-            global relay network if a direct connection cannot be established.
-            Firezone can never decrypt the contents of your traffic.
+            have managed relays enabled (Enterprise plan only), encrypted data
+            may pass through our global relay network if a direct connection
+            cannot be established. Firezone can never decrypt the contents of
+            your traffic.
           </p>
 
-          <blockquote>
+          <a id="change-plan" className="pt-8"></a>
+          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
             <p>How do I cancel or change my plan?</p>
           </blockquote>
-          <p>
+          <p className="mb-8">
             Please contact support (support@firezone.dev) if you would like to
             change your plan or terminate your account.
           </p>
 
-          <blockquote>
+          <a id="when-billed" className="pt-8"></a>
+          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
             <p>When will I be billed?</p>
           </blockquote>
-          <p>
-            When you start service, or at the beginning of each billing
-            cycle.Enterprise plans are billed quarterly or annually.
+          <p className="mb-8">
+            When you start service, or at the beginning of each billing cycle.
+            Enterprise plans are billed quarterly or annually.
           </p>
 
-          <blockquote>
+          <a id="payment-methods" className="pt-8"></a>
+          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
             <p>What payment methods are available?</p>
           </blockquote>
-          <p>
+          <p className="mb-8">
             The Starter plan is free and does not require a credit card to be
             entered. Enterprise plans can be paid via credit card, ACH, or wire
             transfer and will have a 100% discount applied for the duration of
             the beta.
           </p>
 
-          <blockquote>
-            <p>
-              Other than using Firezone, is there anything I can do to improve
-              my cybersecurity?
-            </p>
-          </blockquote>
-          <p>
-            Firezone helps protect your network and private resources, however,
-            organizations should consider a balanced security and risk
-            management posture that takes into account all the different parts
-            of their business.
-          </p>
-
-          <blockquote>
+          <a id="special-pricing" className="pt-8"></a>
+          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
             <p>
               Do you offer special pricing for nonprofits and educational
               institutions?
             </p>
           </blockquote>
-          <p>
+          <p className="mb-8">
             Yes. Not-for-profit organizations and educational institutions are
             eligible for a 50% discount. Contact us (support@firezone.dev) to
             apply for the discount.
           </p>
+
+          <a id="enhance-cybersecurity" className="pt-8"></a>
+          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
+            <p>
+              Other than using Firezone, is there anything I can do to improve
+              my cybersecurity?
+            </p>
+          </blockquote>
+          <p className="mb-8">
+            Firezone helps protect your network and private resources, however,
+            organizations should consider a balanced security and risk
+            management posture that takes into account all the different parts
+            of their business.
+          </p>
+        </div>
+      </section>
+
+      <section className="bg-neutral-100 border-t border-neutral-200 p-14">
+        <div className="mx-auto max-w-screen-xl md:grid md:grid-cols-2">
+          <div>
+            <h2 className="w-full justify-center mb-8 text-2xl md:text-3xl font-semibold text-neutral-900">
+              The WireGuard® solution for Enterprise.
+            </h2>
+          </div>
+          <div className="mb-14 w-full text-center">
+            <Link href="/contact/sales">
+              <button
+                type="button"
+                className="w-64 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-lg px-5 py-2.5 bg-primary-450"
+              >
+                Request a demo
+              </button>
+            </Link>
+          </div>
         </div>
       </section>
     </>
