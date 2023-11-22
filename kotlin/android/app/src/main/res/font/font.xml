@@ -2,7 +2,7 @@
 <font-family xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <font
-        android:font="@font/source_sans_pro_light"
+        android:font="@font/source_sans_pro"
         android:fontStyle="normal"
         android:fontWeight="400"
         tools:ignore="UnusedAttribute" />

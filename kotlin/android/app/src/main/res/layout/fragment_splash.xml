@@ -30,8 +30,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="@dimen/spacing_small"
             android:gravity="center"
-            android:text="@string/app_short_name"
-            app:fontFamily="More Fonts..." />
+            android:text="@string/app_short_name" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 
