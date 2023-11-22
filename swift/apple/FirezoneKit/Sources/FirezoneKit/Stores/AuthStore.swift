@@ -90,7 +90,7 @@ final class AuthStore: ObservableObject {
               if tsEvent.needsSignout {
                 self.signOut()
               }
-              if tsEvent.reason.needsAlert {
+              if tsEvent.needsAlert {
                 self.alertDelegate?.showAlert(
                   title: "Firezone Disconnected",
                   message:

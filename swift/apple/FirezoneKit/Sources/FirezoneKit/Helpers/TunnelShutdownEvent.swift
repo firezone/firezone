@@ -24,16 +24,6 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
     case tokenNotFound = "Token not found"
     case networkSettingsApplyFailure = "Network settings apply failure"
     case invalidAdapterState = "Invalid Adapter state"
-
-    public var needsAlert: Bool {
-      switch self {
-      case .stoppedByUser, .connlibConnectFailure, .connlibDisconnected,
-        .badTunnelConfiguration, .tokenNotFound:
-        return false
-      case .stopped, .networkSettingsApplyFailure, .invalidAdapterState:
-        return true
-      }
-    }
   }
 
   public let reason: TunnelShutdownEvent.Reason
@@ -47,6 +37,16 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
       return false
     case .connlibConnectFailure, .connlibDisconnected,
       .badTunnelConfiguration, .tokenNotFound:
+      return true
+    }
+  }
+
+  public var needsAlert: Bool {
+    switch reason {
+    case .stoppedByUser, .connlibConnectFailure, .connlibDisconnected,
+      .badTunnelConfiguration, .tokenNotFound:
+      return false
+    case .stopped, .networkSettingsApplyFailure, .invalidAdapterState:
       return true
     }
   }
