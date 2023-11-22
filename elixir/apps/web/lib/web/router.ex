@@ -8,7 +8,6 @@ defmodule Web.Router do
     plug :protect_from_forgery
     plug :fetch_live_flash
     plug :put_root_layout, {Web.Layouts, :root}
-    plug :fetch_user_agent
     plug :fetch_subject_and_account
   end
 

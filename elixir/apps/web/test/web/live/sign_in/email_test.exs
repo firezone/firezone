@@ -64,7 +64,7 @@ defmodule Web.SignIn.EmailTest do
       })
       |> submit_form(conn)
 
-    assert redirected_to(conn, 302) =~ "firezone://handle_client_auth_callback"
+    assert redirected_to(conn, 302) =~ "firezone://handle_client_sign_in_callback"
     refute conn.assigns.flash["error"]
   end
 
@@ -96,7 +96,7 @@ defmodule Web.SignIn.EmailTest do
       })
       |> submit_form(conn)
 
-    assert "/handle_client_auth_callback" <> _ = redirected_to(conn, 302)
+    assert "/handle_client_sign_in_callback" <> _ = redirected_to(conn, 302)
     refute conn.assigns.flash["error"]
   end
 

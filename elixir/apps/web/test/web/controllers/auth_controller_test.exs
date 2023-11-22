@@ -269,7 +269,7 @@ defmodule Web.AuthControllerTest do
       assert redirected_to = redirected_to(conn)
       assert redirected_to_uri = URI.parse(redirected_to)
       assert "firezone" = redirected_to_uri.scheme
-      assert "handle_client_auth_callback" = redirected_to_uri.host
+      assert "handle_client_sign_in_callback" = redirected_to_uri.host
 
       assert %{
                "identity_provider_identifier" => identity_provider_identifier,
@@ -325,7 +325,7 @@ defmodule Web.AuthControllerTest do
 
       assert redirected_to = redirected_to(conn)
       assert redirected_to_uri = URI.parse(redirected_to)
-      assert redirected_to_uri.path == "/handle_client_auth_callback"
+      assert redirected_to_uri.path == "/handle_client_sign_in_callback"
 
       assert %{
                "client_auth_token" => _token,
@@ -768,7 +768,7 @@ defmodule Web.AuthControllerTest do
 
       assert redirected_to = conn |> redirected_to() |> URI.parse()
       assert redirected_to.scheme == "firezone"
-      assert redirected_to.host == "handle_client_auth_callback"
+      assert redirected_to.host == "handle_client_sign_in_callback"
 
       assert query_params = URI.decode_query(redirected_to.query)
       assert query_params["actor_name"] == Repo.preload(identity, :actor).actor.name
@@ -805,7 +805,7 @@ defmodule Web.AuthControllerTest do
 
       assert redirected_to = conn |> redirected_to() |> URI.parse()
       assert redirected_to.scheme == "firezone"
-      assert redirected_to.host == "handle_client_auth_callback"
+      assert redirected_to.host == "handle_client_sign_in_callback"
 
       assert query_params = URI.decode_query(redirected_to.query)
       assert query_params["actor_name"] == Repo.preload(identity, :actor).actor.name
@@ -1120,7 +1120,7 @@ defmodule Web.AuthControllerTest do
 
       assert redirected_to = conn |> redirected_to() |> URI.parse()
       assert redirected_to.scheme == "firezone"
-      assert redirected_to.host == "handle_client_auth_callback"
+      assert redirected_to.host == "handle_client_sign_in_callback"
 
       assert query_params = URI.decode_query(redirected_to.query)
       assert query_params["actor_name"] == Repo.preload(identity, :actor).actor.name
@@ -1221,7 +1221,7 @@ defmodule Web.AuthControllerTest do
         |> put_session(:live_socket_id, live_socket_id)
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == ~p"/#{account}"
+      assert redirected_to(conn) =~ ~p"/#{account}"
 
       assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^live_socket_id}
     end
@@ -1278,10 +1278,16 @@ defmodule Web.AuthControllerTest do
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account}/sign_out")
 
-      assert redirected_to(conn) == ~p"/#{account}"
+      assert redirected_to(conn) =~ ~p"/#{account}"
       assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
 
       refute Map.has_key?(conn.cookies, "fz_recent_account_ids")
+    end
+
+    test "redirects to client-specific post sign out url", %{conn: conn} do
+      account = Fixtures.Accounts.create_account()
+      conn = get(conn, ~p"/#{account}/sign_out", %{client_platform: "apple"})
+      assert redirected_to(conn) == "firezone://handle_client_sign_out_callback"
     end
   end
 

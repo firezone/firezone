@@ -290,9 +290,11 @@ defmodule Web.AuthController do
     @state_cookie_key_prefix <> provider_id
   end
 
-  def sign_out(conn, _params) do
+  def sign_out(conn, params) do
+    client_platform = params["client_platform"]
+
     conn
-    |> Auth.sign_out()
+    |> Auth.sign_out(client_platform)
   end
 
   defp persist_recent_account(conn, %Domain.Accounts.Account{} = account) do

@@ -52,11 +52,11 @@ defmodule Web.AuthTest do
   describe "signed_in_redirect/4" do
     test "redirects regular users to the platform url", %{conn: conn, user_subject: subject} do
       redirected_to = conn |> signed_in_redirect(subject, "apple", "foo") |> redirected_to()
-      assert redirected_to =~ "firezone://handle_client_auth_callback"
+      assert redirected_to =~ "firezone://handle_client_sign_in_callback"
       assert redirected_to =~ "client_csrf_token=foo"
 
       redirected_to = conn |> signed_in_redirect(subject, "android", "foo") |> redirected_to()
-      assert redirected_to =~ "/handle_client_auth_callback?"
+      assert redirected_to =~ "/handle_client_sign_in_callback?"
       assert redirected_to =~ "client_csrf_token=foo"
     end
 
@@ -75,11 +75,12 @@ defmodule Web.AuthTest do
 
     test "redirects admin user to the platform url", %{conn: conn, admin_subject: subject} do
       redirected_to = conn |> signed_in_redirect(subject, "apple", "foo") |> redirected_to()
-      assert redirected_to =~ "firezone://handle_client_auth_callback?"
+      assert redirected_to =~ "firezone://handle_client_sign_in_callback?"
       assert redirected_to =~ "client_csrf_token=foo"
 
       redirected_to = conn |> signed_in_redirect(subject, "android", "foo") |> redirected_to()
-      assert redirected_to =~ "/handle_client_auth_callback?"
+
+      assert redirected_to =~ "/handle_client_sign_in_callback?"
       assert redirected_to =~ "client_auth_token="
       assert redirected_to =~ "client_csrf_token=foo"
       assert redirected_to =~ "actor_name=#{URI.encode_www_form(subject.actor.name)}"
@@ -140,12 +141,12 @@ defmodule Web.AuthTest do
         |> assign(:account, account)
         |> put_session(:session_token, session_token)
         |> fetch_cookies()
-        |> sign_out()
+        |> sign_out(nil)
 
       refute get_session(conn, :session_token)
       refute get_session(conn, :live_socket_id)
 
-      assert redirected_to(conn, 302) == ~p"/#{subject.account}"
+      assert redirected_to(conn, 302) == "http://localhost:13100/#{subject.account.slug}"
     end
 
     test "redirects to the sign in page even on invalid account ids", %{
@@ -162,30 +163,29 @@ defmodule Web.AuthTest do
         }
         |> put_session(:session_token, session_token)
         |> fetch_cookies()
-        |> sign_out()
+        |> sign_out(nil)
 
       refute get_session(conn, :session_token)
       refute get_session(conn, :live_socket_id)
 
-      assert redirected_to(conn, 302) == ~p"/#{account_slug}"
+      assert redirected_to(conn, 302) =~ ~p"/#{account_slug}"
     end
 
-    test "keeps client_platform param during sign out", %{
-      conn: conn,
+    test "redirects to client-specific sign out url", %{
+      conn: init_conn,
       account: account
     } do
       conn =
-        %{
-          conn
-          | path_params: %{"account_id_or_slug" => account.slug},
-            query_params: %{"client_platform" => "apple"}
-        }
-        |> sign_out()
+        %{init_conn | path_params: %{"account_id_or_slug" => account.slug}}
+        |> sign_out("apple")
 
-      refute get_session(conn, :session_token)
-      refute get_session(conn, :live_socket_id)
+      assert redirected_to(conn, 302) == "firezone://handle_client_sign_out_callback"
 
-      assert redirected_to(conn, 302) == ~p"/#{account}?client_platform=apple"
+      conn =
+        %{init_conn | path_params: %{"account_id_or_slug" => account.slug}}
+        |> sign_out("android")
+
+      assert redirected_to(conn, 302) == "http://localhost:13100/handle_client_sign_out_callback"
     end
 
     test "erases session, session cookie and redirects to IdP sign out page", %{
@@ -205,12 +205,62 @@ defmodule Web.AuthTest do
         |> assign(:account, account)
         |> put_session(:session_token, session_token)
         |> fetch_cookies()
-        |> sign_out()
+        |> sign_out(nil)
 
       refute get_session(conn, :session_token)
       refute get_session(conn, :live_socket_id)
 
-      assert redirected_to(conn, 302) == ~p"/#{subject.account}"
+      assert redirected_to(conn, 302) =~ ~p"/#{subject.account}"
+    end
+
+    test "post-redirects from IdP sign out page to Apple client-specific URL", %{
+      conn: conn,
+      account: account
+    } do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
+
+      conn =
+        conn
+        |> assign(:account, account)
+        |> put_session(:session_token, session_token)
+        |> fetch_cookies()
+        |> sign_out("apple")
+
+      refute get_session(conn, :session_token)
+      refute get_session(conn, :live_socket_id)
+
+      assert redirected_to(conn, 302) == "firezone://handle_client_sign_out_callback"
+    end
+
+    test "post-redirects from IdP sign out page to Android client-specific URL", %{
+      conn: conn,
+      account: account
+    } do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
+
+      conn =
+        conn
+        |> assign(:account, account)
+        |> put_session(:session_token, session_token)
+        |> fetch_cookies()
+        |> sign_out("android")
+
+      refute get_session(conn, :session_token)
+      refute get_session(conn, :live_socket_id)
+
+      assert redirected_to(conn, 302) == "http://localhost:13100/handle_client_sign_out_callback"
     end
 
     test "keeps preferred_locale session value", %{account: account, conn: conn} do
@@ -219,7 +269,7 @@ defmodule Web.AuthTest do
         |> assign(:account, account)
         |> put_session(:preferred_locale, "uk_UA")
         |> fetch_cookies()
-        |> sign_out()
+        |> sign_out("")
 
       assert get_session(conn, :preferred_locale) == "uk_UA"
     end
@@ -236,7 +286,7 @@ defmodule Web.AuthTest do
       |> assign(:account, account)
       |> put_private(:phoenix_endpoint, @endpoint)
       |> put_session(:live_socket_id, live_socket_id)
-      |> sign_out()
+      |> sign_out(nil)
 
       assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^live_socket_id}
     end
@@ -374,7 +424,7 @@ defmodule Web.AuthTest do
         |> redirect_if_user_is_authenticated([])
 
       assert conn.halted
-      assert redirected_to(conn) =~ "firezone://handle_client_auth_callback"
+      assert redirected_to(conn) =~ "firezone://handle_client_sign_in_callback"
     end
 
     test "does not redirect if user is not authenticated", %{conn: conn} do

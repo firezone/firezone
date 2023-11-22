@@ -61,6 +61,7 @@ defmodule Web.Auth do
     platform_redirects =
       Domain.Config.fetch_env!(:web, __MODULE__)
       |> Keyword.fetch!(:platform_redirects)
+      |> Keyword.fetch!(:sign_in)
 
     if redirects = Map.get(platform_redirects, client_platform) do
       {:ok, client_token} = Auth.create_client_token_from_subject(subject)
@@ -121,32 +122,59 @@ defmodule Web.Auth do
 
   It clears all session data for safety. See `renew_session/1`.
   """
-  def sign_out(%Plug.Conn{} = conn) do
+  def sign_out(%Plug.Conn{} = conn, client_platform) do
+    # TODO: deleted token from the database
+    # _ = Auth.delete_subject_token(subject)
+
     if live_socket_id = Plug.Conn.get_session(conn, :live_socket_id) do
       conn.private.phoenix_endpoint.broadcast(live_socket_id, "disconnect", %{})
     end
 
     account_id_or_slug = Map.get(conn.assigns, :account, conn.path_params["account_id_or_slug"])
-    redirect_params = Map.take(conn.query_params, ["client_platform"])
 
     conn
     |> renew_session()
-    |> sign_out_redirect(account_id_or_slug, redirect_params)
+    |> sign_out_redirect(account_id_or_slug, client_platform)
   end
 
   defp sign_out_redirect(
          %{assigns: %{subject: %Auth.Subject{} = subject}} = conn,
          account_id_or_slug,
-         redirect_params
+         client_platform
        ) do
-    {:ok, _identity, redirect_url} =
-      Auth.sign_out(subject.identity, url(~p"/#{account_id_or_slug}?#{redirect_params}"))
-
+    post_sign_out_url = post_sign_out_url(account_id_or_slug, client_platform)
+    {:ok, _identity, redirect_url} = Auth.sign_out(subject.identity, post_sign_out_url)
     Phoenix.Controller.redirect(conn, external: redirect_url)
   end
 
-  defp sign_out_redirect(conn, account_id_or_slug, redirect_params) do
-    Phoenix.Controller.redirect(conn, to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+  defp sign_out_redirect(conn, account_id_or_slug, client_platform) do
+    Phoenix.Controller.redirect(conn,
+      external: post_sign_out_url(account_id_or_slug, client_platform)
+    )
+  end
+
+  defp post_sign_out_url(account_id_or_slug, client_platform) do
+    platform_redirects =
+      Domain.Config.fetch_env!(:web, __MODULE__)
+      |> Keyword.fetch!(:platform_redirects)
+      |> Keyword.fetch!(:sign_out)
+
+    # dbg({platform_redirects, client_platform})
+
+    if redirects = Map.get(platform_redirects, client_platform) do
+      redirect_method = Keyword.fetch!(redirects, :method)
+      redirect_dest = Keyword.fetch!(redirects, :dest)
+
+      cond do
+        redirect_method == :external ->
+          redirect_dest
+
+        redirect_method == :to ->
+          Web.Endpoint.url() <> redirect_dest
+      end
+    else
+      url(~p"/#{account_id_or_slug}")
+    end
   end
 
   @doc """
