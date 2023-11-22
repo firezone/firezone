@@ -7,9 +7,9 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
       <.form for={@form} phx-change={:change} phx-submit={:submit}>
         <div class="mb-4">
           <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">
-            Step 1. Create OAuth app
+            Step 1. Create OAuth app in your identity provider
           </h2>
-          Please make sure that following scopes are added to the OAuth application has following access scopes: <.code_block
+          Please make sure that following scopes are added to the OAuth application: <.code_block
             :for={scope <- [:openid, :email, :profile]}
             id={"scope-#{scope}"}
             class="w-full mb-4 whitespace-nowrap rounded"
@@ -20,7 +20,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                 sign_in: url(~p"/#{@account.id}/sign_in/providers/#{@id}/handle_callback"),
                 connect:
                   url(
-                    ~p"/#{@account.id}/settings/identity_providers/google_workspace/#{@id}/handle_callback"
+                    ~p"/#{@account.id}/settings/identity_providers/openid_connect/#{@id}/handle_callback"
                   )
               ]
             }
@@ -83,7 +83,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                   label="Client ID"
                   autocomplete="off"
                   field={adapter_config_form[:client_id]}
-                  placeholder="Client ID from your IDP"
+                  placeholder="Client ID from your IdP"
                   required
                 />
               </div>
@@ -93,7 +93,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                   label="Client secret"
                   autocomplete="off"
                   field={adapter_config_form[:client_secret]}
-                  placeholder="Client Secret from your IDP"
+                  placeholder="Client Secret from your IdP"
                   required
                 />
               </div>
@@ -102,7 +102,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                 <.input
                   label="Discovery URL"
                   field={adapter_config_form[:discovery_document_uri]}
-                  placeholder=".well-known URL for your IDP"
+                  placeholder=".well-known URL for your IdP"
                   required
                 />
               </div>
