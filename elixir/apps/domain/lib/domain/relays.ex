@@ -255,18 +255,24 @@ defmodule Domain.Relays do
     end)
   end
 
-  def list_connected_relays_for_resource(%Resources.Resource{} = resource) do
-    connected_relays =
-      Map.merge(
-        Presence.list("relays"),
-        Presence.list("relays:#{resource.account_id}")
-      )
+  def list_connected_relays_for_resource(%Resources.Resource{} = _resource, :managed) do
+    connected_relays = Presence.list("relays")
+    filter = &Relay.Query.public(&1)
+    list_relays_for_resource(connected_relays, filter)
+  end
 
+  def list_connected_relays_for_resource(%Resources.Resource{} = resource, :self_hosted) do
+    connected_relays = Presence.list("relays:#{resource.account_id}")
+    filter = &Relay.Query.by_account_id(&1, resource.account_id)
+    list_relays_for_resource(connected_relays, filter)
+  end
+
+  defp list_relays_for_resource(connected_relays, filter) do
     relays =
       connected_relays
       |> Map.keys()
       |> Relay.Query.by_ids()
-      |> Relay.Query.public_or_by_account_id(resource.account_id)
+      |> filter.()
       |> Repo.all()
       |> Enum.map(fn relay ->
         %{metas: [%{secret: stamp_secret}]} = Map.get(connected_relays, relay.id)

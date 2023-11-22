@@ -16,6 +16,27 @@ defmodule Domain.Gateways do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  def fetch_group_by_id(id) do
+    with true <- Validator.valid_uuid?(id) do
+      Group.Query.by_id(id)
+      |> Repo.fetch()
+      |> case do
+        {:ok, group} ->
+          group =
+            group
+            |> maybe_preload_online_status()
+
+          {:ok, group}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      false -> {:error, :not_found}
+      other -> other
+    end
+  end
+
   def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
          true <- Validator.valid_uuid?(id) do
@@ -279,7 +300,8 @@ defmodule Domain.Gateways do
     end
   end
 
-  def list_connected_gateways_for_resource(%Resources.Resource{} = resource) do
+  def list_connected_gateways_for_resource(%Resources.Resource{} = resource, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
     connected_gateways = Presence.list("gateways:#{resource.account_id}")
 
     gateways =
@@ -293,6 +315,7 @@ defmodule Domain.Gateways do
       |> Gateway.Query.by_account_id(resource.account_id)
       |> Gateway.Query.by_resource_id(resource.id)
       |> Repo.all()
+      |> Repo.preload(preload)
 
     {:ok, gateways}
   end
@@ -461,5 +484,28 @@ defmodule Domain.Gateways do
 
   defp fetch_config! do
     Domain.Config.fetch_env!(:domain, __MODULE__)
+  end
+
+  # Finds the most strict routing strategy for a given list of gateway groups.
+  def relay_strategy(gateway_groups) when is_list(gateway_groups) do
+    strictness = [
+      stun_only: 3,
+      self_hosted: 2,
+      managed: 1
+    ]
+
+    gateway_groups
+    |> Enum.max_by(fn %{routing: routing} ->
+      Keyword.fetch!(strictness, routing)
+    end)
+    |> relay_strategy_mapping()
+  end
+
+  defp relay_strategy_mapping(%Group{} = group) do
+    case group.routing do
+      :stun_only -> {:managed, :stun}
+      :self_hosted -> {:self_hosted, :turn}
+      :managed -> {:managed, :turn}
+    end
   end
 end

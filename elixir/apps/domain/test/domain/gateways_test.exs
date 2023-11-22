@@ -72,6 +72,30 @@ defmodule Domain.GatewaysTest do
     end
   end
 
+  describe "fetch_group_by_id/1" do
+    test "returns error when UUID is invalid" do
+      assert fetch_group_by_id("foo") == {:error, :not_found}
+    end
+
+    test "does not return deleted groups", %{account: account} do
+      group =
+        Fixtures.Gateways.create_group(account: account)
+        |> Fixtures.Gateways.delete_group()
+
+      assert fetch_group_by_id(group.id) == {:error, :not_found}
+    end
+
+    test "returns group by id", %{account: account} do
+      group = Fixtures.Gateways.create_group(account: account)
+      assert {:ok, fetched_group} = fetch_group_by_id(group.id)
+      assert fetched_group.id == group.id
+    end
+
+    test "returns error when group does not exist" do
+      assert fetch_group_by_id(Ecto.UUID.generate()) == {:error, :not_found}
+    end
+  end
+
   describe "list_groups/1" do
     test "returns empty list when there are no groups", %{subject: subject} do
       assert list_groups(subject) == {:ok, []}
@@ -129,7 +153,7 @@ defmodule Domain.GatewaysTest do
   describe "create_group/2" do
     test "returns error on empty attrs", %{subject: subject} do
       assert {:error, changeset} = create_group(%{}, subject)
-      assert errors_on(changeset) == %{tokens: ["can't be blank"]}
+      assert errors_on(changeset) == %{tokens: ["can't be blank"], routing: ["can't be blank"]}
     end
 
     test "returns error on invalid attrs", %{account: account, subject: subject} do
@@ -141,18 +165,34 @@ defmodule Domain.GatewaysTest do
 
       assert errors_on(changeset) == %{
                tokens: ["can't be blank"],
-               name: ["should be at most 64 character(s)"]
+               name: ["should be at most 64 character(s)"],
+               routing: ["can't be blank"]
              }
 
       Fixtures.Gateways.create_group(account: account, name: "foo")
-      attrs = %{name: "foo", tokens: [%{}]}
+      attrs = %{name: "foo", tokens: [%{}], routing: "managed"}
       assert {:error, changeset} = create_group(attrs, subject)
       assert "has already been taken" in errors_on(changeset).name
+    end
+
+    test "returns error on invalid routing value", %{subject: subject} do
+      attrs = %{
+        name_prefix: "foo",
+        routing: "foo",
+        tokens: [%{}]
+      }
+
+      assert {:error, changeset} = create_group(attrs, subject)
+
+      assert errors_on(changeset) == %{
+               routing: ["is invalid"]
+             }
     end
 
     test "creates a group", %{subject: subject} do
       attrs = %{
         name: "foo",
+        routing: "managed",
         tokens: [%{}]
       }
 
@@ -162,6 +202,8 @@ defmodule Domain.GatewaysTest do
 
       assert group.created_by == :identity
       assert group.created_by_identity_id == subject.identity.id
+
+      assert group.routing == :managed
 
       assert [%Gateways.Token{} = token] = group.tokens
       assert token.created_by == :identity
@@ -210,13 +252,15 @@ defmodule Domain.GatewaysTest do
       group = Fixtures.Gateways.create_group(account: account)
 
       attrs = %{
-        name: String.duplicate("A", 65)
+        name: String.duplicate("A", 65),
+        routing: "foo"
       }
 
       assert {:error, changeset} = update_group(group, attrs, subject)
 
       assert errors_on(changeset) == %{
-               name: ["should be at most 64 character(s)"]
+               name: ["should be at most 64 character(s)"],
+               routing: ["is invalid"]
              }
 
       Fixtures.Gateways.create_group(account: account, name: "foo")
@@ -229,11 +273,13 @@ defmodule Domain.GatewaysTest do
       group = Fixtures.Gateways.create_group(account: account)
 
       attrs = %{
-        name: "foo"
+        name: "foo",
+        routing: "stun_only"
       }
 
       assert {:ok, group} = update_group(group, attrs, subject)
       assert group.name == "foo"
+      assert group.routing == :stun_only
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -960,6 +1006,37 @@ defmodule Domain.GatewaysTest do
 
     test "returns error when secret is invalid" do
       assert authorize_gateway(Ecto.UUID.generate()) == {:error, :invalid_token}
+    end
+  end
+
+  describe "relay_strategy/1" do
+    test "managed strategy" do
+      group = Fixtures.Gateways.create_group(routing: :managed)
+      assert {:managed, :turn} == relay_strategy([group])
+    end
+
+    test "self-hosted strategy" do
+      group = Fixtures.Gateways.create_group(routing: :self_hosted)
+      assert {:self_hosted, :turn} == relay_strategy([group])
+    end
+
+    test "stun_only strategy" do
+      group = Fixtures.Gateways.create_group(routing: :stun_only)
+      assert {:managed, :stun} == relay_strategy([group])
+    end
+
+    test "strictest strategy is returned" do
+      managed_group = Fixtures.Gateways.create_group(routing: :managed)
+      self_hosted_group = Fixtures.Gateways.create_group(routing: :self_hosted)
+      stun_only_group = Fixtures.Gateways.create_group(routing: :stun_only)
+
+      assert {:managed, :stun} ==
+               relay_strategy([managed_group, self_hosted_group, stun_only_group])
+
+      assert {:self_hosted, :turn} == relay_strategy([managed_group, self_hosted_group])
+      assert {:managed, :stun} == relay_strategy([managed_group, stun_only_group])
+      assert {:managed, :stun} == relay_strategy([self_hosted_group, stun_only_group])
+      assert {:managed, :turn} == relay_strategy([managed_group])
     end
   end
 end
