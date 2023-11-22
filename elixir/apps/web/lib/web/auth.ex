@@ -140,7 +140,7 @@ defmodule Web.Auth do
          redirect_params
        ) do
     {:ok, _identity, redirect_url} =
-      Domain.Auth.sign_out(subject.identity, url(~p"/#{account_id_or_slug}?#{redirect_params}"))
+      Auth.sign_out(subject.identity, url(~p"/#{account_id_or_slug}?#{redirect_params}"))
 
     Phoenix.Controller.redirect(conn, external: redirect_url)
   end
@@ -165,6 +165,20 @@ defmodule Web.Auth do
   ###########################
   ## Controller Helpers
   ###########################
+
+  def get_auth_context(%Plug.Conn{} = conn) do
+    {location_region, location_city, {location_lat, location_lon}} =
+      get_load_balancer_ip_location(conn)
+
+    %Auth.Context{
+      user_agent: Map.get(conn.assigns, :user_agent),
+      remote_ip: conn.remote_ip,
+      remote_ip_location_region: location_region,
+      remote_ip_location_city: location_city,
+      remote_ip_location_lat: location_lat,
+      remote_ip_location_lon: location_lon
+    }
+  end
 
   def list_recent_account_ids(conn) do
     conn = Plug.Conn.fetch_cookies(conn, signed: [@remember_me_cookie_name])
@@ -211,23 +225,12 @@ defmodule Web.Auth do
   Fetches the session token from the session and assigns the subject to the connection.
   """
   def fetch_subject_and_account(%Plug.Conn{} = conn, _opts) do
-    {location_region, location_city, {location_lat, location_lon}} =
-      get_load_balancer_ip_location(conn)
-
-    context = %Auth.Context{
-      user_agent: Map.get(conn.assigns, :user_agent),
-      remote_ip: conn.remote_ip,
-      remote_ip_location_region: location_region,
-      remote_ip_location_city: location_city,
-      remote_ip_location_lat: location_lat,
-      remote_ip_location_lon: location_lon
-    }
+    context = get_auth_context(conn)
 
     with token when not is_nil(token) <- Plug.Conn.get_session(conn, :session_token),
-         {:ok, subject} <-
-           Domain.Auth.sign_in(token, context),
+         {:ok, subject} <- Auth.sign_in(token, context),
          {:ok, account} <-
-           Domain.Accounts.fetch_account_by_id_or_slug(
+           Accounts.fetch_account_by_id_or_slug(
              conn.path_params["account_id_or_slug"],
              subject
            ) do
@@ -471,7 +474,7 @@ defmodule Web.Auth do
       {location_region, location_city, {location_lat, location_lon}} =
         get_load_balancer_ip_location(x_headers)
 
-      context = %Domain.Auth.Context{
+      context = %Auth.Context{
         user_agent: user_agent,
         remote_ip: real_ip,
         remote_ip_location_region: location_region,
@@ -481,7 +484,7 @@ defmodule Web.Auth do
       }
 
       with token when not is_nil(token) <- session["session_token"],
-           {:ok, subject} <- Domain.Auth.sign_in(token, context) do
+           {:ok, subject} <- Auth.sign_in(token, context) do
         subject
       else
         _ -> nil
@@ -496,7 +499,7 @@ defmodule Web.Auth do
        ) do
     Phoenix.Component.assign_new(socket, :account, fn ->
       with {:ok, account} <-
-             Domain.Accounts.fetch_account_by_id_or_slug(account_id_or_slug, subject) do
+             Accounts.fetch_account_by_id_or_slug(account_id_or_slug, subject) do
         account
       else
         _ -> nil

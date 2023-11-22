@@ -32,15 +32,10 @@ defmodule Web.AuthController do
       ) do
     redirect_params = take_non_empty_params(params, ["client_platform", "client_csrf_token"])
 
+    context = Web.Auth.get_auth_context(conn)
+
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-         {:ok, subject} <-
-           Domain.Auth.sign_in(
-             provider,
-             provider_identifier,
-             secret,
-             conn.assigns.user_agent,
-             conn.remote_ip
-           ) do
+         {:ok, subject} <- Domain.Auth.sign_in(provider, provider_identifier, secret, context) do
       client_platform = params["client_platform"]
       client_csrf_token = params["client_csrf_token"]
 
@@ -143,16 +138,12 @@ defmodule Web.AuthController do
       put_if_not_empty(:client_platform, client_platform)
       |> put_if_not_empty(:client_csrf_token, client_csrf_token)
 
+    context = Web.Auth.get_auth_context(conn)
+
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
          nonce = get_session(conn, :sign_in_nonce) || "=",
-         {:ok, subject} <-
-           Domain.Auth.sign_in(
-             provider,
-             identity_id,
-             String.downcase(email_secret) <> nonce,
-             conn.assigns.user_agent,
-             conn.remote_ip
-           ) do
+         secret = String.downcase(email_secret) <> nonce,
+         {:ok, subject} <- Domain.Auth.sign_in(provider, identity_id, secret, context) do
       conn
       |> delete_session(:client_platform)
       |> delete_session(:client_csrf_token)
@@ -245,9 +236,18 @@ defmodule Web.AuthController do
         code
       }
 
+      context = %Domain.Auth.Context{
+        remote_ip: conn.remote_ip,
+        remote_ip_location_region: nil,
+        remote_ip_location_city: nil,
+        remote_ip_location_lat: nil,
+        remote_ip_location_lon: nil,
+        user_agent: conn.assigns.user_agent
+      }
+
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
            {:ok, subject} <-
-             Domain.Auth.sign_in(provider, payload, conn.assigns.user_agent, conn.remote_ip) do
+             Domain.Auth.sign_in(provider, payload, context) do
         conn
         |> delete_session(:client_platform)
         |> delete_session(:client_csrf_token)
@@ -293,14 +293,6 @@ defmodule Web.AuthController do
   def sign_out(conn, _params) do
     conn
     |> Auth.sign_out()
-  end
-
-  def sign_out(conn, %{"account_id_or_slug" => account_id_or_slug}) do
-    redirect_params = Map.take(conn.params, ["client_platform"])
-
-    conn
-    |> Auth.sign_out()
-    |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
   end
 
   defp persist_recent_account(conn, %Domain.Accounts.Account{} = account) do

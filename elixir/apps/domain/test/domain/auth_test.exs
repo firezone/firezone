@@ -1906,8 +1906,9 @@ defmodule Domain.AuthTest do
       remote_ip: remote_ip
     } do
       secret = "foo"
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, Ecto.UUID.generate(), secret, user_agent, remote_ip) ==
+      assert sign_in(provider, Ecto.UUID.generate(), secret, context) ==
                {:error, :unauthorized}
     end
 
@@ -1919,8 +1920,9 @@ defmodule Domain.AuthTest do
     } do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = "foo"
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
+      assert sign_in(provider, identity.provider_identifier, secret, context) ==
                {:error, :unauthorized}
     end
 
@@ -1933,8 +1935,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
 
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
+
       assert {:ok, %Auth.Subject{} = subject} =
-               sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip)
+               sign_in(provider, identity.provider_identifier, secret, context)
 
       assert subject.account.id == account.id
       assert subject.actor.id == identity.actor_id
@@ -1952,8 +1956,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
 
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
+
       assert {:ok, %Auth.Subject{} = subject} =
-               sign_in(provider, identity.id, secret, user_agent, remote_ip)
+               sign_in(provider, identity.id, secret, context)
 
       assert subject.account.id == account.id
       assert subject.actor.id == identity.actor_id
@@ -1972,8 +1978,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
+
       assert {:ok, %Auth.Subject{} = subject} =
-               sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip)
+               sign_in(provider, identity.provider_identifier, secret, context)
 
       one_week = 7 * 24 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week - 60 * 60)
@@ -1982,8 +1990,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
+
       assert {:ok, %Auth.Subject{} = subject} =
-               sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip)
+               sign_in(provider, identity.provider_identifier, secret, context)
 
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
     end
@@ -2001,8 +2011,9 @@ defmodule Domain.AuthTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
+      assert sign_in(provider, identity.provider_identifier, secret, context) ==
                {:error, :unauthorized}
     end
 
@@ -2017,8 +2028,9 @@ defmodule Domain.AuthTest do
       secret = identity.provider_virtual_state.sign_in_token
       subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, identity} = delete_identity(identity, subject)
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
+      assert sign_in(provider, identity.provider_identifier, secret, context) ==
                {:error, :unauthorized}
     end
 
@@ -2034,8 +2046,9 @@ defmodule Domain.AuthTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
+      assert sign_in(provider, identity.provider_identifier, secret, context) ==
                {:error, :unauthorized}
     end
 
@@ -2051,8 +2064,9 @@ defmodule Domain.AuthTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
+      assert sign_in(provider, identity.provider_identifier, secret, context) ==
                {:error, :unauthorized}
     end
 
@@ -2069,8 +2083,9 @@ defmodule Domain.AuthTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
+      assert sign_in(provider, identity.provider_identifier, secret, context) ==
                {:error, :unauthorized}
     end
 
@@ -2083,8 +2098,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
 
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
+
       assert {:ok, _subject} =
-               sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip)
+               sign_in(provider, identity.provider_identifier, secret, context)
 
       assert updated_identity = Repo.one(Auth.Identity)
       assert updated_identity.last_seen_at != identity.last_seen_at
@@ -2132,8 +2149,9 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, payload, user_agent, remote_ip) ==
+      assert sign_in(provider, payload, context) ==
                {:error, :unauthorized}
     end
 
@@ -2148,8 +2166,9 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, payload, user_agent, remote_ip) ==
+      assert sign_in(provider, payload, context) ==
                {:error, :unauthorized}
     end
 
@@ -2176,7 +2195,9 @@ defmodule Domain.AuthTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, %Auth.Subject{} = subject} = sign_in(provider, payload, user_agent, remote_ip)
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
+
+      assert {:ok, %Auth.Subject{} = subject} = sign_in(provider, payload, context)
 
       assert subject.account.id == account.id
       assert subject.actor.id == identity.actor_id
@@ -2209,7 +2230,10 @@ defmodule Domain.AuthTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, %Auth.Subject{} = subject} = sign_in(provider, payload, user_agent, remote_ip)
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
+
+      assert {:ok, %Auth.Subject{} = subject} =
+               sign_in(provider, payload, context)
 
       one_week = 7 * 24 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
@@ -2239,7 +2263,10 @@ defmodule Domain.AuthTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, %Auth.Subject{} = subject} = sign_in(provider, payload, user_agent, remote_ip)
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
+
+      assert {:ok, %Auth.Subject{} = subject} =
+               sign_in(provider, payload, context)
 
       one_week = 7 * 24 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week - 60 * 60)
@@ -2264,8 +2291,9 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, payload, user_agent, remote_ip) ==
+      assert sign_in(provider, payload, context) ==
                {:error, :unauthorized}
     end
 
@@ -2288,8 +2316,9 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, payload, user_agent, remote_ip) ==
+      assert sign_in(provider, payload, context) ==
                {:error, :unauthorized}
     end
 
@@ -2313,8 +2342,9 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, payload, user_agent, remote_ip) ==
+      assert sign_in(provider, payload, context) ==
                {:error, :unauthorized}
     end
 
@@ -2338,8 +2368,9 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, payload, user_agent, remote_ip) ==
+      assert sign_in(provider, payload, context) ==
                {:error, :unauthorized}
     end
 
@@ -2362,8 +2393,9 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, payload, user_agent, remote_ip) ==
+      assert sign_in(provider, payload, context) ==
                {:error, :unauthorized}
     end
 
@@ -2384,7 +2416,9 @@ defmodule Domain.AuthTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, _subject} = sign_in(provider, payload, user_agent, remote_ip)
+      context = %Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
+
+      assert {:ok, _subject} = sign_in(provider, payload, context)
 
       assert updated_identity = Repo.one(Auth.Identity)
       assert updated_identity.last_seen_at != identity.last_seen_at

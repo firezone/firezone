@@ -411,7 +411,7 @@ defmodule Domain.Auth do
 
   # Sign Up / In / Off
 
-  def sign_in(%Provider{} = provider, id_or_provider_identifier, secret, user_agent, remote_ip) do
+  def sign_in(%Provider{} = provider, id_or_provider_identifier, secret, %Context{} = context) do
     identity_queryable =
       Identity.Query.not_disabled()
       |> Identity.Query.by_provider_id(provider.id)
@@ -419,7 +419,6 @@ defmodule Domain.Auth do
 
     with {:ok, identity} <- Repo.fetch(identity_queryable),
          {:ok, identity, expires_at} <- Adapters.verify_secret(provider, identity, secret) do
-      context = %Context{remote_ip: remote_ip, user_agent: user_agent}
       {:ok, build_subject(identity, expires_at, context)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
@@ -428,9 +427,8 @@ defmodule Domain.Auth do
     end
   end
 
-  def sign_in(%Provider{} = provider, payload, user_agent, remote_ip) do
+  def sign_in(%Provider{} = provider, payload, %Context{} = context) do
     with {:ok, identity, expires_at} <- Adapters.verify_and_update_identity(provider, payload) do
-      context = %Context{remote_ip: remote_ip, user_agent: user_agent}
       {:ok, build_subject(identity, expires_at, context)}
     else
       {:error, :not_found} -> {:error, :unauthorized}

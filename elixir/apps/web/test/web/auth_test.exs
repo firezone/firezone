@@ -177,7 +177,7 @@ defmodule Web.AuthTest do
       conn =
         %{
           conn
-          | path_params: %{"account_id_or_slug" => account.id},
+          | path_params: %{"account_id_or_slug" => account.slug},
             query_params: %{"client_platform" => "apple"}
         }
         |> sign_out()

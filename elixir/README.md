@@ -209,7 +209,7 @@ user_agent = "User-Agent: iOS/12.7 (iPhone) connlib/0.7.412"
 remote_ip = {127, 0, 0, 1}
 
 # For a client
-{:ok, subject} = Domain.Auth.sign_in(client_token, user_agent, remote_ip)
+{:ok, subject} = Domain.Auth.sign_in(client_token, %Domain.Auth.Context{user_agent: user_agent, remote_ip: remote_ip})
 
 # For an admin user
 provider = Domain.Repo.get_by(Domain.Auth.Provider, adapter: :userpass)
