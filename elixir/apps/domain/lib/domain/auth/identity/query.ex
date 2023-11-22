@@ -3,10 +3,14 @@ defmodule Domain.Auth.Identity.Query do
 
   def all do
     from(identities in Domain.Auth.Identity, as: :identities)
+  end
+
+  def not_deleted do
+    all()
     |> where([identities: identities], is_nil(identities.deleted_at))
   end
 
-  def by_id(queryable \\ all(), id)
+  def by_id(queryable \\ not_deleted(), id)
 
   def by_id(queryable, {:not, id}) do
     where(queryable, [identities: identities], identities.id != ^id)
@@ -16,26 +20,26 @@ defmodule Domain.Auth.Identity.Query do
     where(queryable, [identities: identities], identities.id == ^id)
   end
 
-  def by_account_id(queryable \\ all(), account_id) do
+  def by_account_id(queryable \\ not_deleted(), account_id) do
     where(queryable, [identities: identities], identities.account_id == ^account_id)
   end
 
-  def by_actor_id(queryable \\ all(), actor_id) do
+  def by_actor_id(queryable \\ not_deleted(), actor_id) do
     where(queryable, [identities: identities], identities.actor_id == ^actor_id)
   end
 
-  def by_provider_id(queryable \\ all(), provider_id) do
+  def by_provider_id(queryable \\ not_deleted(), provider_id) do
     queryable
     |> where([identities: identities], identities.provider_id == ^provider_id)
     |> with_assoc(:inner, :provider)
     |> where([provider: provider], is_nil(provider.disabled_at) and is_nil(provider.deleted_at))
   end
 
-  def by_adapter(queryable \\ all(), adapter) do
+  def by_adapter(queryable \\ not_deleted(), adapter) do
     where(queryable, [identities: identities], identities.adapter == ^adapter)
   end
 
-  def by_provider_identifier(queryable \\ all(), provider_identifier)
+  def by_provider_identifier(queryable \\ not_deleted(), provider_identifier)
 
   def by_provider_identifier(queryable, {:in, provider_identifiers}) do
     where(
@@ -53,7 +57,7 @@ defmodule Domain.Auth.Identity.Query do
     )
   end
 
-  def by_id_or_provider_identifier(queryable \\ all(), id_or_provider_identifier) do
+  def by_id_or_provider_identifier(queryable \\ not_deleted(), id_or_provider_identifier) do
     if Domain.Validator.valid_uuid?(id_or_provider_identifier) do
       where(
         queryable,
@@ -66,18 +70,18 @@ defmodule Domain.Auth.Identity.Query do
     end
   end
 
-  def not_disabled(queryable \\ all()) do
+  def not_disabled(queryable \\ not_deleted()) do
     queryable
     |> join(:inner, [identities: identities], actors in assoc(identities, :actor), as: :actors)
     |> where([actors: actors], is_nil(actors.deleted_at))
     |> where([actors: actors], is_nil(actors.disabled_at))
   end
 
-  def lock(queryable \\ all()) do
+  def lock(queryable \\ not_deleted()) do
     lock(queryable, "FOR UPDATE")
   end
 
-  def group_by_provider_id(queryable \\ all()) do
+  def group_by_provider_id(queryable \\ not_deleted()) do
     queryable
     |> group_by([identities: identities], identities.provider_id)
     |> select([identities: identities], %{
@@ -86,13 +90,13 @@ defmodule Domain.Auth.Identity.Query do
     })
   end
 
-  def with_preloaded_assoc(queryable \\ all(), type \\ :left, assoc) do
+  def with_preloaded_assoc(queryable \\ not_deleted(), type \\ :left, assoc) do
     queryable
     |> with_assoc(type, assoc)
     |> preload([{^assoc, assoc}], [{^assoc, assoc}])
   end
 
-  def with_assoc(queryable \\ all(), type \\ :left, assoc) do
+  def with_assoc(queryable \\ not_deleted(), type \\ :left, assoc) do
     with_named_binding(queryable, assoc, fn query, binding ->
       join(query, type, [identities: identities], a in assoc(identities, ^binding), as: ^binding)
     end)

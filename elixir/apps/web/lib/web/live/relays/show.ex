@@ -42,6 +42,7 @@ defmodule Web.Relays.Show do
             <code><%= @relay.ipv4 %></code>
           </:item>
         </.intersperse_blocks>
+        <span :if={not is_nil(@relay.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:content>
         <div class="bg-white overflow-hidden">
@@ -111,9 +112,9 @@ defmodule Web.Relays.Show do
       </:content>
     </.section>
 
-    <.danger_zone>
+    <.danger_zone :if={is_nil(@relay.deleted_at)}>
       <:action :if={@relay.account_id}>
-        <.delete_button phx-click="delete">
+        <.delete_button phx-click="delete" data-confirm="Are you sure you want to delete this relay?">
           Delete Relay
         </.delete_button>
       </:action>

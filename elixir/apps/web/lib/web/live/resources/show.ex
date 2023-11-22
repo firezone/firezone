@@ -41,8 +41,9 @@ defmodule Web.Resources.Show do
     <.section>
       <:title>
         Resource: <code><%= @resource.name %></code>
+        <span :if={not is_nil(@resource.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action>
+      <:action :if={is_nil(@resource.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/resources/#{@resource.id}/edit?#{@params}"}>
           Edit Resource
         </.edit_button>
@@ -232,7 +233,7 @@ defmodule Web.Resources.Show do
       </:content>
     </.section>
 
-    <.danger_zone>
+    <.danger_zone :if={is_nil(@resource.deleted_at)}>
       <:action>
         <.delete_button
           data-confirm="Are you sure want to delete this resource?"

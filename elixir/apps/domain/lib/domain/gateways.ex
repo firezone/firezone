@@ -42,7 +42,8 @@ defmodule Domain.Gateways do
          true <- Validator.valid_uuid?(id) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-      Group.Query.by_id(id)
+      Group.Query.all()
+      |> Group.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
@@ -68,7 +69,7 @@ defmodule Domain.Gateways do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
       {:ok, groups} =
-        Group.Query.all()
+        Group.Query.not_deleted()
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 
@@ -193,7 +194,8 @@ defmodule Domain.Gateways do
          true <- Validator.valid_uuid?(id) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-      Gateway.Query.by_id(id)
+      Gateway.Query.all()
+      |> Gateway.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
@@ -228,7 +230,7 @@ defmodule Domain.Gateways do
 
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       {:ok, gateways} =
-        Gateway.Query.all()
+        Gateway.Query.not_deleted()
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 
@@ -263,7 +265,7 @@ defmodule Domain.Gateways do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
       {:ok, gateways} =
-        Gateway.Query.all()
+        Gateway.Query.not_deleted()
         |> Gateway.Query.by_group_id(group.id)
         |> Authorizer.for_subject(subject)
         |> Repo.list()

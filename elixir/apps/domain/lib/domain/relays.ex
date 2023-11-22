@@ -21,7 +21,8 @@ defmodule Domain.Relays do
          true <- Validator.valid_uuid?(id) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-      Group.Query.by_id(id)
+      Group.Query.all()
+      |> Group.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
@@ -47,7 +48,7 @@ defmodule Domain.Relays do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
       {:ok, groups} =
-        Group.Query.all()
+        Group.Query.not_deleted()
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 
@@ -186,7 +187,8 @@ defmodule Domain.Relays do
          true <- Validator.valid_uuid?(id) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-      Relay.Query.by_id(id)
+      Relay.Query.all()
+      |> Relay.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
@@ -221,7 +223,7 @@ defmodule Domain.Relays do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
       {:ok, relays} =
-        Relay.Query.all()
+        Relay.Query.not_deleted()
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 

@@ -38,7 +38,8 @@ defmodule Domain.Clients do
          true <- Validator.valid_uuid?(id) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-      Client.Query.by_id(id)
+      Client.Query.all()
+      |> Client.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
@@ -80,7 +81,7 @@ defmodule Domain.Clients do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       {:ok, clients} =
-        Client.Query.all()
+        Client.Query.not_deleted()
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 

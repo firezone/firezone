@@ -55,7 +55,7 @@ defmodule Domain.ClientsTest do
       assert fetch_client_by_id("foo", subject) == {:error, :not_found}
     end
 
-    test "does not return deleted clients", %{
+    test "returns deleted clients", %{
       unprivileged_actor: actor,
       unprivileged_subject: subject
     } do
@@ -63,7 +63,7 @@ defmodule Domain.ClientsTest do
         Fixtures.Clients.create_client(actor: actor)
         |> Fixtures.Clients.delete_client()
 
-      assert fetch_client_by_id(client.id, subject) == {:error, :not_found}
+      assert {:ok, _client} = fetch_client_by_id(client.id, subject)
     end
 
     test "returns client by id", %{unprivileged_actor: actor, unprivileged_subject: subject} do
@@ -702,9 +702,9 @@ defmodule Domain.ClientsTest do
       Fixtures.Clients.create_client(actor: actor)
       Fixtures.Clients.create_client(actor: actor)
 
-      assert Repo.aggregate(Clients.Client.Query.all(), :count) == 3
+      assert Repo.aggregate(Clients.Client.Query.not_deleted(), :count) == 3
       assert delete_actor_clients(actor) == :ok
-      assert Repo.aggregate(Clients.Client.Query.all(), :count) == 0
+      assert Repo.aggregate(Clients.Client.Query.not_deleted(), :count) == 0
     end
 
     test "does not remove clients that belong to another actor" do
