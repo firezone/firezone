@@ -27,7 +27,7 @@ export default function Page() {
               Starter
             </h3>
             <p className="mb-8">
-              Secure remote access for individuals and small groups.
+              Secure remote access for individuals and small groups
             </p>
             <h2 className="mb-16 text-2xl sm:text-4xl tracking-tight font-semibold text-neutral-900">
               Free
@@ -81,7 +81,7 @@ export default function Page() {
               Enterprise
             </h3>
             <p className="mb-8">
-              Zero trust network access for teams and organizations.
+              Zero trust network access for teams and organizations
             </p>
             <h2 className="mb-16 text-2xl sm:text-4xl tracking-tight font-semibold text-neutral-900">
               Contact us
@@ -209,28 +209,6 @@ export default function Page() {
               <tr className="border-b border-1 border-neutral-200">
                 <td className="px-6 py-4">
                   <span
-                    data-tooltip-target="admins-tooltip"
-                    data-tooltip-placement="top"
-                    className="underline hover:no-underline cursor-help"
-                  >
-                    Admins
-                  </span>
-                  <div
-                    id="admins-tooltip"
-                    role="tooltip"
-                    className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
-                  >
-                    Users with account-wide access to deploy gateways, manage
-                    billing, and edit users, sites, and other configuration
-                    <div className="tooltip-arrow" data-popper-arrow></div>
-                  </div>
-                </td>
-                <td className="px-6 py-4">1</td>
-                <td className="px-6 py-4">No limit</td>
-              </tr>
-              <tr className="border-b border-1 border-neutral-200">
-                <td className="px-6 py-4">
-                  <span
                     data-tooltip-target="sites-tooltip"
                     data-tooltip-placement="top"
                     className="underline hover:no-underline cursor-help"
@@ -249,6 +227,28 @@ export default function Page() {
                   </div>
                 </td>
                 <td className="px-6 py-4">3</td>
+                <td className="px-6 py-4">No limit</td>
+              </tr>
+              <tr className="border-b border-1 border-neutral-200">
+                <td className="px-6 py-4">
+                  <span
+                    data-tooltip-target="admins-tooltip"
+                    data-tooltip-placement="top"
+                    className="underline hover:no-underline cursor-help"
+                  >
+                    Admins
+                  </span>
+                  <div
+                    id="admins-tooltip"
+                    role="tooltip"
+                    className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+                  >
+                    Users with account-wide access to deploy gateways, manage
+                    billing, and edit users, sites, and other configuration
+                    <div className="tooltip-arrow" data-popper-arrow></div>
+                  </div>
+                </td>
+                <td className="px-6 py-4">1</td>
                 <td className="px-6 py-4">No limit</td>
               </tr>
               <tr className="border-b border-1 border-neutral-200">
@@ -395,11 +395,12 @@ export default function Page() {
                 </td>
               </tr>
               <tr>
-                <td className="px-6 pt-8 pb-4 text-lg font-semibold text-primary-450 tracking-light">
+                <td
+                  colSpan={3}
+                  className="px-6 pt-8 pb-4 text-lg font-semibold text-primary-450 tracking-light"
+                >
                   Authentication & Authorization
                 </td>
-                <td></td>
-                <td></td>
               </tr>
               <tr className="border-b border-1 border-neutral-200">
                 <td className="px-6 py-4">Resource-level access policies</td>
@@ -434,11 +435,12 @@ export default function Page() {
                 </td>
               </tr>
               <tr>
-                <td className="px-6 pt-8 pb-4 text-lg font-semibold text-primary-450 tracking-light">
+                <td
+                  colSpan={3}
+                  className="px-6 pt-8 pb-4 text-lg font-semibold text-primary-450 tracking-light"
+                >
                   Security Features
                 </td>
-                <td></td>
-                <td></td>
               </tr>
               <tr className="border-b border-1 border-neutral-200">
                 <td className="px-6 py-4">Daily key rotation</td>
@@ -468,11 +470,12 @@ export default function Page() {
                 </td>
               </tr>
               <tr>
-                <td className="px-6 pt-8 pb-4 text-lg font-semibold text-primary-450 tracking-light">
+                <td
+                  colSpan={3}
+                  className="px-6 pt-8 pb-4 text-lg font-semibold text-primary-450 tracking-light"
+                >
                   Support
                 </td>
-                <td></td>
-                <td></td>
               </tr>
               <tr className="border-b border-1 border-neutral-200">
                 <td className="px-6 py-4">Community Forums</td>
@@ -554,7 +557,7 @@ export default function Page() {
                   href="#rip-replace"
                   className="hover:underline text-accent-500"
                 >
-                  Do I need to rip and replace my current VPN with Firezone?
+                  Do I need to rip and replace my current VPN to use Firezone?
                 </Link>
               </li>
               <li>
