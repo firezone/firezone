@@ -216,6 +216,7 @@ fn resource_from_question<N: ToDname>(
     let qtype = question.qtype();
 
     let resource = match qtype {
+        // TODO: here we won't resolve with the assigned ip. instead we will send the server to resolve.
         Rtype::A | Rtype::Aaaa => name
             .iter_suffixes()
             .find_map(|n| resources.get_by_name(n.to_string())),
