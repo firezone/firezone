@@ -1,3 +1,4 @@
+use crate::DNS_FALLBACK_STRATEGY;
 use closeable::Closeable;
 use connlib_shared::{
     messages::Interface as InterfaceConfig, Callbacks, Error, Result, DNS_SENTINEL,
@@ -17,9 +18,6 @@ use tokio::io::unix::AsyncFd;
 
 mod closeable;
 mod wrapped_socket;
-// Android doesn't support Split DNS. So we intercept all requests and forward
-// the non-Firezone name resolution requests to the upstream DNS resolver.
-const DNS_FALLBACK_STRATEGY: &str = "upstream_resolver";
 
 #[repr(C)]
 union IfrIfru {

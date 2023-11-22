@@ -3,8 +3,8 @@ use crate::device_channel::{create_iface, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::resource_table::ResourceTable;
 use crate::{
-    dns, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE,
-    ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
+    dns, ConnectedPeer, DnsFallbackStrategy, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
+    DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
 };
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
@@ -97,6 +97,10 @@ where
 
         self.callbacks.on_tunnel_ready()?;
 
+        if !config.upstream_dns.is_empty() {
+            self.role_state.lock().dns_strategy = DnsFallbackStrategy::UpstreamResolver;
+        }
+
         tracing::debug!("background_loop_started");
 
         Ok(())
@@ -143,6 +147,8 @@ pub struct ClientState {
     pub gateway_preshared_keys: HashMap<GatewayId, StaticSecret>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
     resources: ResourceTable<ResourceDescription>,
+
+    pub dns_strategy: DnsFallbackStrategy,
     dns_queries: BoundedQueue<DnsQuery<'static>>,
 }
 
@@ -161,8 +167,9 @@ impl ClientState {
     pub(crate) fn handle_dns<'a>(
         &mut self,
         packet: MutableIpPacket<'a>,
+        resolve_strategy: DnsFallbackStrategy,
     ) -> Result<Option<Packet<'a>>, MutableIpPacket<'a>> {
-        match dns::parse(&self.resources, packet.as_immutable()) {
+        match dns::parse(&self.resources, packet.as_immutable(), resolve_strategy) {
             Some(dns::ResolveStrategy::LocalResponse(pkt)) => Ok(Some(pkt)),
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
                 self.add_pending_dns_query(query);
@@ -420,6 +427,7 @@ impl Default for ClientState {
             resources: Default::default(),
             dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
             gateway_preshared_keys: Default::default(),
+            dns_strategy: Default::default(),
         }
     }
 }

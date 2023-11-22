@@ -1,7 +1,7 @@
 use crate::device_channel::Packet;
 use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
 use crate::resource_table::ResourceTable;
-use crate::DnsQuery;
+use crate::{DnsFallbackStrategy, DnsQuery};
 use connlib_shared::error::ConnlibError;
 use connlib_shared::{messages::ResourceDescription, DNS_SENTINEL};
 use domain::base::{
@@ -59,6 +59,7 @@ impl<T> ResolveStrategy<T, DnsQueryParams> {
 pub(crate) fn parse<'a>(
     resources: &ResourceTable<ResourceDescription>,
     packet: IpPacket<'a>,
+    resolve_strategy: DnsFallbackStrategy,
 ) -> Option<ResolveStrategy<Packet<'static>, DnsQuery<'a>>> {
     if packet.destination() != IpAddr::from(DNS_SENTINEL) {
         return None;
@@ -69,11 +70,17 @@ pub(crate) fn parse<'a>(
         return None;
     }
     let question = message.first_question()?;
-    let resource = match resource_from_question(resources, &question)? {
-        ResolveStrategy::LocalResponse(resource) => resource,
-        ResolveStrategy::ForwardQuery(params) => {
-            return Some(ResolveStrategy::ForwardQuery(params.into_query(packet)))
+    // In general we prefer to always have a response NxDomain to deal with with domains we don't expect
+    // For systems with splitdns, in theory, we should only see Ptr queries we don't handle(e.g. apple's dns-sd)
+    let resource = match resource_from_question(resources, &question) {
+        Some(ResolveStrategy::LocalResponse(resource)) => Some(resource),
+        Some(ResolveStrategy::ForwardQuery(params)) => {
+            if resolve_strategy.is_upstream() {
+                return Some(ResolveStrategy::ForwardQuery(params.into_query(packet)));
+            }
+            None
         }
+        None => None,
     };
     let response = build_dns_with_answer(message, question.qname(), question.qtype(), &resource)?;
     Some(ResolveStrategy::LocalResponse(build_response(
@@ -149,7 +156,7 @@ fn build_dns_with_answer<N>(
     message: &Message<[u8]>,
     qname: &N,
     qtype: Rtype,
-    resource: &ResourceDescription,
+    resource: &Option<ResourceDescription>,
 ) -> Option<Vec<u8>>
 where
     N: ToDname + ?Sized,
@@ -158,6 +165,16 @@ where
     let msg_builder = MessageBuilder::from_target(msg_buf).expect(
         "Developer error: we should be always be able to create a MessageBuilder from a Vec",
     );
+
+    let Some(resource) = resource else {
+        return Some(
+            msg_builder
+                .start_answer(message, Rcode::NXDomain)
+                .ok()?
+                .finish(),
+        );
+    };
+
     let mut answer_builder = msg_builder.start_answer(message, Rcode::NoError).ok()?;
     match qtype {
         Rtype::A => answer_builder
@@ -195,13 +212,15 @@ fn resource_from_question<N: ToDname>(
     resources: &ResourceTable<ResourceDescription>,
     question: &Question<N>,
 ) -> Option<ResolveStrategy<ResourceDescription, DnsQueryParams>> {
-    let name = ToDname::to_cow(question.qname()).to_string();
+    let name = ToDname::to_cow(question.qname());
     let qtype = question.qtype();
 
     let resource = match qtype {
-        Rtype::A | Rtype::Aaaa => resources.get_by_name(&name),
+        Rtype::A | Rtype::Aaaa => name
+            .iter_suffixes()
+            .find_map(|n| resources.get_by_name(n.to_string())),
         Rtype::Ptr => {
-            let ip = reverse_dns_addr(&name)?;
+            let ip = reverse_dns_addr(&name.to_string())?;
             resources.get_by_ip(ip)
         }
         _ => return None,
@@ -210,7 +229,7 @@ fn resource_from_question<N: ToDname>(
     resource
         .cloned()
         .map(ResolveStrategy::LocalResponse)
-        .unwrap_or(ResolveStrategy::new(name, qtype))
+        .unwrap_or(ResolveStrategy::new(name.to_string(), qtype))
         .into()
 }
 

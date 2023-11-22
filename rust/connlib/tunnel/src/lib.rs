@@ -86,6 +86,48 @@ const MAX_CONCURRENT_ICE_GATHERING: usize = 100;
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
+// Note: the windows dns fallback strategy might change when implementing, however we prefer
+// splitdns to trying to obtain the default server.
+#[cfg(any(
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "linux",
+    target_os = "windows"
+))]
+impl Default for DnsFallbackStrategy {
+    fn default() -> DnsFallbackStrategy {
+        Self::SystemResolver
+    }
+}
+
+#[cfg(any(target_os = "android"))]
+impl Default for DnsFallbackStrategy {
+    fn default() -> DnsFallbackStrategy {
+        Self::UpstreamResolver
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DnsFallbackStrategy {
+    UpstreamResolver,
+    SystemResolver,
+}
+
+impl DnsFallbackStrategy {
+    fn is_upstream(&self) -> bool {
+        self == &DnsFallbackStrategy::UpstreamResolver
+    }
+}
+
+impl fmt::Display for DnsFallbackStrategy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DnsFallbackStrategy::UpstreamResolver => write!(f, "upstream_resolver"),
+            DnsFallbackStrategy::SystemResolver => write!(f, "system_resolver"),
+        }
+    }
+}
+
 /// Represent's the tunnel actual peer's config
 /// Obtained from connlib_shared's Peer
 #[derive(Clone)]
@@ -191,7 +233,7 @@ where
 
             let mut role_state = self.role_state.lock();
 
-            let packet = match role_state.handle_dns(packet) {
+            let packet = match role_state.handle_dns(packet, role_state.dns_strategy) {
                 Ok(Some(response)) => {
                     device.write(response)?;
                     continue;
