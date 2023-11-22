@@ -301,6 +301,7 @@ defmodule Web.FormComponents do
   attr :class, :string, default: "", doc: "Custom classes to be added to the button"
   attr :style, :string, default: nil, doc: "The style of the button"
   attr :type, :string, default: nil, doc: "The button type"
+  attr :size, :string, default: "md", doc: "The size of the button"
 
   attr :icon, :string,
     default: nil,
@@ -312,7 +313,7 @@ defmodule Web.FormComponents do
 
   def button(%{navigate: _} = assigns) do
     ~H"""
-    <.link class={button_style(@style) ++ [@class]} navigate={@navigate} {@rest}>
+    <.link class={button_style(@style) ++ button_size(@size) ++ [@class]} navigate={@navigate} {@rest}>
       <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
       <%= render_slot(@inner_block) %>
     </.link>
@@ -321,7 +322,7 @@ defmodule Web.FormComponents do
 
   def button(assigns) do
     ~H"""
-    <button type={@type} class={button_style(@style) ++ [@class]} {@rest}>
+    <button type={@type} class={button_style(@style) ++ button_size(@size) ++ [@class]} {@rest}>
       <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
       <%= render_slot(@inner_block) %>
     </button>
@@ -413,8 +414,7 @@ defmodule Web.FormComponents do
   defp button_style do
     [
       "flex items-center justify-center",
-      "px-4 py-2 rounded",
-      "font-medium text-sm",
+      "rounded font-medium",
       "focus:ring-4 focus:outline-none",
       "phx-submit-loading:opacity-75"
     ]
@@ -434,11 +434,31 @@ defmodule Web.FormComponents do
     button_style() ++
       [
         "text-white",
-        "bg-accent-500",
-        "hover:bg-accent-600",
+        "bg-accent-600",
+        "hover:bg-accent-700",
         "focus:ring-accent-300",
         "dark:bg-accent-600 dark:hover:bg-accent-700 dark:focus:ring-accent-800"
       ]
+  end
+
+  defp button_size(size) do
+    text = %{
+      "xs" => "text-xs",
+      "sm" => "text-sm",
+      "md" => "text-sm",
+      "lg" => "text-base",
+      "xl" => "text-base"
+    }
+
+    spacing = %{
+      "xs" => "px-2 py-1",
+      "sm" => "px-3 py-2",
+      "md" => "px-4 py-2",
+      "lg" => "px-5 py-3",
+      "xl" => "px-6 py-3.5"
+    }
+
+    [text[size], spacing[size]]
   end
 
   ### Forms ###

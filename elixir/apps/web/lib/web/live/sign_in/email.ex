@@ -32,7 +32,7 @@ defmodule Web.SignIn.Email do
   def render(assigns) do
     ~H"""
     <section class="bg-gray-50 dark:bg-gray-900">
-      <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto md:h-screen lg:py-0">
+      <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.logo />
 
         <div class="w-full col-span-6 mx-auto bg-white rounded shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
@@ -48,7 +48,6 @@ defmodule Web.SignIn.Email do
                 Should the provided email be registered, a sign-in link and token are dispatched to your email account.
                 Please copy and paste this token into the form below to proceed with your login.
               </p>
-
               <form
                 id="verify-sign-in-token"
                 action={
@@ -66,7 +65,7 @@ defmodule Web.SignIn.Email do
                   class={[
                     "block p-2.5 w-full text-sm",
                     "bg-gray-50 text-gray-900",
-                    "rounded-l border-gray-300 focus:border-primary-600 focus:ring-primary-600"
+                    "rounded-l border-gray-300 focus:border-accent-600 focus:ring-accent-600"
                   ]}
                   required
                   placeholder="Enter token from email"
@@ -78,8 +77,8 @@ defmodule Web.SignIn.Email do
                     "block p-2.5",
                     "text-sm text-white font-medium",
                     "items-center text-center",
-                    "bg-primary-700 rounded-r",
-                    "focus:ring-4 focus:ring-primary-200 hover:bg-primary-800"
+                    "bg-accent-600 rounded-r",
+                    "focus:ring-4 focus:ring-accent-200 hover:bg-accent-700"
                   ]}
                 >
                   Submit
