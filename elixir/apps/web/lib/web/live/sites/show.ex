@@ -1,5 +1,6 @@
 defmodule Web.Sites.Show do
   use Web, :live_view
+  import Web.Sites.Components
   alias Domain.{Gateways, Resources}
 
   def mount(%{"id" => id}, _session, socket) do
@@ -57,6 +58,10 @@ defmodule Web.Sites.Show do
           <.vertical_table_row>
             <:label>Name</:label>
             <:value><%= @group.name %></:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Data Routing</:label>
+            <:value><%= pretty_print_routing(@group.routing) %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Created</:label>
