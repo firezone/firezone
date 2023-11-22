@@ -104,7 +104,6 @@ export default function RootNavbar() {
                   </Link>
                 </li>
                 <li>
-                  {/* TODO: use <Link> here, toggling dropdown */}
                   <Link
                     onClick={hideDropdown}
                     href="/product/early-access"
@@ -119,7 +118,6 @@ export default function RootNavbar() {
                   </Link>
                 </li>
                 <li>
-                  {/* TODO: use <Link> here, toggling dropdown */}
                   <Link
                     onClick={hideDropdown}
                     href="/product/newsletter"
