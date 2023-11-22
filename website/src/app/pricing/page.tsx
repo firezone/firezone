@@ -164,37 +164,156 @@ export default function Page() {
             </thead>
             <tbody>
               <tr className="border-b border-1 border-neutral-200">
-                <td className="px-6 py-4">Users</td>
+                <td className="px-6 py-4">
+                  <span
+                    data-tooltip-target="users-tooltip"
+                    data-tooltip-placement="top"
+                    className="underline hover:no-underline cursor-help"
+                  >
+                    Users
+                  </span>
+                  <div
+                    id="users-tooltip"
+                    role="tooltip"
+                    className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+                  >
+                    Human operators and end-users of your Firezone account
+                    <div className="tooltip-arrow" data-popper-arrow></div>
+                  </div>
+                </td>
                 <td className="px-6 py-4">10</td>
                 <td className="px-6 py-4">No limit</td>
               </tr>
               <tr className="border-b border-1 border-neutral-200">
-                <td className="px-6 py-4">Service Accounts</td>
+                <td className="px-6 py-4">
+                  <span
+                    data-tooltip-target="sa-tooltip"
+                    data-tooltip-placement="top"
+                    className="underline hover:no-underline cursor-help"
+                  >
+                    Service Accounts
+                  </span>
+                  <div
+                    id="sa-tooltip"
+                    role="tooltip"
+                    className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+                  >
+                    Machine accounts used to access resources without a user
+                    present
+                    <div className="tooltip-arrow" data-popper-arrow></div>
+                  </div>
+                </td>
                 <td className="px-6 py-4">10</td>
                 <td className="px-6 py-4">No limit</td>
               </tr>
               <tr className="border-b border-1 border-neutral-200">
-                <td className="px-6 py-4">Admins</td>
+                <td className="px-6 py-4">
+                  <span
+                    data-tooltip-target="admins-tooltip"
+                    data-tooltip-placement="top"
+                    className="underline hover:no-underline cursor-help"
+                  >
+                    Admins
+                  </span>
+                  <div
+                    id="admins-tooltip"
+                    role="tooltip"
+                    className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+                  >
+                    Users with account-wide access to deploy gateways, manage
+                    billing, and edit users, sites, and other configuration
+                    <div className="tooltip-arrow" data-popper-arrow></div>
+                  </div>
+                </td>
                 <td className="px-6 py-4">1</td>
                 <td className="px-6 py-4">No limit</td>
               </tr>
               <tr className="border-b border-1 border-neutral-200">
-                <td className="px-6 py-4">Sites</td>
+                <td className="px-6 py-4">
+                  <span
+                    data-tooltip-target="sites-tooltip"
+                    data-tooltip-placement="top"
+                    className="underline hover:no-underline cursor-help"
+                  >
+                    Sites
+                  </span>
+                  <div
+                    id="sites-tooltip"
+                    role="tooltip"
+                    className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+                  >
+                    Sites are a collection of gateways and resources that share
+                    the same network connectivity context. Typically a subnet or
+                    VPC.
+                    <div className="tooltip-arrow" data-popper-arrow></div>
+                  </div>
+                </td>
                 <td className="px-6 py-4">3</td>
                 <td className="px-6 py-4">No limit</td>
               </tr>
               <tr className="border-b border-1 border-neutral-200">
-                <td className="px-6 py-4">Policies</td>
+                <td className="px-6 py-4">
+                  <span
+                    data-tooltip-target="policies-tooltip"
+                    data-tooltip-placement="top"
+                    className="underline hover:no-underline cursor-help"
+                  >
+                    Policies
+                  </span>
+                  <div
+                    id="policies-tooltip"
+                    role="tooltip"
+                    className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+                  >
+                    Policies control access to resources (e.g. group “A” may
+                    access resource “B”)
+                    <div className="tooltip-arrow" data-popper-arrow></div>
+                  </div>
+                </td>
                 <td className="px-6 py-4">No limit</td>
                 <td className="px-6 py-4">No limit</td>
               </tr>
               <tr className="border-b border-1 border-neutral-200">
-                <td className="px-6 py-4">Resources</td>
+                <td className="px-6 py-4">
+                  <span
+                    data-tooltip-target="resources-tooltip"
+                    data-tooltip-placement="top"
+                    className="underline hover:no-underline cursor-help"
+                  >
+                    Resources
+                  </span>
+                  <div
+                    id="resources-tooltip"
+                    role="tooltip"
+                    className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+                  >
+                    Anything you wish to manage access to (e.g. database, VPC,
+                    home network, web server, SaaS application)
+                    <div className="tooltip-arrow" data-popper-arrow></div>
+                  </div>
+                </td>
                 <td className="px-6 py-4">No limit</td>
                 <td className="px-6 py-4">No limit</td>
               </tr>
               <tr className="border-b border-1 border-neutral-200">
-                <td className="px-6 py-4">Devices</td>
+                <td className="px-6 py-4">
+                  <span
+                    data-tooltip-target="devices-tooltip"
+                    data-tooltip-placement="top"
+                    className="underline hover:no-underline cursor-help"
+                  >
+                    Devices
+                  </span>
+                  <div
+                    id="devices-tooltip"
+                    role="tooltip"
+                    className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+                  >
+                    Devices are end-user devices or other machines that users
+                    and service accounts connect from
+                    <div className="tooltip-arrow" data-popper-arrow></div>
+                  </div>
+                </td>
                 <td className="px-6 py-4">No limit</td>
                 <td className="px-6 py-4">No limit</td>
               </tr>
