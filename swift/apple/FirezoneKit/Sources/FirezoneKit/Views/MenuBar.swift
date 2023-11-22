@@ -128,6 +128,13 @@
     private lazy var resourcesUnavailableReasonMenuItem = createMenuItem(
       menu,
       title: "",
+      action: nil,
+      isHidden: true,
+      target: self
+    )
+    private lazy var resourcesReconnectMenuItem = createMenuItem(
+      menu,
+      title: "Reconnect",
       action: #selector(reconnectButtonTapped),
       isHidden: true,
       target: self
@@ -173,6 +180,7 @@
       menu.addItem(resourcesTitleMenuItem)
       menu.addItem(resourcesUnavailableMenuItem)
       menu.addItem(resourcesUnavailableReasonMenuItem)
+      menu.addItem(resourcesReconnectMenuItem)
       menu.addItem(resourcesSeparatorMenuItem)
 
       menu.addItem(aboutMenuItem)
@@ -323,11 +331,13 @@
         resourcesTitleMenuItem.isHidden = true
         resourcesUnavailableMenuItem.isHidden = true
         resourcesUnavailableReasonMenuItem.isHidden = true
+        resourcesReconnectMenuItem.isHidden = true
         resourcesSeparatorMenuItem.isHidden = true
       case (.signedOut, _):
         resourcesTitleMenuItem.isHidden = true
         resourcesUnavailableMenuItem.isHidden = true
         resourcesUnavailableReasonMenuItem.isHidden = true
+        resourcesReconnectMenuItem.isHidden = true
         resourcesSeparatorMenuItem.isHidden = true
       case (.signedIn, .connecting):
         resourcesTitleMenuItem.isHidden = true
@@ -335,12 +345,14 @@
         resourcesUnavailableReasonMenuItem.isHidden = false
         resourcesUnavailableReasonMenuItem.target = nil
         resourcesUnavailableReasonMenuItem.title = "Connecting…"
+        resourcesReconnectMenuItem.isHidden = true
         resourcesSeparatorMenuItem.isHidden = false
       case (.signedIn, .connected):
         resourcesTitleMenuItem.isHidden = false
         resourcesUnavailableMenuItem.isHidden = true
         resourcesUnavailableReasonMenuItem.isHidden = true
         resourcesTitleMenuItem.title = "Resources"
+        resourcesReconnectMenuItem.isHidden = true
         resourcesSeparatorMenuItem.isHidden = false
       case (.signedIn, .reasserting):
         resourcesTitleMenuItem.isHidden = true
@@ -348,6 +360,7 @@
         resourcesUnavailableReasonMenuItem.isHidden = false
         resourcesUnavailableReasonMenuItem.target = nil
         resourcesUnavailableReasonMenuItem.title = "No network connectivity"
+        resourcesReconnectMenuItem.isHidden = true
         resourcesSeparatorMenuItem.isHidden = false
       case (.signedIn, .disconnecting):
         resourcesTitleMenuItem.isHidden = true
@@ -355,17 +368,17 @@
         resourcesUnavailableReasonMenuItem.isHidden = false
         resourcesUnavailableReasonMenuItem.target = nil
         resourcesUnavailableReasonMenuItem.title = "Disconnecting…"
+        resourcesReconnectMenuItem.isHidden = true
         resourcesSeparatorMenuItem.isHidden = false
-      case (.signedIn, _):
-        // Ideally, this shouldn't happen, but it's better
-        // we handle this case, so that in case connlib errors out,
-        // the user is able to try to reconnect.
+      case (.signedIn, .disconnected), (.signedIn, .invalid):
+        // In case the tunnel is shutdown due to
+        // non-connlib reasons (like the OS turning it off),
+        // we show a 'Reconnect' menu item.
         resourcesTitleMenuItem.isHidden = true
         resourcesUnavailableMenuItem.isHidden = false
         resourcesUnavailableReasonMenuItem.isHidden = false
-        resourcesUnavailableReasonMenuItem.target = self
-        resourcesUnavailableReasonMenuItem.isEnabled = true
-        resourcesUnavailableReasonMenuItem.title = "Reconnect"
+        resourcesUnavailableReasonMenuItem.title = "Disconnected"
+        resourcesReconnectMenuItem.isHidden = false
         resourcesSeparatorMenuItem.isHidden = false
       }
     }
