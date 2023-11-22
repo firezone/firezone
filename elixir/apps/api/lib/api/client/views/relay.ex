@@ -15,6 +15,11 @@ defmodule API.Client.Views.Relay do
 
   defp maybe_render(%Relays.Relay{}, _expires_at, nil, _stun_or_turn), do: []
 
+  # STUN returns the reflective candidates to the peer and is used for hole-punching;
+  # TURN is used to real actual traffic if hole-punching fails. It requires authentication.
+  # WebRTC will automatically fail back to STUN if TURN fails,
+  # so there is no need to send both of them along with each other.
+
   defp maybe_render(%Relays.Relay{} = relay, _expires_at, address, :stun) do
     [
       %{
