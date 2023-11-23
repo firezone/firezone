@@ -11,10 +11,30 @@ use connlib_shared::{
 };
 use std::sync::Arc;
 use webrtc::ice_transport::{
-    ice_parameters::RTCIceParameters, ice_role::RTCIceRole, RTCIceTransport,
+    ice_parameters::RTCIceParameters, ice_role::RTCIceRole,
+    ice_transport_state::RTCIceTransportState, RTCIceTransport,
 };
 
 use super::{new_ice_connection, IceConnection};
+
+#[tracing::instrument(level = "trace", skip(ice))]
+fn set_connection_state_update(ice: &Arc<RTCIceTransport>, client_id: ClientId) {
+    let ice = ice.clone();
+    ice.on_connection_state_change({
+        let ice = ice.clone();
+        Box::new(move |state| {
+            tracing::trace!(%state, "peer_state");
+            let ice = ice.clone();
+            Box::pin(async move {
+                if state == RTCIceTransportState::Failed {
+                    if let Err(e) = ice.stop().await {
+                        tracing::warn!(err = ?e, "Couldn't stop ice client: {e:#}");
+                    }
+                }
+            })
+        })
+    });
+}
 
 impl<CB> Tunnel<CB, GatewayState>
 where
@@ -51,9 +71,21 @@ where
             .lock()
             .add_new_ice_receiver(client_id, ice_candidate_rx);
 
-        self.peer_connections
+        set_connection_state_update(&ice, client_id);
+
+        let previous_ice = self
+            .peer_connections
             .lock()
             .insert(client_id, Arc::clone(&ice));
+
+        if let Some(ice) = previous_ice {
+            // If we had a previous on-going connection we stop it.
+            // Note that ice.stop aso closes the gatherer.
+            // we only have to do this on the gateway because clients can query
+            // twice for initiating connections since they can close/reopen suddenly
+            // however, gateways never initiate connection requests
+            let _ = ice.stop().await;
+        }
 
         let tunnel = self.clone();
         tokio::spawn(async move {
@@ -61,13 +93,25 @@ where
                 .start(&remote_params, Some(RTCIceRole::Controlled))
                 .await
                 .map_err(Into::into)
-                .and_then(|_| tunnel.new_tunnel(peer, client_id, resource, expires_at, ice))
+                .and_then(|_| tunnel.new_tunnel(peer, client_id, resource, expires_at, ice.clone()))
             {
                 tracing::warn!(%client_id, err = ?e, "Can't start tunnel: {e:#}");
-                let peer_connection = tunnel.peer_connections.lock().remove(&client_id);
-                if let Some(peer_connection) = peer_connection {
-                    let _ = peer_connection.stop().await;
+                {
+                    let mut peer_connections = tunnel.peer_connections.lock();
+                    if let Some(peer_connection) = peer_connections.get(&client_id).cloned() {
+                        // We need to re-check this since it might have been replaced in between.
+                        if matches!(
+                            peer_connection.state(),
+                            RTCIceTransportState::Failed
+                                | RTCIceTransportState::Disconnected
+                                | RTCIceTransportState::Closed
+                        ) {
+                            peer_connections.remove(&client_id);
+                        }
+                    }
                 }
+                // We only need to stop here because in case tunnel.new_tunnel failed.
+                let _ = ice.stop().await;
             }
         });
 
