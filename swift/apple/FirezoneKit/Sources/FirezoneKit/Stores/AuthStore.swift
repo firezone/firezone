@@ -51,6 +51,9 @@ final class AuthStore: ObservableObject {
   @Published private(set) var loginStatus: LoginStatus
   private var status: NEVPNStatus = .invalid
 
+  private static let maxReconnectionAttemptCount = 3
+  private var reconnectionAttemptsRemaining = maxReconnectionAttemptCount
+
   private init(tunnelStore: TunnelStore) {
     self.tunnelStore = tunnelStore
     self.loginStatus = .uninitialized
@@ -78,12 +81,24 @@ final class AuthStore: ObservableObject {
               self.logger.log(
                 "\(#function): Tunnel shutdown event: \(tsEvent, privacy: .public)"
               )
-              if tsEvent.needsSignout {
+              switch tsEvent.action {
+              case .signoutImmediately:
                 self.signOut()
+              case .retryThenSignout:
+                let shouldReconnect = (self.reconnectionAttemptsRemaining > 0)
+                self.reconnectionAttemptsRemaining = self.reconnectionAttemptsRemaining - 1
+                if shouldReconnect {
+                  self.startTunnel()
+                } else {
+                  self.signOut()
+                }
               }
             } else {
               self.logger.log("\(#function): Tunnel shutdown event not found")
             }
+          }
+          if status == .connected {
+            self.resetReconnectionAttemptsRemaining()
           }
           self.status = status
         }
@@ -160,6 +175,28 @@ final class AuthStore: ObservableObject {
         try await keychain.delete(tokenRef)
       }
     }
+
+    resetReconnectionAttemptsRemaining()
+  }
+
+  func startTunnel() {
+    logger.trace("\(#function)")
+
+    guard case .signedIn = self.loginStatus else {
+      return
+    }
+
+    Task {
+      do {
+        try await tunnelStore.start()
+      } catch {
+        logger.error("\(#function): Error starting tunnel: \(String(describing: error))")
+      }
+    }
+  }
+
+  func resetReconnectionAttemptsRemaining() {
+    self.reconnectionAttemptsRemaining = Self.maxReconnectionAttemptCount
   }
 
   func tunnelAuthStatusForAccount(accountId: String) async -> TunnelAuthStatus {
