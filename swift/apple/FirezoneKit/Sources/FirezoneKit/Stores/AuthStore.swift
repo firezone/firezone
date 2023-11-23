@@ -91,7 +91,7 @@ final class AuthStore: ObservableObject {
                 self.alertDelegate?.showAlert(
                   title: "Firezone Disconnected",
                   message:
-                    "The Firezone tunnel shutdown because of: \(tsEvent.reason.rawValue)\n\n\(tsEvent.errorMessage)"
+                    "The Firezone tunnel shutdown because of: \(tsEvent.reason)\n\n\(tsEvent.errorMessage)"
                 )
               }
             } else {

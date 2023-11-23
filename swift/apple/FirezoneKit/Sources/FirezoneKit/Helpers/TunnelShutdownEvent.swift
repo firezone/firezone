@@ -5,6 +5,7 @@
 //
 
 import Foundation
+import NetworkExtension
 import os
 
 enum TunnelShutdownEventError: Error {
@@ -15,15 +16,14 @@ enum TunnelShutdownEventError: Error {
 public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
   private static let logger = Logger.make(for: TunnelShutdownEvent.self)
 
-  public enum Reason: String, Codable {
-    case stopped = "Stopped by OS"
-    case stoppedByUser = "Stopped by user"
-    case connlibConnectFailure = "connlib connect failure"
-    case connlibDisconnected = "connlib disconnected"
-    case badTunnelConfiguration = "Bad tunnel configuration"
-    case tokenNotFound = "Token not found"
-    case networkSettingsApplyFailure = "Network settings apply failure"
-    case invalidAdapterState = "Invalid Adapter state"
+  public enum Reason: Codable {
+    case stopped(NEProviderStopReason)
+    case connlibConnectFailure
+    case connlibDisconnected
+    case badTunnelConfiguration
+    case tokenNotFound
+    case networkSettingsApplyFailure
+    case invalidAdapterState
   }
 
   public let reason: TunnelShutdownEvent.Reason
@@ -32,8 +32,7 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
 
   public var needsSignout: Bool {
     switch reason {
-    case .stopped, .stoppedByUser,
-      .networkSettingsApplyFailure, .invalidAdapterState:
+    case .stopped, .networkSettingsApplyFailure, .invalidAdapterState:
       return false
     case .connlibConnectFailure, .connlibDisconnected,
       .badTunnelConfiguration, .tokenNotFound:
@@ -43,7 +42,7 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
 
   public var needsAlert: Bool {
     switch reason {
-    case .stoppedByUser, .connlibConnectFailure, .connlibDisconnected,
+    case .connlibConnectFailure, .connlibDisconnected,
       .badTunnelConfiguration, .tokenNotFound:
       return false
     case .stopped, .networkSettingsApplyFailure, .invalidAdapterState:
@@ -102,4 +101,7 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
       )
     }
   }
+}
+
+extension NEProviderStopReason: Codable {
 }

@@ -166,7 +166,7 @@ class Adapter {
       self.logger.log("Adapter.stop")
 
       packetTunnelProvider?.handleTunnelShutdown(
-        dueTo: (reason == .userInitiated) ? .stoppedByUser : .stopped,
+        dueTo: .stopped(reason),
         errorMessage: "\(reason)")
 
       switch self.state {
