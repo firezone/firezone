@@ -11,6 +11,7 @@ import OSLog
 
 enum TunnelStoreError: Error {
   case tunnelCouldNotBeStarted
+  case tunnelCouldNotBeStopped
 }
 
 public struct TunnelProviderKeys {
@@ -39,6 +40,7 @@ final class TunnelStore: ObservableObject {
 
   private var tunnelObservingTasks: [Task<Void, Never>] = []
   private var startTunnelContinuation: CheckedContinuation<(), Error>?
+  private var stopTunnelContinuation: CheckedContinuation<(), Error>?
   private var cancellables = Set<AnyCancellable>()
 
   init() {
@@ -92,7 +94,7 @@ final class TunnelStore: ObservableObject {
       fatalError("Tunnel not initialized yet")
     }
 
-    stop()
+    try await stop()
 
     try await tunnel.saveAuthStatus(tunnelAuthStatus)
     self.tunnelAuthStatus = tunnelAuthStatus
@@ -103,7 +105,7 @@ final class TunnelStore: ObservableObject {
       fatalError("Tunnel not initialized yet")
     }
 
-    stop()
+    try await stop()
 
     try await tunnel.saveAdvancedSettings(advancedSettings)
   }
@@ -157,7 +159,7 @@ final class TunnelStore: ObservableObject {
     }
   }
 
-  func stop() {
+  func stop() async throws {
     guard let tunnel = tunnel else {
       Self.logger.log("\(#function): TunnelStore is not initialized")
       return
@@ -169,6 +171,9 @@ final class TunnelStore: ObservableObject {
     if status == .connected || status == .connecting {
       let session = castToSession(tunnel.connection)
       session.stopTunnel()
+      try await withCheckedThrowingContinuation { continuation in
+        self.stopTunnelContinuation = continuation
+      }
     }
   }
 
@@ -276,6 +281,18 @@ final class TunnelStore: ObservableObject {
             case .disconnected:
               startTunnelContinuation.resume(throwing: TunnelStoreError.tunnelCouldNotBeStarted)
               self.startTunnelContinuation = nil
+            default:
+              break
+            }
+          }
+          if let stopTunnelContinuation = self.stopTunnelContinuation {
+            switch status {
+            case .disconnected:
+              stopTunnelContinuation.resume(returning: ())
+              self.stopTunnelContinuation = nil
+            case .connected:
+              stopTunnelContinuation.resume(throwing: TunnelStoreError.tunnelCouldNotBeStopped)
+              self.stopTunnelContinuation = nil
             default:
               break
             }

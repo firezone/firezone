@@ -47,17 +47,27 @@ final class AppStore: ObservableObject {
       do {
         try await tunnel.start()
       } catch {
-        logger.error("Error starting tunnel: \(String(describing: error))")
+        logger.error("\(#function): Error starting tunnel: \(String(describing: error))")
       }
     case .signedOut:
-      tunnel.stop()
+      do {
+        try await tunnel.stop()
+      } catch {
+        logger.error("\(#function): Error stopping tunnel: \(String(describing: error))")
+      }
     case .uninitialized:
       break
     }
   }
 
   private func signOutAndStopTunnel() {
-    tunnel.stop()
-    auth.signOut()
+    Task {
+      do {
+        try await tunnel.stop()
+        auth.signOut()
+      } catch {
+        logger.error("\(#function): Error stopping tunnel: \(String(describing: error))")
+      }
+    }
   }
 }

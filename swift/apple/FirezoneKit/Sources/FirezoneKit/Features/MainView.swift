@@ -74,7 +74,13 @@ import SwiftUI
     }
 
     func stopTunnel() {
-      appStore.tunnel.stop()
+      Task {
+        do {
+          try await appStore.tunnel.stop()
+        } catch {
+          logger.error("\(#function): Error stopping tunnel: \(error)")
+        }
+      }
     }
   }
 
