@@ -40,16 +40,6 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
     }
   }
 
-  public var needsAlert: Bool {
-    switch reason {
-    case .connlibConnectFailure, .connlibDisconnected,
-      .badTunnelConfiguration, .tokenNotFound:
-      return false
-    case .stopped, .networkSettingsApplyFailure, .invalidAdapterState:
-      return true
-    }
-  }
-
   public var description: String {
     "(\(reason)\(needsSignout ? " (needs signout)" : ""), error: '\(errorMessage)', date: \(date))"
   }

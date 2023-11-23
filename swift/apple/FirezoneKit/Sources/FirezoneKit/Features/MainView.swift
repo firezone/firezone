@@ -23,15 +23,9 @@ import SwiftUI
     @Published var tunnelStatus: NEVPNStatus = .invalid
     @Published var orderedResources: [DisplayableResources.Resource] = []
 
-    @Published var isAlertShown = false
-
-    var alertTitle = ""
-    var alertMessage = ""
-
     init(appStore: AppStore) {
       self.appStore = appStore
       setupObservers()
-      appStore.auth.alertDelegate = self
     }
 
     private func setupObservers() {
@@ -81,14 +75,6 @@ import SwiftUI
 
     func stopTunnel() {
       appStore.tunnel.stop()
-    }
-  }
-
-  extension MainViewModel: AuthStoreAlertDelegate {
-    func showAlert(title: String, message: String) {
-      self.alertTitle = title
-      self.alertMessage = message
-      self.isAlertShown = true
     }
   }
 
@@ -165,12 +151,6 @@ import SwiftUI
       }
       .listStyle(GroupedListStyle())
       .navigationTitle("firezone")
-      .alert(
-        self.model.alertTitle,
-        isPresented: self.$model.isAlertShown,
-        actions: {},
-        message: { Text(self.model.alertMessage) }
-      )
     }
 
     private func copyResourceTapped(_ resource: DisplayableResources.Resource) {

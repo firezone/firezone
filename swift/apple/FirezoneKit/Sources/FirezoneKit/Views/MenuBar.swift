@@ -19,7 +19,6 @@
     private var appStore: AppStore? {
       didSet {
         setupObservers()
-        appStore?.auth.alertDelegate = self
       }
     }
 
@@ -453,16 +452,6 @@
     }
     public func menuDidClose(_ menu: NSMenu) {
       isMenuVisible = false
-    }
-  }
-
-  extension MenuBar: AuthStoreAlertDelegate {
-    func showAlert(title: String, message: String) {
-      let alert = NSAlert()
-      alert.messageText = title
-      alert.informativeText = message
-      NSApp.activate(ignoringOtherApps: true)
-      alert.runModal()
     }
   }
 #endif

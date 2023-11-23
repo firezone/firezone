@@ -21,10 +21,6 @@ extension DependencyValues {
   }
 }
 
-protocol AuthStoreAlertDelegate: AnyObject {
-  func showAlert(title: String, message: String)
-}
-
 @MainActor
 final class AuthStore: ObservableObject {
   private let logger = Logger.make(for: AuthStore.self)
@@ -55,8 +51,6 @@ final class AuthStore: ObservableObject {
   @Published private(set) var loginStatus: LoginStatus
   private var status: NEVPNStatus = .invalid
 
-  public var alertDelegate: AuthStoreAlertDelegate? = nil
-
   private init(tunnelStore: TunnelStore) {
     self.tunnelStore = tunnelStore
     self.loginStatus = .uninitialized
@@ -86,13 +80,6 @@ final class AuthStore: ObservableObject {
               )
               if tsEvent.needsSignout {
                 self.signOut()
-              }
-              if tsEvent.needsAlert {
-                self.alertDelegate?.showAlert(
-                  title: "Firezone Disconnected",
-                  message:
-                    "The Firezone tunnel shutdown because of: \(tsEvent.reason)\n\n\(tsEvent.errorMessage)"
-                )
               }
             } else {
               self.logger.log("\(#function): Tunnel shutdown event not found")
