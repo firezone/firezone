@@ -131,7 +131,7 @@ where
 pub struct ClientState {
     active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidate>,
     /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
-    waiting_for_sdp_from_gatway: HashMap<GatewayId, Receiver<RTCIceCandidate>>,
+    waiting_for_sdp_from_gateway: HashMap<GatewayId, Receiver<RTCIceCandidate>>,
 
     // TODO: Make private
     pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
@@ -343,7 +343,7 @@ impl ClientState {
         id: GatewayId,
         receiver: Receiver<RTCIceCandidate>,
     ) -> StaticSecret {
-        self.waiting_for_sdp_from_gatway.insert(id, receiver);
+        self.waiting_for_sdp_from_gateway.insert(id, receiver);
         let preshared_key = StaticSecret::random_from_rng(OsRng);
         self.gateway_preshared_keys
             .insert(id, preshared_key.clone());
@@ -351,7 +351,7 @@ impl ClientState {
     }
 
     pub fn activate_ice_candidate_receiver(&mut self, id: GatewayId, key: PublicKey) {
-        let Some(receiver) = self.waiting_for_sdp_from_gatway.remove(&id) else {
+        let Some(receiver) = self.waiting_for_sdp_from_gateway.remove(&id) else {
             return;
         };
         self.gateway_public_keys.insert(id, key);
@@ -411,7 +411,7 @@ impl Default for ClientState {
                 Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
                 MAX_CONCURRENT_ICE_GATHERING,
             ),
-            waiting_for_sdp_from_gatway: Default::default(),
+            waiting_for_sdp_from_gateway: Default::default(),
             awaiting_connection: Default::default(),
             gateway_awaiting_connection: Default::default(),
             awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
