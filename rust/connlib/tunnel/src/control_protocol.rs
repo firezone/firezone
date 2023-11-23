@@ -23,9 +23,6 @@ mod client;
 mod gateway;
 
 const ICE_CANDIDATE_BUFFER: usize = 100;
-// We should use not more than 1-2 relays (WebRTC in Firefox breaks at 5) due to combinatoric
-// complexity of checking all the ICE candidate pairs
-const MAX_RELAYS: usize = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
@@ -44,6 +41,7 @@ where
         conn_id: TRoleState::Id,
         ice_candidate: RTCIceCandidate,
     ) -> Result<()> {
+        tracing::info!(%ice_candidate, %conn_id, "adding new remote candidate");
         let peer_connection = self
             .peer_connections
             .lock()
@@ -83,7 +81,6 @@ pub(crate) async fn new_ice_connection(
                     credential_type: RTCIceCredentialType::Password,
                 },
             })
-            .take(MAX_RELAYS)
             .collect(),
         ..Default::default()
     };
@@ -100,6 +97,8 @@ pub(crate) async fn new_ice_connection(
                 gatherer.on_local_candidate(Box::new(|_| Box::pin(async {})));
                 return Box::pin(async {});
             };
+
+            tracing::info!(%candidate, "found new local candidate");
 
             let mut ice_candidate_tx = ice_candidate_tx.clone();
             Box::pin(async move {
