@@ -78,10 +78,7 @@ final class AuthStore: ObservableObject {
       .sink { [weak self] status in
         guard let self = self else { return }
         Task {
-          let previousStatus = self.status
-          if status == .disconnected
-            && (previousStatus != .disconnected && previousStatus != .invalid)
-          {
+          if status == .disconnected {
             self.logger.log("\(#function): Disconnected")
             if let tsEvent = TunnelShutdownEvent.loadFromDisk() {
               self.logger.log(
