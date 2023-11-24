@@ -180,8 +180,12 @@ defmodule API.Client.Channel do
       with {:ok, resource} <-
              Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject),
            {:ok, [_ | _] = gateways} <-
-             Gateways.list_connected_gateways_for_resource(resource),
-           {:ok, [_ | _] = relays} <- Relays.list_connected_relays_for_resource(resource) do
+             Gateways.list_connected_gateways_for_resource(resource, preload: :group),
+           gateway_groups = Enum.map(gateways, & &1.group),
+           {relay_hosting_type, relay_connection_type} =
+             Gateways.relay_strategy(gateway_groups),
+           {:ok, [_ | _] = relays} <-
+             Relays.list_connected_relays_for_resource(resource, relay_hosting_type) do
         location = {
           socket.assigns.client.last_seen_remote_ip_location_lat,
           socket.assigns.client.last_seen_remote_ip_location_lon
@@ -193,7 +197,12 @@ defmodule API.Client.Channel do
         reply =
           {:ok,
            %{
-             relays: Views.Relay.render_many(relays, socket.assigns.subject.expires_at),
+             relays:
+               Views.Relay.render_many(
+                 relays,
+                 socket.assigns.subject.expires_at,
+                 relay_connection_type
+               ),
              resource_id: resource_id,
              gateway_id: gateway.id,
              gateway_remote_ip: gateway.last_seen_remote_ip
