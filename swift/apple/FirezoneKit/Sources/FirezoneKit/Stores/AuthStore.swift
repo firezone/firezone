@@ -76,8 +76,13 @@ final class AuthStore: ObservableObject {
     tunnelStore.$tunnelAuthStatus
       .sink { [weak self] tunnelAuthStatus in
         guard let self = self else { return }
+        logger.log("Tunnel auth status changed to: \(tunnelAuthStatus)")
         Task {
-          self.loginStatus = await self.getLoginStatus(from: tunnelAuthStatus)
+          let loginStatus = await self.getLoginStatus(from: tunnelAuthStatus)
+          if tunnelStore.tunnelAuthStatus == tunnelAuthStatus {
+            // Make sure the tunnelAuthStatus hasn't changed while we were getting the login status
+            self.loginStatus = loginStatus
+          }
         }
       }
       .store(in: &cancellables)
@@ -177,7 +182,7 @@ final class AuthStore: ObservableObject {
   func signOut() {
     logger.trace("\(#function)")
 
-    guard case .signedIn = self.loginStatus else {
+    guard case .signedIn = self.tunnelStore.tunnelAuthStatus else {
       logger.trace("\(#function): Not signed in, so can't signout.")
       return
     }

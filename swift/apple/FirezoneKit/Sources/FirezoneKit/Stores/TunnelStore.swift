@@ -316,7 +316,7 @@ final class TunnelStore: ObservableObject {
   }
 }
 
-enum TunnelAuthStatus: CustomStringConvertible {
+enum TunnelAuthStatus: Equatable, CustomStringConvertible {
   case tunnelUninitialized
   case accountNotSetup
   case signedOut(authBaseURL: URL, accountId: String)
