@@ -104,6 +104,9 @@ final class AuthStore: ObservableObject {
                 let shouldReconnect = (self.reconnectionAttemptsRemaining > 0)
                 self.reconnectionAttemptsRemaining = self.reconnectionAttemptsRemaining - 1
                 if shouldReconnect {
+                  self.logger.log(
+                    "\(#function): Trying to reconnect (\(self.reconnectionAttemptsRemaining) attempts after this)"
+                  )
                   self.startTunnel()
                 } else {
                   self.signOut()
