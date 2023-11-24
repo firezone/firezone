@@ -488,15 +488,8 @@ IO.puts("")
   )
 
 IO.puts("Created resources:")
-
-IO.puts(
-  "  #{dns_google_resource.address} - DNS - #{dns_google_resource.ipv4} - gateways: #{gateway_name}"
-)
-
-IO.puts(
-  "  #{dns_gitlab_resource.address} - DNS - #{dns_gitlab_resource.ipv4} - gateways: #{gateway_name}"
-)
-
+IO.puts("  #{dns_google_resource.address} - DNS - gateways: #{gateway_name}")
+IO.puts("  #{dns_gitlab_resource.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
 IO.puts("")
 

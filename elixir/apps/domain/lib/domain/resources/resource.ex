@@ -12,9 +12,6 @@ defmodule Domain.Resources.Resource do
       field :ports, {:array, Domain.Types.Int4Range}, default: []
     end
 
-    field :ipv4, Domain.Types.IP
-    field :ipv6, Domain.Types.IP
-
     belongs_to :account, Domain.Accounts.Account
     has_many :connections, Domain.Resources.Connection, on_replace: :delete
     # TODO: where doesn't work on join tables so soft-deleted records will be preloaded,

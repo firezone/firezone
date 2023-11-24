@@ -126,9 +126,7 @@ defmodule API.Client.ChannelTest do
                id: dns_resource.id,
                type: :dns,
                name: dns_resource.name,
-               address: dns_resource.address,
-               ipv4: dns_resource.ipv4,
-               ipv6: dns_resource.ipv6
+               address: dns_resource.address
              } in resources
 
       assert %{
