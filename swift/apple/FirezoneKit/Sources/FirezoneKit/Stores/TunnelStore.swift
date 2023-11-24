@@ -316,7 +316,7 @@ final class TunnelStore: ObservableObject {
   }
 }
 
-enum TunnelAuthStatus {
+enum TunnelAuthStatus: CustomStringConvertible {
   case tunnelUninitialized
   case accountNotSetup
   case signedOut(authBaseURL: URL, accountId: String)
@@ -337,6 +337,19 @@ enum TunnelAuthStatus {
       return accountId
     case .signedIn(_, let accountId, _):
       return accountId
+    }
+  }
+
+  var description: String {
+    switch self {
+    case .tunnelUninitialized:
+      return "tunnel uninitialized"
+    case .accountNotSetup:
+      return "account not setup"
+    case .signedOut(let authBaseURL, let accountId):
+      return "signedOut(authBaseURL: \(authBaseURL), accountId: \(accountId))"
+    case .signedIn(let authBaseURL, let accountId, _):
+      return "signedIn(authBaseURL: \(authBaseURL), accountId: \(accountId))"
     }
   }
 }
