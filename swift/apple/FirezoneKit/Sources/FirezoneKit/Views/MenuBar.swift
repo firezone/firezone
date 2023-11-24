@@ -154,9 +154,9 @@
       let menuItem = createMenuItem(
         menu,
         title: "Quit",
-        action: #selector(NSApplication.terminate(_:)),
+        action: #selector(quitButtonTapped),
         key: "q",
-        target: nil
+        target: self
       )
       if let appName = Bundle.main.infoDictionary?[kCFBundleNameKey as String] as? String {
         menuItem.title = "Quit \(appName)"
@@ -235,6 +235,10 @@
     @objc private func aboutButtonTapped() {
       NSApp.activate(ignoringOtherApps: true)
       NSApp.orderFrontStandardAboutPanel(self)
+    }
+
+    @objc private func quitButtonTapped() {
+      NSApp.terminate(self)
     }
 
     private func openSettingsWindow() {
