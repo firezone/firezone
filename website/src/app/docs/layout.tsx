@@ -9,10 +9,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="px-4">
           <article className="max-w-none format format-sm sm:format-base lg:format-lg ">
             <Alert
-              color="warning"
+              color="info"
               html={`
                 <!-- TODO: Link to EOL blogpost -->
-                <strong>Heads up!</strong>
                 You're viewing documentation for the legacy version of Firezone
                   which has reached EOL. <a href="/kb">View the latest docs here</a>.
               `}

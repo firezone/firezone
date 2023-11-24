@@ -1,1 +1,107 @@
-# Google Authentication
+import Alert from "@/components/DocsAlert";
+
+# Google Workspace authentication
+
+<Alert
+  color="info"
+  html={`
+    Google Workspace integration is available in the Enterprise plan.
+    To authenticate users to your Google Workspace account in the Starter
+    plan <strong>without</strong> automatic user/group sync, use our
+    <a href="/kb/authenticate/oidc" class="text-accent-500 hover:underline">
+      universal OIDC connector
+    </a> instead.
+  `}
+/>
+
+Firezone supports authenticating users to Google Workspace using our custom
+Google Workspace connector. Use this guide if you're looking to setup SSO with
+Google Workspace for your Firezone Enterprise account.
+
+## Overview
+
+The Firezone Google Workspace connector integrates with Google's identity APIs
+to support user authentication and automatic user/group sync.
+
+Users, groups, and organizational units are synced every few minutes to ensure
+that your Firezone account remains up-to-date with the latest identity data from
+your Google Workspace account.
+
+## Setup
+
+To set up the Google workspace connector, go to `Settings` ->
+`Identity Providers` -> `Add Identity Provider` and follow the prompts from
+there.
+
+<Alert
+  color="info"
+  html={`
+    The Google Workspace connector will tied to the administrator account who
+    completed the integration. Periodic re-authentication to Google Workspace
+    may be required by the admin to prevent the connector's authentication status
+    with Google from expiring.
+  `}
+/>
+
+## Deleting or suspending a user in Google Workspace
+
+When a user is deleted or suspended in your Google Workspace account, Firezone
+will automatically clear all active sessions for that user upon the next
+user/group sync. The user will be <strong>signed out of all clients</strong> and
+forced to reauthenticate.
+
+This means terminated employees will have all Firezone access revoked within a
+few minutes of deleting or suspending them in your Google Workspace account.
+
+<Alert
+  color="warning"
+  html={`
+    To preserve audit log trails, Firezone <strong>never</strong> automatically deletes users.
+    Admins must manually delete users in the admin portal in order to fully remove
+    them from the system.
+  `}
+/>
+
+## Deleting a group or organizational unit in Google Workspace
+
+Deleting a group or organizational unit in Google Workspace will disable the
+associated policy in Firezone.
+
+<Alert
+  color="warning"
+  html={`
+    To preserve audit log trails, Firezone **never** automatically deletes groups.
+    Admins must manually delete groups in the admin portal in order to fully remove
+    them from the system.
+  `}
+/>
+
+## Nested groups and organizational units
+
+Firezone flattens nested groups and organizational units synced from Google
+Workspace. User membership is determined by the parent group directly.
+
+For example, if you had the following group structure in your Google Workspace
+account:
+
+```
+- Product
+  - steve@company.com
+  - Engineering
+    - bob@company.com
+    - alice@company.com
+  - Support
+    - patrick@company.com
+```
+
+In Firezone, you would see the follow groups after sync:
+
+```
+- Group:Product
+  - steve@company.com
+- Group:Engineering
+  - bob@company.com
+  - alice@company.com
+- Group:Support
+  - patrick@company.com
+```
