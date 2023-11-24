@@ -244,7 +244,7 @@ export default function Page() {
                     className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
                   >
                     Users with account-wide access to deploy gateways, manage
-                    billing, and edit users, sites, and other configuration
+                    billing, and edit users, sites, or other configuration
                     <div className="tooltip-arrow" data-popper-arrow></div>
                   </div>
                 </td>
@@ -302,15 +302,15 @@ export default function Page() {
                     data-tooltip-placement="top"
                     className="underline hover:no-underline cursor-help"
                   >
-                    Devices
+                    Connected Clients
                   </span>
                   <div
                     id="devices-tooltip"
                     role="tooltip"
                     className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
                   >
-                    Devices are end-user devices or other machines that users
-                    and service accounts connect from
+                    Any device or machine that the Firezone client application
+                    connects from
                     <div className="tooltip-arrow" data-popper-arrow></div>
                   </div>
                 </td>
@@ -615,8 +615,14 @@ export default function Page() {
             <p>How long does it take to set up Firezone?</p>
           </blockquote>
           <p className="mb-8">
-            Firezone can be set up in less than 10 minutes, and gateways can be
-            added by running a simple Docker command.{" "}
+            Firezone can be set up in{" "}
+            <Link
+              href="/kb/quickstart"
+              className="hover:underline text-accent-500"
+            >
+              less than 10 minutes
+            </Link>
+            , and gateways can be added by running a simple Docker command.{" "}
             <Link href="/kb" className="hover:underline text-accent-500">
               Visit our docs
             </Link>{" "}
@@ -652,8 +658,14 @@ export default function Page() {
             <p>How do I cancel or change my plan?</p>
           </blockquote>
           <p className="mb-8">
-            Please contact support (support@firezone.dev) if you would like to
-            change your plan or terminate your account.
+            Please{" "}
+            <Link
+              href="mailto:support@firezone.dev"
+              className="hover:underline text-color-accent-500"
+            >
+              contact support
+            </Link>{" "}
+            if you would like to change your plan or terminate your account.
           </p>
 
           <a id="when-billed" className="pt-8"></a>
@@ -670,8 +682,8 @@ export default function Page() {
             <p>What payment methods are available?</p>
           </blockquote>
           <p className="mb-8">
-            The Starter plan is free and does not require a credit card to be
-            entered. Enterprise plans can be paid via credit card, ACH, or wire
+            The Starter plan is free and does not require a credit card to get
+            started. Enterprise plans can be paid via credit card, ACH, or wire
             transfer and will have a 100% discount applied for the duration of
             the beta.
           </p>
@@ -686,7 +698,7 @@ export default function Page() {
           <p className="mb-8">
             Yes. Not-for-profit organizations and educational institutions are
             eligible for a 50% discount. Contact us (support@firezone.dev) to
-            apply for the discount.
+            request the discount.
           </p>
 
           <a id="enhance-cybersecurity" className="pt-8"></a>
