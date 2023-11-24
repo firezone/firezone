@@ -167,6 +167,7 @@ final class AuthStore: ObservableObject {
     logger.trace("\(#function)")
 
     guard case .signedIn = self.loginStatus else {
+      logger.trace("\(#function): Not signed in, so can't signout.")
       return
     }
 
@@ -183,6 +184,7 @@ final class AuthStore: ObservableObject {
     logger.trace("\(#function)")
 
     guard case .signedIn = self.loginStatus else {
+      logger.trace("\(#function): Not signed in, so can't start the tunnel.")
       return
     }
 
