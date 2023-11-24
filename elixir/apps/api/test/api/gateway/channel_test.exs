@@ -265,7 +265,7 @@ defmodule API.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
-      rtc_session_description = "RTC_SD"
+      client_payload = "RTC_SD"
       flow_id = Ecto.UUID.generate()
 
       otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
@@ -281,7 +281,7 @@ defmodule API.Gateway.ChannelTest do
            resource_id: resource.id,
            flow_id: flow_id,
            authorization_expires_at: expires_at,
-           client_rtc_session_description: rtc_session_description,
+           client_payload: client_payload,
            client_preshared_key: preshared_key
          }, otel_ctx}
       )
@@ -342,7 +342,7 @@ defmodule API.Gateway.ChannelTest do
                  preshared_key: preshared_key,
                  public_key: client.public_key
                },
-               rtc_session_description: rtc_session_description
+               payload: client_payload
              }
 
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
@@ -376,7 +376,7 @@ defmodule API.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
-      rtc_session_description = "RTC_SD"
+      client_payload = "RTC_SD"
       flow_id = Ecto.UUID.generate()
 
       otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
@@ -392,7 +392,7 @@ defmodule API.Gateway.ChannelTest do
            resource_id: resource.id,
            flow_id: flow_id,
            authorization_expires_at: expires_at,
-           client_rtc_session_description: rtc_session_description,
+           client_payload: client_payload,
            client_preshared_key: preshared_key
          }, otel_ctx}
       )
@@ -440,7 +440,7 @@ defmodule API.Gateway.ChannelTest do
                  preshared_key: preshared_key,
                  public_key: client.public_key
                },
-               rtc_session_description: rtc_session_description
+               payload: client_payload
              }
 
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
