@@ -36,7 +36,7 @@ there.
 <Alert
   color="info"
   html={`
-    The Google Workspace connector will tied to the administrator account who
+    The Google Workspace connector will be tied to the administrator account who
     completed the integration. Periodic re-authentication to Google Workspace
     may be required by the admin to prevent the connector's authentication status
     with Google from expiring.
@@ -47,8 +47,8 @@ there.
 
 When a user is deleted or suspended in your Google Workspace account, Firezone
 will automatically clear all active sessions for that user upon the next
-user/group sync. The user will be <strong>signed out of all clients</strong> and
-forced to reauthenticate.
+user/group sync. The user will be **signed out of all clients** and forced to
+reauthenticate.
 
 This means terminated employees will have all Firezone access revoked within a
 few minutes of deleting or suspending them in your Google Workspace account.
@@ -56,9 +56,9 @@ few minutes of deleting or suspending them in your Google Workspace account.
 <Alert
   color="warning"
   html={`
-    To preserve audit log trails, Firezone <strong>never</strong> automatically deletes users.
-    Admins must manually delete users in the admin portal in order to fully remove
-    them from the system.
+    To preserve audit log trails, Firezone <strong>never</strong> automatically
+    deletes users. Admins must manually delete users in the admin portal in
+    order to fully remove them from the system.
   `}
 />
 
