@@ -42,6 +42,7 @@ final class AppStore: ObservableObject {
   }
 
   private func handleLoginStatusChanged(_ loginStatus: AuthStore.LoginStatus) async {
+    logger.log("\(#function): login status = \(loginStatus)")
     switch loginStatus {
     case .signedIn:
       do {

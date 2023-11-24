@@ -27,7 +27,7 @@ final class AuthStore: ObservableObject {
 
   static let shared = AuthStore(tunnelStore: TunnelStore.shared)
 
-  enum LoginStatus {
+  enum LoginStatus: CustomStringConvertible {
     case uninitialized
     case signedOut(accountId: String?)
     case signedIn(accountId: String, actorName: String)
@@ -37,6 +37,17 @@ final class AuthStore: ObservableObject {
       case .uninitialized: return nil
       case .signedOut(let accountId): return accountId
       case .signedIn(let accountId, _): return accountId
+      }
+    }
+
+    var description: String {
+      switch self {
+      case .uninitialized:
+        return "uninitialized"
+      case .signedOut(let accountId):
+        return "signedOut(accountId: \(accountId ?? "nil"))"
+      case .signedIn(let accountId, let actorName):
+        return "signedIn(accountId: \(accountId), actorName: \(actorName))"
       }
     }
   }
