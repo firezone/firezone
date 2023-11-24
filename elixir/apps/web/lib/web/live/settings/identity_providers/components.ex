@@ -41,6 +41,7 @@ defmodule Web.Settings.IdentityProviders.Components do
   def status(
         %{
           provider: %{
+            adapter: :google_workspace,
             disabled_at: disabled_at,
             adapter_state: %{"status" => "pending_access_token"}
           }
@@ -55,6 +56,41 @@ defmodule Web.Settings.IdentityProviders.Components do
         <span :if={@provider.adapter_state["status"]}>
           <.link navigate={
             ~p"/#{@provider.account_id}/settings/identity_providers/google_workspace/#{@provider}/redirect"
+          }>
+            <button class={~w[
+          text-white bg-primary-600 rounded
+          font-medium text-sm
+          px-2 py-1 text-center
+          hover:bg-primary-700
+          focus:ring-4 focus:outline-none focus:ring-primary-300
+          dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800
+          active:text-white/80
+        ]}>connect IdP</button>
+          </.link>
+        </span>
+      </span>
+    </div>
+    """
+  end
+
+  def status(
+        %{
+          provider: %{
+            adapter: :openid_connect,
+            disabled_at: disabled_at,
+            adapter_state: %{"status" => "pending_access_token"}
+          }
+        } = assigns
+      )
+      when not is_nil(disabled_at) do
+    ~H"""
+    <div class="flex items-center">
+      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+      <span class="ml-3">
+        Provisioning
+        <span :if={@provider.adapter_state["status"]}>
+          <.link navigate={
+            ~p"/#{@provider.account_id}/settings/identity_providers/openid_connect/#{@provider}/redirect"
           }>
             <button class={~w[
           text-white bg-primary-600 rounded
