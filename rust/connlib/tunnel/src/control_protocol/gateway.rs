@@ -80,7 +80,7 @@ where
 
         if let Some(ice) = previous_ice {
             // If we had a previous on-going connection we stop it.
-            // Note that ice.stop aso closes the gatherer.
+            // Note that ice.stop also closes the gatherer.
             // we only have to do this on the gateway because clients can query
             // twice for initiating connections since they can close/reopen suddenly
             // however, gateways never initiate connection requests
