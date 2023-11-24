@@ -238,7 +238,14 @@
     }
 
     @objc private func quitButtonTapped() {
-      NSApp.terminate(self)
+      Task {
+        do {
+          try await appStore?.tunnel.stop()
+        } catch {
+          logger.error("\(#function): Error stopping tunnel: \(error)")
+        }
+        NSApp.terminate(self)
+      }
     }
 
     private func openSettingsWindow() {
