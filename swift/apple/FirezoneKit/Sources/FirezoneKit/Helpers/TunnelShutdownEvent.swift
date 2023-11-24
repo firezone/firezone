@@ -16,7 +16,7 @@ enum TunnelShutdownEventError: Error {
 public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
   private static let logger = Logger.make(for: TunnelShutdownEvent.self)
 
-  public enum Reason: Codable {
+  public enum Reason: Codable, CustomStringConvertible {
     case stopped(NEProviderStopReason)
     case connlibConnectFailure
     case connlibDisconnected
@@ -24,6 +24,18 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
     case tokenNotFound
     case networkSettingsApplyFailure
     case invalidAdapterState
+
+    public var description: String {
+      switch self {
+      case .stopped(let reason): return "stopped(reason code: \(reason.rawValue))"
+      case .connlibConnectFailure: return "connlib connection failure"
+      case .connlibDisconnected: return "connlib disconnected"
+      case .badTunnelConfiguration: return "bad tunnel configuration"
+      case .tokenNotFound: return "token not found"
+      case .networkSettingsApplyFailure: return "network settings apply failure"
+      case .invalidAdapterState: return "invalid adapter state"
+      }
+    }
   }
 
   public enum Action {
