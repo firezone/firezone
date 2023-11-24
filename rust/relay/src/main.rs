@@ -328,11 +328,11 @@ where
         public_address: IpStack,
     ) -> Result<Self> {
         let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);
-        let (inbound_data_sender, inbound_data_receiver) = mpsc::channel(1000);
+        let (inbound_data_sender, inbound_data_receiver) = mpsc::channel(5000);
         let (outbound_ip4_data_sender, outbound_ip4_data_receiver) =
-            mpsc::channel::<(Vec<u8>, SocketAddr)>(1000);
+            mpsc::channel::<(Vec<u8>, SocketAddr)>(5000);
         let (outbound_ip6_data_sender, outbound_ip6_data_receiver) =
-            mpsc::channel::<(Vec<u8>, SocketAddr)>(1000);
+            mpsc::channel::<(Vec<u8>, SocketAddr)>(5000);
 
         if public_address.as_v4().is_some() {
             tokio::spawn(main_udp_socket_task(
