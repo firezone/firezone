@@ -176,6 +176,12 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     no_device_waker: AtomicWaker,
 }
 
+#[inline(always)]
+fn update_packet(pkt: &mut MutableIpPacket, dst_addr: IpAddr) {
+    pkt.set_dst(dst_addr);
+    pkt.update_checksum();
+}
+
 impl<CB> Tunnel<CB, ClientState>
 where
     CB: Callbacks + 'static,
@@ -204,6 +210,24 @@ where
                 }
             }
 
+            match self.role_state.lock().route_futures.poll_unpin(cx) {
+                Poll::Ready(Ok(Ok(dev))) => {
+                    if let Some(dev) = dev {
+                        self.device.store(Some(Arc::new(dev)));
+                    }
+                    continue;
+                }
+                Poll::Ready(Ok(Err(e))) => {
+                    tracing::error!(err = ?e, "couldn't add route: {e:#}");
+                    continue;
+                }
+                Poll::Ready(Err(e)) => {
+                    tracing::error!(err = ?e, "couldn't add route: {e:#}");
+                    continue;
+                }
+                Poll::Pending => {}
+            };
+
             match self.poll_next_event_common(cx) {
                 Poll::Ready(event) => return Poll::Ready(Ok(event)),
                 Poll::Pending => {}
@@ -220,6 +244,8 @@ where
         cx: &mut Context<'_>,
     ) -> Poll<Result<Option<Event<GatewayId>>>> {
         loop {
+            let mut role_state = self.role_state.lock();
+
             let mut read_guard = self.read_buf.lock();
             let mut write_guard = self.write_buf.lock();
             let read_buf = read_guard.as_mut_slice();
@@ -231,11 +257,15 @@ where
 
             tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination());
 
-            let mut role_state = self.role_state.lock();
-
-            let packet = match role_state.handle_dns(packet, role_state.dns_strategy) {
-                Ok(Some(response)) => {
+            let dns_strategy = role_state.dns_strategy;
+            let mut packet = match role_state.handle_dns(packet, dns_strategy) {
+                Ok(Some((response, ip))) => {
                     device.write(response)?;
+                    if let Some(ip) = ip {
+                        role_state
+                            .route_futures
+                            .try_push(device.add_route(ip.into(), self.callbacks()));
+                    }
                     continue;
                 }
                 Ok(None) => continue,
@@ -250,7 +280,17 @@ where
                 continue;
             };
 
-            self.encapsulate(write_buf, packet, dest, peer);
+            // TODO: it's better to move the translation inside the peer.
+            // for that it will be better to dup peer for gateway/client.
+            if let Some(res) = role_state.dns_resources_internal_ips.get_by_ip(&dest) {
+                if let Some(translated_ip) = role_state.dns_resources_external_ips.get(&dest) {
+                    update_packet(&mut packet, *translated_ip)
+                } else {
+                    continue;
+                }
+            }
+
+            self.encapsulate(write_buf, packet, peer);
 
             continue;
         }
@@ -281,7 +321,7 @@ where
                             continue;
                         };
 
-                        self.encapsulate(write_buf, packet, dest, peer);
+                        self.encapsulate(write_buf, packet, peer);
 
                         continue;
                     }
@@ -455,7 +495,6 @@ where
         &self,
         write_buf: &mut [u8],
         packet: MutableIpPacket,
-        dest: IpAddr,
         peer: &ConnectedPeer<TRoleState::Id>,
     ) {
         let peer_id = peer.inner.conn_id;
@@ -463,13 +502,13 @@ where
         match peer.inner.encapsulate(packet, write_buf) {
             Ok(None) => {}
             Ok(Some(b)) => {
-                tracing::trace!(target: "wire", action = "writing", to = "peer", %dest);
+                tracing::trace!(target: "wire", action = "writing", to = "peer", dest = %packet.destination());
                 if peer.channel.try_send(b).is_err() {
-                    tracing::warn!(target: "wire", action = "dropped", to = "peer", %dest);
+                    tracing::warn!(target: "wire", action = "dropped", to = "peer", dest = %packet.destination());
                 }
             }
             Err(e) => {
-                tracing::error!(resource_address = %dest, err = ?e, "failed to handle packet {e:#}");
+                tracing::error!(resource_address = %packet.destination(), err = ?e, "failed to handle packet {e:#}");
 
                 if e.is_fatal_connection_error() {
                     self.peers_to_stop.lock().push_back(peer_id);

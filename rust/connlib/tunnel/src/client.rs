@@ -1,28 +1,30 @@
 use crate::bounded_queue::BoundedQueue;
-use crate::device_channel::{create_iface, Packet};
+use crate::device_channel::{create_iface, Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::resource_table::ResourceTable;
 use crate::{
     dns, ConnectedPeer, DnsFallbackStrategy, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
     DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
 };
+use bimap::BiMap;
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
-    GatewayId, Interface as InterfaceConfig, Key, ResourceDescription, ResourceId, ReuseConnection,
-    SecretKey,
+    GatewayId, Interface as InterfaceConfig, Key, ResourceDescription, ResourceDescriptionCidr,
+    ResourceDescriptionDns, ResourceId, ReuseConnection, SecretKey,
 };
 use connlib_shared::{Callbacks, DNS_SENTINEL};
 use futures::channel::mpsc::Receiver;
 use futures::stream;
-use futures_bounded::{PushError, StreamMap};
+use futures_bounded::{FuturesSet, PushError, StreamMap};
 use hickory_resolver::lookup::Lookup;
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use rand_core::OsRng;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::ops::Deref;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -42,28 +44,35 @@ where
         &self,
         resource_description: ResourceDescription,
     ) -> connlib_shared::Result<()> {
-        let mut any_valid_route = false;
-        {
-            for ip in resource_description.ips() {
-                if let Err(e) = self.add_route(ip).await {
-                    tracing::warn!(route = %ip, error = ?e, "add_route");
-                    let _ = self.callbacks().on_error(&e);
-                } else {
-                    any_valid_route = true;
-                }
+        match &resource_description {
+            ResourceDescription::Dns(dns) => {
+                self.role_state
+                    .lock()
+                    .dns_resources
+                    .insert(dns.address.clone(), Arc::new(dns.clone()));
+            }
+            ResourceDescription::Cidr(cidr) => {
+                self.add_route(cidr.address).await?;
+
+                self.role_state
+                    .lock()
+                    .cidr_resources
+                    .insert(cidr.address, Arc::new(cidr.clone()));
             }
         }
-        if !any_valid_route {
-            return Err(Error::InvalidResource);
-        }
 
-        let resource_list = {
-            let mut role_state = self.role_state.lock();
-            role_state.resources.insert(resource_description);
-            role_state.resources.resource_list()
-        };
-
-        self.callbacks.on_update_resources(resource_list)?;
+        let mut role_state = self.role_state.lock();
+        role_state
+            .resources_id
+            .insert(resource_description.id(), Arc::new(resource_description));
+        self.callbacks.on_update_resources(
+            role_state
+                .resources_id
+                .values()
+                .map(Deref::deref)
+                .cloned()
+                .collect(),
+        )?;
         Ok(())
     }
 
@@ -131,6 +140,71 @@ where
     }
 }
 
+#[derive(Default, Debug, Clone)]
+pub struct DnsResourceMap {
+    internal_ip4_map: BiMap<Ipv4Addr, ResourceDescriptionDns>,
+    internal_ip6_map: BiMap<Ipv6Addr, ResourceDescriptionDns>,
+}
+
+impl DnsResourceMap {
+    pub fn get_by_ip6(&self, ip6: &Ipv6Addr) -> Option<&ResourceDescriptionDns> {
+        self.internal_ip6_map.get_by_left(ip6)
+    }
+
+    pub fn get_by_ip4(&self, ip4: &Ipv4Addr) -> Option<&ResourceDescriptionDns> {
+        self.internal_ip4_map.get_by_left(ip4)
+    }
+
+    pub fn get_by_ip(&self, ip: &IpAddr) -> Option<&ResourceDescriptionDns> {
+        match ip {
+            IpAddr::V4(ip) => self.get_by_ip4(ip),
+            IpAddr::V6(ip) => self.get_by_ip6(ip),
+        }
+    }
+
+    pub fn get_v6_resoruce_description(
+        &self,
+        description: &ResourceDescriptionDns,
+    ) -> Option<&Ipv6Addr> {
+        self.internal_ip6_map.get_by_right(description)
+    }
+
+    pub fn get_v4_resoruce_description(
+        &self,
+        description: &ResourceDescriptionDns,
+    ) -> Option<&Ipv4Addr> {
+        self.internal_ip4_map.get_by_right(description)
+    }
+
+    pub fn get_or_assign_ip6(
+        &self,
+        description: &ResourceDescriptionDns,
+        provider: &IpProvider,
+    ) -> Option<Ipv6Addr> {
+        if let Some(ip) = self.get_v6_resoruce_description(description) {
+            return Some(*ip);
+        }
+
+        let ip = provider.next_ipv6()?;
+        self.internal_ip6_map.insert(ip, description.clone());
+        Some(ip)
+    }
+
+    pub fn get_or_assign_ip4(
+        &self,
+        description: &ResourceDescriptionDns,
+        provider: &mut IpProvider,
+    ) -> Option<Ipv4Addr> {
+        if let Some(ip) = self.get_v4_resoruce_description(description) {
+            return Some(*ip);
+        }
+
+        let ip = provider.next_ipv4()?;
+        self.internal_ip4_map.insert(ip, description.clone());
+        Some(ip)
+    }
+}
+
 /// [`Tunnel`] state specific to clients.
 pub struct ClientState {
     active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidate>,
@@ -148,8 +222,18 @@ pub struct ClientState {
     resources_gateways: HashMap<ResourceId, GatewayId>,
     resources: ResourceTable<ResourceDescription>,
 
+    // TODO: model these along with resources to enforce consistency
+    pub dns_resources_internal_ips: DnsResourceMap,
+    pub dns_resources_external_ips: HashMap<IpAddr, IpAddr>,
+    dns_resources: HashMap<String, Arc<ResourceDescriptionDns>>,
+    cidr_resources: IpNetworkTable<Arc<ResourceDescriptionCidr>>,
+    resources_id: HashMap<ResourceId, Arc<ResourceDescription>>,
+
     pub dns_strategy: DnsFallbackStrategy,
     dns_queries: BoundedQueue<DnsQuery<'static>>,
+    pub route_futures: FuturesSet<connlib_shared::Result<Option<Device>>>,
+
+    pub ip_provider: IpProvider,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -168,9 +252,15 @@ impl ClientState {
         &mut self,
         packet: MutableIpPacket<'a>,
         resolve_strategy: DnsFallbackStrategy,
-    ) -> Result<Option<Packet<'a>>, MutableIpPacket<'a>> {
-        match dns::parse(&self.resources, packet.as_immutable(), resolve_strategy) {
-            Some(dns::ResolveStrategy::LocalResponse(pkt)) => Ok(Some(pkt)),
+    ) -> Result<Option<(Packet<'a>, Option<IpAddr>)>, MutableIpPacket<'a>> {
+        match dns::parse(
+            &self.dns_resources,
+            &mut self.dns_resources_internal_ips,
+            &mut self.ip_provider,
+            packet.as_immutable(),
+            resolve_strategy,
+        ) {
+            Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
                 self.add_pending_dns_query(query);
 
@@ -411,6 +501,28 @@ impl ClientState {
     }
 }
 
+pub struct IpProvider {
+    ipv4: Box<dyn Iterator<Item = Ipv4Addr> + Send + Sync>,
+    ipv6: Box<dyn Iterator<Item = Ipv6Addr> + Send + Sync>,
+}
+
+impl IpProvider {
+    fn new(ipv4: Ipv4Network, ipv6: Ipv6Network) -> Self {
+        Self {
+            ipv4: Box::new(ipv4.hosts()),
+            ipv6: Box::new(ipv6.subnets_with_prefix(128).map(|ip| ip.network_address())),
+        }
+    }
+
+    pub fn next_ipv4(&mut self) -> Option<Ipv4Addr> {
+        self.ipv4.next()
+    }
+
+    pub fn next_ipv6(&mut self) -> Option<Ipv6Addr> {
+        self.ipv6.next()
+    }
+}
+
 impl Default for ClientState {
     fn default() -> Self {
         Self {
@@ -426,8 +538,19 @@ impl Default for ClientState {
             resources_gateways: Default::default(),
             resources: Default::default(),
             dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
+            route_futures: FuturesSet::new(Duration::from_secs(60), 100),
             gateway_preshared_keys: Default::default(),
             dns_strategy: Default::default(),
+            // TODO: decide ip ranges
+            ip_provider: IpProvider::new(
+                "fd00:2021:1111:ffff:ffff:ffff::/56".parse().unwrap(),
+                "100.72.250.0/16".parse().unwrap(),
+            ),
+            dns_resources_internal_ips: Default::default(),
+            dns_resources_external_ips: Default::default(),
+            dns_resources: Default::default(),
+            cidr_resources: IpNetworkTable::new(),
+            resources_id: Default::default(),
         }
     }
 }

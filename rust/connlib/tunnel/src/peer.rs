@@ -114,13 +114,6 @@ where
         }
     }
 
-    fn get_translation(&self, ip: IpAddr) -> Option<ResourceDescription> {
-        let id = self.translated_resource_addresses.read().get(&ip).cloned();
-        self.resources.as_ref().and_then(|resources| {
-            id.and_then(|id| resources.read().get_by_id(&id).map(|r| r.0.clone()))
-        })
-    }
-
     pub(crate) fn add_allowed_ip(&self, ip: IpNetwork) {
         self.allowed_ips.write().insert(ip, ());
     }
@@ -188,21 +181,6 @@ where
         mut packet: MutableIpPacket,
         buf: &mut [u8],
     ) -> Result<Option<Bytes>> {
-        if let Some(resource) = self.get_translation(packet.to_immutable().source()) {
-            let ResourceDescription::Dns(resource) = resource else {
-                tracing::error!(
-                    "Control protocol error: only dns resources should have a resource_address"
-                );
-                return Err(Error::ControlProtocolError);
-            };
-
-            match packet {
-                MutableIpPacket::MutableIpv4Packet(ref mut p) => p.set_source(resource.ipv4),
-                MutableIpPacket::MutableIpv6Packet(ref mut p) => p.set_source(resource.ipv6),
-            }
-
-            packet.update_checksum();
-        }
         let packet = match self.tunnel.lock().encapsulate(packet.packet(), buf) {
             TunnResult::Done => return Ok(None),
             TunnResult::Err(e) => return Err(e.into()),

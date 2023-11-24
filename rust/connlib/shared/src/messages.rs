@@ -1,5 +1,5 @@
 //! Message types that are used by both the gateway and client.
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use ip_network::IpNetwork;
@@ -124,26 +124,25 @@ pub enum ResourceDescription {
 }
 
 /// Description of a resource that maps to a DNS record.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
     pub id: ResourceId,
     /// Internal resource's domain name.
     pub address: String,
-    /// Resource's ipv4 mapping.
-    ///
-    /// Note that this is not the actual ipv4 for the resource not even wireguard's ipv4 for the resource.
-    /// This is just the mapping we use internally between a resource and its ip for intercepting packets.
-    pub ipv4: Ipv4Addr,
-    /// Resource's ipv6 mapping.
-    ///
-    /// Note that this is not the actual ipv6 for the resource not even wireguard's ipv6 for the resource.
-    /// This is just the mapping we use internally between a resource and its ip for intercepting packets.
-    pub ipv6: Ipv6Addr,
     /// Name of the resource.
     ///
     /// Used only for display.
     pub name: String,
+}
+
+impl ResourceDescriptionDns {
+    pub fn subdomain(&self, address: String) -> ResourceDescriptionDns {
+        ResourceDescriptionDns {
+            address,
+            ..self.clone()
+        }
+    }
 }
 
 impl ResourceDescription {
@@ -154,38 +153,10 @@ impl ResourceDescription {
         }
     }
 
-    pub fn ips(&self) -> Vec<IpNetwork> {
-        match self {
-            ResourceDescription::Dns(r) => vec![r.ipv4.into(), r.ipv6.into()],
-            ResourceDescription::Cidr(r) => vec![r.address],
-        }
-    }
-
-    pub fn ipv4(&self) -> Option<Ipv4Addr> {
-        match self {
-            ResourceDescription::Dns(r) => Some(r.ipv4),
-            ResourceDescription::Cidr(_) => None,
-        }
-    }
-
-    pub fn ipv6(&self) -> Option<Ipv6Addr> {
-        match self {
-            ResourceDescription::Dns(r) => Some(r.ipv6),
-            ResourceDescription::Cidr(_) => None,
-        }
-    }
-
     pub fn id(&self) -> ResourceId {
         match self {
             ResourceDescription::Dns(r) => r.id,
             ResourceDescription::Cidr(r) => r.id,
-        }
-    }
-
-    pub fn contains(&self, ip: IpAddr) -> bool {
-        match self {
-            ResourceDescription::Dns(r) => r.ipv4 == ip || r.ipv6 == ip,
-            ResourceDescription::Cidr(r) => r.address.contains(ip),
         }
     }
 }

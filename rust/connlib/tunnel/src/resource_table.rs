@@ -1,5 +1,5 @@
 //! A resource table is a custom type that allows us to store a resource under an id and possibly multiple ips or even network ranges
-use std::{collections::HashMap, net::IpAddr, rc::Rc};
+use std::{collections::HashMap, net::IpAddr, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{ResourceDescription, ResourceId};
@@ -26,15 +26,10 @@ impl Resource for (ResourceDescription, DateTime<Utc>) {
 ///
 /// This is specifically crafted for our use case, so the API is particularly made for us and not generic
 pub(crate) struct ResourceTable<T> {
-    id_table: HashMap<ResourceId, Rc<T>>,
-    network_table: IpNetworkTable<Rc<T>>,
-    dns_name: HashMap<String, Rc<T>>,
+    id_table: HashMap<ResourceId, Arc<T>>,
+    network_table: IpNetworkTable<Arc<T>>,
+    dns_name: HashMap<String, Arc<T>>,
 }
-
-// SAFETY: This type is send since you can't obtain the underlying `Rc` and the only way to clone it is using `insert` which requires an &mut self
-unsafe impl<T> Send for ResourceTable<T> {}
-// SAFETY: This type is sync since you can't obtain the underlying `Rc` and the only way to clone it is using `insert` which requires an &mut self
-unsafe impl<T> Sync for ResourceTable<T> {}
 
 impl<T> Default for ResourceTable<T> {
     fn default() -> ResourceTable<T> {
@@ -159,16 +154,16 @@ where
     pub fn insert(&mut self, resource_description: T) {
         self.cleanup_resource(&resource_description);
         let id = resource_description.description().id();
-        let resource_description = Rc::new(resource_description);
-        self.id_table.insert(id, Rc::clone(&resource_description));
+        let resource_description = Arc::new(resource_description);
+        self.id_table.insert(id, Arc::clone(&resource_description));
         // we just inserted it we can unwrap
         let res = self.id_table.get(&id).unwrap();
         match res.description() {
             ResourceDescription::Dns(r) => {
                 self.network_table
-                    .insert(r.ipv4, Rc::clone(&resource_description));
+                    .insert(r.ipv4, Arc::clone(&resource_description));
                 self.network_table
-                    .insert(r.ipv6, Rc::clone(&resource_description));
+                    .insert(r.ipv6, Arc::clone(&resource_description));
                 self.dns_name
                     .insert(r.address.clone(), resource_description);
             }
