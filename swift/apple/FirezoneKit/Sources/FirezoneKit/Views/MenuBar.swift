@@ -376,6 +376,14 @@
         resourcesUnavailableReasonMenuItem.title = "Disconnected"
         resourcesSeparatorMenuItem.isHidden = false
       }
+      quitMenuItem.title = {
+        switch self.tunnelStatus {
+        case .connected, .connecting:
+          return "Disconnect and Quit"
+        default:
+          return "Quit"
+        }
+      }()
     }
 
     private func handleMenuVisibilityOrStatusChanged() {
