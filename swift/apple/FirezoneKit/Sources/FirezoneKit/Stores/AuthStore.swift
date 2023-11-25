@@ -105,9 +105,12 @@ final class AuthStore: ObservableObject {
                 self.reconnectionAttemptsRemaining = self.reconnectionAttemptsRemaining - 1
                 if shouldReconnect {
                   self.logger.log(
-                    "\(#function): Trying to reconnect (\(self.reconnectionAttemptsRemaining) attempts after this)"
+                    "\(#function): Will try to reconnect after 1 second (\(self.reconnectionAttemptsRemaining) attempts after this)"
                   )
-                  self.startTunnel()
+                  DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(1)) {
+                    self.logger.log("\(#function): Trying to reconnect")
+                    self.startTunnel()
+                  }
                 } else {
                   self.signOut()
                 }
@@ -202,7 +205,7 @@ final class AuthStore: ObservableObject {
   func startTunnel() {
     logger.trace("\(#function)")
 
-    guard case .signedIn = self.loginStatus else {
+    guard case .signedIn = self.tunnelStore.tunnelAuthStatus else {
       logger.trace("\(#function): Not signed in, so can't start the tunnel.")
       return
     }
