@@ -127,7 +127,7 @@
     private lazy var resourcesUnavailableReasonMenuItem = createMenuItem(
       menu,
       title: "",
-      action: #selector(reconnectButtonTapped),
+      action: nil,
       isHidden: true,
       target: self
     )
@@ -225,13 +225,7 @@
     }
 
     @objc private func signOutButtonTapped() {
-      Task {
-        do {
-          try await appStore?.auth.signOut()
-        } catch {
-          logger.error("error signing out: \(String(describing: error))")
-        }
-      }
+      appStore?.auth.signOut()
     }
 
     @objc private func settingsButtonTapped() {
@@ -315,6 +309,7 @@
       case .signedOut:
         signInMenuItem.title = "Sign In"
         signInMenuItem.target = self
+        signInMenuItem.isEnabled = true
         signOutMenuItem.isHidden = true
       case .signedIn(_, let actorName):
         signInMenuItem.title = actorName.isEmpty ? "Signed in" : "Signed in as \(actorName)"
@@ -360,16 +355,14 @@
         resourcesUnavailableReasonMenuItem.target = nil
         resourcesUnavailableReasonMenuItem.title = "Disconnecting…"
         resourcesSeparatorMenuItem.isHidden = false
-      case (.signedIn, _):
-        // Ideally, this shouldn't happen, but it's better
-        // we handle this case, so that in case connlib errors out,
-        // the user is able to try to reconnect.
+      case (.signedIn, .disconnected), (.signedIn, .invalid), (.signedIn, _):
+        // We should never be in a state where the tunnel is
+        // down but the user is signed in, but we have
+        // code to handle it just for the sake of completion.
         resourcesTitleMenuItem.isHidden = true
         resourcesUnavailableMenuItem.isHidden = false
         resourcesUnavailableReasonMenuItem.isHidden = false
-        resourcesUnavailableReasonMenuItem.target = self
-        resourcesUnavailableReasonMenuItem.isEnabled = true
-        resourcesUnavailableReasonMenuItem.title = "Reconnect"
+        resourcesUnavailableReasonMenuItem.title = "Disconnected"
         resourcesSeparatorMenuItem.isHidden = false
       }
     }

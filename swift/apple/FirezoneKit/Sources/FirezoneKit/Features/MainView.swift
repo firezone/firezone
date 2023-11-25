@@ -16,7 +16,7 @@ import SwiftUI
     private let logger = Logger.make(for: MainViewModel.self)
     private var cancellables: Set<AnyCancellable> = []
 
-    private let appStore: AppStore
+    let appStore: AppStore
     @Dependency(\.mainQueue) private var mainQueue
 
     @Published var loginStatus: AuthStore.LoginStatus = .uninitialized
@@ -60,13 +60,7 @@ import SwiftUI
     }
 
     func signOutButtonTapped() {
-      Task {
-        do {
-          try await appStore.auth.signOut()
-        } catch {
-          logger.error("Error signing out: \(String(describing: error))")
-        }
-      }
+      appStore.auth.signOut()
     }
 
     func startTunnel() async {
@@ -80,7 +74,13 @@ import SwiftUI
     }
 
     func stopTunnel() {
-      appStore.tunnel.stop()
+      Task {
+        do {
+          try await appStore.tunnel.stop()
+        } catch {
+          logger.error("\(#function): Error stopping tunnel: \(error)")
+        }
+      }
     }
   }
 
