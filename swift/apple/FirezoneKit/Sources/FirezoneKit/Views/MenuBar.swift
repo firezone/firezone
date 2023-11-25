@@ -154,9 +154,9 @@
       let menuItem = createMenuItem(
         menu,
         title: "Quit",
-        action: #selector(NSApplication.terminate(_:)),
+        action: #selector(quitButtonTapped),
         key: "q",
-        target: nil
+        target: self
       )
       if let appName = Bundle.main.infoDictionary?[kCFBundleNameKey as String] as? String {
         menuItem.title = "Quit \(appName)"
@@ -235,6 +235,17 @@
     @objc private func aboutButtonTapped() {
       NSApp.activate(ignoringOtherApps: true)
       NSApp.orderFrontStandardAboutPanel(self)
+    }
+
+    @objc private func quitButtonTapped() {
+      Task {
+        do {
+          try await appStore?.tunnel.stop()
+        } catch {
+          logger.error("\(#function): Error stopping tunnel: \(error)")
+        }
+        NSApp.terminate(self)
+      }
     }
 
     private func openSettingsWindow() {
@@ -365,6 +376,14 @@
         resourcesUnavailableReasonMenuItem.title = "Disconnected"
         resourcesSeparatorMenuItem.isHidden = false
       }
+      quitMenuItem.title = {
+        switch self.tunnelStatus {
+        case .connected, .connecting:
+          return "Disconnect and Quit"
+        default:
+          return "Quit"
+        }
+      }()
     }
 
     private func handleMenuVisibilityOrStatusChanged() {
