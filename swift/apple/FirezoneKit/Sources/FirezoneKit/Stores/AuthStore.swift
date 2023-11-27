@@ -59,7 +59,12 @@ final class AuthStore: ObservableObject {
 
   private var cancellables = Set<AnyCancellable>()
 
-  @Published private(set) var loginStatus: LoginStatus
+  @Published private(set) var loginStatus: LoginStatus {
+    didSet {
+      self.handleLoginStatusChanged()
+    }
+  }
+
   private var status: NEVPNStatus = .invalid
 
   private static let maxReconnectionAttemptCount = 3
@@ -222,6 +227,30 @@ final class AuthStore: ObservableObject {
       }
     } else {
       self.signOut()
+    }
+  }
+
+  private func handleLoginStatusChanged() {
+    logger.log("\(#function): Login status: \(self.loginStatus)")
+    switch self.loginStatus {
+    case .signedIn:
+      Task {
+        do {
+          try await tunnelStore.start()
+        } catch {
+          logger.error("\(#function): Error starting tunnel: \(String(describing: error))")
+        }
+      }
+    case .signedOut:
+      Task {
+        do {
+          try await tunnelStore.stop()
+        } catch {
+          logger.error("\(#function): Error stopping tunnel: \(String(describing: error))")
+        }
+      }
+    case .uninitialized:
+      break
     }
   }
 
