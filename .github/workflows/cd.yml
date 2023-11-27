@@ -245,7 +245,7 @@ jobs:
 
   # Build for Windows with Cross
   build-push-release-artifacts-windows:
-     permissions:
+    permissions:
       id-token: write
       contents: write
     needs: update-release-draft
