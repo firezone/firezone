@@ -66,9 +66,11 @@ struct ReadFuture<'a> {
 }
 
 impl<'a> Future for ReadFuture<'a> {
-    type Output = Result<()>;
+    type Output = Result<&'a [u8]>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<&[u8]>> {
+    // TODO: In latest version for unix systems we use poll_read
+    // it'll be better to refactor this a bit to mach.
+    fn poll(self: Pin<&'a mut Self>, cx: &'a mut Context<'_>) -> Poll<Result<&'a [u8]>> {
         let this = Pin::into_inner(self);
         // wintun's API require us here to copy a packet
         let recv = this.session.try_receive();
@@ -76,7 +78,7 @@ impl<'a> Future for ReadFuture<'a> {
             Ok(None) => {} // No packet available yet
             Ok(Some(pkt)) => {
                 this.dst.copy_from_slice(pkt.bytes());
-                return Poll::Ready(Ok((this.dst)));
+                return Poll::Ready(Ok(this.dst));
             }
             Err(err) => return Poll::Ready(Err(err.into())),
         };
@@ -126,7 +128,7 @@ impl IfaceStream {
         self.write(src)
     }
 
-    pub fn read(&self, dst: &mut [u8]) -> impl Future<Output = &[u8]> {
+    pub fn read<'a>(&'a self, dst: &'a mut [u8]) -> impl Future<Output = Result<&'a [u8]>> + Send {
         ReadFuture {
             dst,
             waker: Arc::new(AtomicWaker::new()),
