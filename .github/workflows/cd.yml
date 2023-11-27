@@ -243,6 +243,62 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Build for Windows with Cross
+  build-push-release-artifacts-windows:
+     permissions:
+      id-token: write
+      contents: write
+    needs: update-release-draft
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: ./rust
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - target: x86_64-pc-windows-msvc
+            shortname: x64
+        name:
+          - package: firezone-windows-client
+            artifact: windows-client
+    env:
+      BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+      - name: Build release binaries
+        run: |
+          set -xe
+
+          cross build --release -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+
+          # Used for release artifact
+          cp target/${{ matrix.arch.target }}/release/${{ matrix.name.package }} $BINARY_DEST_PATH
+
+          # Used for Docker images
+          cp target/${{ matrix.arch.target }}/release/${{ matrix.name.package }} ${{ matrix.name.package }}
+          sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
+
+          ls -la $BINARY_DEST_PATH
+          ls -la $BINARY_DEST_PATH.sha256sum.txt
+      - name: Upload Release Assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -xe
+
+          gh release upload ${{ needs.update-release-draft.outputs.tag_name }} \
+            ${{ env.BINARY_DEST_PATH }} \
+            ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
+            --clobber \
+            --repo ${{ github.repository }}
+
   merge-release-artifacts:
     permissions:
       id-token: write
