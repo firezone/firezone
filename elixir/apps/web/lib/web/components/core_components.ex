@@ -79,11 +79,9 @@ defmodule Web.CoreComponents do
           cursor-pointer
           rounded
           px-2
-          focus:ring-4 focus:outline-none
           text-white
           bg-accent-400
           hover:bg-accent-500
-          focus:ring-accent-300
         ]}>
         <.icon name="hero-clipboard-document" data-icon class="h-4 w-4" />
         <span data-content>Copy</span>

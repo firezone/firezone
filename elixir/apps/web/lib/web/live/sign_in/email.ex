@@ -65,7 +65,7 @@ defmodule Web.SignIn.Email do
                   class={[
                     "block p-2.5 w-full text-sm",
                     "bg-gray-50 text-gray-900",
-                    "rounded-l border-gray-300 focus:border-accent-600 focus:ring-accent-600"
+                    "rounded-l border-gray-300"
                   ]}
                   required
                   placeholder="Enter token from email"
@@ -78,7 +78,7 @@ defmodule Web.SignIn.Email do
                     "text-sm text-white font-medium",
                     "items-center text-center",
                     "bg-accent-600 rounded-r",
-                    "focus:ring-4 focus:ring-accent-200 hover:bg-accent-700"
+                    "hover:bg-accent-700"
                   ]}
                 >
                   Submit
@@ -152,10 +152,7 @@ defmodule Web.SignIn.Email do
       />
       <span>
         Did not receive it?
-        <button
-          type="submit"
-          class="inline font-medium text-blue-600 hover:underline"
-        >
+        <button type="submit" class="inline font-medium text-blue-600 hover:underline">
           Resend email
         </button>
       </span>
@@ -171,7 +168,6 @@ defmodule Web.SignIn.Email do
         "w-1/2 m-2 inline-flex items-center justify-center py-2.5 px-5",
         "text-sm font-medium text-gray-900 bg-white ",
         "rounded border border-gray-200",
-        "focus:outline-none focus:z-10 focus:ring-4 focus:ring-gray-200",
         "hover:text-gray-900 hover:bg-gray-100"
       ]}
     >

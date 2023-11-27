@@ -16,8 +16,7 @@ defmodule Web.NavigationComponents do
             aria-controls="drawer-navigation"
             class={[
               "p-2 mr-2 text-gray-600 rounded cursor-pointer md:hidden",
-              "hover:text-gray-900 hover:bg-gray-100",
-              "focus:bg-gray-100 focus:ring-2 focus:ring-gray-100"
+              "hover:text-gray-900 hover:bg-gray-100"
             ]}
           >
             <.icon name="hero-bars-3-center-left" class="w-6 h-6" />
@@ -114,10 +113,7 @@ defmodule Web.NavigationComponents do
     ~H"""
     <button
       type="button"
-      class={[
-        "flex mx-3 text-sm bg-gray-800 rounded-full md:mr-0",
-        "focus:ring-4 focus:ring-gray-300"
-      ]}
+      class={["flex mx-3 text-sm bg-gray-800 rounded-full md:mr-0"]}
       id={"#{@id}-button"}
       aria-expanded="false"
       data-dropdown-toggle={"#{@id}-dropdown"}

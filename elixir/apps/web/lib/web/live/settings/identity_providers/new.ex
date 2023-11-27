@@ -109,7 +109,7 @@ defmodule Web.Settings.IdentityProviders.New do
           type="radio"
           name="next"
           value={next_step_path(@adapter, @account)}
-          class={~w[ w-4 h-4 border-gray-300 focus:ring-2 focus:ring-blue-300 ]}
+          class={~w[ w-4 h-4 border-gray-300 ]}
           required
         />
         <label for={"idp-option-#{@adapter}"} class="block ml-2 text-lg font-medium text-gray-900">

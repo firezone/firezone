@@ -67,7 +67,7 @@ defmodule Web.TableComponents do
           data-dropdown-toggle={"#{@id}-dropdown"}
           class={[
             "inline-flex items-center p-0.5 text-sm font-medium text-center",
-            "text-gray-500 hover:text-gray-800 rounded focus:outline-none"
+            "text-gray-500 hover:text-gray-800 rounded"
           ]}
           type="button"
         >

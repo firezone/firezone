@@ -116,8 +116,8 @@ defmodule Web.RelayGroups.Index do
               type="text"
               id="simple-search"
               class={[
-                "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded focus:ring-primary-500",
-                "focus:border-primary-500 block w-full pl-10 p-2"
+                "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded",
+                "block w-full pl-10 p-2"
               ]}
               placeholder="Search"
               required=""

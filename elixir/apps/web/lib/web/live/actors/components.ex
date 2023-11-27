@@ -177,10 +177,7 @@ defmodule Web.Actors.Components do
           type="radio"
           name="next"
           value={next_step_path(@type, @account)}
-          class={~w[
-            w-4 h-4 border-gray-300
-            focus:ring-2 focus:ring-blue-300
-          ]}
+          class={~w[w-4 h-4 border-gray-300]}
           required
         />
         <label for={"idp-option-#{@type}"} class="block ml-2 text-lg font-medium text-gray-900">
