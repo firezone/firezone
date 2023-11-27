@@ -75,11 +75,9 @@ defmodule Web.FormComponents do
   def input(%{type: "radio"} = assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <label class="flex items-center gap-2 text-gray-900 dark:text-gray-300">
+      <label class="flex items-center gap-2 text-gray-900">
         <input type="radio" id={@id} name={@name} value={@value} checked={@checked} class={~w[
-          w-4 h-4 border-gray-300 focus:ring-2 focus:ring-primary-300
-          dark:focus:ring-primary-600 dark:focus:bg-primary-600
-          dark:bg-gray-700 dark:border-gray-600]} {@rest} />
+          w-4 h-4 border-gray-300]} {@rest} />
         <%= @label %>
       </label>
     </div>
@@ -101,8 +99,8 @@ defmodule Web.FormComponents do
           value="true"
           checked={@checked}
           class={[
-            "rounded border-zinc-300 text-zinc-900 focus:ring-0",
-            "checked:bg-accent-500 checked:focus:bg-accent-500 checked:hover:bg-accent-500"
+            "rounded border-zinc-300 text-zinc-900",
+            "checked:bg-accent-500 checked:hover:bg-accent-500"
           ]}
           {@rest}
         />
@@ -118,10 +116,8 @@ defmodule Web.FormComponents do
     <div phx-feedback-for={@name}>
       <.label for={@id}><%= @label %></.label>
       <select id={@id} name={@name} class={~w[
-          bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded focus:ring-blue-500
-          focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600
-          dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500
-        ]} multiple={@multiple} {@rest}>
+          bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded
+          block w-full p-2.5]} multiple={@multiple} {@rest}>
         <option :if={@prompt} value=""><%= @prompt %></option>
         <%= Phoenix.HTML.Form.options_for_select(@options, @value) %>
       </select>
@@ -138,10 +134,10 @@ defmodule Web.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "mt-2 block w-full rounded text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6",
-          "phx-no-feedback:border-zinc-300 phx-no-feedback:focus:border-zinc-400",
-          "min-h-[6rem] border-zinc-300 focus:border-zinc-400",
-          @errors != [] && "border-rose-400 focus:border-rose-400"
+          "mt-2 block w-full rounded text-zinc-900 sm:text-sm sm:leading-6",
+          "phx-no-feedback:border-zinc-300",
+          "min-h-[6rem] border-zinc-300",
+          @errors != [] && "border-rose-400"
         ]}
         {@rest}
       ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
@@ -169,11 +165,11 @@ defmodule Web.FormComponents do
           id={@id}
           value={value}
           class={[
-            "bg-gray-50 p-2.5 block w-full rounded border text-gray-900 focus:ring-primary-600 text-sm",
-            "phx-no-feedback:border-gray-300 phx-no-feedback:focus:border-primary-600",
+            "bg-gray-50 p-2.5 block w-full rounded border text-gray-900 text-sm",
+            "phx-no-feedback:border-gray-300",
             "disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200 disabled:shadow-none",
-            "border-gray-300 focus:border-primary-600",
-            @errors != [] && "border-rose-400 focus:border-rose-400"
+            "border-gray-300",
+            @errors != [] && "border-rose-400"
           ]}
           {@rest}
         />
@@ -219,11 +215,11 @@ defmodule Web.FormComponents do
         id={@id}
         value={Phoenix.HTML.Form.normalize_value(@type, @value)}
         class={[
-          "bg-gray-50 p-2.5 block w-full rounded border text-gray-900 focus:ring-primary-600 text-sm",
-          "phx-no-feedback:border-gray-300 phx-no-feedback:focus:border-primary-600",
+          "bg-gray-50 p-2.5 block w-full rounded border text-gray-900 text-sm",
+          "phx-no-feedback:border-gray-300",
           "disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200 disabled:shadow-none",
-          "border-gray-300 focus:border-primary-600",
-          @errors != [] && "border-rose-400 focus:border-rose-400"
+          "border-gray-300",
+          @errors != [] && "border-rose-400"
         ]}
         {@rest}
       />
@@ -246,30 +242,21 @@ defmodule Web.FormComponents do
     <div class="inline-flex rounded-md shadow-sm" role="group">
       <button type="button" class={~w[
           px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200
-          rounded-l hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
-          focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
-          dark:text-white dark:hover:text-white dark:hover:bg-gray-600
-          dark:focus:ring-blue-500 dark:focus:text-white
+          rounded-l hover:bg-gray-100 hover:text-blue-700
         ]}>
         <%= render_slot(@first) %>
       </button>
       <%= for middle <- @middle do %>
         <button type="button" class={~w[
             px-4 py-2 text-sm font-medium text-gray-900 bg-white border-t border-b
-            border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
-            focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
-            dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500
-            dark:focus:text-white
+            border-gray-200 hover:bg-gray-100 hover:text-blue-700
           ]}>
           <%= render_slot(middle) %>
         </button>
       <% end %>
       <button type="button" class={~w[
           px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200
-          rounded-r hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
-          focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
-          dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500
-          dark:focus:text-white
+          rounded-r hover:bg-gray-100 hover:text-blue-700
         ]}>
         <%= render_slot(@last) %>
       </button>
@@ -301,6 +288,7 @@ defmodule Web.FormComponents do
   attr :class, :string, default: "", doc: "Custom classes to be added to the button"
   attr :style, :string, default: nil, doc: "The style of the button"
   attr :type, :string, default: nil, doc: "The button type"
+  attr :size, :string, default: "md", doc: "The size of the button"
 
   attr :icon, :string,
     default: nil,
@@ -312,7 +300,7 @@ defmodule Web.FormComponents do
 
   def button(%{navigate: _} = assigns) do
     ~H"""
-    <.link class={button_style(@style) ++ [@class]} navigate={@navigate} {@rest}>
+    <.link class={button_style(@style) ++ button_size(@size) ++ [@class]} navigate={@navigate} {@rest}>
       <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
       <%= render_slot(@inner_block) %>
     </.link>
@@ -321,7 +309,7 @@ defmodule Web.FormComponents do
 
   def button(assigns) do
     ~H"""
-    <button type={@type} class={button_style(@style) ++ [@class]} {@rest}>
+    <button type={@type} class={button_style(@style) ++ button_size(@size) ++ [@class]} {@rest}>
       <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
       <%= render_slot(@inner_block) %>
     </button>
@@ -413,9 +401,7 @@ defmodule Web.FormComponents do
   defp button_style do
     [
       "flex items-center justify-center",
-      "px-4 py-2 rounded",
-      "font-medium text-sm",
-      "focus:ring-4 focus:outline-none",
+      "rounded font-medium",
       "phx-submit-loading:opacity-75"
     ]
   end
@@ -425,8 +411,7 @@ defmodule Web.FormComponents do
       [
         "text-red-600",
         "border border-red-600",
-        "hover:text-white hover:bg-red-600 focus:ring-red-300",
-        "dark:border-red-500 dark:text-red-500 dark:hover:text-white dark:hover:bg-red-600 dark:focus:ring-red-900"
+        "hover:text-white hover:bg-red-600"
       ]
   end
 
@@ -434,11 +419,29 @@ defmodule Web.FormComponents do
     button_style() ++
       [
         "text-white",
-        "bg-accent-500",
-        "hover:bg-accent-600",
-        "focus:ring-accent-300",
-        "dark:bg-accent-600 dark:hover:bg-accent-700 dark:focus:ring-accent-800"
+        "bg-accent-600",
+        "hover:bg-accent-700"
       ]
+  end
+
+  defp button_size(size) do
+    text = %{
+      "xs" => "text-xs",
+      "sm" => "text-sm",
+      "md" => "text-sm",
+      "lg" => "text-base",
+      "xl" => "text-base"
+    }
+
+    spacing = %{
+      "xs" => "px-2 py-1",
+      "sm" => "px-3 py-2",
+      "md" => "px-4 py-2",
+      "lg" => "px-5 py-3",
+      "xl" => "px-6 py-3.5"
+    }
+
+    [text[size], spacing[size]]
   end
 
   ### Forms ###

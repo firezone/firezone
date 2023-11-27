@@ -68,7 +68,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
         </.header>
         <.flash_group flash={@flash} />
 
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <.vertical_table id="provider">
             <.vertical_table_row>
               <:label>Name</:label>

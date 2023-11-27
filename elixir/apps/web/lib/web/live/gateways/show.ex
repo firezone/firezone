@@ -44,7 +44,7 @@ defmodule Web.Gateways.Show do
             <:value>
               <.link
                 navigate={~p"/#{@account}/sites/#{@gateway.group}"}
-                class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-bold text-blue-600 hover:underline"
               >
                 <%= @gateway.group.name %>
               </.link>

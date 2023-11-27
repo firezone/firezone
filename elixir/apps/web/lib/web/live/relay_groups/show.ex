@@ -36,7 +36,7 @@ defmodule Web.RelayGroups.Show do
         </.edit_button>
       </:action>
       <:content>
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <.vertical_table id="group">
             <.vertical_table_row>
               <:label>Instance Group Name</:label>
@@ -66,7 +66,7 @@ defmodule Web.RelayGroups.Show do
             <:col :let={relay} label="INSTANCE">
               <.link
                 navigate={~p"/#{@account}/relays/#{relay.id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 <code :if={relay.name} class="block text-xs">
                   <%= relay.name %>

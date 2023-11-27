@@ -36,13 +36,13 @@ defmodule Web.Groups.Index do
         </.add_button>
       </:action>
       <:content>
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <!--<.resource_filter />-->
           <.table id="groups" rows={@groups} row_id={&"user-#{&1.id}"}>
             <:col :let={group} label="NAME" sortable="false">
               <.link
                 navigate={~p"/#{@account}/groups/#{group.id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 <%= group.name %>
               </.link>
@@ -64,7 +64,7 @@ defmodule Web.Groups.Index do
                 <:item :let={actor}>
                   <.link
                     navigate={~p"/#{@account}/actors/#{actor}"}
-                    class={["font-medium text-blue-600 dark:text-blue-500 hover:underline"]}
+                    class={["font-medium text-blue-600 hover:underline"]}
                   >
                     <%= actor.name %>
                   </.link>

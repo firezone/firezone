@@ -34,7 +34,7 @@ defmodule Web.Sites.Index do
           <:col :let={group} label="site">
             <.link
               navigate={~p"/#{@account}/sites/#{group}"}
-              class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-bold text-blue-600 hover:underline"
             >
               <%= group.name %>
             </.link>
@@ -57,7 +57,7 @@ defmodule Web.Sites.Index do
                   navigate={
                     ~p"/#{@account}/resources/#{connection.resource}?site_id=#{connection.gateway_group_id}"
                   }
-                  class="font-medium text-blue-600 dark:text-blue-500 hover:underline inline-block"
+                  class="font-medium text-blue-600 hover:underline inline-block"
                   phx-no-format
                 ><%= connection.resource.name %></.link>
               </:item>
@@ -67,7 +67,7 @@ defmodule Web.Sites.Index do
                   and
                   <.link
                     navigate={~p"/#{@account}/sites/#{group}?#resources"}
-                    class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
+                    class="font-bold text-blue-600 hover:underline"
                   >
                     <%= count %> more.
                   </.link>
@@ -91,7 +91,7 @@ defmodule Web.Sites.Index do
               <:item :let={gateway}>
                 <.link
                   navigate={~p"/#{@account}/gateways/#{gateway}"}
-                  class="font-medium text-blue-600 dark:text-blue-500 hover:underline inline-block"
+                  class="font-medium text-blue-600 hover:underline inline-block"
                   phx-no-format
                 ><%= gateway.name %></.link>
               </:item>
@@ -101,7 +101,7 @@ defmodule Web.Sites.Index do
                   and
                   <.link
                     navigate={~p"/#{@account}/sites/#{group}?#gateways"}
-                    class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
+                    class="font-bold text-blue-600 hover:underline"
                   >
                     <%= count %> more.
                   </.link>
