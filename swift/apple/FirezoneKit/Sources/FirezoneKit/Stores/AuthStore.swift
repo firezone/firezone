@@ -208,6 +208,7 @@ final class AuthStore: ObservableObject {
         try await tunnelStore.start()
       } catch {
         logger.error("\(#function): Error starting tunnel: \(String(describing: error))")
+        self.retryStartTunnel()
       }
     }
   }
@@ -239,6 +240,7 @@ final class AuthStore: ObservableObject {
           try await tunnelStore.start()
         } catch {
           logger.error("\(#function): Error starting tunnel: \(String(describing: error))")
+          self.retryStartTunnel()
         }
       }
     case .signedOut:
