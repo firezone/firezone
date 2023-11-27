@@ -6,10 +6,7 @@ use windows::{
         Foundation::*,
         Graphics::Gdi::ValidateRect,
         System::LibraryLoader::GetModuleHandleA,
-        UI::{
-            Shell::*,
-            WindowsAndMessaging::*,
-        },
+        UI::{Shell::*, WindowsAndMessaging::*},
     },
 };
 
@@ -51,23 +48,21 @@ fn main() -> Result<()> {
         // Create tray icon
 
         let notify_icon_data = NOTIFYICONDATAA {
-            cbSize: std::mem::size_of::<NOTIFYICONDATAA> ().try_into ().unwrap (),
+            cbSize: std::mem::size_of::<NOTIFYICONDATAA>().try_into().unwrap(),
             hWnd: window,
             uID: 0,
-            uFlags: NOTIFY_ICON_DATA_FLAGS (0),
+            uFlags: NOTIFY_ICON_DATA_FLAGS(0),
             uCallbackMessage: 0,
-            hIcon: HICON (0),
+            hIcon: HICON(0),
             szTip: [0; 128],
-            dwState: NOTIFY_ICON_STATE (0),
+            dwState: NOTIFY_ICON_STATE(0),
             dwStateMask: 0,
             szInfo: [0; 256],
-            Anonymous: NOTIFYICONDATAA_0 {
-                uVersion: 0,
-            },
+            Anonymous: NOTIFYICONDATAA_0 { uVersion: 0 },
             szInfoTitle: [0; 64],
-            dwInfoFlags: NOTIFY_ICON_INFOTIP_FLAGS (0),
-            guidItem: GUID::new ().unwrap (),
-            hBalloonIcon: HICON (0),
+            dwInfoFlags: NOTIFY_ICON_INFOTIP_FLAGS(0),
+            guidItem: GUID::new().unwrap(),
+            hBalloonIcon: HICON(0),
         };
 
         let mut message = MSG::default();
