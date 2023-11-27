@@ -1,8 +1,16 @@
 // Sample code from https://github.com/microsoft/windows-rs/blob/0.52.0/crates/samples/windows/create_window/src/main.rs
 
 use windows::{
-    core::*, Win32::Foundation::*, Win32::Graphics::Gdi::ValidateRect,
-    Win32::System::LibraryLoader::GetModuleHandleA, Win32::UI::WindowsAndMessaging::*,
+    core::*,
+    Win32::{
+        Foundation::*,
+        Graphics::Gdi::ValidateRect,
+        System::LibraryLoader::GetModuleHandleA,
+        UI::{
+            Shell::*,
+            WindowsAndMessaging::*,
+        },
+    },
 };
 
 fn main() -> Result<()> {
@@ -25,7 +33,7 @@ fn main() -> Result<()> {
         let atom = RegisterClassA(&wc);
         debug_assert!(atom != 0);
 
-        CreateWindowExA(
+        let window = CreateWindowExA(
             WINDOW_EX_STYLE::default(),
             window_class,
             s!("This is a sample window"),
@@ -39,6 +47,28 @@ fn main() -> Result<()> {
             instance,
             None,
         );
+
+        // Create tray icon
+
+        let notify_icon_data = NOTIFYICONDATAA {
+            cbSize: std::mem::size_of::<NOTIFYICONDATAA> ().try_into ().unwrap (),
+            hWnd: window,
+            uID: 0,
+            uFlags: NOTIFY_ICON_DATA_FLAGS (0),
+            uCallbackMessage: 0,
+            hIcon: HICON (0),
+            szTip: [0; 128],
+            dwState: NOTIFY_ICON_STATE (0),
+            dwStateMask: 0,
+            szInfo: [0; 256],
+            Anonymous: NOTIFYICONDATAA_0 {
+                uVersion: 0,
+            },
+            szInfoTitle: [0; 64],
+            dwInfoFlags: NOTIFY_ICON_INFOTIP_FLAGS (0),
+            guidItem: GUID::new ().unwrap (),
+            hBalloonIcon: HICON (0),
+        };
 
         let mut message = MSG::default();
 
