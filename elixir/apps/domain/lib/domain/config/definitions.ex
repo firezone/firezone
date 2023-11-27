@@ -197,7 +197,7 @@ defmodule Domain.Config.Definitions do
   You can see all supported options at https://ninenines.eu/docs/en/cowboy/2.5/manual/cowboy_http/.
   """
   defconfig(:phoenix_http_protocol_options, :map,
-    default: %{},
+    default: %{max_header_value_length: 8192},
     dump: &Dumper.keyword/1
   )
 
