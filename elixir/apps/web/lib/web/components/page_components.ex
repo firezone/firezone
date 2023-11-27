@@ -61,7 +61,7 @@ defmodule Web.PageComponents do
   def link_style do
     [
       "text-blue-600",
-      "hover:underline",
+      "hover:underline"
     ]
   end
 end

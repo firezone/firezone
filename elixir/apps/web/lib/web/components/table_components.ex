@@ -80,10 +80,7 @@ defmodule Web.TableComponents do
             "shadow border border-gray-300"
           ]}
         >
-          <ul
-            class="py-1 text-sm text-gray-700"
-            aria-labelledby={"#{@id}-dropdown-button"}
-          >
+          <ul class="py-1 text-sm text-gray-700" aria-labelledby={"#{@id}-dropdown-button"}>
             <li :for={action <- @actions}>
               <%= render_slot(action, @mapper.(@row)) %>
             </li>
@@ -332,10 +329,7 @@ defmodule Web.TableComponents do
 
   def action_link(assigns) do
     ~H"""
-    <.link
-      navigate={@navigate}
-      class="block py-2 px-4 hover:bg-gray-100"
-    >
+    <.link navigate={@navigate} class="block py-2 px-4 hover:bg-gray-100">
       <%= render_slot(@inner_block) %>
     </.link>
     """
