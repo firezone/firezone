@@ -192,7 +192,13 @@ final class TunnelStore: ObservableObject {
     }
 
     if case .signedIn(let authBaseURL, let accountId, let tokenReference) = self.tunnelAuthStatus {
-      try await saveAuthStatus(.signedOut(authBaseURL: authBaseURL, accountId: accountId))
+      do {
+        try await saveAuthStatus(.signedOut(authBaseURL: authBaseURL, accountId: accountId))
+      } catch {
+        TunnelStore.logger.trace(
+          "\(#function): Error saving signed out auth status: \(error)"
+        )
+      }
       return tokenReference
     }
 
@@ -416,6 +422,7 @@ extension NETunnelProviderManager {
 
       protocolConfiguration.providerConfiguration = providerConfig
 
+      ensureTunnelConfigurationIsValid()
       try await saveToPreferences()
     }
   }
@@ -471,7 +478,30 @@ extension NETunnelProviderManager {
       protocolConfiguration.providerConfiguration = providerConfig
       protocolConfiguration.serverAddress = advancedSettings.apiURLString
 
+      ensureTunnelConfigurationIsValid()
       try await saveToPreferences()
+    }
+  }
+
+  private func ensureTunnelConfigurationIsValid() {
+    // Ensure the tunnel config has required values populated, because
+    // to even sign out, we need saveToPreferences() to succeed.
+    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
+      protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
+        "\($0).network-extension"
+      }
+      if protocolConfiguration.serverAddress?.isEmpty ?? true {
+        protocolConfiguration.serverAddress = "unknown-server"
+      }
+    } else {
+      let protocolConfiguration = NETunnelProviderProtocol()
+      protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
+        "\($0).network-extension"
+      }
+      protocolConfiguration.serverAddress = "unknown-server"
+    }
+    if localizedDescription?.isEmpty ?? true {
+      localizedDescription = "Firezone"
     }
   }
 }

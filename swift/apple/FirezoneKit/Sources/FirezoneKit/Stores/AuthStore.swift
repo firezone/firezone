@@ -59,7 +59,12 @@ final class AuthStore: ObservableObject {
 
   private var cancellables = Set<AnyCancellable>()
 
-  @Published private(set) var loginStatus: LoginStatus
+  @Published private(set) var loginStatus: LoginStatus {
+    didSet {
+      self.handleLoginStatusChanged()
+    }
+  }
+
   private var status: NEVPNStatus = .invalid
 
   private static let maxReconnectionAttemptCount = 3
@@ -101,19 +106,7 @@ final class AuthStore: ObservableObject {
               case .signoutImmediately:
                 self.signOut()
               case .retryThenSignout:
-                let shouldReconnect = (self.reconnectionAttemptsRemaining > 0)
-                self.reconnectionAttemptsRemaining = self.reconnectionAttemptsRemaining - 1
-                if shouldReconnect {
-                  self.logger.log(
-                    "\(#function): Will try to reconnect after 1 second (\(self.reconnectionAttemptsRemaining) attempts after this)"
-                  )
-                  DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(1)) {
-                    self.logger.log("\(#function): Trying to reconnect")
-                    self.startTunnel()
-                  }
-                } else {
-                  self.signOut()
-                }
+                self.retryStartTunnel()
               }
             } else {
               self.logger.log("\(#function): Tunnel shutdown event not found")
@@ -215,7 +208,51 @@ final class AuthStore: ObservableObject {
         try await tunnelStore.start()
       } catch {
         logger.error("\(#function): Error starting tunnel: \(String(describing: error))")
+        self.retryStartTunnel()
       }
+    }
+  }
+
+  func retryStartTunnel() {
+    // Try to reconnect, but don't try more than 3 times at a time.
+    // If this gets called the third time, sign out.
+    let shouldReconnect = (self.reconnectionAttemptsRemaining > 0)
+    self.reconnectionAttemptsRemaining = self.reconnectionAttemptsRemaining - 1
+    if shouldReconnect {
+      self.logger.log(
+        "\(#function): Will try to reconnect after 1 second (\(self.reconnectionAttemptsRemaining) attempts after this)"
+      )
+      DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(1)) {
+        self.logger.log("\(#function): Trying to reconnect")
+        self.startTunnel()
+      }
+    } else {
+      self.signOut()
+    }
+  }
+
+  private func handleLoginStatusChanged() {
+    logger.log("\(#function): Login status: \(self.loginStatus)")
+    switch self.loginStatus {
+    case .signedIn:
+      Task {
+        do {
+          try await tunnelStore.start()
+        } catch {
+          logger.error("\(#function): Error starting tunnel: \(String(describing: error))")
+          self.retryStartTunnel()
+        }
+      }
+    case .signedOut:
+      Task {
+        do {
+          try await tunnelStore.stop()
+        } catch {
+          logger.error("\(#function): Error stopping tunnel: \(String(describing: error))")
+        }
+      }
+    case .uninitialized:
+      break
     }
   }
 

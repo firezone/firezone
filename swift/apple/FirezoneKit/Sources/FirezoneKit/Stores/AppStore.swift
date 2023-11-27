@@ -30,35 +30,6 @@ final class AppStore: ObservableObject {
       self?.objectWillChange.send()
     }
     .store(in: &cancellables)
-
-    auth.$loginStatus
-      .receive(on: mainQueue)
-      .sink { [weak self] loginStatus in
-        Task { [weak self] in
-          await self?.handleLoginStatusChanged(loginStatus)
-        }
-      }
-      .store(in: &cancellables)
-  }
-
-  private func handleLoginStatusChanged(_ loginStatus: AuthStore.LoginStatus) async {
-    logger.log("\(#function): login status = \(loginStatus)")
-    switch loginStatus {
-    case .signedIn:
-      do {
-        try await tunnel.start()
-      } catch {
-        logger.error("\(#function): Error starting tunnel: \(String(describing: error))")
-      }
-    case .signedOut:
-      do {
-        try await tunnel.stop()
-      } catch {
-        logger.error("\(#function): Error stopping tunnel: \(String(describing: error))")
-      }
-    case .uninitialized:
-      break
-    }
   }
 
   private func signOutAndStopTunnel() {
