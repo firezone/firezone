@@ -4,13 +4,21 @@ use connlib_shared::{
     Error::{self, OnAddRouteFailed, OnSetInterfaceConfigFailed},
     Result,
 };
+use futures::task::AtomicWaker;
 use ip_network::IpNetwork;
-use std::iter;
-use std::net::Ipv4Addr;
-use std::sync::Arc;
-use windows::core::PCWSTR;
+use std::{
+    ffi::c_void,
+    future::Future,
+    iter,
+    net::Ipv4Addr,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
+use windows::core::{HRESULT, PCWSTR};
 use windows::Win32::{
     Foundation::BOOLEAN,
+    Foundation::HANDLE,
     Foundation::NO_ERROR,
     NetworkManagement::IpHelper::{
         AddIPAddress, CreateIpForwardEntry2, DeleteUnicastIpAddressEntry, FreeMibTable,
@@ -21,6 +29,7 @@ use windows::Win32::{
     Networking::WinSock::{
         htonl, RouterDiscoveryDisabled, AF_INET, AF_INET6, MIB_IPPROTO_NETMGMT, SOCKADDR_INET,
     },
+    System::Threading::{RegisterWaitForSingleObject, INFINITE, WT_EXECUTEINWAITTHREAD},
 };
 
 use netsh::set_ipv6_addr;
@@ -48,11 +57,64 @@ impl Drop for IfaceStream {
     }
 }
 
+struct ReadFuture<'a> {
+    dst: &'a mut [u8],
+    waker: Arc<AtomicWaker>,
+    // TODO: wintun's require us an `Arc` around `Session` to do a `try_recieve`
+    // will get rid of `wintun` crate in a next PR.
+    session: &'a Arc<wintun::Session>,
+}
+
+impl<'a> Future for ReadFuture<'a> {
+    type Output = Result<()>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<&[u8]>> {
+        let this = Pin::into_inner(self);
+        // wintun's API require us here to copy a packet
+        let recv = this.session.try_receive();
+        match recv {
+            Ok(None) => {} // No packet available yet
+            Ok(Some(pkt)) => {
+                this.dst.copy_from_slice(pkt.bytes());
+                return Poll::Ready(Ok((this.dst)));
+            }
+            Err(err) => return Poll::Ready(Err(err.into())),
+        };
+
+        this.waker.register(cx.waker());
+        let wait_handle = match this.session.get_read_wait_event() {
+            Ok(handle) => handle,
+            Err(err) => return Poll::Ready(Err(err.into())),
+        };
+
+        let mut obj = HANDLE(0isize);
+
+        unsafe {
+            RegisterWaitForSingleObject(
+                &mut obj,
+                // version mismatch :(
+                HANDLE(wait_handle.0),
+                Some(callback),
+                Some(Arc::into_raw(this.waker.clone()) as *const _),
+                INFINITE,
+                WT_EXECUTEINWAITTHREAD,
+            );
+        }
+        // TODO: CLEANUP!
+        Poll::Pending
+    }
+}
+
+unsafe extern "system" fn callback(ctx: *mut c_void, _: BOOLEAN) {
+    Arc::from_raw(ctx as *const AtomicWaker).wake()
+}
+
 impl IfaceStream {
     fn write(&self, buf: &[u8]) -> usize {
         let mut packet = self.session.allocate_send_packet(buf.len() as u16).unwrap();
         packet.bytes_mut().copy_from_slice(buf.as_ref());
 
+        // TODO: is this blocking?
         self.session.send_packet(packet);
         buf.len()
     }
@@ -64,24 +126,11 @@ impl IfaceStream {
         self.write(src)
     }
 
-    pub async fn read<'a>(&self, dst: &'a mut [u8]) -> Result<&'a mut [u8]> {
-        let reader_session = self.session.clone();
-
-        let result = tokio::task::spawn_blocking(move || reader_session.receive_blocking()).await;
-        match result.unwrap() {
-            Ok(packet) => {
-                let bytes = packet.bytes();
-                let len = bytes.len();
-
-                let copy_len = std::cmp::min(len, dst.len());
-                dst[..copy_len].copy_from_slice(&bytes[..copy_len]);
-
-                Ok(&mut dst[..copy_len])
-            }
-            Err(err) => Err(Error::IfaceRead(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                err,
-            ))),
+    pub fn read(&self, dst: &mut [u8]) -> impl Future<Output = &[u8]> {
+        ReadFuture {
+            dst,
+            waker: Arc::new(AtomicWaker::new()),
+            session: &self.session,
         }
     }
 }
@@ -135,8 +184,11 @@ impl IfaceDevice {
         row.Metric = 0;
         let _ = unsafe { SetIpInterfaceEntry(&mut row) };
 
-        set_ipv4_addr(self.adapter_index, config.ipv4)?;
-        set_ipv6_addr(self.adapter_index, config.ipv6).await?;
+        let ipv4_res = set_ipv4_addr(self.adapter_index, config.ipv4);
+        let ipv6_res = set_ipv6_addr(self.adapter_index, config.ipv6).await;
+        if ipv4_res.is_err() && ipv6_res.is_err() {
+            ipv4_res?;
+        }
         Ok(())
     }
 
@@ -194,20 +246,15 @@ fn set_ipv4_addr(idx: u32, addr: Ipv4Addr) -> Result<()> {
     const IPV4_NETMASK_32: u32 = 0xFFFFFFFF;
     let mut ip_context = 0u32;
     let mut ip_instance = 0u32;
-    let result = unsafe {
+    let res = unsafe {
         AddIPAddress(
             u32::from(addr).to_be(),
             IPV4_NETMASK_32.to_be(),
             idx,
             &mut ip_context as *mut _,
             &mut ip_instance as *mut _,
-        )?
+        )
     };
-    if result != NO_ERROR.0 {
-        return Err(OnSetInterfaceConfigFailed(format!(
-            "AddIPAddress failed with error code: {}",
-            result
-        )));
-    }
+    HRESULT::from_win32(res).ok()?;
     Ok(())
 }

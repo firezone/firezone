@@ -25,7 +25,7 @@ secrecy = "0.8"
 hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
 webrtc = "0.9"
 wintun = "0.3"
-windows = { version = "0.51", features = [
+windows = { git = "https://github.com/microsoft/windows-rs", rev = "f6fe7", features = [
     "Win32_System_Diagnostics_Debug",
     "Win32_System_SystemServices",
     "Win32_Security_Cryptography",
