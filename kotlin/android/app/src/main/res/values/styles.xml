@@ -9,55 +9,55 @@
     </style>
 
     <style name="AppTheme.Base.HeaderText">
-        <item name="fontFamily">@font/fira_sans_bold</item>
+        <item name="fontFamily">@font/source_sans_pro_bold</item>
         <item name="android:textSize">@dimen/text_large</item>
         <item name="android:textColorPrimary">@color/neutral_900</item>
     </style>
 
     <style name="AppTheme.Base.H1">
-        <item name="fontFamily">@font/fira_sans_bold</item>
+        <item name="fontFamily">@font/source_sans_pro_bold</item>
         <item name="android:textSize">@dimen/text_h1</item>
         <item name="android:textColorPrimary">@color/neutral_900</item>
     </style>
 
     <style name="AppTheme.Base.H2">
-        <item name="fontFamily">@font/fira_sans_bold</item>
+        <item name="fontFamily">@font/source_sans_pro_bold</item>
         <item name="android:textSize">@dimen/text_h2</item>
         <item name="android:textColorPrimary">@color/neutral_900</item>
     </style>
 
     <style name="AppTheme.Base.H3">
-        <item name="fontFamily">@font/fira_sans_bold</item>
+        <item name="fontFamily">@font/source_sans_pro_bold</item>
         <item name="android:textSize">@dimen/text_h3</item>
         <item name="android:textColorPrimary">@color/neutral_900</item>
     </style>
 
     <style name="AppTheme.Base.H4">
-        <item name="fontFamily">@font/fira_sans_bold</item>
+        <item name="fontFamily">@font/source_sans_pro_bold</item>
         <item name="android:textSize">@dimen/text_h4</item>
         <item name="android:textColorPrimary">@color/neutral_900</item>
     </style>
 
     <style name="AppTheme.Base.H5">
-        <item name="fontFamily">@font/fira_sans_bold</item>
+        <item name="fontFamily">@font/source_sans_pro_bold</item>
         <item name="android:textSize">@dimen/text_h5</item>
         <item name="android:textColorPrimary">@color/neutral_900</item>
     </style>
 
     <style name="AppTheme.Base.Body1">
-        <item name="fontFamily">@font/fira_sans_regular</item>
+        <item name="fontFamily">@font/source_sans_pro</item>
         <item name="android:textSize">@dimen/text_body1</item>
         <item name="android:textColorPrimary">@color/neutral_900</item>
     </style>
 
     <style name="AppTheme.Base.Body2">
-        <item name="fontFamily">@font/fira_sans_regular</item>
+        <item name="fontFamily">@font/source_sans_pro</item>
         <item name="android:textSize">@dimen/text_body2</item>
         <item name="android:textColorPrimary">@color/neutral_900</item>
     </style>
 
     <style name="AppTheme.Base.Caption">
-        <item name="fontFamily">@font/fira_sans_regular</item>
+        <item name="fontFamily">@font/source_sans_pro</item>
         <item name="android:textSize">@dimen/text_caption</item>
         <item name="android:textColorPrimary">@color/neutral_900</item>
     </style>

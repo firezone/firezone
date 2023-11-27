@@ -41,7 +41,7 @@ defmodule Web.Sites.Gateways.Index do
           <:col :let={gateway} label="INSTANCE">
             <.link
               navigate={~p"/#{@account}/gateways/#{gateway.id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               <%= gateway.name %>
             </.link>
