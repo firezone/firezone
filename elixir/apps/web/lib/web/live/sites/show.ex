@@ -91,7 +91,7 @@ defmodule Web.Sites.Show do
             <:col :let={gateway} label="INSTANCE">
               <.link
                 navigate={~p"/#{@account}/gateways/#{gateway.id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 <%= gateway.name %>
               </.link>
@@ -148,7 +148,7 @@ defmodule Web.Sites.Show do
             <:col :let={resource} label="NAME">
               <.link
                 navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@group}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 <%= resource.name %>
               </.link>
