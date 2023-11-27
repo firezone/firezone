@@ -70,7 +70,7 @@ impl<'a> Future for ReadFuture<'a> {
 
     // TODO: In latest version for unix systems we use poll_read
     // it'll be better to refactor this a bit to mach.
-    fn poll(self: Pin<&'a mut Self>, cx: &'a mut Context<'_>) -> Poll<Result<&'a [u8]>> {
+    fn poll(self: Pin<&'a mut Self>, cx: &mut Context<'_>) -> Poll<Result<&'a [u8]>> {
         let this = Pin::into_inner(self);
         // wintun's API require us here to copy a packet
         let recv = this.session.try_receive();
@@ -128,7 +128,10 @@ impl IfaceStream {
         self.write(src)
     }
 
-    pub fn read<'a>(&'a self, dst: &'a mut [u8]) -> impl Future<Output = Result<&'a [u8]>> + Send {
+    pub fn read<'a>(
+        &'a self,
+        dst: &'a mut [u8],
+    ) -> impl Future<Output = Result<&'a [u8]>> + Send + Sync {
         ReadFuture {
             dst,
             waker: Arc::new(AtomicWaker::new()),
