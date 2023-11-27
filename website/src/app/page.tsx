@@ -34,7 +34,7 @@ export default function Page() {
             <Link href="/product/early-access">
               <button
                 type="button"
-                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-gradient-to-br from-accent-700 to-accent-600 hover:scale-105 duration-0 transform transition"
+                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-accent-600 hover:bg-accent-700 hover:scale-105 duration-0 transform transition"
               >
                 Request early access
                 <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
