@@ -3,19 +3,19 @@ defmodule Web.HomeHTML do
 
   def home(assigns) do
     ~H"""
-    <section class="bg-gray-50 dark:bg-gray-900">
+    <section class="bg-gray-50">
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.logo />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
+        <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-xl text-center font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl dark:text-white">
+            <h1 class="text-xl text-center font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl">
               Welcome to Firezone
             </h1>
 
             <h3
               :if={@accounts != []}
-              class="text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl dark:text-white"
+              class="text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl"
             >
               Recently used accounts
             </h3>
@@ -62,8 +62,7 @@ defmodule Web.HomeHTML do
           border border-gray-200
           hover:bg-gray-100 hover:text-gray-900
           focus:z-10 focus:ring-4 focus:ring-gray-200
-          dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400
-          dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700]}>
+    ]}>
       <%= @account.name %>
     </a>
     """
@@ -72,9 +71,9 @@ defmodule Web.HomeHTML do
   def separator(assigns) do
     ~H"""
     <div class="flex items-center">
-      <div class="w-full h-0.5 bg-gray-200 dark:bg-gray-700"></div>
-      <div class="px-5 text-center text-gray-500 dark:text-gray-400">or</div>
-      <div class="w-full h-0.5 bg-gray-200 dark:bg-gray-700"></div>
+      <div class="w-full h-0.5 bg-gray-200"></div>
+      <div class="px-5 text-center text-gray-500">or</div>
+      <div class="w-full h-0.5 bg-gray-200"></div>
     </div>
     """
   end

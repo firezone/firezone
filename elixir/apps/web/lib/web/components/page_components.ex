@@ -12,7 +12,7 @@ defmodule Web.PageComponents do
 
   def section(assigns) do
     ~H"""
-    <div class="bg-white dark:bg-gray-800 overflow-hidden border-solid border-slate-200 border-t">
+    <div class="bg-white overflow-hidden border-solid border-slate-200 border-t">
       <.header>
         <:title>
           <%= render_slot(@title) %>
@@ -61,9 +61,7 @@ defmodule Web.PageComponents do
   def link_style do
     [
       "text-blue-600",
-      "dark:text-blue-500",
       "hover:underline",
-      "dark:hover:underline"
     ]
   end
 end

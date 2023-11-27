@@ -31,13 +31,13 @@ defmodule Web.SignIn.Email do
 
   def render(assigns) do
     ~H"""
-    <section class="bg-gray-50 dark:bg-gray-900">
+    <section class="bg-gray-50">
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.logo />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
+        <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-xl font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl dark:text-white">
+            <h1 class="text-xl font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl">
               Please check your email
             </h1>
             <.flash flash={@flash} kind={:error} phx-click={JS.hide(transition: "fade-out")} />
@@ -93,7 +93,7 @@ defmodule Web.SignIn.Email do
               /> or
               <.link
                 navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 use a different Sign In method
               </.link>
@@ -154,7 +154,7 @@ defmodule Web.SignIn.Email do
         Did not receive it?
         <button
           type="submit"
-          class="inline font-medium text-blue-600 dark:text-blue-500 hover:underline"
+          class="inline font-medium text-blue-600 hover:underline"
         >
           Resend email
         </button>

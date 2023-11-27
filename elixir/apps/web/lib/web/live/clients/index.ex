@@ -22,13 +22,13 @@ defmodule Web.Clients.Index do
         Clients
       </:title>
       <:content>
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <!--<.resource_filter />-->
           <.table id="clients" rows={@clients} row_id={&"client-#{&1.id}"}>
             <:col :let={client} label="NAME">
               <.link
                 navigate={~p"/#{@account}/clients/#{client.id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 <%= client.name %>
               </.link>
@@ -36,7 +36,7 @@ defmodule Web.Clients.Index do
             <:col :let={client} label="USER">
               <.link
                 navigate={~p"/#{@account}/actors/#{client.actor.id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 <%= client.actor.name %>
               </.link>
@@ -66,7 +66,7 @@ defmodule Web.Clients.Index do
   #         <label for="simple-search" class="sr-only">Search</label>
   #         <div class="relative w-full">
   #           <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-  #             <.icon name="hero-magnifying-glass" class="w-5 h-5 text-gray-500 dark:text-gray-400" />
+  #             <.icon name="hero-magnifying-glass" class="w-5 h-5 text-gray-500" />
   #           </div>
   #           <input
   #             type="text"
@@ -75,8 +75,7 @@ defmodule Web.Clients.Index do
   #   {[
   #      "bg-gray-50 border border-gray-300 text-gray-900",
   #      "text-sm rounded-lg focus:ring-primary-500 focus:border-primary-500",
-  #      "block w-full pl-10 p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white",
-  #      "dark:focus:ring-primary-500 dark:focus:border-primary-500"
+  #      "block w-full pl-10 p-2"
   #    ]}
   #             placeholder="Search"
   #             required=""

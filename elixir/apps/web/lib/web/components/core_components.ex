@@ -21,7 +21,7 @@ defmodule Web.CoreComponents do
       class="flex items-center mb-6 text-2xl font-semibold"
     >
       <img src={~p"/images/logo.svg"} class="mr-3 h-8" alt="Firezone Logo" />
-      <span class="self-center text-2xl font-semibold whitespace-nowrap dark:text-white">
+      <span class="self-center text-2xl font-semibold whitespace-nowrap">
         Firezone
       </span>
     </a>
@@ -39,7 +39,7 @@ defmodule Web.CoreComponents do
   """
   def p(assigns) do
     ~H"""
-    <p class="text-gray-700 dark:text-gray-300"><%= render_slot(@inner_block) %></p>
+    <p class="text-gray-700"><%= render_slot(@inner_block) %></p>
     """
   end
 
@@ -122,7 +122,7 @@ defmodule Web.CoreComponents do
     ~H"""
     <div class="mb-4">
       <div
-        class="border-gray-200 dark:border-gray-700 bg-slate-50 rounded-t"
+        class="border-gray-200 bg-slate-50 rounded-t"
         id={"#{@id}-container"}
         phx-hook="Tabs"
         {@rest}
@@ -138,7 +138,7 @@ defmodule Web.CoreComponents do
               <button
                 class={~w[
                 inline-block p-4 border-b-2 border-transparent rounded-t
-                hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300
+                hover:text-gray-600 hover:border-gray-300
               ]}
                 id={"#{tab.id}-tab"}
                 data-tabs-target={"##{tab.id}"}
@@ -158,7 +158,7 @@ defmodule Web.CoreComponents do
       <div id={@id}>
         <%= for tab <- @tab do %>
           <div
-            class="hidden rounded-b bg-gray-50 dark:bg-gray-800"
+            class="hidden rounded-b bg-gray-50"
             id={tab.id}
             role="tabpanel"
             aria-labelledby={"#{tab.id}-tab"}
@@ -193,10 +193,10 @@ defmodule Web.CoreComponents do
 
   def header(assigns) do
     ~H"""
-    <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
+    <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4">
       <div class="col-span-full">
         <div class="flex justify-between items-center">
-          <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
+          <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl">
             <%= render_slot(@title) %>
           </h1>
           <div class="inline-flex justify-between items-center space-x-2">
@@ -230,16 +230,15 @@ defmodule Web.CoreComponents do
       class="flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0 p-4"
       aria-label="Table navigation"
     >
-      <span class="text-sm font-normal text-gray-500 dark:text-gray-400">
-        Showing <span class="font-semibold text-gray-900 dark:text-white">1-10</span>
-        of <span class="font-semibold text-gray-900 dark:text-white">1000</span>
+      <span class="text-sm font-normal text-gray-500">
+        Showing <span class="font-semibold text-gray-900">1-10</span>
+        of <span class="font-semibold text-gray-900">1000</span>
       </span>
       <ul class="inline-flex items-stretch -space-x-px">
         <li>
           <a href="#" class={~w[
               flex items-center justify-center h-full py-1.5 px-3 ml-0 text-gray-500 bg-white rounded-l
-              border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700
-              dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white
+              border border-gray-300 hover:bg-gray-100 hover:text-gray-700
             ]}>
             <span class="sr-only">Previous</span>
             <.icon name="hero-chevron-left" class="w-5 h-5" />
@@ -248,8 +247,7 @@ defmodule Web.CoreComponents do
         <li>
           <a href="#" class={~w[
               flex items-center justify-center text-sm py-2 px-3 leading-tight text-gray-500 bg-white border
-              border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700
-              dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white
+              border-gray-300 hover:bg-gray-100 hover:text-gray-700
             ]}>
             1
           </a>
@@ -257,8 +255,7 @@ defmodule Web.CoreComponents do
         <li>
           <a href="#" class={~w[
               flex items-center justify-center text-sm py-2 px-3 leading-tight text-gray-500 bg-white
-              border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700
-              dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white
+              border border-gray-300 hover:bg-gray-100 hover:text-gray-700
             ]}>
             2
           </a>
@@ -266,8 +263,7 @@ defmodule Web.CoreComponents do
         <li>
           <a href="#" aria-current="page" class={~w[
               flex items-center justify-center text-sm z-10 py-2 px-3 leading-tight text-primary-600 bg-primary-50
-              border border-primary-300 hover:bg-primary-100 hover:text-primary-700 dark:border-gray-700
-              dark:bg-gray-700 dark:text-white
+              border border-primary-300 hover:bg-primary-100 hover:text-primary-700
             ]}>
             <%= @page %>
           </a>
@@ -275,8 +271,7 @@ defmodule Web.CoreComponents do
         <li>
           <a href="#" class={~w[
               flex items-center justify-center text-sm py-2 px-3 leading-tight text-gray-500 bg-white
-              border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700
-              dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white
+              border border-gray-300 hover:bg-gray-100 hover:text-gray-700
             ]}>
             ...
           </a>
@@ -284,8 +279,7 @@ defmodule Web.CoreComponents do
         <li>
           <a href="#" class={~w[
               flex items-center justify-center text-sm py-2 px-3 leading-tight text-gray-500 bg-white
-              border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700
-              dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white
+              border border-gray-300 hover:bg-gray-100 hover:text-gray-700
             ]}>
             <%= @total_pages %>
           </a>
@@ -293,8 +287,7 @@ defmodule Web.CoreComponents do
         <li>
           <a href="#" class={~w[
               flex items-center justify-center h-full py-1.5 px-3 leading-tight text-gray-500 bg-white rounded-r
-              border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700
-              dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white
+              border border-gray-300 hover:bg-gray-100 hover:text-gray-700
             ]}>
             <span class="sr-only">Next</span>
             <.icon name="hero-chevron-right" class="w-5 h-5" />
@@ -329,9 +322,9 @@ defmodule Web.CoreComponents do
       id={@id}
       class={[
         "p-4 text-sm flash-#{@kind}",
-        @kind == :success && "text-green-800 bg-green-50 dark:bg-gray-800 dark:text-green-400",
-        @kind == :info && "text-yellow-800 bg-yellow-50 dark:bg-gray-800 dark:text-yellow-300",
-        @kind == :error && "text-red-800 bg-red-50 dark:bg-gray-800 dark:text-red-400",
+        @kind == :success && "text-green-800 bg-green-50",
+        @kind == :info && "text-yellow-800 bg-yellow-50",
+        @kind == :error && "text-red-800 bg-red-50",
         @style != "wide" && "mb-4 rounded"
       ]}
       role="alert"
@@ -399,7 +392,7 @@ defmodule Web.CoreComponents do
 
   def label(assigns) do
     ~H"""
-    <label for={@for} class={["block mb-2 text-sm font-medium text-gray-900 dark:text-white", @class]}>
+    <label for={@for} class={["block mb-2 text-sm font-medium text-gray-900", @class]}>
       <%= render_slot(@inner_block) %>
     </label>
     """
@@ -660,7 +653,7 @@ defmodule Web.CoreComponents do
 
   def status_page_widget(assigns) do
     ~H"""
-    <div class="absolute bottom-0 left-0 justify-left p-4 space-x-4 w-full lg:flex bg-white dark:bg-gray-800 z-20">
+    <div class="absolute bottom-0 left-0 justify-left p-4 space-x-4 w-full lg:flex bg-white z-20">
       <.link href="https://firezone.statuspage.io" class="text-xs hover:underline">
         <span id="status-page-widget" phx-update="ignore" phx-hook="StatusPage" />
       </.link>
@@ -675,11 +668,11 @@ defmodule Web.CoreComponents do
 
   def badge(assigns) do
     colors = %{
-      "success" => "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-      "danger" => "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
-      "warning" => "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
-      "info" => "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
-      "default" => "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
+      "success" => "bg-green-100 text-green-800 ",
+      "danger" => "bg-red-100 text-red-800",
+      "warning" => "bg-yellow-100 text-yellow-800",
+      "info" => "bg-blue-100 text-blue-800",
+      "default" => "bg-gray-100 text-gray-800"
     }
 
     assigns = assign(assigns, colors: colors)
@@ -841,8 +834,8 @@ defmodule Web.CoreComponents do
           text-xs font-medium
           rounded-l
           py-0.5 pl-2.5 pr-1.5
-          text-blue-800 dark:text-blue-300
-          bg-blue-100 dark:bg-blue-900]}
+          text-blue-800
+          bg-blue-100]}
       >
         <%= @identity.provider.name %>
       </.link>
@@ -850,8 +843,8 @@ defmodule Web.CoreComponents do
         "text-xs font-medium",
         "rounded-r",
         "mr-2 py-0.5 pl-1.5 pr-2.5",
-        "text-blue-800 dark:text-blue-300",
-        "bg-blue-50 dark:bg-blue-600"
+        "text-blue-800",
+        "bg-blue-50"
       ]}>
         <%= get_identity_email(@identity) %>
       </span>
@@ -887,8 +880,8 @@ defmodule Web.CoreComponents do
           "text-xs font-medium",
           "rounded-l",
           "py-0.5 pl-2.5 pr-1.5",
-          "text-blue-800 dark:text-blue-300",
-          "bg-blue-100 dark:bg-blue-900",
+          "text-blue-800",
+          "bg-blue-100",
           "whitespace-nowrap"
         ]}
       >
@@ -900,8 +893,8 @@ defmodule Web.CoreComponents do
           "text-xs font-medium",
           if(Actors.group_synced?(@group), do: "rounded-r pl-1.5 pr-2.5", else: "rounded px-1.5"),
           "py-0.5",
-          "text-blue-800 dark:text-blue-300",
-          "bg-blue-50 dark:bg-blue-600",
+          "text-blue-800",
+          "bg-blue-50",
           "whitespace-nowrap"
         ]}
       >
@@ -921,7 +914,7 @@ defmodule Web.CoreComponents do
     <code>
       <%= @schema.last_seen_remote_ip %>
     </code>
-    <span class="text-gray-500 dark:text-gray-400 inline-block">
+    <span class="text-gray-500 inline-block">
       <%= [
         @schema.last_seen_remote_ip_location_region,
         @schema.last_seen_remote_ip_location_city
@@ -931,7 +924,7 @@ defmodule Web.CoreComponents do
 
       <a
         :if={not is_nil(@schema.last_seen_remote_ip_location_lat)}
-        class="ml-1 text-blue-800 dark:text-blue-300"
+        class="ml-1 text-blue-800"
         target="_blank"
         href={"http://www.google.com/maps/place/#{@schema.last_seen_remote_ip_location_lat},#{@schema.last_seen_remote_ip_location_lon}"}
       >

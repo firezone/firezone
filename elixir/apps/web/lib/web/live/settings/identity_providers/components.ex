@@ -154,7 +154,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         Synced
         <.link
           navigate={~p"/#{@account}/actors?provider_id=#{@provider.id}"}
-          class="text-blue-600 dark:text-blue-500 hover:underline"
+          class="text-blue-600 hover:underline"
         >
           <% identities_count_by_provider_id = @identities_count_by_provider_id[@provider.id] || 0 %>
           <%= identities_count_by_provider_id %>
@@ -167,7 +167,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         and
         <.link
           navigate={~p"/#{@account}/groups?provider_id=#{@provider.id}"}
-          class="text-blue-600 dark:text-blue-500 hover:underline"
+          class="text-blue-600 hover:underline"
         >
           <% groups_count_by_provider_id = @groups_count_by_provider_id[@provider.id] || 0 %>
           <%= groups_count_by_provider_id %>
@@ -195,7 +195,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         Created
         <.link
           navigate={~p"/#{@account}/actors?provider_id=#{@provider.id}"}
-          class="text-blue-600 dark:text-blue-500 hover:underline"
+          class="text-blue-600 hover:underline"
         >
           <% identities_count_by_provider_id = @identities_count_by_provider_id[@provider.id] || 0 %>
           <%= identities_count_by_provider_id %>
@@ -208,7 +208,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         and
         <.link
           navigate={~p"/#{@account}/groups?provider_id=#{@provider.id}"}
-          class="text-blue-600 dark:text-blue-500 hover:underline"
+          class="text-blue-600 hover:underline"
         >
           <% groups_count_by_provider_id = @groups_count_by_provider_id[@provider.id] || 0 %>
           <%= groups_count_by_provider_id %>

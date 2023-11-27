@@ -44,7 +44,7 @@ defmodule Web.Relays.Show do
         </.intersperse_blocks>
       </:title>
       <:content>
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <.vertical_table id="relay">
             <.vertical_table_row>
               <:label>Instance Group Name</:label>

@@ -75,11 +75,9 @@ defmodule Web.FormComponents do
   def input(%{type: "radio"} = assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <label class="flex items-center gap-2 text-gray-900 dark:text-gray-300">
+      <label class="flex items-center gap-2 text-gray-900">
         <input type="radio" id={@id} name={@name} value={@value} checked={@checked} class={~w[
-          w-4 h-4 border-gray-300 focus:ring-2 focus:ring-primary-300
-          dark:focus:ring-primary-600 dark:focus:bg-primary-600
-          dark:bg-gray-700 dark:border-gray-600]} {@rest} />
+          w-4 h-4 border-gray-300 focus:ring-2 focus:ring-primary-300]} {@rest} />
         <%= @label %>
       </label>
     </div>
@@ -119,9 +117,7 @@ defmodule Web.FormComponents do
       <.label for={@id}><%= @label %></.label>
       <select id={@id} name={@name} class={~w[
           bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded focus:ring-blue-500
-          focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600
-          dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500
-        ]} multiple={@multiple} {@rest}>
+          focus:border-blue-500 block w-full p-2.5]} multiple={@multiple} {@rest}>
         <option :if={@prompt} value=""><%= @prompt %></option>
         <%= Phoenix.HTML.Form.options_for_select(@options, @value) %>
       </select>
@@ -247,9 +243,7 @@ defmodule Web.FormComponents do
       <button type="button" class={~w[
           px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200
           rounded-l hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
-          focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
-          dark:text-white dark:hover:text-white dark:hover:bg-gray-600
-          dark:focus:ring-blue-500 dark:focus:text-white
+          focus:ring-blue-700 focus:text-blue-700
         ]}>
         <%= render_slot(@first) %>
       </button>
@@ -257,9 +251,7 @@ defmodule Web.FormComponents do
         <button type="button" class={~w[
             px-4 py-2 text-sm font-medium text-gray-900 bg-white border-t border-b
             border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
-            focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
-            dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500
-            dark:focus:text-white
+            focus:ring-blue-700 focus:text-blue-700
           ]}>
           <%= render_slot(middle) %>
         </button>
@@ -267,9 +259,7 @@ defmodule Web.FormComponents do
       <button type="button" class={~w[
           px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200
           rounded-r hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2
-          focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600
-          dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500
-          dark:focus:text-white
+          focus:ring-blue-700 focus:text-blue-700
         ]}>
         <%= render_slot(@last) %>
       </button>
@@ -425,8 +415,7 @@ defmodule Web.FormComponents do
       [
         "text-red-600",
         "border border-red-600",
-        "hover:text-white hover:bg-red-600 focus:ring-red-300",
-        "dark:border-red-500 dark:text-red-500 dark:hover:text-white dark:hover:bg-red-600 dark:focus:ring-red-900"
+        "hover:text-white hover:bg-red-600 focus:ring-red-300"
       ]
   end
 
@@ -436,8 +425,7 @@ defmodule Web.FormComponents do
         "text-white",
         "bg-accent-600",
         "hover:bg-accent-700",
-        "focus:ring-accent-300",
-        "dark:bg-accent-600 dark:hover:bg-accent-700 dark:focus:ring-accent-800"
+        "focus:ring-accent-300"
       ]
   end
 
