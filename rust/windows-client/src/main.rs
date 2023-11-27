@@ -47,7 +47,7 @@ fn main() -> Result<()> {
 
         // Create tray icon
 
-        let notify_icon_data = NOTIFYICONDATAA {
+        let _notify_icon_data = NOTIFYICONDATAA {
             cbSize: std::mem::size_of::<NOTIFYICONDATAA>().try_into().unwrap(),
             hWnd: window,
             uID: 0,
