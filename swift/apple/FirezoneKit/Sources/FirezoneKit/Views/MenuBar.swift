@@ -201,14 +201,8 @@
     }
 
     @objc private func reconnectButtonTapped() {
-      Task {
-        if case .signedIn = appStore?.auth.loginStatus {
-          do {
-            try await appStore?.tunnel.start()
-          } catch {
-            logger.error("error connecting to tunnel (reconnect): \(String(describing: error))")
-          }
-        }
+      if case .signedIn = appStore?.auth.loginStatus {
+        appStore?.auth.startTunnel()
       }
     }
 

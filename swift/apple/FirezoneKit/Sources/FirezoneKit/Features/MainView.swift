@@ -64,12 +64,8 @@ import SwiftUI
     }
 
     func startTunnel() async {
-      do {
-        if case .signedIn = self.loginStatus {
-          try await appStore.tunnel.start()
-        }
-      } catch {
-        logger.error("Error starting tunnel: \(String(describing: error))")
+      if case .signedIn = self.loginStatus {
+        appStore.auth.startTunnel()
       }
     }
 
