@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <font-family xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- FIXME: Use Source Sans Pro for 1.0 -->
     <font
-        android:font="@font/fira_sans_light"
+        android:font="@font/source_sans_pro"
         android:fontStyle="normal"
         android:fontWeight="400"
         tools:ignore="UnusedAttribute" />

@@ -35,12 +35,12 @@ defmodule Web.Resources.Index do
         </.add_button>
       </:action>
       <:content>
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <.table id="resources" rows={@resources} row_id={&"resource-#{&1.id}"}>
             <:col :let={resource} label="NAME">
               <.link
                 navigate={~p"/#{@account}/resources/#{resource.id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 <%= resource.name %>
               </.link>
@@ -54,7 +54,7 @@ defmodule Web.Resources.Index do
               <.link
                 :for={gateway_group <- resource.gateway_groups}
                 navigate={~p"/#{@account}/sites/#{gateway_group}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 <.badge type="info">
                   <%= gateway_group.name %>

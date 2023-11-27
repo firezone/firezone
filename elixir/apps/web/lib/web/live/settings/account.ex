@@ -12,7 +12,7 @@ defmodule Web.Settings.Account do
         Account Settings
       </:title>
       <:content>
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <.vertical_table id="account">
             <.vertical_table_row>
               <:label>Account Name</:label>
@@ -35,13 +35,13 @@ defmodule Web.Settings.Account do
         Danger zone
       </:title>
       <:content>
-        <h3 class="ml-4 mb-4 font-bold text-gray-900 dark:text-white">
+        <h3 class="ml-4 mb-4 font-bold text-gray-900">
           Terminate account
         </h3>
-        <p class="ml-4 mb-4 font-medium text-gray-600 dark:text-gray-500">
+        <p class="ml-4 mb-4 font-medium text-gray-600">
           <.icon name="hero-exclamation-circle" class="inline-block w-5 h-5 mr-1 text-red-500" />
           To disable your account and schedule it for deletion, please <.link
-            class="text-blue-600 dark:text-blue-500 hover:underline"
+            class="text-blue-600 hover:underline"
             href="mailto:support@firezone.dev"
           >
         contact support

@@ -176,7 +176,7 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
     |> render()
     |> table_to_map()
     |> with_table_row("name", provider.name, fn row ->
-      assert row["status"] == "Provisioning connect IdP"
+      assert row["status"] == "Provisioning Connect IdP"
     end)
   end
 

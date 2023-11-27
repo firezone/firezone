@@ -27,7 +27,7 @@ defmodule Web.RelayGroups.Index do
         </.add_button>
       </:action>
       <:content>
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <!--<.resource_filter />-->
           <.table_with_groups
             id="groups"
@@ -40,7 +40,7 @@ defmodule Web.RelayGroups.Index do
               <.link
                 :if={not is_nil(group.account_id)}
                 navigate={~p"/#{@account}/relay_groups/#{group.id}"}
-                class="font-bold text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-bold text-blue-600 hover:underline"
               >
                 <%= group.name %>
               </.link>
@@ -53,7 +53,7 @@ defmodule Web.RelayGroups.Index do
               <.link
                 :if={relay.account_id}
                 navigate={~p"/#{@account}/relays/#{relay.id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 <code :if={relay.name} class="block text-xs">
                   <%= relay.name %>
@@ -110,15 +110,14 @@ defmodule Web.RelayGroups.Index do
           <label for="simple-search" class="sr-only">Search</label>
           <div class="relative w-full">
             <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <.icon name="hero-magnifying-glass" class="w-5 h-5 text-gray-500 dark:text-gray-400" />
+              <.icon name="hero-magnifying-glass" class="w-5 h-5 text-gray-500" />
             </div>
             <input
               type="text"
               id="simple-search"
               class={[
-                "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded focus:ring-primary-500",
-                "focus:border-primary-500 block w-full pl-10 p-2 dark:bg-gray-700 dark:border-gray-600",
-                "dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
+                "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded",
+                "block w-full pl-10 p-2"
               ]}
               placeholder="Search"
               required=""

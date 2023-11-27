@@ -165,7 +165,7 @@ defmodule Web.Actors.Show do
           <:col :let={client} label="NAME">
             <.link
               navigate={~p"/#{@account}/clients/#{client.id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               <%= client.name %>
             </.link>
@@ -196,7 +196,7 @@ defmodule Web.Actors.Show do
           <:col :let={flow} label="POLICY">
             <.link
               navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               <Web.Policies.Components.policy_name policy={flow.policy} />
             </.link>
@@ -210,7 +210,7 @@ defmodule Web.Actors.Show do
           <:col :let={flow} label="GATEWAY (IP)">
             <.link
               navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
@@ -219,7 +219,7 @@ defmodule Web.Actors.Show do
           <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
             <.link
               navigate={~p"/#{@account}/flows/#{flow.id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               Show
             </.link>

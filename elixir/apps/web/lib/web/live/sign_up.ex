@@ -56,13 +56,13 @@ defmodule Web.SignUp do
 
   def render(assigns) do
     ~H"""
-    <section class="bg-gray-50 dark:bg-gray-900">
+    <section class="bg-gray-50">
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.logo />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
+        <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-center text-xl font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl dark:text-white">
+            <h1 class="text-center text-xl font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl">
               Welcome to Firezone
             </h1>
 
@@ -90,9 +90,9 @@ defmodule Web.SignUp do
   def separator(assigns) do
     ~H"""
     <div class="flex items-center">
-      <div class="w-full h-0.5 bg-gray-200 dark:bg-gray-700"></div>
-      <div class="px-5 text-center text-gray-500 dark:text-gray-400">or</div>
-      <div class="w-full h-0.5 bg-gray-200 dark:bg-gray-700"></div>
+      <div class="w-full h-0.5 bg-gray-200"></div>
+      <div class="px-5 text-center text-gray-500">or</div>
+      <div class="w-full h-0.5 bg-gray-200"></div>
     </div>
     """
   end
@@ -100,7 +100,7 @@ defmodule Web.SignUp do
   def welcome(assigns) do
     ~H"""
     <div class="space-y-6">
-      <div class="text-center text-gray-900 dark:text-white">
+      <div class="text-center text-gray-900">
         Your account has been created! Please check your email for a sign in link.
       </div>
       <div class="text-center">
@@ -108,22 +108,18 @@ defmodule Web.SignUp do
           <table class="border-collapse table-fixed w-full text-sm">
             <tbody>
               <tr>
-                <td class={~w[border-b border-slate-100 dark:border-slate-700
-                              p-4 pl-8 text-gray-900 dark:text-white]}>
+                <td class={~w[border-b border-slate-100 p-4 pl-8 text-gray-900]}>
                   Account Name:
                 </td>
-                <td class={~w[border-b border-slate-100 dark:border-slate-700
-                              p-4 pl-8 text-gray-900 dark:text-white]}>
+                <td class={~w[border-b border-slate-100 p-4 pl-8 text-gray-900]}>
                   <%= @account.name %>
                 </td>
               </tr>
               <tr>
-                <td class={~w[border-b border-slate-100 dark:border-slate-700
-                              p-4 pl-8 text-gray-900 dark:text-white]}>
+                <td class={~w[border-b border-slate-100 p-4 pl-8 text-gray-900]}>
                   Account Slug:
                 </td>
-                <td class={~w[border-b border-slate-100 dark:border-slate-700
-                              p-4 pl-8 text-gray-900 dark:text-white]}>
+                <td class={~w[border-b border-slate-100 p-4 pl-8 text-gray-900]}>
                   <%= @account.slug %>
                 </td>
               </tr>
@@ -131,15 +127,12 @@ defmodule Web.SignUp do
           </table>
         </div>
       </div>
-      <div class="text-base leading-7 text-center text-gray-900 dark:text-white">
+      <div class="text-base leading-7 text-center text-gray-900">
         <div>
           Sign In URL
         </div>
         <div>
-          <.link
-            class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-            navigate={~p"/#{@account.slug}"}
-          >
+          <.link class="font-medium text-blue-600 hover:underline" navigate={~p"/#{@account.slug}"}>
             <%= "#{Web.Endpoint.url()}/#{@account.slug}" %>
           </.link>
         </div>
@@ -150,7 +143,7 @@ defmodule Web.SignUp do
 
   def sign_up_form(assigns) do
     ~H"""
-    <h3 class="text-center text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl dark:text-white">
+    <h3 class="text-center text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl">
       Sign Up Now
     </h3>
     <.simple_form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="validate">
@@ -195,7 +188,7 @@ defmodule Web.SignUp do
       <p class="text-xs text-center">
         By signing up you agree to our <.link
           href="https://www.firezone.dev/terms"
-          class="text-blue-600 dark:text-blue-500 hover:underline"
+          class="text-blue-600 hover:underline"
         >Terms of Use</.link>.
       </p>
     </.simple_form>
@@ -205,7 +198,7 @@ defmodule Web.SignUp do
   def sign_up_disabled(assigns) do
     ~H"""
     <div class="space-y-6">
-      <div class="text-xl text-center text-gray-900 dark:text-white">
+      <div class="text-xl text-center text-gray-900">
         Sign-ups are currently disabled.
       </div>
       <div class="text-center">
@@ -218,7 +211,7 @@ defmodule Web.SignUp do
       <p class="text-xs text-center">
         By signing up you agree to our <.link
           href="https://www.firezone.dev/terms"
-          class="text-blue-600 dark:text-blue-500 hover:underline"
+          class="text-blue-600 hover:underline"
         >Terms of Use</.link>.
       </p>
     </div>

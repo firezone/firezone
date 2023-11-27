@@ -58,7 +58,7 @@ defmodule Web.Clients.Show do
             <:value>
               <.link
                 navigate={~p"/#{@account}/actors/#{@client.actor.id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 <%= @client.actor.name %>
               </.link>
@@ -114,7 +114,7 @@ defmodule Web.Clients.Show do
           <:col :let={flow} label="POLICY">
             <.link
               navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               <.policy_name policy={flow.policy} />
             </.link>
@@ -122,7 +122,7 @@ defmodule Web.Clients.Show do
           <:col :let={flow} label="GATEWAY (IP)">
             <.link
               navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
@@ -131,7 +131,7 @@ defmodule Web.Clients.Show do
           <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
             <.link
               navigate={~p"/#{@account}/flows/#{flow.id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               Show
             </.link>
