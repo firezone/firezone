@@ -320,8 +320,6 @@ defmodule API.Gateway.ChannelTest do
                id: resource.id,
                name: resource.name,
                type: :dns,
-               ipv4: resource.ipv4,
-               ipv6: resource.ipv6,
                filters: [
                  %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
                  %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
@@ -418,8 +416,6 @@ defmodule API.Gateway.ChannelTest do
                id: resource.id,
                name: resource.name,
                type: :dns,
-               ipv4: resource.ipv4,
-               ipv6: resource.ipv6,
                filters: [
                  %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
                  %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
