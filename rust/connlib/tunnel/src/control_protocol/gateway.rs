@@ -36,6 +36,7 @@ where
     pub async fn set_peer_connection_request(
         self: &Arc<Self>,
         remote_params: RTCIceParameters,
+        domain: Option<String>,
         peer: PeerConfig,
         relays: Vec<Relay>,
         client_id: ClientId,
@@ -43,7 +44,7 @@ where
         resource: ResourceDescription,
     ) -> Result<RTCIceParameters> {
         let IceConnection {
-            ice_params: local_params,
+            ice_parameters: local_params,
             ice_transport: ice,
             ice_candidate_rx,
         } = new_ice_connection(&self.webrtc_api, relays).await?;
@@ -86,7 +87,7 @@ where
             .iter_mut()
             .find(|(_, p)| p.inner.conn_id == client_id)
         {
-            peer.inner.add_resource(resource, expires_at);
+            peer.inner.add_resource(todo!(), resource, expires_at);
         }
     }
 
@@ -116,9 +117,10 @@ where
             self.next_index(),
             peer_config.clone(),
             client_id,
-            Some((resource, expires_at)),
             self.rate_limiter.clone(),
         ));
+
+        peer.add_resource(todo!(), resource, expires_at);
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 

@@ -3,8 +3,8 @@ use std::{collections::HashSet, net::IpAddr};
 use serde::{Deserialize, Serialize};
 
 use connlib_shared::messages::{
-    GatewayId, Interface, Key, Relay, RequestConnection, ResourceDescription, ResourceId,
-    ReuseConnection,
+    GatewayId, GatewayResponse, Interface, Key, Relay, RequestConnection, ResourceDescription,
+    ResourceId, ReuseConnection,
 };
 use url::Url;
 use webrtc::ice_transport::{ice_candidate::RTCIceCandidate, ice_parameters::RTCIceParameters};
@@ -31,7 +31,7 @@ pub struct ConnectionDetails {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Connect {
-    pub gateway_payload: RTCIceParameters,
+    pub gateway_payload: GatewayResponse,
     pub resource_id: ResourceId,
     pub gateway_public_key: Key,
     pub persistent_keepalive: u64,
@@ -211,8 +211,6 @@ mod test {
                     ResourceDescription::Dns(ResourceDescriptionDns {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
                         address: "gitlab.mycorp.com".to_string(),
-                        ipv4: "100.126.44.50".parse().unwrap(),
-                        ipv6: "fd00:2021:1111::e:7758".parse().unwrap(),
                         name: "gitlab.mycorp.com".to_string(),
                     }),
                 ],

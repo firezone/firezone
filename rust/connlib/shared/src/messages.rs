@@ -1,5 +1,5 @@
 //! Message types that are used by both the gateway and client.
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use ip_network::IpNetwork;
@@ -92,7 +92,13 @@ pub struct RequestConnection {
     /// The preshared key the client generated for the connection that it is trying to establish.
     pub client_preshared_key: SecretKey,
     /// Client's local RTC Session Description that the client will use for this connection.
-    pub client_payload: RTCIceParameters,
+    pub client_payload: ClientPayload,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct ClientPayload {
+    pub ice_parameters: RTCIceParameters,
+    pub domain: Option<String>,
 }
 
 /// Represent a request to reuse an existing gateway connection from a client to a given resource.
@@ -105,6 +111,9 @@ pub struct ReuseConnection {
     pub resource_id: ResourceId,
     /// Id of the gateway we want to reuse
     pub gateway_id: GatewayId,
+    /// Payload that the gateway will recieve
+    // This is the domain name! change it to Dname.
+    pub payload: Option<String>,
 }
 
 // Custom implementation of partial eq to ignore client_rtc_sdp
@@ -121,6 +130,18 @@ impl Eq for RequestConnection {}
 pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),
     Cidr(ResourceDescriptionCidr),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+pub struct DomainResponse {
+    pub domain: String,
+    pub address: Vec<IpAddr>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GatewayResponse {
+    pub ice_parameters: RTCIceParameters,
+    pub domain_response: Option<DomainResponse>,
 }
 
 /// Description of a resource that maps to a DNS record.

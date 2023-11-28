@@ -3,7 +3,10 @@ use std::sync::Arc;
 use boringtun::x25519::PublicKey;
 use connlib_shared::{
     control::Reference,
-    messages::{GatewayId, Key, Relay, RequestConnection, ResourceId},
+    messages::{
+        ClientPayload, DomainResponse, GatewayId, Key, Relay, RequestConnection,
+        ResourceDescription, ResourceDescriptionDns, ResourceId,
+    },
     Callbacks,
 };
 use secrecy::Secret;
@@ -91,8 +94,14 @@ where
             return Ok(Request::ReuseConnection(connection));
         }
 
+        let domain = self
+            .role_state
+            .lock()
+            .get_awaiting_connection_domain(&resource_id)?
+            .clone();
+
         let IceConnection {
-            ice_params,
+            ice_parameters,
             ice_transport,
             ice_candidate_rx,
         } = new_ice_connection(&self.webrtc_api, relays).await?;
@@ -110,7 +119,10 @@ where
             resource_id,
             gateway_id,
             client_preshared_key: Secret::new(Key(preshared_key.to_bytes())),
-            client_payload: ice_params,
+            client_payload: ClientPayload {
+                ice_parameters,
+                domain,
+            },
         }))
     }
 
@@ -119,18 +131,18 @@ where
         resource_id: ResourceId,
         gateway_id: GatewayId,
         ice: Arc<RTCIceTransport>,
+        domain: &Option<String>,
     ) -> Result<()> {
         let peer_config = self
             .role_state
             .lock()
-            .create_peer_config_for_new_connection(resource_id, gateway_id)?;
+            .create_peer_config_for_new_connection(resource_id, gateway_id, domain)?;
 
         let peer = Arc::new(Peer::new(
             self.private_key.clone(),
             self.next_index(),
             peer_config.clone(),
             gateway_id,
-            None,
             self.rate_limiter.clone(),
         ));
 
@@ -171,6 +183,7 @@ where
         self: &Arc<Self>,
         resource_id: ResourceId,
         rtc_ice_params: RTCIceParameters,
+        domain_response: Option<DomainResponse>,
         gateway_public_key: PublicKey,
     ) -> Result<()> {
         let gateway_id = self
@@ -184,7 +197,45 @@ where
             .get(&gateway_id)
             .ok_or(Error::UnknownResource)?
             .clone();
+        let resource_description = self
+            .role_state
+            .lock()
+            .resources_id
+            .get(&resource_id)
+            .ok_or(Error::UnknownResource)?
+            .clone();
 
+        if let Some(domain_response) = domain_response.clone() {
+            let ResourceDescription::Dns(resource_description) = resource_description else {
+                // We should never get a domain_response for a CIDR resource!
+                return Err(Error::ControlProtocolError);
+            };
+            let resource_description = resource_description.subdomain(domain_response.domain);
+            for ip in domain_response.address {
+                let internal_ip = match ip {
+                    std::net::IpAddr::V4(_) => self
+                        .role_state
+                        .lock()
+                        .dns_resources_internal_ips
+                        .get_v4_resoruce_description(&resource_description)
+                        .ok_or(Error::ControlProtocolError)?
+                        .to_owned()
+                        .into(),
+                    std::net::IpAddr::V6(_) => self
+                        .role_state
+                        .lock()
+                        .dns_resources_internal_ips
+                        .get_v6_resoruce_description(&resource_description)
+                        .ok_or(Error::ControlProtocolError)?
+                        .to_owned()
+                        .into(),
+                };
+                self.role_state
+                    .lock()
+                    .dns_resources_external_ips
+                    .insert(internal_ip, ip);
+            }
+        }
         self.role_state
             .lock()
             .activate_ice_candidate_receiver(gateway_id, gateway_public_key);
@@ -195,7 +246,14 @@ where
                 .start(&rtc_ice_params, Some(RTCIceRole::Controlling))
                 .await
                 .map_err(Into::into)
-                .and_then(|_| tunnel.new_tunnel(resource_id, gateway_id, peer_connection))
+                .and_then(|_| {
+                    tunnel.new_tunnel(
+                        resource_id,
+                        gateway_id,
+                        peer_connection,
+                        &domain_response.map(|d| d.domain),
+                    )
+                })
             {
                 tracing::warn!(%gateway_id, err = ?e, "Can't start tunnel: {e:#}");
                 tunnel.role_state.lock().on_connection_failed(resource_id);

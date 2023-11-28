@@ -61,7 +61,6 @@ mod index;
 mod ip_packet;
 mod peer;
 mod peer_handler;
-mod resource_table;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
@@ -192,7 +191,7 @@ where
                 let guard = self.device.load();
 
                 if let Some(device) = guard.as_ref() {
-                    match self.poll_device(device, cx) {
+                    match self.poll_device(device, &self.device, cx) {
                         Poll::Ready(Ok(Some(event))) => return Poll::Ready(Ok(event)),
                         Poll::Ready(Ok(None)) => {
                             tracing::info!("Device stopped");
@@ -210,24 +209,6 @@ where
                 }
             }
 
-            match self.role_state.lock().route_futures.poll_unpin(cx) {
-                Poll::Ready(Ok(Ok(dev))) => {
-                    if let Some(dev) = dev {
-                        self.device.store(Some(Arc::new(dev)));
-                    }
-                    continue;
-                }
-                Poll::Ready(Ok(Err(e))) => {
-                    tracing::error!(err = ?e, "couldn't add route: {e:#}");
-                    continue;
-                }
-                Poll::Ready(Err(e)) => {
-                    tracing::error!(err = ?e, "couldn't add route: {e:#}");
-                    continue;
-                }
-                Poll::Pending => {}
-            };
-
             match self.poll_next_event_common(cx) {
                 Poll::Ready(event) => return Poll::Ready(Ok(event)),
                 Poll::Pending => {}
@@ -241,6 +222,8 @@ where
     pub(crate) fn poll_device(
         &self,
         device: &Device,
+        // TODO: this is ugly
+        device_wrapper: &Arc<ArcSwapOption<Device>>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<Option<Event<GatewayId>>>> {
         loop {
@@ -262,9 +245,15 @@ where
                 Ok(Some((response, ip))) => {
                     device.write(response)?;
                     if let Some(ip) = ip {
-                        role_state
-                            .route_futures
-                            .try_push(device.add_route(ip.into(), self.callbacks()));
+                        let device = device_wrapper.clone();
+                        let callbacks = self.callbacks().clone();
+                        tokio::spawn(async move {
+                            if let Some(device) = device.load().as_ref() {
+                                if let Err(err) = device.add_route(ip.into(), &callbacks).await {
+                                    tracing::warn!(?err, "add route failed: {err:#}");
+                                }
+                            }
+                        });
                     }
                     continue;
                 }
@@ -502,13 +491,13 @@ where
         match peer.inner.encapsulate(packet, write_buf) {
             Ok(None) => {}
             Ok(Some(b)) => {
-                tracing::trace!(target: "wire", action = "writing", to = "peer", dest = %packet.destination());
+                tracing::trace!(target: "wire", action = "writing", to = "peer");
                 if peer.channel.try_send(b).is_err() {
-                    tracing::warn!(target: "wire", action = "dropped", to = "peer", dest = %packet.destination());
+                    tracing::warn!(target: "wire", action = "dropped", to = "peer");
                 }
             }
             Err(e) => {
-                tracing::error!(resource_address = %packet.destination(), err = ?e, "failed to handle packet {e:#}");
+                tracing::error!(err = ?e, "failed to handle packet {e:#}");
 
                 if e.is_fatal_connection_error() {
                     self.peers_to_stop.lock().push_back(peer_id);

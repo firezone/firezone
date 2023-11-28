@@ -118,7 +118,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     ) {
         if let Err(e) = self.tunnel.received_offer_response(
             resource_id,
-            gateway_payload,
+            gateway_payload.ice_parameters,
+            gateway_payload.domain_response,
             gateway_public_key.0.into(),
         ) {
             let _ = self.tunnel.callbacks().on_error(&e);

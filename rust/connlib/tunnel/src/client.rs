@@ -1,7 +1,6 @@
 use crate::bounded_queue::BoundedQueue;
 use crate::device_channel::{create_iface, Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
-use crate::resource_table::ResourceTable;
 use crate::{
     dns, ConnectedPeer, DnsFallbackStrategy, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
     DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
@@ -23,8 +22,8 @@ use ip_network_table::IpNetworkTable;
 use rand_core::OsRng;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::convert::identity;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::ops::Deref;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -57,22 +56,16 @@ where
                 self.role_state
                     .lock()
                     .cidr_resources
-                    .insert(cidr.address, Arc::new(cidr.clone()));
+                    .insert(cidr.address, cidr.clone());
             }
         }
 
         let mut role_state = self.role_state.lock();
         role_state
             .resources_id
-            .insert(resource_description.id(), Arc::new(resource_description));
-        self.callbacks.on_update_resources(
-            role_state
-                .resources_id
-                .values()
-                .map(Deref::deref)
-                .cloned()
-                .collect(),
-        )?;
+            .insert(resource_description.id(), resource_description);
+        self.callbacks
+            .on_update_resources(role_state.resources_id.values().cloned().collect())?;
         Ok(())
     }
 
@@ -142,6 +135,11 @@ where
 
 #[derive(Default, Debug, Clone)]
 pub struct DnsResourceMap {
+    // TODO: We store ResourceDescriptionDns which is the reprsentation the portal uses...
+    // however, this means re-parsing the dns name each time we want to use it as such.
+    // domain's Dname<oct> implements serialize, deserialize and Hash, so as soon as we get
+    // the dns name from the portal we should parse it and use it always as that.
+    // Note: implement this as part of the current PR!
     internal_ip4_map: BiMap<Ipv4Addr, ResourceDescriptionDns>,
     internal_ip6_map: BiMap<Ipv6Addr, ResourceDescriptionDns>,
 }
@@ -177,9 +175,9 @@ impl DnsResourceMap {
     }
 
     pub fn get_or_assign_ip6(
-        &self,
+        &mut self,
         description: &ResourceDescriptionDns,
-        provider: &IpProvider,
+        provider: &mut IpProvider,
     ) -> Option<Ipv6Addr> {
         if let Some(ip) = self.get_v6_resoruce_description(description) {
             return Some(*ip);
@@ -191,7 +189,7 @@ impl DnsResourceMap {
     }
 
     pub fn get_or_assign_ip4(
-        &self,
+        &mut self,
         description: &ResourceDescriptionDns,
         provider: &mut IpProvider,
     ) -> Option<Ipv4Addr> {
@@ -220,18 +218,17 @@ pub struct ClientState {
     pub gateway_public_keys: HashMap<GatewayId, PublicKey>,
     pub gateway_preshared_keys: HashMap<GatewayId, StaticSecret>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
-    resources: ResourceTable<ResourceDescription>,
 
     // TODO: model these along with resources to enforce consistency
+    // TODO: dns_resources_internal_ips can be merged with cidr_resources
     pub dns_resources_internal_ips: DnsResourceMap,
     pub dns_resources_external_ips: HashMap<IpAddr, IpAddr>,
     dns_resources: HashMap<String, Arc<ResourceDescriptionDns>>,
-    cidr_resources: IpNetworkTable<Arc<ResourceDescriptionCidr>>,
-    resources_id: HashMap<ResourceId, Arc<ResourceDescription>>,
+    cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    pub resources_id: HashMap<ResourceId, ResourceDescription>,
 
     pub dns_strategy: DnsFallbackStrategy,
     dns_queries: BoundedQueue<DnsQuery<'static>>,
-    pub route_futures: FuturesSet<connlib_shared::Result<Option<Device>>>,
 
     pub ip_provider: IpProvider,
 }
@@ -240,6 +237,7 @@ pub struct ClientState {
 pub struct AwaitingConnectionDetails {
     total_attemps: usize,
     response_received: bool,
+    domain: Option<String>,
     gateways: HashSet<GatewayId>,
 }
 
@@ -270,6 +268,17 @@ impl ClientState {
         }
     }
 
+    pub(crate) fn get_awaiting_connection_domain(
+        &self,
+        resource: &ResourceId,
+    ) -> Result<&Option<String>, ConnlibError> {
+        Ok(&self
+            .awaiting_connection
+            .get(resource)
+            .ok_or(Error::UnexpectedConnectionDetails)?
+            .domain)
+    }
+
     pub(crate) fn attempt_to_reuse_connection(
         &mut self,
         resource: ResourceId,
@@ -277,14 +286,16 @@ impl ClientState {
         expected_attempts: usize,
         connected_peers: &mut IpNetworkTable<ConnectedPeer<GatewayId>>,
     ) -> Result<Option<ReuseConnection>, ConnlibError> {
-        if self.is_connected_to(resource, connected_peers) {
+        let desc = self
+            .resources_id
+            .get(&resource)
+            .ok_or(Error::UnknownResource)?;
+
+        let domain = self.get_awaiting_connection_domain(&resource)?.clone();
+
+        if self.is_connected_to(resource, connected_peers, &domain) {
             return Err(Error::UnexpectedConnectionDetails);
         }
-
-        let desc = self
-            .resources
-            .get_by_id(&resource)
-            .ok_or(Error::UnknownResource)?;
 
         let details = self
             .awaiting_connection
@@ -314,7 +325,7 @@ impl ClientState {
             return Ok(None);
         };
 
-        for ip in desc.ips() {
+        for ip in self.get_resoruce_ip(desc, &domain) {
             peer.inner.add_allowed_ip(ip);
             connected_peers.insert(
                 ip,
@@ -330,6 +341,7 @@ impl ClientState {
         Ok(Some(ReuseConnection {
             resource_id: resource,
             gateway_id: gateway,
+            payload: domain.clone(),
         }))
     }
 
@@ -389,6 +401,7 @@ impl ClientState {
             AwaitingConnectionDetails {
                 total_attemps: 0,
                 response_received: false,
+                domain: resource.dns_name().map(ToString::to_string),
                 gateways,
             },
         );
@@ -398,6 +411,7 @@ impl ClientState {
         &mut self,
         resource: ResourceId,
         gateway: GatewayId,
+        domain: &Option<String>,
     ) -> Result<PeerConfig, ConnlibError> {
         let shared_key = self
             .gateway_preshared_keys
@@ -413,14 +427,16 @@ impl ClientState {
         };
 
         let desc = self
-            .resources
-            .get_by_id(&resource)
+            .resources_id
+            .get(&resource)
             .ok_or(Error::ControlProtocolError)?;
+
+        let ips = self.get_resoruce_ip(desc, domain);
 
         let config = PeerConfig {
             persistent_keepalive: None,
             public_key,
-            ips: desc.ips(),
+            ips,
             preshared_key: SecretKey::new(Key(shared_key.to_bytes())),
         };
 
@@ -469,6 +485,8 @@ impl ClientState {
             return false;
         };
 
+        // This does mean that we never generate 2 connection intents to the same resoruce id with different domain.
+        // This will be optimized in a separate PR.
         self.awaiting_connection.contains_key(&resource.id())
     }
 
@@ -476,22 +494,60 @@ impl ClientState {
         &self,
         resource: ResourceId,
         connected_peers: &IpNetworkTable<ConnectedPeer<GatewayId>>,
+        domain: &Option<String>,
     ) -> bool {
-        let Some(resource) = self.resources.get_by_id(&resource) else {
+        let Some(resource) = self.resources_id.get(&resource) else {
             return false;
         };
 
-        resource
-            .ips()
-            .iter()
+        let ips = self.get_resoruce_ip(resource, domain);
+        ips.iter()
             .any(|ip| connected_peers.exact_match(*ip).is_some())
     }
 
-    fn get_resource_by_destination(&self, destination: IpAddr) -> Option<&ResourceDescription> {
-        match destination {
-            IpAddr::V4(ipv4) => self.resources.get_by_ip(ipv4),
-            IpAddr::V6(ipv6) => self.resources.get_by_ip(ipv6),
+    fn get_resoruce_ip(
+        &self,
+        resource: &ResourceDescription,
+        domain: &Option<String>,
+    ) -> Vec<IpNetwork> {
+        match resource {
+            // TODO: this will be cleaned up as part of refactoring the way we store resources.
+            ResourceDescription::Dns(dns_resource) => {
+                let Some(domain) = domain else {
+                    return vec![];
+                };
+
+                let description = dns_resource.subdomain(domain.clone());
+                let ip4 = self
+                    .dns_resources_internal_ips
+                    .get_v4_resoruce_description(&description)
+                    .copied()
+                    .map(Into::into);
+                let ip6: Option<IpNetwork> = self
+                    .dns_resources_internal_ips
+                    .get_v6_resoruce_description(&description)
+                    .copied()
+                    .map(Into::into);
+
+                [ip4, ip6]
+                    .into_iter()
+                    .filter_map(identity)
+                    .collect::<Vec<_>>()
+            }
+            ResourceDescription::Cidr(cidr) => vec![cidr.address],
         }
+    }
+
+    fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceDescription> {
+        self.cidr_resources
+            .longest_match(destination)
+            .map(|(_, res)| ResourceDescription::Cidr(res.clone()))
+            .or_else(|| {
+                self.dns_resources_internal_ips
+                    .get_by_ip(&destination)
+                    .cloned()
+                    .map(ResourceDescription::Dns)
+            })
     }
 
     pub fn add_pending_dns_query(&mut self, query: DnsQuery) {
@@ -536,9 +592,7 @@ impl Default for ClientState {
             awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
             gateway_public_keys: Default::default(),
             resources_gateways: Default::default(),
-            resources: Default::default(),
             dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
-            route_futures: FuturesSet::new(Duration::from_secs(60), 100),
             gateway_preshared_keys: Default::default(),
             dns_strategy: Default::default(),
             // TODO: decide ip ranges
@@ -598,8 +652,8 @@ impl RoleState for ClientState {
 
                     return Poll::Ready(Event::ConnectionIntent {
                         resource: self
-                            .resources
-                            .get_by_id(&resource)
+                            .resources_id
+                            .get(&resource)
                             .expect("inconsistent internal state")
                             .clone(),
                         connected_gateway_ids: entry.get().gateways.clone(),

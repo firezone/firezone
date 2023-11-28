@@ -2,7 +2,7 @@ use std::net::IpAddr;
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use connlib_shared::messages::{
-    ActorId, ClientId, Interface, Peer, Relay, ResourceDescription, ResourceId,
+    ActorId, ClientId, ClientPayload, Interface, Peer, Relay, ResourceDescription, ResourceId,
 };
 use serde::{Deserialize, Serialize};
 use webrtc::ice_transport::{ice_candidate::RTCIceCandidate, ice_parameters::RTCIceParameters};
@@ -23,7 +23,7 @@ pub struct Actor {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Client {
     pub id: ClientId,
-    pub payload: RTCIceParameters,
+    pub payload: ClientPayload,
     pub peer: Peer,
 }
 

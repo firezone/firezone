@@ -58,7 +58,7 @@ where
 }
 
 pub(crate) struct IceConnection {
-    pub ice_params: RTCIceParameters,
+    pub ice_parameters: RTCIceParameters,
     pub ice_transport: Arc<RTCIceTransport>,
     pub ice_candidate_rx: mpsc::Receiver<RTCIceCandidate>,
 }
@@ -113,7 +113,7 @@ pub(crate) async fn new_ice_connection(
     gatherer.gather().await?;
 
     Ok(IceConnection {
-        ice_params: gatherer.get_local_parameters().await?,
+        ice_parameters: gatherer.get_local_parameters().await?,
         ice_transport,
         ice_candidate_rx,
     })
