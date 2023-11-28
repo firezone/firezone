@@ -1,5 +1,6 @@
 defmodule Web.Sites.Show do
   use Web, :live_view
+  import Web.Sites.Components
   alias Domain.{Gateways, Resources}
 
   def mount(%{"id" => id}, _session, socket) do
@@ -59,6 +60,10 @@ defmodule Web.Sites.Show do
             <:value><%= @group.name %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
+            <:label>Data Routing</:label>
+            <:value><%= pretty_print_routing(@group.routing) %></:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
             <:label>Created</:label>
             <:value>
               <.created_by account={@account} schema={@group} />
@@ -86,7 +91,7 @@ defmodule Web.Sites.Show do
             <:col :let={gateway} label="INSTANCE">
               <.link
                 navigate={~p"/#{@account}/gateways/#{gateway.id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 <%= gateway.name %>
               </.link>
@@ -143,7 +148,7 @@ defmodule Web.Sites.Show do
             <:col :let={resource} label="NAME">
               <.link
                 navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@group}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 <%= resource.name %>
               </.link>

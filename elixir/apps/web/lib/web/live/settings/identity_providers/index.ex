@@ -41,9 +41,9 @@ defmodule Web.Settings.IdentityProviders.Index do
         </.add_button>
       </:action>
       <:content>
-        <p class="ml-4 mb-4 font-medium text-gray-600 dark:text-gray-500">
+        <p class="ml-4 mb-4 font-medium text-gray-600">
           <.link
-            class="text-blue-600 dark:text-blue-500 hover:underline"
+            class="text-blue-600 hover:underline"
             href="https://www.firezone.dev/kb/authenticate?utm_source=product"
             target="_blank"
           >
@@ -52,12 +52,12 @@ defmodule Web.Settings.IdentityProviders.Index do
           </.link>
         </p>
         <.flash_group flash={@flash} />
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <.table id="providers" rows={@providers} row_id={&"providers-#{&1.id}"}>
             <:col :let={provider} label="Name">
               <.link
                 navigate={view_provider(@account, provider)}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class="font-medium text-blue-600 hover:underline"
               >
                 <%= provider.name %>
               </.link>

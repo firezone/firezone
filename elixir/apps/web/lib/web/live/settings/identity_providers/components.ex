@@ -41,6 +41,37 @@ defmodule Web.Settings.IdentityProviders.Components do
   def status(
         %{
           provider: %{
+            adapter: :google_workspace,
+            disabled_at: disabled_at,
+            adapter_state: %{"status" => "pending_access_token"}
+          }
+        } = assigns
+      )
+      when not is_nil(disabled_at) do
+    ~H"""
+    <div class="flex items-center">
+      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+      <span class="ml-3">
+        Provisioning
+        <span :if={@provider.adapter_state["status"]}>
+          <.button
+            size="xs"
+            navigate={
+              ~p"/#{@provider.account_id}/settings/identity_providers/google_workspace/#{@provider}/redirect"
+            }
+          >
+            Connect IdP
+          </.button>
+        </span>
+      </span>
+    </div>
+    """
+  end
+
+  def status(
+        %{
+          provider: %{
+            adapter: :openid_connect,
             disabled_at: disabled_at,
             adapter_state: %{"status" => "pending_access_token"}
           }
@@ -54,7 +85,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         Provisioning
         <span :if={@provider.adapter_state["status"]}>
           <.link navigate={
-            ~p"/#{@provider.account_id}/settings/identity_providers/google_workspace/#{@provider}/redirect"
+            ~p"/#{@provider.account_id}/settings/identity_providers/openid_connect/#{@provider}/redirect"
           }>
             <button class={~w[
           text-white bg-primary-600 rounded
@@ -123,7 +154,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         Synced
         <.link
           navigate={~p"/#{@account}/actors?provider_id=#{@provider.id}"}
-          class="text-blue-600 dark:text-blue-500 hover:underline"
+          class="text-blue-600 hover:underline"
         >
           <% identities_count_by_provider_id = @identities_count_by_provider_id[@provider.id] || 0 %>
           <%= identities_count_by_provider_id %>
@@ -136,7 +167,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         and
         <.link
           navigate={~p"/#{@account}/groups?provider_id=#{@provider.id}"}
-          class="text-blue-600 dark:text-blue-500 hover:underline"
+          class="text-blue-600 hover:underline"
         >
           <% groups_count_by_provider_id = @groups_count_by_provider_id[@provider.id] || 0 %>
           <%= groups_count_by_provider_id %>
@@ -164,7 +195,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         Created
         <.link
           navigate={~p"/#{@account}/actors?provider_id=#{@provider.id}"}
-          class="text-blue-600 dark:text-blue-500 hover:underline"
+          class="text-blue-600 hover:underline"
         >
           <% identities_count_by_provider_id = @identities_count_by_provider_id[@provider.id] || 0 %>
           <%= identities_count_by_provider_id %>
@@ -177,7 +208,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         and
         <.link
           navigate={~p"/#{@account}/groups?provider_id=#{@provider.id}"}
-          class="text-blue-600 dark:text-blue-500 hover:underline"
+          class="text-blue-600 hover:underline"
         >
           <% groups_count_by_provider_id = @groups_count_by_provider_id[@provider.id] || 0 %>
           <%= groups_count_by_provider_id %>

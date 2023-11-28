@@ -145,7 +145,12 @@ defmodule API.Gateway.Channel do
 
       client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
       resource = Resources.fetch_resource_by_id!(resource_id)
-      {:ok, relays} = Relays.list_connected_relays_for_resource(resource)
+
+      {relay_hosting_type, relay_connection_type} =
+        Gateways.relay_strategy([socket.assigns.gateway_group])
+
+      {:ok, relays} =
+        Relays.list_connected_relays_for_resource(resource, relay_hosting_type)
 
       ref = Ecto.UUID.generate()
 
@@ -153,7 +158,7 @@ defmodule API.Gateway.Channel do
         ref: ref,
         flow_id: flow_id,
         actor: Views.Actor.render(client.actor),
-        relays: Views.Relay.render_many(relays, authorization_expires_at),
+        relays: Views.Relay.render_many(relays, authorization_expires_at, relay_connection_type),
         resource: Views.Resource.render(resource),
         client: Views.Client.render(client, rtc_session_description, preshared_key),
         expires_at: DateTime.to_unix(authorization_expires_at, :second)

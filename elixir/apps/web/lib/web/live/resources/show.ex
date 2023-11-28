@@ -48,7 +48,7 @@ defmodule Web.Resources.Show do
         </.edit_button>
       </:action>
       <:content>
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <.vertical_table id="resource">
             <.vertical_table_row>
               <:label>
@@ -73,10 +73,7 @@ defmodule Web.Resources.Show do
               <:value>
                 <.peek peek={@actor_groups_peek}>
                   <:empty>
-                    <.icon
-                      name="hero-exclamation-triangle"
-                      class="text-red-500 dark:text-red-400 mr-1"
-                    /> None,
+                    <.icon name="hero-exclamation-triangle" class="text-red-500 mr-1" /> None,
                     <.link
                       class={link_style() ++ ["px-1"]}
                       navigate={
@@ -111,13 +108,7 @@ defmodule Web.Resources.Show do
 
                   <:call_to_action>
                     <.link
-                      class={[
-                        "text-gray-600",
-                        "dark:text-gray-500",
-                        "hover:underline",
-                        "dark:hover:underline",
-                        "relative"
-                      ]}
+                      class={["text-gray-600", "hover:underline", "relative"]}
                       navigate={
                         if site_id = @params["site_id"] do
                           ~p"/#{@account}/policies/new?resource_id=#{@resource}&site_id=#{site_id}"
@@ -169,7 +160,7 @@ defmodule Web.Resources.Show do
           <:col :let={gateway_group} label="NAME">
             <.link
               navigate={~p"/#{@account}/sites/#{gateway_group}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               <%= gateway_group.name %>
             </.link>
@@ -196,7 +187,7 @@ defmodule Web.Resources.Show do
           <:col :let={flow} label="POLICY">
             <.link
               navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               <.policy_name policy={flow.policy} />
             </.link>
@@ -204,14 +195,14 @@ defmodule Web.Resources.Show do
           <:col :let={flow} label="CLIENT, ACTOR (IP)">
             <.link
               navigate={~p"/#{@account}/clients/#{flow.client_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               <%= flow.client.name %>
             </.link>
             owned by
             <.link
               navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               <%= flow.client.actor.name %>
             </.link>
@@ -220,7 +211,7 @@ defmodule Web.Resources.Show do
           <:col :let={flow} label="GATEWAY (IP)">
             <.link
               navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
@@ -229,7 +220,7 @@ defmodule Web.Resources.Show do
           <:col :let={flow} label="ACTIVITY">
             <.link
               navigate={~p"/#{@account}/flows/#{flow.id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class="font-medium text-blue-600 hover:underline"
             >
               Show
             </.link>

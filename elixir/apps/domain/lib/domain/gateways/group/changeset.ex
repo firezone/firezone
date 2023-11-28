@@ -3,7 +3,7 @@ defmodule Domain.Gateways.Group.Changeset do
   alias Domain.{Auth, Accounts}
   alias Domain.Gateways
 
-  @fields ~w[name]a
+  @fields ~w[name routing]a
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Gateways.Group{account: account}

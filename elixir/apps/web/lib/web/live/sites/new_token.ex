@@ -222,21 +222,21 @@ defmodule Web.Sites.NewToken do
 
     [Service]
     Type=simple
-    User=firezone
-    Group=firezone
     ExecStartPre=/bin/sh -c 'id -u firezone &>/dev/null || useradd -r -s /bin/false firezone'
     #{Enum.map_join(env, "\n", fn {key, value} -> "Environment=\"#{key}=#{value}\"" end)}
-    ExecStartPre=/bin/sh -c ' \\
+    ExecStartPre=/bin/sh -c 'set -xe; \\
       remote_version=$(curl -Ls \\
         -H "Accept: application/vnd.github+json" \\
         -H "X-GitHub-Api-Version: 2022-11-28" \\
-        https://api.github.com/repos/firezone/firezone/releases/latest | grep -oP '"'"'(?<="tag_name": ")[^"]*'"'"'); \\
+        https://api.github.com/repos/firezone/firezone/releases/latest | \\
+        grep "\\"tag_name\\": " | sed "s/.*\\"tag_name\\": \\"\\\\([^\\\\\\"]*\\\\).*/\\\\1/"); \\
       if [ -e /usr/local/bin/firezone-gateway ]; then \\
         current_version=$(/usr/local/bin/firezone-gateway --version | awk '"'"'{print $NF}'"'"'); \\
       else \\
         current_version=""; \\
       fi; \\
-      if [ ! "$current_version" = "$remote_version" ]; then \\
+      if [ ! "$current_version" = "${remote_version:-latest}" ]; then \\
+        echo "There is a new version of Firezone Gateway, downloading: ${remote_version:-latest}"; \\
         arch=$(uname -m); \\
         case $arch in \\
           aarch64) \\
@@ -253,19 +253,18 @@ defmodule Web.Sites.NewToken do
         chmod +x /usr/local/bin/firezone-gateway; \\
       fi \\
     '
-    ExecStartPre=/usr/bin/mkdir -p /etc/firezone
-    ExecStartPre=/usr/bin/chown firezone:firezone /etc/firezone
-    ExecStartPre=/usr/bin/chmod 0755 /etc/firezone
-    ExecStartPre=/usr/bin/chmod +x /usr/local/bin/firezone-gateway
+    ExecStartPre=/bin/sh -c 'mkdir -p /etc/firezone'
+    ExecStartPre=/bin/sh -c 'chown firezone:firezone /etc/firezone'
+    ExecStartPre=/bin/sh -c 'chmod 0755 /etc/firezone'
+    ExecStartPre=/bin/sh -c 'chmod +x /usr/local/bin/firezone-gateway'
     AmbientCapabilities=CAP_NET_ADMIN
-    CapabilityBoundingSet=CAP_NET_ADMIN
     PrivateTmp=true
     ProtectSystem=full
     ReadWritePaths=/etc/firezone
     NoNewPrivileges=true
     TimeoutStartSec=15s
     TimeoutStopSec=15s
-    ExecStart=FIREZONE_NAME=$(hostname) /usr/local/bin/firezone-gateway
+    ExecStart=/bin/sh -c 'FIREZONE_NAME=$(hostname); sudo -u firezone -g firezone /usr/local/bin/firezone-gateway'
     Restart=always
     RestartSec=3
 

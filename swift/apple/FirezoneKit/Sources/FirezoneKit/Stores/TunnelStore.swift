@@ -11,6 +11,7 @@ import OSLog
 
 enum TunnelStoreError: Error {
   case tunnelCouldNotBeStarted
+  case tunnelCouldNotBeStopped
 }
 
 public struct TunnelProviderKeys {
@@ -39,6 +40,7 @@ final class TunnelStore: ObservableObject {
 
   private var tunnelObservingTasks: [Task<Void, Never>] = []
   private var startTunnelContinuation: CheckedContinuation<(), Error>?
+  private var stopTunnelContinuation: CheckedContinuation<(), Error>?
   private var cancellables = Set<AnyCancellable>()
 
   init() {
@@ -70,6 +72,7 @@ final class TunnelStore: ObservableObject {
         }
         self.tunnel = tunnel
         self.tunnelAuthStatus = tunnel.authStatus()
+        self.status = tunnel.connection.status
       } else {
         let tunnel = NETunnelProviderManager()
         tunnel.localizedDescription = "Firezone"
@@ -91,11 +94,7 @@ final class TunnelStore: ObservableObject {
       fatalError("Tunnel not initialized yet")
     }
 
-    let wasConnected =
-      (tunnel.connection.status == .connected || tunnel.connection.status == .connecting)
-    if wasConnected {
-      stop()
-    }
+    try await stop()
 
     try await tunnel.saveAuthStatus(tunnelAuthStatus)
     self.tunnelAuthStatus = tunnelAuthStatus
@@ -106,11 +105,7 @@ final class TunnelStore: ObservableObject {
       fatalError("Tunnel not initialized yet")
     }
 
-    let wasConnected =
-      (tunnel.connection.status == .connected || tunnel.connection.status == .connecting)
-    if wasConnected {
-      stop()
-    }
+    try await stop()
 
     try await tunnel.saveAdvancedSettings(advancedSettings)
   }
@@ -164,15 +159,22 @@ final class TunnelStore: ObservableObject {
     }
   }
 
-  func stop() {
+  func stop() async throws {
     guard let tunnel = tunnel else {
       Self.logger.log("\(#function): TunnelStore is not initialized")
       return
     }
 
     TunnelStore.logger.trace("\(#function)")
-    let session = castToSession(tunnel.connection)
-    session.stopTunnel()
+
+    let status = tunnel.connection.status
+    if status == .connected || status == .connecting {
+      let session = castToSession(tunnel.connection)
+      session.stopTunnel()
+      try await withCheckedThrowingContinuation { continuation in
+        self.stopTunnelContinuation = continuation
+      }
+    }
   }
 
   func stopAndSignOut() async throws -> Keychain.PersistentRef? {
@@ -182,11 +184,21 @@ final class TunnelStore: ObservableObject {
     }
 
     TunnelStore.logger.trace("\(#function)")
-    let session = castToSession(tunnel.connection)
-    session.stopTunnel()
+
+    let status = tunnel.connection.status
+    if status == .connected || status == .connecting {
+      let session = castToSession(tunnel.connection)
+      session.stopTunnel()
+    }
 
     if case .signedIn(let authBaseURL, let accountId, let tokenReference) = self.tunnelAuthStatus {
-      try await saveAuthStatus(.signedOut(authBaseURL: authBaseURL, accountId: accountId))
+      do {
+        try await saveAuthStatus(.signedOut(authBaseURL: authBaseURL, accountId: accountId))
+      } catch {
+        TunnelStore.logger.trace(
+          "\(#function): Error saving signed out auth status: \(error)"
+        )
+      }
       return tokenReference
     }
 
@@ -279,6 +291,18 @@ final class TunnelStore: ObservableObject {
               break
             }
           }
+          if let stopTunnelContinuation = self.stopTunnelContinuation {
+            switch status {
+            case .disconnected:
+              stopTunnelContinuation.resume(returning: ())
+              self.stopTunnelContinuation = nil
+            case .connected:
+              stopTunnelContinuation.resume(throwing: TunnelStoreError.tunnelCouldNotBeStopped)
+              self.stopTunnelContinuation = nil
+            default:
+              break
+            }
+          }
           if status != .connected {
             self.resources = DisplayableResources()
           }
@@ -298,7 +322,7 @@ final class TunnelStore: ObservableObject {
   }
 }
 
-enum TunnelAuthStatus {
+enum TunnelAuthStatus: Equatable, CustomStringConvertible {
   case tunnelUninitialized
   case accountNotSetup
   case signedOut(authBaseURL: URL, accountId: String)
@@ -319,6 +343,19 @@ enum TunnelAuthStatus {
       return accountId
     case .signedIn(_, let accountId, _):
       return accountId
+    }
+  }
+
+  var description: String {
+    switch self {
+    case .tunnelUninitialized:
+      return "tunnel uninitialized"
+    case .accountNotSetup:
+      return "account not setup"
+    case .signedOut(let authBaseURL, let accountId):
+      return "signedOut(authBaseURL: \(authBaseURL), accountId: \(accountId))"
+    case .signedIn(let authBaseURL, let accountId, _):
+      return "signedIn(authBaseURL: \(authBaseURL), accountId: \(accountId))"
     }
   }
 }
@@ -385,6 +422,7 @@ extension NETunnelProviderManager {
 
       protocolConfiguration.providerConfiguration = providerConfig
 
+      ensureTunnelConfigurationIsValid()
       try await saveToPreferences()
     }
   }
@@ -440,7 +478,30 @@ extension NETunnelProviderManager {
       protocolConfiguration.providerConfiguration = providerConfig
       protocolConfiguration.serverAddress = advancedSettings.apiURLString
 
+      ensureTunnelConfigurationIsValid()
       try await saveToPreferences()
+    }
+  }
+
+  private func ensureTunnelConfigurationIsValid() {
+    // Ensure the tunnel config has required values populated, because
+    // to even sign out, we need saveToPreferences() to succeed.
+    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
+      protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
+        "\($0).network-extension"
+      }
+      if protocolConfiguration.serverAddress?.isEmpty ?? true {
+        protocolConfiguration.serverAddress = "unknown-server"
+      }
+    } else {
+      let protocolConfiguration = NETunnelProviderProtocol()
+      protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
+        "\($0).network-extension"
+      }
+      protocolConfiguration.serverAddress = "unknown-server"
+    }
+    if localizedDescription?.isEmpty ?? true {
+      localizedDescription = "Firezone"
     }
   }
 }
