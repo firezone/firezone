@@ -190,18 +190,11 @@ export default function Page() {
         <div className="gap-8 py-8 px-4 mx-auto max-w-screen-xl flex flex-col-reverse lg:grid lg:grid-cols-2 xl:gap-16 sm:py-16 lg:px-6 ">
           <div className="flex flex-col">
             <Image
-              className="rounded shadow-md"
               width={600}
               height={500}
               alt="Feature 2"
               src="/images/feature-2.png"
             />
-            <Link
-              className="mt-4 lg:mx-auto text-accent-600 hover:underline"
-              href="https://core.ac.uk/download/pdf/322886318.pdf"
-            >
-              Performance comparison of VPN solutions (Osswald et al.)
-            </Link>
           </div>
           <div>
             <h4 className="mb-8 text-lg font-semibold tracking-tight text-primary-450 ">
@@ -275,7 +268,6 @@ export default function Page() {
             </ul>
           </div>
           <Image
-            className="rounded shadow-md"
             width={600}
             height={500}
             alt="Feature 3"
