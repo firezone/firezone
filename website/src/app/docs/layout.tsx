@@ -12,8 +12,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               color="info"
               html={`
                 <!-- TODO: Link to EOL blogpost -->
-                You're viewing documentation for the legacy version of Firezone
-                  which has reached EOL. <a href="/kb">View the latest docs here</a>.
+                You're viewing documentation for the legacy version of Firezone.
+                <a href="/kb">View the latest docs here</a>.
               `}
             />
             {children}

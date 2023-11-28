@@ -2,8 +2,9 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Gateway Deployment • Firezone Docs",
-  description: "Firezone Documentation",
+  title: "Authentication Overview • Firezone Docs",
+  description:
+    "Firezone supports Google Workspace, OIDC, and email authentication methods.",
 };
 
 export default function Page() {

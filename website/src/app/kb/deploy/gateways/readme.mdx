@@ -1,0 +1,29 @@
+# Deploy a Gateway
+
+This guide covers deployment of the Firezone gateway.
+
+Gateways expect to have unobstructed network-level access to resources within
+the same site.
+
+## Prerequisites
+
+- Any Linux distribution with kernel 5.0 or higher
+- Docker Engine (for docker-based installs)
+- Systemd (for systemd-based installs)
+
+## Deploy with the Admin Portal
+
+Go to `Sites` -> `<site>` -> `Deploy a Gateway` and follow the prompts. This
+will deploy a single gateway.
+
+## High availability
+
+Two or more Gateways deployed in the same site will automatically fail over and
+load balance for each other.
+
+Fail over takes around 60 to 120 seconds depending the connected clients'
+network environment.
+
+Load balancing happens automatically when a client connects and uses a
+least-latency approach which always prioritizes gateways with the least latency
+to the client in question.
