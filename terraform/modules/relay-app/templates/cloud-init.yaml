@@ -88,6 +88,43 @@ write_files:
       ExecStop=/usr/bin/docker stop otel-collector
       ExecStopPost=/usr/bin/docker rm otel-collector
 
+  - path: /etc/iptables/rules.v6
+    permissions: "0644"
+    owner: root
+    content: |
+      *filter
+      :INPUT DROP [0:0]
+      :FORWARD DROP [0:0]
+      :OUTPUT DROP [0:0]
+      :DOCKER - [0:0]
+      :DOCKER-ISOLATION-STAGE-1 - [0:0]
+      :DOCKER-ISOLATION-STAGE-2 - [0:0]
+      :DOCKER-USER - [0:0]
+      -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+      -A INPUT -i lo -j ACCEPT
+      -A INPUT -p ipv6-icmp -j ACCEPT
+      -A INPUT -p tcp -m tcp --dport 22 -j ACCEPT
+      -A INPUT -p tcp -j ACCEPT
+      -A INPUT -p udp -j ACCEPT
+      -A FORWARD -j DOCKER-USER
+      -A FORWARD -j DOCKER-ISOLATION-STAGE-1
+      -A FORWARD -o docker0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+      -A FORWARD -o docker0 -j DOCKER
+      -A FORWARD -i docker0 ! -o docker0 -j ACCEPT
+      -A FORWARD -i docker0 -o docker0 -j ACCEPT
+      -A FORWARD -p tcp -j ACCEPT
+      -A FORWARD -p udp -j ACCEPT
+      -A FORWARD -p ipv6-icmp -j ACCEPT
+      -A OUTPUT -m state --state NEW,RELATED,ESTABLISHED -j ACCEPT
+      -A OUTPUT -o lo -j ACCEPT
+      -A DOCKER-ISOLATION-STAGE-1 -i docker0 ! -o docker0 -j DOCKER-ISOLATION-STAGE-2
+      -A DOCKER-ISOLATION-STAGE-1 -j RETURN
+      -A DOCKER-ISOLATION-STAGE-2 -o docker0 -j DROP
+      -A DOCKER-ISOLATION-STAGE-2 -j RETURN
+      -A DOCKER-USER -j RETURN
+      COMMIT
+
 runcmd:
+  - sudo ip6tables-restore < /etc/iptables/rules.v6
   - systemctl daemon-reload
   - systemctl start otel-collector.service
