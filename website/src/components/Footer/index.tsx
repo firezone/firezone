@@ -41,6 +41,11 @@ export default function Footer() {
                   </Link>
                 </li>
                 <li className="mb-4">
+                  <Link href="/pricing" className="hover:underline">
+                    Pricing
+                  </Link>
+                </li>
+                <li className="mb-4">
                   <Link href="/blog" className="hover:underline">
                     Blog
                   </Link>
