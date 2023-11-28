@@ -5,8 +5,11 @@ version = "1.20231001.0"
 edition = "2021"
 
 [build-dependencies]
-embed-manifest = "1.4.0"
-winres = "0.1.12"
+embed-resource = "2.4.0"
+
+[dependencies]
+native-windows-derive = "1.0.5"
+native-windows-gui = "1.0.13"
 
 [dependencies.windows]
 version = "0.52.0"

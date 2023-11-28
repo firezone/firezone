@@ -1,0 +1,3 @@
+#define RT_MANIFEST 24
+1 RT_MANIFEST "firezone-windows-client.exe.manifest"
+MAINICON ICON "favicon.ico"
