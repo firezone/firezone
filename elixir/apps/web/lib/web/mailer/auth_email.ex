@@ -44,7 +44,7 @@ defmodule Web.Mailer.AuthEmail do
       )
 
     default_email()
-    |> subject("Firezone One-Time Password")
+    |> subject("Firezone sign in token")
     |> to(identity.provider_identifier)
     |> render_body(__MODULE__, :sign_in_link,
       account: identity.account,

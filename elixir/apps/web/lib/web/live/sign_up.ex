@@ -254,7 +254,7 @@ defmodule Web.SignUp do
           :provider,
           fn _repo, %{account: account} ->
             Auth.create_provider(account, %{
-              name: "One-Time Password",
+              name: "Email",
               adapter: :email,
               adapter_config: %{}
             })

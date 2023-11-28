@@ -100,7 +100,7 @@ defmodule Domain.Config.Definitions do
        Providers:
 
         * `openid_connect` is used to authenticate users via OpenID Connect, this is recommended for production use;
-        * `email` is used to authenticate users via one-time passwords sent to the email;
+        * `email` is used to authenticate users via sign in tokens sent to the email;
         * `token` is used to authenticate service accounts using an API token;
         * `userpass` is used to authenticate users with username and password, should be used
         with extreme care and is not recommended for production use.
@@ -460,7 +460,7 @@ defmodule Domain.Config.Definitions do
   )
 
   ##############################################
-  ## Userpass / SAML / OIDC / OTP authentication
+  ## Userpass / SAML / OIDC / Email authentication
   ##############################################
 
   @doc """

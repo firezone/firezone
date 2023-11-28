@@ -85,7 +85,7 @@ defmodule Web.SignIn do
 
               <:item :if={adapter_enabled?(@providers_by_adapter, :email)}>
                 <h3 class="text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl">
-                  Sign in with a one-time password
+                  Sign in with email
                 </h3>
 
                 <.providers_group_form
@@ -200,7 +200,7 @@ defmodule Web.SignIn do
 
       <:actions>
         <.button phx-disable-with="Sending..." class="w-full">
-          Request one-time password
+          Request sign in link
         </.button>
       </:actions>
     </.simple_form>

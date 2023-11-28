@@ -125,7 +125,7 @@ defmodule Web.Settings.IdentityProviders.Components do
     """
   end
 
-  def adapter_name(:email), do: "One-Time Password"
+  def adapter_name(:email), do: "Email"
   def adapter_name(:userpass), do: "Username & Password"
   def adapter_name(:token), do: "API Access Token"
   def adapter_name(:workos), do: "WorkOS"
