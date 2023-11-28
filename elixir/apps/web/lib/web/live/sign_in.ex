@@ -200,7 +200,7 @@ defmodule Web.SignIn do
 
       <:actions>
         <.button phx-disable-with="Sending..." class="w-full">
-          Request sign in link
+          Request sign in token
         </.button>
       </:actions>
     </.simple_form>
