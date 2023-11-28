@@ -113,7 +113,7 @@ jobs:
       tag_name: ${{ steps.update-release-draft.outputs.tag_name }}
       upload_url: ${{ steps.update-release-draft.outputs.upload_url }}
 
-  build-push-release-artifacts:
+  build-push-linux-release-artifacts:
     permissions:
       id-token: write
       contents: write
@@ -244,7 +244,7 @@ jobs:
           retention-days: 1
 
   # Build for Windows with Cross
-  build-push-release-artifacts-windows:
+  build-push-windows-release-artifacts:
     permissions:
       id-token: write
       contents: write
@@ -302,7 +302,7 @@ jobs:
   merge-release-artifacts:
     permissions:
       id-token: write
-    needs: build-push-release-artifacts
+    needs: build-push-linux-release-artifacts
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
