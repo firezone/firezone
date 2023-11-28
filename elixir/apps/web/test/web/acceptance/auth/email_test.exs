@@ -9,11 +9,11 @@ defmodule Web.Acceptance.SignIn.EmailTest do
 
     session
     |> visit(~p"/#{account}")
-    |> assert_el(Query.text("Sign in with a magic link"))
+    |> assert_el(Query.text("Sign in with email"))
     |> fill_form(%{
       "email[provider_identifier]" => "foo@bar.com"
     })
-    |> click(Query.button("Request sign in link"))
+    |> click(Query.button("Request sign in token"))
     |> assert_el(Query.text("Please check your email"))
   end
 
@@ -40,14 +40,14 @@ defmodule Web.Acceptance.SignIn.EmailTest do
   defp email_login_flow(session, account, email) do
     session
     |> visit(~p"/#{account}")
-    |> assert_el(Query.text("Sign in with a magic link"))
+    |> assert_el(Query.text("Sign in with email"))
     |> fill_form(%{
       "email[provider_identifier]" => email
     })
-    |> click(Query.button("Request sign in link"))
+    |> click(Query.button("Request sign in token"))
     |> assert_el(Query.text("Please check your email"))
     |> click(Query.link("Open Local"))
-    |> click(Query.link("Firezone Sign In Link"))
+    |> click(Query.link("Firezone sign in token"))
     |> assert_el(Query.text("Text body"))
 
     email_text = text(session, Query.css("body"))

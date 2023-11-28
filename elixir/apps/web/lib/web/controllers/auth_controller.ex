@@ -170,7 +170,7 @@ defmodule Web.AuthController do
         redirect_params = put_if_not_empty(redirect_params, "provider_identifier", identity_id)
 
         conn
-        |> put_flash(:error, "The sign in link is invalid or expired.")
+        |> put_flash(:error, "The sign in token is invalid or expired.")
         |> redirect(
           to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}?#{redirect_params}"
         )

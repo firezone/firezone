@@ -45,8 +45,8 @@ defmodule Web.SignIn.Email do
 
             <div>
               <p>
-                Should the provided email be registered, a sign-in link and token are dispatched to your email account.
-                Please copy and paste this token into the form below to proceed with your login.
+                Should the provided email be registered, a sign in token has been sent to your email account.
+                Please copy and paste this into the form below to proceed with your login.
               </p>
               <form
                 id="verify-sign-in-token"
