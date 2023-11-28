@@ -439,7 +439,7 @@ defmodule Web.AuthControllerTest do
         )
 
       assert_email_sent(fn email ->
-        assert email.subject == "Firezone Sign In Link"
+        assert email.subject == "Firezone sign in token"
 
         verify_sign_in_token_path =
           ~p"/#{account}/sign_in/providers/#{provider.id}/verify_sign_in_token"
@@ -472,7 +472,7 @@ defmodule Web.AuthControllerTest do
         )
 
       assert_email_sent(fn email ->
-        assert email.subject == "Firezone Sign In Link"
+        assert email.subject == "Firezone sign in token"
         assert email.text_body =~ "Please copy the code and paste it into"
       end)
 
@@ -552,7 +552,7 @@ defmodule Web.AuthControllerTest do
       assert redirected_to(conn) ==
                ~p"/#{provider.account_id}/sign_in/providers/email/#{provider}?provider_identifier=#{identity_id}"
 
-      assert flash(conn, :error) == "The sign in link is invalid or expired."
+      assert flash(conn, :error) == "The sign in token is invalid or expired."
     end
 
     test "redirects back to the form when sign in token is invalid", %{conn: conn} do
@@ -575,7 +575,7 @@ defmodule Web.AuthControllerTest do
                  "&client_csrf_token=foo" <>
                  "&provider_identifier=#{identity.id}"
 
-      assert flash(conn, :error) == "The sign in link is invalid or expired."
+      assert flash(conn, :error) == "The sign in token is invalid or expired."
     end
 
     test "redirects back to the form when browser token is invalid", %{conn: conn} do
@@ -613,7 +613,7 @@ defmodule Web.AuthControllerTest do
                  "&client_csrf_token=bar" <>
                  "&provider_identifier=#{identity.id}"
 
-      assert flash(conn, :error) == "The sign in link is invalid or expired."
+      assert flash(conn, :error) == "The sign in token is invalid or expired."
     end
 
     test "redirects back to the form when browser token is not set", %{conn: conn} do
@@ -646,7 +646,7 @@ defmodule Web.AuthControllerTest do
                ~p"/#{account}/sign_in/providers/email/#{provider}" <>
                  "?provider_identifier=#{identity.id}"
 
-      assert flash(conn, :error) == "The sign in link is invalid or expired."
+      assert flash(conn, :error) == "The sign in token is invalid or expired."
     end
 
     test "redirects to the return to path when credentials are valid", %{conn: conn} do
