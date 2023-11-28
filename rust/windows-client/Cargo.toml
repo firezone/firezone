@@ -6,9 +6,7 @@ edition = "2021"
 
 [build-dependencies]
 embed-manifest = "1.4.0"
-
-[dependencies]
-
+winres = "0.1.12"
 
 [dependencies.windows]
 version = "0.52.0"

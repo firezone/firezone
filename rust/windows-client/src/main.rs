@@ -47,14 +47,23 @@ fn main() -> Result<()> {
 
         // Create tray icon
 
-        let _notify_icon_data = NOTIFYICONDATAA {
+        let sz_tip = {
+            let mut bytes = [0u8; 128];
+            let s = "Firezone client\0";
+            bytes[0..s.len()].copy_from_slice(s.as_bytes());
+            bytes
+        };
+
+        // let icon = LoadIconA(instance, PCSTR ("1\0".as_bytes().as_ptr())).unwrap();
+
+        let notify_icon_data = NOTIFYICONDATAA {
             cbSize: std::mem::size_of::<NOTIFYICONDATAA>().try_into().unwrap(),
             hWnd: window,
             uID: 0,
-            uFlags: NOTIFY_ICON_DATA_FLAGS(0),
+            uFlags: NIF_TIP,
             uCallbackMessage: 0,
             hIcon: HICON(0),
-            szTip: [0; 128],
+            szTip: sz_tip,
             dwState: NOTIFY_ICON_STATE(0),
             dwStateMask: 0,
             szInfo: [0; 256],
@@ -64,6 +73,8 @@ fn main() -> Result<()> {
             guidItem: GUID::new().unwrap(),
             hBalloonIcon: HICON(0),
         };
+
+        Shell_NotifyIconA(NIM_ADD, &notify_icon_data);
 
         let mut message = MSG::default();
 
