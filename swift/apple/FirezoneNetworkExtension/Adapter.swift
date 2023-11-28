@@ -222,17 +222,22 @@ class Adapter {
 // MARK: Device unique identifiers
 
 extension Adapter {
+  // uuidString and copyMACAddress() *should* reliably return valid Strings, but if
+  // for whatever reason they're nil, return a random UUID instead to prevent
+  // upsert collisions in the portal.
   func getDeviceId() -> String {
     #if os(iOS)
       guard let extId = UIDevice.current.identifierForVendor?.uuidString else {
-        // Send a blank string, letting either connlib or the portal handle this
-        return ""
+        // FIXME: We should store this random deviceID fallback in the AppStore
+        // to use for upsert instead of generating a random UUID each time.
+        return UUID().uuidString
       }
 
     #elseif os(macOS)
       guard let extId = PrimaryMacAddress.copyMACAddress() as? String else {
-        // Send a blank string, letting either connlib or the portal handle this
-        return ""
+        // FIXME: We should store this random deviceID fallback in the AppStore
+        // to use for upsert instead of generating a random UUID each time.
+        return UUID().uuidString
       }
     #else
       #error("Unsupported platform")
