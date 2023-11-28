@@ -93,7 +93,7 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
       assert row["sync status"] =~ "Created 1 identity and 0 groups"
     end)
     |> with_table_row("name", email_provider.name, fn row ->
-      assert row["type"] == "Magic Link"
+      assert row["type"] == "One-Time Password"
       assert row["status"] =~ "Disabled"
       assert row["sync status"] =~ "Created 0 identities and 0 groups"
     end)
