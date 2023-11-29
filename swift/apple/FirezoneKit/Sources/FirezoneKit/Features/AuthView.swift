@@ -18,6 +18,8 @@ final class AuthViewModel: ObservableObject {
 
   private var cancellables = Set<AnyCancellable>()
 
+  @Published var buttonTitle = "Sign In"
+
   func signInButtonTapped() async {
     guard let accountId = authStore.tunnelStore.tunnelAuthStatus.accountId(),
       !accountId.isEmpty
@@ -41,7 +43,7 @@ struct AuthView: View {
     VStack {
       Text("Welcome to Firezone").font(.largeTitle)
 
-      Button("Sign in") {
+      Button(self.model.buttonTitle) {
         Task {
           await model.signInButtonTapped()
         }
