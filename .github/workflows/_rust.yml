@@ -64,6 +64,26 @@ jobs:
       - uses: ./.github/actions/setup-rust
       - run: cargo test --all-features ${{ matrix.packages }}
 
+  temp-build-windows-hello-world:
+    runs-on: windows-2019
+    defaults:
+      run:
+        working-directory: ./rust/hello-world
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Build release binaries
+        run: |
+          cargo build --release
+          cp ../target/release/hello-world.exe hello-world-x64.exe
+      - name: Save build artifacts
+        uses: actions/upload-artifacts@v3
+        with:
+          name: hello-world-x64.exe
+          path: hello-wolrd-x64.exe
+
   temp-build-windows-artifacts:
     runs-on: windows-2019
     defaults:
