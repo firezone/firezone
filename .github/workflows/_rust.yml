@@ -79,7 +79,7 @@ jobs:
             shortname: x64
         name:
           - package: hello-world
-            artifact: hello-world.exe
+            artifact: hello-world
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}.exe
     steps:
