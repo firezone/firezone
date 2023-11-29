@@ -89,6 +89,9 @@ export default function KbSidebar() {
                 <Item href="/kb/administer/upgrading" label="Upgrading" />
               </li>
               <li>
+                <Item href="/kb/administer/dns" label="Configure DNS" />
+              </li>
+              <li>
                 <Item
                   href="/kb/administer/backup-restore"
                   label="Backup and restore"
