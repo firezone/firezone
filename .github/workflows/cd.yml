@@ -243,18 +243,20 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Build for Windows with Cross
+  # Build for Windows
   build-push-windows-release-artifacts:
     permissions:
       id-token: write
       contents: write
     needs: update-release-draft
-    runs-on: ubuntu-22.04
+    runs-on: windows-2019
     defaults:
       run:
         working-directory: ./rust
     strategy:
       fail-fast: false
+      # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
+      # In the future we could try to cross-compile aarch64-windows here.
       matrix:
         arch:
           - target: x86_64-pc-windows-msvc

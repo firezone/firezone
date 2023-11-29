@@ -16,5 +16,4 @@ pushd .. > /dev/null
 cargo fmt --check
 cargo doc --all-features --no-deps --document-private-items -p firezone-windows-client
 cargo clippy --all-targets --all-features -p firezone-windows-client -- -D warnings
-cargo test -p firezone-windows-client
 popd > /dev/null

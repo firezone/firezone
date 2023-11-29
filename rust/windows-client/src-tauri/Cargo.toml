@@ -13,8 +13,11 @@ connlib-client-shared = { workspace = true }
 secrecy.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tauri = { version = "1.5", features = [ "system-tray", "shell-open"] }
 thiserror = "1.0.50"
+
+[target.'cfg(windows)'.dependencies]
+tauri = { version = "1.5", features = [ "system-tray", "shell-open"] }
+
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.52.0"
