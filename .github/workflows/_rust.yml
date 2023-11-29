@@ -82,8 +82,6 @@ jobs:
           cargo tauri build
           cp ../target/release/firezone-windows-client.exe $BINARY_DEST_PATH
           sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
-          ls -la $BINARY_DEST_PATH
-          ls -la $BINARY_DEST_PATH.sha256sum.txt
       - name: Save build artifacts
         uses: actions/upload-artifact@v3
         with:
