@@ -9,6 +9,12 @@ use tauri::{
     SystemTrayMenuItem,
     SystemTraySubmenu,
 };
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+enum Error {
+
+}
 
 fn main() {
     let mut args = std::env::args();
@@ -18,8 +24,41 @@ fn main() {
     match args.next().as_deref() {
         None | Some("tauri") => main_tauri(),
         Some("debug") => println!("debug"),
+        Some("debug-connlib") => main_debug_connlib(),
         Some(cmd) => println!("Subcommand `{cmd}` not recognized"),
     }
+}
+
+fn main_debug_connlib() {
+    use std::str::FromStr;
+    use connlib_client_shared::{Callbacks, Session};
+    use connlib_client_shared::Error as ConnlibError;
+
+    #[derive(Clone, Default)]
+    struct WindowsCallbacks {
+
+    }
+
+    impl Callbacks for WindowsCallbacks {
+        type Error = Error;
+
+        fn on_disconnect(&self, error: Option<&ConnlibError>) -> Result<(), Self::Error> {
+            panic!("error recovery not implemented. Error: {error:?}");
+        }
+
+        fn on_error(&self, error: &ConnlibError) -> Result<(), Self::Error> {
+            panic!("error recovery not implemented. Error: {error}");
+        }
+    }
+
+    let callbacks = WindowsCallbacks::default();
+
+    let _session = Session::connect (
+        "https://api.firez.one/firezone",
+        secrecy::SecretString::from_str("bogus_secret").unwrap(),
+        "trisha-laptop-2023".to_string(),
+        callbacks,
+    );
 }
 
 fn main_tauri() {
