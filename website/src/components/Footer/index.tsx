@@ -198,7 +198,7 @@ export default function Footer() {
           <div className="flex mt-4 space-x-6 sm:justify-center sm:mt-0">
             <TwitterIcon url="https://twitter.com/firezonehq" />
             <GitHubIcon url="https://github.com/firezone" />
-            <LinkedInIcon url="https://linkedin.com/comppany/firezonehq" />
+            <LinkedInIcon url="https://linkedin.com/company/firezonehq" />
           </div>
         </div>
       </div>
