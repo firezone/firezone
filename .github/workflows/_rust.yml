@@ -64,6 +64,32 @@ jobs:
       - uses: ./.github/actions/setup-rust
       - run: cargo test --all-features ${{ matrix.packages }}
 
+  temp-build-windows-artifacts:
+    runs-on: windows-2019
+    defaults:
+      run:
+        working-directory: ./rust/windows-client
+    env:
+      BINARY_DEST_PATH: windows-client-x64.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Build release binaries
+        run: |
+          cargo install tauri-cli
+          cargo tauri build
+          cp ../target/release/firezone-windows-client.exe $BINARY_DEST_PATH
+          sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
+          ls -la $BINARY_DEST_PATH
+          ls -la $BINARY_DEST_PATH.sha256sum.txt
+      - name: Save build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: firezone-windows-client-x64.exe
+          path: ${{ BINARY_DEST_PATH }}
+
   smoke-test-relay:
     runs-on: ubuntu-22.04
     defaults:

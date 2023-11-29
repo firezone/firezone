@@ -293,8 +293,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -xe
-
           gh release upload ${{ needs.update-release-draft.outputs.tag_name }} \
             ${{ env.BINARY_DEST_PATH }} \
             ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
