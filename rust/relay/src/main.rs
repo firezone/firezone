@@ -367,8 +367,9 @@ where
         let _guard = span.enter();
 
         loop {
-            ready!(self.outbound_ip4_data_sender.poll_ready_unpin(cx))?;
-            ready!(self.outbound_ip6_data_sender.poll_ready_unpin(cx))?;
+            // Don't fail these results. One of the senders might not be active because we might not be listening on IP4 / IP6.
+            let _ = ready!(self.outbound_ip4_data_sender.poll_ready_unpin(cx));
+            let _ = ready!(self.outbound_ip6_data_sender.poll_ready_unpin(cx));
 
             let now = SystemTime::now();
 
