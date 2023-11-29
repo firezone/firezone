@@ -10,6 +10,57 @@ use tauri::{
     SystemTraySubmenu,
 };
 
+fn main() {
+    let mut args = std::env::args();
+    // Ignore the exe name
+    args.next().unwrap();
+
+    match args.next().as_deref() {
+        None | Some("tauri") => main_tauri(),
+        Some("debug") => println!("debug"),
+        Some(cmd) => println!("Subcommand `{cmd}` not recognized"),
+    }
+}
+
+fn main_tauri() {
+    let tray = SystemTray::new().with_menu(signed_out_menu());
+
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![greet])
+        .system_tray (tray)
+        .on_system_tray_event(|app, event| match event {
+            // Opening the system tray icon on left click is not working at time of writing https://github.com/tauri-apps/tauri/issues/7719
+            SystemTrayEvent::MenuItemClick {id, ..} => {
+                match id.as_str() {
+                    "/sign_in" => {
+                        app.tray_handle().set_menu(signed_in_menu("user@example.com", &[
+                            ("CloudFlare", "1.1.1.1"),
+                            ("Google", "8.8.8.8"),
+                        ])).unwrap();
+                    },
+                    "/sign_out" => app.tray_handle().set_menu(signed_out_menu()).unwrap(),
+                    "/about" => println!("About Firezone"),
+                    "/settings" => {
+                        app.tray_handle().set_menu(signed_in_menu("user@example.com", &[
+                            ("CloudFlare", "1.1.1.1"),
+                            ("New resource", "127.0.0.1"),
+                            ("Google", "8.8.8.8"),
+                        ])).unwrap();
+                    },
+                    "/quit" => app.exit(0),
+                    id => {
+                        if let Some (addr) = id.strip_prefix("/resource/") {
+                            println!("TODO copy {addr} to clipboard");
+                        }
+                    }
+                }
+            },
+            _ => {},
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -50,43 +101,4 @@ fn signed_out_menu() -> SystemTrayMenu {
     .add_item(CustomMenuItem::new("/settings".to_string(), "Settings"))
     .add_item(CustomMenuItem::new("/quit".to_string(), "Quit Firezone")
     .accelerator("Ctrl+Q"))
-}
-
-fn main() {
-    let tray = SystemTray::new().with_menu(signed_out_menu());
-
-    tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![greet])
-        .system_tray (tray)
-        .on_system_tray_event(|app, event| match event {
-            // Opening the system tray icon on left click is not working at time of writing https://github.com/tauri-apps/tauri/issues/7719
-            SystemTrayEvent::MenuItemClick {id, ..} => {
-                match id.as_str() {
-                    "/sign_in" => {
-                        app.tray_handle().set_menu(signed_in_menu("user@example.com", &[
-                            ("CloudFlare", "1.1.1.1"),
-                            ("Google", "8.8.8.8"),
-                        ])).unwrap();
-                    },
-                    "/sign_out" => app.tray_handle().set_menu(signed_out_menu()).unwrap(),
-                    "/about" => println!("About Firezone"),
-                    "/settings" => {
-                        app.tray_handle().set_menu(signed_in_menu("user@example.com", &[
-                            ("CloudFlare", "1.1.1.1"),
-                            ("New resource", "127.0.0.1"),
-                            ("Google", "8.8.8.8"),
-                        ])).unwrap();
-                    },
-                    "/quit" => app.exit(0),
-                    id => {
-                        if let Some (addr) = id.strip_prefix("/resource/") {
-                            println!("TODO copy {addr} to clipboard");
-                        }
-                    }
-                }
-            },
-            _ => {},
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
 }
