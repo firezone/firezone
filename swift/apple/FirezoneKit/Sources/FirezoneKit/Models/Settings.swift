@@ -57,7 +57,7 @@ struct AdvancedSettings: Equatable {
         authBaseURLString: "https://app.firezone.dev/",
         apiURLString: "wss://api.firezone.dev/",
         connlibLogFilterString:
-          "connlib_client_apple=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn"
+          "connlib_client_apple=info,firezone_tunnel=trace,connlib_shared=info,connlib_client_shared=info,warn"
       )
     #endif
   }()

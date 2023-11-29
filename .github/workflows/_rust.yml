@@ -27,7 +27,7 @@ jobs:
           - runs-on: macos-13
             packages: -p connlib-client-apple
           - runs-on: windows-2022
-            packages: -p connlib-client-shared
+            packages: -p connlib-client-shared -p firezone-windows-client
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -55,9 +55,9 @@ jobs:
           - runs-on: macos-13
             packages: -p connlib-client-apple
           - runs-on: windows-2019
-            packages: -p connlib-client-shared
+            packages: -p firezone-windows-client -p connlib-client-shared
           - runs-on: windows-2022
-            packages: -p connlib-client-shared
+            packages: -p firezone-windows-client -p connlib-client-shared
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
