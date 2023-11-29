@@ -597,8 +597,8 @@ impl Default for ClientState {
             dns_strategy: Default::default(),
             // TODO: decide ip ranges
             ip_provider: IpProvider::new(
-                "fd00:2021:1111:ffff:ffff:ffff::/56".parse().unwrap(),
-                "100.72.250.0/16".parse().unwrap(),
+                "100.96.0.0/11".parse().unwrap(),
+                "fd00:2021:1112::/106".parse().unwrap(),
             ),
             dns_resources_internal_ips: Default::default(),
             dns_resources_external_ips: Default::default(),

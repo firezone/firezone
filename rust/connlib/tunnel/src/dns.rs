@@ -93,6 +93,7 @@ pub(crate) fn parse<'a>(
         None => None,
     };
     let response = build_dns_with_answer(message, question.qname(), &resource)?;
+    tracing::trace!("{response:?}");
     Some(ResolveStrategy::LocalResponse((
         build_response(packet, response)?,
         resource.and_then(|r| r.addr()),

@@ -456,7 +456,8 @@ IO.puts("")
     %{
       type: :dns,
       address: "google.com",
-      connections: [%{gateway_group_id: gateway_group.id}]
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [%{protocol: :all}]
     },
     admin_subject
   )
@@ -493,7 +494,16 @@ IO.puts("  #{dns_gitlab_resource.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
 IO.puts("")
 
-Policies.create_policy(
+{:ok, _} = Policies.create_policy(
+  %{
+    name: "All Access To Google",
+    actor_group_id: all_group.id,
+    resource_id: dns_google_resource.id
+  },
+  admin_subject
+)
+
+{:ok, _} = Policies.create_policy(
   %{
     name: "Eng Access To Gitlab",
     actor_group_id: eng_group.id,
@@ -502,7 +512,7 @@ Policies.create_policy(
   admin_subject
 )
 
-Policies.create_policy(
+{:ok, _} = Policies.create_policy(
   %{
     name: "All Access To Network",
     actor_group_id: all_group.id,

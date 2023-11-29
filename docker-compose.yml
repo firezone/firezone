@@ -128,7 +128,6 @@ services:
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/client:${VERSION:-main}
     dns:
       - 100.100.111.1
-      - 8.8.8.8
     cap_add:
       - NET_ADMIN
     sysctls:

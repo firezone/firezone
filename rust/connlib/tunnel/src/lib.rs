@@ -243,6 +243,7 @@ where
             let dns_strategy = role_state.dns_strategy;
             let mut packet = match role_state.handle_dns(packet, dns_strategy) {
                 Ok(Some((response, ip))) => {
+                    tracing::trace!("{ip:?}");
                     device.write(response)?;
                     if let Some(ip) = ip {
                         let device = device_wrapper.clone();
