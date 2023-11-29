@@ -13,7 +13,7 @@ yamllint ../../.github/workflows/*
 
 # Fail on Rust errors
 pushd .. > /dev/null
+cargo clippy --all-targets --all-features -p firezone-windows-client -- -D warnings
 cargo fmt --check
 cargo doc --all-features --no-deps --document-private-items -p firezone-windows-client
-cargo clippy --all-targets --all-features -p firezone-windows-client -- -D warnings
 popd > /dev/null

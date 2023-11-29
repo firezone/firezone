@@ -41,9 +41,10 @@
       {
         "fullscreen": false,
         "resizable": true,
-        "title": "tauri-client",
-        "width": 800,
-        "height": 600
+        "label": "main-window",
+        "title": "firezone-windows-client",
+        "width": 640,
+        "height": 480
       }
     ]
   }

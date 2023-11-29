@@ -64,7 +64,7 @@ mod details {
 #[cfg(target_os = "windows")]
 mod details {
     use tauri::{
-        CustomMenuItem, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
+        CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
         SystemTraySubmenu,
     };
 
@@ -72,6 +72,15 @@ mod details {
         let tray = SystemTray::new().with_menu(signed_out_menu());
 
         tauri::Builder::default()
+            .on_window_event(|event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
+                    // Keep the frontend running but just hide this webview
+                    // Per https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
+
+                    event.window().hide().unwrap();
+                    api.prevent_close();
+                }
+            })
             .invoke_handler(tauri::generate_handler![greet])
             .system_tray(tray)
             .on_system_tray_event(|app, event| {
@@ -86,7 +95,16 @@ mod details {
                                 .unwrap();
                         }
                         "/sign_out" => app.tray_handle().set_menu(signed_out_menu()).unwrap(),
-                        "/about" => println!("About Firezone"),
+                        "/about" => {
+                            let win = app.get_window("main-window").unwrap();
+
+                            if win.is_visible().unwrap() {
+                                // If we close the window here, we can't re-open it, we'd have to fully re-create it. Not needed for MVP - We agreed 100 MB is fine for the GUI client.
+                                win.hide().unwrap();
+                            } else {
+                                win.show().unwrap();
+                            }
+                        }
                         "/settings" => {
                             app.tray_handle()
                                 .set_menu(signed_in_menu(
@@ -108,8 +126,16 @@ mod details {
                     }
                 }
             })
-            .run(tauri::generate_context!())
-            .expect("error while running tauri application");
+            .build(tauri::generate_context!())
+            .expect("error while building tauri application")
+            .run(|_app_handle, event| {
+                if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                    // Don't exit if we close our main window
+                    // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
+
+                    api.prevent_exit();
+                }
+            });
     }
 
     pub fn main_debug_wintun() {
