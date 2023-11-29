@@ -78,11 +78,12 @@ jobs:
         run: |
           cargo build --release
           mv ../target/release/hello-world.exe hello-world-x64.exe
+          echo good
       - name: Save build artifacts
         uses: actions/upload-artifact@v3
         with:
           name: hello-world-x64.exe
-          path: ${{ env.working-directory }}/hello-world-x64.exe
+          path: ${{ github.workspace }}/hello-world-x64.exe
 
   temp-build-windows-artifacts:
     runs-on: windows-2019
