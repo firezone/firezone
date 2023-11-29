@@ -1668,6 +1668,7 @@ dependencies = [
  "tauri-build",
  "thiserror",
  "windows 0.52.0",
+ "wintun",
 ]
 
 [[package]]

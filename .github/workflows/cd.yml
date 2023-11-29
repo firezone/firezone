@@ -252,7 +252,7 @@ jobs:
     runs-on: windows-2019
     defaults:
       run:
-        working-directory: ./rust
+        working-directory: ./rust/windows-client
     strategy:
       fail-fast: false
       # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
@@ -263,7 +263,7 @@ jobs:
             shortname: x64
         name:
           - package: firezone-windows-client
-            artifact: windows-client
+            artifact: windows-client.exe
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
     steps:
@@ -271,17 +271,17 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: x86_64-pc-windows-msvc
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cross
       - name: Build release binaries
         run: |
-          set -xe
+          cargo install tauri-cli
 
-          cross build --release -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+          # Tauri build already defaults to '--release'
+          cargo tauri build --target ${{ matrix.arch.target }}
 
           # Used for release artifact
           cp target/${{ matrix.arch.target }}/release/${{ matrix.name.package }} $BINARY_DEST_PATH
+
+          # There's an MSI and NSIS installer here but their names include the version so I'll try those later.
 
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/release/${{ matrix.name.package }} ${{ matrix.name.package }}

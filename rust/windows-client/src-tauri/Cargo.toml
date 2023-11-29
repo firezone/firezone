@@ -16,8 +16,9 @@ serde_json = "1.0"
 thiserror = "1.0.50"
 
 [target.'cfg(windows)'.dependencies]
+# Tauri works fine on Linux, but it requires a lot of build-time deps like glib and gdk, so I've blocked it out for now.
 tauri = { version = "1.5", features = [ "system-tray", "shell-open"] }
-
+wintun = "0.3.2"
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.52.0"

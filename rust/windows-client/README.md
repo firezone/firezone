@@ -8,7 +8,7 @@ Given this Git repo is in the dir "firezone":
 
 ```
 # First-time setup - Install Tauri's dev server / hot-reload tool
-cargo install cargo-tauri
+cargo install tauri-cli
 
 # Navigate to this dir. This is not the Rust project's root, but it's the root for the whole Tauri project.
 cd firezone/rust/windows-client

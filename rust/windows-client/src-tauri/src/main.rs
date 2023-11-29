@@ -12,9 +12,10 @@ fn main() {
     args.next().unwrap();
 
     match args.next().as_deref() {
-        None | Some("tauri") => tauri::main(),
+        None | Some("tauri") => details::main_tauri(),
         Some("debug") => println!("debug"),
         Some("debug-connlib") => main_debug_connlib(),
+        Some("debug-wintun") => details::main_debug_wintun(),
         Some(cmd) => println!("Subcommand `{cmd}` not recognized"),
     }
 }
@@ -50,20 +51,24 @@ fn main_debug_connlib() {
 }
 
 #[cfg(target_os = "linux")]
-mod tauri {
-    pub fn main() {
+mod details {
+    pub fn main_tauri() {
         panic!("GUI not implemented for Linux.");
+    }
+
+    pub fn main_debug_wintun() {
+        panic!("Wintun not implemented for Linux.");
     }
 }
 
 #[cfg(target_os = "windows")]
-mod tauri {
+mod details {
     use tauri::{
         CustomMenuItem, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
         SystemTraySubmenu,
     };
 
-    pub fn main() {
+    pub fn main_tauri() {
         let tray = SystemTray::new().with_menu(signed_out_menu());
 
         tauri::Builder::default()
@@ -105,6 +110,57 @@ mod tauri {
             })
             .run(tauri::generate_context!())
             .expect("error while running tauri application");
+    }
+
+    pub fn main_debug_wintun() {
+        use std::sync::Arc;
+
+        //Must be run as Administrator because we create network adapters
+        //Load the wintun dll file so that we can call the underlying C functions
+        //Unsafe because we are loading an arbitrary dll file
+        let wintun = unsafe { wintun::load_from_path("../wintun/bin/amd64/wintun.dll") }
+            .expect("Failed to load wintun dll");
+
+        //Try to open an adapter with the name "Demo"
+        let adapter = match wintun::Adapter::open(&wintun, "Demo") {
+            Ok(a) => a,
+            Err(_) => {
+                //If loading failed (most likely it didn't exist), create a new one
+                wintun::Adapter::create(&wintun, "Demo", "Example manor hatch stash", None)
+                    .expect("Failed to create wintun adapter!")
+            }
+        };
+        //Specify the size of the ring buffer the wintun driver should use.
+        let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY).unwrap());
+
+        //Get a 20 byte packet from the ring buffer
+        let mut packet = session.allocate_send_packet(20).unwrap();
+        let bytes: &mut [u8] = packet.bytes_mut();
+        //Write IPV4 version and header length
+        bytes[0] = 0x40;
+
+        //Finish writing IP header
+        bytes[9] = 0x69;
+        bytes[10] = 0x04;
+        bytes[11] = 0x20;
+        //...
+
+        //Send the packet to wintun virtual adapter for processing by the system
+        session.send_packet(packet);
+
+        println!("Sleeping 1 minute, see if the adapter is visible...");
+        std::thread::sleep(std::time::Duration::from_secs(60));
+
+        //Stop any readers blocking for data on other threads
+        //Only needed when a blocking reader is preventing shutdown Ie. it holds an Arc to the
+        //session, blocking it from being dropped
+        session.shutdown().unwrap();
+
+        //the session is stopped on drop
+        //drop(session);
+
+        //drop(adapter)
+        //And the adapter closes its resources when dropped
     }
 
     // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
