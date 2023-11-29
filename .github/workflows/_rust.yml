@@ -80,8 +80,8 @@ jobs:
         run: |
           cargo install tauri-cli
           cargo tauri build
-          cp ../target/release/firezone-windows-client.exe $BINARY_DEST_PATH
-          sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
+          cp ../target/release/firezone-windows-client.exe windows-client-x64.exe
+          # sha256sum windows-client-x64.exe > windows-client-x64.exe.sha256sum.txt
       - name: Save build artifacts
         uses: actions/upload-artifact@v3
         with:
