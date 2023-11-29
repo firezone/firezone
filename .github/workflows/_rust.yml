@@ -87,8 +87,8 @@ jobs:
       - name: Save build artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: firezone-windows-client-x64.exe
-          path: ${{ BINARY_DEST_PATH }}
+          name: windows-client-x64.exe
+          path: windows-client-x64.exe
 
   smoke-test-relay:
     runs-on: ubuntu-22.04
