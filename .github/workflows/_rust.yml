@@ -78,8 +78,8 @@ jobs:
           - target: x86_64-pc-windows-msvc
             shortname: x64
         name:
-          - package: firezone-windows-client
-            artifact: windows-client.exe
+          - package: hello-world
+            artifact: hello-world.exe
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
     steps:
