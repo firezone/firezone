@@ -46,12 +46,12 @@ See below for auto-update details for each client.
 
 ## Upgrading gateways with minimal downtime
 
-Gateways deployed in a [high availability](/kb/deploy/gateway#high-availability)
-configuration can be updated to new versions one-by-one so clients connected to
-the gateway being updated will automatically reconnect to an available gateway.
+Gateways deployed in the same site will automatically
+[failover](/kb/deploy/gateways#failover) for each other. By uprading gateways
+one-by-one, clients connected to the gateway being upgraded will automatically
+reconnect to an available gateway.
 
 Currently the failover timeout is maximum 120 seconds, so upgrades should be
-performed during a scheduled maintenance window to ensure end-users experience
-minimal disruption. Other than a possible short-term connection interruption to
-in-use resources, users won't be impacted by upgrading high-availability
-gateways.
+performed during a scheduled maintenance window to ensure minimal disruption.
+Other than a possible short-term connection interruption to in-use resources,
+users won't be impacted by upgrading high-availability gateways.
