@@ -97,6 +97,7 @@ product documentation, organized as follows:
   - [rust/relay](./rust/relay): Relay - STUN/TURN server to facilitate
     holepunching.
   - [rust/linux-client](./rust/linux-client): Linux client.
+  - [rust/windows-client](./rust/windows-client): Windows client.
 - [swift/](./swift/apple): macOS / iOS clients.
 - [kotlin/](./kotlin/android): Android / ChromeOS clients.
 - [website/](./website): Marketing website and product documentation.

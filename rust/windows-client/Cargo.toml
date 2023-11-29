@@ -1,0 +1,22 @@
+[package]
+name = "firezone-windows-client"
+# mark:automatic-version
+version = "1.20231001.0"
+edition = "2021"
+
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "2.4.0"
+
+[target.'cfg(windows)'.dependencies]
+native-windows-derive = "1.0.5"
+native-windows-gui = "1.0.13"
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.52.0"
+features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_System_LibraryLoader",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+]
