@@ -135,13 +135,13 @@ defmodule Web.Live.Relays.ShowTest do
     assert Repo.get(Domain.Relays.Relay, relay.id).deleted_at
   end
 
-  test "renders not found error when relay_admin feature flag is false", %{
+  test "renders not found error when self_hosted_relays feature flag is false", %{
     account: account,
     identity: identity,
     relay: relay,
     conn: conn
   } do
-    Domain.Config.feature_flag_override(:relay_admin, false)
+    Domain.Config.feature_flag_override(:self_hosted_relays, false)
 
     assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn

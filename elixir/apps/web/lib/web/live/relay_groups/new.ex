@@ -3,7 +3,7 @@ defmodule Web.RelayGroups.New do
   alias Domain.Relays
 
   def mount(_params, _session, socket) do
-    with true <- Domain.Config.relay_admin_enabled?() do
+    with true <- Domain.Config.self_hosted_relays_enabled?() do
       changeset = Relays.new_group()
       {:ok, assign(socket, form: to_form(changeset))}
     else

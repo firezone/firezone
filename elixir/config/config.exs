@@ -76,7 +76,7 @@ config :domain, :enabled_features,
   signups: true,
   flow_activities: true,
   todos: true,
-  relay_admin: true
+  self_hosted_relays: true
 
 config :domain, docker_registry: "us-east1-docker.pkg.dev/firezone-staging/firezone"
 

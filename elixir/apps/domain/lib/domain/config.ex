@@ -136,8 +136,8 @@ defmodule Domain.Config do
     feature_enabled?(:traffic_filters)
   end
 
-  def relay_admin_enabled? do
-    feature_enabled?(:relay_admin)
+  def self_hosted_relays_enabled? do
+    feature_enabled?(:self_hosted_relays)
   end
 
   ## Test helpers

@@ -639,5 +639,5 @@ defmodule Domain.Config.Definitions do
   @doc """
   Boolean flag to turn Relay Admin functionality on/off.
   """
-  defconfig(:feature_relay_admin_enabled, :boolean, default: false)
+  defconfig(:feature_self_hosted_relays_enabled, :boolean, default: false)
 end
