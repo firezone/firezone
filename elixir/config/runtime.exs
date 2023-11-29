@@ -70,7 +70,7 @@ if config_env() == :prod do
     signups: compile_config!(:feature_sign_up_enabled),
     flow_activities: compile_config!(:feature_flow_activities_enabled),
     todos: compile_config!(:feature_todos_enabled),
-    relay_admin: compile_config!(:feature_relay_admin_enabled)
+    relay_admin: compile_config!(:feature_self_hosted_relays_enabled)
 
   config :domain, docker_registry: compile_config!(:docker_registry)
 
