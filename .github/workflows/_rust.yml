@@ -79,10 +79,10 @@ jobs:
           cargo build --release
           cp ../target/release/hello-world.exe hello-world-x64.exe
       - name: Save build artifacts
-        uses: actions/upload-artifacts@v3
+        uses: actions/upload-artifact@v3
         with:
           name: hello-world-x64.exe
-          path: hello-wolrd-x64.exe
+          path: hello-world-x64.exe
 
   temp-build-windows-artifacts:
     runs-on: windows-2019
