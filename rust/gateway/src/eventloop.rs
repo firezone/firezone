@@ -4,7 +4,7 @@ use crate::messages::{
 };
 use crate::CallbackHandler;
 use anyhow::Result;
-use connlib_shared::messages::ClientId;
+use connlib_shared::messages::{ClientId, GatewayResponse};
 use connlib_shared::Error;
 use firezone_tunnel::{Event, GatewayState, Tunnel};
 use phoenix_channel::PhoenixChannel;
@@ -22,7 +22,7 @@ pub struct Eventloop {
 
     // TODO: Strongly type request reference (currently `String`)
     connection_request_tasks:
-        futures_bounded::FuturesMap<(ClientId, String), Result<RTCIceParameters, Error>>,
+        futures_bounded::FuturesMap<(ClientId, String), Result<GatewayResponse, Error>>,
     add_ice_candidate_tasks: futures_bounded::FuturesSet<Result<(), Error>>,
 
     print_stats_timer: tokio::time::Interval,

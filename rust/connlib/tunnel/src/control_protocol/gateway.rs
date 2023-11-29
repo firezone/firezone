@@ -6,10 +6,11 @@ use crate::{
 
 use chrono::{DateTime, Utc};
 use connlib_shared::{
-    messages::{ClientId, Relay, ResourceDescription},
+    messages::{ClientId, DomainResponse, GatewayResponse, Relay, ResourceDescription},
     Callbacks, Error, Result,
 };
-use std::sync::Arc;
+use ip_network::IpNetwork;
+use std::{net::ToSocketAddrs, sync::Arc};
 use webrtc::ice_transport::{
     ice_parameters::RTCIceParameters, ice_role::RTCIceRole, RTCIceTransport,
 };
@@ -42,7 +43,7 @@ where
         client_id: ClientId,
         expires_at: DateTime<Utc>,
         resource: ResourceDescription,
-    ) -> Result<RTCIceParameters> {
+    ) -> Result<GatewayResponse> {
         let IceConnection {
             ice_parameters: local_params,
             ice_transport: ice,
@@ -57,12 +58,28 @@ where
             .insert(client_id, Arc::clone(&ice));
 
         let tunnel = self.clone();
+        let resource_address = match &resource {
+            ResourceDescription::Dns(_) => {
+                let Some(domain) = domain.clone() else {
+                    return Err(Error::ControlProtocolError);
+                };
+                (domain, 0)
+                    .to_socket_addrs()?
+                    .next()
+                    .ok_or(Error::ControlProtocolError)?
+                    .ip()
+                    .into()
+            }
+            ResourceDescription::Cidr(ref cidr) => cidr.address,
+        };
         tokio::spawn(async move {
             if let Err(e) = ice
                 .start(&remote_params, Some(RTCIceRole::Controlled))
                 .await
                 .map_err(Into::into)
-                .and_then(|_| tunnel.new_tunnel(peer, client_id, resource, expires_at, ice))
+                .and_then(|_| {
+                    tunnel.new_tunnel(peer, client_id, resource, expires_at, ice, resource_address)
+                })
             {
                 tracing::warn!(%client_id, err = ?e, "Can't start tunnel: {e:#}");
                 let peer_connection = tunnel.peer_connections.lock().remove(&client_id);
@@ -72,7 +89,14 @@ where
             }
         });
 
-        Ok(local_params)
+        let response = GatewayResponse {
+            ice_parameters: local_params,
+            domain_response: domain.map(|domain| DomainResponse {
+                domain,
+                address: vec![resource_address.network_address()],
+            }),
+        };
+        Ok(response)
     }
 
     pub fn allow_access(
@@ -98,6 +122,7 @@ where
         resource: ResourceDescription,
         expires_at: DateTime<Utc>,
         ice: Arc<RTCIceTransport>,
+        resource_address: IpNetwork,
     ) -> Result<()> {
         tracing::trace!(?peer_config.ips, "new_data_channel_open");
         let device = self.device.load().clone().ok_or(Error::NoIface)?;
@@ -120,7 +145,7 @@ where
             self.rate_limiter.clone(),
         ));
 
-        peer.add_resource(todo!(), resource, expires_at);
+        peer.add_resource(resource_address, resource, expires_at);
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 

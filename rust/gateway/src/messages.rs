@@ -2,7 +2,8 @@ use std::net::IpAddr;
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use connlib_shared::messages::{
-    ActorId, ClientId, ClientPayload, Interface, Peer, Relay, ResourceDescription, ResourceId,
+    ActorId, ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay, ResourceDescription,
+    ResourceId,
 };
 use serde::{Deserialize, Serialize};
 use webrtc::ice_transport::{ice_candidate::RTCIceCandidate, ice_parameters::RTCIceParameters};
@@ -127,7 +128,7 @@ pub enum EgressMessages {
 pub struct ConnectionReady {
     #[serde(rename = "ref")]
     pub reference: String,
-    pub gateway_payload: RTCIceParameters,
+    pub gateway_payload: GatewayResponse,
 }
 
 #[cfg(test)]
