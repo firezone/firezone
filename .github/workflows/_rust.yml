@@ -90,7 +90,7 @@ jobs:
       - name: Build release binaries
         run: |
           cargo build --release -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
-          cp ../target/${{ matrix.arch.target }}/release/${{ matrix.name.package }} $BINARY_DEST_PATH
+          cp ../target/${{ matrix.arch.target }}/release/${{ matrix.name.package }}.exe $BINARY_DEST_PATH
 
           # PowerShell doesn't seem to have sha256sum.
           # There must be a way to install it.
