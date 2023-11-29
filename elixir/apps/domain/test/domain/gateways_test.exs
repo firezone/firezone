@@ -939,10 +939,14 @@ defmodule Domain.GatewaysTest do
       ]
 
       # multiple attempts are used to increase chances that all gateways in a group are randomly selected
-      for _ <- 0..3 do
+      selected =
+        for _ <- 0..12 do
         assert gateway = load_balance_gateways({32.2029, -80.0131}, gateways)
         assert gateway.id in [gateway_us_east_1.id, gateway_us_east_2.id, gateway_us_east_3.id]
+          gateway.id
       end
+
+      assert selected |> Enum.uniq() |> length() >= 2
 
       for _ <- 0..2 do
         assert gateway = load_balance_gateways({45.5946, -121.1787}, gateways)
