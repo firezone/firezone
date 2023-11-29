@@ -1,13 +1,9 @@
 [package]
-name = "tauri-client"
-version = "0.0.0"
-description = "Firezone Client"
-authors = ["you"]
-license = ""
-repository = ""
+name = "firezone-windows-client"
+# mark:automatic-version
+version = "1.20231001.0"
+description = "Firezone Windows Client"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
 tauri-build = { version = "1.5", features = [] }
