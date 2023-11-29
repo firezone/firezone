@@ -10,7 +10,7 @@ defmodule Web.SignInTest do
 
     {:ok, _lv, html} = live(conn, ~p"/#{account}")
 
-    assert html =~ "Sign in with a magic link"
+    assert html =~ "Sign in with email"
     refute html =~ "Sign in with username and password"
 
     userpass_provider = Fixtures.Auth.create_userpass_provider(account: account)
@@ -41,7 +41,7 @@ defmodule Web.SignInTest do
 
     {:ok, _provider} = Domain.Auth.delete_provider(email_provider, subject)
     {:ok, _lv, html} = live(conn, ~p"/#{account}")
-    refute html =~ "Sign in with a magic link"
+    refute html =~ "Sign in with email"
 
     assert html =~ "Vault"
   end

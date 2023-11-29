@@ -60,16 +60,6 @@ export default function RootNavbar() {
               />
             </Link>
             <span className="p-2"></span>
-            <Link
-              className={
-                (p == "/" ? "text-neutral-900 underline" : "text-neutral-800") +
-                " p-0 sm:p-1 mr-1 font-medium hover:text-neutral-900 hover:underline"
-              }
-              href="/"
-            >
-              Home
-            </Link>
-            <span className="p-2"></span>
             <button
               id="product-dropdown-link"
               className={
@@ -89,6 +79,28 @@ export default function RootNavbar() {
               </span>
               <HiChevronDown className="w-3 h-3 mx-1" />
             </button>
+            <Link
+              className={
+                (p.startsWith("/docs")
+                  ? "text-neutral-900 underline"
+                  : "text-neutral-800") +
+                " p-2 mr-4 font-medium hover:text-neutral-900 hover:underline"
+              }
+              href="/docs"
+            >
+              Docs
+            </Link>
+            <Link
+              className={
+                (p.startsWith("/blog")
+                  ? "text-neutral-900 underline"
+                  : "text-neutral-800") +
+                " p-2 mr-4 font-medium hover:text-neutral-900 hover:underline"
+              }
+              href="/blog"
+            >
+              Blog
+            </Link>
             <div
               id="product-dropdown-menu"
               className="z-10 hidden bg-white divide-y divide-gray-100 rounded shadow-lg w-44"
@@ -131,21 +143,31 @@ export default function RootNavbar() {
                     Newsletter
                   </Link>
                 </li>
+                <li>
+                  {/* TODO: use <Link> here, toggling dropdown */}
+                  <Link
+                    onClick={hideDropdown}
+                    href="https://github.com/firezone/firezone"
+                    className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
+                  >
+                    Open Source
+                  </Link>
+                </li>
               </ul>
             </div>
-          </div>
-          <div className="hidden md:flex items-center lg:order-2">
             <Link
               className={
-                (p.startsWith("/docs")
+                (p == "/pricing"
                   ? "text-neutral-900 underline"
                   : "text-neutral-800") +
-                " p-1 mr-1 font-medium hover:text-neutral-900 hover:underline"
+                " p-0 sm:p-1 mr-1 font-medium hover:text-neutral-900 hover:underline"
               }
-              href="/docs"
+              href="/pricing"
             >
-              Docs
+              Pricing
             </Link>
+          </div>
+          <div className="hidden md:flex items-center lg:order-2">
             <Link
               href="https://github.com/firezone/firezone"
               className="p-2 mr-1"
