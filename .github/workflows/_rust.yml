@@ -81,7 +81,7 @@ jobs:
           - package: hello-world
             artifact: hello-world.exe
     env:
-      BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
+      BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}.exe
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
@@ -98,7 +98,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: hello-world-x64.exe
-          path: ${{ github.workspace }}/rust/hello-world/$BINARY_DEST_PATH
+          path: ${{ github.workspace }}/rust/hello-world/${{ env.BINARY_DEST_PATH }}
 
   temp-build-windows-artifacts:
     runs-on: windows-2019
