@@ -60,7 +60,7 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
-                  Authenticate with magic link and OIDC
+                  Authenticate with email and OIDC
                 </span>
               </li>
               <li className="flex space-x-2.5">

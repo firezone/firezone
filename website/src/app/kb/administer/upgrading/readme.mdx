@@ -4,13 +4,13 @@ import { TabsItem, TabsGroup } from "@/components/DocsTabs";
 # Upgrading Firezone
 
 Upgrading Firezone consists of upgrading the client applications and gateways.
-Read more below to understand how our versioning system works, and how you can
+Read more below to understand how our versioning system works, how you can
 auto-update these components, and suggestions for an upgrade strategy in
 high-availability deployments.
 
 ## How versioning works in Firezone
 
-Firezone employees a semantic versioning scheme in the standard
+Firezone uses a semantic versioning scheme in the standard
 `MAJOR`.`MINOR`.`PATCH` format with the following structure:
 
 | Version type | Example    | Explanation                                                                                                                                                                                                      |
@@ -29,11 +29,11 @@ See below for auto-update details for each client.
 
 <TabsGroup>
   <TabsItem title="macOS" active>
-    Enable auto-updates in Settings.app
+    Enable auto-updates in Settings.app.
   </TabsItem>
-  <TabsItem title="iOS">Enable auto-updates in Settings.app</TabsItem>
-  <TabsItem title="Android">Enable app auto-updates in Settings</TabsItem>
-  <TabsItem title="ChromeOS">Enable app auto-updates in Settings</TabsItem>
+  <TabsItem title="iOS">Enable auto-updates in Settings.app.</TabsItem>
+  <TabsItem title="Android">Enable app auto-updates in Settings.</TabsItem>
+  <TabsItem title="ChromeOS">Enable app auto-updates in Settings.</TabsItem>
   <TabsItem title="Linux">
     Linux auto-updates are configured by default if you deployed using the Linux
     client deployment guide.
@@ -46,12 +46,12 @@ See below for auto-update details for each client.
 
 ## Upgrading gateways with minimal downtime
 
-Gateways that are deployed in a
-[high availability](/kb/deploy/gateway#high-availability) configuration can be
-rolled over to new versions one-by-one so that clients connected to the gateways
-will automatically reconnect to a healthy replica.
+Gateways deployed in a [high availability](/kb/deploy/gateway#high-availability)
+configuration can be updated to new versions one-by-one so clients connected to
+the gateway being updated will automatically reconnect to an available gateway.
 
-Currently the failover timeout is 120 seconds, so upgrades should be performed
-during a planned maintenance window to ensure end-users experience minimal
-disruption. Other than a possible short-term connection interruption to in-use
-resources, users won't be impacted by upgrading high-availability gateways.
+Currently the failover timeout is maximum 120 seconds, so upgrades should be
+performed during a scheduled maintenance window to ensure end-users experience
+minimal disruption. Other than a possible short-term connection interruption to
+in-use resources, users won't be impacted by upgrading high-availability
+gateways.
