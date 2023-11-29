@@ -889,6 +889,22 @@ defmodule Domain.GatewaysTest do
       assert gateway.id == gateway_1.id
     end
 
+    test "prioritizes gateways of more recent version" do
+      gateway_1 =
+        Fixtures.Gateways.create_gateway(last_seen_user_agent: "iOS/12.7 (iPhone) connlib/1.99")
+
+      gateway_2 =
+        Fixtures.Gateways.create_gateway(last_seen_user_agent: "iOS/12.7 (iPhone) connlib/2.3")
+
+      gateways = [
+        gateway_1,
+        gateway_2
+      ]
+
+      assert gateway = load_balance_gateways({32.2029, -80.0131}, gateways)
+      assert gateway.id == gateway_2.id
+    end
+
     test "returns gateways in two closest regions to a given location" do
       # Moncks Corner, South Carolina
       gateway_us_east_1 =
@@ -941,10 +957,10 @@ defmodule Domain.GatewaysTest do
       # multiple attempts are used to increase chances that all gateways in a group are randomly selected
       selected =
         for _ <- 0..12 do
-        assert gateway = load_balance_gateways({32.2029, -80.0131}, gateways)
-        assert gateway.id in [gateway_us_east_1.id, gateway_us_east_2.id, gateway_us_east_3.id]
+          assert gateway = load_balance_gateways({32.2029, -80.0131}, gateways)
+          assert gateway.id in [gateway_us_east_1.id, gateway_us_east_2.id, gateway_us_east_3.id]
           gateway.id
-      end
+        end
 
       assert selected |> Enum.uniq() |> length() >= 2
 
