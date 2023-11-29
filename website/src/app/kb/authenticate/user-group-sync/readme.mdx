@@ -43,7 +43,18 @@ and associated policy in Firezone.
 ## Nested groups and organizational units
 
 Firezone flattens nested groups and organizational units synced from Google
-Workspace. User membership is determined by its immediate parent.
+Workspace. User membership is determined **only** by its immediate parent. At
+this time, Firezone does not recursively sync members from nested groups and
+organizational units.
+
+<Alert
+  color="warning"
+  html={`
+    Need recursive member sync? Leave your feedback on
+    <a href="https://github.com/firezone/firezone/issues/2743">
+    this GitHub issue</a> so we can prioritize it on our roadmap.
+  `}
+/>
 
 For example, if you had the following group structure in your Google Workspace
 account:
@@ -64,8 +75,6 @@ In Firezone, you would see the follow groups after sync:
 - Group:Product
   - steve@company.com
 - Group:Engineering
-  - bob@company.com
-  - alice@company.com
 - Group:Support
   - patrick@company.com
 ```
