@@ -314,6 +314,9 @@ impl ClientState {
             return Err(Error::PendingConnection);
         }
 
+        // This was deleted in https://github.com/firezone/firezone/pull/2454 and should never have been
+        self.gateway_awaiting_connection.insert(gateway);
+
         self.resources_gateways.insert(resource, gateway);
 
         let Some(peer) = connected_peers.iter().find_map(|(_, p)| {

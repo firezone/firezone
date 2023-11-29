@@ -272,7 +272,7 @@ where
 
             // TODO: it's better to move the translation inside the peer.
             // for that it will be better to dup peer for gateway/client.
-            if let Some(res) = role_state.dns_resources_internal_ips.get_by_ip(&dest) {
+            if let Some(_) = role_state.dns_resources_internal_ips.get_by_ip(&dest) {
                 if let Some(translated_ip) = role_state.dns_resources_external_ips.get(&dest) {
                     update_packet(&mut packet, *translated_ip)
                 } else {

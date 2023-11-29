@@ -91,6 +91,7 @@ where
             reference,
             &mut self.peers_by_ip.write(),
         )? {
+            tracing::trace!("reusing_connection");
             return Ok(Request::ReuseConnection(connection));
         }
 
