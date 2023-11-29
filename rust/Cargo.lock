@@ -5415,10 +5415,12 @@ dependencies = [
 name = "tauri-client"
 version = "0.0.0"
 dependencies = [
+ "connlib-client-shared",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "windows 0.52.0",
 ]
 
 [[package]]
