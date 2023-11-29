@@ -17,24 +17,9 @@ import SwiftUINavigationCore
 
     private var cancellables = Set<AnyCancellable>()
 
-    enum Destination {
-      case settings(SettingsViewModel)
-      case undefinedSettingsAlert(AlertState<UndefinedSettingsAlertAction>)
-    }
-
-    enum UndefinedSettingsAlertAction {
-      case confirmDefineSettingsButtonTapped
-    }
-
     enum State {
       case unauthenticated(AuthViewModel)
       case authenticated(MainViewModel)
-    }
-
-    @Published var destination: Destination? {
-      didSet {
-        bindDestination()
-      }
     }
 
     @Published var state: State? {
@@ -45,15 +30,17 @@ import SwiftUINavigationCore
 
     private let appStore: AppStore
 
+    let settingsViewModel: SettingsViewModel
+    @Published var isSettingsSheetPresented = false
+
     init(appStore: AppStore) {
       self.appStore = appStore
+      self.settingsViewModel = SettingsViewModel()
 
       appStore.objectWillChange
         .receive(on: mainQueue)
         .sink { [weak self] in self?.objectWillChange.send() }
         .store(in: &cancellables)
-
-      defer { bindDestination() }
 
       appStore.auth.$loginStatus
         .receive(on: mainQueue)
@@ -73,34 +60,14 @@ import SwiftUINavigationCore
     }
 
     func settingsButtonTapped() {
-      destination = .settings(SettingsViewModel())
-    }
-
-    func handleUndefinedSettingsAlertAction(_ action: UndefinedSettingsAlertAction) {
-      switch action {
-      case .confirmDefineSettingsButtonTapped:
-        destination = .settings(SettingsViewModel())
-      }
-    }
-
-    private func bindDestination() {
-      switch destination {
-      case .settings(let model):
-        model.onSettingsSaved = { [weak self] in
-          self?.destination = nil
-          self?.state = .unauthenticated(AuthViewModel())
-        }
-
-      case .undefinedSettingsAlert, .none:
-        break
-      }
+      isSettingsSheetPresented = true
     }
 
     private func bindState() {
       switch state {
       case .unauthenticated(let model):
         model.settingsUndefined = { [weak self] in
-          self?.destination = .undefinedSettingsAlert(.undefinedSettings)
+          self?.isSettingsSheetPresented = true
         }
 
       case .authenticated, .none:
@@ -135,15 +102,9 @@ import SwiftUINavigationCore
           }
         }
       }
-      .sheet(unwrapping: $model.destination, case: /WelcomeViewModel.Destination.settings) {
-        $model in
-        SettingsView(model: model)
+      .sheet(isPresented: $model.isSettingsSheetPresented) {
+        SettingsView(model: model.settingsViewModel)
       }
-      .alert(
-        unwrapping: $model.destination,
-        case: /WelcomeViewModel.Destination.undefinedSettingsAlert,
-        action: model.handleUndefinedSettingsAlertAction
-      )
     }
   }
 
