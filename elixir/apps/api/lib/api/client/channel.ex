@@ -191,6 +191,11 @@ defmodule API.Client.Channel do
           socket.assigns.client.last_seen_remote_ip_location_lon
         }
 
+        OpenTelemetry.Tracer.set_attribute(:relays_length, length(relays))
+        OpenTelemetry.Tracer.set_attribute(:gateways_length, length(gateways))
+        OpenTelemetry.Tracer.set_attribute(:relay_hosting_type, relay_hosting_type)
+        OpenTelemetry.Tracer.set_attribute(:relay_connection_type, relay_connection_type)
+
         relays = Relays.load_balance_relays(location, relays)
         gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids)
 
