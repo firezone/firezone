@@ -3,7 +3,8 @@ defmodule Web.RelayGroups.Show do
   alias Domain.Relays
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, group} <-
+    with true <- Domain.Config.self_hosted_relays_enabled?(),
+         {:ok, group} <-
            Relays.fetch_group_by_id(id, socket.assigns.subject,
              preload: [
                relays: [token: [created_by_identity: [:actor]]],
@@ -13,7 +14,7 @@ defmodule Web.RelayGroups.Show do
       :ok = Relays.subscribe_for_relays_presence_in_group(group)
       {:ok, assign(socket, group: group)}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 

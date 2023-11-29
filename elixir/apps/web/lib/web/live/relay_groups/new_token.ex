@@ -3,7 +3,8 @@ defmodule Web.RelayGroups.NewToken do
   alias Domain.Relays
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, group} <- Relays.fetch_group_by_id(id, socket.assigns.subject) do
+    with true <- Domain.Config.self_hosted_relays_enabled?(),
+         {:ok, group} <- Relays.fetch_group_by_id(id, socket.assigns.subject) do
       {group, env} =
         if connected?(socket) do
           {:ok, group} =
@@ -25,7 +26,7 @@ defmodule Web.RelayGroups.NewToken do
          selected_tab: "docker-instructions"
        )}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 

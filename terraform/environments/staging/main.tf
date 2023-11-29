@@ -420,7 +420,25 @@ locals {
       value = jsonencode({
         api_key = var.postmark_server_api_token
       })
+    },
+    # Feature Flags
+    {
+      name  = "FEATURE_FLOW_ACTIVITIES_ENABLED"
+      value = true
+    },
+    {
+      name  = "FEATURE_TRAFFIC_FILTERS_ENABLED"
+      value = true
+    },
+    {
+      name  = "FEATURE_TODOS_ENABLED"
+      value = true
+    },
+    {
+      name  = "FEATURE_RELAY_ADMIN_ENABLED"
+      value = true
     }
+
   ]
 }
 

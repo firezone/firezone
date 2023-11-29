@@ -152,4 +152,19 @@ defmodule Web.Live.RelayGroups.EditTest do
     assert group = Repo.get_by(Domain.Relays.Group, id: group.id)
     assert group.name == attrs.name
   end
+
+  test "renders not found error when self_hosted_relays feature flag is false", %{
+    account: account,
+    identity: identity,
+    group: group,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:self_hosted_relays, false)
+
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/relay_groups/#{group}/edit")
+    end
+  end
 end
