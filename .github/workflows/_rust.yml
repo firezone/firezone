@@ -78,7 +78,8 @@ jobs:
         run: |
           cargo build --release
           mv ../target/release/hello-world.exe hello-world-x64.exe
-          echo good
+          pwd
+          ls
       - name: Save build artifacts
         uses: actions/upload-artifact@v3
         with:
