@@ -300,7 +300,7 @@ Interactive Elixir (1.15.2) - press Ctrl+C to exit (type h() ENTER for help)
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)1> {:ok, account} = Domain.Accounts.create_account(%{name: "Firezone", slug: "firezone"})
 {:ok, ...}
 
-iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)2> {:ok, magic_link_provider} = Domain.Auth.create_provider(account, %{name: "Magic Link", adapter: :email, adapter_config: %{}})
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)2> {:ok, magic_link_provider} = Domain.Auth.create_provider(account, %{name: "Email", adapter: :email, adapter_config: %{}})
 {:ok, ...}
 
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)3> {:ok, actor} = Domain.Actors.create_actor(account, %{type: :account_admin_user, name: "Andrii Dryga"})

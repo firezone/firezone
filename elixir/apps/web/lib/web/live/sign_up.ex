@@ -101,7 +101,7 @@ defmodule Web.SignUp do
     ~H"""
     <div class="space-y-6">
       <div class="text-center text-gray-900">
-        Your account has been created! Please check your email for a sign in link.
+        Your account has been created! Please check your email for sign in instructions.
       </div>
       <div class="text-center">
         <div class="px-12">
@@ -254,7 +254,7 @@ defmodule Web.SignUp do
           :provider,
           fn _repo, %{account: account} ->
             Auth.create_provider(account, %{
-              name: "Magic Link",
+              name: "Email",
               adapter: :email,
               adapter_config: %{}
             })
