@@ -391,7 +391,7 @@ extension NETunnelProviderManager {
       }()
       let accountId = providerConfig[TunnelProviderKeys.keyAccountId] as? String
       let tokenRef = protocolConfiguration.passwordReference
-      if let authBaseURL = authBaseURL, let accountId = accountId {
+      if let authBaseURL = authBaseURL, let accountId = accountId, !accountId.isEmpty {
         if let tokenRef = tokenRef {
           return .signedIn(authBaseURL: authBaseURL, accountId: accountId, tokenReference: tokenRef)
         } else {

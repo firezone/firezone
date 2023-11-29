@@ -13,6 +13,7 @@ import XCTestDynamicOverlay
 @MainActor
 final class AuthViewModel: ObservableObject {
   @Dependency(\.authStore) private var authStore
+  @Dependency(\.mainQueue) private var mainQueue
 
   var settingsUndefined: () -> Void = unimplemented("\(AuthViewModel.self).settingsUndefined")
 
@@ -20,18 +21,44 @@ final class AuthViewModel: ObservableObject {
 
   @Published var buttonTitle = "Sign In"
 
-  func signInButtonTapped() async {
-    guard let accountId = authStore.tunnelStore.tunnelAuthStatus.accountId(),
-      !accountId.isEmpty
-    else {
-      settingsUndefined()
-      return
-    }
+  private var tunnelAuthStatus: TunnelAuthStatus = .tunnelUninitialized
 
-    do {
-      try await authStore.signIn(accountId: accountId)
-    } catch {
-      dump(error)
+  init() {
+    authStore.tunnelStore.$tunnelAuthStatus
+      .receive(on: mainQueue)
+      .sink { [weak self] tunnelAuthStatus in
+        guard let self = self else { return }
+        self.tunnelAuthStatus = tunnelAuthStatus
+        self.buttonTitle = {
+          if case .accountNotSetup = tunnelAuthStatus {
+            return "Enter Account ID"
+          } else {
+            return "Sign In"
+          }
+        }()
+      }
+      .store(in: &cancellables)
+  }
+
+  func signInButtonTapped() async {
+    switch tunnelAuthStatus {
+    case .tunnelUninitialized:
+      break
+    case .accountNotSetup:
+      settingsUndefined()
+    case .signedOut(_, let accountId):
+      // accountId shouldn't be empty here. Just playing safe.
+      guard !accountId.isEmpty else {
+        settingsUndefined()
+        return
+      }
+      do {
+        try await authStore.signIn(accountId: accountId)
+      } catch {
+        dump(error)
+      }
+    case .signedIn:
+      break
     }
   }
 }
