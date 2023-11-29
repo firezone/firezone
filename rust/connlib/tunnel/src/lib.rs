@@ -308,14 +308,7 @@ where
             if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
                 let mut peers = self.peers_by_ip.write();
 
-                let Some(peer_to_remove) = peers
-                    .iter()
-                    .find_map(|(n, p)| (p.inner.conn_id == conn_id).then_some(n))
-                else {
-                    continue;
-                };
-
-                peers.remove(peer_to_remove);
+                peers.retain(|_, p| p.inner.conn_id != conn_id);
 
                 if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
                     tokio::spawn({
