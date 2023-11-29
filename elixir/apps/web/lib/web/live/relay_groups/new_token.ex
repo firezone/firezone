@@ -26,8 +26,7 @@ defmodule Web.RelayGroups.NewToken do
          selected_tab: "docker-instructions"
        )}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
-      _feature_disabled -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 

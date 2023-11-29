@@ -10,8 +10,7 @@ defmodule Web.RelayGroups.Index do
       :ok = Relays.subscribe_for_relays_presence_in_account(socket.assigns.account)
       {:ok, assign(socket, groups: groups)}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
-      _feature_disabled -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 

@@ -17,8 +17,7 @@ defmodule Web.Relays.Show do
 
       {:ok, assign(socket, relay: relay)}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
-      _feature_disabled -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 

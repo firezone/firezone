@@ -14,8 +14,7 @@ defmodule Web.RelayGroups.Show do
       :ok = Relays.subscribe_for_relays_presence_in_group(group)
       {:ok, assign(socket, group: group)}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
-      _feature_disabled -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 

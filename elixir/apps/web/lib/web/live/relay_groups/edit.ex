@@ -8,8 +8,7 @@ defmodule Web.RelayGroups.Edit do
       changeset = Relays.change_group(group)
       {:ok, assign(socket, group: group, form: to_form(changeset))}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
-      _feature_disabled -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 
