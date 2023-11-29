@@ -84,7 +84,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: hello-world-x64.exe
-          path: ${{ github.workspace }}/hello-world-x64.exe
+          path: ${{ github.workspace }}/rust/hello-world/hello-world-x64.exe
 
   temp-build-windows-artifacts:
     runs-on: windows-2019
