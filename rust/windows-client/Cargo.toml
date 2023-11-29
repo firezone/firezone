@@ -4,14 +4,14 @@ name = "firezone-windows-client"
 version = "1.20231001.0"
 edition = "2021"
 
-[build-dependencies]
+[target.'cfg(windows)'.build-dependencies]
 embed-resource = "2.4.0"
 
-[dependencies]
+[target.'cfg(windows)'.dependencies]
 native-windows-derive = "1.0.5"
 native-windows-gui = "1.0.13"
 
-[dependencies.windows]
+[target.'cfg(windows)'.dependencies.windows]
 version = "0.52.0"
 features = [
   "Win32_Foundation",
