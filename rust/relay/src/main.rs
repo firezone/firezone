@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
-use std::task::Poll;
+use std::task::{ready, Poll};
 use std::time::SystemTime;
 use tracing::{level_filters::LevelFilter, Instrument, Subscriber};
 use tracing_core::Dispatch;
@@ -367,6 +367,10 @@ where
         let _guard = span.enter();
 
         loop {
+            // Don't fail these results. One of the senders might not be active because we might not be listening on IP4 / IP6.
+            let _ = ready!(self.outbound_ip4_data_sender.poll_ready_unpin(cx));
+            let _ = ready!(self.outbound_ip6_data_sender.poll_ready_unpin(cx));
+
             let now = SystemTime::now();
 
             // Priority 1: Execute the pending commands of the server.
@@ -388,6 +392,7 @@ where
                                 )));
                             }
 
+                            // Should never happen because we poll for readiness above.
                             if e.is_full() {
                                 tracing::warn!(%recipient, "Dropping message because channel to primary UDP socket task is full");
                             }
