@@ -44,6 +44,7 @@ where
         conn_id: TRoleState::Id,
         ice_candidate: RTCIceCandidate,
     ) -> Result<()> {
+        tracing::info!(%ice_candidate, %conn_id, "adding new remote candidate");
         let peer_connection = self
             .peer_connections
             .lock()
@@ -100,6 +101,8 @@ pub(crate) async fn new_ice_connection(
                 gatherer.on_local_candidate(Box::new(|_| Box::pin(async {})));
                 return Box::pin(async {});
             };
+
+            tracing::info!(%candidate, "found new local candidate");
 
             let mut ice_candidate_tx = ice_candidate_tx.clone();
             Box::pin(async move {
