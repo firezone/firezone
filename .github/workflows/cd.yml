@@ -276,7 +276,7 @@ jobs:
           cargo tauri build
 
           # Used for release artifact
-          cp target/release/${{ matrix.name.package }}.exe "${{ BINARY_DEST_PATH }}-x64.exe"
+          cp target/release/${{ matrix.name.package }}.exe "${{ env.BINARY_DEST_PATH }}-x64.exe"
 
           pwd
           ls *.exe
