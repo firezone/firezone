@@ -136,6 +136,10 @@ defmodule Domain.Config do
     feature_enabled?(:traffic_filters)
   end
 
+  def self_hosted_relays_enabled? do
+    feature_enabled?(:self_hosted_relays)
+  end
+
   ## Test helpers
 
   if Mix.env() != :test do
