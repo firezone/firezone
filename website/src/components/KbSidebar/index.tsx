@@ -7,12 +7,14 @@ import SearchForm from "./SearchForm";
 import { usePathname } from "next/navigation";
 
 export default function KbSidebar() {
+  const p = usePathname() || "";
+
   useEffect(() => {
     // Manually init flowbite's data-toggle listeners since we're using custom components
     initFlowbite();
   }, []);
 
-  const p = usePathname() || "";
+  console.log(p);
 
   return (
     <aside
