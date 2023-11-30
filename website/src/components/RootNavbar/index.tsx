@@ -1,7 +1,8 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import SidebarToggle from "./SidebarToggle";
+import DocsSidebarToggle from "./DocsSidebarToggle";
+import KbSidebarToggle from "./KbSidebarToggle";
 import { Navbar } from "flowbite-react";
 import { usePathname } from "next/navigation";
 import RequestDemoButton from "@/components/RequestDemoButton";
@@ -55,7 +56,8 @@ export default function RootNavbar() {
       <nav className="h-14 fixed top-0 left-0 right-0 bg-white border-b items-center flex border-neutral-200 z-50">
         <div className="w-full flex flex-wrap py-2 justify-between items-center">
           <div className="flex justify-start items-center">
-            <SidebarToggle />
+            {p.startsWith("/docs") ? <DocsSidebarToggle /> : null}
+            {p.startsWith("/kb") ? <KbSidebarToggle /> : null}
             <Link href="/">
               <Image
                 width={150}
