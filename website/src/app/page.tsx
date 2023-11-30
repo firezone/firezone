@@ -319,7 +319,7 @@ export default function Page() {
           </div>
         </div>
         <div className="mx-auto gap-8 max-w-screen-xl grid justify-items-center sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 px-16 pt-8">
-          <Link href="/docs/authenticate/oidc/keycloak/">
+          <Link href="/docs/authenticate/oidc/keycloak">
             <Image
               width={150}
               height={75}
@@ -327,7 +327,7 @@ export default function Page() {
               src="/images/keycloak-logo.png"
             />
           </Link>
-          <Link href="/docs/authenticate/oidc/google/">
+          <Link href="/docs/authenticate/oidc/google">
             <Image
               width={150}
               height={75}
@@ -335,7 +335,7 @@ export default function Page() {
               src="/images/google-logo.png"
             />
           </Link>
-          <Link href="/docs/authenticate/oidc/okta/">
+          <Link href="/docs/authenticate/oidc/okta">
             <Image
               width={150}
               height={75}
@@ -343,7 +343,7 @@ export default function Page() {
               src="/images/okta-logo.png"
             />
           </Link>
-          <Link href="/docs/authenticate/oidc/onelogin/">
+          <Link href="/docs/authenticate/oidc/onelogin">
             <Image
               width={150}
               height={75}
@@ -351,7 +351,7 @@ export default function Page() {
               src="/images/onelogin-logo.png"
             />
           </Link>
-          <Link href="/docs/authenticate/oidc/azuread/">
+          <Link href="/docs/authenticate/oidc/azuread">
             <Image
               width={150}
               height={75}
@@ -359,7 +359,7 @@ export default function Page() {
               src="/images/azure-logo.png"
             />
           </Link>
-          <Link href="/docs/authenticate/saml/jumpcloud/">
+          <Link href="/docs/authenticate/saml/jumpcloud">
             <Image
               width={150}
               height={75}

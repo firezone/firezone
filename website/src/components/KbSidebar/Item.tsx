@@ -1,7 +1,14 @@
 import Link from "next/link";
+import { Route } from "next";
 import { usePathname } from "next/navigation";
 
-export default function Item({ href, label }: { href: string; label: string }) {
+export default function Item({
+  href,
+  label,
+}: {
+  href: Route<string>;
+  label: string;
+}) {
   const p = usePathname();
 
   function active(path: string) {
