@@ -89,7 +89,7 @@ jobs:
       - name: Build release binaries
         run: |
           cargo build --release -p ${{ matrix.name.package }}
-          cp target/release/${{ matrix.name.package }}.exe "$BINARY_DEST_PATH-x64.exe"
+          cp target/release/${{ matrix.name.package }}.exe "${{ env.BINARY_DEST_PATH }}-x64.exe"
           pwd
           ls *.exe
       - name: Save build artifacts
