@@ -58,7 +58,7 @@ module.exports = {
       typography: {
         DEFAULT: {
           css: {
-            color: firezoneColors["night-rider"][900],
+            color: firezoneColors["night-rider"][800],
             a: {
               color: firezoneColors["electric-violet"][500],
             },

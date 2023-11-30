@@ -381,7 +381,7 @@ export default function PlanTable() {
             <Link href="/product/early-access">
               <button
                 type="button"
-                className="w-48 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-md py-2.5 bg-gradient-to-br from-accent-700 to-accent-600"
+                className="w-48 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-md py-2.5 bg-accent-450 hover:bg-accent-700"
               >
                 Request early access
               </button>
@@ -391,7 +391,7 @@ export default function PlanTable() {
             <Link href="/contact/sales">
               <button
                 type="button"
-                className="w-48 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-md py-2.5 bg-gradient-to-br from-accent-700 to-accent-600"
+                className="w-48 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-md py-2.5 bg-accent-450 hover:bg-accent-700"
               >
                 Request a demo
               </button>

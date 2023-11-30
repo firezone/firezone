@@ -1,0 +1,17 @@
+# Sites
+
+Sites represent a shared network environment that gateways and resources exist
+in. All gateways and resources in a site should be able to reach each other.
+
+## Data routing
+
+Firezone allows you to select how data is routed to a particular site.
+
+Choose "Firezone Managed Relays" (Enterprise plans only) to allow data to
+potentially route through the Firezone-managed Relay network when NAT hole
+punching fails. Connections in Firezone are end-to-end encrypted; we can never
+decrypt your traffic.
+
+Choose "Direct only" to enforce peer to peer connections between clients and
+gateways for this site. If NAT holepunching fails for gateways in the site,
+clients will be unable to connect to resources and gateways defined in the site.

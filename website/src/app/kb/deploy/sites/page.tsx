@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Apple Clients • Firezone Docs",
+  title: "Sites • Firezone Deploy Docs",
   description: "Firezone Documentation",
 };
 

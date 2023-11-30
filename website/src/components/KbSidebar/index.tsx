@@ -7,12 +7,14 @@ import SearchForm from "./SearchForm";
 import { usePathname } from "next/navigation";
 
 export default function KbSidebar() {
+  const p = usePathname() || "";
+
   useEffect(() => {
     // Manually init flowbite's data-toggle listeners since we're using custom components
     initFlowbite();
   }, []);
 
-  const p = usePathname() || "";
+  console.log(p);
 
   return (
     <aside
@@ -23,7 +25,120 @@ export default function KbSidebar() {
     >
       <SearchForm />
       <div className="mt-5 h-full overflow-y-auto bg-white  pr-3">
-        <ul className="space-y-2 font-medium">{/* FIXME */}</ul>
+        <ul className="space-y-2 font-medium">
+          <li>
+            <Item href="/kb" label="Overview" />
+          </li>
+          <li>
+            <Item href="/kb/quickstart" label="Quickstart" />
+          </li>
+          <li>
+            <Collapse expanded={p.startsWith("/kb/deploy")} label="Deploy">
+              <li>
+                <Item href="/kb/deploy" label="Overview" />
+              </li>
+              <li>
+                <Item href="/kb/deploy/sites" label="Sites" />
+              </li>
+              <li>
+                <Item href="/kb/deploy/gateways" label="Gateways" />
+              </li>
+              <li>
+                <Item href="/kb/deploy/resources" label="Resources" />
+              </li>
+              <li>
+                <Item href="/kb/deploy/policies" label="Policies" />
+              </li>
+              <li>
+                <Item href="/kb/deploy/clients" label="Clients" />
+              </li>
+            </Collapse>
+          </li>
+          <li>
+            <Collapse
+              expanded={p.startsWith("/kb/authenticate")}
+              label="Authenticate"
+            >
+              <li>
+                <Item href="/kb/authenticate" label="Overview" />
+              </li>
+              <li>
+                <Item href="/kb/authenticate/email" label="Email (OTP)" />
+              </li>
+              <li>
+                <Item
+                  href="/kb/authenticate/oidc"
+                  label="OpenID Connect (OIDC)"
+                />
+              </li>
+              <li>
+                <Item href="/kb/authenticate/google" label="Google Workspace" />
+              </li>
+              <li>
+                <Item
+                  href="/kb/authenticate/user-group-sync"
+                  label="User / Group sync"
+                />
+              </li>
+            </Collapse>
+          </li>
+          <li>
+            <Collapse
+              expanded={p.startsWith("/kb/administer")}
+              label="Administer"
+            >
+              <li>
+                <Item href="/kb/administer/upgrading" label="Upgrading" />
+              </li>
+              <li>
+                <Item href="/kb/administer/dns" label="Configure DNS" />
+              </li>
+              <li>
+                <Item
+                  href="/kb/administer/backup-restore"
+                  label="Backup and restore"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/administer/logs"
+                  label="Logs and troubleshooting"
+                />
+              </li>
+            </Collapse>
+          </li>
+          <li>
+            <Collapse
+              expanded={p.startsWith("/kb/user-guides")}
+              label="User guides"
+            >
+              <li>
+                <Item
+                  href="/kb/user-guides/apple-client"
+                  label="macOS / iOS client"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/user-guides/windows-client"
+                  label="Windows client"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/user-guides/android-client"
+                  label="Android / ChromeOS client"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/user-guides/linux-client"
+                  label="Linux client"
+                />
+              </li>
+            </Collapse>
+          </li>
+        </ul>
       </div>
     </aside>
   );

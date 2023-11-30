@@ -1,1 +1,42 @@
-# Google Authentication
+import Alert from "@/components/DocsAlert";
+import PlanBadge from "@/components/PlanBadge";
+
+<PlanBadge plans={["enterprise"]} />
+
+# SSO with Google Workspace
+
+Firezone supports authenticating users to Google Workspace using our custom
+Google Workspace connector. Use this guide if you're looking to setup SSO with
+Google Workspace for your Firezone Enterprise account.
+
+<Alert
+  color="info"
+  html={`
+    Google Workspace integration is available in the Enterprise plan.
+    To authenticate users to your Google Workspace account in the Starter
+    plan <strong>without</strong> automatic user/group sync, use our
+    <a href="/kb/authenticate/oidc" class="text-accent-500 hover:underline">
+      universal OIDC connector
+    </a> instead.
+  `}
+/>
+
+## Overview
+
+The Firezone Google Workspace connector integrates with Google's identity APIs
+to support user authentication and automatic user/group sync.
+
+Users, groups, and organizational units are synced every few minutes to ensure
+that your Firezone account remains up-to-date with the latest identity data from
+your Google Workspace account.
+[Read more about user / group sync here](/kb/authenticate/user-group-sync).
+
+## Setup
+
+To set up the Google workspace connector, go to `Settings` ->
+`Identity Providers` -> `Add Identity Provider` and follow the prompts from
+there.
+
+Setting up the Google Workspace connector is similar to the process of setting
+up a universal OIDC connector. The main difference is the addition of a few
+extra scopes needed to enable user/group sync.

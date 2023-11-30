@@ -101,8 +101,11 @@ defmodule Web.SignIn do
         </div>
         <div :if={is_nil(@params["client_platform"])} class="mx-auto p-6 sm:p-8">
           <p class="py-2">
-            <%= # TODO: Add link to client instructions docs %> Meant to sign in from a client instead?
-            <a href="https://firezone.dev/docs" class="font-medium text-blue-600 hover:text-blue-500">
+            Meant to sign in from a client instead?
+            <a
+              href="https://firezone.dev/kb/user-guides?utm_source=product"
+              class="font-medium text-blue-600 hover:text-blue-500"
+            >
               Read the docs.
             </a>
           </p>

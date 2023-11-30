@@ -1,7 +1,7 @@
 import { usePathname } from "next/navigation";
 import { HiBars3 } from "react-icons/hi2";
 
-export default function SidebarToggle() {
+export default function DocsSidebarToggle() {
   const p = usePathname() || "";
 
   if (p.startsWith("/docs")) {

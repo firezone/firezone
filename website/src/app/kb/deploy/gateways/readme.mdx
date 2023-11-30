@@ -1,0 +1,77 @@
+import Alert from "@/components/DocsAlert";
+
+# Deploy a Gateway
+
+This guide covers deployment of the Firezone gateway.
+
+Gateways expect to have unobstructed network-level access to resources within
+the same site.
+
+## Prerequisites
+
+- Any Linux distribution with kernel 5.0 or higher
+- Docker Engine (for docker-based installs)
+- Systemd (for systemd-based installs)
+
+## Resource considerations
+
+Gateways, like the rest of Firezone's data plane stack, are written in Rust and
+are thus resource efficient by nature. A single gateway running on a 2 vCPU VM
+with 1 GB of memory should be able to handle hundreds of client connections
+under typical usage patterns.
+
+Network throughput is usually constrained by single-thread performance due to
+the WireGuard state machine and overhead in the kernel network stack. Still,
+most gateways should be able to saturate 1 Gbps with relative ease. Faster
+speeds can be achieved with syscall optimization and multi-threaded
+optimizations, both of which are currently being worked on.
+
+## Deploy a single gateway
+
+Deployed a single gateway can be accomplished in the admin portal.
+
+Go to `Sites` -> `<site>` -> `Deploy a Gateway` and follow the prompts to deploy
+for your preferred environment. This will deploy a single gateway.
+
+See the [upgrading guide](/kb/administer/upgrading) for information on keeping
+your gateway up-to-date.
+
+## Deploy multiple gateways
+
+When deploying a gateway from the admin portal, a `FIREZONE_TOKEN` environment
+variable is shown. This variable can be reused to deploy multiple gateways
+within the same site.
+
+This means you can automate deployment of the gateway using your automation
+method of choice, adding as many gateways as necessary for failover and load
+balancing.
+
+<Alert
+  color="warning"
+  html={`
+    <strong>Note:</strong> Be sure to set a unique <code>FIREZONE_ID</code> for each
+    gateway you deploy. This can be any non-empty string and is used to
+    identify the gateway in the portal for audit trail and logging purposes.
+  `}
+/>
+
+## Failover
+
+Two or more Gateways deployed in the same site will automatically fail over and
+load balance for each other.
+
+When the portal detects a particular gateway is unhealthy, it will stop using it
+for new connection requests to resources in the site. Fail over takes around 60
+to 120 seconds for clients to time out their existing gateway connections and
+fail over to a healthy one. During this time, connection to resources will be
+interrupted, so it's important to plan gateway downtime appropriately.
+
+## Load balancing
+
+Load balancing happens automatically each time a client requests a connection to
+a resource and uses a round-robin approach which selects a random gateway in the
+site to serve the resource being requested.
+
+This effectively shards client connections across all gateways in a site,
+achieving higher overall throughput than otherwise possible with a single
+gateway.

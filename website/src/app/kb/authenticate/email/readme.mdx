@@ -1,1 +1,33 @@
-# Email Authentication
+import PlanBadge from "@/components/PlanBadge";
+import Alert from "@/components/DocsAlert";
+
+<PlanBadge plans={["starter", "enterprise"]} />
+
+# Email authentication
+
+Firezone supports email authentication using a one-time password (OTP).
+
+This connector is enabled by default for all plans and is designed to get you up
+and running with Firezone quickly. For production deployments, we highly
+recommend setting up [OIDC](/kb/authenticate/oidc) or
+[Google Workspace](/kb/authenticate/google).
+
+Firezone's OTP-based email authentication connector sends a one-time password to
+the user's email each time authentication is requested. This password is
+short-lived and can only be used to authenticate once.
+
+<Alert
+  color="info"
+  html={`
+    Users authenticated via the email connector will need to be added and removed
+    from groups manually.
+  `}
+/>
+
+## Disabling email authentication
+
+The email authentication connector can be **disabled completely** for your
+account, forcing all users and admins to authenticate with another connector.
+However, this can lead to issues signing in if one of your other authentication
+connectors stops working. For that reason, you may want to leave the email
+authentication connector enabled with at least one admin for recovery purposes.

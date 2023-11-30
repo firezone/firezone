@@ -37,7 +37,7 @@ export default function Page() {
             <Link href="/contact/sales">
               <button
                 type="button"
-                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-accent-600 hover:bg-accent-700 hover:scale-105 duration-0 transform transition"
+                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-accent-450 hover:bg-accent-700 hover:scale-105 duration-0 transform transition"
               >
                 Request demo
                 <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
@@ -547,7 +547,7 @@ export default function Page() {
           <div className="w-full max-w-screen-sm flex justify-between mt-8">
             <button
               type="button"
-              className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-normal text-center text-neutral-900 rounded bg-neutral-50 hover:scale-105 duration-0 transform transition"
+              className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-semibold text-center text-neutral-900 rounded bg-neutral-50 hover:scale-105 duration-0 transform transition"
             >
               <Link href="/product/early-access">
                 Register for early access
@@ -555,7 +555,7 @@ export default function Page() {
             </button>
             <button
               type="button"
-              className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-gradient-to-br from-primary-500 to-primary-450 hover:scale-105 duration-0 transform transition"
+              className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-primary-450 hover:scale-105 duration-0 transform transition"
             >
               <Link href="/contact/sales">Request demo</Link>
               <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
