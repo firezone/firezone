@@ -55,6 +55,7 @@ enum CliCommands {
 }
 
 fn main_debug_connlib(cli: Cli) -> Result<()> {
+    use connlib_client_shared::ResourceDescription;
     use smbioslib::SMBiosSystemInformation as SysInfo;
 
     #[derive(Clone)]
@@ -72,6 +73,14 @@ fn main_debug_connlib(cli: Cli) -> Result<()> {
 
         fn on_error(&self, error: &Error) -> Result<(), Self::Error> {
             tracing::error!("on_error not implemented. Error: {error}");
+            Ok(())
+        }
+
+        fn on_update_resources(
+            &self,
+            _resource_list: Vec<ResourceDescription>,
+        ) -> Result<(), Self::Error> {
+            tracing::error!("on_update_resources not implemented");
             Ok(())
         }
 
