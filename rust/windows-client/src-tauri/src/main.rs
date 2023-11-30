@@ -23,6 +23,7 @@ fn main() -> Result<()> {
         }
         Some("debug-auth") => details::main_debug_auth(),
         Some("debug-connlib") => main_debug_connlib(),
+        Some("debug-device-id") => main_debug_device_id(),
         Some("debug-local-server") => main_debug_local_server(),
         Some("debug-wintun") => details::main_debug_wintun(),
         Some(cmd) => bail!("Subcommand `{cmd}` not recognized"),
@@ -90,6 +91,19 @@ fn main_debug_connlib() -> Result<()> {
     block_on_ctrl_c();
 
     session.disconnect(None);
+    Ok(())
+}
+
+fn main_debug_device_id() -> Result<()> {
+    use smbioslib::SMBiosSystemInformation as SysInfo;
+
+    let data = smbioslib::table_load_from_device()?;
+    if let Some(uuid) = data.find_map(|sys_info: SysInfo| sys_info.uuid()) {
+        println!("SMBios uuid: {uuid}");
+    } else {
+        println!("SMBios couldn't find uuid");
+    }
+
     Ok(())
 }
 

@@ -1667,6 +1667,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "smbios-lib",
  "tauri",
  "tauri-build",
  "tracing",
