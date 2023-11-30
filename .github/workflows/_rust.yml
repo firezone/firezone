@@ -88,6 +88,9 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
+          echo testing `
+          backticks
+
           cargo build --release -p ${{ matrix.name.package }}
           cp target/release/${{ matrix.name.package }}.exe "${{ env.BINARY_DEST_PATH }}-x64.exe"
           pwd
