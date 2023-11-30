@@ -1,83 +1,124 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use thiserror::Error;
+use anyhow::{bail, Result};
+use clap::Parser;
+use connlib_client_shared::{file_logger, Callbacks, Error, Session};
+use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
+use secrecy::SecretString;
+use std::path::PathBuf;
 
-#[derive(Error, Debug)]
-enum Error {}
-
-fn main() {
+fn main() -> Result<()> {
     let mut args = std::env::args();
     // Ignore the exe name
     args.next().unwrap();
 
     match args.next().as_deref() {
         None | Some("tauri") => details::main_tauri(),
-        Some("debug") => println!("debug"),
+        Some("debug") => {
+            println!("debug");
+            Ok(())
+        }
         Some("debug-auth") => details::main_debug_auth(),
         Some("debug-connlib") => main_debug_connlib(),
         Some("debug-wintun") => details::main_debug_wintun(),
-        Some(cmd) => println!("Subcommand `{cmd}` not recognized"),
+        Some(cmd) => bail!("Subcommand `{cmd}` not recognized"),
     }
 }
 
-fn main_debug_connlib() {
-    use connlib_client_shared::Error as ConnlibError;
-    use connlib_client_shared::{Callbacks, Session};
-    use std::str::FromStr;
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    #[command(flatten)]
+    common: CommonArgs,
 
-    #[derive(Clone, Default)]
-    struct WindowsCallbacks {}
+    /// File logging directory. Should be a path that's writeable by the current user.
+    #[arg(short, long, env = "LOG_DIR")]
+    log_dir: Option<PathBuf>,
+}
 
-    impl Callbacks for WindowsCallbacks {
-        type Error = Error;
+fn main_debug_connlib() -> Result<()> {
+    #[derive(Clone)]
+    struct CallbackHandler {
+        handle: Option<file_logger::Handle>,
+    }
 
-        fn on_disconnect(&self, error: Option<&ConnlibError>) -> Result<(), Self::Error> {
+    impl Callbacks for CallbackHandler {
+        type Error = std::convert::Infallible;
+
+        fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
             panic!("error recovery not implemented. Error: {error:?}");
         }
 
-        fn on_error(&self, error: &ConnlibError) -> Result<(), Self::Error> {
+        fn on_error(&self, error: &Error) -> Result<(), Self::Error> {
             panic!("error recovery not implemented. Error: {error}");
+        }
+
+        fn roll_log_file(&self) -> Option<PathBuf> {
+            self.handle
+                .as_ref()?
+                .roll_to_new_file()
+                .unwrap_or_else(|e| {
+                    tracing::debug!("Failed to roll over to new file: {e}");
+                    let _ = self.on_error(&Error::LogFileRollError(e));
+
+                    None
+                })
         }
     }
 
-    let callbacks = WindowsCallbacks::default();
+    let cli = Cli::parse();
 
-    let _session = Session::connect(
-        "https://api.firez.one/firezone",
-        secrecy::SecretString::from_str("bogus_secret").unwrap(),
-        "trisha-laptop-2023".to_string(),
-        callbacks,
-    );
+    let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
+    setup_global_subscriber(layer);
+
+    let mut session = Session::connect(
+        cli.common.api_url,
+        SecretString::from(cli.common.token),
+        cli.common.firezone_id,
+        CallbackHandler { handle },
+    )
+    .unwrap();
+
+    tracing::info!("new_session");
+
+    block_on_ctrl_c();
+
+    session.disconnect(None);
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
 mod details {
-    pub fn main_tauri() {
+    use super::*;
+
+    pub fn main_tauri() -> Result<()> {
         panic!("GUI not implemented for Linux.");
     }
 
-    pub fn main_debug_auth() {
+    pub fn main_debug_auth() -> Result<()> {
         unimplemented!();
     }
 
-    pub fn main_debug_wintun() {
+    pub fn main_debug_wintun() -> Result<()> {
         panic!("Wintun not implemented for Linux.");
     }
 }
 
 #[cfg(target_os = "windows")]
 mod details {
+    use super::*;
+
     use tauri::{
         CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
         SystemTraySubmenu,
     };
 
-    pub fn main_debug_auth() {
-        sign_in();
+    pub fn main_debug_auth() -> Result<()> {
+        sign_in()
     }
 
-    pub fn main_tauri() {
+    pub fn main_tauri() -> Result<()> {
         let tray = SystemTray::new().with_menu(signed_out_menu());
 
         tauri::Builder::default()
@@ -96,7 +137,8 @@ mod details {
                 if let SystemTrayEvent::MenuItemClick { id, .. } = event {
                     match id.as_str() {
                         "/sign_in" => {
-                            sign_in();
+                            // TODO: Don't block the main thread here
+                            sign_in().unwrap();
 
                             app.tray_handle()
                                 .set_menu(signed_in_menu(
@@ -147,9 +189,10 @@ mod details {
                     api.prevent_exit();
                 }
             });
+        Ok(())
     }
 
-    fn sign_in() {
+    fn sign_in() -> Result<()> {
         use windows::{
             core::HSTRING,
             Foundation::{AsyncStatus, Uri},
@@ -157,17 +200,17 @@ mod details {
         };
 
         let start_uri = HSTRING::from("https://app.firez.one/firezone?client_platform=windows");
-        let start_uri = Uri::CreateUri(&start_uri).unwrap();
+        let start_uri = Uri::CreateUri(&start_uri)?;
 
         println!("Kicking off async call...");
-        let future = WebAuthenticationBroker::AuthenticateSilentlyAsync(&start_uri).unwrap();
+        let future = WebAuthenticationBroker::AuthenticateSilentlyAsync(&start_uri)?;
 
         for i in 0..600 {
             println!("Waiting for auth broker ({i})...");
             std::thread::sleep(std::time::Duration::from_secs(1));
-            match future.Status().unwrap() {
+            match future.Status()? {
                 AsyncStatus::Completed => {
-                    let end_uri = future.get().unwrap().ResponseData().unwrap();
+                    let end_uri = future.get().unwrap().ResponseData()?;
                     println!("End URI: {end_uri}");
                     break;
                 }
@@ -175,9 +218,10 @@ mod details {
                 status => panic!("Async failed: {status:?}"),
             }
         }
+        Ok(())
     }
 
-    pub fn main_debug_wintun() {
+    pub fn main_debug_wintun() -> Result<()> {
         use std::sync::Arc;
 
         //Must be run as Administrator because we create network adapters
@@ -226,6 +270,8 @@ mod details {
 
         //drop(adapter)
         //And the adapter closes its resources when dropped
+
+        Ok(())
     }
 
     // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command

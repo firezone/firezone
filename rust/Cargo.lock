@@ -1660,13 +1660,17 @@ dependencies = [
 name = "firezone-windows-client"
 version = "1.20231001.0"
 dependencies = [
+ "anyhow",
+ "clap",
  "connlib-client-shared",
+ "firezone-cli-utils",
  "secrecy",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
- "thiserror",
+ "tracing",
+ "tracing-subscriber",
  "windows 0.52.0",
  "wintun",
 ]
