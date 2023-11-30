@@ -1258,7 +1258,7 @@ defmodule Domain.AuthTest do
 
       assert Enum.all?(provider_identifiers, &(&1 in delete))
       assert Repo.aggregate(Auth.Identity, :count) == 2
-      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 0
+      assert Repo.aggregate(Auth.Identity.Query.not_deleted(), :count) == 0
 
       assert Enum.empty?(actor_ids_by_provider_identifier)
     end
@@ -1798,7 +1798,7 @@ defmodule Domain.AuthTest do
 
       assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 3
       assert delete_actor_identities(actor) == :ok
-      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 0
+      assert Repo.aggregate(Auth.Identity.Query.not_deleted(), :count) == 0
     end
 
     test "does not remove identities that belong to another actor", %{

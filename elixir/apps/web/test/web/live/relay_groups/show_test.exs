@@ -35,7 +35,7 @@ defmodule Web.Live.RelayGroups.ShowTest do
                }}}
   end
 
-  test "renders not found error when relay is deleted", %{
+  test "renders deleted relay without action buttons", %{
     account: account,
     group: group,
     identity: identity,
@@ -43,11 +43,17 @@ defmodule Web.Live.RelayGroups.ShowTest do
   } do
     group = Fixtures.Relays.delete_group(group)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/relay_groups/#{group}")
-    end
+
+    assert html =~ "(deleted)"
+    refute html =~ "Danger Zone"
+    refute html =~ "Add"
+    refute html =~ "Delete"
+    refute html =~ "Edit"
+    refute html =~ "Deploy"
   end
 
   test "renders breadcrumbs item", %{

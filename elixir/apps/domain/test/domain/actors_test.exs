@@ -30,7 +30,7 @@ defmodule Domain.ActorsTest do
       assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
     end
 
-    test "does not return deleted groups", %{
+    test "returns deleted groups", %{
       account: account,
       subject: subject
     } do
@@ -38,7 +38,8 @@ defmodule Domain.ActorsTest do
         Fixtures.Actors.create_group(account: account)
         |> Fixtures.Actors.delete_group()
 
-      assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
+      assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
+      assert fetched_group.id == group.id
     end
 
     test "returns group by id", %{account: account, subject: subject} do
@@ -497,7 +498,7 @@ defmodule Domain.ActorsTest do
 
       assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in delete))
       assert Repo.aggregate(Actors.Group, :count) == 2
-      assert Repo.aggregate(Actors.Group.Query.all(), :count) == 0
+      assert Repo.aggregate(Actors.Group.Query.not_deleted(), :count) == 0
 
       assert Enum.empty?(group_ids_by_provider_identifier)
     end
@@ -1871,8 +1872,8 @@ defmodule Domain.ActorsTest do
       assert {:ok, actor} = delete_actor(actor_to_delete, subject)
       assert actor.deleted_at
 
-      assert Repo.aggregate(Domain.Clients.Client.Query.all(), :count) == 0
-      assert Repo.aggregate(Domain.Auth.Identity.Query.all(), :count) == 1
+      assert Repo.aggregate(Domain.Clients.Client.Query.not_deleted(), :count) == 0
+      assert Repo.aggregate(Domain.Auth.Identity.Query.not_deleted(), :count) == 1
     end
 
     test "returns error when trying to delete the last admin actor" do

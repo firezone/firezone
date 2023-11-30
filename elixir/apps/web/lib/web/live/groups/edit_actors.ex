@@ -6,6 +6,7 @@ defmodule Web.Groups.EditActors do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
            Actors.fetch_group_by_id(id, socket.assigns.subject, preload: [:memberships]),
+         nil <- group.deleted_at,
          false <- Actors.group_synced?(group),
          {:ok, actors} <-
            Actors.list_actors(socket.assigns.subject, preload: [identities: :provider]) do

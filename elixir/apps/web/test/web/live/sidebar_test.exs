@@ -1,4 +1,4 @@
-defmodule Web.Live.Nav.SidebarTest do
+defmodule Web.SidebarTest do
   use Web.ConnCase, async: true
 
   setup do
