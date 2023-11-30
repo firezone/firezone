@@ -288,6 +288,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # TODO: Calculate sha256sum for this binary and attach to release
           gh release upload ${{ needs.update-release-draft.outputs.tag_name }} \
             ${{ env.BINARY_DEST_PATH }}-x64.exe \
             --clobber \
