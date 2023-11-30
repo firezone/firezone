@@ -69,19 +69,6 @@ jobs:
     defaults:
       run:
         working-directory: ./rust/hello-world
-    strategy:
-      fail-fast: false
-      # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
-      # In the future we could try to cross-compile aarch64-windows here.
-      matrix:
-        arch:
-          - target: x86_64-pc-windows-msvc
-            shortname: x64
-        name:
-          - package: hello-world
-            artifact: hello-world
-    env:
-      BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}.exe
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
@@ -89,16 +76,15 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
-          cargo build --release -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
-          cp ../target/${{ matrix.arch.target }}/release/${{ matrix.name.package }}.exe $BINARY_DEST_PATH
-
-          # PowerShell doesn't seem to have sha256sum.
-          # There must be a way to install it.
+          cargo build --release
+          mv ../target/release/hello-world.exe hello-world-x64.exe
+          pwd
+          ls
       - name: Save build artifacts
         uses: actions/upload-artifact@v3
         with:
           name: hello-world-x64.exe
-          path: ${{ github.workspace }}/rust/hello-world/${{ env.BINARY_DEST_PATH }}
+          path: ${{ github.workspace }}/rust/hello-world/hello-world-x64.exe
 
   temp-build-windows-artifacts:
     runs-on: windows-2019
@@ -115,7 +101,7 @@ jobs:
           cargo install tauri-cli
           # Already has '--release' in it
           cargo tauri build
-          cp ../target/release/firezone-windows-client.exe windows-client-x64.exe
+          mv ../target/release/firezone-windows-client.exe windows-client-x64.exe
           # sha256sum windows-client-x64.exe > windows-client-x64.exe.sha256sum.txt
       - name: Save build artifacts
         uses: actions/upload-artifact@v3
