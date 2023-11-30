@@ -38,8 +38,9 @@ defmodule Web.Policies.Show do
     <.section>
       <:title>
         <%= @page_title %>: <code><%= @policy.id %></code>
+        <span :if={not is_nil(@policy.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action>
+      <:action :if={is_nil(@policy.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/policies/#{@policy}/edit"}>
           Edit Policy
         </.edit_button>
@@ -62,6 +63,9 @@ defmodule Web.Policies.Show do
               <.link navigate={~p"/#{@account}/groups/#{@policy.actor_group_id}"} class={link_style()}>
                 <%= @policy.actor_group.name %>
               </.link>
+              <span :if={not is_nil(@policy.actor_group.deleted_at)} class="text-red-600">
+                (deleted)
+              </span>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -72,6 +76,9 @@ defmodule Web.Policies.Show do
               <.link navigate={~p"/#{@account}/resources/#{@policy.resource_id}"} class={link_style()}>
                 <%= @policy.resource.name %>
               </.link>
+              <span :if={not is_nil(@policy.resource.deleted_at)} class="text-red-600">
+                (deleted)
+              </span>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -140,7 +147,7 @@ defmodule Web.Policies.Show do
       </:content>
     </.section>
 
-    <.danger_zone>
+    <.danger_zone :if={is_nil(@policy.deleted_at)}>
       <:action>
         <.delete_button
           phx-click="delete"

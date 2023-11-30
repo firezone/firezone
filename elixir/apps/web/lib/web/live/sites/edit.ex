@@ -4,11 +4,12 @@ defmodule Web.Sites.Edit do
   alias Domain.Gateways
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, group} <- Gateways.fetch_group_by_id(id, socket.assigns.subject) do
+    with {:ok, group} <- Gateways.fetch_group_by_id(id, socket.assigns.subject),
+         nil <- group.deleted_at do
       changeset = Gateways.change_group(group)
       {:ok, assign(socket, group: group, form: to_form(changeset))}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 

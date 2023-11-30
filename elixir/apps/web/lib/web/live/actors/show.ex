@@ -25,7 +25,7 @@ defmodule Web.Actors.Show do
          flow_activities_enabled?: Domain.Config.flow_activities_enabled?()
        )}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -42,8 +42,9 @@ defmodule Web.Actors.Show do
       <:title>
         <%= actor_type(@actor.type) %>: <span class="font-bold"><%= @actor.name %></span>
         <span :if={@actor.id == @subject.actor.id} class="text-gray-400">(you)</span>
+        <span :if={not is_nil(@actor.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action>
+      <:action :if={is_nil(@actor.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/actors/#{@actor}/edit"}>
           Edit <%= actor_type(@actor.type) %>
         </.edit_button>
@@ -90,7 +91,7 @@ defmodule Web.Actors.Show do
 
     <.section>
       <:title>Authentication Identities</:title>
-      <:action>
+      <:action :if={is_nil(@actor.deleted_at)}>
         <.add_button
           :if={@actor.type == :service_account}
           navigate={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}
@@ -98,7 +99,7 @@ defmodule Web.Actors.Show do
           Create Token
         </.add_button>
       </:action>
-      <:action>
+      <:action :if={is_nil(@actor.deleted_at)}>
         <.add_button
           :if={@actor.type != :service_account}
           navigate={~p"/#{@account}/actors/users/#{@actor}/new_identity"}
@@ -139,13 +140,13 @@ defmodule Web.Actors.Show do
                   No authentication identities to display
                 </div>
                 <.add_button
-                  :if={@actor.type == :service_account}
+                  :if={is_nil(@actor.deleted_at) and @actor.type == :service_account}
                   navigate={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}
                 >
                   Create Token
                 </.add_button>
                 <.add_button
-                  :if={@actor.type != :service_account}
+                  :if={is_nil(@actor.deleted_at) and @actor.type != :service_account}
                   navigate={~p"/#{@account}/actors/users/#{@actor}/new_identity"}
                 >
                   Create Identity
@@ -175,9 +176,6 @@ defmodule Web.Actors.Show do
           </:col>
           <:empty>
             <div class="text-center text-slate-500 p-4">No clients to display</div>
-            <div class="text-center text-slate-500 mb-4">
-              Clients are created automatically when user connects to a resource.
-            </div>
           </:empty>
         </.table>
       </:content>
@@ -231,7 +229,7 @@ defmodule Web.Actors.Show do
       </:content>
     </.section>
 
-    <.danger_zone>
+    <.danger_zone :if={is_nil(@actor.deleted_at)}>
       <:action>
         <.delete_button
           :if={not Actors.actor_synced?(@actor)}

@@ -3,11 +3,12 @@ defmodule Web.Clients.Edit do
   alias Domain.Clients
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, client} <- Clients.fetch_client_by_id(id, socket.assigns.subject) do
+    with {:ok, client} <- Clients.fetch_client_by_id(id, socket.assigns.subject),
+         nil <- client.deleted_at do
       changeset = Clients.change_client(client)
       {:ok, assign(socket, client: client, form: to_form(changeset))}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 

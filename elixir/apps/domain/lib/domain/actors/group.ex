@@ -5,7 +5,7 @@ defmodule Domain.Actors.Group do
     field :name, :string
 
     # Those fields will be set for groups we synced from IdP's
-    belongs_to :provider, Domain.Auth.Provider, where: [deleted_at: nil]
+    belongs_to :provider, Domain.Auth.Provider
     field :provider_identifier, :string
 
     has_many :policies, Domain.Policies.Policy,

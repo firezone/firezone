@@ -60,12 +60,12 @@ defmodule Domain.ResourcesTest do
       refute is_nil(fetched_resource.authorized_by_policy)
     end
 
-    test "does not return deleted resources", %{account: account, subject: subject} do
+    test "returns deleted resources", %{account: account, subject: subject} do
       {:ok, resource} =
         Fixtures.Resources.create_resource(account: account)
         |> delete_resource(subject)
 
-      assert fetch_resource_by_id(resource.id, subject) == {:error, :not_found}
+      assert {:ok, _resource} = fetch_resource_by_id(resource.id, subject)
     end
 
     test "does not return resources in other accounts", %{subject: subject} do

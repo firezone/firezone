@@ -31,8 +31,9 @@ defmodule Web.Groups.Show do
     <.section>
       <:title>
         Group: <code><%= @group.name %></code>
+        <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action>
+      <:action :if={is_nil(@group.deleted_at)}>
         <.edit_button
           :if={not Actors.group_synced?(@group)}
           navigate={~p"/#{@account}/groups/#{@group}/edit"}
@@ -58,7 +59,7 @@ defmodule Web.Groups.Show do
 
     <.section>
       <:title>Actors</:title>
-      <:action>
+      <:action :if={is_nil(@group.deleted_at)}>
         <.edit_button
           :if={not Actors.group_synced?(@group)}
           navigate={~p"/#{@account}/groups/#{@group}/edit_actors"}
@@ -85,7 +86,7 @@ defmodule Web.Groups.Show do
                   No actors in group
                 </div>
                 <.edit_button
-                  :if={not Actors.group_synced?(@group)}
+                  :if={is_nil(@group.deleted_at)}
                   navigate={~p"/#{@account}/groups/#{@group}/edit"}
                 >
                   Edit Group
@@ -100,7 +101,7 @@ defmodule Web.Groups.Show do
       </:content>
     </.section>
 
-    <.danger_zone>
+    <.danger_zone :if={is_nil(@group.deleted_at)}>
       <:action>
         <.delete_button
           phx-click="delete"

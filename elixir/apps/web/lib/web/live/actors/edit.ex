@@ -6,6 +6,7 @@ defmodule Web.Actors.Edit do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, actor} <-
            Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: [:memberships]),
+         nil <- actor.deleted_at,
          {:ok, groups} <- Actors.list_groups(socket.assigns.subject) do
       changeset = Actors.change_actor(actor)
 
@@ -19,7 +20,7 @@ defmodule Web.Actors.Edit do
          page_title: "Edit actor #{actor.name}"
        ]}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 

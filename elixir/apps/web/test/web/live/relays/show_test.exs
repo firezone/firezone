@@ -33,7 +33,7 @@ defmodule Web.Live.Relays.ShowTest do
                }}}
   end
 
-  test "renders not found error when relay is deleted", %{
+  test "renders deleted relay without action buttons", %{
     account: account,
     relay: relay,
     identity: identity,
@@ -41,11 +41,16 @@ defmodule Web.Live.Relays.ShowTest do
   } do
     relay = Fixtures.Relays.delete_relay(relay)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/relays/#{relay}")
-    end
+
+    assert html =~ "(deleted)"
+    refute html =~ "Danger Zone"
+    refute html =~ "Add"
+    refute html =~ "Delete"
+    refute html =~ "Edit"
   end
 
   test "renders breadcrumbs item", %{

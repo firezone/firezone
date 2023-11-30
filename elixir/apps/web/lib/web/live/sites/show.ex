@@ -46,8 +46,9 @@ defmodule Web.Sites.Show do
     <.section>
       <:title>
         Site: <code><%= @group.name %></code>
+        <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action>
+      <:action :if={is_nil(@group.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/sites/#{@group}/edit"}>
           Edit Site
         </.edit_button>
@@ -80,7 +81,7 @@ defmodule Web.Sites.Show do
           see all <.icon name="hero-arrow-right" class="w-2 h-2" />
         </.link>
       </:title>
-      <:action>
+      <:action :if={is_nil(@group.deleted_at)}>
         <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
           Deploy
         </.add_button>
@@ -112,12 +113,12 @@ defmodule Web.Sites.Show do
                 <div class="pb-4">
                   No gateways to display.
                 </div>
-                <div class="pb-4">
+                <div :if={is_nil(@group.deleted_at)} class="pb-4">
                   <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
                     Deploy a Gateway
                   </.add_button>
                 </div>
-                <div>
+                <div :if={is_nil(@group.deleted_at)}>
                   <p>
                     Deploy gateways to terminate connections to your site's resources. All gateways deployed within a site must be able to reach all its resources.
                   </p>
@@ -133,7 +134,7 @@ defmodule Web.Sites.Show do
       <:title>
         Resources
       </:title>
-      <:action>
+      <:action :if={is_nil(@group.deleted_at)}>
         <.add_button navigate={~p"/#{@account}/resources/new?site_id=#{@group}"}>
           Create
         </.add_button>
@@ -212,7 +213,7 @@ defmodule Web.Sites.Show do
       </:content>
     </.section>
 
-    <.danger_zone>
+    <.danger_zone :if={is_nil(@group.deleted_at)}>
       <:action>
         <.delete_button
           phx-click="delete"

@@ -29,7 +29,7 @@ defmodule Domain.GatewaysTest do
       assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
     end
 
-    test "does not return deleted groups", %{
+    test "returns deleted groups", %{
       account: account,
       subject: subject
     } do
@@ -37,7 +37,8 @@ defmodule Domain.GatewaysTest do
         Fixtures.Gateways.create_group(account: account)
         |> Fixtures.Gateways.delete_group()
 
-      assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
+      assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
+      assert fetched_group.id == group.id
     end
 
     test "returns group by id", %{account: account, subject: subject} do
@@ -387,7 +388,7 @@ defmodule Domain.GatewaysTest do
       assert fetch_gateway_by_id(gateway.id, subject) == {:error, :not_found}
     end
 
-    test "does not return deleted gateways", %{
+    test "returns deleted gateways", %{
       account: account,
       subject: subject
     } do
@@ -395,7 +396,7 @@ defmodule Domain.GatewaysTest do
         Fixtures.Gateways.create_gateway(account: account)
         |> Fixtures.Gateways.delete_gateway()
 
-      assert fetch_gateway_by_id(gateway.id, subject) == {:error, :not_found}
+      assert fetch_gateway_by_id(gateway.id, subject) == {:ok, gateway}
     end
 
     test "returns gateway by id", %{account: account, subject: subject} do

@@ -69,14 +69,14 @@ defmodule Domain.Actors.Membership.Query do
   end
 
   def with_joined_actors(queryable \\ all()) do
-    join(queryable, :inner, [memberships: memberships], actors in ^Actor.Query.all(),
+    join(queryable, :inner, [memberships: memberships], actors in ^Actor.Query.not_deleted(),
       on: actors.id == memberships.actor_id,
       as: :actors
     )
   end
 
   def with_joined_groups(queryable \\ all()) do
-    join(queryable, :inner, [memberships: memberships], groups in ^Group.Query.all(),
+    join(queryable, :inner, [memberships: memberships], groups in ^Group.Query.not_deleted(),
       on: groups.id == memberships.group_id,
       as: :groups
     )

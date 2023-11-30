@@ -29,7 +29,7 @@ defmodule Domain.RelaysTest do
       assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
     end
 
-    test "does not return deleted groups", %{
+    test "returns deleted groups", %{
       account: account,
       subject: subject
     } do
@@ -37,7 +37,8 @@ defmodule Domain.RelaysTest do
         Fixtures.Relays.create_group(account: account)
         |> Fixtures.Relays.delete_group()
 
-      assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
+      assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
+      assert fetched_group.id == group.id
     end
 
     test "returns group by id", %{account: account, subject: subject} do
@@ -409,7 +410,7 @@ defmodule Domain.RelaysTest do
       assert fetch_relay_by_id(relay.id, subject) == {:error, :not_found}
     end
 
-    test "does not return deleted relays", %{
+    test "returns deleted relays", %{
       account: account,
       subject: subject
     } do
@@ -417,7 +418,7 @@ defmodule Domain.RelaysTest do
         Fixtures.Relays.create_relay(account: account)
         |> Fixtures.Relays.delete_relay()
 
-      assert fetch_relay_by_id(relay.id, subject) == {:error, :not_found}
+      assert {:ok, _relay} = fetch_relay_by_id(relay.id, subject)
     end
 
     test "returns relay by id", %{account: account, subject: subject} do

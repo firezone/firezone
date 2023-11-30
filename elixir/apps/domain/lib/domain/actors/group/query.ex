@@ -3,10 +3,14 @@ defmodule Domain.Actors.Group.Query do
 
   def all do
     from(groups in Domain.Actors.Group, as: :groups)
+  end
+
+  def not_deleted do
+    all()
     |> where([groups: groups], is_nil(groups.deleted_at))
   end
 
-  def by_id(queryable \\ all(), id)
+  def by_id(queryable \\ not_deleted(), id)
 
   def by_id(queryable, {:in, ids}) do
     where(queryable, [groups: groups], groups.id in ^ids)
@@ -16,19 +20,19 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.id == ^id)
   end
 
-  def by_account_id(queryable \\ all(), account_id) do
+  def by_account_id(queryable \\ not_deleted(), account_id) do
     where(queryable, [groups: groups], groups.account_id == ^account_id)
   end
 
-  def by_provider_id(queryable \\ all(), provider_id) do
+  def by_provider_id(queryable \\ not_deleted(), provider_id) do
     where(queryable, [groups: groups], groups.provider_id == ^provider_id)
   end
 
-  def by_not_empty_provider_id(queryable \\ all()) do
+  def by_not_empty_provider_id(queryable \\ not_deleted()) do
     where(queryable, [groups: groups], not is_nil(groups.provider_id))
   end
 
-  def by_provider_identifier(queryable \\ all(), provider_identifier)
+  def by_provider_identifier(queryable \\ not_deleted(), provider_identifier)
 
   def by_provider_identifier(queryable, {:in, provider_identifiers}) do
     where(queryable, [groups: groups], groups.provider_identifier in ^provider_identifiers)
@@ -38,7 +42,7 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.provider_identifier == ^provider_identifier)
   end
 
-  def group_by_provider_id(queryable \\ all()) do
+  def group_by_provider_id(queryable \\ not_deleted()) do
     queryable
     |> group_by([groups: groups], groups.provider_id)
     |> where([groups: groups], not is_nil(groups.provider_id))
@@ -48,7 +52,7 @@ defmodule Domain.Actors.Group.Query do
     })
   end
 
-  def preload_few_actors_for_each_group(queryable \\ all(), limit) do
+  def preload_few_actors_for_each_group(queryable \\ not_deleted(), limit) do
     queryable
     |> with_joined_memberships(limit)
     |> with_joined_actors()
@@ -71,7 +75,10 @@ defmodule Domain.Actors.Group.Query do
       Domain.Actors.Membership.Query.all()
       |> where([memberships: memberships], memberships.group_id == parent_as(:groups).id)
       # we need second join to exclude soft deleted actors before applying a limit
-      |> join(:inner, [memberships: memberships], actors in ^Domain.Actors.Actor.Query.all(),
+      |> join(
+        :inner,
+        [memberships: memberships],
+        actors in ^Domain.Actors.Actor.Query.not_deleted(),
         on: actors.id == memberships.actor_id
       )
       |> select([memberships: memberships], memberships.actor_id)
@@ -92,14 +99,18 @@ defmodule Domain.Actors.Group.Query do
     )
   end
 
-  def with_joined_actors(queryable \\ all()) do
-    join(queryable, :left, [memberships: memberships], actors in ^Domain.Actors.Actor.Query.all(),
+  def with_joined_actors(queryable \\ not_deleted()) do
+    join(
+      queryable,
+      :left,
+      [memberships: memberships],
+      actors in ^Domain.Actors.Actor.Query.not_deleted(),
       on: actors.id == memberships.actor_id,
       as: :actors
     )
   end
 
-  def lock(queryable \\ all()) do
+  def lock(queryable \\ not_deleted()) do
     lock(queryable, "FOR UPDATE")
   end
 end

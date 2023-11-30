@@ -34,12 +34,13 @@ defmodule Domain.PoliciesTest do
       assert fetched_policy.id == policy.id
     end
 
-    test "does not return deleted policy", %{account: account, subject: subject} do
+    test "returns deleted policies", %{account: account, subject: subject} do
       {:ok, policy} =
         Fixtures.Policies.create_policy(account: account)
         |> delete_policy(subject)
 
-      assert fetch_policy_by_id(policy.id, subject) == {:error, :not_found}
+      assert {:ok, fetched_policy} = fetch_policy_by_id(policy.id, subject)
+      assert fetched_policy.id == policy.id
     end
 
     test "does not return policies in other accounts", %{subject: subject} do

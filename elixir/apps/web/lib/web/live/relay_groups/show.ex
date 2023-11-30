@@ -30,8 +30,9 @@ defmodule Web.RelayGroups.Show do
     <.section>
       <:title>
         Relay Instance Group: <code><%= @group.name %></code>
+        <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action :if={@group.account_id}>
+      <:action :if={not is_nil(@group.account_id) and is_nil(@group.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/relay_groups/#{@group}/edit"}>
           Edit Instance Group
         </.edit_button>
@@ -56,7 +57,7 @@ defmodule Web.RelayGroups.Show do
 
     <.section>
       <:title>Relays</:title>
-      <:action>
+      <:action :if={not is_nil(@group.account_id) and is_nil(@group.deleted_at)}>
         <.add_button navigate={~p"/#{@account}/relay_groups/#{@group}/new_token"}>
           Deploy
         </.add_button>
@@ -94,7 +95,7 @@ defmodule Web.RelayGroups.Show do
       </:content>
     </.section>
 
-    <.danger_zone>
+    <.danger_zone :if={not is_nil(@group.account_id) and is_nil(@group.deleted_at)}>
       <:action :if={@group.account_id}>
         <.delete_button
           phx-click="delete"
