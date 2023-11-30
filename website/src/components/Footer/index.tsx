@@ -196,9 +196,11 @@ export default function Footer() {
             </Link>
           </span>
           <div className="flex mt-4 space-x-6 sm:justify-center sm:mt-0">
-            <TwitterIcon url="https://twitter.com/firezonehq" />
-            <GitHubIcon url="https://github.com/firezone" />
-            <LinkedInIcon url="https://linkedin.com/company/firezonehq" />
+            <TwitterIcon url={new URL("https://twitter.com/firezonehq")} />
+            <GitHubIcon url={new URL("https://github.com/firezone")} />
+            <LinkedInIcon
+              url={new URL("https://linkedin.com/company/firezonehq")}
+            />
           </div>
         </div>
       </div>

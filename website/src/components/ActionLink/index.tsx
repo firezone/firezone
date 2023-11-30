@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Route } from "next";
 import { HiArrowLongRight } from "react-icons/hi2";
 
 export default function ActionLink({
@@ -7,7 +8,7 @@ export default function ActionLink({
   className,
 }: {
   children: React.ReactNode;
-  href: string;
+  href: Route<string>;
   className?: string;
 }) {
   return (

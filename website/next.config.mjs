@@ -31,6 +31,9 @@ const highlightLanguages = {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    typedRoutes: true,
+  },
   // Proxy GitHub requests to avoid CORS issues
   async rewrites() {
     return [

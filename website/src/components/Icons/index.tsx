@@ -1,11 +1,8 @@
 import Link from "next/link";
 
-export function LinkedInIcon({ url }: { url: string }) {
+export function LinkedInIcon({ url }: { url: URL }) {
   return (
-    <Link
-      href={url}
-      className="text-neutral-800 hover:text-neutral-900 "
-    >
+    <Link href={url} className="text-neutral-800 hover:text-neutral-900 ">
       <svg
         aria-hidden="true"
         fill="currentColor"
@@ -23,12 +20,9 @@ export function LinkedInIcon({ url }: { url: string }) {
   );
 }
 
-export function GitHubIcon({ url }: { url: string }) {
+export function GitHubIcon({ url }: { url: URL }) {
   return (
-    <Link
-      href={url}
-      className="text-neutral-800 hover:text-neutral-900 "
-    >
+    <Link href={url} className="text-neutral-800 hover:text-neutral-900 ">
       <svg
         className="w-5 h-5"
         fill="currentColor"
@@ -46,12 +40,9 @@ export function GitHubIcon({ url }: { url: string }) {
   );
 }
 
-export function TwitterIcon({ url }: { url: string }) {
+export function TwitterIcon({ url }: { url: URL }) {
   return (
-    <Link
-      href={url}
-      className="text-neutral-800 hover:text-neutral-900 "
-    >
+    <Link href={url} className="text-neutral-800 hover:text-neutral-900 ">
       <svg
         className="w-5 h-5"
         fill="currentColor"

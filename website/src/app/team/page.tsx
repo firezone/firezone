@@ -14,9 +14,9 @@ function renderTeamMember({
   name: string;
   title: string;
   imgSrc: string;
-  twitterUrl?: string;
-  githubUrl?: string;
-  linkedinUrl?: string;
+  twitterUrl?: URL;
+  githubUrl?: URL;
+  linkedinUrl?: URL;
 }) {
   return (
     <div className="text-center">
@@ -31,7 +31,7 @@ function renderTeamMember({
         <h3 className="justify-center text-xl font-bold tracking-tight text-neutral-900 ">
           {name}
         </h3>
-        <span className="text-neutral-800 ">{title}</span>
+        <span className="text-neutral-800 text-sm">{title}</span>
         <ul className="flex justify-center space-x-4 mt-4">
           {twitterUrl && (
             <li>
@@ -55,61 +55,73 @@ function renderTeamMember({
 }
 
 export default function Page() {
-  const coreTeam = [
+  const team = [
     {
       name: "Jamil Bou Kheir",
       title: "CEO/Founder",
       imgSrc: gravatar("jamil@firezone.dev", 200),
-      twitterUrl: "https://twitter.com/jamilbk",
-      githubUrl: "https://github.com/jamilbk",
-      linkedinUrl: "https://linkedin.com/in/jamilbk",
+      twitterUrl: new URL("https://twitter.com/jamilbk"),
+      githubUrl: new URL("https://github.com/jamilbk"),
+      linkedinUrl: new URL("https://linkedin.com/in/jamilbk"),
     },
     {
       name: "Gabriel Steinberg",
       title: "Senior Backend Engineer",
       imgSrc: "/images/avatars/gabriel.png",
-      twitterUrl: "https://twitter.com/tapingmemory",
-      githubUrl: "https://github.com/conectado",
+      twitterUrl: new URL("https://twitter.com/tapingmemory"),
+      githubUrl: new URL("https://github.com/conectado"),
     },
     {
       name: "Andrew Dryga",
       title: "Founding Engineer",
       imgSrc: "/images/avatars/andrew.jpg",
-      twitterUrl: "https://twitter.com/andrew_dryga",
-      githubUrl: "https://github.com/andrewdryga",
-      linkedinUrl: "https://linkedin.com/in/andrew-dryga-bb382557",
+      twitterUrl: new URL("https://twitter.com/andrew_dryga"),
+      githubUrl: new URL("https://github.com/andrewdryga"),
+      linkedinUrl: new URL("https://linkedin.com/in/andrew-dryga-bb382557"),
+    },
+    {
+      name: "Blake Hitchcock",
+      title: "Technical Advisor",
+      imgSrc: "/images/avatars/blake.jpeg",
+      githubUrl: new URL("https://github.com/rbhitchcock"),
+      linkedinUrl: new URL("https://www.linkedin.com/in/rblakehitchcock"),
+    },
+    {
+      name: "Thomas Eizinger",
+      title: "Distributed Systems Engineer",
+      imgSrc: "/images/avatars/thomas.jpeg",
+      twitterUrl: new URL("https://twitter.com/oetzn"),
+      githubUrl: new URL("https://github.com/thomaseizinger"),
+      linkedinUrl: new URL("https://www.linkedin.com/in/thomas-eizinger"),
+    },
+    {
+      name: "Roopesh Chander",
+      title: "Apple Platform Engineer",
+      imgSrc: gravatar("roop@roopc.net", 200),
+      twitterUrl: new URL("https://twitter.com/roopcnet"),
+      githubUrl: new URL("https://github.com/roop"),
     },
     {
       name: "Brian Manifold",
       title: "Senior Full-stack Engineer",
       imgSrc: "/images/avatars/brian.png",
-      githubUrl: "https://github.com/bmanifold",
-      linkedinUrl: "https://www.linkedin.com/in/brian-manifold-536a0a3a/",
-    },
-  ];
-
-  const advisors = [
-    {
-      name: "Blake Hitchcock",
-      title: "Technical Advisor",
-      imgSrc: "/images/avatars/blake.jpeg",
-      githubUrl: "https://github.com/rbhitchcock",
-      linkedinUrl: "https://www.linkedin.com/in/rblakehitchcock",
+      githubUrl: new URL("https://github.com/bmanifold"),
+      linkedinUrl: new URL(
+        "https://www.linkedin.com/in/brian-manifold-536a0a3a/"
+      ),
     },
     {
-      name: "Thomas Eizinger",
-      title: "Technical Consultant",
-      imgSrc: "/images/avatars/thomas.jpeg",
-      twitterUrl: "https://twitter.com/oetzn",
-      githubUrl: "https://github.com/thomaseizinger",
-      linkedinUrl: "https://www.linkedin.com/in/thomas-eizinger",
+      name: "Jeff Spencer",
+      title: "Head of Marketing",
+      imgSrc: gravatar("jeff@firezone.dev", 200),
+      githubUrl: new URL("https://github.com/jefferenced"),
+      linkedinUrl: new URL("https://www.linkedin.com/in/jeff393/"),
     },
     {
-      name: "Roopesh Chander",
-      title: "Technical Consultant",
-      imgSrc: gravatar("roop@roopc.net", 200),
-      twitterUrl: "https://twitter.com/roopcnet",
-      githubUrl: "https://github.com/roop",
+      name: "Trisha",
+      title: "Windows Platform Engineer",
+      imgSrc: gravatar("trish@firezone.dev", 200),
+      githubUrl: new URL("https://github.com/ReactorScram"),
     },
   ];
 
@@ -118,31 +130,25 @@ export default function Page() {
       <div className="py-8 px-4 mx-auto max-w-screen-lg text-center lg:py-16 lg:px-6">
         <div className="text-neutral-800 sm:text-lg ">
           <h1 className="mb-14 justify-center md:text-6xl text-5xl tracking-tight font-extrabold text-neutral-900 leading-none">
-            People are everything.
+            Meet the Firezone team.
           </h1>
           <h2 className="mb-8 text-xl tracking-tight text-neutral-800 sm:px-16 xl:px-48">
-            We know that it's people who make all the difference. We strive to
-            hire the best and brightest and give them the tools they need to
-            succeed.
+            {/* FIXME: Make this less fluffy */}
+            See the driving force behind Firezone -- a team dedicated to
+            crafting secure and accessible software for a connected world.
+            Committed to transparency and innovation, our diverse group of
+            experts collaborates seamlessly to empower users with reliable and
+            security-focused technology, redefining the way we connect in the
+            digital landscape.
           </h2>
         </div>
         <div className="text-neutral-800 sm:text-lg ">
           <h3 className="justify-center pb-4 pt-14 text-2xl tracking-tight font-bold text-neutral-900  border-b border-neutral-300">
-            CORE TEAM
+            THE FIREZONE TEAM
           </h3>
         </div>
         <div className="mt-16 grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 lg:gap-16">
-          {coreTeam.map((person) => {
-            return renderTeamMember(person);
-          })}
-        </div>
-        <div className="text-neutral-800 sm:text-lg ">
-          <h3 className="justify-center pb-4 pt-14 text-2xl tracking-tight font-bold text-neutral-900  border-b border-neutral-300">
-            ADVISORS & CONSULTANTS
-          </h3>
-        </div>
-        <div className="mt-16 grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 lg:gap-16">
-          {advisors.map((person) => {
+          {team.map((person) => {
             return renderTeamMember(person);
           })}
         </div>
