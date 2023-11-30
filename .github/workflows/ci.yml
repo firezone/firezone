@@ -367,21 +367,15 @@ jobs:
 
             `;
 
-            // 3. Delete previous comment so PR timeline makes sense
+            // 3. Update previous comment
             if (botComment) {
-              github.rest.issues.deleteComment({
+              github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 comment_id: botComment.id,
+                body: output
               });
             }
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: output
-            });
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
