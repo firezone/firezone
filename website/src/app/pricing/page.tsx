@@ -37,7 +37,7 @@ export default function Page() {
               <Link href="/product/early-access">
                 <button
                   type="button"
-                  className="w-64 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-lg px-5 py-2.5 bg-gradient-to-br from-accent-700 to-accent-600"
+                  className="w-64 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-lg px-5 py-2.5 bg-accent-450 hover:bg-accent-700"
                 >
                   Request early access
                 </button>
@@ -60,7 +60,7 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
-                  Authenticate with magic link and OIDC
+                  Authenticate with email and OIDC
                 </span>
               </li>
               <li className="flex space-x-2.5">
@@ -91,7 +91,7 @@ export default function Page() {
               <Link href="/contact/sales">
                 <button
                   type="button"
-                  className="w-64 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-lg px-5 py-2.5 bg-gradient-to-br from-accent-700 to-accent-600"
+                  className="w-64 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-lg px-5 py-2.5 bg-accent-450 hover:bg-accent-700"
                 >
                   Request a demo
                 </button>

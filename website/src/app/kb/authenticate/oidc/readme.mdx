@@ -1,1 +1,23 @@
-# OpenID Connect (OIDC) Authentication
+import PlanBadge from "@/components/PlanBadge";
+
+<PlanBadge plans={["starter", "enterprise"]} />
+
+# SSO with OpenID Connect (OIDC)
+
+Firezone supports authenticating users with a universal OIDC connector. Use this
+connector to enable SSO for any OIDC-capable identity provider.
+
+{/* FIXME: detailed instructions per provider */}
+
+## Setting up the universal OIDC connector
+
+To set up the universal OIDC connector, go to `Settings` -> `Identity Providers`
+-> `Add Identity Provider` and follow the prompts from there.
+
+In general, you should follow your identity provider's documentation for setting
+up an OIDC client. If the option is available, be sure to enable PKCE as well.
+
+For more detailed guides specific to each provider, see the
+[Firezone legacy documentation](/docs/authenticate/oidc). Firezone 1.x uses the
+same OIDC connector under the hood as our legacy version, so those guides should
+apply for 1.x as well.

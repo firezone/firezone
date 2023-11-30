@@ -31,18 +31,19 @@ defmodule Web.Settings.DNS do
       </:title>
       <:content>
         <p class="ml-4 mb-4 font-medium text-gray-600">
-          Configure the default resolver used by connected Clients in your Firezone network. Queries for
+          Configure the default resolver used by connected Clients in your Firezone account. Queries for
           defined Resources will <strong>always</strong>
           use Firezone's internal DNS. All other queries will
-          use the resolver configured below.
+          use the resolver below if configured. If no resolver is configured, the client's default system
+          resolver will be used.
         </p>
         <p class="ml-4 mb-4 font-medium text-gray-600">
           <.link
             class="text-blue-600 hover:underline"
-            href="https://www.firezone.dev/docs/architecture/dns"
+            href="https://www.firezone.dev/kb/administer/dns?utm_source=product"
             target="_blank"
           >
-            Read more about how DNS works in Firezone.
+            Read more about configuring DNS in Firezone.
             <.icon name="hero-arrow-top-right-on-square" class="-ml-1 mb-3 w-3 h-3" />
           </.link>
         </p>

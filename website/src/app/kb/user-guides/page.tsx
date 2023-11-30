@@ -2,8 +2,9 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Apple Clients • Firezone Docs",
-  description: "Firezone Documentation",
+  title: "User Guides • Firezone Docs",
+  description:
+    "Guides designed to help end-users accomplish common tasks in Firezone.",
 };
 
 export default function Page() {

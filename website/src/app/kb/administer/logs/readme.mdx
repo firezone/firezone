@@ -1,1 +1,29 @@
-# Viewing Logs
+# Diagnostic logs
+
+Firezone maintains diagnostic log files in various locations depending on the
+component and operating system. Logs are scrubbed for sensitive and
+personally-identifiable information before being written to disk.
+
+Diagnostic logs are used primarily by the Firezone team for troubleshooting
+connectivity and other issues.
+
+Below is a table listing the various log directories used by each component.
+
+| Component               | Log directory                                                                           |
+| ----------------------- | --------------------------------------------------------------------------------------- |
+| macOS client            | `~/Library/Group Containers/47R2M6779T.group.dev.firezone.firezone/Library/Caches/logs` |
+| iOS client              | N/A                                                                                     |
+| Android/ChromeOS client | `/data/data/dev.firezone.android/caches/logs`                                           |
+| Linux client            | Set by the user via the `LOG_DIR` environment variable                                  |
+| Gateway                 | Logs are written to STDOUT by default                                                   |
+
+## Exporting logs
+
+Log files can be conveniently exported from the macOS, iOS, Android, and
+ChromeOS clients from the in-app Settings screen.
+
+## Clearing logs
+
+Simply delete the files in the log directories listed above. For macOS, iOS,
+Android, and ChromeOS clients, log directies can be cleared in the "Advanced"
+portion of the in-app Settings screen.

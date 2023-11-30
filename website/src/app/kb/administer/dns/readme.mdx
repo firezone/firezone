@@ -1,0 +1,39 @@
+import PlanBadge from "@/components/PlanBadge";
+import Alert from "@/components/DocsAlert";
+
+<PlanBadge plans={["starter", "enterprise"]} />
+
+# DNS in Firezone
+
+Firezone creates an internal IP for all resources in your account, including
+DNS-based resources. These internal IPs are used to route traffic from the
+requesting client to the appropriate gateway where the DNS query is ultimately
+resolved to its actual IP address.
+
+This means that clients are automatically configured for Split DNS in Firezone
+-- no other configuration is necessary other than adding the desired resources
+in the admin portal.
+
+This also means that each gateway resolves IPs for clients connecting to it, so
+it's important for DNS to be setup properly on the gateways in your account.
+
+## Configuring client DNS fallback
+
+For DNS names that don't match a defined resource, Firezone will use the
+upstream resolvers defined at `Settings` -> `DNS` in the order they are defined.
+
+If no custom resolvers are configured, Firezone clients will fall back to their
+default system resolver typically set by the DHCP server of their local network.
+
+To add custom resolvers, enter a valid IPv4 or IPv6 address and click "Save". To
+remove, delete the IP address and click "Save".
+
+<Alert
+  color="info"
+  html={`
+    Custom resolvers such as <a href="https://developers.cloudflare.com/1.1.1.1/setup/#1111-for-families">
+    Cloudflare</a> or <a href="https://nextdns.io">NextDNS</a> can be used to block
+    malware, ads, adult material and other content for all users in your Firezone
+    account.
+  `}
+/>
