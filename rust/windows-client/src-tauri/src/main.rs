@@ -21,6 +21,7 @@ fn main() -> Result<()> {
         }
         Some("debug-auth") => details::main_debug_auth(),
         Some("debug-connlib") => main_debug_connlib(),
+        Some("debug-local-server") => main_debug_local_server(),
         Some("debug-wintun") => details::main_debug_wintun(),
         Some(cmd) => bail!("Subcommand `{cmd}` not recognized"),
     }
@@ -85,6 +86,13 @@ fn main_debug_connlib() -> Result<()> {
     block_on_ctrl_c();
 
     session.disconnect(None);
+    Ok(())
+}
+
+fn main_debug_local_server() -> Result<()> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let local_addr = listener.local_addr()?;
+    println!("Listening on {local_addr}");
     Ok(())
 }
 
