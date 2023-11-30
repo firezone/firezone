@@ -4,33 +4,31 @@ This crate houses a Windows GUI client.
 
 ## Building
 
-Given this Git repo is in the dir "firezone":
+From this dir:
 
 ```
 # First-time setup - Install Tauri's dev server / hot-reload tool
 cargo install tauri-cli
 
-# Navigate to this dir. This is not the Rust project's root, but it's the root for the whole Tauri project.
-cd firezone/rust/windows-client
-
 # Builds a release exe
 cargo tauri build
 
-# The release exe should be up in the workspace
+# The release exe, MSI, and NSIS installer should be up in the workspace.
+# The exe can run without being installed
 stat ../target/release/firezone-windows-client.exe
+stat ../target/release/bundle/msi/firezone-windows-client_0.0.0_x64_en-US.msi
+stat ../target/release/bundle/nsis/firezone-windows-client_0.0.0_x64-setup.exe
 ```
 
 ## Running
 
-For development:
+From this dir:
 
 ```
-cd firezone/rust/windows-client
-
 # Tauri has some hot-reloading features. If the Rust code changes it will even recompile and restart the program for you.
 cargo tauri dev
 
-# You can call debug subcommands from this directory too
+# You can call debug subcommands on the exe from this directory too
 # e.g. this is equivalent to `cargo run -- debug`
 cargo tauri dev -- -- debug
 
