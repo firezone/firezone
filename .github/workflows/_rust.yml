@@ -64,7 +64,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
       - run: cargo test --all-features ${{ matrix.packages }}
 
-  temp-build-windows-hello-world:
+  temp-build-windows-artifacts:
     runs-on: windows-2019
     defaults:
       run:
@@ -79,6 +79,8 @@ jobs:
             artifact: hello-world
           - package: firezone-windows-client
             artifact: windows-client
+    env:
+      BINARY_DEST_PATH: ${{ matrix.name.artifact }}}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
@@ -87,37 +89,14 @@ jobs:
       - name: Build release binaries
         run: |
           cargo build --release -p ${{ matrix.name.package }}
-          cp target/release/${{ matrix.name.package }}.exe ${{ matrix.name.artifact }}-x64.exe
+          cp target/release/${{ matrix.name.package }}.exe "$BINARY_DEST_PATH-x64.exe"
           pwd
           ls
       - name: Save build artifacts
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.name.artifact }}-x64.exe
-          path: ${{ github.workspace }}/rust/${{ matrix.name.artifact }}-x64.exe
-
-  temp-build-windows-artifacts:
-    runs-on: windows-2019
-    defaults:
-      run:
-        working-directory: ./rust/windows-client
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
-        with:
-          targets: x86_64-pc-windows-msvc
-      - name: Build release binaries
-        run: |
-          cargo install tauri-cli
-          # Already has '--release' in it
-          cargo tauri build
-          mv ../target/release/firezone-windows-client.exe windows-client-x64.exe
-          # sha256sum windows-client-x64.exe > windows-client-x64.exe.sha256sum.txt
-      - name: Save build artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: windows-client-x64.exe
-          path: ${{ github.workspace }}/rust/windows-client/windows-client-x64.exe
+          path: ${{ github.workspace }}/rust/${{ env.BINARY_DEST_PATH }}-x64.exe
 
   smoke-test-relay:
     runs-on: ubuntu-22.04
