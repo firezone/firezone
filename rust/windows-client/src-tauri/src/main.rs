@@ -13,6 +13,8 @@ fn main() -> Result<()> {
     // Ignore the exe name
     args.next().unwrap();
 
+    println!("printing to stdout");
+
     match args.next().as_deref() {
         None | Some("tauri") => details::main_tauri(),
         Some("debug") => {
@@ -93,6 +95,12 @@ fn main_debug_local_server() -> Result<()> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
     let local_addr = listener.local_addr()?;
     println!("Listening on {local_addr}");
+
+    // The exe is a GUI app so Powershell may not show the stdout/stderr
+    // Just launch the GUI as feedback.
+
+    details::main_tauri()?;
+
     Ok(())
 }
 
@@ -235,23 +243,21 @@ mod details {
         //Must be run as Administrator because we create network adapters
         //Load the wintun dll file so that we can call the underlying C functions
         //Unsafe because we are loading an arbitrary dll file
-        let wintun = unsafe { wintun::load_from_path("../wintun/bin/amd64/wintun.dll") }
-            .expect("Failed to load wintun dll");
+        let wintun = unsafe { wintun::load_from_path("./wintun.dll") }?;
 
         //Try to open an adapter with the name "Demo"
         let adapter = match wintun::Adapter::open(&wintun, "Demo") {
             Ok(a) => a,
             Err(_) => {
                 //If loading failed (most likely it didn't exist), create a new one
-                wintun::Adapter::create(&wintun, "Demo", "Example manor hatch stash", None)
-                    .expect("Failed to create wintun adapter!")
+                wintun::Adapter::create(&wintun, "Demo", "Example manor hatch stash", None)?
             }
         };
         //Specify the size of the ring buffer the wintun driver should use.
-        let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY).unwrap());
+        let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
 
         //Get a 20 byte packet from the ring buffer
-        let mut packet = session.allocate_send_packet(20).unwrap();
+        let mut packet = session.allocate_send_packet(20)?;
         let bytes: &mut [u8] = packet.bytes_mut();
         //Write IPV4 version and header length
         bytes[0] = 0x40;
@@ -265,13 +271,13 @@ mod details {
         //Send the packet to wintun virtual adapter for processing by the system
         session.send_packet(packet);
 
-        println!("Sleeping 1 minute, see if the adapter is visible...");
-        std::thread::sleep(std::time::Duration::from_secs(60));
+        // Powershell won't show stdout/stderr so for certain tests use the GUI as a "return 0" signal to the dev
+        main_tauri()?;
 
         //Stop any readers blocking for data on other threads
         //Only needed when a blocking reader is preventing shutdown Ie. it holds an Arc to the
         //session, blocking it from being dropped
-        session.shutdown().unwrap();
+        session.shutdown()?;
 
         //the session is stopped on drop
         //drop(session);
