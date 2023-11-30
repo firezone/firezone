@@ -44,10 +44,10 @@ defmodule Web.Settings.IdentityProviders.Index do
         <p class="ml-4 mb-4 font-medium text-gray-600">
           <.link
             class="text-blue-600 hover:underline"
-            href="https://www.firezone.dev/docs/architecture/sso"
+            href="https://www.firezone.dev/kb/authenticate?utm_source=product"
             target="_blank"
           >
-            Read more about how SSO works in Firezone.
+            Read more about setting up SSO in Firezone.
             <.icon name="hero-arrow-top-right-on-square" class="-ml-1 mb-3 w-3 h-3" />
           </.link>
         </p>
