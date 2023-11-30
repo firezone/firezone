@@ -278,7 +278,7 @@ iex(api@api-b02t.us-east1-d.c.firezone-staging.internal)1>
 One-liner to connect to a running application container:
 
 ```bash
-❯ gcloud compute ssh web-w2f6 --tunnel-through-iap -- '$(docker ps | grep klt- | head -n 1 | awk '\''{split($NF, arr, "-"); print "docker exec -it " $NF " bin/" arr[2] " remote";}'\'')'
+❯ gcloud compute ssh $(gcloud compute instances list | grep "web-" | tail -n 1 | awk '{ print $1 }') --tunnel-through-iap -- '$(docker ps | grep klt- | head -n 1 | awk '\''{split($NF, arr, "-"); print "docker exec -it " $NF " bin/" arr[2] " remote";}'\'')'
 
 Interactive Elixir (1.15.2) - press Ctrl+C to exit (type h() ENTER for help)
 iex(web@web-w2f6.us-east1-d.c.firezone-staging.internal)1>
