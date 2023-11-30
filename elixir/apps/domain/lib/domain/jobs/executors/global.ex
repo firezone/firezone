@@ -167,8 +167,7 @@ defmodule Domain.Jobs.Executors.Global do
 
     Logger.metadata(attributes)
 
-    OpenTelemetry.Tracer.with_span job_callback do
-      OpenTelemetry.Tracer.set_attributes(attributes)
+    OpenTelemetry.Tracer.with_span job_callback, attributes: attributes do
       _ = apply(module, function, [config])
     end
 

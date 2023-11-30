@@ -15,7 +15,8 @@ defmodule Domain.Resources do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Validator.valid_uuid?(id) do
-      Resource.Query.by_id(id)
+      Resource.Query.all()
+      |> Resource.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
@@ -77,7 +78,7 @@ defmodule Domain.Resources do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
       {:ok, resources} =
-        Resource.Query.all()
+        Resource.Query.not_deleted()
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 
@@ -95,7 +96,7 @@ defmodule Domain.Resources do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       count =
-        Resource.Query.all()
+        Resource.Query.not_deleted()
         |> Authorizer.for_subject(subject)
         |> Resource.Query.by_gateway_group_id(gateway.group_id)
         |> Repo.aggregate(:count)
@@ -114,7 +115,7 @@ defmodule Domain.Resources do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       resources =
-        Resource.Query.all()
+        Resource.Query.not_deleted()
         |> Resource.Query.by_account_id(subject.account.id)
         |> Resource.Query.by_gateway_group_id(gateway.group_id)
         |> Repo.all()

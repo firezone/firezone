@@ -42,7 +42,8 @@ defmodule Domain.Gateways do
          true <- Validator.valid_uuid?(id) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-      Group.Query.by_id(id)
+      Group.Query.all()
+      |> Group.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
@@ -68,7 +69,7 @@ defmodule Domain.Gateways do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
       {:ok, groups} =
-        Group.Query.all()
+        Group.Query.not_deleted()
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 
@@ -193,7 +194,8 @@ defmodule Domain.Gateways do
          true <- Validator.valid_uuid?(id) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-      Gateway.Query.by_id(id)
+      Gateway.Query.all()
+      |> Gateway.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
@@ -228,7 +230,7 @@ defmodule Domain.Gateways do
 
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       {:ok, gateways} =
-        Gateway.Query.all()
+        Gateway.Query.not_deleted()
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 
@@ -263,7 +265,7 @@ defmodule Domain.Gateways do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
       {:ok, gateways} =
-        Gateway.Query.all()
+        Gateway.Query.not_deleted()
         |> Gateway.Query.by_group_id(group.id)
         |> Authorizer.for_subject(subject)
         |> Repo.list()
@@ -417,7 +419,7 @@ defmodule Domain.Gateways do
       {gateway.last_seen_remote_ip_location_lat, gateway.last_seen_remote_ip_location_lon}
     end)
     |> Enum.map(fn
-      {{nil, nil}, gateway} ->
+      {{gateway_lat, gateway_lon}, gateway} when is_nil(gateway_lat) or is_nil(gateway_lon) ->
         {Geo.fetch_radius_of_earth_km!(), gateway}
 
       {{gateway_lat, gateway_lon}, gateway} ->
@@ -425,6 +427,10 @@ defmodule Domain.Gateways do
         {distance, gateway}
     end)
     |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.at(0)
+    |> elem(1)
+    |> Enum.group_by(fn gateway -> gateway.last_seen_version end)
+    |> Enum.sort_by(&elem(&1, 0), :desc)
     |> Enum.at(0)
     |> elem(1)
     |> Enum.random()

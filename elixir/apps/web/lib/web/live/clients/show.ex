@@ -37,8 +37,9 @@ defmodule Web.Clients.Show do
     <.section>
       <:title>
         Client Details
+        <span :if={not is_nil(@client.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action>
+      <:action :if={is_nil(@client.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/clients/#{@client}/edit"}>
           Edit Client
         </.edit_button>
@@ -143,7 +144,7 @@ defmodule Web.Clients.Show do
       </:content>
     </.section>
 
-    <.danger_zone>
+    <.danger_zone :if={is_nil(@client.deleted_at)}>
       <:action>
         <.delete_button
           phx-click="delete"

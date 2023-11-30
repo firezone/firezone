@@ -29,7 +29,7 @@ defmodule Domain.GatewaysTest do
       assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
     end
 
-    test "does not return deleted groups", %{
+    test "returns deleted groups", %{
       account: account,
       subject: subject
     } do
@@ -37,7 +37,8 @@ defmodule Domain.GatewaysTest do
         Fixtures.Gateways.create_group(account: account)
         |> Fixtures.Gateways.delete_group()
 
-      assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
+      assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
+      assert fetched_group.id == group.id
     end
 
     test "returns group by id", %{account: account, subject: subject} do
@@ -387,7 +388,7 @@ defmodule Domain.GatewaysTest do
       assert fetch_gateway_by_id(gateway.id, subject) == {:error, :not_found}
     end
 
-    test "does not return deleted gateways", %{
+    test "returns deleted gateways", %{
       account: account,
       subject: subject
     } do
@@ -395,7 +396,7 @@ defmodule Domain.GatewaysTest do
         Fixtures.Gateways.create_gateway(account: account)
         |> Fixtures.Gateways.delete_gateway()
 
-      assert fetch_gateway_by_id(gateway.id, subject) == {:error, :not_found}
+      assert fetch_gateway_by_id(gateway.id, subject) == {:ok, gateway}
     end
 
     test "returns gateway by id", %{account: account, subject: subject} do
@@ -889,6 +890,22 @@ defmodule Domain.GatewaysTest do
       assert gateway.id == gateway_1.id
     end
 
+    test "prioritizes gateways of more recent version" do
+      gateway_1 =
+        Fixtures.Gateways.create_gateway(last_seen_user_agent: "iOS/12.7 (iPhone) connlib/1.99")
+
+      gateway_2 =
+        Fixtures.Gateways.create_gateway(last_seen_user_agent: "iOS/12.7 (iPhone) connlib/2.3")
+
+      gateways = [
+        gateway_1,
+        gateway_2
+      ]
+
+      assert gateway = load_balance_gateways({32.2029, -80.0131}, gateways)
+      assert gateway.id == gateway_2.id
+    end
+
     test "returns gateways in two closest regions to a given location" do
       # Moncks Corner, South Carolina
       gateway_us_east_1 =
@@ -939,10 +956,14 @@ defmodule Domain.GatewaysTest do
       ]
 
       # multiple attempts are used to increase chances that all gateways in a group are randomly selected
-      for _ <- 0..3 do
-        assert gateway = load_balance_gateways({32.2029, -80.0131}, gateways)
-        assert gateway.id in [gateway_us_east_1.id, gateway_us_east_2.id, gateway_us_east_3.id]
-      end
+      selected =
+        for _ <- 0..12 do
+          assert gateway = load_balance_gateways({32.2029, -80.0131}, gateways)
+          assert gateway.id in [gateway_us_east_1.id, gateway_us_east_2.id, gateway_us_east_3.id]
+          gateway.id
+        end
+
+      assert selected |> Enum.uniq() |> length() >= 2
 
       for _ <- 0..2 do
         assert gateway = load_balance_gateways({45.5946, -121.1787}, gateways)

@@ -7,7 +7,8 @@ defmodule Web.Policies.Edit do
     with {:ok, policy} <-
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
              preload: [:actor_group, :resource]
-           ) do
+           ),
+         nil <- policy.deleted_at do
       form = to_form(Policies.Policy.Changeset.update(policy, %{}))
       socket = assign(socket, policy: policy, page_title: "Edit Policy", form: form)
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

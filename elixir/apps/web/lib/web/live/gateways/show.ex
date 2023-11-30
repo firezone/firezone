@@ -36,6 +36,7 @@ defmodule Web.Gateways.Show do
     <.section>
       <:title>
         Gateway: <code><%= @gateway.name %></code>
+        <span :if={not is_nil(@gateway.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:content>
         <.vertical_table id="gateway">
@@ -102,7 +103,7 @@ defmodule Web.Gateways.Show do
       </:content>
     </.section>
 
-    <.danger_zone>
+    <.danger_zone :if={is_nil(@gateway.deleted_at)}>
       <:action>
         <.delete_button
           phx-click="delete"

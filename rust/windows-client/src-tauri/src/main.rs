@@ -124,7 +124,6 @@ mod details {
 #[cfg(target_os = "windows")]
 mod details {
     use super::*;
-
     use tauri::{
         CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
         SystemTraySubmenu,
