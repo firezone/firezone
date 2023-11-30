@@ -23,6 +23,8 @@ wintun = "0.3.2"
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.52.0"
 features = [
+  "Foundation",
+  "Security_Authentication_Web",
   "Win32_Foundation",
   "Win32_System_LibraryLoader",
   "Win32_UI_Shell",

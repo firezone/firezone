@@ -14,6 +14,7 @@ fn main() {
     match args.next().as_deref() {
         None | Some("tauri") => details::main_tauri(),
         Some("debug") => println!("debug"),
+        Some("debug-auth") => details::main_debug_auth(),
         Some("debug-connlib") => main_debug_connlib(),
         Some("debug-wintun") => details::main_debug_wintun(),
         Some(cmd) => println!("Subcommand `{cmd}` not recognized"),
@@ -56,6 +57,10 @@ mod details {
         panic!("GUI not implemented for Linux.");
     }
 
+    pub fn main_debug_auth() {
+        unimplemented!();
+    }
+
     pub fn main_debug_wintun() {
         panic!("Wintun not implemented for Linux.");
     }
@@ -67,6 +72,10 @@ mod details {
         CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
         SystemTraySubmenu,
     };
+
+    pub fn main_debug_auth() {
+        sign_in();
+    }
 
     pub fn main_tauri() {
         let tray = SystemTray::new().with_menu(signed_out_menu());
@@ -87,6 +96,8 @@ mod details {
                 if let SystemTrayEvent::MenuItemClick { id, .. } = event {
                     match id.as_str() {
                         "/sign_in" => {
+                            sign_in();
+
                             app.tray_handle()
                                 .set_menu(signed_in_menu(
                                     "user@example.com",
@@ -136,6 +147,34 @@ mod details {
                     api.prevent_exit();
                 }
             });
+    }
+
+    fn sign_in() {
+        use windows::{
+            core::HSTRING,
+            Foundation::{AsyncStatus, Uri},
+            Security::Authentication::Web::WebAuthenticationBroker,
+        };
+
+        let start_uri = HSTRING::from("https://app.firez.one/firezone?client_platform=windows");
+        let start_uri = Uri::CreateUri(&start_uri).unwrap();
+
+        println!("Kicking off async call...");
+        let future = WebAuthenticationBroker::AuthenticateSilentlyAsync(&start_uri).unwrap();
+
+        for i in 0..600 {
+            println!("Waiting for auth broker ({i})...");
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            match future.Status().unwrap() {
+                AsyncStatus::Completed => {
+                    let end_uri = future.get().unwrap().ResponseData().unwrap();
+                    println!("End URI: {end_uri}");
+                    break;
+                }
+                AsyncStatus::Started => {}
+                status => panic!("Async failed: {status:?}"),
+            }
+        }
     }
 
     pub fn main_debug_wintun() {
