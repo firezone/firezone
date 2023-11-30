@@ -114,7 +114,7 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
           <p class="ml-8 text-sm text-gray-500">
             <.link
               class="text-blue-600 hover:underline"
-              href="https://www.firezone.dev/docs/authenticate/jit-provisioning#extract-group-membership-information"
+              href="https://www.firezone.dev/kb/authenticate/user-group-sync?utm_source=product"
               target="_blank"
             >
               Read more about group extraction.

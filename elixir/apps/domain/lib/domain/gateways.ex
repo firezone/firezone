@@ -419,7 +419,7 @@ defmodule Domain.Gateways do
       {gateway.last_seen_remote_ip_location_lat, gateway.last_seen_remote_ip_location_lon}
     end)
     |> Enum.map(fn
-      {{nil, nil}, gateway} ->
+      {{gateway_lat, gateway_lon}, gateway} when is_nil(gateway_lat) or is_nil(gateway_lon) ->
         {Geo.fetch_radius_of_earth_km!(), gateway}
 
       {{gateway_lat, gateway_lon}, gateway} ->
@@ -427,6 +427,10 @@ defmodule Domain.Gateways do
         {distance, gateway}
     end)
     |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.at(0)
+    |> elem(1)
+    |> Enum.group_by(fn gateway -> gateway.last_seen_version end)
+    |> Enum.sort_by(&elem(&1, 0), :desc)
     |> Enum.at(0)
     |> elem(1)
     |> Enum.random()

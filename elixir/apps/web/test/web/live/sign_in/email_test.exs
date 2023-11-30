@@ -138,7 +138,7 @@ defmodule Web.SignIn.EmailTest do
     assert conn.assigns.flash["error"] == "The sign in token is invalid or expired."
   end
 
-  test "allows to resend magic link", %{
+  test "allows resending sign in link", %{
     account: account,
     provider: provider,
     identity: identity,

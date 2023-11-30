@@ -1,1 +1,57 @@
+import { HiCheck } from "react-icons/hi2";
+import { TabsItem, TabsGroup } from "@/components/DocsTabs";
+
 # Upgrading Firezone
+
+Upgrading Firezone consists of upgrading the client applications and gateways.
+Read more below to understand how our versioning system works, how you can
+auto-update these components, and suggestions for an upgrade strategy in
+high-availability deployments.
+
+## How versioning works in Firezone
+
+Firezone uses a semantic versioning scheme in the standard
+`MAJOR`.`MINOR`.`PATCH` format with the following structure:
+
+| Version type | Example    | Explanation                                                                                                                                                                                                      |
+| ------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MAJOR`      | `1`        | Marketing version. Updates to this version generally constitute a new architecture or product. Updated every few years on average.                                                                               |
+| `MINOR`      | `20231001` | API version. Clients and gateways **must** be the same API version to function together. The Firezone admin portal supports the latest **two** API versions at the same time. Updated every 6 months on average. |
+| `PATCH`      | `11`       | Patch version. Represents backwards-compatible bug fixes and updates that are generally recommended for all users. Updated on average every week.                                                                |
+
+All Firezone components follow the structure above, so it is trivial to
+determine which clients work with which gateways and for how long.
+
+## Auto-updates
+
+In general we recommend keeping clients and gateways as up-to-date as possible.
+See below for auto-update details for each client.
+
+<TabsGroup>
+  <TabsItem title="macOS" active>
+    Enable auto-updates in Settings.app.
+  </TabsItem>
+  <TabsItem title="iOS">Enable auto-updates in Settings.app.</TabsItem>
+  <TabsItem title="Android">Enable app auto-updates in Settings.</TabsItem>
+  <TabsItem title="ChromeOS">Enable app auto-updates in Settings.</TabsItem>
+  <TabsItem title="Linux">
+    Linux auto-updates are configured by default if you deployed using the Linux
+    client deployment guide.
+  </TabsItem>
+  <TabsItem title="Gateway">
+    Gateway auto-updates are configured by default if you deployed using the
+    Linux client deployment guide.
+  </TabsItem>
+</TabsGroup>
+
+## Upgrading gateways with minimal downtime
+
+Gateways deployed in the same site will automatically
+[failover](/kb/deploy/gateways#failover) for each other. By upgrading gateways
+one-by-one, clients connected to the gateway being upgraded will automatically
+reconnect to an available gateway.
+
+Currently the failover timeout is maximum 120 seconds, so upgrades should be
+performed during a scheduled maintenance window to ensure minimal disruption.
+Other than a possible short-term connection interruption to in-use resources,
+users won't be impacted by upgrading high-availability gateways.

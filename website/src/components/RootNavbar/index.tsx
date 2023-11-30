@@ -1,7 +1,8 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import SidebarToggle from "./SidebarToggle";
+import DocsSidebarToggle from "./DocsSidebarToggle";
+import KbSidebarToggle from "./KbSidebarToggle";
 import { Navbar } from "flowbite-react";
 import { usePathname } from "next/navigation";
 import RequestDemoButton from "@/components/RequestDemoButton";
@@ -11,13 +12,20 @@ import { HiChevronDown } from "react-icons/hi2";
 
 export default function RootNavbar() {
   const p = usePathname() || "";
-  let dropdown: any = null;
+  let productDropdown: any = null;
+  let docsDropdown: any = null;
 
   useEffect(() => {
-    if (!dropdown) {
-      dropdown = new Dropdown(
+    if (!productDropdown) {
+      productDropdown = new Dropdown(
         document.getElementById("product-dropdown-menu"),
         document.getElementById("product-dropdown-link")
+      );
+    }
+    if (!docsDropdown) {
+      docsDropdown = new Dropdown(
+        document.getElementById("docs-dropdown-menu"),
+        document.getElementById("docs-dropdown-link")
       );
     }
     // Manually init flowbite's data-toggle listeners since we're using custom components
@@ -25,14 +33,22 @@ export default function RootNavbar() {
   }, []);
 
   const hideDropdown = () => {
-    if (!dropdown) {
-      dropdown = new Dropdown(
+    if (!productDropdown) {
+      productDropdown = new Dropdown(
         document.getElementById("product-dropdown-menu"),
         document.getElementById("product-dropdown-link")
       );
     }
 
-    dropdown.hide();
+    if (!docsDropdown) {
+      docsDropdown = new Dropdown(
+        document.getElementById("docs-dropdown-menu"),
+        document.getElementById("docs-dropdown-link")
+      );
+    }
+
+    productDropdown.hide();
+    docsDropdown.hide();
   };
 
   return (
@@ -40,7 +56,8 @@ export default function RootNavbar() {
       <nav className="h-14 fixed top-0 left-0 right-0 bg-white border-b items-center flex border-neutral-200 z-50">
         <div className="w-full flex flex-wrap py-2 justify-between items-center">
           <div className="flex justify-start items-center">
-            <SidebarToggle />
+            {p.startsWith("/docs") ? <DocsSidebarToggle /> : null}
+            {p.startsWith("/kb") ? <KbSidebarToggle /> : null}
             <Link href="/">
               <Image
                 width={150}
@@ -79,28 +96,6 @@ export default function RootNavbar() {
               </span>
               <HiChevronDown className="w-3 h-3 mx-1" />
             </button>
-            <Link
-              className={
-                (p.startsWith("/docs")
-                  ? "text-neutral-900 underline"
-                  : "text-neutral-800") +
-                " p-2 mr-4 font-medium hover:text-neutral-900 hover:underline"
-              }
-              href="/docs"
-            >
-              Docs
-            </Link>
-            <Link
-              className={
-                (p.startsWith("/blog")
-                  ? "text-neutral-900 underline"
-                  : "text-neutral-800") +
-                " p-2 mr-4 font-medium hover:text-neutral-900 hover:underline"
-              }
-              href="/blog"
-            >
-              Blog
-            </Link>
             <div
               id="product-dropdown-menu"
               className="z-10 hidden bg-white divide-y divide-gray-100 rounded shadow-lg w-44"
@@ -116,7 +111,6 @@ export default function RootNavbar() {
                   </Link>
                 </li>
                 <li>
-                  {/* TODO: use <Link> here, toggling dropdown */}
                   <Link
                     onClick={hideDropdown}
                     href="/product/early-access"
@@ -131,7 +125,6 @@ export default function RootNavbar() {
                   </Link>
                 </li>
                 <li>
-                  {/* TODO: use <Link> here, toggling dropdown */}
                   <Link
                     onClick={hideDropdown}
                     href="/product/newsletter"
@@ -153,6 +146,73 @@ export default function RootNavbar() {
                     className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                   >
                     Open Source
+                  </Link>
+                </li>
+              </ul>
+            </div>
+            <Link
+              className={
+                (p.startsWith("/blog")
+                  ? "text-neutral-900 underline"
+                  : "text-neutral-800") +
+                " p-2 mr-4 font-medium hover:text-neutral-900 hover:underline"
+              }
+              href="/blog"
+            >
+              Blog
+            </Link>
+            <button
+              id="docs-dropdown-link"
+              className={
+                (p.startsWith("/docs") || p.startsWith("/kb")
+                  ? "text-neutral-900"
+                  : "text-neutral-800") +
+                " hover:text-neutral-900 flex items-center justify-between p-0 sm:p-1 mr-1"
+              }
+            >
+              <span
+                className={
+                  "hover:underline font-medium " +
+                  (p.startsWith("/docs") || p.startsWith("/kb")
+                    ? "underline"
+                    : "")
+                }
+              >
+                Docs
+              </span>
+              <HiChevronDown className="w-3 h-3 mx-1" />
+            </button>
+            <div
+              id="docs-dropdown-menu"
+              className="z-10 hidden bg-white divide-y divide-gray-100 rounded shadow-lg w-44"
+            >
+              <ul className="py-2" aria-labelledby="product-dropdown-link">
+                <li>
+                  <Link
+                    onClick={hideDropdown}
+                    href="/kb"
+                    className={
+                      (p.startsWith("/kb")
+                        ? "text-neutral-900 underline"
+                        : "text-neutral-800") +
+                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
+                    }
+                  >
+                    Latest Docs
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    onClick={hideDropdown}
+                    href="/docs"
+                    className={
+                      (p.startsWith("/docs")
+                        ? "text-neutral-900 underline"
+                        : "text-neutral-800") +
+                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
+                    }
+                  >
+                    Legacy (0.7) Docs
                   </Link>
                 </li>
               </ul>
