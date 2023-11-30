@@ -5,6 +5,15 @@ defmodule API.Client.Views.Resource do
     Enum.map(resources, &render/1)
   end
 
+  def render(%Resources.Resource{type: :ip} = resource) do
+    %{
+      id: resource.id,
+      type: :cidr,
+      address: "#{resource.address}/32",
+      name: resource.name
+    }
+  end
+
   def render(%Resources.Resource{} = resource) do
     %{
       id: resource.id,
