@@ -15,8 +15,8 @@ use ip_packet::IpPacket;
 use pnet_packet::Packet;
 
 use hickory_resolver::proto::rr::RecordType;
-use parking_lot::{Mutex, RwLock};
-use peer::{Peer, PeerStats};
+use parking_lot::Mutex;
+use peer::{PacketTransform, Peer};
 use tokio::time::MissedTickBehavior;
 use webrtc::{
     api::{
@@ -29,7 +29,6 @@ use webrtc::{
 
 use arc_swap::ArcSwapOption;
 use futures_util::task::AtomicWaker;
-use itertools::Itertools;
 use std::collections::VecDeque;
 use std::task::{ready, Context, Poll};
 use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
@@ -154,8 +153,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     rate_limiter: Arc<RateLimiter>,
     private_key: StaticSecret,
     public_key: PublicKey,
-    #[allow(clippy::type_complexity)]
-    peers_by_ip: RwLock<IpNetworkTable<ConnectedPeer<TRoleState::Id>>>,
     peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCIceTransport>>>,
     webrtc_api: API,
     callbacks: CallbackErrorFacade<CB>,
@@ -264,8 +261,7 @@ where
 
             let dest = packet.destination();
 
-            let peers_by_ip = self.peers_by_ip.read();
-            let Some(peer) = peer_by_ip(&peers_by_ip, dest) else {
+            let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
                 role_state.on_connection_intent(dest);
                 continue;
             };
@@ -306,8 +302,8 @@ where
                     Some(Poll::Ready(Ok(Some(packet)))) => {
                         let dest = packet.destination();
 
-                        let peers_by_ip = self.peers_by_ip.read();
-                        let Some(peer) = peer_by_ip(&peers_by_ip, dest) else {
+                        let Some(peer) = peer_by_ip(&self.role_state.lock().peers_by_ip, dest)
+                        else {
                             continue;
                         };
 
@@ -340,8 +336,8 @@ where
 }
 
 #[derive(Clone)]
-pub struct ConnectedPeer<TId> {
-    inner: Arc<Peer<TId>>,
+pub struct ConnectedPeer<TId, TTransform> {
+    inner: Arc<Peer<TId, TTransform>>,
     channel: tokio::sync::mpsc::Sender<Bytes>,
 }
 
@@ -350,7 +346,7 @@ pub struct ConnectedPeer<TId> {
 #[derive(Debug, Clone)]
 pub struct TunnelStats<TId> {
     public_key: String,
-    peers_by_ip: HashMap<IpNetwork, PeerStats<TId>>,
+    // peers_by_ip: HashMap<IpNetwork, PeerStats<TId>>,
     peer_connections: Vec<TId>,
 }
 
@@ -360,17 +356,18 @@ where
     TRoleState: RoleState,
 {
     pub fn stats(&self) -> TunnelStats<TRoleState::Id> {
-        let peers_by_ip = self
-            .peers_by_ip
-            .read()
-            .iter()
-            .map(|(ip, peer)| (ip, peer.inner.stats()))
-            .collect();
+        // let peers_by_ip = self
+        //     .role_state
+        //     .lock()
+        //     .peers_by_ip
+        //     .iter()
+        //     .map(|(ip, peer)| (ip, peer.inner.stats()))
+        //     .collect();
         let peer_connections = self.peer_connections.lock().keys().cloned().collect();
 
         TunnelStats {
             public_key: Key::from(self.public_key).to_string(),
-            peers_by_ip,
+            // peers_by_ip,
             peer_connections,
         }
     }
@@ -378,16 +375,7 @@ where
     fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         loop {
             if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
-                let mut peers = self.peers_by_ip.write();
-
-                let Some(peer_to_remove) = peers
-                    .iter()
-                    .find_map(|(n, p)| (p.inner.conn_id == conn_id).then_some(n))
-                else {
-                    continue;
-                };
-
-                peers.remove(peer_to_remove);
+                self.role_state.lock().remove_peers(conn_id);
 
                 if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
                     tokio::spawn({
@@ -413,44 +401,8 @@ where
             }
 
             if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let peers_by_ip = self.peers_by_ip.read();
-                let mut peers_to_stop = self.peers_to_stop.lock();
-
-                for (_, peer) in peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
-                    let conn_id = peer.inner.conn_id;
-
-                    peer.inner.expire_resources();
-
-                    if peer.inner.is_emptied() {
-                        tracing::trace!(%conn_id, "peer_expired");
-                        peers_to_stop.push_back(conn_id);
-
-                        continue;
-                    }
-
-                    let bytes = match peer.inner.update_timers() {
-                        Ok(Some(bytes)) => bytes,
-                        Ok(None) => continue,
-                        Err(e) => {
-                            tracing::error!("Failed to update timers for peer: {e}");
-                            let _ = self.callbacks.on_error(&e);
-
-                            if e.is_fatal_connection_error() {
-                                peers_to_stop.push_back(conn_id);
-                            }
-
-                            continue;
-                        }
-                    };
-
-                    let peer_channel = peer.channel.clone();
-
-                    tokio::spawn(async move {
-                        if let Err(e) = peer_channel.send(bytes).await {
-                            tracing::error!("Failed to send packet to peer: {e:#}");
-                        }
-                    });
-                }
+                let mut peers_to_stop = self.role_state.lock().refresh_peers();
+                self.peers_to_stop.lock().append(&mut peers_to_stop);
 
                 continue;
             }
@@ -481,11 +433,11 @@ where
         }
     }
 
-    fn encapsulate(
+    fn encapsulate<TTransform: PacketTransform>(
         &self,
         write_buf: &mut [u8],
         packet: MutableIpPacket,
-        peer: &ConnectedPeer<TRoleState::Id>,
+        peer: &ConnectedPeer<TRoleState::Id, TTransform>,
     ) {
         let peer_id = peer.inner.conn_id;
 
@@ -508,10 +460,10 @@ where
     }
 }
 
-pub(crate) fn peer_by_ip<Id>(
-    peers_by_ip: &IpNetworkTable<ConnectedPeer<Id>>,
+pub(crate) fn peer_by_ip<Id, TTransform>(
+    peers_by_ip: &IpNetworkTable<ConnectedPeer<Id, TTransform>>,
     ip: IpAddr,
-) -> Option<&ConnectedPeer<Id>> {
+) -> Option<&ConnectedPeer<Id, TTransform>> {
     peers_by_ip.longest_match(ip).map(|(_, peer)| peer)
 }
 
@@ -570,7 +522,6 @@ where
     pub async fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
         let public_key = (&private_key).into();
         let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
-        let peers_by_ip = RwLock::new(IpNetworkTable::new());
         let next_index = Default::default();
         let peer_connections = Default::default();
         let device = Default::default();
@@ -596,7 +547,6 @@ where
             private_key,
             peer_connections,
             public_key,
-            peers_by_ip,
             next_index,
             webrtc_api,
             device,
@@ -657,4 +607,6 @@ pub trait RoleState: Default + Send + 'static {
     type Id: fmt::Debug + fmt::Display + Eq + Hash + Copy + Unpin + Send + Sync + 'static;
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
+    fn remove_peers(&mut self, conn_id: Self::Id);
+    fn refresh_peers(&mut self) -> VecDeque<Self::Id>;
 }

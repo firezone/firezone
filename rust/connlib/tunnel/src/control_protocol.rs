@@ -119,20 +119,20 @@ pub(crate) async fn new_ice_connection(
     })
 }
 
-fn insert_peers<TId: Copy>(
-    peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId>>,
+fn insert_peers<TId: Copy, TTransform>(
+    peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId, TTransform>>,
     ips: &Vec<IpNetwork>,
-    peer: ConnectedPeer<TId>,
+    peer: ConnectedPeer<TId, TTransform>,
 ) {
     for ip in ips {
         peers_by_ip.insert(*ip, peer.clone());
     }
 }
 
-fn start_handlers<TId>(
+fn start_handlers<TId, TTransform>(
     device: Arc<ArcSwapOption<Device>>,
     callbacks: impl Callbacks + 'static,
-    peer: Arc<Peer<TId>>,
+    peer: Arc<Peer<TId, TTransform>>,
     ice: Arc<RTCIceTransport>,
     peer_receiver: tokio::sync::mpsc::Receiver<Bytes>,
 ) where

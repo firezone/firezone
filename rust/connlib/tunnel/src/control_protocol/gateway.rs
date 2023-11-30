@@ -1,6 +1,6 @@
 use crate::{
     control_protocol::{insert_peers, start_handlers},
-    peer::Peer,
+    peer::{PacketTransformGateway, Peer},
     ConnectedPeer, GatewayState, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
 };
 
@@ -143,6 +143,7 @@ where
             peer_config.clone(),
             client_id,
             self.rate_limiter.clone(),
+            PacketTransformGateway::new(),
         ));
 
         peer.add_resource(resource_address, resource, expires_at);

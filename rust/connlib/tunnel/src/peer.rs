@@ -1,18 +1,15 @@
 use std::borrow::Cow;
 use std::collections::VecDeque;
-use std::net::ToSocketAddrs;
+use std::net::IpAddr;
 use std::sync::Arc;
-use std::{collections::HashMap, net::IpAddr};
 
+use bimap::BiMap;
 use boringtun::noise::rate_limiter::RateLimiter;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::StaticSecret;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use connlib_shared::{
-    messages::{ResourceDescription, ResourceId},
-    Error, Result,
-};
+use connlib_shared::{messages::ResourceDescription, Error, Result};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use parking_lot::{Mutex, RwLock};
@@ -24,21 +21,11 @@ use crate::{device_channel, ip_packet::MutableIpPacket, PeerConfig};
 
 type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 
-pub(crate) struct Peer<TId> {
+pub(crate) struct Peer<TId, TTransform> {
     tunnel: Mutex<Tunn>,
     allowed_ips: RwLock<IpNetworkTable<()>>,
     pub conn_id: TId,
-    resources: RwLock<Option<IpNetworkTable<ExpiryingResource>>>,
-    // Here we store the address that we obtained for the resource that the peer corresponds to.
-    // This can have the following problem:
-    // 1. Peer sends packet to address.com and it resolves to 1.1.1.1
-    // 2. Now Peer sends another packet to address.com but it resolves to 2.2.2.2
-    // 3. We receive an outstanding response(or push) from 1.1.1.1
-    // This response(or push) is ignored, since we store only the last.
-    // so, TODO: store multiple ips and expire them.
-    // Note that this case is quite an unlikely edge case so I wouldn't prioritize this fix
-    // TODO: Also check if there's any case where we want to talk to ipv4 and ipv6 from the same peer.
-    translated_resource_addresses: RwLock<HashMap<IpAddr, ResourceId>>,
+    pub transform: TTransform,
 }
 
 // TODO: For now we only use these fields with debug
@@ -47,31 +34,29 @@ pub(crate) struct Peer<TId> {
 pub(crate) struct PeerStats<TId> {
     pub allowed_ips: Vec<IpNetwork>,
     pub conn_id: TId,
-    pub resources: HashMap<IpNetwork, ExpiryingResource>,
-    pub translated_resource_addresses: HashMap<IpAddr, ResourceId>,
+    // pub resources: HashMap<IpNetwork, ExpiryingResource>,
 }
 
-impl<TId> Peer<TId>
+impl<TId, TTransform> Peer<TId, TTransform>
 where
     TId: Copy,
+    TTransform: PacketTransform,
 {
     pub(crate) fn stats(&self) -> PeerStats<TId> {
-        let resources = self.resources.read().as_ref().map_or_else(
-            || HashMap::new(),
-            |resources| {
-                resources
-                    .iter()
-                    .map(|(i, r)| (i.clone(), r.clone()))
-                    .collect()
-            },
-        );
+        // let resources = self.resources.read().as_ref().map_or_else(
+        //     || HashMap::new(),
+        //     |resources| {
+        //         resources
+        //             .iter()
+        //             .map(|(i, r)| (i.clone(), r.clone()))
+        //             .collect()
+        //     },
+        // );
         let allowed_ips = self.allowed_ips.read().iter().map(|(ip, _)| ip).collect();
-        let translated_resource_addresses = self.translated_resource_addresses.read().clone();
         PeerStats {
             allowed_ips,
             conn_id: self.conn_id,
-            resources,
-            translated_resource_addresses,
+            // resources,
         }
     }
 
@@ -81,7 +66,8 @@ where
         peer_config: PeerConfig,
         conn_id: TId,
         rate_limiter: Arc<RateLimiter>,
-    ) -> Peer<TId> {
+        transform: TTransform,
+    ) -> Peer<TId, TTransform> {
         let tunnel = Tunn::new(
             private_key.clone(),
             peer_config.public_key,
@@ -101,8 +87,7 @@ where
             tunnel: Mutex::new(tunnel),
             allowed_ips,
             conn_id,
-            resources: RwLock::new(None),
-            translated_resource_addresses: Default::default(),
+            transform,
         }
     }
 
@@ -128,52 +113,8 @@ where
         Ok(Some(Bytes::copy_from_slice(packet)))
     }
 
-    pub(crate) fn is_emptied(&self) -> bool {
-        self.resources.read().as_ref().is_some_and(|r| r.is_empty())
-    }
-
-    pub(crate) fn expire_resources(&self) {
-        if let Some(ref mut resources) = *self.resources.write() {
-            // TODO: We could move this to resource_table and make it way faster
-            let expire_resources: Vec<_> = resources
-                .iter()
-                .filter(|(_, (_, e))| e <= &Utc::now())
-                .map(|(i, r)| (i.clone(), r.clone()))
-                .collect();
-            {
-                // Oh oh! 2 Mutexes
-                let mut translated_resource_addresses = self.translated_resource_addresses.write();
-                for (ip, (r, _)) in expire_resources {
-                    resources.remove(ip);
-                    translated_resource_addresses.retain(|_, &mut i| r.id() != i);
-                }
-            }
-        }
-    }
-
-    pub(crate) fn add_resource(
-        &self,
-        ip: IpNetwork,
-        resource: ResourceDescription,
-        expires_at: DateTime<Utc>,
-    ) {
-        let mut resources = self.resources.write();
-        if resources.is_none() {
-            *resources = Some(IpNetworkTable::new());
-        }
-        // We just wrote it
-        resources
-            .as_mut()
-            .unwrap()
-            .insert(ip, (resource, expires_at));
-    }
-
     pub(crate) fn is_allowed(&self, addr: IpAddr) -> bool {
         self.allowed_ips.read().longest_match(addr).is_some()
-    }
-
-    pub(crate) fn update_translated_resource_address(&self, id: ResourceId, addr: IpAddr) {
-        self.translated_resource_addresses.write().insert(addr, id);
     }
 
     /// Sends the given packet to this peer by encapsulating it in a wireguard packet.
@@ -216,37 +157,23 @@ where
                 Ok(Some(WriteTo::Network(packets)))
             }
             TunnResult::WriteToTunnelV4(packet, addr) => {
-                let Some(packet) = make_packet_for_resource(self, addr.into(), packet)? else {
-                    return Ok(None);
-                };
-
-                Ok(Some(WriteTo::Resource(packet)))
+                self.make_packet_for_resource(addr.into(), packet)
             }
             TunnResult::WriteToTunnelV6(packet, addr) => {
-                let Some(packet) = make_packet_for_resource(self, addr.into(), packet)? else {
-                    return Ok(None);
-                };
-
-                Ok(Some(WriteTo::Resource(packet)))
+                self.make_packet_for_resource(addr.into(), packet)
             }
         }
     }
 
-    pub(crate) fn get_packet_resource(
-        &self,
-        packet: &mut [u8],
-    ) -> Option<(IpAddr, ResourceDescription)> {
-        let resources = self.resources.read();
-        let resources = resources.as_ref()?;
+    fn make_packet_for_resource(&self, addr: IpAddr, packet: &mut [u8]) -> Result<Option<WriteTo>> {
+        let (packet, addr) = self
+            .transform
+            .make_packet_for_resource(&addr.into(), packet)?;
 
-        let dst = Tunn::dst_address(packet)?;
-
-        let Some(resource) = resources.longest_match(dst).map(|(_, (r, _))| r.clone()) else {
-            tracing::warn!("client tried to hijack the tunnel for resource itsn't allowed.");
-            return None;
-        };
-
-        Some((dst, resource))
+        if !self.is_allowed(addr) {
+            return Ok(None);
+        }
+        Ok(Some(WriteTo::Resource(packet)))
     }
 }
 
@@ -255,38 +182,88 @@ pub enum WriteTo<'a> {
     Resource(device_channel::Packet<'a>),
 }
 
-#[inline(always)]
-pub(crate) fn make_packet_for_resource<'a, TId>(
-    peer: &Peer<TId>,
-    addr: IpAddr,
-    packet: &'a mut [u8],
-) -> Result<Option<device_channel::Packet<'a>>>
-where
-    TId: Copy,
-{
-    if !peer.is_allowed(addr) {
-        tracing::warn!(%addr, "Received packet from peer with an unallowed ip");
-        return Ok(None);
+pub struct PacketTransformGateway {
+    resources: RwLock<IpNetworkTable<ExpiryingResource>>,
+}
+
+pub struct PacketTransformClient {
+    translations: RwLock<BiMap<IpAddr, IpAddr>>,
+}
+
+impl PacketTransformClient {
+    pub fn new() -> PacketTransformClient {
+        Self {
+            translations: RwLock::new(BiMap::new()),
+        }
+    }
+}
+
+impl PacketTransformGateway {
+    pub fn new() -> PacketTransformGateway {
+        Self {
+            resources: RwLock::new(IpNetworkTable::new()),
+        }
     }
 
-    let Some((dst, resource)) = peer.get_packet_resource(packet) else {
-        // If there's no associated resource it means that we are in a client, then the packet comes from a gateway
-        // and we just trust gateways.
-        // In gateways this should never happen.
-        tracing::trace!(target: "wire", action = "writing", to = "iface", %addr, bytes = %packet.len());
+    pub(crate) fn is_emptied(&self) -> bool {
+        self.resources.read().is_empty()
+    }
+
+    pub(crate) fn expire_resources(&self) {
+        self.resources.write().retain(|_, (_, e)| *e <= Utc::now());
+    }
+
+    pub(crate) fn add_resource(
+        &self,
+        ip: IpNetwork,
+        resource: ResourceDescription,
+        expires_at: DateTime<Utc>,
+    ) {
+        self.resources.write().insert(ip, (resource, expires_at));
+    }
+}
+
+pub trait PacketTransform {
+    fn make_packet_for_resource<'a>(
+        &self,
+        addr: &IpAddr,
+        packet: &'a mut [u8],
+    ) -> Result<(device_channel::Packet<'a>, IpAddr)>;
+}
+
+impl PacketTransform for PacketTransformGateway {
+    fn make_packet_for_resource<'a>(
+        &self,
+        addr: &IpAddr,
+        packet: &'a mut [u8],
+    ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
+        let Some(dst) = Tunn::dst_address(packet) else {
+            return Err(Error::BadPacket);
+        };
+
+        self.resources.read().longest_match(dst).is_some();
         let packet = make_packet(packet, addr);
-        return Ok(Some(packet));
-    };
 
-    let (dst_addr, _dst_port) = get_resource_addr_and_port(peer, &resource, &addr, &dst)?;
-    update_packet(packet, dst_addr);
-    let packet = make_packet(packet, addr);
+        Ok((packet, *addr))
+    }
+}
 
-    Ok(Some(packet))
+impl PacketTransform for PacketTransformClient {
+    fn make_packet_for_resource<'a>(
+        &self,
+        addr: &IpAddr,
+        packet: &'a mut [u8],
+    ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
+        let src = self.translations.read().get_by_right(addr).unwrap_or(addr);
+
+        update_packet(packet, *src);
+        let packet = make_packet(packet, addr);
+        Ok((packet, *src))
+    }
 }
 
 #[inline(always)]
-fn make_packet(packet: &mut [u8], dst_addr: IpAddr) -> device_channel::Packet<'_> {
+fn make_packet<'a, 'b>(packet: &'a mut [u8], dst_addr: &'b IpAddr) -> device_channel::Packet<'a> {
     match dst_addr {
         IpAddr::V4(_) => device_channel::Packet::Ipv4(Cow::Borrowed(packet)),
         IpAddr::V6(_) => device_channel::Packet::Ipv6(Cow::Borrowed(packet)),
@@ -294,64 +271,14 @@ fn make_packet(packet: &mut [u8], dst_addr: IpAddr) -> device_channel::Packet<'_
 }
 
 #[inline(always)]
-fn update_packet(packet: &mut [u8], dst_addr: IpAddr) {
+fn update_packet(packet: &mut [u8], src_addr: IpAddr) {
     let Some(mut pkt) = MutableIpPacket::new(packet) else {
         return;
     };
-    pkt.set_dst(dst_addr);
+    pkt.set_src(src_addr);
     pkt.update_checksum();
 }
 
 fn get_matching_version_ip(addr: &IpAddr, ip: &IpAddr) -> Option<IpAddr> {
     ((addr.is_ipv4() && ip.is_ipv4()) || (addr.is_ipv6() && ip.is_ipv6())).then_some(*ip)
-}
-
-fn get_resource_addr_and_port<TId>(
-    peer: &Peer<TId>,
-    resource: &ResourceDescription,
-    addr: &IpAddr,
-    dst: &IpAddr,
-) -> Result<(IpAddr, Option<u16>)>
-where
-    TId: Copy,
-{
-    match resource {
-        ResourceDescription::Dns(r) => {
-            let mut address = r.address.split(':');
-            let Some(dst_addr) = address.next() else {
-                tracing::error!("invalid DNS name for resource: {}", r.address);
-                return Err(Error::InvalidResource);
-            };
-            let Ok(mut dst_addr) = (dst_addr, 0).to_socket_addrs() else {
-                tracing::warn!(%addr, "Couldn't resolve name");
-                return Err(Error::InvalidResource);
-            };
-            let Some(dst_addr) = dst_addr.find_map(|d| get_matching_version_ip(addr, &d.ip()))
-            else {
-                tracing::warn!(%addr, "Couldn't resolve name addr");
-                return Err(Error::InvalidResource);
-            };
-            peer.update_translated_resource_address(r.id, dst_addr);
-            Ok((
-                dst_addr,
-                address
-                    .next()
-                    .map(str::parse::<u16>)
-                    .and_then(std::result::Result::ok),
-            ))
-        }
-        ResourceDescription::Cidr(r) => {
-            if r.address.contains(*dst) {
-                Ok((
-                    get_matching_version_ip(addr, dst).ok_or(Error::InvalidResource)?,
-                    None,
-                ))
-            } else {
-                tracing::warn!(
-                    "client tried to hijack the tunnel for range outside what it's allowed."
-                );
-                Err(Error::InvalidSource)
-            }
-        }
-    }
 }

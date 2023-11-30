@@ -9,16 +9,17 @@ use webrtc::mux::endpoint::Endpoint;
 use webrtc::util::Conn;
 
 use crate::device_channel::Device;
-use crate::peer::WriteTo;
+use crate::peer::{PacketTransform, WriteTo};
 use crate::{peer::Peer, MAX_UDP_SIZE};
 
-pub(crate) async fn start_peer_handler<TId>(
+pub(crate) async fn start_peer_handler<TId, TTransform>(
     device: Arc<ArcSwapOption<Device>>,
     callbacks: impl Callbacks + 'static,
-    peer: Arc<Peer<TId>>,
+    peer: Arc<Peer<TId, TTransform>>,
     channel: Arc<Endpoint>,
 ) where
     TId: Copy + fmt::Debug + Send + Sync + 'static,
+    TTransform: PacketTransform,
 {
     loop {
         let Some(device) = device.load().clone() else {
@@ -43,14 +44,15 @@ pub(crate) async fn start_peer_handler<TId>(
     tracing::debug!(peer = ?peer.stats(), "peer_stopped");
 }
 
-async fn peer_handler<TId>(
+async fn peer_handler<TId, TTransform>(
     callbacks: &impl Callbacks,
-    peer: &Arc<Peer<TId>>,
+    peer: &Arc<Peer<TId, TTransform>>,
     channel: Arc<Endpoint>,
     device: &Device,
 ) -> std::io::Result<()>
 where
     TId: Copy,
+    TTransform: PacketTransform,
 {
     let mut src_buf = [0u8; MAX_UDP_SIZE];
     let mut dst_buf = [0u8; MAX_UDP_SIZE];

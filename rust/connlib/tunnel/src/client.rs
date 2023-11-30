@@ -1,6 +1,7 @@
 use crate::bounded_queue::BoundedQueue;
-use crate::device_channel::{create_iface, Device, Packet};
+use crate::device_channel::{create_iface, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
+use crate::peer::PacketTransformClient;
 use crate::{
     dns, ConnectedPeer, DnsFallbackStrategy, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
     DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
@@ -15,13 +16,14 @@ use connlib_shared::messages::{
 use connlib_shared::{Callbacks, DNS_SENTINEL};
 use futures::channel::mpsc::Receiver;
 use futures::stream;
-use futures_bounded::{FuturesSet, PushError, StreamMap};
+use futures_bounded::{PushError, StreamMap};
 use hickory_resolver::lookup::Lookup;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
+use itertools::Itertools;
 use rand_core::OsRng;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::identity;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
@@ -227,6 +229,9 @@ pub struct ClientState {
     cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     pub resources_id: HashMap<ResourceId, ResourceDescription>,
 
+    #[allow(clippy::type_complexity)]
+    pub peers_by_ip: IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
+
     pub dns_strategy: DnsFallbackStrategy,
     dns_queries: BoundedQueue<DnsQuery<'static>>,
 
@@ -284,7 +289,6 @@ impl ClientState {
         resource: ResourceId,
         gateway: GatewayId,
         expected_attempts: usize,
-        connected_peers: &mut IpNetworkTable<ConnectedPeer<GatewayId>>,
     ) -> Result<Option<ReuseConnection>, ConnlibError> {
         let desc = self
             .resources_id
@@ -293,7 +297,7 @@ impl ClientState {
 
         let domain = self.get_awaiting_connection_domain(&resource)?.clone();
 
-        if self.is_connected_to(resource, connected_peers, &domain) {
+        if self.is_connected_to(resource, &self.peers_by_ip, &domain) {
             return Err(Error::UnexpectedConnectionDetails);
         }
 
@@ -319,7 +323,7 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        let Some(peer) = connected_peers.iter().find_map(|(_, p)| {
+        let Some(peer) = self.peers_by_ip.iter().find_map(|(_, p)| {
             (p.inner.conn_id == gateway).then_some(ConnectedPeer {
                 inner: p.inner.clone(),
                 channel: p.channel.clone(),
@@ -330,7 +334,7 @@ impl ClientState {
 
         for ip in self.get_resoruce_ip(desc, &domain) {
             peer.inner.add_allowed_ip(ip);
-            connected_peers.insert(
+            self.peers_by_ip.insert(
                 ip,
                 ConnectedPeer {
                     inner: peer.inner.clone(),
@@ -496,7 +500,7 @@ impl ClientState {
     fn is_connected_to(
         &self,
         resource: ResourceId,
-        connected_peers: &IpNetworkTable<ConnectedPeer<GatewayId>>,
+        connected_peers: &IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
         domain: &Option<String>,
     ) -> bool {
         let Some(resource) = self.resources_id.get(&resource) else {
@@ -608,6 +612,7 @@ impl Default for ClientState {
             dns_resources: Default::default(),
             cidr_resources: IpNetworkTable::new(),
             resources_id: Default::default(),
+            peers_by_ip: IpNetworkTable::new(),
         }
     }
 }
@@ -673,5 +678,39 @@ impl RoleState for ClientState {
 
             return self.dns_queries.poll(cx).map(Event::DnsQuery);
         }
+    }
+
+    fn remove_peers(&mut self, conn_id: GatewayId) {
+        self.peers_by_ip.retain(|_, p| p.inner.conn_id != conn_id);
+    }
+
+    fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
+        let peers_to_stop = VecDeque::new();
+        for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
+            let conn_id = peer.inner.conn_id;
+
+            let bytes = match peer.inner.update_timers() {
+                Ok(Some(bytes)) => bytes,
+                Ok(None) => continue,
+                Err(e) => {
+                    tracing::error!("Failed to update timers for peer: {e}");
+                    if e.is_fatal_connection_error() {
+                        peers_to_stop.push_back(conn_id);
+                    }
+
+                    continue;
+                }
+            };
+
+            let peer_channel = peer.channel.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = peer_channel.send(bytes).await {
+                    tracing::error!("Failed to send packet to peer: {e:#}");
+                }
+            });
+        }
+
+        peers_to_stop
     }
 }

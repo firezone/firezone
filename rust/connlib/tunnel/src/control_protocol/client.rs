@@ -5,7 +5,7 @@ use connlib_shared::{
     control::Reference,
     messages::{
         ClientPayload, DomainResponse, GatewayId, Key, Relay, RequestConnection,
-        ResourceDescription, ResourceDescriptionDns, ResourceId,
+        ResourceDescription, ResourceId,
     },
     Callbacks,
 };
@@ -17,6 +17,7 @@ use webrtc::ice_transport::{
 
 use crate::{
     control_protocol::{new_ice_connection, IceConnection},
+    peer::PacketTransformClient,
     PEER_QUEUE_SIZE,
 };
 use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
@@ -89,7 +90,6 @@ where
             resource_id,
             gateway_id,
             reference,
-            &mut self.peers_by_ip.write(),
         )? {
             tracing::trace!("reusing_connection");
             return Ok(Request::ReuseConnection(connection));
@@ -145,6 +145,7 @@ where
             peer_config.clone(),
             gateway_id,
             self.rate_limiter.clone(),
+            PacketTransformClient::new(),
         ));
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
