@@ -235,6 +235,7 @@ fn resource_from_question<N: ToDname>(
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
             let description = description.subdomain(name.to_string());
+            tracing::trace!("description: {description:?}");
             let ip = dns_resources_internal_ips.get_or_assign_ip4(&description, ip_provider)?;
             Some(ResolveStrategy::LocalResponse(RecordData::A(
                 domain::rdata::A::new(ip),

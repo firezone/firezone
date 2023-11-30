@@ -169,7 +169,7 @@ impl ResourceDescriptionDns {
 impl ResourceDescription {
     pub fn dns_name(&self) -> Option<&str> {
         match self {
-            ResourceDescription::Dns(r) => Some(&r.name),
+            ResourceDescription::Dns(r) => Some(&r.address),
             ResourceDescription::Cidr(_) => None,
         }
     }

@@ -98,7 +98,7 @@ impl RoleState for GatewayState {
     }
 
     fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
-        let peers_to_stop = VecDeque::new();
+        let mut peers_to_stop = VecDeque::new();
         for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
             let conn_id = peer.inner.conn_id;
 

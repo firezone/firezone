@@ -17,7 +17,11 @@ use webrtc::ice_transport::{
 };
 use webrtc::ice_transport::{ice_credential_type::RTCIceCredentialType, ice_server::RTCIceServer};
 
-use crate::{device_channel::Device, peer::Peer, peer_handler, ConnectedPeer, RoleState, Tunnel};
+use crate::{
+    device_channel::Device,
+    peer::{PacketTransform, Peer},
+    peer_handler, ConnectedPeer, RoleState, Tunnel,
+};
 
 mod client;
 mod gateway;
@@ -28,7 +32,6 @@ const ICE_CANDIDATE_BUFFER: usize = 100;
 const MAX_RELAYS: usize = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(clippy::large_enum_variant)]
 pub enum Request {
     NewConnection(RequestConnection),
     ReuseConnection(ReuseConnection),
@@ -137,6 +140,7 @@ fn start_handlers<TId, TTransform>(
     peer_receiver: tokio::sync::mpsc::Receiver<Bytes>,
 ) where
     TId: Copy + Send + Sync + fmt::Debug + 'static,
+    TTransform: Send + Sync + PacketTransform + 'static,
 {
     ice.on_connection_state_change(Box::new(|_| Box::pin(async {})));
     tokio::spawn({

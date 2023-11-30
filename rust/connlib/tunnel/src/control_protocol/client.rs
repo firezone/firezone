@@ -132,12 +132,16 @@ where
         resource_id: ResourceId,
         gateway_id: GatewayId,
         ice: Arc<RTCIceTransport>,
-        domain: &Option<String>,
+        domain_response: Option<DomainResponse>,
     ) -> Result<()> {
         let peer_config = self
             .role_state
             .lock()
-            .create_peer_config_for_new_connection(resource_id, gateway_id, domain)?;
+            .create_peer_config_for_new_connection(
+                resource_id,
+                gateway_id,
+                &domain_response.as_ref().map(|d| d.domain.clone()),
+            )?;
 
         let peer = Arc::new(Peer::new(
             self.private_key.clone(),
@@ -147,6 +151,43 @@ where
             self.rate_limiter.clone(),
             PacketTransformClient::new(),
         ));
+
+        if let Some(domain_response) = domain_response {
+            let resource_description = self
+                .role_state
+                .lock()
+                .resources_id
+                .get(&resource_id)
+                .ok_or(Error::UnknownResource)?
+                .clone();
+
+            let ResourceDescription::Dns(resource_description) = resource_description else {
+                // We should never get a domain_response for a CIDR resource!
+                return Err(Error::ControlProtocolError);
+            };
+            let resource_description = resource_description.subdomain(domain_response.domain);
+            for ip in domain_response.address {
+                let internal_ip = match ip {
+                    std::net::IpAddr::V4(_) => self
+                        .role_state
+                        .lock()
+                        .dns_resources_internal_ips
+                        .get_v4_resoruce_description(&resource_description)
+                        .ok_or(Error::ControlProtocolError)?
+                        .to_owned()
+                        .into(),
+                    std::net::IpAddr::V6(_) => self
+                        .role_state
+                        .lock()
+                        .dns_resources_internal_ips
+                        .get_v6_resoruce_description(&resource_description)
+                        .ok_or(Error::ControlProtocolError)?
+                        .to_owned()
+                        .into(),
+                };
+                peer.transform.insert_translation(internal_ip, ip);
+            }
+        }
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
@@ -161,7 +202,7 @@ where
         // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
         // before inserting finishes.
         insert_peers(
-            &mut self.peers_by_ip.write(),
+            &mut self.role_state.lock().peers_by_ip,
             &peer_config.ips,
             ConnectedPeer {
                 inner: peer,
@@ -207,37 +248,6 @@ where
             .ok_or(Error::UnknownResource)?
             .clone();
 
-        if let Some(domain_response) = domain_response.clone() {
-            let ResourceDescription::Dns(resource_description) = resource_description else {
-                // We should never get a domain_response for a CIDR resource!
-                return Err(Error::ControlProtocolError);
-            };
-            let resource_description = resource_description.subdomain(domain_response.domain);
-            for ip in domain_response.address {
-                let internal_ip = match ip {
-                    std::net::IpAddr::V4(_) => self
-                        .role_state
-                        .lock()
-                        .dns_resources_internal_ips
-                        .get_v4_resoruce_description(&resource_description)
-                        .ok_or(Error::ControlProtocolError)?
-                        .to_owned()
-                        .into(),
-                    std::net::IpAddr::V6(_) => self
-                        .role_state
-                        .lock()
-                        .dns_resources_internal_ips
-                        .get_v6_resoruce_description(&resource_description)
-                        .ok_or(Error::ControlProtocolError)?
-                        .to_owned()
-                        .into(),
-                };
-                self.role_state
-                    .lock()
-                    .dns_resources_external_ips
-                    .insert(internal_ip, ip);
-            }
-        }
         self.role_state
             .lock()
             .activate_ice_candidate_receiver(gateway_id, gateway_public_key);
@@ -249,12 +259,7 @@ where
                 .await
                 .map_err(Into::into)
                 .and_then(|_| {
-                    tunnel.new_tunnel(
-                        resource_id,
-                        gateway_id,
-                        peer_connection,
-                        &domain_response.map(|d| d.domain),
-                    )
+                    tunnel.new_tunnel(resource_id, gateway_id, peer_connection, domain_response)
                 })
             {
                 tracing::warn!(%gateway_id, err = ?e, "Can't start tunnel: {e:#}");

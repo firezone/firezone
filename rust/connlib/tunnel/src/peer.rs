@@ -110,6 +110,9 @@ where
             _ => panic!("Unexpected result from update_timers"),
         };
 
+        let Some(packet) = self.transform.packet_transform(packet) else {
+            return Ok(None);
+        };
         Ok(Some(Bytes::copy_from_slice(packet)))
     }
 
@@ -165,10 +168,12 @@ where
         }
     }
 
-    fn make_packet_for_resource(&self, addr: IpAddr, packet: &mut [u8]) -> Result<Option<WriteTo>> {
-        let (packet, addr) = self
-            .transform
-            .make_packet_for_resource(&addr.into(), packet)?;
+    fn make_packet_for_resource<'a>(
+        &self,
+        addr: IpAddr,
+        packet: &'a mut [u8],
+    ) -> Result<Option<WriteTo<'a>>> {
+        let (packet, addr) = self.transform.packet_untransform(&addr.into(), packet)?;
 
         if !self.is_allowed(addr) {
             return Ok(None);
@@ -196,6 +201,10 @@ impl PacketTransformClient {
             translations: RwLock::new(BiMap::new()),
         }
     }
+
+    pub fn insert_translation(&self, internal_ip: IpAddr, external_ip: IpAddr) {
+        self.translations.write().insert(internal_ip, external_ip);
+    }
 }
 
 impl PacketTransformGateway {
@@ -210,7 +219,7 @@ impl PacketTransformGateway {
     }
 
     pub(crate) fn expire_resources(&self) {
-        self.resources.write().retain(|_, (_, e)| *e <= Utc::now());
+        self.resources.write().retain(|_, (_, e)| *e > Utc::now());
     }
 
     pub(crate) fn add_resource(
@@ -224,15 +233,17 @@ impl PacketTransformGateway {
 }
 
 pub trait PacketTransform {
-    fn make_packet_for_resource<'a>(
+    fn packet_untransform<'a>(
         &self,
         addr: &IpAddr,
         packet: &'a mut [u8],
     ) -> Result<(device_channel::Packet<'a>, IpAddr)>;
+
+    fn packet_transform<'a>(&self, packet: &'a mut [u8]) -> Option<&'a mut [u8]>;
 }
 
 impl PacketTransform for PacketTransformGateway {
-    fn make_packet_for_resource<'a>(
+    fn packet_untransform<'a>(
         &self,
         addr: &IpAddr,
         packet: &'a mut [u8],
@@ -246,19 +257,33 @@ impl PacketTransform for PacketTransformGateway {
 
         Ok((packet, *addr))
     }
+
+    fn packet_transform<'a>(&self, packet: &'a mut [u8]) -> Option<&'a mut [u8]> {
+        Some(packet)
+    }
 }
 
 impl PacketTransform for PacketTransformClient {
-    fn make_packet_for_resource<'a>(
+    fn packet_untransform<'a>(
         &self,
         addr: &IpAddr,
         packet: &'a mut [u8],
     ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
-        let src = self.translations.read().get_by_right(addr).unwrap_or(addr);
+        let translations = self.translations.read();
+        let src = translations.get_by_right(addr).unwrap_or(addr);
 
         update_packet(packet, *src);
         let packet = make_packet(packet, addr);
         Ok((packet, *src))
+    }
+
+    fn packet_transform<'a>(&self, packet: &'a mut [u8]) -> Option<&'a mut [u8]> {
+        let dst = Tunn::dst_address(packet)?;
+        if let Some(translated_ip) = self.translations.read().get_by_left(&dst) {
+            update_packet(packet, *translated_ip);
+        }
+
+        Some(packet)
     }
 }
 

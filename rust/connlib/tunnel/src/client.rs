@@ -224,7 +224,6 @@ pub struct ClientState {
     // TODO: model these along with resources to enforce consistency
     // TODO: dns_resources_internal_ips can be merged with cidr_resources
     pub dns_resources_internal_ips: DnsResourceMap,
-    pub dns_resources_external_ips: HashMap<IpAddr, IpAddr>,
     dns_resources: HashMap<String, Arc<ResourceDescriptionDns>>,
     cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     pub resources_id: HashMap<ResourceId, ResourceDescription>,
@@ -403,6 +402,7 @@ impl ClientState {
             }
         }
 
+        tracing::trace!("going to connect to {resource:?}");
         self.awaiting_connection.insert(
             resource_id,
             AwaitingConnectionDetails {
@@ -608,7 +608,6 @@ impl Default for ClientState {
                 "fd00:2021:1112::/106".parse().unwrap(),
             ),
             dns_resources_internal_ips: Default::default(),
-            dns_resources_external_ips: Default::default(),
             dns_resources: Default::default(),
             cidr_resources: IpNetworkTable::new(),
             resources_id: Default::default(),
@@ -685,7 +684,7 @@ impl RoleState for ClientState {
     }
 
     fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
-        let peers_to_stop = VecDeque::new();
+        let mut peers_to_stop = VecDeque::new();
         for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
             let conn_id = peer.inner.conn_id;
 

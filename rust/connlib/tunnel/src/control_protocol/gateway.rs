@@ -44,6 +44,7 @@ where
         expires_at: DateTime<Utc>,
         resource: ResourceDescription,
     ) -> Result<GatewayResponse> {
+        tracing::trace!("domain: {domain:?}");
         let IceConnection {
             ice_parameters: local_params,
             ice_transport: ice,
@@ -106,12 +107,15 @@ where
         expires_at: DateTime<Utc>,
     ) {
         if let Some((_, peer)) = self
+            .role_state
+            .lock()
             .peers_by_ip
-            .write()
             .iter_mut()
             .find(|(_, p)| p.inner.conn_id == client_id)
         {
-            peer.inner.add_resource(todo!(), resource, expires_at);
+            // peer.inner
+            //     .transform
+            //     .add_resource(todo!(), resource, expires_at);
         }
     }
 
@@ -146,7 +150,8 @@ where
             PacketTransformGateway::new(),
         ));
 
-        peer.add_resource(resource_address, resource, expires_at);
+        peer.transform
+            .add_resource(resource_address, resource, expires_at);
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
@@ -159,7 +164,7 @@ where
         );
 
         insert_peers(
-            &mut self.peers_by_ip.write(),
+            &mut self.role_state.lock().peers_by_ip,
             &peer_config.ips,
             ConnectedPeer {
                 inner: peer,

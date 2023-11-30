@@ -78,7 +78,7 @@ const ICE_GATHERING_TIMEOUT_SECONDS: u64 = 5 * 60;
 
 /// How many concurrent ICE gathering attempts we are allow.
 ///
-/// Chosen arbitrarily.
+/// Chosen arbitrarily.Miami-Dade County,
 const MAX_CONCURRENT_ICE_GATHERING: usize = 100;
 
 // Note: Taken from boringtun
@@ -238,7 +238,7 @@ where
             tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination());
 
             let dns_strategy = role_state.dns_strategy;
-            let mut packet = match role_state.handle_dns(packet, dns_strategy) {
+            let packet = match role_state.handle_dns(packet, dns_strategy) {
                 Ok(Some((response, ip))) => {
                     tracing::trace!("{ip:?}");
                     device.write(response)?;
@@ -268,13 +268,6 @@ where
 
             // TODO: it's better to move the translation inside the peer.
             // for that it will be better to dup peer for gateway/client.
-            if let Some(_) = role_state.dns_resources_internal_ips.get_by_ip(&dest) {
-                if let Some(translated_ip) = role_state.dns_resources_external_ips.get(&dest) {
-                    update_packet(&mut packet, *translated_ip)
-                } else {
-                    continue;
-                }
-            }
 
             self.encapsulate(write_buf, packet, peer);
 
@@ -302,8 +295,8 @@ where
                     Some(Poll::Ready(Ok(Some(packet)))) => {
                         let dest = packet.destination();
 
-                        let Some(peer) = peer_by_ip(&self.role_state.lock().peers_by_ip, dest)
-                        else {
+                        let role_state = self.role_state.lock();
+                        let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
                             continue;
                         };
 
@@ -335,10 +328,18 @@ where
     }
 }
 
-#[derive(Clone)]
 pub struct ConnectedPeer<TId, TTransform> {
     inner: Arc<Peer<TId, TTransform>>,
     channel: tokio::sync::mpsc::Sender<Bytes>,
+}
+
+impl<TId, TTranform> Clone for ConnectedPeer<TId, TTranform> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+            channel: self.channel.clone(),
+        }
+    }
 }
 
 // TODO: For now we only use these fields with debug
