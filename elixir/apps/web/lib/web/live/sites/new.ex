@@ -47,7 +47,9 @@ defmodule Web.Sites.New do
                       label={pretty_print_routing(:managed)}
                       checked={@form[:routing].value == :managed}
                       required
-                    />
+                    >
+                      <.badge class="ml-2" type="plan">ENTERPRISE</.badge>
+                    </.input>
                     <p class="ml-6 mb-4 text-sm text-slate-500 dark:text-slate-400">
                       Firezone will route connections through our managed Relays only if a direct connection to a Gateway is not possible.
                       Firezone can never decrypt the contents of your traffic.

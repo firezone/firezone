@@ -115,6 +115,11 @@ defmodule Web.Settings.IdentityProviders.New do
         <label for={"idp-option-#{@adapter}"} class="block ml-2 text-lg font-medium text-gray-900">
           <%= @name %>
         </label>
+        <%= if @adapter == :google_workspace do %>
+          <.badge class="ml-2" type="plan" title="Feature available on the Enterprise plan">
+            ENTERPRISE
+          </.badge>
+        <% end %>
       </div>
       <p class="ml-6 mb-6 text-sm text-gray-500">
         <%= @description %>
