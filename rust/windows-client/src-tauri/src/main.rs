@@ -1,7 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Error, Session};
 use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
@@ -9,30 +9,32 @@ use secrecy::SecretString;
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
-    let mut args = std::env::args();
-    // Ignore the exe name
-    args.next().unwrap();
+    use CliCommands as Cmd;
 
     println!("printing to stdout");
 
-    match args.next().as_deref() {
-        None | Some("tauri") => details::main_tauri(),
-        Some("debug") => {
+    let cli = Cli::parse();
+
+    match &cli.command {
+        None | Some(Cmd::Tauri) => details::main_tauri(),
+        Some(Cmd::Debug) => {
             println!("debug");
             Ok(())
         }
-        Some("debug-auth") => details::main_debug_auth(),
-        Some("debug-connlib") => main_debug_connlib(),
-        Some("debug-device-id") => main_debug_device_id(),
-        Some("debug-local-server") => main_debug_local_server(),
-        Some("debug-wintun") => details::main_debug_wintun(),
-        Some(cmd) => bail!("Subcommand `{cmd}` not recognized"),
+        Some(Cmd::DebugAuth) => details::main_debug_auth(),
+        Some(Cmd::DebugConnlib) => main_debug_connlib(cli),
+        Some(Cmd::DebugDeviceId) => main_debug_device_id(),
+        Some(Cmd::DebugLocalServer) => main_debug_local_server(),
+        Some(Cmd::DebugWintun) => details::main_debug_wintun(),
     }
 }
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<CliCommands>,
+
     #[command(flatten)]
     common: CommonArgs,
 
@@ -41,7 +43,20 @@ struct Cli {
     log_dir: Option<PathBuf>,
 }
 
-fn main_debug_connlib() -> Result<()> {
+#[derive(clap::Subcommand)]
+enum CliCommands {
+    Debug,
+    DebugAuth,
+    DebugConnlib,
+    DebugDeviceId,
+    DebugLocalServer,
+    DebugWintun,
+    Tauri,
+}
+
+fn main_debug_connlib(cli: Cli) -> Result<()> {
+    use smbioslib::SMBiosSystemInformation as SysInfo;
+
     #[derive(Clone)]
     struct CallbackHandler {
         handle: Option<file_logger::Handle>,
@@ -73,15 +88,25 @@ fn main_debug_connlib() -> Result<()> {
         }
     }
 
-    let cli = Cli::parse();
-
     let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
+
+    // TODO: If the ID should be either smbios ID or hashed MAC,
+    // we should use a pepper for the hash and also do that for the smbios ID, right? Is there already a crypto lib in our dependencies like sodium that has salted / peppered hashes?
+
+    let data = smbioslib::table_load_from_device()?;
+    let device_id = if let Some(uuid) = data.find_map(|sys_info: SysInfo| sys_info.uuid()) {
+        tracing::info!("smbioslib got UUID");
+        uuid.to_string()
+    } else {
+        tracing::error!("smbioslib couldn't find UUID, making a random device ID");
+        uuid::Uuid::new_v4().to_string()
+    };
 
     let mut session = Session::connect(
         cli.common.api_url,
         SecretString::from(cli.common.token),
-        cli.common.firezone_id,
+        device_id,
         CallbackHandler { handle },
     )
     .unwrap();

@@ -1672,6 +1672,7 @@ dependencies = [
  "tauri-build",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "windows 0.52.0",
  "wintun",
 ]
