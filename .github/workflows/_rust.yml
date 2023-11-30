@@ -64,6 +64,8 @@ jobs:
       - uses: ./.github/actions/setup-rust
       - run: cargo test --all-features ${{ matrix.packages }}
 
+  # TODO: Remove when windows build works reliably in cd.yml
+  # These `temp-` jobs serve as a sanity check to early exit if there's an issue in the workflow
   temp-build-windows-artifacts:
     runs-on: windows-2019
     defaults:
