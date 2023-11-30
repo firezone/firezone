@@ -506,6 +506,7 @@ where
         registry = register_default_interceptors(registry, &mut media_engine)?;
         let mut setting_engine = SettingEngine::default();
         setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
+        setting_engine.set_ice_timeouts(None, Some(Duration::from_secs(2 * 60)), None);
 
         let webrtc_api = APIBuilder::new()
             .with_media_engine(media_engine)

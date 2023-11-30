@@ -441,6 +441,7 @@ impl PhoenixSender {
     ) -> Result<()> {
         // We don't care about the reply type when serializing
         let str = serde_json::to_string(&PhoenixMessage::<_, ()>::new(topic, payload, reference))?;
+        tracing::trace!(message = str, "phoenix channel sending message");
         self.sender.send(Message::text(str)).await?;
         Ok(())
     }
