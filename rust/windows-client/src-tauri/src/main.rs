@@ -50,11 +50,13 @@ fn main_debug_connlib() -> Result<()> {
         type Error = std::convert::Infallible;
 
         fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
-            panic!("error recovery not implemented. Error: {error:?}");
+            tracing::error!("on_disconnect not implemented. Error: {error:?}");
+            Ok(())
         }
 
         fn on_error(&self, error: &Error) -> Result<(), Self::Error> {
-            panic!("error recovery not implemented. Error: {error}");
+            tracing::error!("on_error not implemented. Error: {error}");
+            Ok(())
         }
 
         fn roll_log_file(&self) -> Option<PathBuf> {
