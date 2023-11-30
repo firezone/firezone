@@ -27,10 +27,10 @@ export default function KbSidebar() {
       <div className="mt-5 h-full overflow-y-auto bg-white  pr-3">
         <ul className="space-y-2 font-medium">
           <li>
-            <Item href="/kb" label="Overview" />
+            <Item topLevel href="/kb" label="Overview" />
           </li>
           <li>
-            <Item href="/kb/quickstart" label="Quickstart" />
+            <Item topLevel href="/kb/quickstart" label="Quickstart" />
           </li>
           <li>
             <Collapse expanded={p.startsWith("/kb/deploy")} label="Deploy">
@@ -78,6 +78,12 @@ export default function KbSidebar() {
                 <Item
                   href="/kb/authenticate/user-group-sync"
                   label="User / Group sync"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/authenticate/service-accounts"
+                  label="Service accounts"
                 />
               </li>
             </Collapse>
