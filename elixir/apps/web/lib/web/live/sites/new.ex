@@ -48,7 +48,7 @@ defmodule Web.Sites.New do
                       checked={@form[:routing].value == :managed}
                       required
                     >
-                      <.badge class="ml-2" type="plan">ENTERPRISE</.badge>
+                      <.badge class="ml-2" type="plan" title="Feature available on the Enterprise plan">ENTERPRISE</.badge>
                     </.input>
                     <p class="ml-6 mb-4 text-sm text-slate-500 dark:text-slate-400">
                       Firezone will route connections through our managed Relays only if a direct connection to a Gateway is not possible.
