@@ -21,12 +21,21 @@ defmodule Web.HomeHTML do
             </h3>
 
             <div :if={@accounts != []} class="space-y-3 items-center">
-              <.account_button :for={account <- @accounts} account={account} />
+              <.account_button
+                :for={account <- @accounts}
+                account={account}
+                redirect_params={@redirect_params}
+              />
             </div>
 
             <.separator :if={@accounts != []} />
 
-            <.form :let={f} for={%{}} action={~p"/"} class="space-y-4 lg:space-y-6">
+            <.form
+              :let={f}
+              for={%{}}
+              action={~p"/?#{@redirect_params}"}
+              class="space-y-4 lg:space-y-6"
+            >
               <.input
                 field={f[:account_id_or_slug]}
                 type="text"
@@ -54,7 +63,7 @@ defmodule Web.HomeHTML do
 
   def account_button(assigns) do
     ~H"""
-    <a href={~p"/#{@account}"} class={~w[
+    <a href={~p"/#{@account}?#{@redirect_params}"} class={~w[
           w-full inline-flex items-center justify-center py-2.5 px-5
           bg-white rounded
           text-sm font-medium text-gray-900
