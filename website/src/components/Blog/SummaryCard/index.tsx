@@ -1,5 +1,6 @@
 import ActionLink from "@/components/ActionLink";
 import Link from "next/link";
+import { Route } from "next";
 
 import Image from "next/image";
 
@@ -14,7 +15,7 @@ export default function SummaryCard({
 }: {
   children: React.ReactNode;
   date: string;
-  href: string;
+  href: Route<string>;
   title: string;
   authorName: string;
   authorAvatarSrc: string;
