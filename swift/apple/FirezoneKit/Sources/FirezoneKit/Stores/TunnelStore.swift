@@ -103,6 +103,7 @@ final class TunnelStore: ObservableObject {
       throw TunnelStoreError.cannotSaveToTunnelWhenConnected
     }
 
+    try await tunnel.loadFromPreferences()
     try await tunnel.saveAuthStatus(tunnelAuthStatus)
     self.tunnelAuthStatus = tunnelAuthStatus
   }
@@ -118,6 +119,7 @@ final class TunnelStore: ObservableObject {
       throw TunnelStoreError.cannotSaveToTunnelWhenConnected
     }
 
+    try await tunnel.loadFromPreferences()
     try await tunnel.saveAdvancedSettings(advancedSettings)
     self.tunnelAuthStatus = tunnel.authStatus()
   }
