@@ -54,7 +54,7 @@ fn main() -> Result<()> {
 /// Change dir to the app's local data dir. This prevents issues with the logger trying to write to C:\Windows\System32 when Firefox / Chrome launches us in that dir.
 
 fn change_to_well_known_dir() -> Result<()> {
-    let project_dirs = directories::ProjectDirs::from("", "Firezone", "Client").unwrap();
+    let project_dirs = cli::get_project_dirs()?;
     let working_dir = project_dirs.data_local_dir();
     std::fs::create_dir_all(working_dir)?;
     std::env::set_current_dir(working_dir)?;

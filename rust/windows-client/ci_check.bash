@@ -8,12 +8,12 @@
 # Fail on any non-zero return code
 set -euo pipefail
 
-# Fail on yaml workflow errors
-yamllint ../../.github/workflows/*
-
 # Fail on Rust errors
 pushd .. > /dev/null
 cargo clippy --all-targets --all-features -p firezone-windows-client -- -D warnings
 cargo fmt --check
 cargo doc --all-features --no-deps --document-private-items -p firezone-windows-client
 popd > /dev/null
+
+# Fail on yaml workflow errors
+yamllint ../../.github/workflows/*
