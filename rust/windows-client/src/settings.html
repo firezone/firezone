@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings</title>
+    <script type="module" src="/main.js" defer></script>
+    <style>
+      .logo.vanilla:hover {
+        filter: drop-shadow(0 0 2em #ffe21c);
+      }
+
+      .tab button.active {
+        background-color: orange;
+        color: black;
+      }
+
+      .tabcontent {
+        display: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <div class="tab">
+        <button class="tablinks" onclick="openTab(event, 'tab_account')">Account</button>
+        <button class="tablinks" onclick="openTab(event, 'tab_logs')">Logs</button>
+        <button class="tablinks" onclick="openTab(event, 'tab_advanced')">Advanced</button>
+      </div>
+
+      <div id="tab_account" class="tabcontent">
+        (Account tab)
+      </div>
+
+      <div id="tab_logs" class="tabcontent">
+        (Logs tab)
+      </div>
+
+      <div id="tab_advanced" class="tabcontent">
+        (Advanced tab)
+      </div>
+    </div>
+
+    <script>
+    function openTab(evt, tabName) {
+      let tabcontent = document.getElementsByClassName("tabcontent");
+      for (let i = 0; i < tabcontent.length; i++) {
+        tabcontent[i].style.display = "none";
+      }
+
+      let tablinks = document.getElementsByClassName("tablinks");
+      for (let i = 0; i < tablinks.length; i++) {
+        // TODO: There's a better way to change classes on an element
+        tablinks[i].className = tablinks[i].className.replace(" active", "");
+      }
+
+      document.getElementById(tabName).style.display = "block";
+      // TODO: There's a better way to do this
+      evt.currentTarget.className += " active";
+    }
+
+    // TODO: Figure out why this default tab doesn't work, or rewrite it
+    document.getElementById("tab_account").click();
+    </script>
+  </body>
+</html>

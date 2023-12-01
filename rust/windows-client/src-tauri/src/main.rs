@@ -228,8 +228,7 @@ mod details {
                 if let SystemTrayEvent::MenuItemClick { id, .. } = event {
                     match id.as_str() {
                         "/sign_in" => {
-                            // TODO: Don't block the main thread here
-                            sign_in().unwrap();
+                            // TODO: Actually sign in
 
                             app.tray_handle()
                                 .set_menu(signed_in_menu(
@@ -240,7 +239,17 @@ mod details {
                         }
                         "/sign_out" => app.tray_handle().set_menu(signed_out_menu()).unwrap(),
                         "/about" => {
-                            let win = app.get_window("main-window").unwrap();
+                            let win = app.get_window("about").unwrap();
+
+                            if win.is_visible().unwrap() {
+                                win.hide().unwrap();
+                            } else {
+                                win.show().unwrap();
+                            }
+                        }
+                        "/settings" => {
+                            let win = app.get_window("settings").unwrap();
+                            dbg!(win.url());
 
                             if win.is_visible().unwrap() {
                                 // If we close the window here, we can't re-open it, we'd have to fully re-create it. Not needed for MVP - We agreed 100 MB is fine for the GUI client.
@@ -248,18 +257,6 @@ mod details {
                             } else {
                                 win.show().unwrap();
                             }
-                        }
-                        "/settings" => {
-                            app.tray_handle()
-                                .set_menu(signed_in_menu(
-                                    "user@example.com",
-                                    &[
-                                        ("CloudFlare", "1.1.1.1"),
-                                        ("New resource", "127.0.0.1"),
-                                        ("Google", "8.8.8.8"),
-                                    ],
-                                ))
-                                .unwrap();
                         }
                         "/quit" => app.exit(0),
                         id => {
