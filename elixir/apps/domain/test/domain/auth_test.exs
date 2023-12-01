@@ -877,11 +877,12 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      assert {:ok, provider} = enable_provider(provider, subject)
       assert provider.disabled_at
+      assert {:ok, provider} = enable_provider(provider, subject)
+      assert is_nil(provider.disabled_at)
 
       assert provider = Repo.get(Auth.Provider, provider.id)
-      assert provider.disabled_at
+      assert is_nil(provider.disabled_at)
     end
 
     test "does not do anything when an provider is enabled twice", %{

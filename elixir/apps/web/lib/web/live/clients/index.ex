@@ -12,6 +12,8 @@ defmodule Web.Clients.Index do
     end
   end
 
+  # subscribe for presence
+
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
