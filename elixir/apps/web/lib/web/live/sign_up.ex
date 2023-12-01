@@ -16,8 +16,8 @@ defmodule Web.SignUp do
       embeds_one(:actor, Actors.Actor)
     end
 
-    def changeset(%Registration{} = registration, attrs) do
-      registration
+    def changeset(attrs) do
+      %Registration{}
       |> Ecto.Changeset.cast(attrs, [:email])
       |> Ecto.Changeset.validate_required([:email])
       |> Ecto.Changeset.validate_format(:email, ~r/.+@.+/)
@@ -35,7 +35,7 @@ defmodule Web.SignUp do
     real_ip = Web.Auth.real_ip(socket)
 
     changeset =
-      Registration.changeset(%Registration{}, %{
+      Registration.changeset(%{
         account: %{slug: "placeholder"},
         actor: %{type: :account_admin_user}
       })
@@ -46,7 +46,9 @@ defmodule Web.SignUp do
         account: nil,
         user_agent: user_agent,
         real_ip: real_ip,
-        sign_up_enabled?: Config.sign_up_enabled?()
+        sign_up_enabled?: Config.sign_up_enabled?(),
+        account_name_changed?: false,
+        actor_name_changed?: false
       )
 
     {:ok, socket}
@@ -147,12 +149,21 @@ defmodule Web.SignUp do
       Sign Up Now
     </h3>
     <.simple_form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="validate">
+      <.input
+        field={@form[:email]}
+        type="text"
+        label="Email"
+        placeholder="Enter your work email here"
+        required
+        phx-debounce="300"
+      />
+
       <.inputs_for :let={account} field={@form[:account]}>
         <.input
           field={account[:name]}
           type="text"
           label="Account Name"
-          placeholder="Enter an Account Name here"
+          placeholder="Enter an account name"
           required
           phx-debounce="300"
         />
@@ -170,15 +181,6 @@ defmodule Web.SignUp do
         />
         <.input field={actor[:type]} type="hidden" />
       </.inputs_for>
-
-      <.input
-        field={@form[:email]}
-        type="text"
-        label="Email"
-        placeholder="Enter your email here"
-        required
-        phx-debounce="300"
-      />
 
       <:actions>
         <.button phx-disable-with="Creating Account..." class="w-full">
@@ -218,23 +220,37 @@ defmodule Web.SignUp do
     """
   end
 
-  def handle_event("validate", %{"registration" => attrs}, socket) do
+  def handle_event("validate", %{"registration" => attrs} = payload, socket) do
+    account_name_changed? =
+      socket.assigns.account_name_changed? ||
+        payload["_target"] == ["registration", "account", "name"]
+
+    actor_name_changed? =
+      socket.assigns.actor_name_changed? ||
+        payload["_target"] == ["registration", "actor", "name"]
+
     changeset =
-      %Registration{}
-      |> Registration.changeset(attrs)
+      attrs
+      |> maybe_put_default_account_name(account_name_changed?)
+      |> maybe_put_default_actor_name(actor_name_changed?)
+      |> Registration.changeset()
       |> Map.put(:action, :validate)
 
-    socket = assign(socket, form: to_form(changeset))
-
-    {:noreply, socket}
+    {:noreply,
+     assign(socket,
+       form: to_form(changeset),
+       account_name_changed?: account_name_changed?,
+       actor_name_changed?: actor_name_changed?
+     )}
   end
 
-  def handle_event("submit", %{"registration" => orig_attrs}, socket) do
-    attrs = put_in(orig_attrs, ["actor", "type"], :account_admin_user)
-
+  def handle_event("submit", %{"registration" => attrs}, socket) do
     changeset =
-      %Registration{}
-      |> Registration.changeset(attrs)
+      attrs
+      |> maybe_put_default_account_name()
+      |> maybe_put_default_actor_name()
+      |> put_in(["actor", "type"], :account_admin_user)
+      |> Registration.changeset()
       |> Map.put(:action, :insert)
 
     if changeset.valid? && socket.assigns.sign_up_enabled? do
@@ -301,5 +317,32 @@ defmodule Web.SignUp do
     else
       {:noreply, assign(socket, form: to_form(changeset))}
     end
+  end
+
+  defp maybe_put_default_account_name(attrs, account_name_changed? \\ true)
+
+  defp maybe_put_default_account_name(attrs, true) do
+    attrs
+  end
+
+  defp maybe_put_default_account_name(attrs, false) do
+    case String.split(attrs["email"], "@", parts: 2) do
+      [default_name | _] when byte_size(default_name) > 0 ->
+        put_in(attrs, ["account", "name"], "#{default_name}'s account")
+
+      _ ->
+        attrs
+    end
+  end
+
+  defp maybe_put_default_actor_name(attrs, actor_name_changed? \\ true)
+
+  defp maybe_put_default_actor_name(attrs, true) do
+    attrs
+  end
+
+  defp maybe_put_default_actor_name(attrs, false) do
+    [default_name | _] = String.split(attrs["email"], "@", parts: 2)
+    put_in(attrs, ["actor", "name"], default_name)
   end
 end
