@@ -189,7 +189,7 @@ fn main_debug_device_id() -> Result<()> {
 mod details {
     use super::*;
 
-    pub(crate) fn main_tauri(_: Option<CommonArgs>) -> Result<()> {
+    pub(crate) fn main_tauri(_: Option<CommonArgs>, _: Option<String>) -> Result<()> {
         panic!("GUI not implemented for Linux.");
     }
 
