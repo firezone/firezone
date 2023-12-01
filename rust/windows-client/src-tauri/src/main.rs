@@ -100,8 +100,7 @@ fn main_debug_connlib(cli: Cli) -> Result<()> {
     let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
-    // TODO: If the ID should be either smbios ID or hashed MAC,
-    // we should use a pepper for the hash and also do that for the smbios ID, right? Is there already a crypto lib in our dependencies like sodium that has salted / peppered hashes?
+    // TODO: Is the SHA256 only intended to make the device ID fixed-length, or is it supposed to obfuscate the ID too? If so, we could add a pepper to defeat rainbow tables.
 
     let data = smbioslib::table_load_from_device()?;
     let device_id = if let Some(uuid) = data.find_map(|sys_info: SysInfo| sys_info.uuid()) {
