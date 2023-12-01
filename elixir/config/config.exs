@@ -126,11 +126,13 @@ config :web, Web.Auth,
   platform_redirects: [
     sign_in: %{
       "apple" => [method: :external, dest: "firezone://handle_client_sign_in_callback"],
-      "android" => [method: :to, dest: "/handle_client_sign_in_callback"]
+      "android" => [method: :to, dest: "/handle_client_sign_in_callback"],
+      "windows" => [method: :to, dest: "/handle_client_sign_in_callback"]
     },
     sign_out: %{
       "apple" => [method: :external, dest: "firezone://handle_client_sign_out_callback"],
-      "android" => [method: :to, dest: "/handle_client_sign_out_callback"]
+      "android" => [method: :to, dest: "/handle_client_sign_out_callback"],
+      "windows" => [method: :to, dest: "/handle_client_sign_out_callback"]
     }
   ]
 
