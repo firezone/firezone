@@ -44,6 +44,7 @@ defmodule Web.SignUp do
       assign(socket,
         form: to_form(changeset),
         account: nil,
+        provider: nil,
         user_agent: user_agent,
         real_ip: real_ip,
         sign_up_enabled?: Config.sign_up_enabled?(),
@@ -78,7 +79,12 @@ defmodule Web.SignUp do
 
               <:item>
                 <.sign_up_form :if={@account == nil && @sign_up_enabled?} flash={@flash} form={@form} />
-                <.welcome :if={@account && @sign_up_enabled?} account={@account} />
+                <.welcome
+                  :if={@account && @sign_up_enabled?}
+                  account={@account}
+                  provider={@provider}
+                  identity={@identity}
+                />
                 <.sign_up_disabled :if={!@sign_up_enabled?} />
               </:item>
             </.intersperse_blocks>
@@ -103,26 +109,37 @@ defmodule Web.SignUp do
     ~H"""
     <div class="space-y-6">
       <div class="text-center text-gray-900">
-        Your account has been created! Please check your email for sign in instructions.
+        Your account has been created!
+        <p>Please check your email for sign in instructions.</p>
       </div>
       <div class="text-center">
         <div class="px-12">
-          <table class="border-collapse table-fixed w-full text-sm">
+          <table class="border-collapse w-full text-sm">
             <tbody>
               <tr>
-                <td class={~w[border-b border-slate-100 p-4 pl-8 text-gray-900]}>
+                <td class={~w[border-b border-slate-100 py-4 text-gray-900]}>
                   Account Name:
                 </td>
-                <td class={~w[border-b border-slate-100 p-4 pl-8 text-gray-900]}>
+                <td class={~w[border-b border-slate-100 py-4 text-gray-900]}>
                   <%= @account.name %>
                 </td>
               </tr>
               <tr>
-                <td class={~w[border-b border-slate-100 p-4 pl-8 text-gray-900]}>
+                <td class={~w[border-b border-slate-100 py-4 text-gray-900]}>
                   Account Slug:
                 </td>
-                <td class={~w[border-b border-slate-100 p-4 pl-8 text-gray-900]}>
+                <td class={~w[border-b border-slate-100 py-4 text-gray-900]}>
                   <%= @account.slug %>
+                </td>
+              </tr>
+              <tr>
+                <td class={~w[border-b border-slate-100 py-4 text-gray-900]}>
+                  Sign In URL:
+                </td>
+                <td class={~w[border-b border-slate-100 py-4 text-gray-900]}>
+                  <.link class="font-medium text-blue-600 hover:underline" navigate={~p"/#{@account}"}>
+                    <%= url(~p"/#{@account}") %>
+                  </.link>
                 </td>
               </tr>
             </tbody>
@@ -130,14 +147,23 @@ defmodule Web.SignUp do
         </div>
       </div>
       <div class="text-base leading-7 text-center text-gray-900">
-        <div>
-          Sign In URL
-        </div>
-        <div>
-          <.link class="font-medium text-blue-600 hover:underline" navigate={~p"/#{@account.slug}"}>
-            <%= "#{Web.Endpoint.url()}/#{@account.slug}" %>
-          </.link>
-        </div>
+        <.form
+          for={%{}}
+          id="resend-email"
+          as={:email}
+          class="inline"
+          action={~p"/#{@account}/sign_in/providers/#{@provider}/request_magic_link"}
+          method="post"
+        >
+          <.input
+            type="hidden"
+            name="email[provider_identifier]"
+            value={@identity.provider_identifier}
+          />
+          <.submit_button class="w-full">
+            Sign In
+          </.submit_button>
+        </.form>
       </div>
     </div>
     """
@@ -295,7 +321,7 @@ defmodule Web.SignUp do
         )
 
       case Domain.Repo.transaction(multi) do
-        {:ok, %{account: account, identity: identity}} ->
+        {:ok, %{account: account, provider: provider, identity: identity}} ->
           {:ok, _} =
             Web.Mailer.AuthEmail.sign_up_link_email(
               account,
@@ -305,7 +331,7 @@ defmodule Web.SignUp do
             )
             |> Web.Mailer.deliver()
 
-          socket = assign(socket, account: account)
+          socket = assign(socket, account: account, provider: provider, identity: identity)
           {:noreply, socket}
 
         {:error, :account, err_changeset, _effects_so_far} ->
