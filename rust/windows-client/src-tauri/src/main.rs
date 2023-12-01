@@ -11,52 +11,68 @@ use std::path::PathBuf;
 fn main() -> Result<()> {
     use CliCommands as Cmd;
 
-    println!("printing to stdout");
+    change_to_well_known_dir()?;
+
+    // Special case for app link URIs
+    if let Some(arg) = std::env::args().nth(1) {
+        if arg.starts_with("firezone://") {
+            return details::main_tauri(None, Some(arg));
+        }
+    }
 
     let cli = Cli::parse();
 
-    match &cli.command {
-        None | Some(Cmd::Tauri) => details::main_tauri(),
+    match cli.command {
+        None => details::main_tauri(None, None),
+        Some(Cmd::Tauri { common }) => details::main_tauri(common, None),
         Some(Cmd::Debug) => {
             println!("debug");
             Ok(())
         }
         Some(Cmd::DebugAuth) => details::main_debug_auth(),
-        Some(Cmd::DebugConnlib) => main_debug_connlib(cli),
+        Some(Cmd::DebugConnlib { common }) => main_debug_connlib(common),
         Some(Cmd::DebugCredentials) => main_debug_credentials(),
         Some(Cmd::DebugDeviceId) => main_debug_device_id(),
-        Some(Cmd::DebugLocalServer) => main_debug_local_server(),
-        Some(Cmd::DebugWintun) => details::main_debug_wintun(),
+        Some(Cmd::DebugWintun) => details::main_debug_wintun(cli),
     }
+}
+
+/// Change dir to the app's local data dir. This prevents issues with the logger trying to write to C:\Windows\System32 when Firefox / Chrome launchs us in that dir.
+
+fn change_to_well_known_dir() -> Result<()> {
+    let project_dirs = directories::ProjectDirs::from("", "Firezone", "Client").unwrap();
+    let working_dir = project_dirs.data_local_dir();
+    std::fs::create_dir_all(working_dir)?;
+    std::env::set_current_dir(working_dir)?;
+    Ok(())
 }
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-struct Cli {
+pub(crate) struct Cli {
     #[command(subcommand)]
     command: Option<CliCommands>,
-
-    #[command(flatten)]
-    common: CommonArgs,
-
-    /// File logging directory. Should be a path that's writeable by the current user.
-    #[arg(short, long, env = "LOG_DIR")]
-    log_dir: Option<PathBuf>,
 }
 
 #[derive(clap::Subcommand)]
 enum CliCommands {
     Debug,
     DebugAuth,
-    DebugConnlib,
+    DebugConnlib {
+        #[command(flatten)]
+        common: CommonArgs,
+    },
     DebugCredentials,
     DebugDeviceId,
-    DebugLocalServer,
     DebugWintun,
-    Tauri,
+    Tauri {
+        // Common args are optional for the GUI because most of the time it'll be launched with useful args or env vars
+        #[command(flatten)]
+        common: Option<CommonArgs>,
+    },
 }
 
-fn main_debug_connlib(cli: Cli) -> Result<()> {
+fn main_debug_connlib(common_args: CommonArgs) -> Result<()> {
     use connlib_client_shared::ResourceDescription;
     use smbioslib::SMBiosSystemInformation as SysInfo;
 
@@ -99,7 +115,7 @@ fn main_debug_connlib(cli: Cli) -> Result<()> {
         }
     }
 
-    let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
+    let (layer, handle) = file_logger::layer(std::path::Path::new("."));
     setup_global_subscriber(layer);
 
     // TODO: Is the SHA256 only intended to make the device ID fixed-length, or is it supposed to obfuscate the ID too? If so, we could add a pepper to defeat rainbow tables.
@@ -114,10 +130,12 @@ fn main_debug_connlib(cli: Cli) -> Result<()> {
     };
 
     let mut session = Session::connect(
-        cli.common.api_url,
-        SecretString::from(cli.common.token),
+        common_args.api_url,
+        SecretString::from(common_args.token),
         device_id,
-        CallbackHandler { handle },
+        CallbackHandler {
+            handle: Some(handle),
+        },
     )
     .unwrap();
 
@@ -167,32 +185,19 @@ fn main_debug_device_id() -> Result<()> {
     Ok(())
 }
 
-fn main_debug_local_server() -> Result<()> {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-    let local_addr = listener.local_addr()?;
-    println!("Listening on {local_addr}");
-
-    // The exe is a GUI app so Powershell may not show the stdout/stderr
-    // Just launch the GUI as feedback.
-
-    details::main_tauri()?;
-
-    Ok(())
-}
-
 #[cfg(target_os = "linux")]
 mod details {
     use super::*;
 
-    pub fn main_tauri() -> Result<()> {
+    pub(crate) fn main_tauri(_: Option<CommonArgs>) -> Result<()> {
         panic!("GUI not implemented for Linux.");
     }
 
-    pub fn main_debug_auth() -> Result<()> {
+    pub(crate) fn main_debug_auth() -> Result<()> {
         unimplemented!();
     }
 
-    pub fn main_debug_wintun() -> Result<()> {
+    pub(crate) fn main_debug_wintun(_: Cli) -> Result<()> {
         panic!("Wintun not implemented for Linux.");
     }
 }
@@ -205,11 +210,19 @@ mod details {
         SystemTraySubmenu,
     };
 
-    pub fn main_debug_auth() -> Result<()> {
+    pub(crate) fn main_debug_auth() -> Result<()> {
         sign_in()
     }
 
-    pub fn main_tauri() -> Result<()> {
+    // TODO: Decide whether Windows needs to handle env vars and CLI args for IDs / tokens
+    pub(crate) fn main_tauri(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
+        // Set up logger with connlib_client_shared
+        let (layer, _handle) = file_logger::layer(std::path::Path::new("."));
+        setup_global_subscriber(layer);
+
+        // Make sure we're single-instance
+        tauri_plugin_deep_link::prepare("dev.firezone");
+
         let tray = SystemTray::new().with_menu(signed_out_menu());
 
         tauri::Builder::default()
@@ -228,8 +241,13 @@ mod details {
                 if let SystemTrayEvent::MenuItemClick { id, .. } = event {
                     match id.as_str() {
                         "/sign_in" => {
-                            // TODO: Actually sign in
+                            // TODO: This whole method is a sync callback that can't do error handling. Send an event over a channel to somewhere async with error handling.
 
+                            // TODO: Use auth base URL and account ID
+                            // And client_platform=windows
+                            open::that("https://app.firez.one/firezone?client_csrf_token=bogus&client_platform=apple").unwrap();
+
+                            // TODO: Move this to the sign_in_handle_callback handler
                             app.tray_handle()
                                 .set_menu(signed_in_menu(
                                     "user@example.com",
@@ -267,8 +285,25 @@ mod details {
                     }
                 }
             })
-            .build(tauri::generate_context!())
-            .expect("error while building tauri application")
+            .setup(|app| {
+                if let Some(_app_link) = app_link {
+                    // TODO: Handle app links that we catch at startup here
+                }
+
+                app.listen_global("scheme-request-received", |event| {
+                    // TODO: Handle "firezone://handle_client_auth_callback/?client_csrf_token=bogus_csrf_token&actor_name=Bogus+Name&client_auth_token=bogus_auth_token"
+                    println!("got scheme request {:?}", event.payload());
+                });
+
+                // From https://github.com/FabianLars/tauri-plugin-deep-link/blob/main/example/main.rs
+                let handle = app.handle();
+                tauri_plugin_deep_link::register("firezone", move |request| {
+                    dbg!(&request);
+                    handle.trigger_global("scheme-request-received", Some(request));
+                })?;
+                Ok(())
+            })
+            .build(tauri::generate_context!())?
             .run(|_app_handle, event| {
                 if let tauri::RunEvent::ExitRequested { api, .. } = event {
                     // Don't exit if we close our main window
@@ -281,35 +316,13 @@ mod details {
     }
 
     fn sign_in() -> Result<()> {
-        use windows::{
-            core::HSTRING,
-            Foundation::{AsyncStatus, Uri},
-            Security::Authentication::Web::WebAuthenticationBroker,
-        };
-
-        let start_uri = HSTRING::from("https://app.firez.one/firezone?client_platform=windows");
-        let start_uri = Uri::CreateUri(&start_uri)?;
-
-        println!("Kicking off async call...");
-        let future = WebAuthenticationBroker::AuthenticateSilentlyAsync(&start_uri)?;
-
-        for i in 0..600 {
-            println!("Waiting for auth broker ({i})...");
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            match future.Status()? {
-                AsyncStatus::Completed => {
-                    let end_uri = future.get().unwrap().ResponseData()?;
-                    println!("End URI: {end_uri}");
-                    break;
-                }
-                AsyncStatus::Started => {}
-                status => panic!("Async failed: {status:?}"),
-            }
-        }
+        // TODO: Real CSRF token.
+        //
+        open::that("https://app.firez.one/firezone?client_csrf_token=bogus&client_platform=apple")?;
         Ok(())
     }
 
-    pub fn main_debug_wintun() -> Result<()> {
+    pub(crate) fn main_debug_wintun(_: Cli) -> Result<()> {
         use std::sync::Arc;
 
         //Must be run as Administrator because we create network adapters
@@ -343,9 +356,6 @@ mod details {
         //Send the packet to wintun virtual adapter for processing by the system
         session.send_packet(packet);
 
-        // Powershell won't show stdout/stderr so for certain tests use the GUI as a "return 0" signal to the dev
-        main_tauri()?;
-
         //Stop any readers blocking for data on other threads
         //Only needed when a blocking reader is preventing shutdown Ie. it holds an Arc to the
         //session, blocking it from being dropped
@@ -374,7 +384,7 @@ mod details {
             )
             .add_item(CustomMenuItem::new("/sign_out".to_string(), "Sign out"))
             .add_native_item(SystemTrayMenuItem::Separator)
-            .add_item(CustomMenuItem::new("".to_string(), "RESOURCES"));
+            .add_item(CustomMenuItem::new("".to_string(), "Resources").disabled());
 
         for (name, addr) in resources {
             let submenu = SystemTrayMenu::new().add_item(CustomMenuItem::new(
