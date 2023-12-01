@@ -84,6 +84,11 @@ button {
   outline: none;
 }
 
+input:disabled,
+button:disabled {
+  background: #888;
+}
+
 #greet-input {
   margin-right: 5px;
 }

@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings</title>
     <script type="module" src="/main.js" defer></script>
+    <script src="settings.js"></script>
     <style>
       .logo.vanilla:hover {
         filter: drop-shadow(0 0 2em #ffe21c);
@@ -24,14 +25,23 @@
 
   <body>
     <div class="container">
-      <div class="tab">
+      <div class="row tab">
         <button class="tablinks" onclick="openTab(event, 'tab_account')">Account</button>
         <button class="tablinks" onclick="openTab(event, 'tab_logs')">Logs</button>
         <button class="tablinks" onclick="openTab(event, 'tab_advanced')">Advanced</button>
       </div>
 
+      <p>
+
       <div id="tab_account" class="tabcontent">
-        (Account tab)
+        <form id="account-id-form">
+          <div class="row">
+            <label for="account-id-input">Account ID:</label>
+            <input id="account-id-input" placeholder="awesome-company"></input>
+          </div>
+          <p>Your account ID is provided by your admin</p>
+          <button type="submit" id="apply-account-id-btn">Apply</button>
+        </form>
       </div>
 
       <div id="tab_logs" class="tabcontent">
@@ -39,30 +49,30 @@
       </div>
 
       <div id="tab_advanced" class="tabcontent">
-        (Advanced tab)
+        <form id="account-id-form">
+          <div class="row">
+            <label for="auth-base-url-input">Auth Base URL:</label>
+            <input id="auth-base-url-input"></input>
+          </div>
+
+          <div class="row">
+            <label for="api-url-input">API URL:</label>
+            <input id="api-url-input"></input>
+          </div>
+
+          <div class="row">
+            <label for="log-filter-input">Log Filter:</label>
+            <input id="log-filter-input"></input>
+          </div>
+
+          <p><b>WARNING</b>: These settings are intended for internal debug purposes <b>only</b>. Changing these is not supported and will disrupt access to your resources.</p>
+
+          <div class="row">
+            <button id="reset-to-defaults-btn">Reset to Defaults</button>
+            <button type="submit" id="apply-account-id-btn-2">Apply</button>
+          </div>
+        </form>
       </div>
     </div>
-
-    <script>
-    function openTab(evt, tabName) {
-      let tabcontent = document.getElementsByClassName("tabcontent");
-      for (let i = 0; i < tabcontent.length; i++) {
-        tabcontent[i].style.display = "none";
-      }
-
-      let tablinks = document.getElementsByClassName("tablinks");
-      for (let i = 0; i < tablinks.length; i++) {
-        // TODO: There's a better way to change classes on an element
-        tablinks[i].className = tablinks[i].className.replace(" active", "");
-      }
-
-      document.getElementById(tabName).style.display = "block";
-      // TODO: There's a better way to do this
-      evt.currentTarget.className += " active";
-    }
-
-    // TODO: Figure out why this default tab doesn't work, or rewrite it
-    document.getElementById("tab_account").click();
-    </script>
   </body>
 </html>
