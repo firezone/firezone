@@ -23,6 +23,7 @@ fn main() -> Result<()> {
         }
         Some(Cmd::DebugAuth) => details::main_debug_auth(),
         Some(Cmd::DebugConnlib) => main_debug_connlib(cli),
+        Some(Cmd::DebugCredentials) => main_debug_credentials(),
         Some(Cmd::DebugDeviceId) => main_debug_device_id(),
         Some(Cmd::DebugLocalServer) => main_debug_local_server(),
         Some(Cmd::DebugWintun) => details::main_debug_wintun(),
@@ -48,6 +49,7 @@ enum CliCommands {
     Debug,
     DebugAuth,
     DebugConnlib,
+    DebugCredentials,
     DebugDeviceId,
     DebugLocalServer,
     DebugWintun,
@@ -124,6 +126,31 @@ fn main_debug_connlib(cli: Cli) -> Result<()> {
     block_on_ctrl_c();
 
     session.disconnect(None);
+    Ok(())
+}
+
+fn main_debug_credentials() -> Result<()> {
+    use keyring::Entry;
+
+    // TODO: Remove placeholder email
+    let entry = Entry::new_with_target("token", "firezone_windows_client", "username@example.com")?;
+    match entry.get_password() {
+        Ok(password) => {
+            println!("Placeholder password is '{password}'");
+
+            println!("Deleting password");
+            entry.delete_password()?;
+        }
+        Err(keyring::Error::NoEntry) => {
+            println!("No password in credential manager");
+
+            let new_password = "top_secret_password";
+            println!("Setting password to {new_password}");
+            entry.set_password(new_password)?;
+        }
+        Err(e) => return Err(e.into()),
+    }
+
     Ok(())
 }
 
