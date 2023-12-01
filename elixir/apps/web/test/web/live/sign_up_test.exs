@@ -13,7 +13,8 @@ defmodule Web.Live.SignUpTest do
              "registration[actor][_persistent_id]",
              "registration[actor][name]",
              "registration[actor][type]",
-             "registration[email]"
+             "registration[email]",
+             "registration[email_confirmation]"
            ]
   end
 
@@ -24,10 +25,13 @@ defmodule Web.Live.SignUpTest do
 
     {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
+    email = Fixtures.Auth.email()
+
     attrs = %{
       account: %{name: account_name},
       actor: %{name: "John Doe"},
-      email: "jdoe@test.local"
+      email: email,
+      email_confirmation: email
     }
 
     assert html =
@@ -50,7 +54,7 @@ defmodule Web.Live.SignUpTest do
 
     identity = Repo.one(Domain.Auth.Identity)
     assert identity.account_id == account.id
-    assert identity.provider_identifier == "jdoe@test.local"
+    assert identity.provider_identifier == email
 
     assert_email_sent(fn email ->
       assert email.subject == "Welcome to Firezone"
@@ -94,7 +98,8 @@ defmodule Web.Live.SignUpTest do
            |> form("form", registration: attrs)
            |> render_submit()
            |> form_validation_errors() == %{
-             "registration[email]" => ["has invalid format"]
+             "registration[email]" => ["has invalid format"],
+             "registration[email_confirmation]" => ["email does not match"]
            }
   end
 

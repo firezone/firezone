@@ -21,6 +21,10 @@ defmodule Web.SignUp do
       |> Ecto.Changeset.cast(attrs, [:email])
       |> Ecto.Changeset.validate_required([:email])
       |> Ecto.Changeset.validate_format(:email, ~r/.+@.+/)
+      |> Ecto.Changeset.validate_confirmation(:email,
+        required: true,
+        message: "email does not match"
+      )
       |> Ecto.Changeset.cast_embed(:account,
         with: fn _account, attrs -> Accounts.Account.Changeset.create(attrs) end
       )
@@ -316,7 +320,8 @@ defmodule Web.SignUp do
           :identity,
           fn _repo, %{actor: actor, provider: provider} ->
             Auth.create_identity(actor, provider, %{
-              provider_identifier: registration.email
+              provider_identifier: registration.email,
+              provider_identifier_confirmation: registration.email
             })
           end
         )
