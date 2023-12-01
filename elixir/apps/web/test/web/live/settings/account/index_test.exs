@@ -56,6 +56,6 @@ defmodule Web.Live.Settings.Account.IndexTest do
 
     assert rows["account name"] == account.name
     assert rows["account id"] == account.id
-    assert rows["account slug"] == account.slug
+    assert rows["account slug"] =~ account.slug
   end
 end

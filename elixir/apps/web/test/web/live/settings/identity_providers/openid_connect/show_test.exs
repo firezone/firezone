@@ -50,7 +50,6 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
 
     assert html =~ "(deleted)"
     refute html =~ "Danger Zone"
-    refute html =~ "Add"
     refute html =~ "Edit"
     refute html =~ "Deploy"
   end

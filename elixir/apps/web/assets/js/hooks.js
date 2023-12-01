@@ -31,14 +31,14 @@ Hooks.Copy = {
         icon_cl.add("hero-clipboard-document-check");
         icon_cl.add("text-green-500");
         icon_cl.remove("hero-clipboard-document");
-        content.innerHTML = "Copied"
+        if (content) { content.innerHTML = "Copied" }
       });
 
       setTimeout(() => {
         icon_cl.remove("hero-clipboard-document-check");
         icon_cl.remove("text-green-500");
         icon_cl.add("hero-clipboard-document");
-        content.innerHTML = "Copy"
+        if (content) { content.innerHTML = "Copy" }
       }, 2000);
     });
   },
