@@ -96,6 +96,7 @@ final class TunnelStore: ObservableObject {
 
     try await stop()
 
+    try await tunnel.loadFromPreferences()
     try await tunnel.saveAuthStatus(tunnelAuthStatus)
     self.tunnelAuthStatus = tunnelAuthStatus
   }
@@ -107,6 +108,7 @@ final class TunnelStore: ObservableObject {
 
     try await stop()
 
+    try await tunnel.loadFromPreferences()
     try await tunnel.saveAdvancedSettings(advancedSettings)
   }
 
