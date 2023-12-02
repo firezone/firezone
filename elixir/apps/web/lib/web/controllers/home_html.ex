@@ -49,7 +49,10 @@ defmodule Web.HomeHTML do
                 Go to Sign In page
               </.button>
             </.form>
-            <p :if={Domain.Config.sign_up_enabled?()} class="py-2">
+            <p
+              :if={Domain.Config.sign_up_enabled?() and is_nil(@redirect_params["client_platform"])}
+              class="py-2"
+            >
               Don't have an account?
               <a href={~p"/sign_up"} class="font-medium text-blue-600 hover:text-blue-500">
                 Sign up here.
