@@ -2,6 +2,8 @@
 
 use crate::prelude::*;
 use connlib_client_shared::file_logger;
+use std::result::Result as StdResult;
+use std::time::Duration;
 use tauri::{
     CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
@@ -28,7 +30,10 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![
+            apply_account_id,
+            apply_advanced_settings,
+        ])
         .system_tray(tray)
         .on_system_tray_event(|app, event| {
             if let SystemTrayEvent::MenuItemClick { id, .. } = event {
@@ -108,10 +113,65 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
     Ok(())
 }
 
-// Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+async fn apply_account_id(account_id: &str) -> StdResult<(), String> {
+    // These functions are wrapped since `anyhow::Error` doesn't implement `serde::Serialize` and so it can't go back to JS
+    apply_account_id_inner(account_id)
+        .await
+        .map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+async fn apply_advanced_settings(
+    auth_base_url: &str,
+    api_url: &str,
+    log_filter: &str,
+) -> StdResult<(), String> {
+    apply_advanced_settings_inner(auth_base_url, api_url, log_filter)
+        .await
+        .map_err(|e| format!("{e}"))
+}
+
+async fn apply_account_id_inner(account_id: &str) -> Result<()> {
+    let dirs = crate::cli::get_project_dirs()?;
+    let dir = dirs.config_local_dir();
+    tokio::fs::create_dir_all(dir).await?;
+    let path = dir.join("account_id.json");
+
+    let j = serde_json::json!({
+        "account_id": account_id,
+    });
+
+    // TODO: Do something more robust. This will corrupt the file if we lose power while writing. Not the end of the world, but annoying.
+    tokio::fs::write(path, j.to_string()).await?;
+
+    // TODO: This sleep is just for testing, remove it before it ships
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    Ok(())
+}
+
+async fn apply_advanced_settings_inner(
+    auth_base_url: &str,
+    api_url: &str,
+    log_filter: &str,
+) -> Result<()> {
+    let dirs = crate::cli::get_project_dirs()?;
+    let dir = dirs.config_local_dir();
+    tokio::fs::create_dir_all(dir).await?;
+    let path = dir.join("advanced_settings.json");
+
+    let j = serde_json::json!({
+        "auth_base_url": auth_base_url,
+        "api_url": api_url,
+        "log_filter": log_filter,
+    });
+
+    // TODO: Do something more robust. This will corrupt the file if we lose power while writing. Not the end of the world, but annoying.
+    tokio::fs::write(path, j.to_string()).await?;
+
+    // TODO: This sleep is just for testing, remove it before it ships
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    Ok(())
 }
 
 fn signed_in_menu(user_email: &str, resources: &[(&str, &str)]) -> SystemTrayMenu {

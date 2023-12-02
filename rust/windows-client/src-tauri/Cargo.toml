@@ -21,7 +21,7 @@ smbios-lib = "0.9"
 secrecy.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1.33.0" }
+tokio = { version = "1.33.0", features = ["time"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 uuid = { version = "1.5.0", features = ["v4"] }
