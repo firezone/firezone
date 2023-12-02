@@ -71,28 +71,41 @@ where
             }
             ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
         };
-        tokio::spawn(async move {
-            if let Err(e) = ice
-                .start(&remote_params, Some(RTCIceRole::Controlled))
-                .await
-                .map_err(Into::into)
-                .and_then(|_| {
-                    tunnel.new_tunnel(peer, client_id, resource, expires_at, ice, resource_address)
-                })
-            {
-                tracing::warn!(%client_id, err = ?e, "Can't start tunnel: {e:#}");
-                let peer_connection = tunnel.peer_connections.lock().remove(&client_id);
-                if let Some(peer_connection) = peer_connection {
-                    let _ = peer_connection.stop().await;
+        {
+            let resource_addresses = resource_addresses.clone();
+            tokio::spawn(async move {
+                if let Err(e) = ice
+                    .start(&remote_params, Some(RTCIceRole::Controlled))
+                    .await
+                    .map_err(Into::into)
+                    .and_then(|_| {
+                        tunnel.new_tunnel(
+                            peer,
+                            client_id,
+                            resource,
+                            expires_at,
+                            ice,
+                            resource_addresses,
+                        )
+                    })
+                {
+                    tracing::warn!(%client_id, err = ?e, "Can't start tunnel: {e:#}");
+                    let peer_connection = tunnel.peer_connections.lock().remove(&client_id);
+                    if let Some(peer_connection) = peer_connection {
+                        let _ = peer_connection.stop().await;
+                    }
                 }
-            }
-        });
+            });
+        }
 
         let response = GatewayResponse {
             ice_parameters: local_params,
             domain_response: domain.map(|domain| DomainResponse {
                 domain,
-                address: vec![resource_address.network_address()],
+                address: resource_addresses
+                    .into_iter()
+                    .map(|ip| ip.network_address())
+                    .collect(),
             }),
         };
         Ok(response)
@@ -124,7 +137,7 @@ where
         resource: ResourceDescription,
         expires_at: DateTime<Utc>,
         ice: Arc<RTCIceTransport>,
-        resource_address: IpNetwork,
+        resource_addresses: Vec<IpNetwork>,
     ) -> Result<()> {
         tracing::trace!(?peer_config.ips, "new_data_channel_open");
         let device = self.device.load().clone().ok_or(Error::NoIface)?;
@@ -148,8 +161,10 @@ where
             PacketTransformGateway::new(),
         ));
 
-        peer.transform
-            .add_resource(resource_address, resource, expires_at);
+        for address in resource_addresses {
+            peer.transform
+                .add_resource(address, resource.clone(), expires_at);
+        }
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
