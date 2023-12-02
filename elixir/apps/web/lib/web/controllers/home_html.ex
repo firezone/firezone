@@ -40,6 +40,7 @@ defmodule Web.HomeHTML do
                 field={f[:account_id_or_slug]}
                 type="text"
                 label="Account ID or Slug"
+                prefix={url(~p"/")}
                 placeholder={~s|As shown in your "Welcome to Firezone" email|}
                 required
               />

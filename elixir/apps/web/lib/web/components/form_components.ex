@@ -23,6 +23,7 @@ defmodule Web.FormComponents do
   attr :id, :any, default: nil
   attr :name, :any
   attr :label, :string, default: nil
+  attr :prefix, :string, default: nil
   attr :value, :any
 
   attr :value_id, :any,
@@ -204,7 +205,53 @@ defmodule Web.FormComponents do
     """
   end
 
-  # All other inputs text, datetime-local, url, password, etc. are handled here...
+  def input(%{type: "text", prefix: prefix} = assigns) when not is_nil(prefix) do
+    ~H"""
+    <div phx-feedback-for={@name}>
+      <.label :if={not is_nil(@label)} for={@id}><%= @label %></.label>
+      <div
+        class={[
+          "flex items-center",
+          "text-sm text-gray-900 bg-gray-50",
+          "border-gray-300 border rounded",
+          "w-full",
+          "phx-no-feedback:border-gray-300",
+          "focus-within:outline-none focus-within:border-blue-600",
+          "peer-disabled:bg-slate-50 peer-disabled:text-slate-500 peer-disabled:border-slate-200 peer-disabled:shadow-none",
+          @errors != [] && "border-rose-400"
+        ]}
+        {@rest}
+      >
+        <div
+          class={[
+            "-mr-5",
+            "select-none cursor-text",
+            "text-gray-500",
+            "p-2.5 block"
+          ]}
+          id={"#{@id}-prefix"}
+          phx-hook="Refocus"
+          data-refocus={@id}
+        >
+          <%= @prefix %>
+        </div>
+        <input
+          type={@type}
+          name={@name}
+          id={@id}
+          value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+          class={[
+            "text-sm text-gray-900 bg-transparent border-0",
+            "p-2.5 block w-full",
+            "focus:outline-none focus:border-0 focus:ring-0"
+          ]}
+        />
+      </div>
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+    </div>
+    """
+  end
+
   def input(assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
