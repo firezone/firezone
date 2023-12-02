@@ -75,11 +75,12 @@ defmodule Domain.AuthTest do
       assert fetch_provider_by_id("foo", subject) == {:error, :not_found}
     end
 
-    test "returns error when provider is deleted", %{account: account, subject: subject} do
+    test "returns deleted provider", %{account: account, subject: subject} do
       provider = Fixtures.Auth.create_userpass_provider(account: account)
       {:ok, _provider} = delete_provider(provider, subject)
 
-      assert fetch_provider_by_id(provider.id, subject) == {:error, :not_found}
+      assert {:ok, fetched_provider} = fetch_provider_by_id(provider.id, subject)
+      assert fetched_provider.id == provider.id
     end
 
     test "returns provider", %{account: account, subject: subject} do
