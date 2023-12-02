@@ -41,9 +41,10 @@ defmodule Web.HomeHTML do
                 type="text"
                 label="Account ID or Slug"
                 prefix={url(~p"/")}
-                placeholder={~s|As shown in your "Welcome to Firezone" email|}
                 required
+                autofocus
               />
+              <p>As shown in your "Welcome to Firezone" email</p>
 
               <.button class="w-full">
                 Go to Sign In page

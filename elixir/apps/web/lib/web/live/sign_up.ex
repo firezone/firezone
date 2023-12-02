@@ -181,6 +181,7 @@ defmodule Web.SignUp do
         label="Email"
         placeholder="Enter your work email here"
         required
+        autofocus
         phx-debounce="300"
       />
 

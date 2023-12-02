@@ -209,19 +209,16 @@ defmodule Web.FormComponents do
     ~H"""
     <div phx-feedback-for={@name}>
       <.label :if={not is_nil(@label)} for={@id}><%= @label %></.label>
-      <div
-        class={[
-          "flex items-center",
-          "text-sm text-gray-900 bg-gray-50",
-          "border-gray-300 border rounded",
-          "w-full",
-          "phx-no-feedback:border-gray-300",
-          "focus-within:outline-none focus-within:border-blue-600",
-          "peer-disabled:bg-slate-50 peer-disabled:text-slate-500 peer-disabled:border-slate-200 peer-disabled:shadow-none",
-          @errors != [] && "border-rose-400"
-        ]}
-        {@rest}
-      >
+      <div class={[
+        "flex items-center",
+        "text-sm text-gray-900 bg-gray-50",
+        "border-gray-300 border rounded",
+        "w-full",
+        "phx-no-feedback:border-gray-300",
+        "focus-within:outline-none focus-within:border-blue-600",
+        "peer-disabled:bg-slate-50 peer-disabled:text-slate-500 peer-disabled:border-slate-200 peer-disabled:shadow-none",
+        @errors != [] && "border-rose-400"
+      ]}>
         <div
           class={[
             "-mr-5",
@@ -245,6 +242,7 @@ defmodule Web.FormComponents do
             "p-2.5 block w-full",
             "focus:outline-none focus:border-0 focus:ring-0"
           ]}
+          {@rest}
         />
       </div>
       <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
