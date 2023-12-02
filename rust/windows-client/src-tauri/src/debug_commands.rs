@@ -125,6 +125,7 @@ pub use details::wintun;
 
 #[cfg(target_os = "linux")]
 mod details {
+    use crate::prelude::*;
     pub fn wintun(_: Cli) -> Result<()> {
         panic!("Wintun not implemented for Linux.");
     }
