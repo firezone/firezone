@@ -59,19 +59,17 @@ where
             .insert(client_id, Arc::clone(&ice));
 
         let tunnel = self.clone();
-        let resource_address = match &resource {
+        let resource_addresses = match &resource {
             ResourceDescription::Dns(_) => {
                 let Some(domain) = domain.clone() else {
                     return Err(Error::ControlProtocolError);
                 };
                 (domain, 0)
                     .to_socket_addrs()?
-                    .next()
-                    .ok_or(Error::ControlProtocolError)?
-                    .ip()
-                    .into()
+                    .map(|addrs| addrs.ip().into())
+                    .collect()
             }
-            ResourceDescription::Cidr(ref cidr) => cidr.address,
+            ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
         };
         tokio::spawn(async move {
             if let Err(e) = ice

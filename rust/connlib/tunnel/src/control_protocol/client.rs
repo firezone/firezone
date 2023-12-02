@@ -185,6 +185,7 @@ where
                         .to_owned()
                         .into(),
                 };
+                tracing::trace!("inserting translation: {internal_ip} {ip}");
                 peer.transform.insert_translation(internal_ip, ip);
             }
         }
