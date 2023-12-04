@@ -185,10 +185,12 @@ defmodule Web.AuthControllerTest do
           provider_virtual_state: %{"password" => password, "password_confirmation" => password}
         )
 
+      session = {"x", nil, "foo"}
+
       conn =
         conn
         |> put_session(:foo, "bar")
-        |> put_session(:session_token, "foo")
+        |> put_session(:sessions, [session])
         |> put_session(:preferred_locale, "en_US")
         |> post(
           ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
@@ -201,9 +203,11 @@ defmodule Web.AuthControllerTest do
         )
 
       assert %{
-               "live_socket_id" => "actors_sessions:" <> socket_id,
                "preferred_locale" => "en_US",
-               "session_token" => session_token
+               "sessions" => [
+                 ^session,
+                 {_account_id, _logged_in_at, session_token}
+               ]
              } = conn.private.plug_session
 
       context = %Domain.Auth.Context{
@@ -215,7 +219,6 @@ defmodule Web.AuthControllerTest do
         remote_ip_location_lon: -120.4194
       }
 
-      assert socket_id == identity.actor_id
       assert {:ok, subject} = Domain.Auth.sign_in(session_token, context)
       assert subject.identity.id == identity.id
       assert subject.identity.last_seen_user_agent == "testing"
@@ -813,7 +816,7 @@ defmodule Web.AuthControllerTest do
       assert query_params["identity_provider_identifier"] == identity.provider_identifier
     end
 
-    test "renews the session when credentials are valid", %{conn: conn} do
+    test "adds a new session when credentials are valid", %{conn: conn} do
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
 
@@ -828,10 +831,12 @@ defmodule Web.AuthControllerTest do
 
       {email_token, sign_in_nonce} = split_token(identity)
 
+      session = {"x", "y", "foo"}
+
       conn =
         conn
         |> put_session(:foo, "bar")
-        |> put_session(:session_token, "foo")
+        |> put_session(:sessions, [session])
         |> put_session(:preferred_locale, "en_US")
         |> put_session(:sign_in_nonce, sign_in_nonce)
         |> get(
@@ -843,14 +848,15 @@ defmodule Web.AuthControllerTest do
         )
 
       assert %{
-               "live_socket_id" => "actors_sessions:" <> socket_id,
                "preferred_locale" => "en_US",
-               "session_token" => session_token
+               "sessions" => [
+                 ^session,
+                 {_account_id, _logged_in_at, session_token}
+               ]
              } = conn.private.plug_session
 
       context = %Domain.Auth.Context{remote_ip: conn.remote_ip, user_agent: "testing"}
 
-      assert socket_id == identity.actor_id
       assert {:ok, subject} = Domain.Auth.sign_in(session_token, context)
       assert subject.identity.id == identity.id
       assert subject.identity.last_seen_user_agent == "testing"
@@ -1066,14 +1072,12 @@ defmodule Web.AuthControllerTest do
       assert redirected_to(conn) == ~p"/#{account.slug}/sites"
 
       assert %{
-               "live_socket_id" => "actors_sessions:" <> socket_id,
                "preferred_locale" => "en_US",
-               "session_token" => session_token
+               "sessions" => [{_account_id, _signed_in_at, session_token}]
              } = conn.private.plug_session
 
       context = %Domain.Auth.Context{remote_ip: conn.remote_ip, user_agent: "testing"}
 
-      assert socket_id == identity.actor_id
       assert {:ok, subject} = Domain.Auth.sign_in(session_token, context)
       assert subject.identity.id == identity.id
       assert subject.identity.last_seen_user_agent == "testing"
@@ -1181,7 +1185,7 @@ defmodule Web.AuthControllerTest do
         |> get(~p"/#{account}/sign_out")
 
       assert redirected_to(conn) == url(~p"/#{account}")
-      assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
+      assert conn.private.plug_session == %{"preferred_locale" => "en_US", "sessions" => []}
     end
 
     test "redirects to the IdP sign out page", %{conn: conn} do
@@ -1265,7 +1269,7 @@ defmodule Web.AuthControllerTest do
         |> get(~p"/#{account}/sign_out")
 
       assert redirected_to(conn) == url(~p"/#{account}")
-      assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
+      assert conn.private.plug_session == %{"preferred_locale" => "en_US", "sessions" => []}
 
       assert %{"fz_recent_account_ids" => ^signed_state} = conn.cookies
     end
@@ -1279,7 +1283,7 @@ defmodule Web.AuthControllerTest do
         |> get(~p"/#{account}/sign_out")
 
       assert redirected_to(conn) =~ ~p"/#{account}"
-      assert conn.private.plug_session == %{"preferred_locale" => "en_US"}
+      assert conn.private.plug_session == %{"preferred_locale" => "en_US", "sessions" => []}
 
       refute Map.has_key?(conn.cookies, "fz_recent_account_ids")
     end

@@ -63,6 +63,7 @@ defmodule Web.ConnCase do
 
     conn
     |> Web.Auth.put_subject_in_session(subject)
+    |> Plug.Conn.assign(:account, subject.account)
     |> Plug.Conn.assign(:subject, subject)
   end
 

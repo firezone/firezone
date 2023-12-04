@@ -189,7 +189,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.Connect do
       assert %{
                "live_socket_id" => "actors_sessions:" <> socket_id,
                "preferred_locale" => "en_US",
-               "session_token" => session_token
+               "sessions" => [{_account_id, _logged_in_at, session_token}]
              } = conn.private.plug_session
 
       context = %Domain.Auth.Context{

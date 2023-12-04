@@ -249,9 +249,8 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
                ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}"
 
       assert %{
-               "live_socket_id" => "actors_sessions:" <> socket_id,
                "preferred_locale" => "en_US",
-               "session_token" => session_token
+               "sessions" => [{_account_id, _logged_in_at, session_token}]
              } = conn.private.plug_session
 
       context = %Domain.Auth.Context{
@@ -263,7 +262,6 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
         remote_ip_location_lon: -120.4194
       }
 
-      assert socket_id == identity.actor_id
       assert {:ok, subject} = Domain.Auth.sign_in(session_token, context)
       assert subject.identity.id == identity.id
       assert subject.identity.last_seen_user_agent == "testing"

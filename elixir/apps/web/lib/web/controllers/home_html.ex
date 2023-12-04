@@ -24,6 +24,7 @@ defmodule Web.HomeHTML do
               <.account_button
                 :for={account <- @accounts}
                 account={account}
+                signed_in?={account.id in @signed_in_account_ids}
                 redirect_params={@redirect_params}
               />
             </div>
@@ -76,6 +77,10 @@ defmodule Web.HomeHTML do
           hover:bg-neutral-100 hover:text-neutral-900
     ]}>
       <%= @account.name %>
+
+      <span :if={@signed_in?} class="text-green-400 pl-1">
+        <.icon name="hero-shield-check" class="w-4 h-4" />
+      </span>
     </a>
     """
   end

@@ -57,6 +57,7 @@ defmodule Web.Endpoint do
     json_decoder: Phoenix.json_library()
 
   plug :fetch_user_agent
+  plug :fetch_account
 
   plug Web.Session
 

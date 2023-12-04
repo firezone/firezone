@@ -21,10 +21,13 @@ defmodule Web.Auth do
   def put_subject_in_session(conn, %Auth.Subject{} = subject) do
     {:ok, session_token} = Auth.create_session_token_from_subject(subject)
 
-    conn
-    |> Plug.Conn.put_session(:signed_in_at, DateTime.utc_now())
-    |> Plug.Conn.put_session(:session_token, session_token)
-    |> Plug.Conn.put_session(:live_socket_id, "actors_sessions:#{subject.actor.id}")
+    session = {subject.account.id, DateTime.utc_now(), session_token}
+
+    sessions =
+      Plug.Conn.get_session(conn, :sessions, [])
+      |> List.keystore(subject.account.id, 0, session)
+
+    Plug.Conn.put_session(conn, :sessions, sessions)
   end
 
   @doc """
@@ -46,7 +49,6 @@ defmodule Web.Auth do
       when not is_nil(account_id_or_slug) and account_id_or_slug != account.id and
              account_id_or_slug != account.slug do
     conn
-    |> Web.Auth.renew_session()
     |> Plug.Conn.delete_session(:user_return_to)
     |> Phoenix.Controller.redirect(to: ~p"/#{account_id_or_slug}")
   end
@@ -82,6 +84,7 @@ defmodule Web.Auth do
       redirect_dest = "#{Keyword.fetch!(redirects, :dest)}?#{query}"
 
       conn
+      |> Plug.Conn.delete_session(:user_return_to)
       |> Phoenix.Controller.redirect([{redirect_method, redirect_dest}])
     else
       conn
@@ -102,7 +105,6 @@ defmodule Web.Auth do
     redirect_to = Plug.Conn.get_session(conn, :user_return_to) || signed_in_path(subject)
 
     conn
-    |> Web.Auth.renew_session()
     |> Web.Auth.put_subject_in_session(subject)
     |> Plug.Conn.delete_session(:user_return_to)
     |> Phoenix.Controller.redirect(to: redirect_to)
@@ -130,7 +132,7 @@ defmodule Web.Auth do
       conn.private.phoenix_endpoint.broadcast(live_socket_id, "disconnect", %{})
     end
 
-    account_id_or_slug = Map.get(conn.assigns, :account, conn.path_params["account_id_or_slug"])
+    account_id_or_slug = Map.get(conn.assigns, :account) || conn.path_params["account_id_or_slug"]
 
     conn
     |> renew_session()
@@ -159,8 +161,6 @@ defmodule Web.Auth do
       |> Keyword.fetch!(:platform_redirects)
       |> Keyword.fetch!(:sign_out)
 
-    # dbg({platform_redirects, client_platform})
-
     if redirects = Map.get(platform_redirects, client_platform) do
       redirect_method = Keyword.fetch!(redirects, :method)
       redirect_dest = Keyword.fetch!(redirects, :dest)
@@ -178,16 +178,22 @@ defmodule Web.Auth do
   end
 
   @doc """
-  This function renews the session ID and erases the whole
-  session to avoid fixation attacks.
+  This function renews the session ID to avoid fixation attacks and erases the session token from the sessions list.
   """
   def renew_session(%Plug.Conn{} = conn) do
     preferred_locale = Plug.Conn.get_session(conn, :preferred_locale)
+
+    account_id = if Map.get(conn.assigns, :account), do: conn.assigns.account.id
+
+    sessions =
+      Plug.Conn.get_session(conn, :sessions, [])
+      |> List.keydelete(account_id, 0)
 
     conn
     |> Plug.Conn.configure_session(renew: true)
     |> Plug.Conn.clear_session()
     |> Plug.Conn.put_session(:preferred_locale, preferred_locale)
+    |> Plug.Conn.put_session(:sessions, sessions)
   end
 
   ###########################
@@ -249,24 +255,35 @@ defmodule Web.Auth do
     end
   end
 
+  def fetch_account(%Plug.Conn{path_info: [account_id_or_slug | _]} = conn, _opts) do
+    case Accounts.fetch_account_by_id_or_slug(account_id_or_slug) do
+      {:ok, account} -> Plug.Conn.assign(conn, :account, account)
+      _ -> conn
+    end
+  end
+
+  def fetch_account(%Plug.Conn{} = conn, _opts) do
+    conn
+  end
+
   @doc """
   Fetches the session token from the session and assigns the subject to the connection.
   """
-  def fetch_subject_and_account(%Plug.Conn{} = conn, _opts) do
+  def fetch_subject(%Plug.Conn{} = conn, _opts) do
     context = get_auth_context(conn)
+    account_id = if Map.get(conn.assigns, :account), do: conn.assigns.account.id
 
-    with token when not is_nil(token) <- Plug.Conn.get_session(conn, :session_token),
+    with sessions <- Plug.Conn.get_session(conn, :sessions, []),
+         {_account_id, _logged_in_at, token} <-
+           List.keyfind(sessions, account_id, 0),
          {:ok, subject} <- Auth.sign_in(token, context),
-         {:ok, account} <-
-           Accounts.fetch_account_by_id_or_slug(
-             conn.path_params["account_id_or_slug"],
-             subject
-           ) do
+         true <- account_id == subject.account.id do
       conn
-      |> Plug.Conn.assign(:account, account)
+      |> Plug.Conn.put_session(:live_socket_id, "actors_sessions:#{subject.actor.id}")
       |> Plug.Conn.assign(:subject, subject)
     else
-      _ -> conn
+      _ ->
+        conn
     end
   end
 
@@ -451,6 +468,7 @@ defmodule Web.Auth do
       end
   """
   def on_mount(:mount_subject, params, session, socket) do
+    socket = mount_account(socket, params, session)
     {:cont, mount_subject(socket, params, session)}
   end
 
@@ -459,6 +477,7 @@ defmodule Web.Auth do
   end
 
   def on_mount(:ensure_authenticated, params, session, socket) do
+    socket = mount_account(socket, params, session)
     socket = mount_subject(socket, params, session)
 
     if socket.assigns[:subject] do
@@ -474,6 +493,7 @@ defmodule Web.Auth do
   end
 
   def on_mount(:ensure_account_admin_user_actor, params, session, socket) do
+    socket = mount_account(socket, params, session)
     socket = mount_subject(socket, params, session)
 
     if socket.assigns[:subject].actor.type == :account_admin_user do
@@ -484,6 +504,7 @@ defmodule Web.Auth do
   end
 
   def on_mount(:redirect_if_user_is_authenticated, params, session, socket) do
+    socket = mount_account(socket, params, session)
     socket = mount_subject(socket, params, session)
 
     if socket.assigns[:subject] do
@@ -511,7 +532,10 @@ defmodule Web.Auth do
         remote_ip_location_lon: location_lon
       }
 
-      with token when not is_nil(token) <- session["session_token"],
+      sessions = session["sessions"] || []
+      account_id = if Map.get(socket.assigns, :account), do: socket.assigns.account.id
+
+      with {_account_id, _logged_in_at, token} <- List.keyfind(sessions, account_id, 0),
            {:ok, subject} <- Auth.sign_in(token, context) do
         subject
       else
@@ -520,14 +544,10 @@ defmodule Web.Auth do
     end)
   end
 
-  defp mount_account(
-         %{assigns: %{subject: subject}} = socket,
-         %{"account_id_or_slug" => account_id_or_slug},
-         _session
-       ) do
+  defp mount_account(socket, %{"account_id_or_slug" => account_id_or_slug}, _session) do
     Phoenix.Component.assign_new(socket, :account, fn ->
       with {:ok, account} <-
-             Accounts.fetch_account_by_id_or_slug(account_id_or_slug, subject) do
+             Accounts.fetch_account_by_id_or_slug(account_id_or_slug) do
         account
       else
         _ -> nil

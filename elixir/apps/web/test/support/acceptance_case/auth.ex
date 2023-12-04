@@ -62,11 +62,7 @@ defmodule Web.AcceptanceCase.Auth do
       signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, [])
 
       cookie =
-        %{
-          "session_token" => token,
-          "signed_in_at" => DateTime.utc_now(),
-          "live_socket_id" => "actors_sessions:#{subject.actor.id}"
-        }
+        %{"sessions" => [{subject.account.id, DateTime.utc_now(), token}]}
         |> :erlang.term_to_binary()
 
       encrypted =
@@ -80,19 +76,19 @@ defmodule Web.AcceptanceCase.Auth do
     end
   end
 
-  TODO
-
   def assert_unauthenticated(session) do
     with {:ok, cookie} <- fetch_session_cookie(session) do
-      if token = cookie["session_token"] do
-        user_agent = fetch_session_user_agent!(session)
-        remote_ip = {127, 0, 0, 1}
-        context = %Domain.Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
-        assert {:ok, subject} = Domain.Auth.sign_in(token, context)
-        flunk("User is authenticated, identity: #{inspect(subject.identity)}")
-        :ok
-      else
-        session
+      case cookie["sessions"] do
+        [{_, _, token} | _] ->
+          user_agent = fetch_session_user_agent!(session)
+          remote_ip = {127, 0, 0, 1}
+          context = %Domain.Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
+          assert {:ok, subject} = Domain.Auth.sign_in(token, context)
+          flunk("User is authenticated, identity: #{inspect(subject.identity)}")
+          :ok
+
+        [] ->
+          session
       end
     else
       :error -> session

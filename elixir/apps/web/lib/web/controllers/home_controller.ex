@@ -3,6 +3,9 @@ defmodule Web.HomeController do
   alias Domain.Accounts
 
   def home(conn, params) do
+    signed_in_accounts = get_session(conn, "sessions") || []
+    signed_in_account_ids = Enum.map(signed_in_accounts, &elem(&1, 0))
+
     {accounts, conn} =
       with {:ok, recent_account_ids, conn} <- Web.Auth.list_recent_account_ids(conn),
            {:ok, accounts} <- Accounts.list_accounts_by_ids(recent_account_ids) do
@@ -20,7 +23,11 @@ defmodule Web.HomeController do
 
     conn
     |> put_layout(html: {Web.Layouts, :public})
-    |> render("home.html", accounts: accounts, redirect_params: redirect_params)
+    |> render("home.html",
+      accounts: accounts,
+      signed_in_account_ids: signed_in_account_ids,
+      redirect_params: redirect_params
+    )
   end
 
   def redirect_to_sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do

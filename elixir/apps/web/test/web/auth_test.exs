@@ -31,21 +31,44 @@ defmodule Web.AuthTest do
   end
 
   describe "put_subject_in_session/2" do
-    test "persists token session", %{conn: conn, admin_subject: subject} do
+    test "persists a new session", %{conn: conn, admin_subject: subject} do
       conn = put_subject_in_session(conn, subject)
-      assert token = get_session(conn, "session_token")
+      assert [{account_id, logged_in_at, token}] = get_session(conn, "sessions")
 
       assert {:ok, _subject} = Domain.Auth.sign_in(token, subject.context)
+      assert account_id == subject.account.id
+      assert %DateTime{} = logged_in_at
     end
 
-    test "persists sign in time in session", %{conn: conn, admin_subject: subject} do
-      conn = put_subject_in_session(conn, subject)
-      assert %DateTime{} = get_session(conn, "signed_in_at")
+    test "updates an existing account_id session", %{conn: conn, admin_subject: subject} do
+      conn =
+        conn
+        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), "foo"}])
+        |> put_subject_in_session(subject)
+
+      assert [{account_id, logged_in_at, token}] = get_session(conn, "sessions")
+
+      assert {:ok, _subject} = Domain.Auth.sign_in(token, subject.context)
+      assert account_id == subject.account.id
+      assert %DateTime{} = logged_in_at
     end
 
-    test "persists live socket id in session", %{conn: conn, admin_subject: subject} do
-      conn = put_subject_in_session(conn, subject)
-      assert get_session(conn, "live_socket_id") == "actors_sessions:#{subject.actor.id}"
+    test "adds a new account session", %{conn: conn, admin_subject: subject} do
+      session = {Ecto.UUID.generate(), DateTime.utc_now(), "foo"}
+
+      conn =
+        conn
+        |> put_session(:sessions, [session])
+        |> put_subject_in_session(subject)
+
+      assert [
+               ^session,
+               {account_id, logged_in_at, token}
+             ] = get_session(conn, "sessions")
+
+      assert {:ok, _subject} = Domain.Auth.sign_in(token, subject.context)
+      assert account_id == subject.account.id
+      assert %DateTime{} = logged_in_at
     end
   end
 
@@ -106,25 +129,44 @@ defmodule Web.AuthTest do
       conn: conn,
       admin_subject: subject
     } do
-      init_conn =
-        %{conn | path_params: %{"account_id_or_slug" => "foo"}}
-        |> put_session(:test, "test")
+      init_conn = %{conn | path_params: %{"account_id_or_slug" => "foo"}}
 
       conn = init_conn |> signed_in_redirect(subject, "apple", nil)
       assert redirected_to(conn) == ~p"/foo"
-      refute get_session(conn, :test)
 
       conn = init_conn |> signed_in_redirect(subject, "android", "bar")
       assert redirected_to(conn) == ~p"/foo"
-      refute get_session(conn, :test)
 
       conn = init_conn |> signed_in_redirect(subject, "", nil)
       assert redirected_to(conn) == ~p"/foo"
-      refute get_session(conn, :test)
 
       conn = init_conn |> signed_in_redirect(subject, nil, "")
       assert redirected_to(conn) == ~p"/foo"
-      refute get_session(conn, :test)
+    end
+
+    test "deletes user_return_to on redirect", %{
+      conn: conn,
+      admin_subject: subject
+    } do
+      init_conn =
+        %{conn | path_params: %{"account_id_or_slug" => subject.account.slug}}
+        |> put_session(:user_return_to, "/me")
+
+      conn = init_conn |> signed_in_redirect(subject, "apple", nil)
+      assert redirected_to(conn) =~ "firezone://handle_client_sign_in_callback"
+      refute get_session(conn, :user_return_to)
+
+      conn = init_conn |> signed_in_redirect(subject, "android", "bar")
+      assert redirected_to(conn) =~ "/handle_client_sign_in_callback"
+      refute get_session(conn, :user_return_to)
+
+      conn = init_conn |> signed_in_redirect(subject, "", nil)
+      assert redirected_to(conn) == "/me"
+      refute get_session(conn, :user_return_to)
+
+      conn = init_conn |> signed_in_redirect(subject, nil, "")
+      assert redirected_to(conn) == "/me"
+      refute get_session(conn, :user_return_to)
     end
   end
 
@@ -139,11 +181,11 @@ defmodule Web.AuthTest do
       conn =
         conn
         |> assign(:account, account)
-        |> put_session(:session_token, session_token)
+        |> put_session(:sessions, [{account.id, DateTime.utc_now(), session_token}])
         |> fetch_cookies()
         |> sign_out(nil)
 
-      refute get_session(conn, :session_token)
+      assert get_session(conn, :sessions) == []
       refute get_session(conn, :live_socket_id)
 
       assert redirected_to(conn, 302) == "http://localhost:13100/#{subject.account.slug}"
@@ -155,17 +197,19 @@ defmodule Web.AuthTest do
     } do
       account_slug = "foo"
       {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
+      session = {subject.account.id, DateTime.utc_now(), session_token}
 
       conn =
         %{
           conn
           | path_params: %{"account_id_or_slug" => account_slug}
         }
-        |> put_session(:session_token, session_token)
+        |> assign(:account, nil)
+        |> put_session(:sessions, [session])
         |> fetch_cookies()
         |> sign_out(nil)
 
-      refute get_session(conn, :session_token)
+      assert get_session(conn, :sessions) == [session]
       refute get_session(conn, :live_socket_id)
 
       assert redirected_to(conn, 302) =~ ~p"/#{account_slug}"
@@ -203,11 +247,11 @@ defmodule Web.AuthTest do
       conn =
         conn
         |> assign(:account, account)
-        |> put_session(:session_token, session_token)
+        |> put_session(:sessions, [{account.id, DateTime.utc_now(), session_token}])
         |> fetch_cookies()
         |> sign_out(nil)
 
-      refute get_session(conn, :session_token)
+      assert get_session(conn, :sessions) == []
       refute get_session(conn, :live_socket_id)
 
       assert redirected_to(conn, 302) =~ ~p"/#{subject.account}"
@@ -228,11 +272,11 @@ defmodule Web.AuthTest do
       conn =
         conn
         |> assign(:account, account)
-        |> put_session(:session_token, session_token)
+        |> put_session(:sessions, [{account.id, DateTime.utc_now(), session_token}])
         |> fetch_cookies()
         |> sign_out("apple")
 
-      refute get_session(conn, :session_token)
+      assert get_session(conn, :sessions) == []
       refute get_session(conn, :live_socket_id)
 
       assert redirected_to(conn, 302) == "firezone://handle_client_sign_out_callback"
@@ -253,11 +297,11 @@ defmodule Web.AuthTest do
       conn =
         conn
         |> assign(:account, account)
-        |> put_session(:session_token, session_token)
+        |> put_session(:sessions, [{account.id, DateTime.utc_now(), session_token}])
         |> fetch_cookies()
         |> sign_out("android")
 
-      refute get_session(conn, :session_token)
+      assert get_session(conn, :sessions) == []
       refute get_session(conn, :live_socket_id)
 
       assert redirected_to(conn, 302) == "http://localhost:13100/handle_client_sign_out_callback"
@@ -308,7 +352,7 @@ defmodule Web.AuthTest do
     end
   end
 
-  describe "fetch_subject_and_account/2" do
+  describe "fetch_subject/2" do
     setup context do
       %{conn: assign(context.conn, :user_agent, context.admin_subject.context.user_agent)}
     end
@@ -322,12 +366,15 @@ defmodule Web.AuthTest do
           | path_params: %{"account_id_or_slug" => subject.account.id},
             remote_ip: {100, 64, 100, 58}
         }
-        |> put_session(:session_token, session_token)
-        |> fetch_subject_and_account([])
+        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> assign(:account, subject.account)
+        |> fetch_subject([])
 
       assert conn.assigns.subject.identity.id == subject.identity.id
       assert conn.assigns.subject.actor.id == subject.actor.id
-      assert conn.assigns.account.id == subject.account.id
+      assert conn.assigns.subject.account.id == subject.account.id
+
+      assert get_session(conn, "live_socket_id") == "actors_sessions:#{subject.actor.id}"
     end
 
     test "puts load balancer GeoIP headers to subject context", %{
@@ -345,8 +392,9 @@ defmodule Web.AuthTest do
         |> put_req_header("x-geo-location-region", "Ukraine")
         |> put_req_header("x-geo-location-city", "Kyiv")
         |> put_req_header("x-geo-location-coordinates", "50.4333,30.5167")
-        |> put_session(:session_token, session_token)
-        |> fetch_subject_and_account([])
+        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> assign(:account, subject.account)
+        |> fetch_subject([])
 
       assert conn.assigns.subject.context.remote_ip_location_region == "Ukraine"
       assert conn.assigns.subject.context.remote_ip_location_city == "Kyiv"
@@ -369,8 +417,9 @@ defmodule Web.AuthTest do
         |> put_req_header("x-geo-location-region", "UA")
         |> delete_req_header("x-geo-location-city")
         |> delete_req_header("x-geo-location-coordinates")
-        |> put_session(:session_token, session_token)
-        |> fetch_subject_and_account([])
+        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> assign(:account, subject.account)
+        |> fetch_subject([])
 
       assert conn.assigns.subject.context.remote_ip_location_region == "UA"
       assert conn.assigns.subject.context.remote_ip_location_city == nil
@@ -380,25 +429,21 @@ defmodule Web.AuthTest do
 
     test "does not authenticate to an incorrect account", %{conn: conn, admin_subject: subject} do
       {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
+      other_account = Fixtures.Accounts.create_account()
 
       conn =
-        %{
-          conn
-          | path_params: %{"account_id_or_slug" => Ecto.UUID.generate()},
-            remote_ip: {100, 64, 100, 58}
-        }
-        |> put_session(:session_token, session_token)
-        |> fetch_subject_and_account([])
+        %{conn | remote_ip: {100, 64, 100, 58}}
+        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> assign(:account, other_account)
+        |> fetch_subject([])
 
       refute Map.has_key?(conn.assigns, :subject)
-      refute Map.has_key?(conn.assigns, :account)
     end
 
-    test "does not authenticate if data is missing", %{conn: conn} do
-      conn = fetch_subject_and_account(conn, [])
-      refute get_session(conn, :session_token)
+    test "does not authenticate if data is missing", %{account: account, conn: conn} do
+      conn = conn |> assign(:account, account) |> fetch_subject([])
+      refute get_session(conn, :sessions)
       refute Map.has_key?(conn.assigns, :subject)
-      refute Map.has_key?(conn.assigns, :account)
     end
   end
 
@@ -514,7 +559,13 @@ defmodule Web.AuthTest do
       admin_subject: subject
     } do
       {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-      session = conn |> put_session(:session_token, session_token) |> get_session()
+
+      session =
+        conn
+        |> assign(:account, subject.account)
+        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> get_session()
+
       params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:cont, updated_socket} = on_mount(:mount_subject, params, session, socket)
@@ -529,7 +580,13 @@ defmodule Web.AuthTest do
       admin_subject: subject
     } do
       {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-      session = conn |> put_session(:session_token, session_token) |> get_session()
+
+      session =
+        conn
+        |> assign(:account, subject.account)
+        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> get_session()
+
       params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:cont, socket} = on_mount(:mount_subject, params, session, socket)
@@ -557,7 +614,13 @@ defmodule Web.AuthTest do
       }
 
       {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-      session = conn |> put_session(:session_token, session_token) |> get_session()
+
+      session =
+        conn
+        |> assign(:account, subject.account)
+        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> get_session()
+
       params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:cont, socket} = on_mount(:mount_subject, params, session, socket)
@@ -574,7 +637,13 @@ defmodule Web.AuthTest do
       admin_subject: subject
     } do
       session_token = "invalid_token"
-      session = conn |> put_session(:session_token, session_token) |> get_session()
+
+      session =
+        conn
+        |> assign(:account, subject.account)
+        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> get_session()
+
       params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:cont, updated_socket} = on_mount(:mount_subject, params, session, socket)
@@ -613,7 +682,13 @@ defmodule Web.AuthTest do
       }
 
       {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-      session = conn |> put_session(:session_token, session_token) |> get_session()
+
+      session =
+        conn
+        |> assign(:account, subject.account)
+        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> get_session()
+
       params = %{"account_id_or_slug" => Ecto.UUID.generate()}
 
       assert {:cont, updated_socket} = on_mount(:mount_account, params, session, socket)
@@ -644,7 +719,13 @@ defmodule Web.AuthTest do
       admin_subject: subject
     } do
       {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-      session = conn |> put_session(:session_token, session_token) |> get_session()
+
+      session =
+        conn
+        |> assign(:account, subject.account)
+        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> get_session()
+
       params = %{"account_id_or_slug" => subject.account.id}
 
       assert {:cont, updated_socket} = on_mount(:ensure_authenticated, params, session, socket)
@@ -659,7 +740,13 @@ defmodule Web.AuthTest do
       admin_subject: subject
     } do
       session_token = "invalid_token"
-      session = conn |> put_session(:session_token, session_token) |> get_session()
+
+      session =
+        conn
+        |> assign(:account, subject.account)
+        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> get_session()
+
       params = %{"account_id_or_slug" => subject.account.slug}
 
       assert {:halt, updated_socket} = on_mount(:ensure_authenticated, params, session, socket)
@@ -711,7 +798,7 @@ defmodule Web.AuthTest do
 
       session =
         conn
-        |> put_session(:session_token, session_token)
+        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
         |> get_session()
 
       params = %{"account_id_or_slug" => subject.account.id}
