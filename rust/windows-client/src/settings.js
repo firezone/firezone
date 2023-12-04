@@ -38,11 +38,32 @@ async function apply_advanced_settings() {
     // TODO: Why doesn't JS' await syntax work here?
     invoke("apply_advanced_settings", {
         "settings": {
-            "authBaseUrl": auth_base_url_input.value,
-            "apiUrl": api_url_input.value,
-            "logFilter": log_filter_input.value
+            "auth_base_url": auth_base_url_input.value,
+            "api_url": api_url_input.value,
+            "log_filter": log_filter_input.value
         }
-    }).then(() => {
+    })
+    .then(() => {
+        lock_advanced_settings_form(false);
+    })
+    .catch((e) => {
+        console.error(e);
+        lock_advanced_settings_form(false);
+    });
+}
+
+async function get_advanced_settings() {
+    lock_advanced_settings_form(true);
+
+    invoke("get_advanced_settings")
+    .then((settings) => {
+        auth_base_url_input.value = settings["auth_base_url"];
+        api_url_input.value = settings["api_url"];
+        log_filter_input.value = settings["log_filter"];
+        lock_advanced_settings_form(false);
+    })
+    .catch((e) => {
+        console.error(e);
         lock_advanced_settings_form(false);
     });
 }
@@ -79,4 +100,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // TODO: Why doesn't this open the Advanced tab by default?
     querySel("#tab_advanced").click();
+
+    get_advanced_settings().await;
 });

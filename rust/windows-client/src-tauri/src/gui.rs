@@ -24,6 +24,9 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
     // Make sure we're single-instance
     tauri_plugin_deep_link::prepare("dev.firezone");
 
+    let rt = tokio::runtime::Runtime::new()?;
+    let _guard = rt.enter();
+
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let _ctlr_task = tokio::spawn(controller(ctlr_rx));
 
@@ -49,18 +52,10 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
             if let SystemTrayEvent::MenuItemClick { id, .. } = event {
                 match id.as_str() {
                     "/sign_in" => {
-                        // TODO: This whole method is a sync callback that can't do error handling. Send an event over a channel to somewhere async with error handling.
-
-                        // TODO: Use auth base URL and account ID
-                        // And client_platform=windows
-                        open::that("https://app.firez.one/firezone?client_csrf_token=bogus&client_platform=apple").unwrap();
-
-                        // TODO: Move this to the sign_in_handle_callback handler
-                        app.tray_handle()
-                            .set_menu(signed_in_menu(
-                                "user@example.com",
-                                &[("CloudFlare", "1.1.1.1"), ("Google", "8.8.8.8")],
-                            ))
+                        app.try_state::<State>()
+                            .unwrap()
+                            .ctlr_tx
+                            .blocking_send(ControllerRequest::SignIn)
                             .unwrap();
                     }
                     "/sign_out" => app.tray_handle().set_menu(signed_out_menu()).unwrap(),
@@ -125,6 +120,7 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
 
 enum ControllerRequest {
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
+    SignIn,
 }
 
 async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
@@ -142,6 +138,10 @@ async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
         match req {
             Req::GetAdvancedSettings(tx) => {
                 tx.send(advanced_settings.clone()).ok();
+            }
+            Req::SignIn => {
+                // TODO: Put the platform and local server callback in here
+                open::that(&advanced_settings.auth_base_url)?;
             }
         }
     }
@@ -203,11 +203,11 @@ async fn apply_advanced_settings_inner(settings: AdvancedSettings) -> Result<()>
 
     // TODO: This sleep is just for testing, remove it before it ships
     // TODO: Make sure the GUI handles errors if this function fails
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
     Ok(())
 }
 
-fn signed_in_menu(user_email: &str, resources: &[(&str, &str)]) -> SystemTrayMenu {
+fn _signed_in_menu(user_email: &str, resources: &[(&str, &str)]) -> SystemTrayMenu {
     let mut menu = SystemTrayMenu::new()
         .add_item(
             CustomMenuItem::new("".to_string(), format!("Signed in as {user_email}")).disabled(),
