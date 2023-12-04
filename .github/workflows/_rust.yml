@@ -101,6 +101,7 @@ jobs:
           path: ${{ github.workspace }}/rust/${{ env.BINARY_DEST_PATH }}-x64.exe
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the permissions, needs, and uploading step
+  # TODO: Get rid of "temp" and figure out what to do with this
   temp-build-tauri:
     runs-on: windows-2019
     defaults:
@@ -123,10 +124,16 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
-          cargo install tauri-cli
+          npm install -g @tauri-apps/cli
+
+          # Cargo install builds from source, it's slow, let's try to skip that
+          # cargo install tauri-cli
 
           # Tauri build already defaults to '--release'
-          cargo tauri build
+          # cargo tauri build
+
+          # NPM installs tauri-cli to somewhere in $PATH
+          tauri build
 
           # Used for release artifact
           cp target/release/${{ matrix.name.package }}.exe "${{ env.BINARY_DEST_PATH }}-x64.exe"
