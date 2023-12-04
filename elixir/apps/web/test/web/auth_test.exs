@@ -150,7 +150,7 @@ defmodule Web.AuthTest do
     } do
       init_conn =
         %{conn | path_params: %{"account_id_or_slug" => subject.account.slug}}
-        |> put_session(:user_return_to, "/me")
+        |> put_session(:user_return_to, ~p"/#{subject.account}/relay_groups")
 
       conn = init_conn |> signed_in_redirect(subject, "apple", nil)
       assert redirected_to(conn) =~ "firezone://handle_client_sign_in_callback"
@@ -161,11 +161,11 @@ defmodule Web.AuthTest do
       refute get_session(conn, :user_return_to)
 
       conn = init_conn |> signed_in_redirect(subject, "", nil)
-      assert redirected_to(conn) == "/me"
+      assert redirected_to(conn) == ~p"/#{subject.account}/relay_groups"
       refute get_session(conn, :user_return_to)
 
       conn = init_conn |> signed_in_redirect(subject, nil, "")
-      assert redirected_to(conn) == "/me"
+      assert redirected_to(conn) == ~p"/#{subject.account}/relay_groups"
       refute get_session(conn, :user_return_to)
     end
   end

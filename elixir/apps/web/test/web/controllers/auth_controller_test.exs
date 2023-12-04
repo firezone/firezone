@@ -119,7 +119,7 @@ defmodule Web.AuthControllerTest do
 
       conn =
         conn
-        |> put_session(:user_return_to, "/foo/bar")
+        |> put_session(:user_return_to, ~p"/#{account}/relay_groups")
         |> post(
           ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/verify_credentials",
           %{
@@ -131,7 +131,7 @@ defmodule Web.AuthControllerTest do
         )
 
       assert conn.assigns.flash == %{}
-      assert redirected_to(conn) == "/foo/bar"
+      assert redirected_to(conn) == ~p"/#{account}/relay_groups"
       assert is_nil(get_session(conn, :user_return_to))
     end
 
@@ -670,7 +670,7 @@ defmodule Web.AuthControllerTest do
       conn =
         conn
         |> put_session(:sign_in_nonce, sign_in_nonce)
-        |> put_session(:user_return_to, "/foo/bar")
+        |> put_session(:user_return_to, ~p"/#{account}/relay_groups")
         |> get(
           ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
           %{
@@ -680,7 +680,7 @@ defmodule Web.AuthControllerTest do
         )
 
       assert conn.assigns.flash == %{}
-      assert redirected_to(conn) == "/foo/bar"
+      assert redirected_to(conn) == ~p"/#{account}/relay_groups"
       assert is_nil(get_session(conn, :user_return_to))
     end
 
@@ -702,7 +702,6 @@ defmodule Web.AuthControllerTest do
       conn =
         conn
         |> put_session(:sign_in_nonce, sign_in_nonce)
-        |> put_session(:user_return_to, "/foo/bar")
         |> get(
           ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token",
           %{
@@ -712,8 +711,7 @@ defmodule Web.AuthControllerTest do
         )
 
       assert conn.assigns.flash == %{}
-      assert redirected_to(conn) == "/foo/bar"
-      assert is_nil(get_session(conn, :user_return_to))
+      assert redirected_to(conn) == ~p"/#{account}/sites"
     end
 
     test "redirects to the actors index when credentials are valid and return path is empty", %{

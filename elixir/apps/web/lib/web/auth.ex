@@ -102,7 +102,16 @@ defmodule Web.Auth do
         _client_platform,
         _client_csrf_token
       ) do
-    redirect_to = Plug.Conn.get_session(conn, :user_return_to) || signed_in_path(subject)
+    user_return_to = Plug.Conn.get_session(conn, :user_return_to)
+
+    redirect_to =
+      if not is_nil(user_return_to) and
+           (String.starts_with?(user_return_to, "/#{subject.account.id}") or
+              String.starts_with?(user_return_to, "/#{subject.account.slug}")) do
+        user_return_to
+      else
+        signed_in_path(subject)
+      end
 
     conn
     |> Web.Auth.put_subject_in_session(subject)
