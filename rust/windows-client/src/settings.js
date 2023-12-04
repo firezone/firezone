@@ -1,6 +1,3 @@
-let account_id_input;
-let apply_account_id_btn;
-
 let auth_base_url_input;
 let api_url_input;
 let log_filter_input;
@@ -13,24 +10,9 @@ const querySel = function(id) {
 
 const { invoke } = window.__TAURI__.tauri;
 
-// Called when we're saving the account ID to disk. Touching disk is technically async, so the UI related to saving should be locked, but the UI thread must not block.
+// Lock the UI when we're saving to disk, since disk writes are technically async.
 // Parameters:
 // - locked - Boolean, true to lock the UI, false to unlock it.
-function lock_account_id_form(locked) {
-    // Text inputs
-    account_id_input.disabled = locked;
-
-    // Buttons
-    if (locked) {
-        apply_account_id_btn.textContent = "Applying...";
-    }
-    else {
-        apply_account_id_btn.textContent = "Apply";
-    }
-
-    apply_account_id_btn.disabled = locked;
-}
-
 function lock_advanced_settings_form(locked) {
     auth_base_url_input.disabled = locked;
     api_url_input.disabled = locked;
@@ -49,26 +31,17 @@ function lock_advanced_settings_form(locked) {
     apply_advanced_settings_btn.disabled = locked;
 }
 
-async function apply_account_id() {
-    lock_account_id_form(true);
-
-    // Invoke Rust
-    // TODO: Why doesn't JS' await syntax work here?
-    invoke("apply_account_id", {
-        "accountId": account_id_input.value
-    }).then(() => {
-        console.log("JS done sleeping.");
-        lock_account_id_form(false);
-    });
-}
-
 async function apply_advanced_settings() {
     lock_advanced_settings_form(true);
 
+    // Invoke Rust
+    // TODO: Why doesn't JS' await syntax work here?
     invoke("apply_advanced_settings", {
-        "authBaseUrl": auth_base_url_input.value,
-        "apiUrl": api_url_input.value,
-        "logFilter": log_filter_input.value,
+        "settings": {
+            "authBaseUrl": auth_base_url_input.value,
+            "apiUrl": api_url_input.value,
+            "logFilter": log_filter_input.value
+        }
     }).then(() => {
         lock_advanced_settings_form(false);
     });
@@ -92,17 +65,6 @@ function openTab(evt, tabName) {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-    // Hook up Account tab
-    account_id_input = querySel("#account-id-input");
-    apply_account_id_btn = querySel("#apply-account-id-btn");
-
-    querySel("#account-id-form").addEventListener("submit", (e) => {
-        // TODO: Doesn't this mean there's a small window of time where clicking the button might redirect the browser instead of running the JS?
-
-        e.preventDefault();
-        apply_account_id();
-    })
-
     // Hook up Advanced tab
     auth_base_url_input = querySel("#auth-base-url-input");
     api_url_input = querySel("#api-url-input");
@@ -115,6 +77,6 @@ window.addEventListener("DOMContentLoaded", () => {
         apply_advanced_settings();
     })
 
-    // TODO: Why doesn't this open the Account tab by default?
-    querySel("#tab_account").click();
+    // TODO: Why doesn't this open the Advanced tab by default?
+    querySel("#tab_advanced").click();
 });

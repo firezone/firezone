@@ -2,12 +2,18 @@
 
 use crate::prelude::*;
 use connlib_client_shared::file_logger;
+use serde::{Deserialize, Serialize};
 use std::result::Result as StdResult;
 use std::time::Duration;
 use tauri::{
     CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
 };
+use tokio::sync::{mpsc, oneshot};
+
+struct State {
+    ctlr_tx: mpsc::Sender<ControllerRequest>,
+}
 
 // TODO: Decide whether Windows needs to handle env vars and CLI args for IDs / tokens
 pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
@@ -18,9 +24,13 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
     // Make sure we're single-instance
     tauri_plugin_deep_link::prepare("dev.firezone");
 
+    let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
+    let _ctlr_task = tokio::spawn(controller(ctlr_rx));
+
     let tray = SystemTray::new().with_menu(signed_out_menu());
 
     tauri::Builder::default()
+        .manage(State { ctlr_tx })
         .on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
                 // Keep the frontend running but just hide this webview
@@ -31,8 +41,8 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            apply_account_id,
             apply_advanced_settings,
+            get_advanced_settings,
         ])
         .system_tray(tray)
         .on_system_tray_event(|app, event| {
@@ -113,63 +123,86 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
     Ok(())
 }
 
-#[tauri::command]
-async fn apply_account_id(account_id: &str) -> StdResult<(), String> {
-    // These functions are wrapped since `anyhow::Error` doesn't implement `serde::Serialize` and so it can't go back to JS
-    apply_account_id_inner(account_id)
-        .await
-        .map_err(|e| format!("{e}"))
+enum ControllerRequest {
+    GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
 }
 
-#[tauri::command]
-async fn apply_advanced_settings(
-    auth_base_url: &str,
-    api_url: &str,
-    log_filter: &str,
-) -> StdResult<(), String> {
-    apply_advanced_settings_inner(auth_base_url, api_url, log_filter)
-        .await
-        .map_err(|e| format!("{e}"))
-}
+async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
+    use ControllerRequest as Req;
 
-async fn apply_account_id_inner(account_id: &str) -> Result<()> {
-    let dirs = crate::cli::get_project_dirs()?;
-    let dir = dirs.config_local_dir();
-    tokio::fs::create_dir_all(dir).await?;
-    let path = dir.join("account_id.json");
+    let mut advanced_settings = AdvancedSettings::default();
+    // TODO: Load advanced settings here
+    if let Ok(s) = tokio::fs::read_to_string(advanced_settings_path().await?).await {
+        if let Ok(settings) = serde_json::from_str(&s) {
+            advanced_settings = settings;
+        }
+    }
 
-    let j = serde_json::json!({
-        "account_id": account_id,
-    });
-
-    // TODO: Do something more robust. This will corrupt the file if we lose power while writing. Not the end of the world, but annoying.
-    tokio::fs::write(path, j.to_string()).await?;
-
-    // TODO: This sleep is just for testing, remove it before it ships
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    while let Some(req) = rx.recv().await {
+        match req {
+            Req::GetAdvancedSettings(tx) => {
+                tx.send(advanced_settings.clone()).ok();
+            }
+        }
+    }
+    tracing::debug!("GUI controller task exiting cleanly");
     Ok(())
 }
 
-async fn apply_advanced_settings_inner(
-    auth_base_url: &str,
-    api_url: &str,
-    log_filter: &str,
-) -> Result<()> {
+#[derive(Clone, Deserialize, Serialize)]
+struct AdvancedSettings {
+    auth_base_url: String,
+    api_url: String,
+    log_filter: String,
+}
+
+impl Default for AdvancedSettings {
+    fn default() -> Self {
+        Self {
+            auth_base_url: "https://app.firezone.dev".to_string(),
+            api_url: "wss://api.firezone.dev".to_string(),
+            log_filter: "info".to_string(),
+        }
+    }
+}
+
+/// Gets the path for storing advanced settings, creating parent dirs if needed.
+async fn advanced_settings_path() -> Result<PathBuf> {
     let dirs = crate::cli::get_project_dirs()?;
     let dir = dirs.config_local_dir();
     tokio::fs::create_dir_all(dir).await?;
-    let path = dir.join("advanced_settings.json");
+    Ok(dir.join("advanced_settings.json"))
+}
 
-    let j = serde_json::json!({
-        "auth_base_url": auth_base_url,
-        "api_url": api_url,
-        "log_filter": log_filter,
-    });
+#[tauri::command]
+async fn get_advanced_settings(
+    state: tauri::State<'_, State>,
+) -> StdResult<AdvancedSettings, String> {
+    let (tx, rx) = oneshot::channel();
+    state
+        .ctlr_tx
+        .send(ControllerRequest::GetAdvancedSettings(tx))
+        .await
+        .unwrap();
+    Ok(rx.await.unwrap())
+}
 
-    // TODO: Do something more robust. This will corrupt the file if we lose power while writing. Not the end of the world, but annoying.
-    tokio::fs::write(path, j.to_string()).await?;
+#[tauri::command]
+async fn apply_advanced_settings(settings: AdvancedSettings) -> StdResult<(), String> {
+    apply_advanced_settings_inner(settings)
+        .await
+        .map_err(|e| format!("{e}"))
+}
+
+async fn apply_advanced_settings_inner(settings: AdvancedSettings) -> Result<()> {
+    tokio::fs::write(
+        advanced_settings_path().await?,
+        serde_json::to_string(&settings)?,
+    )
+    .await?;
 
     // TODO: This sleep is just for testing, remove it before it ships
+    // TODO: Make sure the GUI handles errors if this function fails
     tokio::time::sleep(Duration::from_secs(2)).await;
     Ok(())
 }
