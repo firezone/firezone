@@ -14,6 +14,9 @@ clap = { version = "4.4", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
 directories = "5.0.1"
 firezone-cli-utils = { workspace = true }
+http-body-util = "0.1.0"
+hyper = { version = "1.0.1", features = ["http1", "server"] }
+hyper-util = { version = "0.1.1", features = ["full"] }
 keyring = "2.0.5"
 # Not the newest `open` but this is what Tauri uses internally already
 open = "3.2.0"

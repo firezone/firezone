@@ -30,6 +30,9 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let _ctlr_task = tokio::spawn(controller(ctlr_rx));
 
+    // TODO: #2711, commit to URI schemes or local webserver/c
+    // let _webserver_task = tokio::spawn(local_webserver(ctlr_tx.clone()));
+
     let tray = SystemTray::new().with_menu(signed_out_menu());
 
     tauri::Builder::default()
@@ -118,7 +121,7 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
     Ok(())
 }
 
-enum ControllerRequest {
+pub(crate) enum ControllerRequest {
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SignIn,
 }
@@ -131,7 +134,11 @@ async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
     if let Ok(s) = tokio::fs::read_to_string(advanced_settings_path().await?).await {
         if let Ok(settings) = serde_json::from_str(&s) {
             advanced_settings = settings;
+        } else {
+            tracing::warn!("advanced_settings file not parsable");
         }
+    } else {
+        tracing::warn!("advanced_settings file doesn't exist");
     }
 
     while let Some(req) = rx.recv().await {
@@ -150,7 +157,7 @@ async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-struct AdvancedSettings {
+pub(crate) struct AdvancedSettings {
     auth_base_url: String,
     api_url: String,
     log_filter: String,

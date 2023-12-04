@@ -18,6 +18,7 @@ mod gui {
 }
 #[cfg(target_os = "windows")]
 mod gui;
+mod local_webserver;
 mod prelude;
 
 fn main() -> Result<()> {
