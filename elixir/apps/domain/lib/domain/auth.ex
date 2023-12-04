@@ -35,7 +35,8 @@ defmodule Domain.Auth do
          true <- Validator.valid_uuid?(id) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-      Provider.Query.by_id(id)
+      Provider.Query.all()
+      |> Provider.Query.by_id(id)
       |> Authorizer.for_subject(Provider, subject)
       |> Repo.fetch()
       |> case do

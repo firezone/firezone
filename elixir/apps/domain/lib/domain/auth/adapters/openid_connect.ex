@@ -33,7 +33,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   def identity_changeset(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
     changeset
     |> Domain.Validator.trim_change(:provider_identifier)
-    |> Ecto.Changeset.put_change(:provider_state, %{})
+    |> Domain.Validator.copy_change(:provider_virtual_state, :provider_state)
     |> Ecto.Changeset.put_change(:provider_virtual_state, %{})
   end
 
