@@ -25,7 +25,7 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
     let _guard = rt.enter();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
-    let _ctlr_task = tokio::spawn(controller(ctlr_rx));
+    let _ctlr_task = tokio::spawn(run_controller(ctlr_tx.clone(), ctlr_rx));
 
     // TODO: #2711, commit to URI schemes or local webserver/c
     // let _webserver_task = tokio::spawn(local_webserver(ctlr_tx.clone()));
@@ -122,6 +122,7 @@ pub(crate) enum ControllerRequest {
     // Secret because it will have the token in it
     SchemeRequest(SecretString),
     SignIn,
+    UpdateResources(Vec<connlib_client_shared::ResourceDescription>),
 }
 
 // TODO: Should these be keyed to the Google ID or email or something?
@@ -134,42 +135,147 @@ fn keyring_entry() -> Result<keyring::Entry> {
     )?)
 }
 
-async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
-    use ControllerRequest as Req;
+#[derive(Clone)]
+struct CallbackHandler {
+    ctlr_tx: mpsc::Sender<ControllerRequest>,
+    handle: Option<file_logger::Handle>,
+}
 
-    let mut advanced_settings = AdvancedSettings::default();
-    // TODO: Load advanced settings here
-    if let Ok(s) = tokio::fs::read_to_string(advanced_settings_path().await?).await {
-        if let Ok(settings) = serde_json::from_str(&s) {
-            advanced_settings = settings;
-        } else {
-            tracing::warn!("advanced_settings file not parsable");
-        }
-    } else {
-        tracing::warn!("advanced_settings file doesn't exist");
+impl connlib_client_shared::Callbacks for CallbackHandler {
+    // TODO: add thiserror type
+    type Error = std::convert::Infallible;
+
+    fn on_disconnect(
+        &self,
+        error: Option<&connlib_client_shared::Error>,
+    ) -> Result<(), Self::Error> {
+        tracing::error!("on_disconnect {error:?}");
+        Ok(())
     }
 
-    tracing::trace!("re-loading token");
-    let mut _token: Option<SecretString> = tokio::task::spawn_blocking(|| {
-        let entry = keyring_entry()?;
-        match entry.get_password() {
-            Ok(token) => {
-                tracing::debug!("re-loaded token from Windows credential manager");
-                Ok(Some(SecretString::new(token)))
+    fn on_error(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
+        tracing::error!("on_error not implemented. Error: {error:?}");
+        Ok(())
+    }
+
+    fn on_update_resources(
+        &self,
+        resources: Vec<connlib_client_shared::ResourceDescription>,
+    ) -> Result<(), Self::Error> {
+        tracing::debug!("on_update_resources");
+        self.ctlr_tx
+            .blocking_send(ControllerRequest::UpdateResources(resources))
+            .unwrap();
+        Ok(())
+    }
+
+    fn roll_log_file(&self) -> Option<PathBuf> {
+        self.handle
+            .as_ref()?
+            .roll_to_new_file()
+            .unwrap_or_else(|e| {
+                tracing::debug!("Failed to roll over to new file: {e}");
+                let _ = self.on_error(&connlib_client_shared::Error::LogFileRollError(e));
+
+                None
+            })
+    }
+}
+
+struct Controller {
+    advanced_settings: AdvancedSettings,
+    ctlr_tx: mpsc::Sender<ControllerRequest>,
+    session: Option<connlib_client_shared::Session<CallbackHandler>>,
+    token: Option<SecretString>,
+}
+
+impl Controller {
+    async fn new(ctlr_tx: mpsc::Sender<ControllerRequest>) -> Result<Self> {
+        let mut advanced_settings = AdvancedSettings::default();
+        if let Ok(s) = tokio::fs::read_to_string(advanced_settings_path().await?).await {
+            if let Ok(settings) = serde_json::from_str(&s) {
+                advanced_settings = settings;
+            } else {
+                tracing::warn!("advanced_settings file not parsable");
             }
-            Err(keyring::Error::NoEntry) => {
-                tracing::debug!("no token in Windows credential manager");
-                Ok(None)
-            }
-            Err(e) => Err(anyhow::Error::from(e)),
+        } else {
+            tracing::warn!("advanced_settings file doesn't exist");
         }
-    })
-    .await??;
+
+        tracing::trace!("re-loading token");
+        let token: Option<SecretString> = tokio::task::spawn_blocking(|| {
+            let entry = keyring_entry()?;
+            match entry.get_password() {
+                Ok(token) => {
+                    tracing::debug!("re-loaded token from Windows credential manager");
+                    Ok(Some(SecretString::new(token)))
+                }
+                Err(keyring::Error::NoEntry) => {
+                    tracing::debug!("no token in Windows credential manager");
+                    Ok(None)
+                }
+                Err(e) => Err(anyhow::Error::from(e)),
+            }
+        })
+        .await??;
+
+        let session = if let Some(token) = token.as_ref() {
+            Some(Self::start_session(
+                &advanced_settings,
+                ctlr_tx.clone(),
+                token,
+            )?)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            advanced_settings,
+            ctlr_tx,
+            session,
+            token,
+        })
+    }
+
+    fn start_session(
+        advanced_settings: &AdvancedSettings,
+        ctlr_tx: mpsc::Sender<ControllerRequest>,
+        token: &SecretString,
+    ) -> Result<connlib_client_shared::Session<CallbackHandler>> {
+        let (layer, handle) = file_logger::layer(std::path::Path::new("."));
+        // TODO: How can I set up the tracing subscriber if the Session isn't ready yet? Check what other clients do.
+        if false {
+            // This helps the type inference
+            setup_global_subscriber(layer);
+        }
+
+        tracing::info!("Session::connect");
+        Ok(connlib_client_shared::Session::connect(
+            advanced_settings.api_url.clone(),
+            token.clone(),
+            crate::device_id::get(),
+            CallbackHandler {
+                ctlr_tx,
+                handle: Some(handle),
+            },
+        )?)
+    }
+}
+
+async fn run_controller(
+    ctlr_tx: mpsc::Sender<ControllerRequest>,
+    mut rx: mpsc::Receiver<ControllerRequest>,
+) -> Result<()> {
+    use ControllerRequest as Req;
+
+    let mut controller = Controller::new(ctlr_tx).await?;
+
+    tracing::debug!("GUI controller main loop start");
 
     while let Some(req) = rx.recv().await {
         match req {
             Req::GetAdvancedSettings(tx) => {
-                tx.send(advanced_settings.clone()).ok();
+                tx.send(controller.advanced_settings.clone()).ok();
             }
             Req::SchemeRequest(req) => {
                 use secrecy::ExposeSecret;
@@ -178,14 +284,22 @@ async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
                     tracing::debug!("setting new token");
                     let entry = keyring_entry()?;
                     entry.set_password(auth.token.expose_secret())?;
-                    _token = Some(auth.token);
+                    controller.session = Some(Controller::start_session(
+                        &controller.advanced_settings,
+                        controller.ctlr_tx.clone(),
+                        &auth.token,
+                    )?);
+                    controller.token = Some(auth.token);
                 } else {
                     tracing::warn!("couldn't handle scheme request");
                 }
             }
             Req::SignIn => {
                 // TODO: Put the platform and local server callback in here
-                open::that(&advanced_settings.auth_base_url)?;
+                open::that(&controller.advanced_settings.auth_base_url.to_string())?;
+            }
+            Req::UpdateResources(resources) => {
+                tracing::debug!("got {} resources", resources.len());
             }
         }
     }
@@ -232,16 +346,16 @@ fn parse_auth_callback(input: &SecretString) -> Result<AuthCallback> {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub(crate) struct AdvancedSettings {
-    auth_base_url: String,
-    api_url: String,
+    auth_base_url: Url,
+    api_url: Url,
     log_filter: String,
 }
 
 impl Default for AdvancedSettings {
     fn default() -> Self {
         Self {
-            auth_base_url: "https://app.firezone.dev".to_string(),
-            api_url: "wss://api.firezone.dev".to_string(),
+            auth_base_url: Url::parse("https://app.firezone.dev").unwrap(),
+            api_url: Url::parse("wss://api.firezone.dev").unwrap(),
             log_filter: "info".to_string(),
         }
     }

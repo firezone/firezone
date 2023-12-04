@@ -8,6 +8,7 @@ use clap::Parser;
 
 mod cli;
 mod debug_commands;
+mod device_id;
 #[cfg(target_os = "linux")]
 mod gui {
     use crate::prelude::*;

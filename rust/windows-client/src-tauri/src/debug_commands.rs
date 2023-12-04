@@ -8,7 +8,6 @@ use secrecy::SecretString;
 /// Test connlib and its callbacks.
 pub fn connlib(common_args: CommonArgs) -> Result<()> {
     use connlib_client_shared::ResourceDescription;
-    use smbioslib::SMBiosSystemInformation as SysInfo;
 
     #[derive(Clone)]
     struct CallbackHandler {
@@ -52,16 +51,7 @@ pub fn connlib(common_args: CommonArgs) -> Result<()> {
     let (layer, handle) = file_logger::layer(std::path::Path::new("."));
     setup_global_subscriber(layer);
 
-    // TODO: Is the SHA256 only intended to make the device ID fixed-length, or is it supposed to obfuscate the ID too? If so, we could add a pepper to defeat rainbow tables.
-
-    let data = smbioslib::table_load_from_device()?;
-    let device_id = if let Some(uuid) = data.find_map(|sys_info: SysInfo| sys_info.uuid()) {
-        tracing::info!("smbioslib got UUID");
-        uuid.to_string()
-    } else {
-        tracing::error!("smbioslib couldn't find UUID, making a random device ID");
-        uuid::Uuid::new_v4().to_string()
-    };
+    let device_id = crate::device_id::get();
 
     let mut session = Session::connect(
         common_args.api_url,
