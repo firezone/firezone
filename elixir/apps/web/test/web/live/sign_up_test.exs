@@ -13,8 +13,7 @@ defmodule Web.Live.SignUpTest do
              "registration[actor][_persistent_id]",
              "registration[actor][name]",
              "registration[actor][type]",
-             "registration[email]",
-             "registration[email_confirmation]"
+             "registration[email]"
            ]
   end
 
@@ -30,8 +29,7 @@ defmodule Web.Live.SignUpTest do
     attrs = %{
       account: %{name: account_name},
       actor: %{name: "John Doe"},
-      email: email,
-      email_confirmation: email
+      email: email
     }
 
     assert html =
@@ -98,8 +96,7 @@ defmodule Web.Live.SignUpTest do
            |> form("form", registration: attrs)
            |> render_submit()
            |> form_validation_errors() == %{
-             "registration[email]" => ["has invalid format"],
-             "registration[email_confirmation]" => ["email does not match"]
+             "registration[email]" => ["has invalid format"]
            }
   end
 
