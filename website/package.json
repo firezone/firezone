@@ -26,7 +26,7 @@
     "flowbite-react": "^0.6.4",
     "highlight.js": "^11.9.0",
     "md5": "^2.3.0",
-    "next": "~13.4.19",
+    "next": "~13.5.1",
     "next-hubspot": "^1.1.6",
     "next-sitemap": "^4.2.3",
     "postcss": "8.4.31",
