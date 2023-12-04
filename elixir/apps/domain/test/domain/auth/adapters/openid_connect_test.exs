@@ -22,8 +22,17 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     end
 
     test "puts default provider state", %{provider: provider, changeset: changeset} do
+      changeset =
+        Ecto.Changeset.put_change(changeset, :provider_virtual_state, %{
+          "userinfo" => %{"email" => "foo@example.com"}
+        })
+
       assert %Ecto.Changeset{} = changeset = identity_changeset(provider, changeset)
-      assert changeset.changes == %{provider_state: %{}, provider_virtual_state: %{}}
+
+      assert changeset.changes == %{
+               provider_virtual_state: %{},
+               provider_state: %{"userinfo" => %{"email" => "foo@example.com"}}
+             }
     end
 
     test "trims provider identifier", %{provider: provider, changeset: changeset} do
