@@ -270,10 +270,10 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
-          cargo install tauri-cli
+          npm install -g @tauri-apps/cli
 
           # Tauri build already defaults to '--release'
-          cargo tauri build
+          tauri build
 
           # Used for release artifact
           cp target/release/${{ matrix.name.package }}.exe "${{ env.BINARY_DEST_PATH }}-x64.exe"
