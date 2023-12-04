@@ -97,6 +97,7 @@ defmodule API.Gateway.Channel do
       ref = Ecto.UUID.generate()
 
       push(socket, "allow_access", %{
+        ref: ref,
         client_id: client_id,
         flow_id: flow_id,
         resource: Views.Resource.render(resource),
