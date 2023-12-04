@@ -2011,6 +2011,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid",
  "windows 0.52.0",
  "wintun",

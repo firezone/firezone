@@ -2,6 +2,7 @@
 
 use crate::prelude::*;
 use connlib_client_shared::file_logger;
+use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::result::Result as StdResult;
 use std::time::Duration;
@@ -10,10 +11,6 @@ use tauri::{
     SystemTraySubmenu,
 };
 use tokio::sync::{mpsc, oneshot};
-
-struct State {
-    ctlr_tx: mpsc::Sender<ControllerRequest>,
-}
 
 // TODO: Decide whether Windows needs to handle env vars and CLI args for IDs / tokens
 pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
@@ -36,7 +33,7 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
     let tray = SystemTray::new().with_menu(signed_out_menu());
 
     tauri::Builder::default()
-        .manage(State { ctlr_tx })
+        .manage(ctlr_tx)
         .on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
                 // Keep the frontend running but just hide this webview
@@ -55,9 +52,8 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
             if let SystemTrayEvent::MenuItemClick { id, .. } = event {
                 match id.as_str() {
                     "/sign_in" => {
-                        app.try_state::<State>()
+                        app.try_state::<mpsc::Sender<ControllerRequest>>()
                             .unwrap()
-                            .ctlr_tx
                             .blocking_send(ControllerRequest::SignIn)
                             .unwrap();
                     }
@@ -96,16 +92,16 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
                 // TODO: Handle app links that we catch at startup here
             }
 
-            app.listen_global("scheme-request-received", |event| {
-                // TODO: Handle "firezone://handle_client_auth_callback/?client_csrf_token=bogus_csrf_token&actor_name=Bogus+Name&client_auth_token=bogus_auth_token"
-                println!("got scheme request {:?}", event.payload());
-            });
-
             // From https://github.com/FabianLars/tauri-plugin-deep-link/blob/main/example/main.rs
             let handle = app.handle();
-            tauri_plugin_deep_link::register("firezone", move |request| {
-                dbg!(&request);
-                handle.trigger_global("scheme-request-received", Some(request));
+            tauri_plugin_deep_link::register("firezone", move |r| {
+                let r = SecretString::new(r);
+                let ctlr_tx = handle
+                    .try_state::<mpsc::Sender<ControllerRequest>>()
+                    .unwrap();
+                ctlr_tx
+                    .blocking_send(ControllerRequest::SchemeRequest(r))
+                    .unwrap();
             })?;
             Ok(())
         })
@@ -123,6 +119,8 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
 
 pub(crate) enum ControllerRequest {
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
+    // Secret because it will have the token in it
+    SchemeRequest(SecretString),
     SignIn,
 }
 
@@ -141,10 +139,25 @@ async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
         tracing::warn!("advanced_settings file doesn't exist");
     }
 
+    let mut _token = None;
+
     while let Some(req) = rx.recv().await {
         match req {
             Req::GetAdvancedSettings(tx) => {
                 tx.send(advanced_settings.clone()).ok();
+            }
+            Req::SchemeRequest(req) => {
+                use secrecy::ExposeSecret;
+
+                if let Ok(auth) = parse_auth_callback(&req) {
+                    tracing::debug!("setting new token");
+                    let entry =
+                        keyring::Entry::new_with_target("token", "firezone_windows_client", "")?;
+                    entry.set_password(auth.token.expose_secret())?;
+                    _token = Some(auth.token);
+                } else {
+                    tracing::warn!("couldn't handle scheme request");
+                }
             }
             Req::SignIn => {
                 // TODO: Put the platform and local server callback in here
@@ -154,6 +167,43 @@ async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
     }
     tracing::debug!("GUI controller task exiting cleanly");
     Ok(())
+}
+
+pub(crate) struct AuthCallback {
+    token: SecretString,
+    _identifier: SecretString,
+}
+
+fn parse_auth_callback(input: &SecretString) -> Result<AuthCallback> {
+    use secrecy::ExposeSecret;
+
+    let url = url::Url::parse(input.expose_secret())?;
+
+    let mut token = None;
+    let mut identifier = None;
+
+    for (key, value) in url.query_pairs() {
+        match key.as_ref() {
+            "client_auth_token" => {
+                if token.is_some() {
+                    bail!("client_auth_token must appear exactly once");
+                }
+                token = Some(SecretString::new(value.to_string()));
+            }
+            "identity_provider_identifier" => {
+                if identifier.is_some() {
+                    bail!("identity_provider_identifier must appear exactly once");
+                }
+                identifier = Some(SecretString::new(value.to_string()));
+            }
+            _ => {}
+        }
+    }
+
+    Ok(AuthCallback {
+        token: token.ok_or_else(|| anyhow!("expected client_auth_token"))?,
+        _identifier: identifier.ok_or_else(|| anyhow!("expected identity_provider_identifier"))?,
+    })
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -183,11 +233,10 @@ async fn advanced_settings_path() -> Result<PathBuf> {
 
 #[tauri::command]
 async fn get_advanced_settings(
-    state: tauri::State<'_, State>,
+    ctlr_tx: tauri::State<'_, mpsc::Sender<ControllerRequest>>,
 ) -> StdResult<AdvancedSettings, String> {
     let (tx, rx) = oneshot::channel();
-    state
-        .ctlr_tx
+    ctlr_tx
         .send(ControllerRequest::GetAdvancedSettings(tx))
         .await
         .unwrap();
@@ -247,4 +296,22 @@ fn signed_out_menu() -> SystemTrayMenu {
         .add_item(CustomMenuItem::new("/about".to_string(), "About"))
         .add_item(CustomMenuItem::new("/settings".to_string(), "Settings"))
         .add_item(CustomMenuItem::new("/quit".to_string(), "Quit Firezone").accelerator("Ctrl+Q"))
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+    use secrecy::{ExposeSecret, SecretString};
+    use std::str::FromStr;
+
+    #[test]
+    fn parse_auth_callback() -> Result<()> {
+        let input = "firezone://handle_client_auth_callback/?actor_name=Reactor+Scram&client_auth_token=a_very_secret_string&identity_provider_identifier=12345";
+
+        let actual = super::parse_auth_callback(&SecretString::from_str(input)?)?;
+
+        assert_eq!(actual.token.expose_secret(), "a_very_secret_string");
+
+        Ok(())
+    }
 }
