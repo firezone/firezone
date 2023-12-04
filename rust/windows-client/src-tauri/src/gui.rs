@@ -124,6 +124,16 @@ pub(crate) enum ControllerRequest {
     SignIn,
 }
 
+// TODO: Should these be keyed to the Google ID or email or something?
+// The callback returns a human-readable name but those aren't good keys.
+fn keyring_entry() -> Result<keyring::Entry> {
+    Ok(keyring::Entry::new_with_target(
+        "token",
+        "firezone_windows_client",
+        "",
+    )?)
+}
+
 async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
     use ControllerRequest as Req;
 
@@ -139,7 +149,22 @@ async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
         tracing::warn!("advanced_settings file doesn't exist");
     }
 
-    let mut _token = None;
+    tracing::trace!("re-loading token");
+    let mut _token: Option<SecretString> = tokio::task::spawn_blocking(|| {
+        let entry = keyring_entry()?;
+        match entry.get_password() {
+            Ok(token) => {
+                tracing::debug!("re-loaded token from Windows credential manager");
+                Ok(Some(SecretString::new(token)))
+            }
+            Err(keyring::Error::NoEntry) => {
+                tracing::debug!("no token in Windows credential manager");
+                Ok(None)
+            }
+            Err(e) => Err(anyhow::Error::from(e)),
+        }
+    })
+    .await??;
 
     while let Some(req) = rx.recv().await {
         match req {
@@ -151,8 +176,7 @@ async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
 
                 if let Ok(auth) = parse_auth_callback(&req) {
                     tracing::debug!("setting new token");
-                    let entry =
-                        keyring::Entry::new_with_target("token", "firezone_windows_client", "")?;
+                    let entry = keyring_entry()?;
                     entry.set_password(auth.token.expose_secret())?;
                     _token = Some(auth.token);
                 } else {
