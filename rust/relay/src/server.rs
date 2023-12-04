@@ -59,7 +59,7 @@ pub struct Server<R> {
     lowest_port: u16,
     highest_port: u16,
 
-    channels_by_number: HashMap<u16, Channel>,
+    channels_by_client_and_number: HashMap<(SocketAddr, u16), Channel>,
     channel_numbers_by_peer: HashMap<SocketAddr, u16>,
 
     pending_commands: VecDeque<Command>,
@@ -184,7 +184,7 @@ where
             allocations_by_port: Default::default(),
             lowest_port,
             highest_port,
-            channels_by_number: Default::default(),
+            channels_by_client_and_number: Default::default(),
             channel_numbers_by_peer: Default::default(),
             pending_commands: Default::default(),
             next_allocation_id: AllocationId(1),
@@ -325,7 +325,10 @@ where
 
         Span::current().record("channel", channel_number);
 
-        let Some(channel) = self.channels_by_number.get(channel_number) else {
+        let Some(channel) = self
+            .channels_by_client_and_number
+            .get(&(*recipient, *channel_number))
+        else {
             debug_assert!(false, "unknown channel {}", channel_number);
             return;
         };
@@ -372,9 +375,10 @@ where
                         self.delete_allocation(id)
                     }
                 }
-                TimedAction::UnbindChannel(chan) => {
-                    let Some(channel) = self.channels_by_number.get_mut(&chan) else {
-                        tracing::debug!(target: "relay", "Cannot expire non-existing channel binding {chan}");
+                TimedAction::UnbindChannel((client, chan)) => {
+                    let Some(channel) = self.channels_by_client_and_number.get_mut(&(client, chan))
+                    else {
+                        tracing::debug!(target: "relay", "Cannot expire non-existing channel binding {chan} of client {client}");
 
                         continue;
                     };
@@ -386,12 +390,12 @@ where
 
                         self.time_events.add(
                             now + Duration::from_secs(5 * 60),
-                            TimedAction::DeleteChannel(chan),
+                            TimedAction::DeleteChannel((client, chan)),
                         );
                     }
                 }
-                TimedAction::DeleteChannel(chan) => {
-                    self.delete_channel_binding(chan);
+                TimedAction::DeleteChannel((client, chan)) => {
+                    self.delete_channel_binding(client, chan);
                 }
             }
         }
@@ -623,7 +627,10 @@ where
         }
 
         // Ensure the channel is not already bound to a different address.
-        if let Some(channel) = self.channels_by_number.get_mut(&requested_channel) {
+        if let Some(channel) = self
+            .channels_by_client_and_number
+            .get_mut(&(sender, requested_channel))
+        {
             if channel.peer_address != peer_address {
                 return Err(error_response(BadRequest, &request));
             }
@@ -636,7 +643,7 @@ where
 
             self.time_events.add(
                 channel.expiry,
-                TimedAction::UnbindChannel(requested_channel),
+                TimedAction::UnbindChannel((sender, requested_channel)),
             );
             self.send_message(
                 channel_bind_success_response(request.transaction_id()),
@@ -652,7 +659,7 @@ where
         // TODO: Capacity checking would go here.
 
         let allocation_id = allocation.id;
-        self.create_channel_binding(requested_channel, peer_address, allocation_id, now);
+        self.create_channel_binding(sender, requested_channel, peer_address, allocation_id, now);
         self.send_message(
             channel_bind_success_response(request.transaction_id()),
             sender,
@@ -696,7 +703,10 @@ where
         let channel_number = message.channel();
         let data = message.data();
 
-        let Some(channel) = self.channels_by_number.get(&channel_number) else {
+        let Some(channel) = self
+            .channels_by_client_and_number
+            .get(&(sender, channel_number))
+        else {
             tracing::debug!(target: "relay", "Channel does not exist, refusing to forward data");
             return;
         };
@@ -801,13 +811,14 @@ where
 
     fn create_channel_binding(
         &mut self,
+        client: SocketAddr,
         requested_channel: u16,
         peer_address: SocketAddr,
         id: AllocationId,
         now: SystemTime,
     ) {
-        self.channels_by_number.insert(
-            requested_channel,
+        self.channels_by_client_and_number.insert(
+            (client, requested_channel),
             Channel {
                 expiry: now + CHANNEL_BINDING_DURATION,
                 peer_address,
@@ -898,15 +909,15 @@ where
         tracing::info!(target: "relay", %port, "Deleted allocation");
     }
 
-    fn delete_channel_binding(&mut self, chan: u16) {
-        let Some(channel) = self.channels_by_number.get(&chan) else {
+    fn delete_channel_binding(&mut self, client: SocketAddr, chan: u16) {
+        let Some(channel) = self.channels_by_client_and_number.get(&(client, chan)) else {
             return;
         };
 
         let addr = channel.peer_address;
 
         self.channel_numbers_by_peer.remove(&addr);
-        self.channels_by_number.remove(&chan);
+        self.channels_by_client_and_number.remove(&(client, chan));
     }
 }
 
@@ -990,8 +1001,8 @@ impl Allocation {
 #[derive(PartialEq)]
 enum TimedAction {
     ExpireAllocation(AllocationId),
-    UnbindChannel(u16),
-    DeleteChannel(u16),
+    UnbindChannel((SocketAddr, u16)),
+    DeleteChannel((SocketAddr, u16)),
 }
 
 fn error_response(
