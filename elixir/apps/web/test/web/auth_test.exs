@@ -80,7 +80,14 @@ defmodule Web.AuthTest do
 
       redirected_to = conn |> signed_in_redirect(subject, "android", "foo") |> redirected_to()
       assert redirected_to =~ "/handle_client_auth_callback?"
+      assert redirected_to =~ "client_auth_token="
       assert redirected_to =~ "client_csrf_token=foo"
+      assert redirected_to =~ "actor_name=#{URI.encode_www_form(subject.actor.name)}"
+      assert redirected_to =~ "account_name=#{subject.account.name}"
+      assert redirected_to =~ "account_slug=#{subject.account.slug}"
+
+      assert redirected_to =~
+               "identity_provider_identifier=#{subject.identity.provider_identifier}"
     end
 
     test "redirects admin user to the post-login path if platform url is missing", %{

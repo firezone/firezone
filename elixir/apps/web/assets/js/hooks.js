@@ -15,6 +15,18 @@ Hooks.Tabs = {
   }
 }
 
+Hooks.Refocus = {
+  mounted() {
+    this.el.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      let target_id = ev.currentTarget.getAttribute("data-refocus");
+      let el = document.getElementById(target_id);
+      if (document.activeElement === el) return;
+      el.focus();
+    });
+  }
+}
+
 Hooks.Copy = {
   mounted() {
     this.el.addEventListener("click", (ev) => {
@@ -31,14 +43,14 @@ Hooks.Copy = {
         icon_cl.add("hero-clipboard-document-check");
         icon_cl.add("text-green-500");
         icon_cl.remove("hero-clipboard-document");
-        content.innerHTML = "Copied"
+        if (content) { content.innerHTML = "Copied" }
       });
 
       setTimeout(() => {
         icon_cl.remove("hero-clipboard-document-check");
         icon_cl.remove("text-green-500");
         icon_cl.add("hero-clipboard-document");
-        content.innerHTML = "Copy"
+        if (content) { content.innerHTML = "Copy" }
       }, 2000);
     });
   },

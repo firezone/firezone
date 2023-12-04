@@ -42,6 +42,17 @@ defmodule Web.Policies.Index do
               <%= policy.resource.name %>
             </.link>
           </:col>
+          <:col :let={policy} label="STATUS">
+            <%= if is_nil(policy.deleted_at) do %>
+              <%= if is_nil(policy.disabled_at) do %>
+                Active
+              <% else %>
+                Disabled
+              <% end %>
+            <% else %>
+              Deleted
+            <% end %>
+          </:col>
           <:empty>
             <div class="flex justify-center text-center text-slate-500 p-4">
               <div class="w-auto">

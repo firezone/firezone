@@ -11,6 +11,7 @@ defmodule Domain.Policies.Policy do
     field :created_by, Ecto.Enum, values: ~w[identity]a
     belongs_to :created_by_identity, Domain.Auth.Identity
 
+    field :disabled_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
     timestamps()
   end

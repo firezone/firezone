@@ -38,7 +38,7 @@ defmodule Web.PageComponents do
 
   slot :action, required: false, doc: "A slot for action to the right of the title"
 
-  slot :content, required: true, doc: "A slot for content of the section" do
+  slot :content, required: false, doc: "A slot for content of the section" do
     attr :flash, :any, doc: "The flash to be displayed above the content"
   end
 

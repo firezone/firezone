@@ -70,6 +70,22 @@ defmodule Domain.Policies do
     end
   end
 
+  def disable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
+      Policy.Query.by_id(policy.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch_and_update(with: &Policy.Changeset.disable(&1, subject))
+    end
+  end
+
+  def enable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
+      Policy.Query.by_id(policy.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch_and_update(with: &Policy.Changeset.enable/1)
+    end
+  end
+
   def delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
     required_permissions =
       {:one_of, [Authorizer.manage_policies_permission()]}

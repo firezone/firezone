@@ -91,6 +91,31 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
+  Render an inlined copy-paste button to the right of the content block.
+
+  ## Examples
+
+  <.copy id="foo">
+    The lazy brown fox jumped over the quick dog.
+  </.copy>
+  """
+  attr :id, :string, required: true
+  attr :class, :string, default: ""
+  slot :inner_block, required: true
+  attr :rest, :global
+
+  def copy(assigns) do
+    ~H"""
+    <div id={@id} phx-hook="Copy" class={@class} {@rest}>
+      <code data-copy phx-no-format><%= render_slot(@inner_block) %></code>
+      <span class={~w[text-gray-400 cursor-pointer rounded]}>
+        <.icon name="hero-clipboard-document" data-icon class="h-4 w-4" />
+      </span>
+    </div>
+    """
+  end
+
+  @doc """
   Render a tabs toggle container and its content.
 
   ## Examples
