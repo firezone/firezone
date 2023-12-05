@@ -1,11 +1,9 @@
 //! The Tauri GUI for Windows
 
+use crate::controller::{AdvancedSettings, ControllerRequest};
 use crate::prelude::*;
 use connlib_client_shared::file_logger;
-use secrecy::SecretString;
-use serde::{Deserialize, Serialize};
 use std::result::Result as StdResult;
-use std::time::Duration;
 use tauri::{
     CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
@@ -119,15 +117,6 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
     Ok(())
 }
 
-pub(crate) enum ControllerRequest {
-    ExportLogs(PathBuf),
-    GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    // Secret because it will have the token in it
-    SchemeRequest(SecretString),
-    SignIn,
-    UpdateResources(Vec<connlib_client_shared::ResourceDescription>),
-}
-
 // TODO: Should these be keyed to the Google ID or email or something?
 // The callback returns a human-readable name but those aren't good keys.
 fn keyring_entry() -> Result<keyring::Entry> {
@@ -195,7 +184,7 @@ struct Controller {
 impl Controller {
     async fn new(ctlr_tx: mpsc::Sender<ControllerRequest>) -> Result<Self> {
         let mut advanced_settings = AdvancedSettings::default();
-        if let Ok(s) = tokio::fs::read_to_string(advanced_settings_path().await?).await {
+        if let Ok(s) = tokio::fs::read_to_string(AdvancedSettings::path().await?).await {
             if let Ok(settings) = serde_json::from_str(&s) {
                 advanced_settings = settings;
             } else {
@@ -348,31 +337,6 @@ fn parse_auth_callback(input: &SecretString) -> Result<AuthCallback> {
     })
 }
 
-#[derive(Clone, Deserialize, Serialize)]
-pub(crate) struct AdvancedSettings {
-    auth_base_url: Url,
-    api_url: Url,
-    log_filter: String,
-}
-
-impl Default for AdvancedSettings {
-    fn default() -> Self {
-        Self {
-            auth_base_url: Url::parse("https://app.firezone.dev").unwrap(),
-            api_url: Url::parse("wss://api.firezone.dev").unwrap(),
-            log_filter: "info".to_string(),
-        }
-    }
-}
-
-/// Gets the path for storing advanced settings, creating parent dirs if needed.
-async fn advanced_settings_path() -> Result<PathBuf> {
-    let dirs = crate::cli::get_project_dirs()?;
-    let dir = dirs.config_local_dir();
-    tokio::fs::create_dir_all(dir).await?;
-    Ok(dir.join("advanced_settings.json"))
-}
-
 #[tauri::command]
 async fn apply_advanced_settings(settings: AdvancedSettings) -> StdResult<(), String> {
     apply_advanced_settings_inner(settings)
@@ -408,7 +372,7 @@ async fn get_advanced_settings(
 
 async fn apply_advanced_settings_inner(settings: AdvancedSettings) -> Result<()> {
     tokio::fs::write(
-        advanced_settings_path().await?,
+        AdvancedSettings::path().await?,
         serde_json::to_string(&settings)?,
     )
     .await?;

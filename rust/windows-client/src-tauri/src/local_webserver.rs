@@ -1,4 +1,4 @@
-use crate::gui::ControllerRequest;
+use crate::controller::ControllerRequest;
 
 use http_body_util::Full;
 use hyper::{
