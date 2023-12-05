@@ -42,8 +42,8 @@ dependencies:
     specifier: ^4.3.2
     version: 4.3.2
   flowbite:
-    specifier: ^1.8.1
-    version: 1.8.1
+    specifier: ^2.2.0
+    version: 2.2.0
   flowbite-react:
     specifier: ^0.6.4
     version: 0.6.4(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.3.5)
@@ -1266,6 +1266,13 @@ packages:
 
   /flowbite@1.8.1:
     resolution: {integrity: sha512-lXTcO8a6dRTPFpINyOLcATCN/pK1Of/jY4PryklPllAiqH64tSDUsOdQpar3TO59ZXWwugm2e92oaqwH6X90Xg==}
+    dependencies:
+      '@popperjs/core': 2.11.8
+      mini-svg-data-uri: 1.4.4
+    dev: false
+
+  /flowbite@2.2.0:
+    resolution: {integrity: sha512-Eq0qWz4a5nlxaGuUcspzpu+8Ny0A7lKEJEKcuPpkdSoF8tWjbKeuVVgKk8/q10ZE9bhXh1GHBXdCsRxu0LZTNQ==}
     dependencies:
       '@popperjs/core': 2.11.8
       mini-svg-data-uri: 1.4.4
