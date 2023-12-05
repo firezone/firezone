@@ -21,6 +21,10 @@ defmodule Web.SignUp do
       |> Ecto.Changeset.cast(attrs, [:email])
       |> Ecto.Changeset.validate_required([:email])
       |> Ecto.Changeset.validate_format(:email, ~r/.+@.+/)
+      |> Ecto.Changeset.validate_confirmation(:email,
+        required: true,
+        message: "email does not match"
+      )
       |> Ecto.Changeset.cast_embed(:account,
         with: fn _account, attrs -> Accounts.Account.Changeset.create(attrs) end
       )
@@ -256,6 +260,8 @@ defmodule Web.SignUp do
       socket.assigns.actor_name_changed? ||
         payload["_target"] == ["registration", "actor", "name"]
 
+    attrs = Map.put(attrs, "email_confirmation", attrs["email"])
+
     changeset =
       attrs
       |> maybe_put_default_account_name(account_name_changed?)
@@ -271,7 +277,11 @@ defmodule Web.SignUp do
      )}
   end
 
-  def handle_event("submit", %{"registration" => attrs}, socket) do
+  def handle_event("submit", %{"registration" => orig_attrs}, socket) do
+    attrs =
+      put_in(orig_attrs, ["actor", "type"], :account_admin_user)
+      |> Map.put("email_confirmation", orig_attrs["email"])
+
     changeset =
       attrs
       |> maybe_put_default_account_name()
@@ -316,7 +326,8 @@ defmodule Web.SignUp do
           :identity,
           fn _repo, %{actor: actor, provider: provider} ->
             Auth.create_identity(actor, provider, %{
-              provider_identifier: registration.email
+              provider_identifier: registration.email,
+              provider_identifier_confirmation: registration.email
             })
           end
         )
