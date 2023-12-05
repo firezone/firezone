@@ -3,14 +3,14 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use crate::prelude::*;
+use anyhow::Result;
 use clap::Parser;
 
 mod cli;
 mod debug_commands;
 #[cfg(target_os = "linux")]
 mod gui {
-    use crate::prelude::*;
+    use super::*;
     pub fn main(_: Option<CommonArgs>, _: Option<String>) -> Result<()> {
         // The Ubuntu CI runner doesn't have gdk and some other Tauri deps installed, so it fails unless we stub out the GUI.
         panic!("The Tauri GUI isn't implemented for Linux.");
@@ -18,7 +18,6 @@ mod gui {
 }
 #[cfg(target_os = "windows")]
 mod gui;
-mod prelude;
 
 fn main() -> Result<()> {
     use cli::CliCommands as Cmd;

@@ -1,10 +1,10 @@
 //! The Tauri GUI for Windows
 
-use crate::prelude::*;
+use anyhow::Result;
 use connlib_client_shared::file_logger;
+use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use serde::{Deserialize, Serialize};
-use std::result::Result as StdResult;
-use std::time::Duration;
+use std::{path::PathBuf, result::Result as StdResult, time::Duration};
 use tauri::{
     CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,

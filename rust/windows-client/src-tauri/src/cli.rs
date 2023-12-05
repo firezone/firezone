@@ -1,5 +1,6 @@
-use crate::prelude::*;
+use anyhow::Result;
 use clap::Parser;
+use firezone_cli_utils::CommonArgs;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

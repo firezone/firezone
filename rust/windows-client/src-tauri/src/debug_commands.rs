@@ -1,15 +1,16 @@
 //! CLI subcommands used to test features / dependencies before integrating
 //! them with the GUI, or to exercise features programmatically.
 
-use crate::prelude::*;
-use connlib_client_shared::{file_logger, Callbacks, Error, Session};
+use crate::cli::Cli;
+use anyhow::Result;
+use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
+use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
+use smbioslib::SMBiosSystemInformation as SysInfo;
+use std::path::PathBuf;
 
 /// Test connlib and its callbacks.
 pub fn connlib(common_args: CommonArgs) -> Result<()> {
-    use connlib_client_shared::ResourceDescription;
-    use smbioslib::SMBiosSystemInformation as SysInfo;
-
     #[derive(Clone)]
     struct CallbackHandler {
         handle: Option<file_logger::Handle>,
@@ -109,8 +110,6 @@ pub fn credentials() -> Result<()> {
 
 /// Test generating a device ID from the BIOS or MAC address. This should survive OS re-installs and uniquely identify a device.
 pub fn device_id() -> Result<()> {
-    use smbioslib::SMBiosSystemInformation as SysInfo;
-
     let data = smbioslib::table_load_from_device()?;
     if let Some(uuid) = data.find_map(|sys_info: SysInfo| sys_info.uuid()) {
         println!("SMBios uuid: {uuid}");
