@@ -97,7 +97,7 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
       - name: Upload Configuration
-        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.4
+        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.1.1
         id: apply-upload
         with:
           workspace: ${{ env.TF_WORKSPACE }}
@@ -105,7 +105,7 @@ jobs:
           # https://app.terraform.io/app/firezone/workspaces/production/settings/general
           directory: "./"
       - name: Create Plan Run
-        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.4
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.1.1
         id: apply-run
         env:
           TF_VAR_image_tag:
@@ -115,7 +115,7 @@ jobs:
           configuration_version:
             ${{ steps.apply-upload.outputs.configuration_version_id }}
       - name: Apply
-        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.0.4
+        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.1.1
         if: fromJSON(steps.apply-run.outputs.payload).data.attributes.actions.IsConfirmable
         id: apply
         with:
