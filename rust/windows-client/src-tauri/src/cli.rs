@@ -27,7 +27,6 @@ pub enum CliCommands {
 }
 
 /// Compute well-known paths for the app's files, e.g. configs go in AppData on Windows and `~/.config` on Linux.
-
 pub fn get_project_dirs() -> Result<directories::ProjectDirs> {
     directories::ProjectDirs::from("", "Firezone", "Client")
         .ok_or_else(|| anyhow::anyhow!("Can't compute project dirs"))
