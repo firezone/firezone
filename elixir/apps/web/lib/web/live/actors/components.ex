@@ -132,6 +132,14 @@ defmodule Web.Actors.Components do
         autocomplete="off"
       />
     </div>
+    <div>
+      <.input
+        label="Email Confirmation"
+        placeholder="Email Confirmation"
+        field={@form[:provider_identifier_confirmation]}
+        autocomplete="off"
+      />
+    </div>
     """
   end
 

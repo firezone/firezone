@@ -183,5 +183,36 @@ defmodule Web.Live.Policies.ShowTest do
              {:error, {:live_redirect, %{to: ~p"/#{account}/policies", kind: :push}}}
 
     assert Repo.get(Domain.Policies.Policy, policy.id).deleted_at
+
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/#{policy}")
+
+    assert html =~ "(deleted)"
+  end
+
+  test "allows disabling and enabling policy", %{
+    account: account,
+    policy: policy,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/#{policy}")
+
+    assert lv
+           |> element("button", "Disable Policy")
+           |> render_click() =~ "(disabled)"
+
+    assert Repo.get(Domain.Policies.Policy, policy.id).disabled_at
+
+    refute lv
+           |> element("button", "Enable Policy")
+           |> render_click() =~ "(disabled)"
+
+    refute Repo.get(Domain.Policies.Policy, policy.id).disabled_at
   end
 end
