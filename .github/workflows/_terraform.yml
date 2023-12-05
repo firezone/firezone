@@ -60,7 +60,7 @@ jobs:
         with:
           plan: ${{ fromJSON(steps.plan-run.outputs.payload).data.relationships.plan.data.id }}
       - name: Update PR
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         id: plan-comment
         if: ${{ github.event_name == 'pull_request' }}
         with:
