@@ -201,6 +201,13 @@ struct Controller {
     token: Option<SecretString>,
 }
 
+async fn load_advanced_settings(app: &tauri::AppHandle) -> Result<AdvancedSettings> {
+    let path = advanced_settings_path(app).await?;
+    let text = tokio::fs::read_to_string(&path).await?;
+    let settings = serde_json::from_str(&text)?;
+    Ok(settings)
+}
+
 impl Controller {
     async fn new(app: tauri::AppHandle) -> Result<Self> {
         let ctlr_tx = app
@@ -208,16 +215,7 @@ impl Controller {
             .ok_or_else(|| anyhow::anyhow!("can't get managed ctlr_tx"))?
             .inner()
             .clone();
-        let mut advanced_settings = AdvancedSettings::default();
-        if let Ok(s) = tokio::fs::read_to_string(advanced_settings_path(&app).await?).await {
-            if let Ok(settings) = serde_json::from_str(&s) {
-                advanced_settings = settings;
-            } else {
-                tracing::warn!("advanced_settings file not parsable");
-            }
-        } else {
-            tracing::warn!("advanced_settings file doesn't exist");
-        }
+        let advanced_settings = load_advanced_settings(&app).await?;
 
         tracing::trace!("re-loading token");
         let token: Option<SecretString> = tokio::task::spawn_blocking(|| {

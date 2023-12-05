@@ -127,6 +127,14 @@ mod details {
     use std::sync::Arc;
 
     pub fn wintun(_: Cli) -> Result<()> {
+        for _ in 0..3 {
+            println!("Creating adapter...");
+            test_wintun_once()?;
+        }
+        Ok(())
+    }
+
+    fn test_wintun_once() -> Result<()> {
         //Must be run as Administrator because we create network adapters
         //Load the wintun dll file so that we can call the underlying C functions
         //Unsafe because we are loading an arbitrary dll file
@@ -157,6 +165,9 @@ mod details {
 
         //Send the packet to wintun virtual adapter for processing by the system
         session.send_packet(packet);
+
+        // Sleep for a few seconds in case we want to confirm the adapter shows up in Device Manager.
+        std::thread::sleep(std::time::Duration::from_secs(5));
 
         //Stop any readers blocking for data on other threads
         //Only needed when a blocking reader is preventing shutdown Ie. it holds an Arc to the
