@@ -14,6 +14,10 @@ mod device_id;
 mod gui {
     use super::*;
 
+    pub enum ControllerRequest {
+        SignIn,
+    }
+
     pub fn run(_: Option<String>) -> Result<()> {
         // The Ubuntu CI runner doesn't have gdk and some other Tauri deps installed, so it fails unless we stub out the GUI.
         panic!("The Tauri GUI isn't implemented for Linux.");
