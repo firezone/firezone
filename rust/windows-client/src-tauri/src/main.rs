@@ -40,8 +40,8 @@ fn main() -> Result<()> {
             Ok(())
         }
         Some(Cmd::DebugConnlib { common }) => debug_commands::connlib(common),
-        Some(Cmd::DebugCredentials) => debug_commands::credentials(),
         Some(Cmd::DebugDeviceId) => debug_commands::device_id(),
+        Some(Cmd::DebugToken) => debug_commands::token(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
     }
 }

@@ -84,7 +84,7 @@ pub fn connlib(common_args: CommonArgs) -> Result<()> {
 }
 
 /// Test encrypted credential storage
-pub fn credentials() -> Result<()> {
+pub fn token() -> Result<()> {
     // TODO: Remove placeholder email
     let entry = Entry::new_with_target("token", "firezone_windows_client", "username@example.com")?;
     match entry.get_password() {

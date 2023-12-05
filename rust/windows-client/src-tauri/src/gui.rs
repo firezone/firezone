@@ -1,5 +1,7 @@
 //! The Tauri GUI for Windows
 
+// TODO: `git grep` for unwraps before 1.0, especially this gui module
+
 use anyhow::Result;
 use connlib_client_shared::file_logger;
 use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
