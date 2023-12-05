@@ -455,6 +455,7 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :dns,
+      name: "google.com",
       address: "google.com",
       connections: [%{gateway_group_id: gateway_group.id}]
     },
@@ -465,6 +466,7 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :dns,
+      name: "gitlab.mycorp.com",
       address: "gitlab.mycorp.com",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [
@@ -480,6 +482,7 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :cidr,
+      name: "MyCorp Network",
       address: "172.20.0.1/16",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]

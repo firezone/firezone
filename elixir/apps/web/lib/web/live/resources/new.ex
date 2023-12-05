@@ -11,6 +11,7 @@ defmodule Web.Resources.New do
         assign(
           socket,
           gateway_groups: gateway_groups,
+          name_changed?: false,
           form: to_form(changeset),
           params: Map.take(params, ["site_id"]),
           traffic_filters_enabled?: Config.traffic_filters_enabled?()
@@ -43,17 +44,64 @@ defmodule Web.Resources.New do
               label="Name"
               placeholder="Name this resource"
               required
-              phx-debounce="300"
             />
+
+            <div>
+              <label for="resource_type" class="block mb-2 text-sm font-medium text-gray-900">
+                Type
+              </label>
+              <div class="flex text-sm leading-6 text-zinc-600">
+                <div class="flex items-center me-4">
+                  <.input
+                    id="resource-type--dns"
+                    type="radio"
+                    field={@form[:type]}
+                    value="dns"
+                    label="DNS"
+                    checked={@form[:type].value == :dns}
+                    required
+                  />
+                </div>
+                <div class="flex items-center me-4">
+                  <.input
+                    id="resource-type--ip"
+                    type="radio"
+                    field={@form[:type]}
+                    value="ip"
+                    label="IP"
+                    checked={@form[:type].value == :ip}
+                    required
+                  />
+                </div>
+                <div class="flex items-center me-4">
+                  <.input
+                    id="resource-type--cidr"
+                    type="radio"
+                    field={@form[:type]}
+                    value="cidr"
+                    label="CIDR"
+                    checked={@form[:type].value == :cidr}
+                    required
+                  />
+                </div>
+              </div>
+            </div>
 
             <.input
               field={@form[:address]}
               autocomplete="off"
               type="text"
               label="Address"
-              placeholder="Enter IP address, CIDR, or DNS name"
+              placeholder={
+                cond do
+                  @form[:type].value == :dns -> "app.namespace.cluster.local"
+                  @form[:type].value == :cidr -> "192.168.1.1/28"
+                  @form[:type].value == :ip -> "1.1.1.1"
+                  true -> "Please select a Type from the options first"
+                end
+              }
+              disabled={is_nil(@form[:type].value)}
               required
-              phx-debounce="300"
             />
 
             <.filters_form :if={@traffic_filters_enabled?} form={@form[:filters]} />
@@ -75,9 +123,12 @@ defmodule Web.Resources.New do
     """
   end
 
-  def handle_event("change", %{"resource" => attrs}, socket) do
+  def handle_event("change", %{"resource" => attrs} = payload, socket) do
+    name_changed? = socket.assigns.name_changed? || payload["_target"] == ["resource", "name"]
+
     attrs =
       attrs
+      |> maybe_put_default_name(name_changed?)
       |> map_filters_form_attrs()
       |> map_connections_form_attrs()
       |> maybe_put_connections(socket.assigns.params)
@@ -86,12 +137,13 @@ defmodule Web.Resources.New do
       Resources.new_resource(socket.assigns.account, attrs)
       |> Map.put(:action, :validate)
 
-    {:noreply, assign(socket, form: to_form(changeset))}
+    {:noreply, assign(socket, form: to_form(changeset), name_changed?: name_changed?)}
   end
 
   def handle_event("submit", %{"resource" => attrs}, socket) do
     attrs =
       attrs
+      |> maybe_put_default_name()
       |> map_filters_form_attrs()
       |> map_connections_form_attrs()
       |> maybe_put_connections(socket.assigns.params)
@@ -107,6 +159,16 @@ defmodule Web.Resources.New do
         changeset = Map.put(changeset, :action, :validate)
         {:noreply, assign(socket, form: to_form(changeset))}
     end
+  end
+
+  defp maybe_put_default_name(attrs, name_changed? \\ true)
+
+  defp maybe_put_default_name(attrs, true) do
+    attrs
+  end
+
+  defp maybe_put_default_name(attrs, false) do
+    Map.put(attrs, "name", attrs["address"])
   end
 
   defp maybe_put_connections(attrs, params) do

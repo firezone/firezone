@@ -26,6 +26,28 @@ defmodule Domain.Validator do
     |> validate_length(field, max: 160)
   end
 
+  def validate_does_not_contain(changeset, field, substring, opts \\ []) do
+    validate_change(changeset, field, fn _current_field, value ->
+      if String.contains?(value, substring) do
+        message = Keyword.get(opts, :message, "can not contain #{inspect(substring)}")
+        [{field, message}]
+      else
+        []
+      end
+    end)
+  end
+
+  def validate_does_not_end_with(changeset, field, suffix, opts \\ []) do
+    validate_change(changeset, field, fn _current_field, value ->
+      if String.ends_with?(value, suffix) do
+        message = Keyword.get(opts, :message, "can not end with #{inspect(suffix)}")
+        [{field, message}]
+      else
+        []
+      end
+    end)
+  end
+
   def validate_uri(changeset, field, opts \\ []) when is_atom(field) do
     valid_schemes = Keyword.get(opts, :schemes, ~w[http https])
     require_trailing_slash? = Keyword.get(opts, :require_trailing_slash, false)
@@ -185,13 +207,14 @@ defmodule Domain.Validator do
     end)
   end
 
-  def validate_not_in_cidr(changeset, ip_or_cidr_field, cidr) do
+  def validate_not_in_cidr(changeset, ip_or_cidr_field, cidr, opts \\ []) do
     validate_change(changeset, ip_or_cidr_field, fn _ip_or_cidr_field, ip_or_cidr ->
       case Domain.Types.INET.cast(ip_or_cidr) do
         {:ok, ip_or_cidr} ->
           if Domain.Types.CIDR.contains?(cidr, ip_or_cidr) or
                Domain.Types.CIDR.contains?(ip_or_cidr, cidr) do
-            [{ip_or_cidr_field, "can not be in the CIDR #{cidr}"}]
+            message = Keyword.get(opts, :message, "can not be in the CIDR #{cidr}")
+            [{ip_or_cidr_field, message}]
           else
             []
           end
@@ -214,6 +237,19 @@ defmodule Domain.Validator do
 
       {:error, _reason} ->
         add_error(changeset, field, "is not a valid CIDR range")
+    end
+  end
+
+  def validate_and_normalize_ip(changeset, field, _opts \\ []) do
+    with {_data_or_changes, value} <- fetch_change(changeset, field),
+         {:ok, ip} <- Domain.Types.IP.cast(value) do
+      put_change(changeset, field, to_string(ip))
+    else
+      :error ->
+        changeset
+
+      {:error, _reason} ->
+        add_error(changeset, field, "is not a valid IP address")
     end
   end
 
