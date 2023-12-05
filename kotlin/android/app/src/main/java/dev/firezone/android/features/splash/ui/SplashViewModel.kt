@@ -54,8 +54,11 @@ internal class SplashViewModel
 
         internal sealed class ViewAction {
             object NavigateToVpnPermission : ViewAction()
+
             object NavigateToSettings : ViewAction()
+
             object NavigateToSignIn : ViewAction()
+
             object NavigateToSession : ViewAction()
         }
     }
