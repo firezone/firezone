@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use clap::Parser;
+use cli::CliCommands as Cmd;
 
 mod cli;
 mod debug_commands;
@@ -22,8 +23,6 @@ mod gui {
 mod gui;
 
 fn main() -> Result<()> {
-    use cli::CliCommands as Cmd;
-
     // Special case for app link URIs
     if let Some(arg) = std::env::args().nth(1) {
         if arg.starts_with("firezone://") {

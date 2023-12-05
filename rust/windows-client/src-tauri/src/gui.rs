@@ -10,6 +10,7 @@ use tauri::{
     SystemTraySubmenu,
 };
 use tokio::sync::{mpsc, oneshot};
+use ControllerRequest as Req;
 
 struct State {
     ctlr_tx: mpsc::Sender<ControllerRequest>,
@@ -137,8 +138,6 @@ async fn controller(
     app: tauri::AppHandle,
     mut rx: mpsc::Receiver<ControllerRequest>,
 ) -> Result<()> {
-    use ControllerRequest as Req;
-
     let mut advanced_settings = AdvancedSettings::default();
     // TODO: Load advanced settings here
     if let Ok(s) = tokio::fs::read_to_string(advanced_settings_path(&app).await?).await {

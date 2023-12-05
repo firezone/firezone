@@ -5,6 +5,7 @@ use crate::cli::Cli;
 use anyhow::Result;
 use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
 use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
+use keyring::Entry;
 use secrecy::SecretString;
 use smbioslib::SMBiosSystemInformation as SysInfo;
 use std::path::PathBuf;
@@ -84,8 +85,6 @@ pub fn connlib(common_args: CommonArgs) -> Result<()> {
 
 /// Test encrypted credential storage
 pub fn credentials() -> Result<()> {
-    use keyring::Entry;
-
     // TODO: Remove placeholder email
     let entry = Entry::new_with_target("token", "firezone_windows_client", "username@example.com")?;
     match entry.get_password() {
@@ -134,10 +133,9 @@ mod details {
 #[cfg(target_os = "windows")]
 mod details {
     use super::*;
+    use std::sync::Arc;
 
     pub fn wintun(_: Cli) -> Result<()> {
-        use std::sync::Arc;
-
         //Must be run as Administrator because we create network adapters
         //Load the wintun dll file so that we can call the underlying C functions
         //Unsafe because we are loading an arbitrary dll file
