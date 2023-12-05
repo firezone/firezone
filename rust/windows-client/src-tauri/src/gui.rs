@@ -105,7 +105,7 @@ pub fn run(deep_link: Option<String>) -> Result<()> {
 
             // From https://github.com/FabianLars/tauri-plugin-deep-link/blob/main/example/main.rs
             let handle = app.handle();
-            tauri_plugin_deep_link::register("firezone", move |r| {
+            tauri_plugin_deep_link::register(crate::DEEP_LINK_SCHEME, move |r| {
                 let r = SecretString::new(r);
                 let ctlr_tx = handle
                     .try_state::<mpsc::Sender<ControllerRequest>>()

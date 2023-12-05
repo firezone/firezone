@@ -30,7 +30,8 @@ mod local_webserver;
 fn main() -> Result<()> {
     // Special case for app link URIs
     if let Some(arg) = std::env::args().nth(1) {
-        if arg.starts_with("firezone://") {
+        let scheme = format!("{DEEP_LINK_SCHEME}://");
+        if arg.starts_with(&scheme) {
             return gui::run(Some(arg));
         }
     }
@@ -49,3 +50,5 @@ fn main() -> Result<()> {
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
     }
 }
+
+pub(crate) const DEEP_LINK_SCHEME: &str = "firezone-fd0020211111";
