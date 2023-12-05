@@ -7,7 +7,6 @@ use crate::prelude::*;
 use clap::Parser;
 
 mod cli;
-mod controller;
 mod debug_commands;
 mod device_id;
 #[cfg(target_os = "linux")]
