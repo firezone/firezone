@@ -16,7 +16,7 @@ use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use ControllerRequest as Req;
 
-pub fn run(app_link: Option<String>) -> Result<()> {
+pub fn run(deep_link: Option<String>) -> Result<()> {
     // Make sure we're single-instance
     tauri_plugin_deep_link::prepare("dev.firezone");
 
@@ -99,7 +99,7 @@ pub fn run(app_link: Option<String>) -> Result<()> {
 
             let _ctlr_task = tokio::spawn(run_controller(app.handle(), ctlr_rx));
 
-            if let Some(_app_link) = app_link {
+            if let Some(_deep_link) = deep_link {
                 // TODO: Handle app links that we catch at startup here
             }
 
