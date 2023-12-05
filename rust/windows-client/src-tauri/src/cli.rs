@@ -18,9 +18,4 @@ pub enum CliCommands {
     DebugDeviceId,
     DebugToken,
     DebugWintun,
-    Tauri {
-        // Common args are optional for the GUI because most of the time it'll be launched with useful args or env vars
-        #[command(flatten)]
-        common: Option<CommonArgs>,
-    },
 }

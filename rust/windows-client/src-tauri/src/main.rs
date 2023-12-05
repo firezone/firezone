@@ -14,7 +14,7 @@ mod gui {
     use super::*;
     use firezone_cli_utils::CommonArgs;
 
-    pub fn main(_: Option<CommonArgs>, _: Option<String>) -> Result<()> {
+    pub fn main(_: Option<String>) -> Result<()> {
         // The Ubuntu CI runner doesn't have gdk and some other Tauri deps installed, so it fails unless we stub out the GUI.
         panic!("The Tauri GUI isn't implemented for Linux.");
     }
@@ -26,15 +26,14 @@ fn main() -> Result<()> {
     // Special case for app link URIs
     if let Some(arg) = std::env::args().nth(1) {
         if arg.starts_with("firezone://") {
-            return gui::main(None, Some(arg));
+            return gui::main(Some(arg));
         }
     }
 
     let cli = cli::Cli::parse();
 
     match cli.command {
-        None => gui::main(None, None),
-        Some(Cmd::Tauri { common }) => gui::main(common, None),
+        None => gui::main(None),
         Some(Cmd::Debug) => {
             println!("debug");
             Ok(())

@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use connlib_client_shared::file_logger;
-use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
+use firezone_cli_utils::setup_global_subscriber;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult, time::Duration};
 use tauri::{
@@ -18,8 +18,7 @@ struct State {
     ctlr_tx: mpsc::Sender<ControllerRequest>,
 }
 
-// TODO: Decide whether Windows needs to handle env vars and CLI args for IDs / tokens
-pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
+pub fn main(app_link: Option<String>) -> Result<()> {
     // Make sure we're single-instance
     tauri_plugin_deep_link::prepare("dev.firezone");
 
