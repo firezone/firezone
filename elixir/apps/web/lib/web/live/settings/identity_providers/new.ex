@@ -73,7 +73,7 @@ defmodule Web.Settings.IdentityProviders.New do
       adapter={@adapter}
       account={@account}
       name="Google Workspace"
-      description="Authenticate users and synchronize users and groups with preconfigured Google Workspace connector."
+      description="Authenticate users and synchronize users and groups with a custom Google Workspace connector."
     />
     """
   end
@@ -84,7 +84,7 @@ defmodule Web.Settings.IdentityProviders.New do
       adapter={@adapter}
       account={@account}
       name="OpenID Connect"
-      description="Authenticate users with a generic OpenID Connect adapter and synchronize users and groups with just-in-time provisioning."
+      description="Authenticate users with a universal OpenID Connect adapter and synchronize users just-in-time provisioning."
     />
     """
   end
@@ -115,6 +115,11 @@ defmodule Web.Settings.IdentityProviders.New do
         <label for={"idp-option-#{@adapter}"} class="block ml-2 text-lg font-medium text-gray-900">
           <%= @name %>
         </label>
+        <%= if @adapter == :google_workspace do %>
+          <.badge class="ml-2" type="plan" title="Feature available on the Enterprise plan">
+            ENTERPRISE
+          </.badge>
+        <% end %>
       </div>
       <p class="ml-6 mb-6 text-sm text-gray-500">
         <%= @description %>

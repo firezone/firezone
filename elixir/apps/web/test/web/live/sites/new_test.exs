@@ -47,7 +47,7 @@ defmodule Web.Live.Sites.NewTest do
     identity: identity,
     conn: conn
   } do
-    {:ok, lv, _html} =
+    {:ok, lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/new")
@@ -58,6 +58,9 @@ defmodule Web.Live.Sites.NewTest do
              "group[name]",
              "group[routing]"
            ]
+
+    assert html =~ "Feature available on the Enterprise plan"
+    assert html =~ "ENTERPRISE"
   end
 
   test "renders changeset errors on input change", %{
