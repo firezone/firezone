@@ -55,7 +55,7 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
                         app.try_state::<State>()
                             .unwrap()
                             .ctlr_tx
-                            .blocking_send(ControllerRequest::SignIn)
+                            .blocking_send(ControllerRequest::SignIn(app.clone()))
                             .unwrap();
                     }
                     "/sign_out" => app.tray_handle().set_menu(signed_out_menu()).unwrap(),
@@ -120,7 +120,7 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
 
 enum ControllerRequest {
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    SignIn,
+    SignIn(tauri::AppHandle),
 }
 
 async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
@@ -139,9 +139,13 @@ async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
             Req::GetAdvancedSettings(tx) => {
                 tx.send(advanced_settings.clone()).ok();
             }
-            Req::SignIn => {
+            Req::SignIn(app) => {
                 // TODO: Put the platform and local server callback in here
-                open::that(&advanced_settings.auth_base_url)?;
+                tauri::api::shell::open(
+                    &app.shell_scope(),
+                    &advanced_settings.auth_base_url,
+                    None,
+                )?;
             }
         }
     }
