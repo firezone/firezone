@@ -43,6 +43,7 @@ fn main() -> Result<()> {
         Some(Cmd::DebugConnlib { common }) => debug_commands::connlib(common),
         Some(Cmd::DebugCredentials) => debug_commands::credentials(),
         Some(Cmd::DebugDeviceId) => debug_commands::device_id(),
+        Some(Cmd::DebugHome) => debug_commands::home(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
     }
 }
