@@ -421,6 +421,14 @@ locals {
       value = random_password.secret_key_base.result
     },
     {
+      name  = "TOKENS_KEY_BASE"
+      value = base64encode(random_password.auth_token_key_base.result)
+    },
+    {
+      name  = "TOKENS_SALT"
+      value = base64encode(random_password.auth_token_salt.result)
+    },
+    {
       name  = "AUTH_TOKEN_KEY_BASE"
       value = base64encode(random_password.auth_token_key_base.result)
     },

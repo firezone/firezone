@@ -81,6 +81,8 @@ services:
       # Auth
       AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace"
       # Secrets
+      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       RELAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
@@ -273,6 +275,8 @@ services:
       # Auth
       AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace"
       # Secrets
+      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       RELAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
@@ -338,6 +342,8 @@ services:
       # Auth
       AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace"
       # Secrets
+      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       RELAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
