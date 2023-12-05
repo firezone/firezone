@@ -15,13 +15,13 @@
       "all": false,
       "shell": {
         "all": false,
-        "open": true
+        "open": false
       }
     },
     "bundle": {
       "active": true,
       "targets": "all",
-      "identifier": "dev.firezone",
+      "identifier": "dev.firezone.client",
       "icon": [
         "icons/firezone.ico"
       ]

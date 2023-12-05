@@ -1,14 +1,17 @@
 //! CLI subcommands used to test features / dependencies before integrating
 //! them with the GUI, or to exercise features programmatically.
 
-use crate::prelude::*;
-use connlib_client_shared::{file_logger, Callbacks, Error, Session};
+use crate::cli::Cli;
+use anyhow::Result;
+use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
+use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
+use keyring::Entry;
 use secrecy::SecretString;
+use smbioslib::SMBiosSystemInformation as SysInfo;
+use std::path::PathBuf;
 
 /// Test connlib and its callbacks.
 pub fn connlib(common_args: CommonArgs) -> Result<()> {
-    use connlib_client_shared::ResourceDescription;
-
     #[derive(Clone)]
     struct CallbackHandler {
         handle: Option<file_logger::Handle>,
@@ -72,9 +75,7 @@ pub fn connlib(common_args: CommonArgs) -> Result<()> {
 }
 
 /// Test encrypted credential storage
-pub fn credentials() -> Result<()> {
-    use keyring::Entry;
-
+pub fn token() -> Result<()> {
     // TODO: Remove placeholder email
     let entry = Entry::new_with_target("token", "firezone_windows_client", "username@example.com")?;
     match entry.get_password() {
@@ -99,8 +100,6 @@ pub fn credentials() -> Result<()> {
 
 /// Test generating a device ID from the BIOS or MAC address. This should survive OS re-installs and uniquely identify a device.
 pub fn device_id() -> Result<()> {
-    use smbioslib::SMBiosSystemInformation as SysInfo;
-
     let data = smbioslib::table_load_from_device()?;
     if let Some(uuid) = data.find_map(|sys_info: SysInfo| sys_info.uuid()) {
         println!("SMBios uuid: {uuid}");
@@ -115,7 +114,8 @@ pub use details::wintun;
 
 #[cfg(target_os = "linux")]
 mod details {
-    use crate::prelude::*;
+    use super::*;
+
     pub fn wintun(_: Cli) -> Result<()> {
         panic!("Wintun not implemented for Linux.");
     }
@@ -124,10 +124,9 @@ mod details {
 #[cfg(target_os = "windows")]
 mod details {
     use super::*;
+    use std::sync::Arc;
 
     pub fn wintun(_: Cli) -> Result<()> {
-        use std::sync::Arc;
-
         //Must be run as Administrator because we create network adapters
         //Load the wintun dll file so that we can call the underlying C functions
         //Unsafe because we are loading an arbitrary dll file

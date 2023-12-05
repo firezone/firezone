@@ -1,23 +1,22 @@
 //! The Tauri GUI for Windows
 
-use crate::prelude::*;
+// TODO: `git grep` for unwraps before 1.0, especially this gui module
+
+use anyhow::{anyhow, bail, Result};
 use connlib_client_shared::file_logger;
+use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
-use std::result::Result as StdResult;
-use std::time::Duration;
+use std::{path::PathBuf, result::Result as StdResult, time::Duration};
 use tauri::{
     CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
 };
 use tokio::sync::{mpsc, oneshot};
+use url::Url;
+use ControllerRequest as Req;
 
-// TODO: Decide whether Windows needs to handle env vars and CLI args for IDs / tokens
-pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
-    // Set up logger with connlib_client_shared
-    let (layer, _handle) = file_logger::layer(std::path::Path::new("logs"));
-    setup_global_subscriber(layer);
-
+pub fn run(app_link: Option<String>) -> Result<()> {
     // Make sure we're single-instance
     tauri_plugin_deep_link::prepare("dev.firezone");
 
@@ -25,10 +24,6 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
     let _guard = rt.enter();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
-    let _ctlr_task = tokio::spawn(run_controller(ctlr_tx.clone(), ctlr_rx));
-
-    // TODO: #2711, commit to URI schemes or local webserver/c
-    // let _webserver_task = tokio::spawn(local_webserver(ctlr_tx.clone()));
 
     let tray = SystemTray::new().with_menu(signed_out_menu());
 
@@ -71,7 +66,6 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
                     }
                     "/settings" => {
                         let win = app.get_window("settings").unwrap();
-                        dbg!(win.url());
 
                         if win.is_visible().unwrap() {
                             // If we close the window here, we can't re-open it, we'd have to fully re-create it. Not needed for MVP - We agreed 100 MB is fine for the GUI client.
@@ -83,13 +77,28 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
                     "/quit" => app.exit(0),
                     id => {
                         if let Some(addr) = id.strip_prefix("/resource/") {
-                            println!("TODO copy {addr} to clipboard");
+                            tracing::warn!("TODO copy {addr} to clipboard");
                         }
                     }
                 }
             }
         })
         .setup(|app| {
+            // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
+            let cwd = app
+                .path_resolver()
+                .app_local_data_dir()
+                .ok_or_else(|| anyhow::anyhow!("can't get app_local_data_dir"))?
+                .join("data");
+            std::fs::create_dir_all(&cwd)?;
+            std::env::set_current_dir(&cwd)?;
+
+            // Set up logger with connlib_client_shared
+            let (layer, _handle) = file_logger::layer(std::path::Path::new("logs"));
+            setup_global_subscriber(layer);
+
+            let _ctlr_task = tokio::spawn(run_controller(app.handle(), ctlr_rx));
+
             if let Some(_app_link) = app_link {
                 // TODO: Handle app links that we catch at startup here
             }
@@ -193,9 +202,14 @@ struct Controller {
 }
 
 impl Controller {
-    async fn new(ctlr_tx: mpsc::Sender<ControllerRequest>) -> Result<Self> {
+    async fn new(app: tauri::AppHandle) -> Result<Self> {
+        let ctlr_tx = app
+            .try_state::<mpsc::Sender<ControllerRequest>>()
+            .ok_or_else(|| anyhow::anyhow!("can't get managed ctlr_tx"))?
+            .inner()
+            .clone();
         let mut advanced_settings = AdvancedSettings::default();
-        if let Ok(s) = tokio::fs::read_to_string(advanced_settings_path().await?).await {
+        if let Ok(s) = tokio::fs::read_to_string(advanced_settings_path(&app).await?).await {
             if let Ok(settings) = serde_json::from_str(&s) {
                 advanced_settings = settings;
             } else {
@@ -266,12 +280,10 @@ impl Controller {
 }
 
 async fn run_controller(
-    ctlr_tx: mpsc::Sender<ControllerRequest>,
+    app: tauri::AppHandle,
     mut rx: mpsc::Receiver<ControllerRequest>,
 ) -> Result<()> {
-    use ControllerRequest as Req;
-
-    let mut controller = Controller::new(ctlr_tx).await?;
+    let mut controller = Controller::new(app.clone()).await?;
 
     tracing::debug!("GUI controller main loop start");
 
@@ -300,7 +312,11 @@ async fn run_controller(
             }
             Req::SignIn => {
                 // TODO: Put the platform and local server callback in here
-                open::that(&controller.advanced_settings.auth_base_url.to_string())?;
+                tauri::api::shell::open(
+                    &app.shell_scope(),
+                    &controller.advanced_settings.auth_base_url,
+                    None,
+                )?;
             }
             Req::UpdateResources(resources) => {
                 tracing::debug!("got {} resources", resources.len());
@@ -366,16 +382,22 @@ impl Default for AdvancedSettings {
 }
 
 /// Gets the path for storing advanced settings, creating parent dirs if needed.
-async fn advanced_settings_path() -> Result<PathBuf> {
-    let dirs = crate::cli::get_project_dirs()?;
-    let dir = dirs.config_local_dir();
-    tokio::fs::create_dir_all(dir).await?;
+async fn advanced_settings_path(app: &tauri::AppHandle) -> Result<PathBuf> {
+    let dir = app
+        .path_resolver()
+        .app_local_data_dir()
+        .ok_or_else(|| anyhow::anyhow!("can't get app_local_data_dir"))?
+        .join("config");
+    tokio::fs::create_dir_all(&dir).await?;
     Ok(dir.join("advanced_settings.json"))
 }
 
 #[tauri::command]
-async fn apply_advanced_settings(settings: AdvancedSettings) -> StdResult<(), String> {
-    apply_advanced_settings_inner(settings)
+async fn apply_advanced_settings(
+    app: tauri::AppHandle,
+    settings: AdvancedSettings,
+) -> StdResult<(), String> {
+    apply_advanced_settings_inner(app, settings)
         .await
         .map_err(|e| format!("{e}"))
 }
@@ -406,9 +428,12 @@ async fn get_advanced_settings(
     Ok(rx.await.unwrap())
 }
 
-async fn apply_advanced_settings_inner(settings: AdvancedSettings) -> Result<()> {
+async fn apply_advanced_settings_inner(
+    app: tauri::AppHandle,
+    settings: AdvancedSettings,
+) -> Result<()> {
     tokio::fs::write(
-        advanced_settings_path().await?,
+        advanced_settings_path(&app).await?,
         serde_json::to_string(&settings)?,
     )
     .await?;
@@ -438,9 +463,7 @@ async fn export_logs_inner(ctlr_tx: mpsc::Sender<ControllerRequest>) -> Result<(
 async fn export_logs_to(file_path: PathBuf) -> Result<()> {
     tracing::trace!("Exporting logs to {file_path:?}");
 
-    let dir = crate::cli::get_project_dirs()?;
-    let dir = dir.data_local_dir().join("logs");
-    let mut entries = tokio::fs::read_dir(dir).await?;
+    let mut entries = tokio::fs::read_dir("logs").await?;
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
         tracing::trace!("Export {path:?}");

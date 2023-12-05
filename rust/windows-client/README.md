@@ -39,6 +39,8 @@ cargo tauri dev -- -- debug-connlib
 stat ../target/debug/firezone-windows-client.exe
 ```
 
+The app's config and logs will be stored at `C:\Users\$USER\AppData\Local\dev.firezone.client`.
+
 ## Platform support
 
 Tauri says it should work on Windows 10, Version 1803 and up. Older versions may work if you [manually install WebView2](https://tauri.app/v1/guides/getting-started/prerequisites#2-webview2)
