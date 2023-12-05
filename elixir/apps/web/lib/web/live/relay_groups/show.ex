@@ -30,7 +30,7 @@ defmodule Web.RelayGroups.Show do
     <.section>
       <:title>
         Relay Instance Group: <code><%= @group.name %></code>
-        <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
+        <span :if={not is_nil(@group.deleted_at)} class="text-fz_red-600">(deleted)</span>
       </:title>
       <:action :if={not is_nil(@group.account_id) and is_nil(@group.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/relay_groups/#{@group}/edit"}>
@@ -68,7 +68,7 @@ defmodule Web.RelayGroups.Show do
             <:col :let={relay} label="INSTANCE">
               <.link
                 navigate={~p"/#{@account}/relays/#{relay.id}"}
-                class="font-medium text-blue-600 hover:underline"
+                class="font-medium text-accent-600 hover:underline"
               >
                 <code :if={relay.name} class="block text-xs">
                   <%= relay.name %>
@@ -88,7 +88,7 @@ defmodule Web.RelayGroups.Show do
               <.connection_status schema={relay} />
             </:col>
             <:empty>
-              <div class="text-center text-slate-500 p-4">No relay instances to display</div>
+              <div class="text-center text-neutral-500 p-4">No relay instances to display</div>
             </:empty>
           </.table>
         </div>

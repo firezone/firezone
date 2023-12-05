@@ -31,7 +31,7 @@ defmodule Web.Groups.Show do
     <.section>
       <:title>
         Group: <code><%= @group.name %></code>
-        <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
+        <span :if={not is_nil(@group.deleted_at)} class="text-fz_red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@group.deleted_at)}>
         <.edit_button
@@ -80,7 +80,7 @@ defmodule Web.Groups.Show do
             />
           </:col>
           <:empty>
-            <div class="flex justify-center text-center text-slate-500 p-4">
+            <div class="flex justify-center text-center text-neutral-500 p-4">
               <div :if={not Actors.group_synced?(@group)} class="w-auto">
                 <div class="pb-4">
                   No actors in group

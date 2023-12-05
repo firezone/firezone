@@ -6,7 +6,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
     <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
       <.form for={@form} phx-change={:change} phx-submit={:submit}>
         <div class="mb-4">
-          <h2 class="mb-4 text-xl font-bold text-gray-900">
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">
             Step 1. Create OAuth app in your identity provider
           </h2>
           Please make sure that following scopes are added to the OAuth application: <.code_block
@@ -31,7 +31,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
         </div>
 
         <div class="mb-4">
-          <h2 class="mb-4 text-xl font-bold text-gray-900">
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">
             2. Configure client
           </h2>
 
@@ -46,7 +46,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                 placeholder="Name this identity provider"
                 required
               />
-              <p class="mt-2 text-xs text-gray-500">
+              <p class="mt-2 text-xs text-neutral-500">
                 A friendly name for this identity provider. This will be displayed to end-users.
               </p>
             </div>
@@ -60,7 +60,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                   value="code"
                   disabled
                 />
-                <p class="mt-2 text-xs text-gray-500">
+                <p class="mt-2 text-xs text-neutral-500">
                   Firezone currently only supports <code>code</code> flows.
                 </p>
               </div>
@@ -73,7 +73,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                   placeholder="OpenID Connect scopes to request"
                   required
                 />
-                <p class="mt-2 text-xs text-gray-500">
+                <p class="mt-2 text-xs text-neutral-500">
                   A space-delimited list of scopes to request from your identity provider. In most cases you shouldn't need to change this.
                 </p>
               </div>

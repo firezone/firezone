@@ -36,7 +36,7 @@ defmodule Web.Gateways.Show do
     <.section>
       <:title>
         Gateway: <code><%= @gateway.name %></code>
-        <span :if={not is_nil(@gateway.deleted_at)} class="text-red-600">(deleted)</span>
+        <span :if={not is_nil(@gateway.deleted_at)} class="text-fz_red-600">(deleted)</span>
       </:title>
       <:content>
         <.vertical_table id="gateway">
@@ -45,7 +45,7 @@ defmodule Web.Gateways.Show do
             <:value>
               <.link
                 navigate={~p"/#{@account}/sites/#{@gateway.group}"}
-                class="font-bold text-blue-600 hover:underline"
+                class="font-bold text-accent-600 hover:underline"
               >
                 <%= @gateway.group.name %>
               </.link>

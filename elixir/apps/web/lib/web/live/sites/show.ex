@@ -46,7 +46,7 @@ defmodule Web.Sites.Show do
     <.section>
       <:title>
         Site: <code><%= @group.name %></code>
-        <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
+        <span :if={not is_nil(@group.deleted_at)} class="text-fz_red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@group.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/sites/#{@group}/edit"}>
@@ -97,7 +97,7 @@ defmodule Web.Sites.Show do
             <:col :let={gateway} label="INSTANCE">
               <.link
                 navigate={~p"/#{@account}/gateways/#{gateway.id}"}
-                class="font-medium text-blue-600 hover:underline"
+                class="font-medium text-accent-600 hover:underline"
               >
                 <%= gateway.name %>
               </.link>
@@ -114,12 +114,12 @@ defmodule Web.Sites.Show do
               <.connection_status schema={gateway} />
             </:col>
             <:empty>
-              <div class="flex flex-col items-center justify-center text-center text-slate-500 p-4">
+              <div class="flex flex-col items-center justify-center text-center text-neutral-500 p-4">
                 <div class="pb-4">
                   No gateways to display.
                   <span :if={is_nil(@group.deleted_at)}>
                     <.link
-                      class="font-medium text-blue-600 hover:underline"
+                      class="font-medium text-fz_blue-600 hover:underline"
                       navigate={~p"/#{@account}/sites/#{@group}/new_token"}
                     >
                       Deploy a gateway to connect resources.
@@ -152,7 +152,7 @@ defmodule Web.Sites.Show do
             <:col :let={resource} label="NAME">
               <.link
                 navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@group}"}
-                class="font-medium text-blue-600 hover:underline"
+                class="font-medium text-accent-600 hover:underline"
               >
                 <%= resource.name %>
               </.link>
@@ -192,7 +192,7 @@ defmodule Web.Sites.Show do
               </.peek>
             </:col>
             <:empty>
-              <div class="flex flex-col items-center justify-center text-center text-slate-500 p-4">
+              <div class="flex flex-col items-center justify-center text-center text-neutral-500 p-4">
                 <div class="pb-4">
                   No resources to display.
                 </div>

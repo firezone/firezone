@@ -40,7 +40,7 @@ defmodule Web.Resources.Index do
             <:col :let={resource} label="NAME">
               <.link
                 navigate={~p"/#{@account}/resources/#{resource.id}"}
-                class="font-medium text-blue-600 hover:underline"
+                class="font-medium text-accent-600 hover:underline"
               >
                 <%= resource.name %>
               </.link>
@@ -54,7 +54,7 @@ defmodule Web.Resources.Index do
               <.link
                 :for={gateway_group <- resource.gateway_groups}
                 navigate={~p"/#{@account}/sites/#{gateway_group}"}
-                class="font-medium text-blue-600 hover:underline"
+                class="font-medium text-accent-600 hover:underline"
               >
                 <.badge type="info">
                   <%= gateway_group.name %>
@@ -90,7 +90,7 @@ defmodule Web.Resources.Index do
               </.peek>
             </:col>
             <:empty>
-              <div class="flex justify-center text-center text-slate-500 p-4">
+              <div class="flex justify-center text-center text-neutral-500 p-4">
                 <div class="w-auto">
                   <div class="pb-4">
                     No resources to display
