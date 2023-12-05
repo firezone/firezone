@@ -18,7 +18,7 @@ struct State {
     ctlr_tx: mpsc::Sender<ControllerRequest>,
 }
 
-pub fn main(app_link: Option<String>) -> Result<()> {
+pub fn run(app_link: Option<String>) -> Result<()> {
     // Make sure we're single-instance
     tauri_plugin_deep_link::prepare("dev.firezone");
 
