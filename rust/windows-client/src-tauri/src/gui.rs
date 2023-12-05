@@ -399,7 +399,7 @@ async fn apply_advanced_settings(
 ) -> StdResult<(), String> {
     apply_advanced_settings_inner(app, settings)
         .await
-        .map_err(|e| format!("{e}"))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
