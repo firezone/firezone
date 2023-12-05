@@ -67,7 +67,6 @@ pub fn run(app_link: Option<String>) -> Result<()> {
                     }
                     "/settings" => {
                         let win = app.get_window("settings").unwrap();
-                        dbg!(win.url());
 
                         if win.is_visible().unwrap() {
                             // If we close the window here, we can't re-open it, we'd have to fully re-create it. Not needed for MVP - We agreed 100 MB is fine for the GUI client.
@@ -79,7 +78,7 @@ pub fn run(app_link: Option<String>) -> Result<()> {
                     "/quit" => app.exit(0),
                     id => {
                         if let Some(addr) = id.strip_prefix("/resource/") {
-                            println!("TODO copy {addr} to clipboard");
+                            tracing::warn!("TODO copy {addr} to clipboard");
                         }
                     }
                 }
