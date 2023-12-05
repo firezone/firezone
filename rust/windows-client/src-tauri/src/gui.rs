@@ -473,7 +473,17 @@ async fn export_logs_to(file_path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn _signed_in_menu(user_email: &str, resources: &[(&str, &str)]) -> SystemTrayMenu {
+/// The information needed for the GUI to display a resource inside the Firezone VPN
+struct _ResourceDisplay {
+    // TODO: The ID in ResourceDescription is something like a number that's safe to use internally, right? Like it won't have slashes or emojis or any odd characters that a name or URL might have?
+    id: String,
+    /// User-friendly name, e.g. "GitLab"
+    name: String,
+    /// What will be copied to the clipboard to paste into a web browser
+    url: Url,
+}
+
+fn _signed_in_menu(user_email: &str, resources: &[_ResourceDisplay]) -> SystemTrayMenu {
     let mut menu = SystemTrayMenu::new()
         .add_item(
             CustomMenuItem::new("".to_string(), format!("Signed in as {user_email}")).disabled(),
@@ -482,12 +492,12 @@ fn _signed_in_menu(user_email: &str, resources: &[(&str, &str)]) -> SystemTrayMe
         .add_native_item(SystemTrayMenuItem::Separator)
         .add_item(CustomMenuItem::new("".to_string(), "Resources").disabled());
 
-    for (name, addr) in resources {
+    for _ResourceDisplay { id, name, url } in resources {
         let submenu = SystemTrayMenu::new().add_item(CustomMenuItem::new(
-            format!("/resource/{addr}"),
-            addr.to_string(),
+            format!("/resource/{id}"),
+            url.to_string(),
         ));
-        menu = menu.add_submenu(SystemTraySubmenu::new(name.to_string(), submenu));
+        menu = menu.add_submenu(SystemTraySubmenu::new(name, submenu));
     }
 
     menu = menu
