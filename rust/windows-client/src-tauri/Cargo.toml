@@ -29,12 +29,13 @@ tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 url = { version = "2.5.0", features = ["serde"] }
 uuid = { version = "1.5.0", features = ["v4"] }
+zip = "0.6.6"
 
 # These dependencies are locked behind `cfg(windows)` because they either can't compile at all on Linux, or they need native dependencies like glib that are difficult to get. Try not to add more here.
 
 [target.'cfg(windows)'.dependencies]
 # Tauri works fine on Linux, but it requires a lot of build-time deps like glib and gdk, so I've blocked it out for now.
-tauri = { version = "1.5", features = [ "system-tray", "shell-open"] }
+tauri = { version = "1.5", features = [ "dialog", "system-tray", "shell-open"] }
 tauri-plugin-deep-link = "0.1.2"
 wintun = "0.3.2"
 

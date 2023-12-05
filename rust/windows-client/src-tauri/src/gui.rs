@@ -120,6 +120,7 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
 }
 
 pub(crate) enum ControllerRequest {
+    ExportLogs(PathBuf),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     // Secret because it will have the token in it
     SchemeRequest(SecretString),
@@ -276,6 +277,7 @@ async fn run_controller(
 
     while let Some(req) = rx.recv().await {
         match req {
+            Req::ExportLogs(file_path) => export_logs_to(file_path).await?,
             Req::GetAdvancedSettings(tx) => {
                 tx.send(controller.advanced_settings.clone()).ok();
             }
@@ -384,8 +386,12 @@ async fn clear_logs() -> StdResult<(), String> {
 }
 
 #[tauri::command]
-async fn export_logs() -> StdResult<(), String> {
-    export_logs_inner().await.map_err(|e| format!("{e}"))
+async fn export_logs(
+    ctlr_tx: tauri::State<'_, mpsc::Sender<ControllerRequest>>,
+) -> StdResult<(), String> {
+    export_logs_inner(ctlr_tx.inner().clone())
+        .await
+        .map_err(|e| format!("{e}"))
 }
 
 #[tauri::command]
@@ -417,7 +423,21 @@ async fn clear_logs_inner() -> Result<()> {
     todo!()
 }
 
-async fn export_logs_inner() -> Result<()> {
+async fn export_logs_inner(ctlr_tx: mpsc::Sender<ControllerRequest>) -> Result<()> {
+    tauri::api::dialog::FileDialogBuilder::new()
+        .add_filter("Zip", &["zip"])
+        .save_file(move |file_path| match file_path {
+            None => {}
+            Some(x) => ctlr_tx
+                .blocking_send(ControllerRequest::ExportLogs(x))
+                .unwrap(),
+        });
+    Ok(())
+}
+
+async fn export_logs_to(file_path: PathBuf) -> Result<()> {
+    tracing::trace!("Exporting logs to {file_path:?}");
+
     let dir = crate::cli::get_project_dirs()?;
     let dir = dir.data_local_dir().join("logs");
     let mut entries = tokio::fs::read_dir(dir).await?;
@@ -425,6 +445,8 @@ async fn export_logs_inner() -> Result<()> {
         let path = entry.path();
         tracing::trace!("Export {path:?}");
     }
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    // TODO: Somehow signal back to the GUI to unlock the log buttons when the export completes, or errors out
     Ok(())
 }
 
