@@ -3,6 +3,8 @@ let api_url_input;
 let log_filter_input;
 let reset_advanced_settings_btn;
 let apply_advanced_settings_btn;
+let export_logs_btn;
+let clear_logs_btn;
 
 const querySel = function(id) {
   return document.querySelector(id);
@@ -29,6 +31,11 @@ function lock_advanced_settings_form(locked) {
 
     reset_advanced_settings_btn.disabled = locked;
     apply_advanced_settings_btn.disabled = locked;
+}
+
+function lock_logs_form(locked) {
+    export_logs_btn.disabled = locked;
+    clear_logs_btn.disabled = locked;
 }
 
 async function apply_advanced_settings() {
@@ -68,6 +75,32 @@ async function get_advanced_settings() {
     });
 }
 
+async function export_logs() {
+    lock_logs_form(true);
+
+    invoke("export_logs")
+    .then(() => {
+        lock_logs_form(false);
+    })
+    .catch((e) => {
+        console.error(e);
+        lock_logs_form(false);
+    });
+}
+
+async function clear_logs() {
+    lock_logs_form(true);
+
+    invoke("clear_logs")
+    .then(() => {
+        lock_logs_form(false);
+    })
+    .catch((e) => {
+        console.error(e);
+        lock_logs_form(false);
+    });
+}
+
 function openTab(evt, tabName) {
     let tabcontent = document.getElementsByClassName("tabcontent");
     for (let i = 0; i < tabcontent.length; i++) {
@@ -86,7 +119,7 @@ function openTab(evt, tabName) {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-    // Hook up Advanced tab
+    // Advanced tab
     auth_base_url_input = querySel("#auth-base-url-input");
     api_url_input = querySel("#api-url-input");
     log_filter_input = querySel("#log-filter-input");
@@ -96,7 +129,18 @@ window.addEventListener("DOMContentLoaded", () => {
     querySel("#advanced-settings-form").addEventListener("submit", (e) => {
         e.preventDefault();
         apply_advanced_settings();
-    })
+    });
+
+    // Logs tab
+    export_logs_btn = querySel("#export-logs-btn");
+    clear_logs_btn = querySel("#clear-logs-btn");
+
+    export_logs_btn.addEventListener("click", (e) => {
+        export_logs();
+    });
+    clear_logs_btn.addEventListener("click", (e) => {
+        clear_logs();
+    });
 
     // TODO: Why doesn't this open the Advanced tab by default?
     querySel("#tab_advanced").click();

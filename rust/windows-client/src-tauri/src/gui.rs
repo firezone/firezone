@@ -45,6 +45,8 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
         })
         .invoke_handler(tauri::generate_handler![
             apply_advanced_settings,
+            clear_logs,
+            export_logs,
             get_advanced_settings,
         ])
         .system_tray(tray)
@@ -370,6 +372,23 @@ async fn advanced_settings_path() -> Result<PathBuf> {
 }
 
 #[tauri::command]
+async fn apply_advanced_settings(settings: AdvancedSettings) -> StdResult<(), String> {
+    apply_advanced_settings_inner(settings)
+        .await
+        .map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+async fn clear_logs() -> StdResult<(), String> {
+    clear_logs_inner().await.map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+async fn export_logs() -> StdResult<(), String> {
+    export_logs_inner().await.map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
 async fn get_advanced_settings(
     ctlr_tx: tauri::State<'_, mpsc::Sender<ControllerRequest>>,
 ) -> StdResult<AdvancedSettings, String> {
@@ -379,13 +398,6 @@ async fn get_advanced_settings(
         .await
         .unwrap();
     Ok(rx.await.unwrap())
-}
-
-#[tauri::command]
-async fn apply_advanced_settings(settings: AdvancedSettings) -> StdResult<(), String> {
-    apply_advanced_settings_inner(settings)
-        .await
-        .map_err(|e| format!("{e}"))
 }
 
 async fn apply_advanced_settings_inner(settings: AdvancedSettings) -> Result<()> {
@@ -398,6 +410,21 @@ async fn apply_advanced_settings_inner(settings: AdvancedSettings) -> Result<()>
     // TODO: This sleep is just for testing, remove it before it ships
     // TODO: Make sure the GUI handles errors if this function fails
     tokio::time::sleep(Duration::from_secs(1)).await;
+    Ok(())
+}
+
+async fn clear_logs_inner() -> Result<()> {
+    todo!()
+}
+
+async fn export_logs_inner() -> Result<()> {
+    let dir = crate::cli::get_project_dirs()?;
+    let dir = dir.data_local_dir().join("logs");
+    let mut entries = tokio::fs::read_dir(dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        tracing::trace!("Export {path:?}");
+    }
     Ok(())
 }
 
