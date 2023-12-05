@@ -104,9 +104,8 @@ pub fn run(deep_link: Option<String>) -> Result<()> {
                 // TODO: Handle app links that we catch at startup here
             }
 
-            app.listen_global("scheme-request-received", |event| {
+            app.listen_global("scheme-request-received", |_event| {
                 // TODO: Handle "firezone://handle_client_auth_callback/?client_csrf_token=bogus_csrf_token&actor_name=Bogus+Name&client_auth_token=bogus_auth_token"
-                println!("got scheme request {:?}", event.payload());
             });
 
             // From https://github.com/FabianLars/tauri-plugin-deep-link/blob/main/example/main.rs
@@ -213,7 +212,7 @@ async fn apply_advanced_settings(
 ) -> StdResult<(), String> {
     apply_advanced_settings_inner(app, settings)
         .await
-        .map_err(|e| format!("{e}"))
+        .map_err(|e| e.to_string())
 }
 
 async fn apply_advanced_settings_inner(
