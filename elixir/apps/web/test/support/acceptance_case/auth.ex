@@ -101,7 +101,9 @@ defmodule Web.AcceptanceCase.Auth do
            user_agent: fetch_session_user_agent!(session),
            remote_ip: {127, 0, 0, 1}
          },
-         {:ok, subject} <- Domain.Auth.sign_in(cookie["session_token"], context) do
+         {_account_id, _logged_in_at, token} <-
+           List.keyfind(cookie["sessions"], identity.account_id, 0),
+         {:ok, subject} <- Domain.Auth.sign_in(token, context) do
       assert subject.identity.id == identity.id,
              "Expected #{inspect(identity)}, got #{inspect(subject.identity)}"
 
