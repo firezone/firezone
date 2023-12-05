@@ -110,7 +110,8 @@ admin_actor_email = "firezone@localhost"
 
 {:ok, unprivileged_actor_email_identity} =
   Auth.create_identity(unprivileged_actor, email_provider, %{
-    provider_identifier: unprivileged_actor_email
+    provider_identifier: unprivileged_actor_email,
+    provider_identifier_confirmation: unprivileged_actor_email
   })
 
 {:ok, unprivileged_actor_userpass_identity} =
@@ -129,7 +130,8 @@ unprivileged_actor_userpass_identity =
 
 {:ok, admin_actor_email_identity} =
   Auth.create_identity(admin_actor, email_provider, %{
-    provider_identifier: admin_actor_email
+    provider_identifier: admin_actor_email,
+    provider_identifier_confirmation: admin_actor_email
   })
 
 {:ok, _admin_actor_userpass_identity} =

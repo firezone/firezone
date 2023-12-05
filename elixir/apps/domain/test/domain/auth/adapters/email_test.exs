@@ -38,6 +38,25 @@ defmodule Domain.Auth.Adapters.EmailTest do
       assert %Ecto.Changeset{} = changeset = identity_changeset(provider, changeset)
       assert changeset.changes.provider_identifier == "X"
     end
+
+    test "validates email confirmation", %{provider: provider} do
+      changeset =
+        %Auth.Identity{}
+        |> Ecto.Changeset.cast(
+          %{
+            provider_identifier: Fixtures.Auth.email(),
+            provider_identifier_confirmation: ""
+          },
+          [:provider_identifier]
+        )
+
+      assert %Ecto.Changeset{} = changeset = identity_changeset(provider, changeset)
+
+      assert changeset.errors == [
+               provider_identifier_confirmation:
+                 {"email does not match", [validation: :confirmation]}
+             ]
+    end
   end
 
   describe "provider_changeset/1" do
