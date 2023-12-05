@@ -15,7 +15,7 @@
       "all": false,
       "shell": {
         "all": false,
-        "open": true
+        "open": false
       }
     },
     "bundle": {
