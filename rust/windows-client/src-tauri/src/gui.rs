@@ -15,7 +15,7 @@ use tokio::sync::{mpsc, oneshot};
 // TODO: Decide whether Windows needs to handle env vars and CLI args for IDs / tokens
 pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
     // Set up logger with connlib_client_shared
-    let (layer, _handle) = file_logger::layer(std::path::Path::new("."));
+    let (layer, _handle) = file_logger::layer(std::path::Path::new("logs"));
     setup_global_subscriber(layer);
 
     // Make sure we're single-instance
@@ -242,7 +242,7 @@ impl Controller {
         ctlr_tx: mpsc::Sender<ControllerRequest>,
         token: &SecretString,
     ) -> Result<connlib_client_shared::Session<CallbackHandler>> {
-        let (layer, handle) = file_logger::layer(std::path::Path::new("."));
+        let (layer, handle) = file_logger::layer(std::path::Path::new("logs"));
         // TODO: How can I set up the tracing subscriber if the Session isn't ready yet? Check what other clients do.
         if false {
             // This helps the type inference
