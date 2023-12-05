@@ -284,7 +284,7 @@ jobs:
           cat /tmp/iperf3results-main/udp_client2server.json | jq -r '"udp_client2server_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results-main/udp_client2server.json | jq -r '"udp_client2server_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
       - name: Update PR
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         id: perf-comment
         if: ${{ github.event_name == 'pull_request' }}
         with:

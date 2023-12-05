@@ -14,8 +14,6 @@ export default function KbSidebar() {
     initFlowbite();
   }, []);
 
-  console.log(p);
-
   return (
     <aside
       id="kb-sidebar"

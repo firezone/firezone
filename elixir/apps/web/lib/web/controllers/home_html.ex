@@ -21,25 +21,39 @@ defmodule Web.HomeHTML do
             </h3>
 
             <div :if={@accounts != []} class="space-y-3 items-center">
-              <.account_button :for={account <- @accounts} account={account} />
+              <.account_button
+                :for={account <- @accounts}
+                account={account}
+                redirect_params={@redirect_params}
+              />
             </div>
 
             <.separator :if={@accounts != []} />
 
-            <.form :let={f} for={%{}} action={~p"/"} class="space-y-4 lg:space-y-6">
+            <.form
+              :let={f}
+              for={%{}}
+              action={~p"/?#{@redirect_params}"}
+              class="space-y-4 lg:space-y-6"
+            >
               <.input
                 field={f[:account_id_or_slug]}
                 type="text"
                 label="Account ID or Slug"
-                placeholder={~s|As shown in your "Welcome to Firezone" email|}
+                prefix={url(~p"/")}
                 required
+                autofocus
               />
+              <p>As shown in your "Welcome to Firezone" email</p>
 
               <.button class="w-full">
                 Go to Sign In page
               </.button>
             </.form>
-            <p :if={Domain.Config.sign_up_enabled?()} class="py-2">
+            <p
+              :if={Domain.Config.sign_up_enabled?() and is_nil(@redirect_params["client_platform"])}
+              class="py-2"
+            >
               Don't have an account?
               <a href={~p"/sign_up"} class="font-medium text-blue-600 hover:text-blue-500">
                 Sign up here.
@@ -54,7 +68,7 @@ defmodule Web.HomeHTML do
 
   def account_button(assigns) do
     ~H"""
-    <a href={~p"/#{@account}"} class={~w[
+    <a href={~p"/#{@account}?#{@redirect_params}"} class={~w[
           w-full inline-flex items-center justify-center py-2.5 px-5
           bg-white rounded
           text-sm font-medium text-gray-900

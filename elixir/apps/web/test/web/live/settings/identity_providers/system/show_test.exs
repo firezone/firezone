@@ -31,7 +31,7 @@ defmodule Web.Live.Settings.IdentityProviders.System.ShowTest do
                }}}
   end
 
-  test "renders not found error when provider is deleted", %{
+  test "renders deleted provider without action buttons", %{
     account: account,
     provider: provider,
     identity: identity,
@@ -39,11 +39,16 @@ defmodule Web.Live.Settings.IdentityProviders.System.ShowTest do
   } do
     provider = Fixtures.Auth.delete_provider(provider)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/system/#{provider}")
-    end
+
+    assert html =~ "(deleted)"
+    refute html =~ "Danger Zone"
+    refute html =~ "Add"
+    refute html =~ "Edit"
+    refute html =~ "Deploy"
   end
 
   test "renders breadcrumbs item", %{

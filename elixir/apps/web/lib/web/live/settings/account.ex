@@ -24,7 +24,9 @@ defmodule Web.Settings.Account do
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>Account Slug</:label>
-              <:value><%= @account.slug %></:value>
+              <:value>
+                <.copy id="account-slug"><%= @account.slug %></.copy>
+              </:value>
             </.vertical_table_row>
           </.vertical_table>
         </div>
