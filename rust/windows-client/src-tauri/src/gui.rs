@@ -17,10 +17,6 @@ struct State {
 
 // TODO: Decide whether Windows needs to handle env vars and CLI args for IDs / tokens
 pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
-    // Set up logger with connlib_client_shared
-    let (layer, _handle) = file_logger::layer(std::path::Path::new("."));
-    setup_global_subscriber(layer);
-
     // Make sure we're single-instance
     tauri_plugin_deep_link::prepare("dev.firezone");
 
@@ -28,7 +24,6 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
     let _guard = rt.enter();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
-    let _ctlr_task = tokio::spawn(controller(ctlr_rx));
 
     let tray = SystemTray::new().with_menu(signed_out_menu());
 
@@ -55,7 +50,7 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
                         app.try_state::<State>()
                             .unwrap()
                             .ctlr_tx
-                            .blocking_send(ControllerRequest::SignIn(app.clone()))
+                            .blocking_send(ControllerRequest::SignIn)
                             .unwrap();
                     }
                     "/sign_out" => app.tray_handle().set_menu(signed_out_menu()).unwrap(),
@@ -89,6 +84,21 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
             }
         })
         .setup(|app| {
+            // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
+            let cwd = app
+                .path_resolver()
+                .app_local_data_dir()
+                .ok_or_else(|| anyhow::anyhow!("can't get app_local_data_dir"))?
+                .join("data");
+            std::fs::create_dir_all(&cwd)?;
+            std::env::set_current_dir(&cwd)?;
+
+            // Set up logger with connlib_client_shared
+            let (layer, _handle) = file_logger::layer(std::path::Path::new("logs"));
+            setup_global_subscriber(layer);
+
+            let _ctlr_task = tokio::spawn(controller(app.handle(), ctlr_rx));
+
             if let Some(_app_link) = app_link {
                 // TODO: Handle app links that we catch at startup here
             }
@@ -120,15 +130,18 @@ pub fn main(_: Option<CommonArgs>, app_link: Option<String>) -> Result<()> {
 
 enum ControllerRequest {
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    SignIn(tauri::AppHandle),
+    SignIn,
 }
 
-async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
+async fn controller(
+    app: tauri::AppHandle,
+    mut rx: mpsc::Receiver<ControllerRequest>,
+) -> Result<()> {
     use ControllerRequest as Req;
 
     let mut advanced_settings = AdvancedSettings::default();
     // TODO: Load advanced settings here
-    if let Ok(s) = tokio::fs::read_to_string(advanced_settings_path().await?).await {
+    if let Ok(s) = tokio::fs::read_to_string(advanced_settings_path(&app).await?).await {
         if let Ok(settings) = serde_json::from_str(&s) {
             advanced_settings = settings;
         }
@@ -139,7 +152,7 @@ async fn controller(mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
             Req::GetAdvancedSettings(tx) => {
                 tx.send(advanced_settings.clone()).ok();
             }
-            Req::SignIn(app) => {
+            Req::SignIn => {
                 // TODO: Put the platform and local server callback in here
                 tauri::api::shell::open(
                     &app.shell_scope(),
@@ -171,10 +184,13 @@ impl Default for AdvancedSettings {
 }
 
 /// Gets the path for storing advanced settings, creating parent dirs if needed.
-async fn advanced_settings_path() -> Result<PathBuf> {
-    let dirs = crate::cli::get_project_dirs()?;
-    let dir = dirs.config_local_dir();
-    tokio::fs::create_dir_all(dir).await?;
+async fn advanced_settings_path(app: &tauri::AppHandle) -> Result<PathBuf> {
+    let dir = app
+        .path_resolver()
+        .app_local_data_dir()
+        .ok_or_else(|| anyhow::anyhow!("can't get app_local_data_dir"))?
+        .join("config");
+    tokio::fs::create_dir_all(&dir).await?;
     Ok(dir.join("advanced_settings.json"))
 }
 
@@ -192,15 +208,21 @@ async fn get_advanced_settings(
 }
 
 #[tauri::command]
-async fn apply_advanced_settings(settings: AdvancedSettings) -> StdResult<(), String> {
-    apply_advanced_settings_inner(settings)
+async fn apply_advanced_settings(
+    app: tauri::AppHandle,
+    settings: AdvancedSettings,
+) -> StdResult<(), String> {
+    apply_advanced_settings_inner(app, settings)
         .await
         .map_err(|e| format!("{e}"))
 }
 
-async fn apply_advanced_settings_inner(settings: AdvancedSettings) -> Result<()> {
+async fn apply_advanced_settings_inner(
+    app: tauri::AppHandle,
+    settings: AdvancedSettings,
+) -> Result<()> {
     tokio::fs::write(
-        advanced_settings_path().await?,
+        advanced_settings_path(&app).await?,
         serde_json::to_string(&settings)?,
     )
     .await?;

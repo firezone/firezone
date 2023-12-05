@@ -12,7 +12,6 @@ tauri-build = { version = "1.5", features = [] }
 anyhow = { version = "1.0" }
 clap = { version = "4.4", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
-directories = "5.0.1"
 firezone-cli-utils = { workspace = true }
 keyring = "2.0.5"
 smbios-lib = "0.9"

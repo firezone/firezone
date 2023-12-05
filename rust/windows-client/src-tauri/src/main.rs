@@ -24,8 +24,6 @@ mod gui;
 fn main() -> Result<()> {
     use cli::CliCommands as Cmd;
 
-    change_to_well_known_dir()?;
-
     // Special case for app link URIs
     if let Some(arg) = std::env::args().nth(1) {
         if arg.starts_with("firezone://") {
@@ -45,17 +43,6 @@ fn main() -> Result<()> {
         Some(Cmd::DebugConnlib { common }) => debug_commands::connlib(common),
         Some(Cmd::DebugCredentials) => debug_commands::credentials(),
         Some(Cmd::DebugDeviceId) => debug_commands::device_id(),
-        Some(Cmd::DebugHome) => debug_commands::home(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
     }
-}
-
-/// Change dir to the app's local data dir. This prevents issues with the logger trying to write to C:\Windows\System32 when Firefox / Chrome launches us in that dir.
-
-fn change_to_well_known_dir() -> Result<()> {
-    let project_dirs = cli::get_project_dirs()?;
-    let working_dir = project_dirs.data_local_dir();
-    std::fs::create_dir_all(working_dir)?;
-    std::env::set_current_dir(working_dir)?;
-    Ok(())
 }

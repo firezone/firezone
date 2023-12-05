@@ -120,13 +120,6 @@ pub fn device_id() -> Result<()> {
     Ok(())
 }
 
-pub fn home() -> Result<()> {
-    let home = crate::cli::get_windows_home()?;
-    // Should print e.g. `home = "C:\\Users\\User"`
-    dbg!(home);
-    Ok(())
-}
-
 pub use details::wintun;
 
 #[cfg(target_os = "linux")]

@@ -21,7 +21,7 @@
     "bundle": {
       "active": true,
       "targets": "all",
-      "identifier": "dev.firezone",
+      "identifier": "dev.firezone.client",
       "icon": [
         "icons/firezone.ico"
       ]
