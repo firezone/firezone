@@ -11,6 +11,8 @@ mod debug_commands;
 #[cfg(target_os = "linux")]
 mod gui {
     use super::*;
+    use firezone_cli_utils::CommonArgs;
+
     pub fn main(_: Option<CommonArgs>, _: Option<String>) -> Result<()> {
         // The Ubuntu CI runner doesn't have gdk and some other Tauri deps installed, so it fails unless we stub out the GUI.
         panic!("The Tauri GUI isn't implemented for Linux.");
