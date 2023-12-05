@@ -36,6 +36,10 @@ defmodule Domain.Auth.Adapters.Email do
     changeset
     |> Domain.Validator.trim_change(:provider_identifier)
     |> Domain.Validator.validate_email(:provider_identifier)
+    |> Ecto.Changeset.validate_confirmation(:provider_identifier,
+      required: true,
+      message: "email does not match"
+    )
     |> Ecto.Changeset.put_change(:provider_state, state)
     |> Ecto.Changeset.put_change(:provider_virtual_state, virtual_state)
   end
