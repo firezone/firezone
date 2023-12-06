@@ -84,7 +84,7 @@ defmodule Web.Settings.IdentityProviders.New do
       adapter={@adapter}
       account={@account}
       name="OpenID Connect"
-      description="Authenticate users with a universal OpenID Connect adapter and synchronize users just-in-time provisioning."
+      description="Authenticate users with a universal OpenID Connect adapter and synchronize users with just-in-time (JIT) provisioning."
     />
     """
   end

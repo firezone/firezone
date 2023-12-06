@@ -36,6 +36,9 @@ defmodule Web.Actors.Index do
           Add Actor
         </.add_button>
       </:action>
+      <:help>
+        Actors are the people and services that can access your resources.
+      </:help>
       <:content>
         <.table id="actors" rows={@actors} row_id={&"user-#{&1.id}"}>
           <:col :let={actor} label="name" sortable="false">
