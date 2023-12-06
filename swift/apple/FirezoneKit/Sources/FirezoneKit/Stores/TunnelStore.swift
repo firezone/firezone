@@ -16,7 +16,6 @@ enum TunnelStoreError: Error {
 
 public struct TunnelProviderKeys {
   static let keyAuthBaseURLString = "authBaseURLString"
-  static let keyAccountId = "accountId"
   public static let keyConnlibLogFilter = "connlibLogFilter"
 }
 
@@ -191,9 +190,9 @@ final class TunnelStore: ObservableObject {
       session.stopTunnel()
     }
 
-    if case .signedIn(let authBaseURL, let accountId, let tokenReference) = self.tunnelAuthStatus {
+    if case .signedIn(let authBaseURL, let tokenReference) = self.tunnelAuthStatus {
       do {
-        try await saveAuthStatus(.signedOut(authBaseURL: authBaseURL, accountId: accountId))
+        try await saveAuthStatus(.signedOut(authBaseURL: authBaseURL))
       } catch {
         TunnelStore.logger.trace(
           "\(#function): Error saving signed out auth status: \(error)"
@@ -325,24 +324,13 @@ final class TunnelStore: ObservableObject {
 enum TunnelAuthStatus: Equatable, CustomStringConvertible {
   case tunnelUninitialized
   case accountNotSetup
-  case signedOut(authBaseURL: URL, accountId: String)
-  case signedIn(authBaseURL: URL, accountId: String, tokenReference: Data)
+  case signedOut(authBaseURL: URL)
+  case signedIn(authBaseURL: URL, tokenReference: Data)
 
   var isInitialized: Bool {
     switch self {
     case .tunnelUninitialized: return false
     default: return true
-    }
-  }
-
-  func accountId() -> String? {
-    switch self {
-    case .tunnelUninitialized, .accountNotSetup:
-      return nil
-    case .signedOut(_, let accountId):
-      return accountId
-    case .signedIn(_, let accountId, _):
-      return accountId
     }
   }
 
@@ -352,10 +340,10 @@ enum TunnelAuthStatus: Equatable, CustomStringConvertible {
       return "tunnel uninitialized"
     case .accountNotSetup:
       return "account not setup"
-    case .signedOut(let authBaseURL, let accountId):
-      return "signedOut(authBaseURL: \(authBaseURL), accountId: \(accountId))"
-    case .signedIn(let authBaseURL, let accountId, _):
-      return "signedIn(authBaseURL: \(authBaseURL), accountId: \(accountId))"
+    case .signedOut(let authBaseURL):
+      return "signedOut(authBaseURL: \(authBaseURL))"
+    case .signedIn(let authBaseURL, _):
+      return "signedIn(authBaseURL: \(authBaseURL))"
     }
   }
 }
@@ -389,13 +377,12 @@ extension NETunnelProviderManager {
         }
         return URL(string: urlString)
       }()
-      let accountId = providerConfig[TunnelProviderKeys.keyAccountId] as? String
       let tokenRef = protocolConfiguration.passwordReference
-      if let authBaseURL = authBaseURL, let accountId = accountId {
+      if let authBaseURL = authBaseURL {
         if let tokenRef = tokenRef {
-          return .signedIn(authBaseURL: authBaseURL, accountId: accountId, tokenReference: tokenRef)
+          return .signedIn(authBaseURL: authBaseURL, tokenReference: tokenRef)
         } else {
-          return .signedOut(authBaseURL: authBaseURL, accountId: accountId)
+          return .signedOut(authBaseURL: authBaseURL)
         }
       } else {
         return .accountNotSetup
@@ -411,12 +398,10 @@ extension NETunnelProviderManager {
       switch authStatus {
       case .tunnelUninitialized, .accountNotSetup:
         break
-      case .signedOut(let authBaseURL, let accountId):
+      case .signedOut(let authBaseURL):
         providerConfig[TunnelProviderKeys.keyAuthBaseURLString] = authBaseURL.absoluteString
-        providerConfig[TunnelProviderKeys.keyAccountId] = accountId
-      case .signedIn(let authBaseURL, let accountId, let tokenReference):
+      case .signedIn(let authBaseURL, let tokenReference):
         providerConfig[TunnelProviderKeys.keyAuthBaseURLString] = authBaseURL.absoluteString
-        providerConfig[TunnelProviderKeys.keyAccountId] = accountId
         protocolConfiguration.passwordReference = tokenReference
       }
 

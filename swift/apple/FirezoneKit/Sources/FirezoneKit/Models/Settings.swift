@@ -6,25 +6,6 @@
 
 import Foundation
 
-struct AccountSettings {
-  var accountId: String = "" {
-    didSet { if oldValue != accountId { isSavedToDisk = false } }
-  }
-
-  var isSavedToDisk = true
-
-  var isValid: Bool {
-    !accountId.isEmpty
-      && accountId.unicodeScalars.allSatisfy { Self.teamIdAllowedCharacterSet.contains($0) }
-  }
-
-  static let teamIdAllowedCharacterSet: CharacterSet = {
-    var pathAllowed = CharacterSet.urlPathAllowed
-    pathAllowed.remove("/")
-    return pathAllowed
-  }()
-}
-
 struct AdvancedSettings: Equatable {
   var authBaseURLString: String {
     didSet { if oldValue != authBaseURLString { isSavedToDisk = false } }

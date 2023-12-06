@@ -88,7 +88,7 @@ import SwiftUI
         Section(header: Text("Authentication")) {
           Group {
             switch self.model.loginStatus {
-            case .signedIn(_, let actorName):
+            case .signedIn(let actorName):
               HStack {
                 Text(actorName.isEmpty ? "Signed in" : "Signed in as")
                 Spacer()

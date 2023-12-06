@@ -20,14 +20,12 @@ public final class SettingsViewModel: ObservableObject {
 
   @Dependency(\.authStore) private var authStore
 
-  @Published var accountSettings: AccountSettings
   @Published var advancedSettings: AdvancedSettings
 
   public var onSettingsSaved: () -> Void = unimplemented()
   private var cancellables = Set<AnyCancellable>()
 
   public init() {
-    accountSettings = AccountSettings()
     advancedSettings = AdvancedSettings.defaultValue
     loadSettings()
   }
@@ -39,28 +37,10 @@ public final class SettingsViewModel: ObservableObject {
         .receive(on: RunLoop.main)
         .sink { [weak self] tunnelAuthStatus in
           guard let self = self else { return }
-          self.accountSettings = AccountSettings(accountId: tunnelAuthStatus.accountId() ?? "")
           self.advancedSettings =
             authStore.tunnelStore.advancedSettings() ?? AdvancedSettings.defaultValue
         }
         .store(in: &cancellables)
-    }
-  }
-
-  func saveAccountSettings() {
-    Task {
-      let accountId = await authStore.loginStatus.accountId
-      if accountId == accountSettings.accountId {
-        // Not changed
-        await MainActor.run {
-          accountSettings.isSavedToDisk = true
-        }
-        return
-      }
-      try await updateTunnelAuthStatus(accountId: accountSettings.accountId)
-      await MainActor.run {
-        accountSettings.isSavedToDisk = true
-      }
     }
   }
 
@@ -77,30 +57,7 @@ public final class SettingsViewModel: ObservableObject {
       await MainActor.run {
         advancedSettings.isSavedToDisk = true
       }
-      var isChanged = false
-      if isChanged {
-        try await updateTunnelAuthStatus(
-          accountId: authStore.tunnelStore.tunnelAuthStatus.accountId() ?? "")
-      }
-    }
-  }
-
-  // updateTunnelAuthStatus:
-  // When the authBaseURL or the accountId changes, we should update the signed-in-ness.
-  // This is done by searching the keychain for an entry with the authBaseURL+accountId
-  // combination. If an entry was found, we consider that entry to mean we're logged in.
-  func updateTunnelAuthStatus(accountId: String) async throws {
-    let tunnelAuthStatus: TunnelAuthStatus = await {
-      if accountId.isEmpty {
-        return .accountNotSetup
-      } else {
-        return await authStore.tunnelAuthStatusForAccount(accountId: accountId)
-      }
-    }()
-    do {
-      try await authStore.tunnelStore.saveAuthStatus(tunnelAuthStatus)
-    } catch {
-      logger.error("Error saving auth status to tunnel store: \(error, privacy: .public)")
+      // TODO: Should sign out the user if signed in
     }
   }
 }
@@ -142,13 +99,6 @@ public struct SettingsView: View {
     #if os(iOS)
       NavigationView {
         TabView {
-          accountTab
-            .tabItem {
-              Image(systemName: "person.3.fill")
-              Text("Account")
-            }
-            .badge(model.accountSettings.isValid ? nil : "!")
-
           advancedTab
             .tabItem {
               Image(systemName: "slider.horizontal.3")
@@ -162,9 +112,7 @@ public struct SettingsView: View {
               self.saveSettings()
             }
             .disabled(
-              (model.accountSettings.isSavedToDisk && model.advancedSettings.isSavedToDisk)
-                || !model.accountSettings.isValid
-                || !model.advancedSettings.isValid
+              (model.advancedSettings.isSavedToDisk || !model.advancedSettings.isValid)
             )
           }
           ToolbarItem(placement: .navigationBarLeading) {
@@ -179,10 +127,6 @@ public struct SettingsView: View {
     #elseif os(macOS)
       VStack {
         TabView {
-          accountTab
-            .tabItem {
-              Text("Account")
-            }
           advancedTab
             .tabItem {
               Text("Advanced")
@@ -191,80 +135,6 @@ public struct SettingsView: View {
         .padding(20)
       }
       .onDisappear(perform: { self.loadSettings() })
-    #else
-      #error("Unsupported platform")
-    #endif
-  }
-
-  private var accountTab: some View {
-    #if os(macOS)
-      VStack {
-        Spacer()
-        Form {
-          Section(
-            content: {
-              HStack(spacing: 15) {
-                Spacer()
-                Text("Account ID:")
-                TextField(
-                  "",
-                  text: Binding(
-                    get: { model.accountSettings.accountId },
-                    set: { model.accountSettings.accountId = $0 }
-                  ),
-                  prompt: Text(PlaceholderText.accountId)
-                )
-                .frame(maxWidth: 240)
-                .onSubmit {
-                  self.model.saveAccountSettings()
-                }
-                Spacer()
-              }
-            },
-            footer: {
-              Text(FootnoteText.forAccount)
-                .foregroundStyle(.secondary)
-            }
-          )
-          Button(
-            "Apply",
-            action: {
-              self.model.saveAccountSettings()
-            }
-          )
-          .disabled(
-            model.accountSettings.isSavedToDisk
-              || !model.accountSettings.isValid
-          )
-          .padding(.top, 5)
-        }
-        Spacer()
-      }
-    #elseif os(iOS)
-      VStack {
-        Form {
-          Section(
-            content: {
-              HStack(spacing: 15) {
-                Text("Account ID")
-                  .foregroundStyle(.secondary)
-                TextField(
-                  PlaceholderText.accountId,
-                  text: Binding(
-                    get: { model.accountSettings.accountId },
-                    set: { model.accountSettings.accountId = $0 }
-                  )
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-              }
-            },
-            header: { Text("Account") },
-            footer: { Text(FootnoteText.forAccount) }
-          )
-        }
-      }
     #else
       #error("Unsupported platform")
     #endif
@@ -430,7 +300,6 @@ public struct SettingsView: View {
   }
 
   func saveSettings() {
-    model.saveAccountSettings()
     model.saveAdvancedSettings()
     dismiss()
   }
