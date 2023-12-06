@@ -436,7 +436,8 @@ fn parse_auth_callback(input: &SecretString) -> Result<AuthCallback> {
 
 /// The information needed for the GUI to display a resource inside the Firezone VPN
 struct _ResourceDisplay {
-    // TODO: The ID in ResourceDescription is something like a number that's safe to use internally, right? Like it won't have slashes or emojis or any odd characters that a name or URL might have?
+    /// UUIDv4 (Fully random)
+    /// This should be stable over time even if the DNS / IP / name change, so we can use it for callbacks from the tray menu
     id: String,
     /// User-friendly name, e.g. "GitLab"
     name: String,
@@ -465,7 +466,10 @@ fn _signed_in_menu(user_email: &str, resources: &[_ResourceDisplay]) -> SystemTr
         .add_native_item(SystemTrayMenuItem::Separator)
         .add_item(CustomMenuItem::new("/about".to_string(), "About"))
         .add_item(CustomMenuItem::new("/settings".to_string(), "Settings"))
-        .add_item(CustomMenuItem::new("/quit".to_string(), "Quit Firezone").accelerator("Ctrl+Q"));
+        .add_item(
+            CustomMenuItem::new("/quit".to_string(), "Disconnect and quit Firezone")
+                .accelerator("Ctrl+Q"),
+        );
 
     menu
 }
