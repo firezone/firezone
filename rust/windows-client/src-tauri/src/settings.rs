@@ -49,14 +49,14 @@ pub(crate) async fn apply_advanced_settings(
 
 #[tauri::command]
 pub(crate) async fn clear_logs() -> StdResult<(), String> {
-    clear_logs_inner().await.map_err(|e| format!("{e}"))
+    clear_logs_inner().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
     export_logs_inner(managed.ctlr_tx.clone())
         .await
-        .map_err(|e| format!("{e}"))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
