@@ -60,7 +60,9 @@ import SwiftUI
     }
 
     func signOutButtonTapped() {
-      appStore.auth.signOut()
+      Task {
+        await appStore.auth.signOut()
+      }
     }
 
     func startTunnel() async {
