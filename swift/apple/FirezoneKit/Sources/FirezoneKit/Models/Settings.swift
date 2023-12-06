@@ -46,3 +46,9 @@ struct AdvancedSettings: Equatable {
   // Note: To see what the connlibLogFilterString values mean, see:
   // https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
 }
+
+extension AdvancedSettings: CustomStringConvertible {
+  var description: String {
+    "(\(authBaseURLString), \(apiURLString), \(connlibLogFilterString))"
+  }
+}

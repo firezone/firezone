@@ -93,6 +93,7 @@ final class TunnelStore: ObservableObject {
   }
 
   func saveAuthStatus(_ tunnelAuthStatus: TunnelAuthStatus) async throws {
+    Self.logger.log("TunnelStore.\(#function) \(tunnelAuthStatus, privacy: .public)")
     guard let tunnel = tunnel else {
       fatalError("Tunnel not initialized yet")
     }
@@ -107,6 +108,7 @@ final class TunnelStore: ObservableObject {
   }
 
   func saveAdvancedSettings(_ advancedSettings: AdvancedSettings) async throws {
+    Self.logger.log("TunnelStore.\(#function) \(advancedSettings, privacy: .public)")
     guard let tunnel = tunnel else {
       fatalError("Tunnel not initialized yet")
     }
