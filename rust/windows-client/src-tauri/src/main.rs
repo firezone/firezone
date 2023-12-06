@@ -26,6 +26,7 @@ mod gui {
 #[cfg(target_os = "windows")]
 mod gui;
 mod local_webserver;
+mod settings;
 
 fn main() -> Result<()> {
     // Special case for app link URIs

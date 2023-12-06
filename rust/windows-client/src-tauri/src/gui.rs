@@ -2,12 +2,12 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
+use crate::settings::{self, AdvancedSettings};
 use anyhow::{anyhow, bail, Result};
 use connlib_client_shared::file_logger;
 use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
-use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, result::Result as StdResult, str::FromStr, time::Duration};
+use std::{path::PathBuf, str::FromStr};
 use tauri::{
     CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
@@ -16,6 +16,13 @@ use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use ControllerRequest as Req;
 
+pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
+
+/// Runs the Tauri GUI and returns on exit or unrecoverable error
+///
+/// # Arguments
+///
+/// * `deep_link` - The URL of an incoming deep link from a web browser
 pub fn run(deep_link: Option<String>) -> Result<()> {
     // Make sure we're single-instance
     tauri_plugin_deep_link::prepare("dev.firezone");
@@ -39,10 +46,10 @@ pub fn run(deep_link: Option<String>) -> Result<()> {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            apply_advanced_settings,
-            clear_logs,
-            export_logs,
-            get_advanced_settings,
+            settings::apply_advanced_settings,
+            settings::clear_logs,
+            settings::export_logs,
+            settings::get_advanced_settings,
         ])
         .system_tray(tray)
         .on_system_tray_event(|app, event| {
@@ -84,9 +91,7 @@ pub fn run(deep_link: Option<String>) -> Result<()> {
             let handle = app.handle();
             tauri_plugin_deep_link::register(crate::DEEP_LINK_SCHEME, move |r| {
                 let r = SecretString::new(r);
-                let ctlr_tx = handle
-                    .try_state::<mpsc::Sender<ControllerRequest>>()
-                    .unwrap();
+                let ctlr_tx = handle.try_state::<CtlrTx>().unwrap();
                 ctlr_tx
                     .blocking_send(ControllerRequest::SchemeRequest(r))
                     .unwrap();
@@ -163,7 +168,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
             }
         }
         TrayMenuEvent::SignIn => app
-            .try_state::<mpsc::Sender<ControllerRequest>>()
+            .try_state::<CtlrTx>()
             .ok_or_else(|| anyhow!("getting ctlr_tx state"))?
             .blocking_send(ControllerRequest::SignIn)?,
         TrayMenuEvent::SignOut => app.tray_handle().set_menu(signed_out_menu())?,
@@ -193,7 +198,7 @@ fn keyring_entry() -> Result<keyring::Entry> {
 
 #[derive(Clone)]
 struct CallbackHandler {
-    ctlr_tx: mpsc::Sender<ControllerRequest>,
+    ctlr_tx: CtlrTx,
     handle: Option<file_logger::Handle>,
 }
 
@@ -240,26 +245,19 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
 
 struct Controller {
     advanced_settings: AdvancedSettings,
-    ctlr_tx: mpsc::Sender<ControllerRequest>,
+    ctlr_tx: CtlrTx,
     session: Option<connlib_client_shared::Session<CallbackHandler>>,
     token: Option<SecretString>,
-}
-
-async fn load_advanced_settings(app: &tauri::AppHandle) -> Result<AdvancedSettings> {
-    let path = advanced_settings_path(app).await?;
-    let text = tokio::fs::read_to_string(&path).await?;
-    let settings = serde_json::from_str(&text)?;
-    Ok(settings)
 }
 
 impl Controller {
     async fn new(app: tauri::AppHandle) -> Result<Self> {
         let ctlr_tx = app
-            .try_state::<mpsc::Sender<ControllerRequest>>()
+            .try_state::<CtlrTx>()
             .ok_or_else(|| anyhow::anyhow!("can't get managed ctlr_tx"))?
             .inner()
             .clone();
-        let advanced_settings = load_advanced_settings(&app).await?;
+        let advanced_settings = settings::load_advanced_settings(&app).await?;
 
         tracing::trace!("re-loading token");
         let token: Option<SecretString> = tokio::task::spawn_blocking(|| {
@@ -297,8 +295,8 @@ impl Controller {
     }
 
     fn start_session(
-        advanced_settings: &AdvancedSettings,
-        ctlr_tx: mpsc::Sender<ControllerRequest>,
+        advanced_settings: &settings::AdvancedSettings,
+        ctlr_tx: CtlrTx,
         token: &SecretString,
     ) -> Result<connlib_client_shared::Session<CallbackHandler>> {
         let (layer, handle) = file_logger::layer(std::path::Path::new("logs"));
@@ -331,7 +329,7 @@ async fn run_controller(
 
     while let Some(req) = rx.recv().await {
         match req {
-            Req::ExportLogs(file_path) => export_logs_to(file_path).await?,
+            Req::ExportLogs(file_path) => settings::export_logs_to(file_path).await?,
             Req::GetAdvancedSettings(tx) => {
                 tx.send(controller.advanced_settings.clone()).ok();
             }
@@ -404,115 +402,6 @@ fn parse_auth_callback(input: &SecretString) -> Result<AuthCallback> {
         token: token.ok_or_else(|| anyhow!("expected client_auth_token"))?,
         _identifier: identifier.ok_or_else(|| anyhow!("expected identity_provider_identifier"))?,
     })
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-pub(crate) struct AdvancedSettings {
-    auth_base_url: Url,
-    api_url: Url,
-    log_filter: String,
-}
-
-impl Default for AdvancedSettings {
-    fn default() -> Self {
-        Self {
-            auth_base_url: Url::parse("https://app.firezone.dev").unwrap(),
-            api_url: Url::parse("wss://api.firezone.dev").unwrap(),
-            log_filter: "info".to_string(),
-        }
-    }
-}
-
-/// Gets the path for storing advanced settings, creating parent dirs if needed.
-async fn advanced_settings_path(app: &tauri::AppHandle) -> Result<PathBuf> {
-    let dir = app
-        .path_resolver()
-        .app_local_data_dir()
-        .ok_or_else(|| anyhow::anyhow!("can't get app_local_data_dir"))?
-        .join("config");
-    tokio::fs::create_dir_all(&dir).await?;
-    Ok(dir.join("advanced_settings.json"))
-}
-
-#[tauri::command]
-async fn apply_advanced_settings(
-    app: tauri::AppHandle,
-    settings: AdvancedSettings,
-) -> StdResult<(), String> {
-    apply_advanced_settings_inner(app, settings)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn clear_logs() -> StdResult<(), String> {
-    clear_logs_inner().await.map_err(|e| format!("{e}"))
-}
-
-#[tauri::command]
-async fn export_logs(
-    ctlr_tx: tauri::State<'_, mpsc::Sender<ControllerRequest>>,
-) -> StdResult<(), String> {
-    export_logs_inner(ctlr_tx.inner().clone())
-        .await
-        .map_err(|e| format!("{e}"))
-}
-
-#[tauri::command]
-async fn get_advanced_settings(
-    ctlr_tx: tauri::State<'_, mpsc::Sender<ControllerRequest>>,
-) -> StdResult<AdvancedSettings, String> {
-    let (tx, rx) = oneshot::channel();
-    ctlr_tx
-        .send(ControllerRequest::GetAdvancedSettings(tx))
-        .await
-        .unwrap();
-    Ok(rx.await.unwrap())
-}
-
-async fn apply_advanced_settings_inner(
-    app: tauri::AppHandle,
-    settings: AdvancedSettings,
-) -> Result<()> {
-    tokio::fs::write(
-        advanced_settings_path(&app).await?,
-        serde_json::to_string(&settings)?,
-    )
-    .await?;
-
-    // TODO: This sleep is just for testing, remove it before it ships
-    // TODO: Make sure the GUI handles errors if this function fails
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    Ok(())
-}
-
-async fn clear_logs_inner() -> Result<()> {
-    todo!()
-}
-
-async fn export_logs_inner(ctlr_tx: mpsc::Sender<ControllerRequest>) -> Result<()> {
-    tauri::api::dialog::FileDialogBuilder::new()
-        .add_filter("Zip", &["zip"])
-        .save_file(move |file_path| match file_path {
-            None => {}
-            Some(x) => ctlr_tx
-                .blocking_send(ControllerRequest::ExportLogs(x))
-                .unwrap(),
-        });
-    Ok(())
-}
-
-async fn export_logs_to(file_path: PathBuf) -> Result<()> {
-    tracing::trace!("Exporting logs to {file_path:?}");
-
-    let mut entries = tokio::fs::read_dir("logs").await?;
-    while let Some(entry) = entries.next_entry().await? {
-        let path = entry.path();
-        tracing::trace!("Export {path:?}");
-    }
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    // TODO: Somehow signal back to the GUI to unlock the log buttons when the export completes, or errors out
-    Ok(())
 }
 
 /// The information needed for the GUI to display a resource inside the Firezone VPN
