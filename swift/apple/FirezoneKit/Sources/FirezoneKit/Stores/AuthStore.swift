@@ -88,24 +88,6 @@ final class AuthStore: ObservableObject {
       .sink { [weak self] status in
         guard let self = self else { return }
         Task {
-          if status == .disconnected {
-            self.logger.log("\(#function): Disconnected")
-            if let tsEvent = TunnelShutdownEvent.loadFromDisk() {
-              self.logger.log(
-                "\(#function): Tunnel shutdown event: \(tsEvent, privacy: .public)"
-              )
-              switch tsEvent.action {
-              case .signoutImmediately:
-                Task {
-                  await self.signOut()
-                }
-              case .retryThenSignout:
-                self.retryStartTunnel()
-              }
-            } else {
-              self.logger.log("\(#function): Tunnel shutdown event not found")
-            }
-          }
           if status == .connected {
             self.resetReconnectionAttemptsRemaining()
           }
@@ -189,7 +171,21 @@ final class AuthStore: ObservableObject {
         try await tunnelStore.start()
       } catch {
         logger.error("\(#function): Error starting tunnel: \(String(describing: error))")
-        self.retryStartTunnel()
+        if let tsEvent = TunnelShutdownEvent.loadFromDisk() {
+          self.logger.log(
+            "\(#function): Tunnel shutdown event: \(tsEvent, privacy: .public)"
+          )
+          switch tsEvent.action {
+          case .signoutImmediately:
+            Task {
+              await self.signOut()
+            }
+          case .retryThenSignout:
+            self.retryStartTunnel()
+          }
+        } else {
+          self.logger.log("\(#function): Tunnel shutdown event not found")
+        }
       }
     }
   }
@@ -218,14 +214,7 @@ final class AuthStore: ObservableObject {
     logger.log("\(#function): Login status: \(self.loginStatus)")
     switch self.loginStatus {
     case .signedIn:
-      Task {
-        do {
-          try await tunnelStore.start()
-        } catch {
-          logger.error("\(#function): Error starting tunnel: \(String(describing: error))")
-          self.retryStartTunnel()
-        }
-      }
+      self.startTunnel()
     case .signedOut:
       Task {
         do {
