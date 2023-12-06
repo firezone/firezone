@@ -16,7 +16,6 @@ repos:
         description: Forces to replace line ending by the UNIX 'lf' character.
         exclude: '(^website/public/images/|^kotlin/android/gradlew.bat)'
       - id: check-yaml
-        exclude: ^.github/workflows/
       - id: check-merge-conflict
       - id: end-of-file-fixer
         exclude: ^website/public/images/
