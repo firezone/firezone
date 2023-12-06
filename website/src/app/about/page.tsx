@@ -1,20 +1,20 @@
 import Link from "next/link";
 import Image from "next/image";
 import gravatar from "@/lib/gravatar";
-import { LinkedInIcon, GitHubIcon, TwitterIcon } from "@/components/Icons";
+import { LinkedInIcon, GitHubIcon, XIcon } from "@/components/Icons";
 
 function renderTeamMember({
   name,
   title,
   imgSrc,
-  twitterUrl,
+  xUrl,
   githubUrl,
   linkedinUrl,
 }: {
   name: string;
   title: string;
   imgSrc: string;
-  twitterUrl?: URL;
+  xUrl?: URL;
   githubUrl?: URL;
   linkedinUrl?: URL;
 }) {
@@ -33,9 +33,9 @@ function renderTeamMember({
         </h3>
         <span className="text-neutral-800 text-sm">{title}</span>
         <ul className="flex justify-center space-x-4 mt-4">
-          {twitterUrl && (
+          {xUrl && (
             <li>
-              <TwitterIcon url={twitterUrl} />
+              <XIcon url={xUrl} />
             </li>
           )}
           {githubUrl && (
@@ -60,7 +60,7 @@ export default function Page() {
       name: "Jamil Bou Kheir",
       title: "CEO/Founder",
       imgSrc: gravatar("jamil@firezone.dev", 200),
-      twitterUrl: new URL("https://twitter.com/jamilbk"),
+      xUrl: new URL("https://x.com/jamilbk"),
       githubUrl: new URL("https://github.com/jamilbk"),
       linkedinUrl: new URL("https://linkedin.com/in/jamilbk"),
     },
@@ -68,14 +68,14 @@ export default function Page() {
       name: "Gabriel Steinberg",
       title: "Senior Backend Engineer",
       imgSrc: "/images/avatars/gabriel.png",
-      twitterUrl: new URL("https://twitter.com/tapingmemory"),
+      xUrl: new URL("https://x.com/tapingmemory"),
       githubUrl: new URL("https://github.com/conectado"),
     },
     {
       name: "Andrew Dryga",
       title: "Founding Engineer",
       imgSrc: "/images/avatars/andrew.jpg",
-      twitterUrl: new URL("https://twitter.com/andrew_dryga"),
+      xUrl: new URL("https://x.com/andrew_dryga"),
       githubUrl: new URL("https://github.com/andrewdryga"),
       linkedinUrl: new URL("https://linkedin.com/in/andrew-dryga-bb382557"),
     },
@@ -90,7 +90,7 @@ export default function Page() {
       name: "Thomas Eizinger",
       title: "Distributed Systems Engineer",
       imgSrc: "/images/avatars/thomas.jpeg",
-      twitterUrl: new URL("https://twitter.com/oetzn"),
+      xUrl: new URL("https://x.com/oetzn"),
       githubUrl: new URL("https://github.com/thomaseizinger"),
       linkedinUrl: new URL("https://www.linkedin.com/in/thomas-eizinger"),
     },
@@ -98,7 +98,7 @@ export default function Page() {
       name: "Roopesh Chander",
       title: "Apple Platform Engineer",
       imgSrc: gravatar("roop@roopc.net", 200),
-      twitterUrl: new URL("https://twitter.com/roopcnet"),
+      xUrl: new URL("https://x.com/roopcnet"),
       githubUrl: new URL("https://github.com/roop"),
     },
     {

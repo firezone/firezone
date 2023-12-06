@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import ConsentPreferences from "@/components/ConsentPreferences";
 
-import { LinkedInIcon, GitHubIcon, TwitterIcon } from "@/components/Icons";
+import { LinkedInIcon, GitHubIcon, XIcon } from "@/components/Icons";
 
 export default function Footer() {
   return (
@@ -38,6 +38,11 @@ export default function Footer() {
               </h2>
               <ul className="text-neutral-900  font-medium">
                 <li className="mb-4">
+                  <Link href="/about" className="hover:underline">
+                    About
+                  </Link>
+                </li>
+                <li className="mb-4">
                   <Link href="/" className="hover:underline">
                     Home
                   </Link>
@@ -50,11 +55,6 @@ export default function Footer() {
                 <li className="mb-4">
                   <Link href="/blog" className="hover:underline">
                     Blog
-                  </Link>
-                </li>
-                <li className="mb-4">
-                  <Link href="/team" className="hover:underline">
-                    Team
                   </Link>
                 </li>
                 <li>
@@ -145,10 +145,10 @@ export default function Footer() {
                 </li>
                 <li className="mb-4">
                   <Link
-                    href="https://twitter.com/firezonehq"
+                    href="https://x.com/firezonehq"
                     className="hover:underline hover:text-neutral-900"
                   >
-                    Twitter
+                    X
                   </Link>
                 </li>
                 <li>
@@ -198,7 +198,7 @@ export default function Footer() {
             </Link>
           </span>
           <div className="flex mt-4 space-x-6 sm:justify-center sm:mt-0">
-            <TwitterIcon url={new URL("https://twitter.com/firezonehq")} />
+            <XIcon url={new URL("https://x.com/firezonehq")} />
             <GitHubIcon url={new URL("https://github.com/firezone")} />
             <LinkedInIcon
               url={new URL("https://linkedin.com/company/firezonehq")}
