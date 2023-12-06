@@ -244,10 +244,12 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         &self,
         resources: Vec<connlib_client_shared::ResourceDescription>,
     ) -> Result<(), Self::Error> {
-        tracing::debug!("on_update_resources");
-        self.ctlr_tx
-            .blocking_send(ControllerRequest::UpdateResources(resources))
-            .unwrap();
+        tracing::debug!("on_update_resources {resources:?}");
+        if false {
+            self.ctlr_tx
+                .blocking_send(ControllerRequest::UpdateResources(resources))
+                .unwrap();
+        }
         Ok(())
     }
 
