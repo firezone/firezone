@@ -233,6 +233,10 @@ final class AuthStore: ObservableObject {
         } catch {
           logger.error("\(#function): Error stopping tunnel: \(String(describing: error))")
         }
+        if tunnelStore.tunnelAuthStatus != .signedOut {
+          // Bring tunnelAuthStatus in line, in case it's out of touch with the login status
+          try await tunnelStore.saveAuthStatus(.signedOut)
+        }
       }
     case .uninitialized:
       break
