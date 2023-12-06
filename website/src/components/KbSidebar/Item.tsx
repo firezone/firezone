@@ -9,7 +9,7 @@ export default function Item({
   label,
 }: {
   topLevel?: boolean;
-  href: string;
+  href: Route<string>;
   label: string;
 }) {
   function active(path: string) {
