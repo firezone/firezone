@@ -26,6 +26,8 @@ mod gui {
 #[cfg(target_os = "windows")]
 mod gui;
 mod local_webserver;
+// Relies on some types from Tauri
+#[cfg(target_os = "windows")]
 mod settings;
 
 fn main() -> Result<()> {
