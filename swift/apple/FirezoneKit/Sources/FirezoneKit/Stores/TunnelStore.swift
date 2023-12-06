@@ -12,6 +12,9 @@ import OSLog
 enum TunnelStoreError: Error {
   case tunnelCouldNotBeStarted
   case tunnelCouldNotBeStopped
+  case cannotSaveToTunnelWhenConnected
+  case cannotSignOutWhenConnected
+  case stopAlreadyBeingAttempted
 }
 
 public struct TunnelProviderKeys {
@@ -94,7 +97,10 @@ final class TunnelStore: ObservableObject {
       fatalError("Tunnel not initialized yet")
     }
 
-    try await stop()
+    let tunnelStatus = tunnel.connection.status
+    if tunnelStatus == .connected || tunnelStatus == .connecting {
+      throw TunnelStoreError.cannotSaveToTunnelWhenConnected
+    }
 
     try await tunnel.saveAuthStatus(tunnelAuthStatus)
     self.tunnelAuthStatus = tunnelAuthStatus
@@ -105,9 +111,13 @@ final class TunnelStore: ObservableObject {
       fatalError("Tunnel not initialized yet")
     }
 
-    try await stop()
+    let tunnelStatus = tunnel.connection.status
+    if tunnelStatus == .connected || tunnelStatus == .connecting {
+      throw TunnelStoreError.cannotSaveToTunnelWhenConnected
+    }
 
     try await tunnel.saveAdvancedSettings(advancedSettings)
+    self.tunnelAuthStatus = tunnel.authStatus()
   }
 
   func advancedSettings() -> AdvancedSettings? {
@@ -165,6 +175,10 @@ final class TunnelStore: ObservableObject {
       return
     }
 
+    guard self.stopTunnelContinuation == nil else {
+      throw TunnelStoreError.stopAlreadyBeingAttempted
+    }
+
     TunnelStore.logger.trace("\(#function)")
 
     let status = tunnel.connection.status
@@ -177,18 +191,15 @@ final class TunnelStore: ObservableObject {
     }
   }
 
-  func stopAndSignOut() async throws -> Keychain.PersistentRef? {
+  func signOut() async throws -> Keychain.PersistentRef? {
     guard let tunnel = tunnel else {
       Self.logger.log("\(#function): TunnelStore is not initialized")
       return nil
     }
 
-    TunnelStore.logger.trace("\(#function)")
-
-    let status = tunnel.connection.status
-    if status == .connected || status == .connecting {
-      let session = castToSession(tunnel.connection)
-      session.stopTunnel()
+    let tunnelStatus = tunnel.connection.status
+    if tunnelStatus == .connected || tunnelStatus == .connecting {
+      throw TunnelStoreError.cannotSignOutWhenConnected
     }
 
     if case .signedIn(_, let tokenReference) = self.tunnelAuthStatus {

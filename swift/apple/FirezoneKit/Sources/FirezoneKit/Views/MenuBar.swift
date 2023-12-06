@@ -217,7 +217,9 @@
     }
 
     @objc private func signOutButtonTapped() {
-      appStore?.auth.signOut()
+      Task {
+        await appStore?.auth.signOut()
+      }
     }
 
     @objc private func settingsButtonTapped() {

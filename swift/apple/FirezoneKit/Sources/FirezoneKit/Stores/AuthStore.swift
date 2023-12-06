@@ -96,7 +96,9 @@ final class AuthStore: ObservableObject {
               )
               switch tsEvent.action {
               case .signoutImmediately:
-                self.signOut()
+                Task {
+                  await self.signOut()
+                }
               case .retryThenSignout:
                 self.retryStartTunnel()
               }
@@ -154,7 +156,7 @@ final class AuthStore: ObservableObject {
       .signedIn(authBaseURL: self.authBaseURL, tokenReference: tokenRef))
   }
 
-  func signOut() {
+  func signOut() async {
     logger.trace("\(#function)")
 
     guard case .signedIn = self.tunnelStore.tunnelAuthStatus else {
@@ -162,10 +164,13 @@ final class AuthStore: ObservableObject {
       return
     }
 
-    Task {
-      if let tokenRef = try await tunnelStore.stopAndSignOut() {
+    do {
+      try await tunnelStore.stop()
+      if let tokenRef = try await tunnelStore.signOut() {
         try await keychain.delete(tokenRef)
       }
+    } catch {
+      logger.error("\(#function): Error signing out: \(error, privacy: .public)")
     }
 
     resetReconnectionAttemptsRemaining()
@@ -203,7 +208,9 @@ final class AuthStore: ObservableObject {
         self.startTunnel()
       }
     } else {
-      self.signOut()
+      Task {
+        await self.signOut()
+      }
     }
   }
 

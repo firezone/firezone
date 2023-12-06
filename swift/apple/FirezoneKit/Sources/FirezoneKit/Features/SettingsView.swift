@@ -20,6 +20,10 @@ public final class SettingsViewModel: ObservableObject {
 
   @Dependency(\.authStore) private var authStore
 
+  var tunnelAuthStatus: TunnelAuthStatus {
+    authStore.tunnelStore.tunnelAuthStatus
+  }
+
   @Published var advancedSettings: AdvancedSettings
 
   public var onSettingsSaved: () -> Void = unimplemented()
@@ -33,7 +37,7 @@ public final class SettingsViewModel: ObservableObject {
   func loadSettings() {
     Task {
       authStore.tunnelStore.$tunnelAuthStatus
-        .filter { $0.isInitialized }
+        .first { $0.isInitialized }
         .receive(on: RunLoop.main)
         .sink { [weak self] tunnelAuthStatus in
           guard let self = self else { return }
@@ -45,8 +49,13 @@ public final class SettingsViewModel: ObservableObject {
   }
 
   func saveAdvancedSettings() {
+    let isChanged = (authStore.tunnelStore.advancedSettings() != advancedSettings)
+    guard isChanged else {
+      advancedSettings.isSavedToDisk = true
+      return
+    }
     Task {
-      if case .signedIn = authStore.tunnelStore.tunnelAuthStatus {
+      if case .signedIn = self.tunnelAuthStatus {
         await authStore.signOut()
       }
       let authBaseURLString = advancedSettings.authBaseURLString
@@ -74,7 +83,26 @@ public struct SettingsView: View {
   @ObservedObject var model: SettingsViewModel
   @Environment(\.dismiss) var dismiss
 
+  enum ConfirmationAlertContinueAction: Int {
+    case none
+    case saveAdvancedSettings
+    case saveAllSettingsAndDismiss
+
+    func performAction(on view: SettingsView) {
+      switch self {
+      case .none:
+        break
+      case .saveAdvancedSettings:
+        view.saveAdvancedSettings()
+      case .saveAllSettingsAndDismiss:
+        view.saveAllSettingsAndDismiss()
+      }
+    }
+  }
+
   @State private var isExportingLogs = false
+  @State private var isShowingConfirmationAlert = false
+  @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
 
   #if os(iOS)
     @State private var logTempZipFileURL: URL?
@@ -115,7 +143,13 @@ public struct SettingsView: View {
         .toolbar {
           ToolbarItem(placement: .navigationBarTrailing) {
             Button("Save") {
-              self.saveSettings()
+              let action = ConfirmationAlertContinueAction.saveAllSettingsAndDismiss
+              if case .signedIn = model.tunnelAuthStatus {
+                self.confirmationAlertContinueAction = action
+                self.isShowingConfirmationAlert = true
+              } else {
+                action.performAction(on: self)
+              }
             }
             .disabled(
               (model.advancedSettings.isSavedToDisk || !model.advancedSettings.isValid)
@@ -130,6 +164,23 @@ public struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
       }
+      .alert(
+        "Saving settings will sign you out",
+        isPresented: $isShowingConfirmationAlert,
+        presenting: confirmationAlertContinueAction,
+        actions: { confirmationAlertContinueAction in
+          Button("Continue") {
+            confirmationAlertContinueAction.performAction(on: self)
+          }
+          Button("Cancel", role: .cancel) {
+            // Nothing to do
+          }
+        },
+        message: { _ in
+          Text("Changing settings will sign you out and disconnect you from resources")
+        }
+      )
+
     #elseif os(macOS)
       VStack {
         TabView {
@@ -140,6 +191,22 @@ public struct SettingsView: View {
         }
         .padding(20)
       }
+      .alert(
+        "Saving settings will sign you out",
+        isPresented: $isShowingConfirmationAlert,
+        presenting: confirmationAlertContinueAction,
+        actions: { confirmationAlertContinueAction in
+          Button("Continue") {
+            confirmationAlertContinueAction.performAction(on: self)
+          }
+          Button("Cancel", role: .cancel) {
+            // Nothing to do
+          }
+        },
+        message: { _ in
+          Text("Changing settings will sign you out and disconnect you from resources")
+        }
+      )
       .onDisappear(perform: { self.loadSettings() })
     #else
       #error("Unsupported platform")
@@ -187,7 +254,13 @@ public struct SettingsView: View {
               Button(
                 "Apply",
                 action: {
-                  self.model.saveAdvancedSettings()
+                  let action = ConfirmationAlertContinueAction.saveAdvancedSettings
+                  if case .signedIn = model.tunnelAuthStatus {
+                    self.confirmationAlertContinueAction = action
+                    self.isShowingConfirmationAlert = true
+                  } else {
+                    action.performAction(on: self)
+                  }
                 }
               )
               .disabled(model.advancedSettings.isSavedToDisk || !model.advancedSettings.isValid)
@@ -305,7 +378,11 @@ public struct SettingsView: View {
     #endif
   }
 
-  func saveSettings() {
+  func saveAdvancedSettings() {
+    model.saveAdvancedSettings()
+  }
+
+  func saveAllSettingsAndDismiss() {
     model.saveAdvancedSettings()
     dismiss()
   }
