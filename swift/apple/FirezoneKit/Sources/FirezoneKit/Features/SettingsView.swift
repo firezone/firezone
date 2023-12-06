@@ -46,8 +46,15 @@ public final class SettingsViewModel: ObservableObject {
 
   func saveAdvancedSettings() {
     Task {
-      guard let authBaseURL = URL(string: advancedSettings.authBaseURLString) else {
-        fatalError("Saved authBaseURL is invalid")
+      if case .signedIn = authStore.tunnelStore.tunnelAuthStatus {
+        await authStore.signOut()
+      }
+      let authBaseURLString = advancedSettings.authBaseURLString
+      guard URL(string: authBaseURLString) != nil else {
+        logger.error(
+          "Not saving advanced settings because authBaseURL '\(authBaseURLString, privacy: .public)' is invalid"
+        )
+        return
       }
       do {
         try await authStore.tunnelStore.saveAdvancedSettings(advancedSettings)
@@ -57,7 +64,6 @@ public final class SettingsViewModel: ObservableObject {
       await MainActor.run {
         advancedSettings.isSavedToDisk = true
       }
-      // TODO: Should sign out the user if signed in
     }
   }
 }
