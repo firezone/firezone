@@ -201,12 +201,6 @@ defmodule Web.Router do
           live "/", Index
           live "/new", New
 
-          scope "/saml", SAML do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-          end
-
           scope "/openid_connect", OpenIDConnect do
             live "/new", New
             live "/:provider_id", Show
