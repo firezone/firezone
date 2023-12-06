@@ -1,11 +1,11 @@
-import Content from "./readme.mdx";
 import { Metadata } from "next";
+import _Page from "./_page";
 
 export const metadata: Metadata = {
-  title: "Administer • Firezone Docs",
+  title: "Backup • Firezone Docs",
   description: "Firezone Documentation",
 };
 
 export default function Page() {
-  return <Content />;
+  return <_Page />;
 }

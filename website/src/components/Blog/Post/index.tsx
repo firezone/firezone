@@ -17,7 +17,7 @@ export default function Post({
   children: React.ReactNode;
 }) {
   return (
-    <main className="py-14 lg:pb-24 bg-neutral-100 ">
+    <main className="py-14 lg:pb-24 bg-neutral-100 border border-b-1 ">
       <div className="flex justify-between px-4 mx-auto max-w-screen-xl">
         <article className="mx-auto w-full max-w-2xl format format-sm sm:format-base lg:format-lg ">
           <header className="mb-4 lg:mb-6 not-format">
@@ -40,9 +40,7 @@ export default function Post({
                   </a>
                   <p className="text-base text-neutral-900 ">{authorTitle}</p>
                   <p className="text-base text-neutral-900 ">
-                    <time dateTime="2022-02-08" title="February 8th, 2022">
-                      {date}
-                    </time>
+                    <time dateTime={date}>{date}</time>
                   </p>
                 </div>
               </div>
