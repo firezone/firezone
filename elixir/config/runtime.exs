@@ -48,10 +48,6 @@ if config_env() == :prod do
     enabled: compile_config!(:telemetry_enabled),
     id: compile_config!(:telemetry_id)
 
-  config :domain, Domain.Auth,
-    key_base: compile_config!(:auth_token_key_base),
-    salt: compile_config!(:auth_token_salt)
-
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
     finch_transport_opts: compile_config!(:http_client_ssl_opts)
 

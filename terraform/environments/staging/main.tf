@@ -149,12 +149,12 @@ resource "random_password" "erlang_cluster_cookie" {
   special = false
 }
 
-resource "random_password" "auth_token_key_base" {
+resource "random_password" "tokens_key_base" {
   length  = 64
   special = false
 }
 
-resource "random_password" "auth_token_salt" {
+resource "random_password" "tokens_salt" {
   length  = 32
   special = false
 }
@@ -373,19 +373,11 @@ locals {
     },
     {
       name  = "TOKENS_KEY_BASE"
-      value = base64encode(random_password.auth_token_key_base.result)
+      value = base64encode(random_password.tokens_key_base.result)
     },
     {
       name  = "TOKENS_SALT"
-      value = base64encode(random_password.auth_token_salt.result)
-    },
-    {
-      name  = "AUTH_TOKEN_KEY_BASE"
-      value = base64encode(random_password.auth_token_key_base.result)
-    },
-    {
-      name  = "AUTH_TOKEN_SALT"
-      value = base64encode(random_password.auth_token_salt.result)
+      value = base64encode(random_password.tokens_salt.result)
     },
     {
       name  = "RELAYS_AUTH_TOKEN_KEY_BASE"
