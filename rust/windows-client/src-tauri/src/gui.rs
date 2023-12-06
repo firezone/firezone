@@ -7,7 +7,7 @@ use connlib_client_shared::file_logger;
 use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, result::Result as StdResult, time::Duration};
+use std::{path::PathBuf, result::Result as StdResult, str::FromStr, time::Duration};
 use tauri::{
     CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
@@ -47,39 +47,16 @@ pub fn run(deep_link: Option<String>) -> Result<()> {
         .system_tray(tray)
         .on_system_tray_event(|app, event| {
             if let SystemTrayEvent::MenuItemClick { id, .. } = event {
-                match id.as_str() {
-                    "/sign_in" => {
-                        app.try_state::<mpsc::Sender<ControllerRequest>>()
-                            .unwrap()
-                            .blocking_send(ControllerRequest::SignIn)
-                            .unwrap();
+                let event = match TrayMenuEvent::from_str(&id) {
+                    Ok(x) => x,
+                    Err(e) => {
+                        tracing::error!("{e}");
+                        return;
                     }
-                    "/sign_out" => app.tray_handle().set_menu(signed_out_menu()).unwrap(),
-                    "/about" => {
-                        let win = app.get_window("about").unwrap();
-
-                        if win.is_visible().unwrap() {
-                            win.hide().unwrap();
-                        } else {
-                            win.show().unwrap();
-                        }
-                    }
-                    "/settings" => {
-                        let win = app.get_window("settings").unwrap();
-
-                        if win.is_visible().unwrap() {
-                            // If we close the window here, we can't re-open it, we'd have to fully re-create it. Not needed for MVP - We agreed 100 MB is fine for the GUI client.
-                            win.hide().unwrap();
-                        } else {
-                            win.show().unwrap();
-                        }
-                    }
-                    "/quit" => app.exit(0),
-                    id => {
-                        if let Some(addr) = id.strip_prefix("/resource/") {
-                            tracing::warn!("TODO copy {addr} to clipboard");
-                        }
-                    }
+                };
+                match handle_system_tray_event(app, event) {
+                    Ok(_) => {}
+                    Err(e) => tracing::error!("{e}"),
                 }
             }
         })
@@ -125,6 +102,73 @@ pub fn run(deep_link: Option<String>) -> Result<()> {
                 api.prevent_exit();
             }
         });
+    Ok(())
+}
+
+#[derive(Debug, PartialEq)]
+enum TrayMenuEvent {
+    About,
+    Resource { id: String },
+    Settings,
+    SignIn,
+    SignOut,
+    Quit,
+}
+
+impl FromStr for TrayMenuEvent {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        Ok(match s {
+            "/about" => Self::About,
+            "/settings" => Self::Settings,
+            "/sign_in" => Self::SignIn,
+            "/sign_out" => Self::SignOut,
+            "/quit" => Self::Quit,
+            s => {
+                if let Some(id) = s.strip_prefix("/resource/") {
+                    Self::Resource { id: id.to_string() }
+                } else {
+                    anyhow::bail!("unknown system tray menu event");
+                }
+            }
+        })
+    }
+}
+
+fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Result<()> {
+    match event {
+        TrayMenuEvent::About => {
+            let win = app
+                .get_window("about")
+                .ok_or_else(|| anyhow!("getting handle to About window"))?;
+
+            if win.is_visible()? {
+                win.hide()?;
+            } else {
+                win.show()?;
+            }
+        }
+        TrayMenuEvent::Resource { id } => tracing::warn!("TODO copy {id} to clipboard"),
+        TrayMenuEvent::Settings => {
+            let win = app
+                .get_window("settings")
+                .ok_or_else(|| anyhow!("getting handle to Settings window"))?;
+
+            if win.is_visible()? {
+                // If we close the window here, we can't re-open it, we'd have to fully re-create it. Not needed for MVP - We agreed 100 MB is fine for the GUI client.
+                win.hide()?;
+            } else {
+                win.show()?;
+            }
+        }
+        TrayMenuEvent::SignIn => app
+            .try_state::<mpsc::Sender<ControllerRequest>>()
+            .ok_or_else(|| anyhow!("getting ctlr_tx state"))?
+            .blocking_send(ControllerRequest::SignIn)?,
+        TrayMenuEvent::SignOut => app.tray_handle().set_menu(signed_out_menu())?,
+        TrayMenuEvent::Quit => app.exit(0),
+    }
     Ok(())
 }
 
@@ -518,6 +562,7 @@ fn signed_out_menu() -> SystemTrayMenu {
 
 #[cfg(test)]
 mod tests {
+    use super::TrayMenuEvent;
     use anyhow::Result;
     use secrecy::{ExposeSecret, SecretString};
     use std::str::FromStr;
@@ -531,5 +576,35 @@ mod tests {
         assert_eq!(actual.token.expose_secret(), "a_very_secret_string");
 
         Ok(())
+    }
+
+    #[test]
+    fn systray_parse() {
+        assert_eq!(
+            TrayMenuEvent::from_str("/about").unwrap(),
+            TrayMenuEvent::About
+        );
+        assert_eq!(
+            TrayMenuEvent::from_str("/resource/1234").unwrap(),
+            TrayMenuEvent::Resource {
+                id: "1234".to_string()
+            }
+        );
+        assert_eq!(
+            TrayMenuEvent::from_str("/resource/quit").unwrap(),
+            TrayMenuEvent::Resource {
+                id: "quit".to_string()
+            }
+        );
+        assert_eq!(
+            TrayMenuEvent::from_str("/sign_out").unwrap(),
+            TrayMenuEvent::SignOut
+        );
+        assert_eq!(
+            TrayMenuEvent::from_str("/quit").unwrap(),
+            TrayMenuEvent::Quit
+        );
+
+        assert!(TrayMenuEvent::from_str("/unknown").is_err());
     }
 }
