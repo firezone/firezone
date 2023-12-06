@@ -204,7 +204,6 @@ pub(crate) enum ControllerRequest {
     // Secret because it will have the token in it
     SchemeRequest(SecretString),
     SignIn,
-    UpdateResources(Vec<connlib_client_shared::ResourceDescription>),
 }
 
 // TODO: Should these be keyed to the Google ID or email or something?
@@ -219,7 +218,6 @@ fn keyring_entry() -> Result<keyring::Entry> {
 
 #[derive(Clone)]
 struct CallbackHandler {
-    ctlr_tx: CtlrTx,
     handle: Option<file_logger::Handle>,
 }
 
@@ -245,11 +243,6 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         resources: Vec<connlib_client_shared::ResourceDescription>,
     ) -> Result<(), Self::Error> {
         tracing::debug!("on_update_resources {resources:?}");
-        if false {
-            self.ctlr_tx
-                .blocking_send(ControllerRequest::UpdateResources(resources))
-                .unwrap();
-        }
         Ok(())
     }
 
@@ -321,7 +314,7 @@ impl Controller {
 
     fn start_session(
         advanced_settings: &settings::AdvancedSettings,
-        ctlr_tx: CtlrTx,
+        _ctlr_tx: CtlrTx,
         token: &SecretString,
     ) -> Result<connlib_client_shared::Session<CallbackHandler>> {
         let (layer, handle) = file_logger::layer(std::path::Path::new("logs"));
@@ -337,7 +330,6 @@ impl Controller {
             token.clone(),
             crate::device_id::get(),
             CallbackHandler {
-                ctlr_tx,
                 handle: Some(handle),
             },
         )?)
@@ -389,9 +381,6 @@ async fn run_controller(
                     &controller.advanced_settings.auth_base_url,
                     None,
                 )?;
-            }
-            Req::UpdateResources(resources) => {
-                tracing::debug!("got {} resources", resources.len());
             }
         }
     }
