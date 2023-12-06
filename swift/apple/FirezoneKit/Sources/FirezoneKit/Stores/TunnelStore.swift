@@ -16,6 +16,7 @@ enum TunnelStoreError: Error {
 
 public struct TunnelProviderKeys {
   static let keyAuthBaseURLString = "authBaseURLString"
+  static let keyAccountId = "accountId"  // Unused
   public static let keyConnlibLogFilter = "connlibLogFilter"
 }
 
@@ -405,6 +406,7 @@ extension NETunnelProviderManager {
         protocolConfiguration.passwordReference = tokenReference
       }
 
+      providerConfig.removeValue(forKey: TunnelProviderKeys.keyAccountId)
       protocolConfiguration.providerConfiguration = providerConfig
 
       ensureTunnelConfigurationIsValid()
