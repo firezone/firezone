@@ -126,8 +126,6 @@ final class AuthStore: ObservableObject {
     switch tunnelAuthStatus {
     case .tunnelUninitialized:
       return .uninitialized
-    case .accountNotSetup:
-      return .signedOut
     case .signedOut:
       return .signedOut
     case .signedIn(let tunnelAuthBaseURL, let tokenReference):
@@ -242,7 +240,7 @@ final class AuthStore: ObservableObject {
     if let tokenRef = await keychain.searchByAuthBaseURL(authBaseURL) {
       return .signedIn(authBaseURL: authBaseURL, tokenReference: tokenRef)
     } else {
-      return .signedOut(authBaseURL: authBaseURL)
+      return .signedOut
     }
   }
 }

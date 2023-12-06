@@ -80,7 +80,7 @@ final class TunnelStore: ObservableObject {
         try await tunnel.saveToPreferences()
         Self.logger.log("\(#function): Tunnel created")
         self.tunnel = tunnel
-        self.tunnelAuthStatus = .accountNotSetup
+        self.tunnelAuthStatus = .signedOut
       }
       setupTunnelObservers()
       Self.logger.log("\(#function): TunnelStore initialized")
@@ -191,9 +191,9 @@ final class TunnelStore: ObservableObject {
       session.stopTunnel()
     }
 
-    if case .signedIn(let authBaseURL, let tokenReference) = self.tunnelAuthStatus {
+    if case .signedIn(_, let tokenReference) = self.tunnelAuthStatus {
       do {
-        try await saveAuthStatus(.signedOut(authBaseURL: authBaseURL))
+        try await saveAuthStatus(.signedOut)
       } catch {
         TunnelStore.logger.trace(
           "\(#function): Error saving signed out auth status: \(error)"
@@ -324,8 +324,7 @@ final class TunnelStore: ObservableObject {
 
 enum TunnelAuthStatus: Equatable, CustomStringConvertible {
   case tunnelUninitialized
-  case accountNotSetup
-  case signedOut(authBaseURL: URL)
+  case signedOut
   case signedIn(authBaseURL: URL, tokenReference: Data)
 
   var isInitialized: Bool {
@@ -339,10 +338,8 @@ enum TunnelAuthStatus: Equatable, CustomStringConvertible {
     switch self {
     case .tunnelUninitialized:
       return "tunnel uninitialized"
-    case .accountNotSetup:
-      return "account not setup"
-    case .signedOut(let authBaseURL):
-      return "signedOut(authBaseURL: \(authBaseURL))"
+    case .signedOut:
+      return "signedOut"
     case .signedIn(let authBaseURL, _):
       return "signedIn(authBaseURL: \(authBaseURL))"
     }
@@ -383,13 +380,13 @@ extension NETunnelProviderManager {
         if let tokenRef = tokenRef {
           return .signedIn(authBaseURL: authBaseURL, tokenReference: tokenRef)
         } else {
-          return .signedOut(authBaseURL: authBaseURL)
+          return .signedOut
         }
       } else {
-        return .accountNotSetup
+        return .signedOut
       }
     }
-    return .accountNotSetup
+    return .signedOut
   }
 
   func saveAuthStatus(_ authStatus: TunnelAuthStatus) async throws {
@@ -397,10 +394,12 @@ extension NETunnelProviderManager {
       var providerConfig: [String: Any] = protocolConfiguration.providerConfiguration ?? [:]
 
       switch authStatus {
-      case .tunnelUninitialized, .accountNotSetup:
+      case .tunnelUninitialized:
+        protocolConfiguration.passwordReference = nil
         break
-      case .signedOut(let authBaseURL):
-        providerConfig[TunnelProviderKeys.keyAuthBaseURLString] = authBaseURL.absoluteString
+      case .signedOut:
+        protocolConfiguration.passwordReference = nil
+        break
       case .signedIn(let authBaseURL, let tokenReference):
         providerConfig[TunnelProviderKeys.keyAuthBaseURLString] = authBaseURL.absoluteString
         protocolConfiguration.passwordReference = tokenReference
