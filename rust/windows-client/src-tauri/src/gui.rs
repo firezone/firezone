@@ -25,12 +25,12 @@ pub(crate) struct Managed {
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
-///
-/// # Arguments
-///
-/// * `deep_link` - The URL of an incoming deep link from a web browser
-/// * `inject_faults` - True if we should slow down I/O operations to test how the GUI handles that
-pub fn run(deep_link: Option<String>, inject_faults: bool) -> Result<()> {
+pub(crate) fn run(params: crate::GuiParams) -> Result<()> {
+    let crate::GuiParams {
+        deep_link,
+        inject_faults,
+    } = params;
+
     // Make sure we're single-instance
     tauri_plugin_deep_link::prepare("dev.firezone");
 

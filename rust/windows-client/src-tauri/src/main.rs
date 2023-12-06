@@ -18,7 +18,7 @@ mod gui {
         SignIn,
     }
 
-    pub fn run(_: Option<String>) -> Result<()> {
+    pub(crate) fn run(_: GuiParams) -> Result<()> {
         // The Ubuntu CI runner doesn't have gdk and some other Tauri deps installed, so it fails unless we stub out the GUI.
         panic!("The Tauri GUI isn't implemented for Linux.");
     }
@@ -30,19 +30,33 @@ mod local_webserver;
 #[cfg(target_os = "windows")]
 mod settings;
 
+/// Prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out
+pub(crate) struct GuiParams {
+    /// The URL of an incoming deep link from a web browser
+    deep_link: Option<String>,
+    /// True if we should slow down I/O operations to test how the GUI handles slow I/O
+    inject_faults: bool,
+}
+
 fn main() -> Result<()> {
     // Special case for app link URIs
     if let Some(arg) = std::env::args().nth(1) {
         let scheme = format!("{DEEP_LINK_SCHEME}://");
         if arg.starts_with(&scheme) {
-            return gui::run(Some(arg), false);
+            return gui::run(GuiParams {
+                deep_link: Some(arg),
+                inject_faults: false,
+            });
         }
     }
 
     let cli = cli::Cli::parse();
 
     match cli.command {
-        None => gui::run(None, cli.inject_faults),
+        None => gui::run(GuiParams {
+            deep_link: None,
+            inject_faults: cli.inject_faults,
+        }),
         Some(Cmd::Debug) => {
             println!("debug");
             Ok(())
