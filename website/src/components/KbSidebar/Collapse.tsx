@@ -32,17 +32,14 @@ export default function Collapse({
           {label}
         </span>
         {expandedState ? (
-          <HiChevronDown sidebar-toggle-item="true" className="w-5 h-5" />
+          <HiChevronDown sidebar-toggle-item="true" className="w-4 h-4" />
         ) : (
-          <HiChevronRight sidebar-toggle-item="true" className="w-5 h-5" />
+          <HiChevronRight sidebar-toggle-item="true" className="w-4 h-4" />
         )}
       </button>
       <ul
         id={ctl}
-        className={[
-          expandedState ? "" : "hidden",
-          "ml-3 py-1 space-y-0.5",
-        ].join(" ")}
+        className={[expandedState ? "" : "hidden", "ml-3 py-1"].join(" ")}
       >
         {children}
       </ul>
