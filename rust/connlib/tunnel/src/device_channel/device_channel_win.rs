@@ -17,7 +17,7 @@ impl DeviceIo {
     }
 
     pub fn write(&self, packet: Packet<'_>) -> std::io::Result<usize> {
-        // All outgoing packets are succesfully written to the void
+        // All outgoing packets are successfully written to the void
         match packet {
             Packet::Ipv4(msg) => Ok(msg.len()),
             Packet::Ipv6(msg) => Ok(msg.len()),
