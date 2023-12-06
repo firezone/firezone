@@ -12,7 +12,7 @@ export default function Collapse({
 }) {
   const ctl = label.toLowerCase().replace(" ", "-") + "-dropdown";
   const indent = "ml-3";
-  const [expandedState, setExpandedState] = useState(false);
+  const [expandedState, setExpandedState] = useState(expanded || false);
 
   return (
     <>
