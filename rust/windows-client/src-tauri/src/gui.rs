@@ -454,7 +454,7 @@ fn _signed_in_menu(user_email: &str, resources: &[_ResourceDisplay]) -> SystemTr
         .add_native_item(SystemTrayMenuItem::Separator)
         .add_item(CustomMenuItem::new("/about".to_string(), "About"))
         .add_item(CustomMenuItem::new("/settings".to_string(), "Settings"))
-        .add_item(CustomMenuItem::new("/quit".to_string(), "Quit Firezone").accelerator("Ctrl+Q"));
+        .add_item(CustomMenuItem::new("/quit".to_string(), "Disconnect and quit Firezone").accelerator("Ctrl+Q"));
 
     menu
 }
