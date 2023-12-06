@@ -20,7 +20,7 @@ mod gui {
 
     pub(crate) fn run(params: GuiParams) -> Result<()> {
         // This is here so the linter won't say that the params are unused.
-        dbg!(params);
+        std::hint::black_box(params);
 
         // The Ubuntu CI runner doesn't have gdk and some other Tauri deps installed, so it fails unless we stub out the GUI.
         panic!("The Tauri GUI isn't implemented for Linux.");
@@ -34,7 +34,6 @@ mod local_webserver;
 mod settings;
 
 /// Prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out
-#[derive(Debug)]
 pub(crate) struct GuiParams {
     /// The URL of an incoming deep link from a web browser
     deep_link: Option<String>,
