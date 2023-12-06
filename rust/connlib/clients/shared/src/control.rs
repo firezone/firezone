@@ -1,5 +1,5 @@
 use async_compression::tokio::bufread::GzipEncoder;
-use connlib_shared::messages::{DnsServer, IpDnsServer};
+use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
 use std::path::PathBuf;
 use std::{io, sync::Arc};
 
@@ -116,13 +116,26 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             ..
         }: Connect,
     ) {
-        if let Err(e) = self.tunnel.received_offer_response(
-            resource_id,
-            gateway_payload.ice_parameters,
-            gateway_payload.domain_response,
-            gateway_public_key.0.into(),
-        ) {
-            let _ = self.tunnel.callbacks().on_error(&e);
+        match gateway_payload {
+            GatewayResponse::ConnectionAccepted(gateway_payload) => {
+                if let Err(e) = self.tunnel.received_offer_response(
+                    resource_id,
+                    gateway_payload.ice_parameters,
+                    gateway_payload.domain_response,
+                    gateway_public_key.0.into(),
+                ) {
+                    let _ = self.tunnel.callbacks().on_error(&e);
+                }
+            }
+            GatewayResponse::ResourceAccepted(gateway_payload) => {
+                tracing::trace!("accepting resource");
+                if let Err(e) = self
+                    .tunnel
+                    .received_domain_parameters(resource_id, gateway_payload.domain_response)
+                {
+                    tracing::error!(err = ?e);
+                }
+            }
         }
     }
 

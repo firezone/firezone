@@ -139,9 +139,20 @@ pub struct DomainResponse {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct GatewayResponse {
+pub struct ConnectionAccepted {
     pub ice_parameters: RTCIceParameters,
     pub domain_response: Option<DomainResponse>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ResourceAccepted {
+    pub domain_response: DomainResponse,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum GatewayResponse {
+    ConnectionAccepted(ConnectionAccepted),
+    ResourceAccepted(ResourceAccepted),
 }
 
 /// Description of a resource that maps to a DNS record.

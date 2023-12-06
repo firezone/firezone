@@ -80,6 +80,9 @@ pub struct AllowAccess {
     pub resource: ResourceDescription,
     #[serde(with = "ts_seconds")]
     pub expires_at: DateTime<Utc>,
+    pub payload: Option<String>,
+    #[serde(rename = "ref")]
+    pub reference: String,
 }
 
 // These messages are the messages that can be received

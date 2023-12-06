@@ -6,7 +6,6 @@ use crate::{
     dns, ConnectedPeer, DnsFallbackStrategy, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
     DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
 };
-use bimap::BiMap;
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
@@ -14,6 +13,7 @@ use connlib_shared::messages::{
     ResourceDescriptionDns, ResourceId, ReuseConnection, SecretKey,
 };
 use connlib_shared::{Callbacks, DNS_SENTINEL};
+use domain::base::Rtype;
 use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{PushError, StreamMap};
@@ -21,10 +21,10 @@ use hickory_resolver::lookup::Lookup;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
+
 use rand_core::OsRng;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::convert::identity;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -135,76 +135,6 @@ where
     }
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct DnsResourceMap {
-    // TODO: We store ResourceDescriptionDns which is the reprsentation the portal uses...
-    // however, this means re-parsing the dns name each time we want to use it as such.
-    // domain's Dname<oct> implements serialize, deserialize and Hash, so as soon as we get
-    // the dns name from the portal we should parse it and use it always as that.
-    // Note: implement this as part of the current PR!
-    internal_ip4_map: BiMap<Ipv4Addr, ResourceDescriptionDns>,
-    internal_ip6_map: BiMap<Ipv6Addr, ResourceDescriptionDns>,
-}
-
-impl DnsResourceMap {
-    pub fn get_by_ip6(&self, ip6: &Ipv6Addr) -> Option<&ResourceDescriptionDns> {
-        self.internal_ip6_map.get_by_left(ip6)
-    }
-
-    pub fn get_by_ip4(&self, ip4: &Ipv4Addr) -> Option<&ResourceDescriptionDns> {
-        self.internal_ip4_map.get_by_left(ip4)
-    }
-
-    pub fn get_by_ip(&self, ip: &IpAddr) -> Option<&ResourceDescriptionDns> {
-        match ip {
-            IpAddr::V4(ip) => self.get_by_ip4(ip),
-            IpAddr::V6(ip) => self.get_by_ip6(ip),
-        }
-    }
-
-    pub fn get_v6_resoruce_description(
-        &self,
-        description: &ResourceDescriptionDns,
-    ) -> Option<&Ipv6Addr> {
-        self.internal_ip6_map.get_by_right(description)
-    }
-
-    pub fn get_v4_resoruce_description(
-        &self,
-        description: &ResourceDescriptionDns,
-    ) -> Option<&Ipv4Addr> {
-        self.internal_ip4_map.get_by_right(description)
-    }
-
-    pub fn get_or_assign_ip6(
-        &mut self,
-        description: &ResourceDescriptionDns,
-        provider: &mut IpProvider,
-    ) -> Option<Ipv6Addr> {
-        if let Some(ip) = self.get_v6_resoruce_description(description) {
-            return Some(*ip);
-        }
-
-        let ip = provider.next_ipv6()?;
-        self.internal_ip6_map.insert(ip, description.clone());
-        Some(ip)
-    }
-
-    pub fn get_or_assign_ip4(
-        &mut self,
-        description: &ResourceDescriptionDns,
-        provider: &mut IpProvider,
-    ) -> Option<Ipv4Addr> {
-        if let Some(ip) = self.get_v4_resoruce_description(description) {
-            return Some(*ip);
-        }
-
-        let ip = provider.next_ipv4()?;
-        self.internal_ip4_map.insert(ip, description.clone());
-        Some(ip)
-    }
-}
-
 /// [`Tunnel`] state specific to clients.
 pub struct ClientState {
     active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidate>,
@@ -223,16 +153,23 @@ pub struct ClientState {
 
     // TODO: model these along with resources to enforce consistency
     // TODO: dns_resources_internal_ips can be merged with cidr_resources
-    pub dns_resources_internal_ips: DnsResourceMap,
+    // TODO: We store ResourceDescriptionDns which is the reprsentation the portal uses...
+    // however, this means re-parsing the dns name each time we want to use it as such.
+    // domain's Dname<oct> implements serialize, deserialize and Hash, so as soon as we get
+    // the dns name from the portal we should parse it and use it always as that.
+    // Note: implement this as part of the current PR!
+    // TODO: this should expire with the associated peer?
+    pub dns_resources_internal_ips: HashMap<ResourceDescriptionDns, Vec<IpAddr>>,
     dns_resources: HashMap<String, Arc<ResourceDescriptionDns>>,
     cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     pub resources_id: HashMap<ResourceId, ResourceDescription>,
+    pub local_dns_queries: HashMap<(ResourceDescriptionDns, Rtype), IpPacket<'static>>,
 
     #[allow(clippy::type_complexity)]
     pub peers_by_ip: IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
 
     pub dns_strategy: DnsFallbackStrategy,
-    dns_queries: BoundedQueue<DnsQuery<'static>>,
+    forwarded_dns_queries: BoundedQueue<DnsQuery<'static>>,
 
     pub ip_provider: IpProvider,
 }
@@ -254,17 +191,23 @@ impl ClientState {
         &mut self,
         packet: MutableIpPacket<'a>,
         resolve_strategy: DnsFallbackStrategy,
-    ) -> Result<Option<(Packet<'a>, Option<IpAddr>)>, MutableIpPacket<'a>> {
+    ) -> Result<Option<Packet<'a>>, MutableIpPacket<'a>> {
         match dns::parse(
             &self.dns_resources,
-            &mut self.dns_resources_internal_ips,
-            &mut self.ip_provider,
+            &self.dns_resources_internal_ips,
             packet.as_immutable(),
             resolve_strategy,
         ) {
             Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
                 self.add_pending_dns_query(query);
+
+                Ok(None)
+            }
+            Some(dns::ResolveStrategy::DeferredResponse(resource)) => {
+                self.on_connection_intent_dns(&resource.0);
+                self.local_dns_queries
+                    .insert(resource, packet.as_immutable().to_owned());
 
                 Ok(None)
             }
@@ -361,14 +304,69 @@ impl ClientState {
         self.gateway_awaiting_connection.remove(&gateway);
     }
 
-    pub fn on_connection_intent(&mut self, destination: IpAddr) {
-        if self.is_awaiting_connection_to(destination) {
+    fn is_awaiting_connection_to_dns(&self, resource: &ResourceDescriptionDns) -> bool {
+        // This does mean that we never generate 2 connection intents to the same resoruce id with different domain.
+        // This will be optimized in a separate PR.
+        self.awaiting_connection.contains_key(&resource.id)
+    }
+
+    pub fn on_connection_intent_dns(&mut self, resource: &ResourceDescriptionDns) {
+        if self.is_awaiting_connection_to_dns(resource) {
+            return;
+        }
+
+        tracing::trace!(?resource, "resource_connection_intent");
+
+        const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
+
+        let resource_id = resource.id;
+
+        let gateways = self
+            .gateway_awaiting_connection
+            .iter()
+            .chain(self.resources_gateways.values())
+            .copied()
+            .collect();
+
+        tracing::trace!(?gateways, "connected_gateways");
+
+        match self.awaiting_connection_timers.try_push(
+            resource_id,
+            stream::poll_fn({
+                let mut interval = tokio::time::interval(MAX_SIGNAL_CONNECTION_DELAY);
+                move |cx| interval.poll_tick(cx).map(Some)
+            }),
+        ) {
+            Ok(()) => {}
+            Err(PushError::BeyondCapacity(_)) => {
+                tracing::warn!(%resource_id, "Too many concurrent connection attempts");
+                return;
+            }
+            Err(PushError::Replaced(_)) => {
+                // The timers are equivalent for our purpose so we don't really care about this one.
+            }
+        }
+
+        tracing::trace!("going to connect to {resource:?}");
+        self.awaiting_connection.insert(
+            resource_id,
+            AwaitingConnectionDetails {
+                total_attemps: 0,
+                response_received: false,
+                domain: Some(resource.address.clone()),
+                gateways,
+            },
+        );
+    }
+
+    pub fn on_connection_intent_cidr(&mut self, destination: IpAddr) {
+        if self.is_awaiting_connection_to_cidr(destination) {
             return;
         }
 
         tracing::trace!(resource_ip = %destination, "resource_connection_intent");
 
-        let Some(resource) = self.get_resource_by_destination(destination) else {
+        let Some(resource) = self.get_cidr_resource_by_destination(destination) else {
             return;
         };
 
@@ -487,13 +485,11 @@ impl ClientState {
         }
     }
 
-    fn is_awaiting_connection_to(&self, destination: IpAddr) -> bool {
-        let Some(resource) = self.get_resource_by_destination(destination) else {
+    fn is_awaiting_connection_to_cidr(&self, destination: IpAddr) -> bool {
+        let Some(resource) = self.get_cidr_resource_by_destination(destination) else {
             return false;
         };
 
-        // This does mean that we never generate 2 connection intents to the same resoruce id with different domain.
-        // This will be optimized in a separate PR.
         self.awaiting_connection.contains_key(&resource.id())
     }
 
@@ -525,40 +521,30 @@ impl ClientState {
                 };
 
                 let description = dns_resource.subdomain(domain.clone());
-                let ip4 = self
-                    .dns_resources_internal_ips
-                    .get_v4_resoruce_description(&description)
-                    .copied()
-                    .map(Into::into);
-                let ip6: Option<IpNetwork> = self
-                    .dns_resources_internal_ips
-                    .get_v6_resoruce_description(&description)
-                    .copied()
-                    .map(Into::into);
-
-                [ip4, ip6]
+                self.dns_resources_internal_ips
+                    .get(&description)
+                    .cloned()
+                    .unwrap_or_default()
                     .into_iter()
-                    .filter_map(identity)
-                    .collect::<Vec<_>>()
+                    .map(Into::into)
+                    .collect()
             }
             ResourceDescription::Cidr(cidr) => vec![cidr.address],
         }
     }
 
-    fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceDescription> {
+    fn get_cidr_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceDescription> {
         self.cidr_resources
             .longest_match(destination)
             .map(|(_, res)| ResourceDescription::Cidr(res.clone()))
-            .or_else(|| {
-                self.dns_resources_internal_ips
-                    .get_by_ip(&destination)
-                    .cloned()
-                    .map(ResourceDescription::Dns)
-            })
     }
 
     pub fn add_pending_dns_query(&mut self, query: DnsQuery) {
-        if self.dns_queries.push_back(query.into_owned()).is_err() {
+        if self
+            .forwarded_dns_queries
+            .push_back(query.into_owned())
+            .is_err()
+        {
             tracing::warn!("Too many DNS queries, dropping new ones");
         }
     }
@@ -599,7 +585,7 @@ impl Default for ClientState {
             awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
             gateway_public_keys: Default::default(),
             resources_gateways: Default::default(),
-            dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
+            forwarded_dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
             gateway_preshared_keys: Default::default(),
             dns_strategy: Default::default(),
             // TODO: decide ip ranges
@@ -612,6 +598,7 @@ impl Default for ClientState {
             cidr_resources: IpNetworkTable::new(),
             resources_id: Default::default(),
             peers_by_ip: IpNetworkTable::new(),
+            local_dns_queries: Default::default(),
         }
     }
 }
@@ -675,7 +662,7 @@ impl RoleState for ClientState {
                 Poll::Pending => {}
             }
 
-            return self.dns_queries.poll(cx).map(Event::DnsQuery);
+            return self.forwarded_dns_queries.poll(cx).map(Event::DnsQuery);
         }
     }
 

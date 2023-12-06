@@ -6,7 +6,9 @@ use crate::{
 
 use chrono::{DateTime, Utc};
 use connlib_shared::{
-    messages::{ClientId, DomainResponse, GatewayResponse, Relay, ResourceDescription},
+    messages::{
+        ClientId, ConnectionAccepted, DomainResponse, Relay, ResourceAccepted, ResourceDescription,
+    },
     Callbacks, Error, Result,
 };
 use ip_network::IpNetwork;
@@ -43,7 +45,7 @@ where
         client_id: ClientId,
         expires_at: DateTime<Utc>,
         resource: ResourceDescription,
-    ) -> Result<GatewayResponse> {
+    ) -> Result<ConnectionAccepted> {
         tracing::trace!("domain: {domain:?}");
         let IceConnection {
             ice_parameters: local_params,
@@ -98,7 +100,7 @@ where
             });
         }
 
-        let response = GatewayResponse {
+        let response = ConnectionAccepted {
             ice_parameters: local_params,
             domain_response: domain.map(|domain| DomainResponse {
                 domain,
@@ -116,7 +118,11 @@ where
         resource: ResourceDescription,
         client_id: ClientId,
         expires_at: DateTime<Utc>,
-    ) {
+        // TODO: we could put the domain inside the ResourceDescription
+        domain: Option<String>,
+    ) -> Option<ResourceAccepted> {
+        tracing::trace!("{resource:?}");
+        tracing::trace!("{domain:?}");
         if let Some((_, peer)) = self
             .role_state
             .lock()
@@ -124,10 +130,41 @@ where
             .iter_mut()
             .find(|(_, p)| p.inner.conn_id == client_id)
         {
-            // peer.inner
-            //     .transform
-            //     .add_resource(todo!(), resource, expires_at);
+            tracing::trace!("found peer");
+            let addresses = match &resource {
+                ResourceDescription::Dns(_) => {
+                    tracing::trace!("it's a dns resource");
+                    let Some(ref domain) = domain else {
+                        return None;
+                    };
+
+                    (domain.clone(), 0)
+                        .to_socket_addrs()
+                        .ok()?
+                        .map(|a| a.ip())
+                        .map(Into::into)
+                        .collect()
+                }
+                ResourceDescription::Cidr(cidr) => vec![cidr.address],
+            };
+            tracing::trace!("{addresses:?}");
+            for address in &addresses {
+                tracing::trace!("adding address {address}");
+                peer.inner
+                    .transform
+                    .add_resource(*address, resource.clone(), expires_at);
+            }
+            if let Some(domain) = domain {
+                tracing::trace!("sending response");
+                return Some(ResourceAccepted {
+                    domain_response: DomainResponse {
+                        domain,
+                        address: addresses.iter().map(|i| i.network_address()).collect(),
+                    },
+                });
+            }
         }
+        None
     }
 
     fn new_tunnel(

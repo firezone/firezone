@@ -9,6 +9,8 @@ use connlib_shared::{
     },
     Callbacks,
 };
+use domain::base::Rtype;
+use ip_network::IpNetwork;
 use secrecy::Secret;
 use webrtc::ice_transport::{
     ice_parameters::RTCIceParameters, ice_role::RTCIceRole,
@@ -17,8 +19,9 @@ use webrtc::ice_transport::{
 
 use crate::{
     control_protocol::{new_ice_connection, IceConnection},
+    dns,
     peer::PacketTransformClient,
-    PEER_QUEUE_SIZE,
+    peer_handler, PEER_QUEUE_SIZE,
 };
 use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
 
@@ -91,7 +94,7 @@ where
             gateway_id,
             reference,
         )? {
-            tracing::trace!("reusing_connection");
+            tracing::trace!("reusing_connection: {connection:?}");
             return Ok(Request::ReuseConnection(connection));
         }
 
@@ -134,7 +137,7 @@ where
         ice: Arc<RTCIceTransport>,
         domain_response: Option<DomainResponse>,
     ) -> Result<()> {
-        let peer_config = self
+        let mut peer_config = self
             .role_state
             .lock()
             .create_peer_config_for_new_connection(
@@ -166,27 +169,52 @@ where
                 return Err(Error::ControlProtocolError);
             };
             let resource_description = resource_description.subdomain(domain_response.domain);
-            for ip in domain_response.address {
-                let internal_ip = match ip {
-                    std::net::IpAddr::V4(_) => self
-                        .role_state
-                        .lock()
-                        .dns_resources_internal_ips
-                        .get_v4_resoruce_description(&resource_description)
-                        .ok_or(Error::ControlProtocolError)?
-                        .to_owned()
-                        .into(),
-                    std::net::IpAddr::V6(_) => self
-                        .role_state
-                        .lock()
-                        .dns_resources_internal_ips
-                        .get_v6_resoruce_description(&resource_description)
-                        .ok_or(Error::ControlProtocolError)?
-                        .to_owned()
-                        .into(),
-                };
-                tracing::trace!("inserting translation: {internal_ip} {ip}");
-                peer.transform.insert_translation(internal_ip, ip);
+            {
+                let mut role_state = self.role_state.lock();
+                let addrs: Vec<_> = domain_response
+                    .address
+                    .iter()
+                    .filter_map(|addr| {
+                        peer.transform
+                            .get_or_assign_translation(addr, &mut role_state.ip_provider)
+                    })
+                    .collect();
+
+                // TODO: we need to readd this routes when it changes
+                {
+                    let device = self.device.clone();
+                    let callbacks = self.callbacks.clone();
+                    let addrs = addrs.clone();
+                    tokio::spawn(async move {
+                        if let Some(device) = device.load().as_deref() {
+                            for addr in addrs {
+                                device.add_route(addr.into(), &callbacks).await;
+                            }
+                        }
+                    });
+                }
+                role_state
+                    .dns_resources_internal_ips
+                    .insert(resource_description.clone(), addrs.clone());
+                let packet = role_state
+                    .local_dns_queries
+                    .remove(&(resource_description.clone(), Rtype::A));
+                if let Some(packet) = packet {
+                    dns::create_local_answer(&addrs, packet);
+                }
+                let packet = role_state
+                    .local_dns_queries
+                    .remove(&(resource_description, Rtype::Aaaa));
+                if let Some(packet) = packet {
+                    dns::create_local_answer(&addrs, packet);
+                }
+
+                for ip in addrs {
+                    let ip = ip.into();
+                    peer.add_allowed_ip(ip);
+                    // TODO: change me :(
+                    peer_config.ips.push(ip);
+                }
             }
         }
 
@@ -199,6 +227,8 @@ where
             ice,
             peer_receiver,
         );
+
+        tracing::trace!(?peer_config.ips, "peer config");
 
         // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
         // before inserting finishes.
@@ -273,5 +303,75 @@ where
         });
 
         Ok(())
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub fn received_domain_parameters(
+        self: &Arc<Self>,
+        resource_id: ResourceId,
+        domain_response: DomainResponse,
+    ) -> Result<()> {
+        todo!()
+        // let gateway_id = self
+        //     .role_state
+        //     .lock()
+        //     .gateway_by_resource(&resource_id)
+        //     .ok_or(Error::UnknownResource)?;
+        // let resource_description = self
+        //     .role_state
+        //     .lock()
+        //     .resources_id
+        //     .get(&resource_id)
+        //     .ok_or(Error::UnknownResource)?
+        //     .clone();
+        // let ResourceDescription::Dns(resource_description) = resource_description else {
+        //     return Err(Error::ControlProtocolError);
+        // };
+
+        // let resource_description = resource_description.subdomain(domain_response.domain);
+
+        // let Some(internal_ipv4) = self
+        //     .role_state
+        //     .lock()
+        //     .dns_resources_internal_ips
+        //     .get_v4_resoruce_description(&resource_description)
+        //     .copied()
+        // else {
+        //     return Err(Error::ControlProtocolError);
+        // };
+        // let Some(internal_ipv6) = self
+        //     .role_state
+        //     .lock()
+        //     .dns_resources_internal_ips
+        //     .get_v6_resoruce_description(&resource_description)
+        //     .copied()
+        // else {
+        //     return Err(Error::ControlProtocolError);
+        // };
+
+        // let mut role_state = self.role_state.lock();
+        // let Some((_, peer)) = role_state
+        //     .peers_by_ip
+        //     .iter_mut()
+        //     .find(|(_, p)| p.inner.conn_id == gateway_id)
+        // else {
+        //     return Err(Error::ControlProtocolError);
+        // };
+        // for ip in domain_response.address {
+        //     match ip {
+        //         std::net::IpAddr::V4(ip) => {
+        //             tracing::trace!("inserting translation {internal_ipv4} to {ip}");
+        //             peer.inner
+        //                 .transform
+        //                 .insert_translation(internal_ipv4.into(), ip.into())
+        //         }
+        //         std::net::IpAddr::V6(ip) => peer
+        //             .inner
+        //             .transform
+        //             .insert_translation(internal_ipv6.into(), ip.into()),
+        //     }
+        // }
+
+        // Ok(())
     }
 }

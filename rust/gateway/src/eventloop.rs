@@ -12,7 +12,6 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use webrtc::ice_transport::ice_parameters::RTCIceParameters;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
@@ -110,7 +109,7 @@ impl Eventloop {
                     match self.connection_request_tasks.try_push(
                         (req.client.id, req.reference.clone()),
                         async move {
-                            tunnel
+                            let conn = tunnel
                                 .set_peer_connection_request(
                                     req.client.payload.ice_parameters,
                                     req.client.payload.domain,
@@ -120,7 +119,8 @@ impl Eventloop {
                                     req.expires_at,
                                     req.resource,
                                 )
-                                .await
+                                .await?;
+                            Ok(GatewayResponse::ConnectionAccepted(conn))
                         },
                     ) {
                         Err(futures_bounded::PushError::BeyondCapacity(_)) => {
@@ -139,12 +139,26 @@ impl Eventloop {
                             client_id,
                             resource,
                             expires_at,
+                            payload,
+                            reference,
                         }),
                     ..
                 }) => {
                     tracing::debug!(client = %client_id, resource = %resource.id(), expires = %expires_at.to_rfc3339() ,"Allowing access to resource");
 
-                    self.tunnel.allow_access(resource, client_id, expires_at);
+                    if let Some(res) = self
+                        .tunnel
+                        .allow_access(resource, client_id, expires_at, payload)
+                    {
+                        tracing::trace!("sending response");
+                        self.portal.send(
+                            PHOENIX_TOPIC,
+                            EgressMessages::ConnectionReady(ConnectionReady {
+                                reference,
+                                gateway_payload: GatewayResponse::ResourceAccepted(res),
+                            }),
+                        );
+                    }
                     continue;
                 }
                 Poll::Ready(phoenix_channel::Event::InboundMessage {

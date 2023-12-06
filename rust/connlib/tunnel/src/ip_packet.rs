@@ -210,6 +210,11 @@ impl<'a> IpPacket<'a> {
         Some(packet)
     }
 
+    pub(crate) fn to_owned(&self) -> IpPacket<'static> {
+        // This should never fail as the provided buffer is a vec (unless oom)
+        IpPacket::owned(self.packet().to_vec()).unwrap()
+    }
+
     pub(crate) fn version(&self) -> Version {
         match self {
             IpPacket::Ipv4Packet(_) => Version::Ipv4,

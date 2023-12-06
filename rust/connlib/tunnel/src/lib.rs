@@ -29,10 +29,13 @@ use webrtc::{
 
 use arc_swap::ArcSwapOption;
 use futures_util::task::AtomicWaker;
-use std::collections::VecDeque;
 use std::task::{ready, Context, Poll};
 use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
 use std::{collections::HashSet, hash::Hash};
+use std::{
+    collections::VecDeque,
+    net::{Ipv4Addr, Ipv6Addr},
+};
 use tokio::time::Interval;
 
 use connlib_shared::{
@@ -123,6 +126,20 @@ impl fmt::Display for DnsFallbackStrategy {
             DnsFallbackStrategy::UpstreamResolver => write!(f, "upstream_resolver"),
             DnsFallbackStrategy::SystemResolver => write!(f, "system_resolver"),
         }
+    }
+}
+
+pub(crate) fn get_v4(ip: IpAddr) -> Option<Ipv4Addr> {
+    match ip {
+        IpAddr::V4(v4) => Some(v4),
+        IpAddr::V6(_) => None,
+    }
+}
+
+pub(crate) fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
+    match ip {
+        IpAddr::V4(_) => None,
+        IpAddr::V6(v6) => Some(v6),
     }
 }
 
@@ -239,20 +256,19 @@ where
 
             let dns_strategy = role_state.dns_strategy;
             let packet = match role_state.handle_dns(packet, dns_strategy) {
-                Ok(Some((response, ip))) => {
-                    tracing::trace!("{ip:?}");
+                Ok(Some(response)) => {
                     device.write(response)?;
-                    if let Some(ip) = ip {
-                        let device = device_wrapper.clone();
-                        let callbacks = self.callbacks().clone();
-                        tokio::spawn(async move {
-                            if let Some(device) = device.load().as_ref() {
-                                if let Err(err) = device.add_route(ip.into(), &callbacks).await {
-                                    tracing::warn!(?err, "add route failed: {err:#}");
-                                }
-                            }
-                        });
-                    }
+                    // if let Some(ip) = ip {
+                    //     let device = device_wrapper.clone();
+                    //     let callbacks = self.callbacks().clone();
+                    //     tokio::spawn(async move {
+                    //         if let Some(device) = device.load().as_ref() {
+                    //             if let Err(err) = device.add_route(ip.into(), &callbacks).await {
+                    //                 tracing::warn!(?err, "add route failed: {err:#}");
+                    //             }
+                    //         }
+                    //     });
+                    // }
                     continue;
                 }
                 Ok(None) => continue,
@@ -262,7 +278,7 @@ where
             let dest = packet.destination();
 
             let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
-                role_state.on_connection_intent(dest);
+                role_state.on_connection_intent_cidr(dest);
                 continue;
             };
 
