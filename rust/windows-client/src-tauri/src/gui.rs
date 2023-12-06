@@ -278,7 +278,9 @@ impl Controller {
             .ok_or_else(|| anyhow::anyhow!("can't get Managed object from Tauri"))?
             .ctlr_tx
             .clone();
-        let advanced_settings = settings::load_advanced_settings(&app).await?;
+        let advanced_settings = settings::load_advanced_settings(&app)
+            .await
+            .unwrap_or_default();
 
         tracing::trace!("re-loading token");
         let token: Option<SecretString> = tokio::task::spawn_blocking(|| {
@@ -344,7 +346,14 @@ async fn run_controller(
     app: tauri::AppHandle,
     mut rx: mpsc::Receiver<ControllerRequest>,
 ) -> Result<()> {
-    let mut controller = Controller::new(app.clone()).await?;
+    let mut controller = match Controller::new(app.clone()).await {
+        Err(e) => {
+            // TODO: There must be a shorter way to write these?
+            tracing::error!("couldn't create controller: {e}");
+            return Err(e);
+        }
+        Ok(x) => x,
+    };
 
     tracing::debug!("GUI controller main loop start");
 
