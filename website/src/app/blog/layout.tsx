@@ -4,7 +4,7 @@ import Image from "next/image";
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="pt-14 flex flex-col">
-      <div className="bg-gradient-to-b from-primary-900 to-neutral-900 mx-auto w-screen text-center">
+      <div className="bg-neutral-900 mx-auto w-screen text-center">
         <Image
           alt="Firezone logo light"
           width={147}
