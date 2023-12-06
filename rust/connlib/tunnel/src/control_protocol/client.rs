@@ -198,15 +198,26 @@ where
                     .insert(resource_description.clone(), addrs.clone());
                 let packet = role_state
                     .local_dns_queries
-                    .remove(&(resource_description.clone(), Rtype::A));
+                    .remove(&(resource_description.clone(), Rtype::Aaaa));
                 if let Some(packet) = packet {
-                    dns::create_local_answer(&addrs, packet);
+                    let packet = dns::create_local_answer(&addrs, packet);
+                    if let Some(device) = self.device.load().clone() {
+                        if let Some(packet) = packet {
+                            device.write(packet);
+                        }
+                    }
                 }
+
                 let packet = role_state
                     .local_dns_queries
-                    .remove(&(resource_description, Rtype::Aaaa));
+                    .remove(&(resource_description.clone(), Rtype::A));
                 if let Some(packet) = packet {
-                    dns::create_local_answer(&addrs, packet);
+                    let packet = dns::create_local_answer(&addrs, packet);
+                    if let Some(device) = self.device.load().clone() {
+                        if let Some(packet) = packet {
+                            device.write(packet);
+                        }
+                    }
                 }
 
                 for ip in addrs {
@@ -311,67 +322,101 @@ where
         resource_id: ResourceId,
         domain_response: DomainResponse,
     ) -> Result<()> {
-        todo!()
-        // let gateway_id = self
-        //     .role_state
-        //     .lock()
-        //     .gateway_by_resource(&resource_id)
-        //     .ok_or(Error::UnknownResource)?;
-        // let resource_description = self
-        //     .role_state
-        //     .lock()
-        //     .resources_id
-        //     .get(&resource_id)
-        //     .ok_or(Error::UnknownResource)?
-        //     .clone();
-        // let ResourceDescription::Dns(resource_description) = resource_description else {
-        //     return Err(Error::ControlProtocolError);
-        // };
+        let gateway_id = self
+            .role_state
+            .lock()
+            .gateway_by_resource(&resource_id)
+            .ok_or(Error::UnknownResource)?;
 
-        // let resource_description = resource_description.subdomain(domain_response.domain);
+        let resource_description = self
+            .role_state
+            .lock()
+            .resources_id
+            .get(&resource_id)
+            .ok_or(Error::UnknownResource)?
+            .clone();
+        let ResourceDescription::Dns(resource_description) = resource_description else {
+            return Err(Error::ControlProtocolError);
+        };
 
-        // let Some(internal_ipv4) = self
-        //     .role_state
-        //     .lock()
-        //     .dns_resources_internal_ips
-        //     .get_v4_resoruce_description(&resource_description)
-        //     .copied()
-        // else {
-        //     return Err(Error::ControlProtocolError);
-        // };
-        // let Some(internal_ipv6) = self
-        //     .role_state
-        //     .lock()
-        //     .dns_resources_internal_ips
-        //     .get_v6_resoruce_description(&resource_description)
-        //     .copied()
-        // else {
-        //     return Err(Error::ControlProtocolError);
-        // };
+        let resource_description = resource_description.subdomain(domain_response.domain);
 
-        // let mut role_state = self.role_state.lock();
-        // let Some((_, peer)) = role_state
-        //     .peers_by_ip
-        //     .iter_mut()
-        //     .find(|(_, p)| p.inner.conn_id == gateway_id)
-        // else {
-        //     return Err(Error::ControlProtocolError);
-        // };
-        // for ip in domain_response.address {
-        //     match ip {
-        //         std::net::IpAddr::V4(ip) => {
-        //             tracing::trace!("inserting translation {internal_ipv4} to {ip}");
-        //             peer.inner
-        //                 .transform
-        //                 .insert_translation(internal_ipv4.into(), ip.into())
-        //         }
-        //         std::net::IpAddr::V6(ip) => peer
-        //             .inner
-        //             .transform
-        //             .insert_translation(internal_ipv6.into(), ip.into()),
-        //     }
-        // }
+        let mut role_state = self.role_state.lock();
+        let Some(peer) = role_state
+            .peers_by_ip
+            .iter_mut()
+            .find_map(|(_, p)| (p.inner.conn_id == gateway_id).then_some(p.clone()))
+        else {
+            return Err(Error::ControlProtocolError);
+        };
+        let mut ips = Vec::new();
 
-        // Ok(())
+        for ip in domain_response.address {
+            let Some(ip) = peer
+                .inner
+                .transform
+                .get_or_assign_translation(&ip, &mut role_state.ip_provider)
+            else {
+                continue;
+            };
+            let ip = ip.into();
+            peer.inner.add_allowed_ip(ip);
+            role_state.peers_by_ip.insert(ip, peer.clone());
+            ips.push(ip);
+        }
+        {
+            let device = self.device.clone();
+            let callbacks = self.callbacks.clone();
+            let ips = ips.clone();
+            tokio::spawn(async move {
+                if let Some(device) = device.load().as_deref() {
+                    for ip in ips {
+                        device.add_route(ip.into(), &callbacks).await;
+                    }
+                }
+            });
+        }
+
+        role_state.dns_resources_internal_ips.insert(
+            resource_description.clone(),
+            ips.iter()
+                .map(|ip| ip.network_address())
+                .collect::<Vec<_>>(),
+        );
+
+        let packet = role_state
+            .local_dns_queries
+            .remove(&(resource_description.clone(), Rtype::Aaaa));
+        if let Some(packet) = packet {
+            let packet = dns::create_local_answer(
+                &ips.iter()
+                    .map(|ip| ip.network_address())
+                    .collect::<Vec<_>>(),
+                packet,
+            );
+            if let Some(device) = self.device.load().clone() {
+                if let Some(packet) = packet {
+                    device.write(packet);
+                }
+            }
+        }
+
+        let packet = role_state
+            .local_dns_queries
+            .remove(&(resource_description, Rtype::A));
+        if let Some(packet) = packet {
+            let packet = dns::create_local_answer(
+                &ips.iter()
+                    .map(|ip| ip.network_address())
+                    .collect::<Vec<_>>(),
+                packet,
+            );
+            if let Some(device) = self.device.load().clone() {
+                if let Some(packet) = packet {
+                    device.write(packet);
+                }
+            }
+        }
+        Ok(())
     }
 }
