@@ -80,6 +80,7 @@ defmodule Web.FormComponents do
         <input type="radio" id={@id} name={@name} value={@value} checked={@checked} class={~w[
           w-4 h-4 border-gray-300]} {@rest} />
         <%= @label %>
+        <%= if @inner_block, do: render_slot(@inner_block) %>
       </label>
     </div>
     """

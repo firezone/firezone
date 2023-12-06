@@ -8,10 +8,10 @@ import Script from "next/script";
 import Banner from "@/components/Banner";
 import Providers from "@/components/Providers";
 import Footer from "@/components/Footer";
-import { Public_Sans } from "next/font/google";
-const public_sans = Public_Sans({
+import { Source_Sans_3 } from "next/font/google";
+const source_sans_3 = Source_Sans_3({
   subsets: ["latin"],
-  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+  weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
 });
 import { HiArrowLongRight } from "react-icons/hi2";
 
@@ -28,7 +28,7 @@ export default function RootLayout({
         data-website-uuid="c4df1a31-22d9-4000-82e6-a86cbec0bba0"
       ></Script>
       <Providers>
-        <body className={public_sans.className}>
+        <body className={source_sans_3.className}>
           <div className="min-h-screen h-auto antialiased">
             <RootNavbar />
             {children}

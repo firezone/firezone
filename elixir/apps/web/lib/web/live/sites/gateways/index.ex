@@ -36,6 +36,11 @@ defmodule Web.Sites.Gateways.Index do
       <:title>
         Site <code><%= @group.name %></code> Gateways
       </:title>
+      <:help>
+        Deploy gateways to terminate connections to your site's resources. All
+        gateways deployed within a site must be able to reach all
+        its resources.
+      </:help>
       <:content>
         <.table id="gateways" rows={@gateways}>
           <:col :let={gateway} label="INSTANCE">
@@ -61,16 +66,12 @@ defmodule Web.Sites.Gateways.Index do
             <div class="flex flex-col items-center justify-center text-center text-slate-500 p-4">
               <div class="pb-4">
                 No gateways to display.
-              </div>
-              <div class="pb-4">
-                <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
-                  Deploy a Gateway
-                </.add_button>
-              </div>
-              <div>
-                <p>
-                  Deploy gateways to terminate connections to your site's resources. All gateways deployed within a site must be able to reach all its resources.
-                </p>
+                <.link
+                  class="font-medium text-blue-600 hover:underline"
+                  navigate={~p"/#{@account}/sites/#{@group}/new_token"}
+                >
+                  Deploy a gateway to connect resources.
+                </.link>
               </div>
             </div>
           </:empty>
