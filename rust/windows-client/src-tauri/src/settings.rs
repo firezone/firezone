@@ -1,7 +1,7 @@
 //! Everything related to the Settings window, including
 //! advanced settings and code for manipulating diagnostic logs.
 
-use crate::gui::{ControllerRequest, CtlrTx};
+use crate::gui::{ControllerRequest, Managed};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult, time::Duration};
@@ -39,9 +39,10 @@ pub(crate) async fn advanced_settings_path(app: &tauri::AppHandle) -> Result<Pat
 #[tauri::command]
 pub(crate) async fn apply_advanced_settings(
     app: tauri::AppHandle,
+    managed: tauri::State<'_, Managed>,
     settings: AdvancedSettings,
 ) -> StdResult<(), String> {
-    apply_advanced_settings_inner(app, settings)
+    apply_advanced_settings_inner(app, managed.inner(), settings)
         .await
         .map_err(|e| e.to_string())
 }
@@ -52,18 +53,19 @@ pub(crate) async fn clear_logs() -> StdResult<(), String> {
 }
 
 #[tauri::command]
-pub(crate) async fn export_logs(ctlr_tx: tauri::State<'_, CtlrTx>) -> StdResult<(), String> {
-    export_logs_inner(ctlr_tx.inner().clone())
+pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
+    export_logs_inner(managed.ctlr_tx.clone())
         .await
         .map_err(|e| format!("{e}"))
 }
 
 #[tauri::command]
 pub(crate) async fn get_advanced_settings(
-    ctlr_tx: tauri::State<'_, CtlrTx>,
+    managed: tauri::State<'_, Managed>,
 ) -> StdResult<AdvancedSettings, String> {
     let (tx, rx) = oneshot::channel();
-    ctlr_tx
+    managed
+        .ctlr_tx
         .send(ControllerRequest::GetAdvancedSettings(tx))
         .await
         .unwrap();
@@ -72,6 +74,7 @@ pub(crate) async fn get_advanced_settings(
 
 pub(crate) async fn apply_advanced_settings_inner(
     app: tauri::AppHandle,
+    managed: &Managed,
     settings: AdvancedSettings,
 ) -> Result<()> {
     tokio::fs::write(
@@ -80,9 +83,9 @@ pub(crate) async fn apply_advanced_settings_inner(
     )
     .await?;
 
-    // TODO: This sleep is just for testing, remove it before it ships
-    // TODO: Make sure the GUI handles errors if this function fails
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    if managed.inject_faults {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
     Ok(())
 }
 
@@ -97,7 +100,7 @@ pub(crate) async fn clear_logs_inner() -> Result<()> {
     todo!()
 }
 
-pub(crate) async fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
+pub(crate) async fn export_logs_inner(ctlr_tx: crate::gui::CtlrTx) -> Result<()> {
     tauri::api::dialog::FileDialogBuilder::new()
         .add_filter("Zip", &["zip"])
         .save_file(move |file_path| match file_path {

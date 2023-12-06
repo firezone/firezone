@@ -18,12 +18,19 @@ use ControllerRequest as Req;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
+/// All managed state that we might need to access from odd places like Tauri commands.
+pub(crate) struct Managed {
+    pub ctlr_tx: CtlrTx,
+    pub inject_faults: bool,
+}
+
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 ///
 /// # Arguments
 ///
 /// * `deep_link` - The URL of an incoming deep link from a web browser
-pub fn run(deep_link: Option<String>) -> Result<()> {
+/// * `inject_faults` - True if we should slow down I/O operations to test how the GUI handles that
+pub fn run(deep_link: Option<String>, inject_faults: bool) -> Result<()> {
     // Make sure we're single-instance
     tauri_plugin_deep_link::prepare("dev.firezone");
 
@@ -31,11 +38,15 @@ pub fn run(deep_link: Option<String>) -> Result<()> {
     let _guard = rt.enter();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
+    let managed = Managed {
+        ctlr_tx,
+        inject_faults,
+    };
 
     let tray = SystemTray::new().with_menu(signed_out_menu());
 
     tauri::Builder::default()
-        .manage(ctlr_tx)
+        .manage(managed)
         .on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
                 // Keep the frontend running but just hide this webview
@@ -89,12 +100,11 @@ pub fn run(deep_link: Option<String>) -> Result<()> {
 
             // From https://github.com/FabianLars/tauri-plugin-deep-link/blob/main/example/main.rs
             let handle = app.handle();
-            tauri_plugin_deep_link::register(crate::DEEP_LINK_SCHEME, move |r| {
-                let r = SecretString::new(r);
-                let ctlr_tx = handle.try_state::<CtlrTx>().unwrap();
-                ctlr_tx
-                    .blocking_send(ControllerRequest::SchemeRequest(r))
-                    .unwrap();
+            tauri_plugin_deep_link::register(crate::DEEP_LINK_SCHEME, move |url| {
+                match handle_deep_link(&handle, url) {
+                    Ok(()) => {}
+                    Err(e) => tracing::error!("{e}"),
+                }
             })?;
             Ok(())
         })
@@ -108,6 +118,14 @@ pub fn run(deep_link: Option<String>) -> Result<()> {
             }
         });
     Ok(())
+}
+
+fn handle_deep_link(app: &tauri::AppHandle, url: String) -> Result<()> {
+    Ok(app
+        .try_state::<Managed>()
+        .ok_or_else(|| anyhow!("can't get Managed object from Tauri"))?
+        .ctlr_tx
+        .blocking_send(ControllerRequest::SchemeRequest(SecretString::new(url)))?)
 }
 
 #[derive(Debug, PartialEq)]
@@ -168,8 +186,9 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
             }
         }
         TrayMenuEvent::SignIn => app
-            .try_state::<CtlrTx>()
+            .try_state::<Managed>()
             .ok_or_else(|| anyhow!("getting ctlr_tx state"))?
+            .ctlr_tx
             .blocking_send(ControllerRequest::SignIn)?,
         TrayMenuEvent::SignOut => app.tray_handle().set_menu(signed_out_menu())?,
         TrayMenuEvent::Quit => app.exit(0),
@@ -253,9 +272,9 @@ struct Controller {
 impl Controller {
     async fn new(app: tauri::AppHandle) -> Result<Self> {
         let ctlr_tx = app
-            .try_state::<CtlrTx>()
-            .ok_or_else(|| anyhow::anyhow!("can't get managed ctlr_tx"))?
-            .inner()
+            .try_state::<Managed>()
+            .ok_or_else(|| anyhow::anyhow!("can't get Managed object from Tauri"))?
+            .ctlr_tx
             .clone();
         let advanced_settings = settings::load_advanced_settings(&app).await?;
 

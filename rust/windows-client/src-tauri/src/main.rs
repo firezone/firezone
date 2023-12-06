@@ -33,14 +33,14 @@ fn main() -> Result<()> {
     if let Some(arg) = std::env::args().nth(1) {
         let scheme = format!("{DEEP_LINK_SCHEME}://");
         if arg.starts_with(&scheme) {
-            return gui::run(Some(arg));
+            return gui::run(Some(arg), false);
         }
     }
 
     let cli = cli::Cli::parse();
 
     match cli.command {
-        None => gui::run(None),
+        None => gui::run(None, cli.inject_faults),
         Some(Cmd::Debug) => {
             println!("debug");
             Ok(())
