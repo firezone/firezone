@@ -128,12 +128,11 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 }
             }
             GatewayResponse::ResourceAccepted(gateway_payload) => {
-                tracing::trace!("accepting resource");
                 if let Err(e) = self
                     .tunnel
                     .received_domain_parameters(resource_id, gateway_payload.domain_response)
                 {
-                    tracing::error!(err = ?e);
+                    let _ = self.tunnel.callbacks().on_error(&e);
                 }
             }
         }
