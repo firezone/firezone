@@ -68,7 +68,7 @@ where
                 self.role_state
                     .lock()
                     .dns_resources
-                    .insert(dns.address.clone(), Arc::new(dns.clone()));
+                    .insert(dns.address.clone(), dns.clone());
             }
             ResourceDescription::Cidr(cidr) => {
                 self.add_route(cidr.address).await?;
@@ -170,15 +170,9 @@ pub struct ClientState {
     resources_gateways: HashMap<ResourceId, GatewayId>,
 
     // TODO: model these along with resources to enforce consistency
-    // TODO: dns_resources_internal_ips can be merged with cidr_resources
-    // TODO: We store ResourceDescriptionDns which is the reprsentation the portal uses...
-    // however, this means re-parsing the dns name each time we want to use it as such.
-    // domain's Dname<oct> implements serialize, deserialize and Hash, so as soon as we get
-    // the dns name from the portal we should parse it and use it always as that.
-    // Note: implement this as part of the current PR!
     // TODO: this should expire with the associated peer?
     pub dns_resources_internal_ips: HashMap<DnsResource, Vec<IpAddr>>,
-    dns_resources: HashMap<String, Arc<ResourceDescriptionDns>>,
+    dns_resources: HashMap<String, ResourceDescriptionDns>,
     cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     pub resources_id: HashMap<ResourceId, ResourceDescription>,
     pub local_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,

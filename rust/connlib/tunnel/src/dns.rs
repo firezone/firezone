@@ -16,7 +16,6 @@ use itertools::Itertools;
 use pnet_packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, PacketSize};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::sync::Arc;
 
 const DNS_TTL: u32 = 300;
 const UDP_HEADER_SIZE: usize = 8;
@@ -61,7 +60,7 @@ impl<T, V> ResolveStrategy<T, DnsQueryParams, V> {
 //
 // See: https://stackoverflow.com/a/55093896
 pub(crate) fn parse<'a>(
-    dns_resources: &HashMap<String, Arc<ResourceDescriptionDns>>,
+    dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<DnsResource, Vec<IpAddr>>,
     packet: IpPacket<'a>,
     resolve_strategy: DnsFallbackStrategy,
@@ -242,7 +241,7 @@ enum RecordData<T> {
 }
 
 fn resource_from_question<N: ToDname>(
-    dns_resources: &HashMap<String, Arc<ResourceDescriptionDns>>,
+    dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<DnsResource, Vec<IpAddr>>,
     question: &Question<N>,
 ) -> Option<ResolveStrategy<RecordData<Dname<Vec<u8>>>, DnsQueryParams, DnsResource>> {
@@ -257,6 +256,7 @@ fn resource_from_question<N: ToDname>(
             else {
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
+
             let description = DnsResource::from_description(description, name);
             let Some(ips) = dns_resources_internal_ips.get(&description) else {
                 // TODO!!: Sometimes we need to respond with nxdomain for this
@@ -283,6 +283,7 @@ fn resource_from_question<N: ToDname>(
             let Some(ips) = dns_resources_internal_ips.get(&description) else {
                 return Some(ResolveStrategy::DeferredResponse(description));
             };
+
             Some(ResolveStrategy::LocalResponse(RecordData::Aaaa(
                 ips.iter()
                     .cloned()
