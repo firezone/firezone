@@ -462,6 +462,39 @@ IO.puts("")
     admin_subject
   )
 
+{:ok, t_firez_one} =
+  Resources.create_resource(
+    %{
+      type: :dns,
+      address: "t.firez.one",
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [%{protocol: :all}]
+    },
+    admin_subject
+  )
+
+{:ok, ping_firez_one} =
+  Resources.create_resource(
+    %{
+      type: :dns,
+      address: "ping.firez.one",
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [%{protocol: :all}]
+    },
+    admin_subject
+  )
+
+{:ok, ip6only} =
+  Resources.create_resource(
+    %{
+      type: :dns,
+      address: "ip6only.me",
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [%{protocol: :all}]
+    },
+    admin_subject
+  )
+
 {:ok, dns_gitlab_resource} =
   Resources.create_resource(
     %{
@@ -499,6 +532,33 @@ IO.puts("")
     name: "All Access To Google",
     actor_group_id: all_group.id,
     resource_id: dns_google_resource.id
+  },
+  admin_subject
+)
+
+{:ok, _} = Policies.create_policy(
+  %{
+    name: "All Access To t.firez.one",
+    actor_group_id: all_group.id,
+    resource_id: t_firez_one.id
+  },
+  admin_subject
+)
+
+{:ok, _} = Policies.create_policy(
+  %{
+    name: "All Access To ping.firez.one",
+    actor_group_id: all_group.id,
+    resource_id: ping_firez_one.id
+  },
+  admin_subject
+)
+
+{:ok, _} = Policies.create_policy(
+  %{
+    name: "All Access To ip6only.me",
+    actor_group_id: all_group.id,
+    resource_id: ip6only.id
   },
   admin_subject
 )

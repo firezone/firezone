@@ -121,8 +121,8 @@ where
         // TODO: we could put the domain inside the ResourceDescription
         domain: Option<String>,
     ) -> Option<ResourceAccepted> {
-        tracing::trace!("{resource:?}");
-        tracing::trace!("{domain:?}");
+        tracing::trace!(?resource);
+        tracing::trace!(?domain);
         if let Some((_, peer)) = self
             .role_state
             .lock()

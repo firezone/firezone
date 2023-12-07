@@ -105,17 +105,16 @@ pub(crate) fn create_local_answer<'a>(ips: &[IpAddr], packet: IpPacket<'a>) -> O
     let message = to_dns(&datagram).unwrap();
     let question = message.first_question().unwrap();
     let qtype = question.qtype();
-    let name = ToDname::to_cow(question.qname());
     let resource = match qtype {
         Rtype::A => RecordData::A(
-            ips.into_iter()
+            ips.iter()
                 .copied()
                 .filter_map(get_v4)
                 .map(domain::rdata::A::new)
                 .collect(),
         ),
-        Rtype::Aaaa => RecordData::AAAA(
-            ips.into_iter()
+        Rtype::Aaaa => RecordData::Aaaa(
+            ips.iter()
                 .copied()
                 .filter_map(get_v6)
                 .map(domain::rdata::Aaaa::new)
@@ -123,9 +122,10 @@ pub(crate) fn create_local_answer<'a>(ips: &[IpAddr], packet: IpPacket<'a>) -> O
         ),
         _ => unreachable!(),
     };
+
     let response = build_dns_with_answer(message, question.qname(), &Some(resource.clone()))?;
 
-    Some(build_response(packet, response)?)
+    build_response(packet, response)
 }
 
 pub(crate) fn build_response_from_resolve_result(
@@ -223,7 +223,7 @@ where
         RecordData::A(r) => r
             .iter()
             .try_for_each(|r| answer_builder.push((qname, Class::In, DNS_TTL, r))),
-        RecordData::AAAA(r) => r
+        RecordData::Aaaa(r) => r
             .iter()
             .try_for_each(|r| answer_builder.push((qname, Class::In, DNS_TTL, r))),
         RecordData::Ptr(r) => answer_builder.push((qname, Class::In, DNS_TTL, r)),
@@ -236,7 +236,7 @@ where
 #[derive(Clone)]
 enum RecordData<T> {
     A(Vec<domain::rdata::A>),
-    AAAA(Vec<domain::rdata::Aaaa>),
+    Aaaa(Vec<domain::rdata::Aaaa>),
     Ptr(domain::rdata::Ptr<T>),
 }
 
@@ -265,7 +265,7 @@ fn resource_from_question<N: ToDname>(
                 return Some(ResolveStrategy::DeferredResponse(description));
             };
             Some(ResolveStrategy::LocalResponse(RecordData::A(
-                ips.into_iter()
+                ips.iter()
                     .cloned()
                     .filter_map(get_v4)
                     .map(domain::rdata::A::new)
@@ -283,8 +283,8 @@ fn resource_from_question<N: ToDname>(
             let Some(ips) = dns_resources_internal_ips.get(&description) else {
                 return Some(ResolveStrategy::DeferredResponse(description));
             };
-            Some(ResolveStrategy::LocalResponse(RecordData::AAAA(
-                ips.into_iter()
+            Some(ResolveStrategy::LocalResponse(RecordData::Aaaa(
+                ips.iter()
                     .cloned()
                     .filter_map(get_v6)
                     .map(domain::rdata::Aaaa::new)

@@ -193,6 +193,7 @@ where
                         }
                     });
                 }
+
                 role_state
                     .dns_resources_internal_ips
                     .insert(resource_description.clone(), addrs.clone());
@@ -339,9 +340,11 @@ where
             return Err(Error::ControlProtocolError);
         };
 
+        tracing::trace!(?resource_description, ?domain_response, "domain parameters");
         let resource_description = resource_description.subdomain(domain_response.domain);
 
         let mut role_state = self.role_state.lock();
+
         let Some(peer) = role_state
             .peers_by_ip
             .iter_mut()
@@ -349,6 +352,7 @@ where
         else {
             return Err(Error::ControlProtocolError);
         };
+
         let mut ips = Vec::new();
 
         for ip in domain_response.address {

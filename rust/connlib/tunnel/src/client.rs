@@ -254,14 +254,13 @@ impl ClientState {
             return Err(Error::UnexpectedConnectionDetails);
         }
 
+        tracing::trace!(?self.gateway_awaiting_connection, "contains?");
         if self.gateway_awaiting_connection.contains(&gateway) {
+            tracing::trace!(?self.gateway_awaiting_connection, "yeah");
             self.awaiting_connection.remove(&resource);
             self.awaiting_connection_timers.remove(resource);
             return Err(Error::PendingConnection);
         }
-
-        // This was deleted in https://github.com/firezone/firezone/pull/2454 and should never have been
-        self.gateway_awaiting_connection.insert(gateway);
 
         self.resources_gateways.insert(resource, gateway);
 
@@ -271,6 +270,8 @@ impl ClientState {
                 channel: p.channel.clone(),
             })
         }) else {
+            // This was deleted in https://github.com/firezone/firezone/pull/2454 and should never have been
+            self.gateway_awaiting_connection.insert(gateway);
             return Ok(None);
         };
 
@@ -446,7 +447,9 @@ impl ClientState {
         };
 
         // Tidy up state once everything succeeded.
+        tracing::trace!(?self.gateway_awaiting_connection, "before removal");
         self.gateway_awaiting_connection.remove(&gateway);
+        tracing::trace!(?self.gateway_awaiting_connection, "after removal");
         self.awaiting_connection.remove(&resource);
 
         Ok(config)
