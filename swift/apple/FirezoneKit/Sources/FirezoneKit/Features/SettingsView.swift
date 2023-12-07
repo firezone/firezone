@@ -169,11 +169,11 @@ public struct SettingsView: View {
         isPresented: $isShowingConfirmationAlert,
         presenting: confirmationAlertContinueAction,
         actions: { confirmationAlertContinueAction in
-          Button("Continue") {
-            confirmationAlertContinueAction.performAction(on: self)
-          }
           Button("Cancel", role: .cancel) {
             // Nothing to do
+          }
+          Button("Continue") {
+            confirmationAlertContinueAction.performAction(on: self)
           }
         },
         message: { _ in
@@ -196,11 +196,11 @@ public struct SettingsView: View {
         isPresented: $isShowingConfirmationAlert,
         presenting: confirmationAlertContinueAction,
         actions: { confirmationAlertContinueAction in
-          Button("Continue") {
-            confirmationAlertContinueAction.performAction(on: self)
-          }
           Button("Cancel", role: .cancel) {
             // Nothing to do
+          }
+          Button("Continue", role: .destructive) {
+            confirmationAlertContinueAction.performAction(on: self)
           }
         },
         message: { _ in
