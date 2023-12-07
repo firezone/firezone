@@ -185,7 +185,11 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
                 >
                   <.icon name="hero-document-duplicate" class="w-5 h-5 mr-1" />
                 </button>
-                <button phx-click={toggle_scim_token()} title="Show SCIM token" class="text-accent-600">
+                <button
+                  phx-click={toggle_scim_token()}
+                  title="Show SCIM token"
+                  class="text-accent-600"
+                >
                   <.icon name="hero-eye" class="w-5 h-5 mr-1" />
                 </button>
 

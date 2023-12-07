@@ -141,7 +141,10 @@ defmodule Web.SignUp do
                   Sign In URL:
                 </td>
                 <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
-                  <.link class="font-medium text-accent-600 hover:underline" navigate={~p"/#{@account}"}>
+                  <.link
+                    class="font-medium text-accent-600 hover:underline"
+                    navigate={~p"/#{@account}"}
+                  >
                     <%= url(~p"/#{@account}") %>
                   </.link>
                 </td>
