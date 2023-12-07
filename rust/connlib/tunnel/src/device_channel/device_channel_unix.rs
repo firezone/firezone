@@ -1,15 +1,16 @@
 use std::io;
+use std::os::fd::RawFd;
 use std::sync::{
     atomic::{AtomicUsize, Ordering::Relaxed},
     Arc,
 };
 use std::task::{ready, Context, Poll};
 
-use connlib_shared::{messages::Interface, Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use tokio::io::{unix::AsyncFd, Ready};
 
-use tun::{IfaceDevice, IfaceStream};
+use connlib_shared::{messages::Interface, Callbacks, Error, Result};
+use tun::{IfaceDevice, IfaceStream, SIOCGIFMTU};
 
 use crate::device_channel::{Device, Packet};
 use crate::DnsFallbackStrategy;
@@ -57,9 +58,10 @@ impl IfaceConfig {
         self.mtu.load(Relaxed)
     }
 
-    pub(crate) async fn refresh_mtu(&self) -> Result<usize> {
-        let mtu = self.iface.mtu().await?;
+    pub(crate) fn refresh_mtu(&self) -> Result<usize> {
+        let mtu = ioctl::interface_mtu_by_name(self.iface.name())?;
         self.mtu.store(mtu, Relaxed);
+
         Ok(mtu)
     }
 
@@ -72,7 +74,7 @@ impl IfaceConfig {
             return Ok(None);
         };
         let io = DeviceIo(stream);
-        let mtu = iface.mtu().await?;
+        let mtu = ioctl::interface_mtu_by_name(iface.name())?;
         let config = IfaceConfig {
             iface,
             mtu: AtomicUsize::new(mtu),
@@ -89,11 +91,99 @@ pub(crate) async fn create_iface(
     let (iface, stream) = IfaceDevice::new(config, callbacks, fallback_strategy).await?;
     iface.up().await?;
     let io = DeviceIo(stream);
-    let mtu = iface.mtu().await?;
+    let mtu = ioctl::interface_mtu_by_name(iface.name())?;
     let config = IfaceConfig {
         iface,
         mtu: AtomicUsize::new(mtu),
     };
 
     Ok(Device { io, config })
+}
+
+mod ioctl {
+    use super::*;
+
+    pub(crate) fn interface_mtu_by_name(name: &str) -> Result<usize> {
+        let socket = Socket::ip4()?;
+        let request = Request::<GetInterfaceMtuPayload>::new(name)?;
+
+        // Safety: The file descriptor is open.
+        unsafe {
+            exec(socket.fd, SIOCGIFMTU, &request)?;
+        }
+
+        Ok(request.payload.mtu as usize)
+    }
+
+    /// Executes the `ioctl` syscall on the given file descriptor with the provided request.
+    ///
+    /// # Safety
+    ///
+    /// The file descriptor must be open.
+    pub(crate) unsafe fn exec<P>(fd: RawFd, code: libc::c_ulong, req: &Request<P>) -> Result<()> {
+        let ret = unsafe { libc::ioctl(fd, code as _, req) };
+
+        if ret < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+
+        Ok(())
+    }
+
+    /// Represents a control request to an IO device, addresses by the device's name.
+    ///
+    /// The payload MUST also be `#[repr(C)]` and its layout depends on the particular request you are sending.
+    #[repr(C)]
+    pub(crate) struct Request<P> {
+        pub(crate) name: [std::ffi::c_uchar; libc::IF_NAMESIZE],
+        pub(crate) payload: P,
+    }
+
+    /// A socket newtype which closes the file descriptor on drop.
+    struct Socket {
+        fd: RawFd,
+    }
+
+    impl Socket {
+        fn ip4() -> io::Result<Socket> {
+            // Safety: All provided parameters are constants.
+            let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, libc::IPPROTO_IP) };
+
+            if fd == -1 {
+                return Err(io::Error::last_os_error());
+            }
+
+            Ok(Self { fd })
+        }
+    }
+
+    impl Drop for Socket {
+        fn drop(&mut self) {
+            // Safety: This is the only call to `close` and it happens when `Guard` is being dropped.
+            unsafe { libc::close(self.fd) };
+        }
+    }
+
+    impl Request<GetInterfaceMtuPayload> {
+        fn new(name: &str) -> io::Result<Self> {
+            if name.len() > libc::IF_NAMESIZE {
+                return Err(io::ErrorKind::InvalidInput.into());
+            }
+
+            let mut request = Request {
+                name: [0u8; libc::IF_NAMESIZE],
+                payload: Default::default(),
+            };
+
+            request.name[..name.len()].copy_from_slice(name.as_bytes());
+
+            Ok(request)
+        }
+    }
+
+    #[derive(Default)]
+    #[repr(C)]
+    struct GetInterfaceMtuPayload {
+        mtu: libc::c_int,
+    }
 }

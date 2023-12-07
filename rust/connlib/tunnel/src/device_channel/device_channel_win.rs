@@ -33,7 +33,7 @@ impl IfaceConfig {
         BOGUS_MTU
     }
 
-    pub(crate) async fn refresh_mtu(&self) -> Result<usize> {
+    pub(crate) fn refresh_mtu(&self) -> Result<usize> {
         Ok(BOGUS_MTU)
     }
 

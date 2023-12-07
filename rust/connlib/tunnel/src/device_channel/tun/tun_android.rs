@@ -1,11 +1,12 @@
+use crate::device_channel::device_channel::ioctl;
+use crate::DnsFallbackStrategy;
 use closeable::Closeable;
 use connlib_shared::{
     messages::Interface as InterfaceConfig, Callbacks, Error, Result, DNS_SENTINEL,
 };
 use ip_network::IpNetwork;
 use libc::{
-    close, ioctl, read, sockaddr, sockaddr_in, write, AF_INET, IFNAMSIZ, IPPROTO_IP, SIOCGIFMTU,
-    SOCK_STREAM,
+    close, ioctl, read, sockaddr, sockaddr_in, write, AF_INET, IFNAMSIZ, IPPROTO_IP, SOCK_STREAM,
 };
 use std::{
     ffi::{c_int, c_short, c_uchar},
@@ -15,37 +16,9 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
-use crate::DnsFallbackStrategy;
-
 mod closeable;
-mod wrapped_socket;
 
-#[repr(C)]
-union IfrIfru {
-    ifru_addr: sockaddr,
-    ifru_addr_v4: sockaddr_in,
-    ifru_addr_v6: sockaddr_in,
-    ifru_dstaddr: sockaddr,
-    ifru_broadaddr: sockaddr,
-    ifru_flags: c_short,
-    ifru_metric: c_int,
-    ifru_mtu: c_int,
-    ifru_phys: c_int,
-    ifru_media: c_int,
-    ifru_intval: c_int,
-    ifru_wake_flags: u32,
-    ifru_route_refcnt: u32,
-    ifru_cap: [c_int; 2],
-    ifru_functional_type: u32,
-}
-
-#[repr(C)]
-pub struct ifreq {
-    ifr_name: [c_uchar; IFNAMSIZ],
-    ifr_ifru: IfrIfru,
-}
-
-const TUNGETIFF: u64 = 0x800454d2;
+pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
 #[derive(Debug)]
 pub(crate) struct IfaceDevice(Arc<AsyncFd<IfaceStream>>);
@@ -53,6 +26,7 @@ pub(crate) struct IfaceDevice(Arc<AsyncFd<IfaceStream>>);
 #[derive(Debug)]
 pub(crate) struct IfaceStream {
     fd: Closeable,
+    name: String,
 }
 
 impl AsRawFd for IfaceStream {
@@ -117,58 +91,20 @@ impl IfaceDevice {
                 fallback_strategy.to_string(),
             )?
             .ok_or(Error::NoFd)?;
+        // Safety: File descriptor is open.
+        let name = unsafe { interface_name(fd)? };
+
         let iface_stream = Arc::new(AsyncFd::new(IfaceStream {
             fd: Closeable::new(fd.into()),
+            name,
         })?);
         let this = Self(Arc::clone(&iface_stream));
 
         Ok((this, iface_stream))
     }
 
-    fn name(&self) -> Result<String> {
-        let mut ifr = ifreq {
-            ifr_name: [0; IFNAMSIZ],
-            ifr_ifru: unsafe { std::mem::zeroed() },
-        };
-
-        match self
-            .0
-            .get_ref()
-            .fd
-            .with(|fd| unsafe { ioctl(fd, TUNGETIFF as _, &mut ifr) })?
-        {
-            0 => {
-                let name_cstr = unsafe { std::ffi::CStr::from_ptr(ifr.ifr_name.as_ptr() as _) };
-                Ok(name_cstr.to_string_lossy().into_owned())
-            }
-            _ => Err(get_last_error()),
-        }
-    }
-
-    /// Get the current MTU value
-    pub async fn mtu(&self) -> Result<usize> {
-        let socket = wrapped_socket::WrappedSocket::new(AF_INET, SOCK_STREAM, IPPROTO_IP);
-        let fd = match socket.as_raw_fd() {
-            -1 => return Err(get_last_error()),
-            fd => fd,
-        };
-
-        let name = self.name()?;
-        let iface_name: &[u8] = name.as_ref();
-        let mut ifr = ifreq {
-            ifr_name: [0; IFNAMSIZ],
-            ifr_ifru: IfrIfru { ifru_mtu: 0 },
-        };
-
-        ifr.ifr_name[..iface_name.len()].copy_from_slice(iface_name);
-
-        if unsafe { ioctl(fd, SIOCGIFMTU as _, &ifr) } < 0 {
-            return Err(get_last_error());
-        }
-
-        let mtu = unsafe { ifr.ifr_ifru.ifru_mtu };
-
-        Ok(mtu as _)
+    pub fn name(&self) -> &str {
+        self.0.get_ref().name.as_str()
     }
 
     pub async fn add_route(
@@ -178,8 +114,11 @@ impl IfaceDevice {
     ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
         self.0.get_ref().close();
         let fd = callbacks.on_add_route(route)?.ok_or(Error::NoFd)?;
+        let name = unsafe { interface_name(fd)? };
+
         let iface_stream = Arc::new(AsyncFd::new(IfaceStream {
             fd: Closeable::new(fd.into()),
+            name,
         })?);
         let this = Self(Arc::clone(&iface_stream));
 
@@ -191,6 +130,36 @@ impl IfaceDevice {
     }
 }
 
-fn get_last_error() -> Error {
-    Error::Io(io::Error::last_os_error())
+/// Retrieves the name of the interface pointed to by the provided file descriptor.
+///
+/// # Safety
+///
+/// The file descriptor must be open.
+unsafe fn interface_name(fd: RawFd) -> Result<String> {
+    const TUNGETIFF: libc::c_ulong = 0x800454d2;
+    let request = ioctl::Request::<GetInterfaceNamePayload>::new();
+
+    ioctl::exec(fd, TUNGETIFF, &request)?;
+
+    Ok(request.name().to_string())
 }
+
+impl ioctl::Request<GetInterfaceNamePayload> {
+    fn new() -> Self {
+        Self {
+            name: [0u8; libc::IF_NAMESIZE],
+            payload: Default::default(),
+        }
+    }
+
+    fn name(&self) -> std::borrow::Cow<'_, str> {
+        // Safety: The memory of `self.name` is always initialized.
+        let cstr = unsafe { std::ffi::CStr::from_ptr(self.name.as_ptr() as _) };
+
+        cstr.to_string_lossy()
+    }
+}
+
+#[derive(Default)]
+#[repr(C)]
+struct GetInterfaceNamePayload;

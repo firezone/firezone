@@ -1,14 +1,14 @@
+use crate::DnsFallbackStrategy;
 use connlib_shared::{
     messages::Interface as InterfaceConfig, Callbacks, Error, Result, DNS_SENTINEL,
 };
 use ip_network::IpNetwork;
 use libc::{
-    ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg, sockaddr,
-    sockaddr_ctl, sockaddr_in, socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO, F_GETFL,
-    F_SETFL, IF_NAMESIZE, IPPROTO_IP, O_NONBLOCK, SOCK_STREAM, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
+    ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg, sockaddr_ctl,
+    socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE,
+    O_NONBLOCK, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
 };
 use std::{
-    ffi::{c_int, c_short, c_uchar},
     io,
     mem::size_of,
     os::fd::{AsRawFd, RawFd},
@@ -16,10 +16,9 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
-use crate::DnsFallbackStrategy;
-
 const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
-const SIOCGIFMTU: u64 = 0x0000_0000_c020_6933;
+/// `libc` for darwin doesn't define this constant so we declare it here.
+pub(crate) const SIOCGIFMTU: u64 = 0x0000_0000_c020_6933;
 
 #[derive(Debug)]
 pub(crate) struct IfaceDevice {
@@ -31,39 +30,10 @@ pub(crate) struct IfaceStream {
     fd: RawFd,
 }
 
-mod wrapped_socket;
-
 impl AsRawFd for IfaceStream {
     fn as_raw_fd(&self) -> RawFd {
         self.fd
     }
-}
-
-// For some reason this is not available in libc for darwin :c
-#[allow(non_camel_case_types)]
-#[repr(C)]
-pub struct ifreq {
-    ifr_name: [c_uchar; IF_NAMESIZE],
-    ifr_ifru: IfrIfru,
-}
-
-#[repr(C)]
-union IfrIfru {
-    ifru_addr: sockaddr,
-    ifru_addr_v4: sockaddr_in,
-    ifru_addr_v6: sockaddr_in,
-    ifru_dstaddr: sockaddr,
-    ifru_broadaddr: sockaddr,
-    ifru_flags: c_short,
-    ifru_metric: c_int,
-    ifru_mtu: c_int,
-    ifru_phys: c_int,
-    ifru_media: c_int,
-    ifru_intval: c_int,
-    ifru_wake_flags: u32,
-    ifru_route_refcnt: u32,
-    ifru_cap: [c_int; 2],
-    ifru_functional_type: u32,
 }
 
 impl IfaceStream {
@@ -217,29 +187,6 @@ impl IfaceDevice {
         Err(get_last_error())
     }
 
-    /// Get the current MTU value
-    pub async fn mtu(&self) -> Result<usize> {
-        let socket = wrapped_socket::WrappedSocket::new(AF_INET, SOCK_STREAM, IPPROTO_IP);
-        let fd = match socket.as_raw_fd() {
-            -1 => return Err(get_last_error()),
-            fd => fd,
-        };
-
-        let iface_name: &[u8] = self.name.as_ref();
-        let mut ifr = ifreq {
-            ifr_name: [0; IF_NAMESIZE],
-            ifr_ifru: IfrIfru { ifru_mtu: 0 },
-        };
-
-        ifr.ifr_name[..iface_name.len()].copy_from_slice(iface_name);
-
-        if unsafe { ioctl(fd, SIOCGIFMTU, &ifr) } < 0 {
-            return Err(get_last_error());
-        }
-
-        Ok(unsafe { ifr.ifr_ifru.ifru_mtu } as _)
-    }
-
     pub async fn add_route(
         &self,
         route: IpNetwork,
@@ -252,6 +199,10 @@ impl IfaceDevice {
 
     pub async fn up(&self) -> Result<()> {
         Ok(())
+    }
+
+    pub fn name(&self) -> &str {
+        self.name.as_str()
     }
 }
 

@@ -1,21 +1,22 @@
+use crate::device_channel::device_channel::ioctl;
+use crate::DnsFallbackStrategy;
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use futures::TryStreamExt;
 use ip_network::IpNetwork;
 use libc::{
-    close, fcntl, ioctl, open, read, sockaddr, sockaddr_in, write, F_GETFL, F_SETFL,
-    IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN, IFNAMSIZ, O_NONBLOCK, O_RDWR,
+    close, fcntl, open, read, write, F_GETFL, F_SETFL, IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN,
+    O_NONBLOCK, O_RDWR,
 };
-use netlink_packet_route::{rtnl::link::nlas::Nla, RT_SCOPE_UNIVERSE};
+use netlink_packet_route::RT_SCOPE_UNIVERSE;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
 use std::{
-    ffi::{c_int, c_short, c_uchar},
     io,
     os::fd::{AsRawFd, RawFd},
     sync::Arc,
 };
 use tokio::io::unix::AsyncFd;
 
-use crate::DnsFallbackStrategy;
+pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
 const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: u64 = 0x4004_54ca;
@@ -23,31 +24,6 @@ const TUN_FILE: &[u8] = b"/dev/net/tun\0";
 const RT_PROT_STATIC: u8 = 4;
 const DEFAULT_MTU: u32 = 1280;
 const FILE_ALREADY_EXISTS: i32 = -17;
-
-#[repr(C)]
-union IfrIfru {
-    ifru_addr: sockaddr,
-    ifru_addr_v4: sockaddr_in,
-    ifru_addr_v6: sockaddr_in,
-    ifru_dstaddr: sockaddr,
-    ifru_broadaddr: sockaddr,
-    ifru_flags: c_short,
-    ifru_metric: c_int,
-    ifru_mtu: c_int,
-    ifru_phys: c_int,
-    ifru_media: c_int,
-    ifru_intval: c_int,
-    ifru_wake_flags: u32,
-    ifru_route_refcnt: u32,
-    ifru_cap: [c_int; 2],
-    ifru_functional_type: u32,
-}
-
-#[repr(C)]
-pub struct ifreq {
-    ifr_name: [c_uchar; IFNAMSIZ],
-    ifr_ifru: IfrIfru,
-}
 
 #[derive(Debug)]
 pub struct IfaceDevice {
@@ -107,24 +83,14 @@ impl IfaceDevice {
         cb: &impl Callbacks,
         _: DnsFallbackStrategy,
     ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
-        debug_assert!(IFACE_NAME.as_bytes().len() < IFNAMSIZ);
-
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
             -1 => return Err(get_last_error()),
             fd => fd,
         };
 
-        let mut ifr = ifreq {
-            ifr_name: [0; IFNAMSIZ],
-            ifr_ifru: IfrIfru {
-                ifru_flags: (IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE) as _,
-            },
-        };
-
-        ifr.ifr_name[..IFACE_NAME.as_bytes().len()].copy_from_slice(IFACE_NAME.as_bytes());
-
-        if unsafe { ioctl(fd, TUNSETIFF as _, &ifr) } < 0 {
-            return Err(get_last_error());
+        // Safety: We just opened the file descriptor.
+        unsafe {
+            ioctl::exec(fd, TUNSETIFF, &ioctl::Request::<SetTunFlagsPayload>::new())?;
         }
 
         let (connection, handle, _) = new_connection()?;
@@ -151,27 +117,6 @@ impl IfaceDevice {
         this.set_iface_config(config, cb).await?;
 
         Ok((this, Arc::new(AsyncFd::new(IfaceStream(fd))?)))
-    }
-
-    /// Get the current MTU value
-    pub async fn mtu(&self) -> Result<usize> {
-        while let Ok(Some(msg)) = self
-            .handle
-            .link()
-            .get()
-            .match_index(self.interface_index)
-            .execute()
-            .try_next()
-            .await
-        {
-            for nla in msg.nlas {
-                if let Nla::Mtu(mtu) = nla {
-                    return Ok(mtu as usize);
-                }
-            }
-        }
-
-        Err(Error::NoMtu)
     }
 
     pub async fn add_route(
@@ -256,6 +201,10 @@ impl IfaceDevice {
             .await?;
         Ok(())
     }
+
+    pub fn name(&self) -> &str {
+        IFACE_NAME
+    }
 }
 
 fn get_last_error() -> Error {
@@ -270,4 +219,26 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
             _ => Ok(()),
         },
     }
+}
+
+impl ioctl::Request<SetTunFlagsPayload> {
+    fn new() -> Self {
+        let name_as_bytes = IFACE_NAME.as_bytes();
+        debug_assert!(name_as_bytes.len() < libc::IF_NAMESIZE);
+
+        let mut name = [0u8; libc::IF_NAMESIZE];
+        name[..name_as_bytes.len()].copy_from_slice(name_as_bytes);
+
+        Self {
+            name,
+            payload: SetTunFlagsPayload {
+                flags: (IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE) as _,
+            },
+        }
+    }
+}
+
+#[repr(C)]
+struct SetTunFlagsPayload {
+    flags: std::ffi::c_short,
 }
