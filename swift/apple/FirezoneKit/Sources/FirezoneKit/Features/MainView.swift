@@ -60,7 +60,9 @@ import SwiftUI
     }
 
     func signOutButtonTapped() {
-      appStore.auth.signOut()
+      Task {
+        await appStore.auth.signOut()
+      }
     }
 
     func startTunnel() async {
@@ -88,7 +90,7 @@ import SwiftUI
         Section(header: Text("Authentication")) {
           Group {
             switch self.model.loginStatus {
-            case .signedIn(_, let actorName):
+            case .signedIn(let actorName):
               HStack {
                 Text(actorName.isEmpty ? "Signed in" : "Signed in as")
                 Spacer()

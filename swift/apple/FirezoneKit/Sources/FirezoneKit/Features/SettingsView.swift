@@ -20,14 +20,16 @@ public final class SettingsViewModel: ObservableObject {
 
   @Dependency(\.authStore) private var authStore
 
-  @Published var accountSettings: AccountSettings
+  var tunnelAuthStatus: TunnelAuthStatus {
+    authStore.tunnelStore.tunnelAuthStatus
+  }
+
   @Published var advancedSettings: AdvancedSettings
 
   public var onSettingsSaved: () -> Void = unimplemented()
   private var cancellables = Set<AnyCancellable>()
 
   public init() {
-    accountSettings = AccountSettings()
     advancedSettings = AdvancedSettings.defaultValue
     loadSettings()
   }
@@ -35,11 +37,10 @@ public final class SettingsViewModel: ObservableObject {
   func loadSettings() {
     Task {
       authStore.tunnelStore.$tunnelAuthStatus
-        .filter { $0.isInitialized }
+        .first { $0.isInitialized }
         .receive(on: RunLoop.main)
         .sink { [weak self] tunnelAuthStatus in
           guard let self = self else { return }
-          self.accountSettings = AccountSettings(accountId: tunnelAuthStatus.accountId() ?? "")
           self.advancedSettings =
             authStore.tunnelStore.advancedSettings() ?? AdvancedSettings.defaultValue
         }
@@ -47,27 +48,22 @@ public final class SettingsViewModel: ObservableObject {
     }
   }
 
-  func saveAccountSettings() {
-    Task {
-      let accountId = await authStore.loginStatus.accountId
-      if accountId == accountSettings.accountId {
-        // Not changed
-        await MainActor.run {
-          accountSettings.isSavedToDisk = true
-        }
-        return
-      }
-      try await updateTunnelAuthStatus(accountId: accountSettings.accountId)
-      await MainActor.run {
-        accountSettings.isSavedToDisk = true
-      }
-    }
-  }
-
   func saveAdvancedSettings() {
+    let isChanged = (authStore.tunnelStore.advancedSettings() != advancedSettings)
+    guard isChanged else {
+      advancedSettings.isSavedToDisk = true
+      return
+    }
     Task {
-      guard let authBaseURL = URL(string: advancedSettings.authBaseURLString) else {
-        fatalError("Saved authBaseURL is invalid")
+      if case .signedIn = self.tunnelAuthStatus {
+        await authStore.signOut()
+      }
+      let authBaseURLString = advancedSettings.authBaseURLString
+      guard URL(string: authBaseURLString) != nil else {
+        logger.error(
+          "Not saving advanced settings because authBaseURL '\(authBaseURLString, privacy: .public)' is invalid"
+        )
+        return
       }
       do {
         try await authStore.tunnelStore.saveAdvancedSettings(advancedSettings)
@@ -77,30 +73,6 @@ public final class SettingsViewModel: ObservableObject {
       await MainActor.run {
         advancedSettings.isSavedToDisk = true
       }
-      var isChanged = false
-      if isChanged {
-        try await updateTunnelAuthStatus(
-          accountId: authStore.tunnelStore.tunnelAuthStatus.accountId() ?? "")
-      }
-    }
-  }
-
-  // updateTunnelAuthStatus:
-  // When the authBaseURL or the accountId changes, we should update the signed-in-ness.
-  // This is done by searching the keychain for an entry with the authBaseURL+accountId
-  // combination. If an entry was found, we consider that entry to mean we're logged in.
-  func updateTunnelAuthStatus(accountId: String) async throws {
-    let tunnelAuthStatus: TunnelAuthStatus = await {
-      if accountId.isEmpty {
-        return .accountNotSetup
-      } else {
-        return await authStore.tunnelAuthStatusForAccount(accountId: accountId)
-      }
-    }()
-    do {
-      try await authStore.tunnelStore.saveAuthStatus(tunnelAuthStatus)
-    } catch {
-      logger.error("Error saving auth status to tunnel store: \(error, privacy: .public)")
     }
   }
 }
@@ -111,7 +83,26 @@ public struct SettingsView: View {
   @ObservedObject var model: SettingsViewModel
   @Environment(\.dismiss) var dismiss
 
+  enum ConfirmationAlertContinueAction: Int {
+    case none
+    case saveAdvancedSettings
+    case saveAllSettingsAndDismiss
+
+    func performAction(on view: SettingsView) {
+      switch self {
+      case .none:
+        break
+      case .saveAdvancedSettings:
+        view.saveAdvancedSettings()
+      case .saveAllSettingsAndDismiss:
+        view.saveAllSettingsAndDismiss()
+      }
+    }
+  }
+
   @State private var isExportingLogs = false
+  @State private var isShowingConfirmationAlert = false
+  @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
 
   #if os(iOS)
     @State private var logTempZipFileURL: URL?
@@ -142,13 +133,6 @@ public struct SettingsView: View {
     #if os(iOS)
       NavigationView {
         TabView {
-          accountTab
-            .tabItem {
-              Image(systemName: "person.3.fill")
-              Text("Account")
-            }
-            .badge(model.accountSettings.isValid ? nil : "!")
-
           advancedTab
             .tabItem {
               Image(systemName: "slider.horizontal.3")
@@ -159,12 +143,16 @@ public struct SettingsView: View {
         .toolbar {
           ToolbarItem(placement: .navigationBarTrailing) {
             Button("Save") {
-              self.saveSettings()
+              let action = ConfirmationAlertContinueAction.saveAllSettingsAndDismiss
+              if case .signedIn = model.tunnelAuthStatus {
+                self.confirmationAlertContinueAction = action
+                self.isShowingConfirmationAlert = true
+              } else {
+                action.performAction(on: self)
+              }
             }
             .disabled(
-              (model.accountSettings.isSavedToDisk && model.advancedSettings.isSavedToDisk)
-                || !model.accountSettings.isValid
-                || !model.advancedSettings.isValid
+              (model.advancedSettings.isSavedToDisk || !model.advancedSettings.isValid)
             )
           }
           ToolbarItem(placement: .navigationBarLeading) {
@@ -176,13 +164,26 @@ public struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
       }
+      .alert(
+        "Saving settings will sign you out",
+        isPresented: $isShowingConfirmationAlert,
+        presenting: confirmationAlertContinueAction,
+        actions: { confirmationAlertContinueAction in
+          Button("Cancel", role: .cancel) {
+            // Nothing to do
+          }
+          Button("Continue") {
+            confirmationAlertContinueAction.performAction(on: self)
+          }
+        },
+        message: { _ in
+          Text("Changing settings will sign you out and disconnect you from resources")
+        }
+      )
+
     #elseif os(macOS)
       VStack {
         TabView {
-          accountTab
-            .tabItem {
-              Text("Account")
-            }
           advancedTab
             .tabItem {
               Text("Advanced")
@@ -190,81 +191,23 @@ public struct SettingsView: View {
         }
         .padding(20)
       }
+      .alert(
+        "Saving settings will sign you out",
+        isPresented: $isShowingConfirmationAlert,
+        presenting: confirmationAlertContinueAction,
+        actions: { confirmationAlertContinueAction in
+          Button("Cancel", role: .cancel) {
+            // Nothing to do
+          }
+          Button("Continue", role: .destructive) {
+            confirmationAlertContinueAction.performAction(on: self)
+          }
+        },
+        message: { _ in
+          Text("Changing settings will sign you out and disconnect you from resources")
+        }
+      )
       .onDisappear(perform: { self.loadSettings() })
-    #else
-      #error("Unsupported platform")
-    #endif
-  }
-
-  private var accountTab: some View {
-    #if os(macOS)
-      VStack {
-        Spacer()
-        Form {
-          Section(
-            content: {
-              HStack(spacing: 15) {
-                Spacer()
-                Text("Account ID:")
-                TextField(
-                  "",
-                  text: Binding(
-                    get: { model.accountSettings.accountId },
-                    set: { model.accountSettings.accountId = $0 }
-                  ),
-                  prompt: Text(PlaceholderText.accountId)
-                )
-                .frame(maxWidth: 240)
-                .onSubmit {
-                  self.model.saveAccountSettings()
-                }
-                Spacer()
-              }
-            },
-            footer: {
-              Text(FootnoteText.forAccount)
-                .foregroundStyle(.secondary)
-            }
-          )
-          Button(
-            "Apply",
-            action: {
-              self.model.saveAccountSettings()
-            }
-          )
-          .disabled(
-            model.accountSettings.isSavedToDisk
-              || !model.accountSettings.isValid
-          )
-          .padding(.top, 5)
-        }
-        Spacer()
-      }
-    #elseif os(iOS)
-      VStack {
-        Form {
-          Section(
-            content: {
-              HStack(spacing: 15) {
-                Text("Account ID")
-                  .foregroundStyle(.secondary)
-                TextField(
-                  PlaceholderText.accountId,
-                  text: Binding(
-                    get: { model.accountSettings.accountId },
-                    set: { model.accountSettings.accountId = $0 }
-                  )
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-              }
-            },
-            header: { Text("Account") },
-            footer: { Text(FootnoteText.forAccount) }
-          )
-        }
-      }
     #else
       #error("Unsupported platform")
     #endif
@@ -311,7 +254,13 @@ public struct SettingsView: View {
               Button(
                 "Apply",
                 action: {
-                  self.model.saveAdvancedSettings()
+                  let action = ConfirmationAlertContinueAction.saveAdvancedSettings
+                  if case .signedIn = model.tunnelAuthStatus {
+                    self.confirmationAlertContinueAction = action
+                    self.isShowingConfirmationAlert = true
+                  } else {
+                    action.performAction(on: self)
+                  }
                 }
               )
               .disabled(model.advancedSettings.isSavedToDisk || !model.advancedSettings.isValid)
@@ -429,8 +378,11 @@ public struct SettingsView: View {
     #endif
   }
 
-  func saveSettings() {
-    model.saveAccountSettings()
+  func saveAdvancedSettings() {
+    model.saveAdvancedSettings()
+  }
+
+  func saveAllSettingsAndDismiss() {
     model.saveAdvancedSettings()
     dismiss()
   }

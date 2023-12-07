@@ -41,7 +41,7 @@
     private var connectingAnimationTimer: Timer?
 
     let settingsViewModel: SettingsViewModel
-    private var loginStatus: AuthStore.LoginStatus = .signedOut(accountId: nil)
+    private var loginStatus: AuthStore.LoginStatus = .signedOut
     private var tunnelStatus: NEVPNStatus = .invalid
 
     public init(settingsViewModel: SettingsViewModel) {
@@ -210,8 +210,6 @@
       Task {
         do {
           try await appStore?.auth.signIn()
-        } catch FirezoneError.missingTeamId {
-          openSettingsWindow()
         } catch {
           logger.error("Error signing in: \(String(describing: error))")
         }
@@ -219,7 +217,9 @@
     }
 
     @objc private func signOutButtonTapped() {
-      appStore?.auth.signOut()
+      Task {
+        await appStore?.auth.signOut()
+      }
     }
 
     @objc private func settingsButtonTapped() {
@@ -316,7 +316,7 @@
         signInMenuItem.target = self
         signInMenuItem.isEnabled = true
         signOutMenuItem.isHidden = true
-      case .signedIn(_, let actorName):
+      case .signedIn(let actorName):
         signInMenuItem.title = actorName.isEmpty ? "Signed in" : "Signed in as \(actorName)"
         signInMenuItem.target = nil
         signOutMenuItem.isHidden = false
