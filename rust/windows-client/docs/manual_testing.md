@@ -1,0 +1,49 @@
+How to run manual tests of `firezone-windows-client`
+
+Using [Given-when-then syntax](https://en.wikipedia.org/wiki/Given-When-Then)
+
+# GUI states
+
+The client may be running or not running.
+
+Only one instance of the client may run at a time per Windows device. If two users are logged in at once, starting a 2nd instance results in undefined behavior.
+
+If the client is running, the GUI may be in a "signed out", "signed in", or "signing in" state.
+
+If the client stops running while signed in, then the token may be stored in Windows' credential manager on disk.
+
+# Permissions
+
+- [ ] Given a production exe, when you run it normally, then it will ask to escalate to Admin privileges ([#2751](https://github.com/firezone/firezone/issues/2751))
+- [ ] Given the client is running, when you authenticate in the browser, then the client will not ask for privileges again ([#2751](https://github.com/firezone/firezone/issues/2751))
+- (Running as an unprivileged user is not supported yet) ([#2751](https://github.com/firezone/firezone/issues/2751))
+
+# Auth flow
+
+- [ ] Given the client is running, when you right-click the system tray icon, then a menu will open ([#2712](https://github.com/firezone/firezone/issues/2712))
+- [ ] Given the client is signed out, when you click "Sign In", then the auth base URL will open in the user's default web browser ([#2711](https://github.com/firezone/firezone/issues/2711))
+- [ ] Given the client is running, when you authenticate in the browser, then the browser will deep-link back to the app, and the GUI, including tray menu, will change to signed-in state, without asking for admin privileges ([#2711](https://github.com/firezone/firezone/issues/2711))
+- [ ] Given the client is signed in, when you open the tray menu, then the resources will be listed ([#2712](https://github.com/firezone/firezone/issues/2712))
+- [ ] Given the client is signed in, when you click on a resource's "pasteable" (CIDR or DNS), then the client will copy it to the clipboard. ([#2712](https://github.com/firezone/firezone/issues/2712))
+- [ ] Given the client is not running but has run once, when you authenticate in the browser, then deep-link authentication will fail because the keys won't match ([#2802](https://github.com/firezone/firezone/issues/2802))
+- [ ] Given the client is signed in, when you click "Sign Out", then the GUI will change to signed-out state, and the token will be wiped from the disk, and the client will continue running ([#2809](https://github.com/firezone/firezone/issues/2809))
+- [ ] Given the client is signed in, when you click "Disconnect and Quit", then the client will stop running, and the token will stay on disk in Window's credential manager. ([#2809](https://github.com/firezone/firezone/issues/2809))
+- [ ] Given the client was signed in when it stopped, when you start the client again, then the GUI will be in the signed-in state, and the user's name will be shown in the tray menu. ([#2712](https://github.com/firezone/firezone/issues/2712))
+
+# Advanced settings
+
+- [ ] Given the advanced settings file in AppData does not exist, when the client starts, then the "Advanced Settings" tab will have default settings ([#2807](https://github.com/firezone/firezone/issues/2807))
+- [ ] Given the client is signed out, when the user clicks "Apply", then the client will save the settings to disk ([#2714](https://github.com/firezone/firezone/issues/2714))
+- [ ] Given the client is signed in, when the user clicks "Apply", then the client will show a dialog explaining that they will be signed out, and asking for confirmation ([#2668](https://github.com/firezone/firezone/issues/2668))
+- [ ] Given the client is signed in, when the user confirms that they want to apply new settings, then the client will clear their token, and change to signed-out state, and save the settings to disk ([#2668](https://github.com/firezone/firezone/issues/2668))
+
+# Token storage
+
+([#2740](https://github.com/firezone/firezone/issues/2740))
+
+- [ ] Given the client is signed out, or was signed out before it stopped, when you open the Windows credential manager, then the token will be deleted or empty
+- [ ] Given the client is signed in, or was signed in before it stopped, when you open the Windows credential manager, then the token will be present
+
+# Tunneling
+
+TODO
