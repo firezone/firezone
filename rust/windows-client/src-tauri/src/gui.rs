@@ -13,7 +13,6 @@ use tauri::{
     SystemTraySubmenu,
 };
 use tokio::sync::{mpsc, oneshot};
-use url::Url;
 use ControllerRequest as Req;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
@@ -220,12 +219,18 @@ fn keyring_entry() -> Result<keyring::Entry> {
 #[derive(Clone)]
 struct CallbackHandler {
     ctlr_tx: CtlrTx,
-    handle: Option<file_logger::Handle>,
+    logger: Option<file_logger::Handle>,
+}
+
+#[derive(thiserror::Error, Debug)]
+enum CallbackError {
+    #[error(transparent)]
+    ControllerRequest(#[from] tokio::sync::mpsc::error::TrySendError<ControllerRequest>),
 }
 
 impl connlib_client_shared::Callbacks for CallbackHandler {
     // TODO: add thiserror type
-    type Error = std::convert::Infallible;
+    type Error = CallbackError;
 
     fn on_disconnect(
         &self,
@@ -244,15 +249,15 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         &self,
         resources: Vec<connlib_client_shared::ResourceDescription>,
     ) -> Result<(), Self::Error> {
-        tracing::debug!("on_update_resources");
+        tracing::trace!("on_update_resources");
+        // TODO: Better error handling?
         self.ctlr_tx
-            .blocking_send(ControllerRequest::UpdateResources(resources))
-            .unwrap();
+            .try_send(ControllerRequest::UpdateResources(resources))?;
         Ok(())
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
-        self.handle
+        self.logger
             .as_ref()?
             .roll_to_new_file()
             .unwrap_or_else(|e| {
@@ -322,7 +327,7 @@ impl Controller {
         ctlr_tx: CtlrTx,
         token: &SecretString,
     ) -> Result<connlib_client_shared::Session<CallbackHandler>> {
-        let (layer, handle) = file_logger::layer(std::path::Path::new("logs"));
+        let (layer, logger) = file_logger::layer(std::path::Path::new("logs"));
         // TODO: How can I set up the tracing subscriber if the Session isn't ready yet? Check what other clients do.
         if false {
             // This helps the type inference
@@ -336,7 +341,7 @@ impl Controller {
             crate::device_id::get(),
             CallbackHandler {
                 ctlr_tx,
-                handle: Some(handle),
+                logger: Some(logger),
             },
         )?)
     }
@@ -389,7 +394,12 @@ async fn run_controller(
                 )?;
             }
             Req::UpdateResources(resources) => {
-                tracing::debug!("got {} resources", resources.len());
+                tracing::debug!("controller got UpdateResources");
+                let resources: Vec<_> = resources.into_iter().map(ResourceDisplay::from).collect();
+
+                // TODO: Save the user name between runs of the app
+                app.tray_handle()
+                    .set_menu(signed_in_menu("placeholder", &resources))?;
             }
         }
     }
@@ -435,29 +445,45 @@ fn parse_auth_callback(input: &SecretString) -> Result<AuthCallback> {
 }
 
 /// The information needed for the GUI to display a resource inside the Firezone VPN
-struct _ResourceDisplay {
-    /// UUIDv4 (Fully random)
-    /// This should be stable over time even if the DNS / IP / name change, so we can use it for callbacks from the tray menu
-    id: String,
+struct ResourceDisplay {
+    id: connlib_shared::messages::ResourceId,
     /// User-friendly name, e.g. "GitLab"
     name: String,
     /// What will be copied to the clipboard to paste into a web browser
-    url: Url,
+    pastable: String,
 }
 
-fn _signed_in_menu(user_email: &str, resources: &[_ResourceDisplay]) -> SystemTrayMenu {
+impl From<connlib_client_shared::ResourceDescription> for ResourceDisplay {
+    fn from(x: connlib_client_shared::ResourceDescription) -> Self {
+        match x {
+            connlib_client_shared::ResourceDescription::Dns(x) => Self {
+                id: x.id,
+                name: x.name,
+                pastable: x.address,
+            },
+            connlib_client_shared::ResourceDescription::Cidr(x) => Self {
+                id: x.id,
+                name: x.name,
+                // TODO: CIDRs aren't URLs right?
+                pastable: x.address.to_string(),
+            },
+        }
+    }
+}
+
+fn signed_in_menu(user_name: &str, resources: &[ResourceDisplay]) -> SystemTrayMenu {
     let mut menu = SystemTrayMenu::new()
         .add_item(
-            CustomMenuItem::new("".to_string(), format!("Signed in as {user_email}")).disabled(),
+            CustomMenuItem::new("".to_string(), format!("Signed in as {user_name}")).disabled(),
         )
         .add_item(CustomMenuItem::new("/sign_out".to_string(), "Sign out"))
         .add_native_item(SystemTrayMenuItem::Separator)
         .add_item(CustomMenuItem::new("".to_string(), "Resources").disabled());
 
-    for _ResourceDisplay { id, name, url } in resources {
+    for ResourceDisplay { id, name, pastable } in resources {
         let submenu = SystemTrayMenu::new().add_item(CustomMenuItem::new(
             format!("/resource/{id}"),
-            url.to_string(),
+            pastable.to_string(),
         ));
         menu = menu.add_submenu(SystemTraySubmenu::new(name, submenu));
     }
