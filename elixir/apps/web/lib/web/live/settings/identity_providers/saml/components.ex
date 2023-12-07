@@ -26,9 +26,9 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
 
   def provisioning_strategy_form(assigns) do
     ~H"""
-    <h2 class="mb-4 text-xl font-bold text-gray-900">Provisioning strategy</h2>
-    <ul class="mb-4 w-full sm:flex border border-gray-200 rounded">
-      <li class="w-full border-b border-gray-200 sm:border-b-0 sm:border-r">
+    <h2 class="mb-4 text-xl font-bold text-neutral-900">Provisioning strategy</h2>
+    <ul class="mb-4 w-full sm:flex border border-neutral-200 rounded">
+      <li class="w-full border-b border-neutral-200 sm:border-b-0 sm:border-r">
         <div class="text-lg font-medium p-3">
           <.input
             id="provisioning_strategy_jit"
@@ -40,11 +40,11 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
             required
           />
         </div>
-        <p class="px-4 py-2 text-sm text-gray-500">
+        <p class="px-4 py-2 text-sm text-neutral-500">
           Provision users and groups on the fly when they first sign in.
         </p>
       </li>
-      <li class="w-full border-b border-gray-200 sm:border-b-0 sm:border-r">
+      <li class="w-full border-b border-neutral-200 sm:border-b-0 sm:border-r">
         <div class="text-lg font-medium p-3">
           <.input
             id="provisioning_strategy_scim"
@@ -56,11 +56,11 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
             required
           />
         </div>
-        <p class="px-4 py-2 text-sm text-gray-500">
+        <p class="px-4 py-2 text-sm text-neutral-500">
           Provision users using the SCIM 2.0 protocol. Requires a supported identity provider.
         </p>
       </li>
-      <li class="w-full border-b border-gray-200 sm:border-b-0 sm:border-r">
+      <li class="w-full border-b border-neutral-200 sm:border-b-0 sm:border-r">
         <div class="text-lg font-medium p-3">
           <.input
             id="provisioning_strategy_manual"
@@ -72,7 +72,7 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
             required
           />
         </div>
-        <p class="px-4 py-2 text-sm text-gray-500">
+        <p class="px-4 py-2 text-sm text-neutral-500">
           Disable automatic provisioning and manually manage users and groups.
         </p>
       </li>
@@ -111,9 +111,9 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
             type="checkbox"
             field={@form[:jit_extract_groups]}
           />
-          <p class="ml-8 text-sm text-gray-500">
+          <p class="ml-8 text-sm text-neutral-500">
             <.link
-              class="text-blue-600 hover:underline"
+              class="text-accent-600 hover:underline"
               href="https://www.firezone.dev/kb/authenticate/user-group-sync?utm_source=product"
               target="_blank"
             >
@@ -134,12 +134,12 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
       <:title>Provisioning</:title>
     </.header>
     <div class="bg-white overflow-hidden">
-      <table class="w-full text-sm text-left text-gray-500">
+      <table class="w-full text-sm text-left text-neutral-500">
         <tbody>
-          <tr class="border-b border-gray-200">
+          <tr class="border-b border-neutral-200">
             <th
               scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50"
+              class="text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap bg-neutral-50"
             >
               Type
             </th>
@@ -147,10 +147,10 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
               SCIM 2.0
             </td>
           </tr>
-          <tr class="border-b border-gray-200">
+          <tr class="border-b border-neutral-200">
             <th
               scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50"
+              class="text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap bg-neutral-50"
             >
               Endpoint
             </th>
@@ -159,7 +159,7 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
                 <button
                   phx-click={JS.dispatch("phx:copy", to: "#endpoint-value")}
                   title="Copy Endpoint"
-                  class="text-blue-600"
+                  class="text-accent-600"
                 >
                   <.icon name="hero-document-duplicate" class="w-5 h-5 mr-1" />
                 </button>
@@ -169,10 +169,10 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
               </div>
             </td>
           </tr>
-          <tr class="border-b border-gray-200">
+          <tr class="border-b border-neutral-200">
             <th
               scope="row"
-              class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50"
+              class="text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap bg-neutral-50"
             >
               Token
             </th>
@@ -181,11 +181,15 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
                 <button
                   phx-click={JS.dispatch("phx:copy", to: "#visible-token")}
                   title="Copy SCIM token"
-                  class="text-blue-600"
+                  class="text-accent-600"
                 >
                   <.icon name="hero-document-duplicate" class="w-5 h-5 mr-1" />
                 </button>
-                <button phx-click={toggle_scim_token()} title="Show SCIM token" class="text-blue-600">
+                <button
+                  phx-click={toggle_scim_token()}
+                  title="Show SCIM token"
+                  class="text-accent-600"
+                >
                   <.icon name="hero-eye" class="w-5 h-5 mr-1" />
                 </button>
 

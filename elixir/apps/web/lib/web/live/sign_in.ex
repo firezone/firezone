@@ -40,13 +40,13 @@ defmodule Web.SignIn do
 
   def render(assigns) do
     ~H"""
-    <section class="bg-gray-50">
+    <section class="bg-neutral-50">
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.logo />
 
         <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-xl text-center font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl">
+            <h1 class="text-xl text-center font-bold leading-tight tracking-tight text-neutral-900 sm:text-2xl">
               <span>
                 Sign into <%= @account.name %>
               </span>
@@ -70,7 +70,7 @@ defmodule Web.SignIn do
               </:item>
 
               <:item :if={adapter_enabled?(@providers_by_adapter, :userpass)}>
-                <h3 class="text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl">
+                <h3 class="text-m font-bold leading-tight tracking-tight text-neutral-900 sm:text-xl">
                   Sign in with username and password
                 </h3>
 
@@ -84,7 +84,7 @@ defmodule Web.SignIn do
               </:item>
 
               <:item :if={adapter_enabled?(@providers_by_adapter, :email)}>
-                <h3 class="text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl">
+                <h3 class="text-m font-bold leading-tight tracking-tight text-neutral-900 sm:text-xl">
                   Sign in with email
                 </h3>
 
@@ -104,7 +104,7 @@ defmodule Web.SignIn do
             Meant to sign in from a client instead?
             <a
               href="https://firezone.dev/kb/user-guides?utm_source=product"
-              class="font-medium text-blue-600 hover:text-blue-500"
+              class={["font-medium", link_style()]}
             >
               Read the docs.
             </a>
@@ -118,9 +118,9 @@ defmodule Web.SignIn do
   def separator(assigns) do
     ~H"""
     <div class="flex items-center">
-      <div class="w-full h-0.5 bg-gray-200"></div>
-      <div class="px-5 text-center text-gray-500">or</div>
-      <div class="w-full h-0.5 bg-gray-200"></div>
+      <div class="w-full h-0.5 bg-neutral-200"></div>
+      <div class="px-5 text-center text-neutral-500">or</div>
+      <div class="w-full h-0.5 bg-neutral-200"></div>
     </div>
     """
   end
@@ -215,9 +215,9 @@ defmodule Web.SignIn do
     <a href={~p"/#{@account}/sign_in/providers/#{@provider}/redirect?#{@params}"} class={~w[
           w-full inline-flex items-center justify-center py-2.5 px-5
           bg-white rounded
-          text-sm font-medium text-gray-900
-          border border-gray-200
-          hover:bg-gray-100 hover:text-gray-900
+          text-sm font-medium text-neutral-900
+          border border-neutral-200
+          hover:bg-neutral-100 hover:text-neutral-900
     ]}>
       Sign in with <%= @provider.name %>
     </a>

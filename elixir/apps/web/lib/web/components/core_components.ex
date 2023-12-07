@@ -39,7 +39,7 @@ defmodule Web.CoreComponents do
   """
   def p(assigns) do
     ~H"""
-    <p class="text-gray-700"><%= render_slot(@inner_block) %></p>
+    <p class="text-neutral-700"><%= render_slot(@inner_block) %></p>
     """
   end
 
@@ -63,7 +63,7 @@ defmodule Web.CoreComponents do
       text-sm text-left sm:text-base text-white
       inline-flex items-center
       space-x-4 p-4 pl-6
-      bg-gray-800
+      bg-neutral-800
       relative
     ], @class]} {@rest}>
       <code
@@ -74,7 +74,7 @@ defmodule Web.CoreComponents do
 
       <span class={~w[
           absolute bottom-1 right-1
-          text-gray-400
+          text-neutral-400
           transition
           cursor-pointer
           rounded
@@ -108,7 +108,7 @@ defmodule Web.CoreComponents do
     ~H"""
     <div id={@id} phx-hook="Copy" class={@class} {@rest}>
       <code data-copy phx-no-format><%= render_slot(@inner_block) %></code>
-      <span class={~w[text-gray-400 cursor-pointer rounded]}>
+      <span class={~w[text-neutral-400 cursor-pointer rounded]}>
         <.icon name="hero-clipboard-document" data-icon class="h-4 w-4" />
       </span>
     </div>
@@ -145,7 +145,7 @@ defmodule Web.CoreComponents do
     ~H"""
     <div class="mb-4">
       <div
-        class="border-gray-200 bg-slate-50 rounded-t"
+        class="border-neutral-200 bg-neutral-50 rounded-t"
         id={"#{@id}-container"}
         phx-hook="Tabs"
         {@rest}
@@ -161,7 +161,7 @@ defmodule Web.CoreComponents do
               <button
                 class={~w[
                 inline-block p-4 border-b-2 border-transparent rounded-t
-                hover:text-gray-600 hover:border-gray-300
+                hover:text-neutral-600 hover:border-neutral-300
               ]}
                 id={"#{tab.id}-tab"}
                 data-tabs-target={"##{tab.id}"}
@@ -181,7 +181,7 @@ defmodule Web.CoreComponents do
       <div id={@id}>
         <%= for tab <- @tab do %>
           <div
-            class="hidden rounded-b bg-gray-50"
+            class="hidden rounded-b bg-neutral-50"
             id={tab.id}
             role="tabpanel"
             aria-labelledby={"#{tab.id}-tab"}
@@ -219,7 +219,7 @@ defmodule Web.CoreComponents do
     <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4">
       <div class="col-span-full">
         <div class="flex justify-between items-center">
-          <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl">
+          <h1 class="text-xl font-semibold text-neutral-900 sm:text-2xl">
             <%= render_slot(@title) %>
           </h1>
           <div class="inline-flex justify-between items-center space-x-2">
@@ -253,15 +253,15 @@ defmodule Web.CoreComponents do
       class="flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0 p-4"
       aria-label="Table navigation"
     >
-      <span class="text-sm font-normal text-gray-500">
-        Showing <span class="font-semibold text-gray-900">1-10</span>
-        of <span class="font-semibold text-gray-900">1000</span>
+      <span class="text-sm font-normal text-neutral-500">
+        Showing <span class="font-semibold text-neutral-900">1-10</span>
+        of <span class="font-semibold text-neutral-900">1000</span>
       </span>
       <ul class="inline-flex items-stretch -space-x-px">
         <li>
           <a href="#" class={~w[
-              flex items-center justify-center h-full py-1.5 px-3 ml-0 text-gray-500 bg-white rounded-l
-              border border-gray-300 hover:bg-gray-100 hover:text-gray-700
+              flex items-center justify-center h-full py-1.5 px-3 ml-0 text-neutral-500 bg-white rounded-l
+              border border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
             ]}>
             <span class="sr-only">Previous</span>
             <.icon name="hero-chevron-left" class="w-5 h-5" />
@@ -269,16 +269,16 @@ defmodule Web.CoreComponents do
         </li>
         <li>
           <a href="#" class={~w[
-              flex items-center justify-center text-sm py-2 px-3 leading-tight text-gray-500 bg-white border
-              border-gray-300 hover:bg-gray-100 hover:text-gray-700
+              flex items-center justify-center text-sm py-2 px-3 leading-tight text-neutral-500 bg-white border
+              border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
             ]}>
             1
           </a>
         </li>
         <li>
           <a href="#" class={~w[
-              flex items-center justify-center text-sm py-2 px-3 leading-tight text-gray-500 bg-white
-              border border-gray-300 hover:bg-gray-100 hover:text-gray-700
+              flex items-center justify-center text-sm py-2 px-3 leading-tight text-neutral-500 bg-white
+              border border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
             ]}>
             2
           </a>
@@ -293,24 +293,24 @@ defmodule Web.CoreComponents do
         </li>
         <li>
           <a href="#" class={~w[
-              flex items-center justify-center text-sm py-2 px-3 leading-tight text-gray-500 bg-white
-              border border-gray-300 hover:bg-gray-100 hover:text-gray-700
+              flex items-center justify-center text-sm py-2 px-3 leading-tight text-neutral-500 bg-white
+              border border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
             ]}>
             ...
           </a>
         </li>
         <li>
           <a href="#" class={~w[
-              flex items-center justify-center text-sm py-2 px-3 leading-tight text-gray-500 bg-white
-              border border-gray-300 hover:bg-gray-100 hover:text-gray-700
+              flex items-center justify-center text-sm py-2 px-3 leading-tight text-neutral-500 bg-white
+              border border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
             ]}>
             <%= @total_pages %>
           </a>
         </li>
         <li>
           <a href="#" class={~w[
-              flex items-center justify-center h-full py-1.5 px-3 leading-tight text-gray-500 bg-white rounded-r
-              border border-gray-300 hover:bg-gray-100 hover:text-gray-700
+              flex items-center justify-center h-full py-1.5 px-3 leading-tight text-neutral-500 bg-white rounded-r
+              border border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
             ]}>
             <span class="sr-only">Next</span>
             <.icon name="hero-chevron-right" class="w-5 h-5" />
@@ -415,7 +415,7 @@ defmodule Web.CoreComponents do
 
   def label(assigns) do
     ~H"""
-    <label for={@for} class={["block mb-2 text-sm font-medium text-gray-900", @class]}>
+    <label for={@for} class={["block mb-2 text-sm font-medium text-neutral-900", @class]}>
       <%= render_slot(@inner_block) %>
     </label>
     """
@@ -684,19 +684,20 @@ defmodule Web.CoreComponents do
     """
   end
 
-  attr :type, :string, default: "default"
+  attr :type, :string, default: "neutral"
   attr :class, :string, default: nil
   attr :rest, :global
   slot :inner_block, required: true
 
   def badge(assigns) do
     colors = %{
-      "plan" => "bg-primary-500 text-white",
       "success" => "bg-green-100 text-green-800 ",
       "danger" => "bg-red-100 text-red-800",
       "warning" => "bg-yellow-100 text-yellow-800",
       "info" => "bg-blue-100 text-blue-800",
-      "default" => "bg-gray-100 text-gray-800"
+      "primary" => "bg-primary-400 text-primary-800",
+      "accent" => "bg-accent-200 text-accent-800",
+      "neutral" => "bg-neutral-100 text-neutral-800"
     }
 
     assigns = assign(assigns, colors: colors)
@@ -711,6 +712,65 @@ defmodule Web.CoreComponents do
       {@rest}
     >
       <%= render_slot(@inner_block) %>
+    </span>
+    """
+  end
+
+  attr :type, :string, default: "neutral"
+
+  slot :left, required: true
+  slot :right, required: true
+
+  def dual_badge(assigns) do
+    colors = %{
+      "success" => %{
+        "dark" => "bg-green-300 text-green-800",
+        "light" => "bg-green-100 text-green-800"
+      },
+      "danger" => %{
+        "dark" => "bg-red-300 text-red-800",
+        "light" => "bg-red-100 text-red-800"
+      },
+      "warning" => %{
+        "dark" => "bg-yellow-300 text-yellow-800",
+        "light" => "bg-yellow-100 text-yellow-800"
+      },
+      "info" => %{
+        "dark" => "bg-blue-300 text-blue-800",
+        "light" => "bg-blue-100 text-blue-800"
+      },
+      "primary" => %{
+        "dark" => "bg-primary-400 text-primary-800",
+        "light" => "bg-primary-100 text-primary-800"
+      },
+      "accent" => %{
+        "dark" => "bg-accent-100 text-accent-800",
+        "light" => "bg-accent-50 text-accent-800"
+      },
+      "neutral" => %{
+        "dark" => "bg-neutral-100 text-neutral-800",
+        "light" => "bg-neutral-50 text-neutral-800"
+      }
+    }
+
+    assigns = assign(assigns, colors: colors)
+
+    ~H"""
+    <span class="flex inline-flex">
+      <div class={[
+        "text-xs font-medium rounded-l py-0.5 pl-2.5 pr-1.5",
+        @colors[@type]["dark"]
+      ]}>
+        <%= render_slot(@left) %>
+      </div>
+      <span class={[
+        "text-xs font-medium",
+        "rounded-r",
+        "mr-2 py-0.5 pl-1.5 pr-2.5",
+        @colors[@type]["light"]
+      ]}>
+        <%= render_slot(@right) %>
+      </span>
     </span>
     """
   end
@@ -822,7 +882,7 @@ defmodule Web.CoreComponents do
     ~H"""
     <.relative_datetime datetime={@schema.inserted_at} /> by
     <.link
-      class="text-blue-600 hover:underline"
+      class="text-accent-600 hover:underline"
       navigate={~p"/#{@schema.account_id}/actors/#{@schema.created_by_identity.actor.id}"}
     >
       <%= assigns.schema.created_by_identity.actor.name %>
@@ -834,7 +894,7 @@ defmodule Web.CoreComponents do
     ~H"""
     synced <.relative_datetime datetime={@schema.inserted_at} /> from
     <.link
-      class="text-blue-600 hover:underline"
+      class="text-accent-600 hover:underline"
       navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @schema.provider)}
     >
       <%= @schema.provider.name %>
@@ -858,8 +918,9 @@ defmodule Web.CoreComponents do
           text-xs font-medium
           rounded-l
           py-0.5 pl-2.5 pr-1.5
-          text-blue-800
-          bg-blue-100]}
+          text-neutral-800
+          bg-neutral-200
+        ]}
       >
         <%= @identity.provider.name %>
       </.link>
@@ -867,8 +928,8 @@ defmodule Web.CoreComponents do
         "text-xs font-medium",
         "rounded-r",
         "mr-2 py-0.5 pl-1.5 pr-2.5",
-        "text-blue-800",
-        "bg-blue-50"
+        "text-neutral-800",
+        "bg-neutral-100"
       ]}>
         <%= get_identity_email(@identity) %>
       </span>
@@ -904,8 +965,8 @@ defmodule Web.CoreComponents do
           "text-xs font-medium",
           "rounded-l",
           "py-0.5 pl-2.5 pr-1.5",
-          "text-blue-800",
-          "bg-blue-100",
+          "text-accent-800",
+          "bg-accent-100",
           "whitespace-nowrap"
         ]}
       >
@@ -917,8 +978,8 @@ defmodule Web.CoreComponents do
           "text-xs font-medium",
           if(Actors.group_synced?(@group), do: "rounded-r pl-1.5 pr-2.5", else: "rounded px-1.5"),
           "py-0.5",
-          "text-blue-800",
-          "bg-blue-50",
+          "text-neutral-800",
+          "bg-neutral-100",
           "whitespace-nowrap"
         ]}
       >
@@ -938,7 +999,7 @@ defmodule Web.CoreComponents do
     <code>
       <%= @schema.last_seen_remote_ip %>
     </code>
-    <span class="text-gray-500 inline-block">
+    <span class="text-neutral-500 inline-block">
       <%= [
         @schema.last_seen_remote_ip_location_region,
         @schema.last_seen_remote_ip_location_city
@@ -948,7 +1009,7 @@ defmodule Web.CoreComponents do
 
       <a
         :if={not is_nil(@schema.last_seen_remote_ip_location_lat)}
-        class="ml-1 text-blue-800"
+        class="ml-1 text-accent-800"
         target="_blank"
         href={"http://www.google.com/maps/place/#{@schema.last_seen_remote_ip_location_lat},#{@schema.last_seen_remote_ip_location_lon}"}
       >

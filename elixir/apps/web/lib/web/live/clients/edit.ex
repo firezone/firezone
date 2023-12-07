@@ -30,7 +30,7 @@ defmodule Web.Clients.Edit do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-gray-900">Edit client details</h2>
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">Edit client details</h2>
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>
