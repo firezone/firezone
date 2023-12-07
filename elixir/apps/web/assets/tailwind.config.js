@@ -73,12 +73,7 @@ module.exports = {
         brand: "#FD4F00",
         primary: firezoneColors["heat-wave"],
         accent: firezoneColors["electric-violet"],
-        neutral: firezoneColors["chicago"],
-        fz_blue: colors.blue,
-        fz_red: colors.red,
-        fz_green: colors.green,
-        fz_yellow: colors.yellow,
-        fz_orange: colors.orange,
+        neutral: firezoneColors["chicago"]
       }
     },
   },
