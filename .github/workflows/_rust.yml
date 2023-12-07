@@ -139,7 +139,7 @@ jobs:
           # Hopefully sccache speeds this up.
           tauri build
 
-          cp target/release/windows-permissions-test.exe "windows-permissions-test-x64.exe"
+          cp src-tauri/target/release/windows-permissions-test.exe "windows-permissions-test-x64.exe"
 
       - name: Save Windows client
         uses: actions/upload-artifact@v3
