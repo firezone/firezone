@@ -88,6 +88,9 @@ final class AuthStore: ObservableObject {
       .sink { [weak self] status in
         guard let self = self else { return }
         Task {
+          if status == .disconnected {
+            self.handleTunnelDisconnectionEvent()
+          }
           if status == .connected {
             self.resetReconnectionAttemptsRemaining()
           }
@@ -170,23 +173,35 @@ final class AuthStore: ObservableObject {
       do {
         try await tunnelStore.start()
       } catch {
-        logger.error("\(#function): Error starting tunnel: \(String(describing: error))")
-        if let tsEvent = TunnelShutdownEvent.loadFromDisk() {
-          self.logger.log(
-            "\(#function): Tunnel shutdown event: \(tsEvent, privacy: .public)"
+        if case TunnelStoreError.startTunnelErrored(let startTunnelError) = error {
+          logger.error(
+            "\(#function): Starting tunnel errored: \(String(describing: startTunnelError))"
           )
-          switch tsEvent.action {
-          case .signoutImmediately:
-            Task {
-              await self.signOut()
-            }
-          case .retryThenSignout:
-            self.retryStartTunnel()
-          }
+          handleTunnelDisconnectionEvent()
         } else {
-          self.logger.log("\(#function): Tunnel shutdown event not found")
+          logger.error("\(#function): Starting tunnel failed: \(String(describing: error))")
+          // Disconnection event will be handled in the tunnel status change handler
         }
       }
+    }
+  }
+
+  func handleTunnelDisconnectionEvent() {
+    logger.log("\(#function)")
+    if let tsEvent = TunnelShutdownEvent.loadFromDisk() {
+      self.logger.log(
+        "\(#function): Tunnel shutdown event: \(tsEvent, privacy: .public)"
+      )
+      switch tsEvent.action {
+      case .signoutImmediately:
+        Task {
+          await self.signOut()
+        }
+      case .retryThenSignout:
+        self.retryStartTunnel()
+      }
+    } else {
+      self.logger.log("\(#function): Tunnel shutdown event not found")
     }
   }
 
