@@ -15,6 +15,7 @@ enum TunnelStoreError: Error {
   case cannotSaveToTunnelWhenConnected
   case cannotSignOutWhenConnected
   case stopAlreadyBeingAttempted
+  case startTunnelErrored(Error)
 }
 
 public struct TunnelProviderKeys {
@@ -173,7 +174,11 @@ final class TunnelStore: ObservableObject {
     try await tunnel.loadFromPreferences()
 
     let session = castToSession(tunnel.connection)
-    try session.startTunnel()
+    do {
+      try session.startTunnel()
+    } catch {
+      throw TunnelStoreError.startTunnelErrored(error)
+    }
     try await withCheckedThrowingContinuation { continuation in
       self.startTunnelContinuation = continuation
     }

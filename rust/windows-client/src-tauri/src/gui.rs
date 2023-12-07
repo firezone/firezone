@@ -229,7 +229,6 @@ enum CallbackError {
 }
 
 impl connlib_client_shared::Callbacks for CallbackHandler {
-    // TODO: add thiserror type
     type Error = CallbackError;
 
     fn on_disconnect(
