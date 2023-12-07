@@ -29,8 +29,8 @@ export default function Principles() {
               COLLABORATION
             </h3>
             <p className="leading-6 tracking-tight text-lg py-8">
-              We work together to achieve our goals, and we celebrate our
-              successes as a team. Everyone's voice is heard and respected.
+              We work together to achieve our goals, and celebrate our successes
+              as a team. Everyone's voice is heard and respected.
             </p>
           </div>
           <div>

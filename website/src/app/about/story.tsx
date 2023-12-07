@@ -11,7 +11,7 @@ export default function Story() {
           </h2>
           <p className="mb-12 text-2xl tracking-tight text-neutral-800 sm:px-16 xl:px-32">
             Founded in 2021 by Jamil Bou Kheir and Jason Gong, Firezone
-            originally started as a side project make it easier to use
+            originally started as a side project to make it easier to use
             WireGuard.{" "}
             <span className="text-primary-500 font-medium">130 releases</span>{" "}
             and <span className="text-primary-500 font-medium">15,000+</span>{" "}
@@ -96,7 +96,7 @@ export default function Story() {
                 </h3>
                 <p className="text-base font-normal text-neutral-800">
                   Firezone graduates from the YC Winter 2022 batch and raises a
-                  seed round of funding.
+                  seed round.
                 </p>
               </li>
             </ol>

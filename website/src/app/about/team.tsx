@@ -132,9 +132,9 @@ export default function Team() {
             Meet the team.
           </h2>
           <p className="mb-8 text-xl tracking-tight text-neutral-800 sm:px-16 xl:px-32">
-            Firezone is built by a global team of motivated minds. Our passion
-            for security, reliability, and code quality permeates everything we
-            do, and since we’re open source, you can{" "}
+            Firezone is built by a global team of motivated individuals. Our
+            passion for security, reliability, and code quality permeates
+            everything we do, and since we’re open source, you can{" "}
             <Link
               href={new URL("https://github.com/firezone/firezone")}
               className="hover:underline text-accent-500"
