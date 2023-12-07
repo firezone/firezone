@@ -64,11 +64,13 @@ pub(crate) async fn get_advanced_settings(
     managed: tauri::State<'_, Managed>,
 ) -> StdResult<AdvancedSettings, String> {
     let (tx, rx) = oneshot::channel();
-    managed
+    if let Err(e) = managed
         .ctlr_tx
         .send(ControllerRequest::GetAdvancedSettings(tx))
         .await
-        .unwrap();
+    {
+        tracing::error!("couldn't request advanced settings from controller task: {e}");
+    }
     Ok(rx.await.unwrap())
 }
 
