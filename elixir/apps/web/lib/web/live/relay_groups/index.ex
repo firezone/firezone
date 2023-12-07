@@ -40,7 +40,7 @@ defmodule Web.RelayGroups.Index do
               <.link
                 :if={not is_nil(group.account_id)}
                 navigate={~p"/#{@account}/relay_groups/#{group.id}"}
-                class="font-bold text-accent-600 hover:underline"
+                class={["font-bold", link_style()]}
               >
                 <%= group.name %>
               </.link>
@@ -53,7 +53,7 @@ defmodule Web.RelayGroups.Index do
               <.link
                 :if={relay.account_id}
                 navigate={~p"/#{@account}/relays/#{relay.id}"}
-                class="font-medium text-accent-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <code :if={relay.name} class="block text-xs">
                   <%= relay.name %>

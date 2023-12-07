@@ -43,7 +43,7 @@ defmodule Web.Settings.IdentityProviders.Index do
       <:content>
         <p class="ml-4 mb-4 font-medium text-neutral-600">
           <.link
-            class="text-accent-600 hover:underline"
+            class={link_style()}
             href="https://www.firezone.dev/kb/authenticate?utm_source=product"
             target="_blank"
           >
@@ -57,7 +57,7 @@ defmodule Web.Settings.IdentityProviders.Index do
             <:col :let={provider} label="Name">
               <.link
                 navigate={view_provider(@account, provider)}
-                class="font-medium text-accent-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <%= provider.name %>
               </.link>

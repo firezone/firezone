@@ -93,7 +93,7 @@ defmodule Web.SignIn.Email do
               /> or
               <.link
                 navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
-                class="font-medium text-accent-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 use a different Sign In method
               </.link>

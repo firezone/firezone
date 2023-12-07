@@ -76,7 +76,7 @@ defmodule Web.Resources.Show do
                   <:empty>
                     <.icon name="hero-exclamation-triangle" class="text-red-500 mr-1" /> None,
                     <.link
-                      class={link_style() ++ ["px-1"]}
+                      class={["px-1", link_style()]}
                       navigate={
                         if site_id = @params["site_id"] do
                           ~p"/#{@account}/policies/new?resource_id=#{@resource}&site_id=#{site_id}"
@@ -161,7 +161,7 @@ defmodule Web.Resources.Show do
           <:col :let={gateway_group} label="NAME">
             <.link
               navigate={~p"/#{@account}/sites/#{gateway_group}"}
-              class="font-medium text-accent-600 hover:underline"
+              class={["font-medium", link_style()]}
             >
               <%= gateway_group.name %>
             </.link>
@@ -188,7 +188,7 @@ defmodule Web.Resources.Show do
           <:col :let={flow} label="POLICY">
             <.link
               navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
-              class="font-medium text-accent-600 hover:underline"
+              class={["font-medium", link_style()]}
             >
               <.policy_name policy={flow.policy} />
             </.link>
@@ -196,14 +196,14 @@ defmodule Web.Resources.Show do
           <:col :let={flow} label="CLIENT, ACTOR (IP)">
             <.link
               navigate={~p"/#{@account}/clients/#{flow.client_id}"}
-              class="font-medium text-accent-600 hover:underline"
+              class={["font-medium", link_style()]}
             >
               <%= flow.client.name %>
             </.link>
             owned by
             <.link
               navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"}
-              class="font-medium text-accent-600 hover:underline"
+              class={["font-medium", link_style()]}
             >
               <%= flow.client.actor.name %>
             </.link>
@@ -212,17 +212,14 @@ defmodule Web.Resources.Show do
           <:col :let={flow} label="GATEWAY (IP)">
             <.link
               navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
-              class="font-medium text-accent-600 hover:underline"
+              class={["font-medium", link_style()]}
             >
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
           <:col :let={flow} label="ACTIVITY">
-            <.link
-              navigate={~p"/#{@account}/flows/#{flow.id}"}
-              class="font-medium text-accent-600 hover:underline"
-            >
+            <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={["font-medium", link_style()]}>
               Show
             </.link>
           </:col>

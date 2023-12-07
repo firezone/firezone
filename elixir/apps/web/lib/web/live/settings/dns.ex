@@ -39,7 +39,7 @@ defmodule Web.Settings.DNS do
         </p>
         <p class="ml-4 mb-4 font-medium text-neutral-600">
           <.link
-            class="text-accent-600 hover:underline"
+            class={link_style()}
             href="https://www.firezone.dev/kb/administer/dns?utm_source=product"
             target="_blank"
           >

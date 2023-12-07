@@ -30,7 +30,7 @@ defmodule Web.Clients.Index do
             <:col :let={client} label="NAME">
               <.link
                 navigate={~p"/#{@account}/clients/#{client.id}"}
-                class="font-medium text-accent-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <%= client.name %>
               </.link>
@@ -38,7 +38,7 @@ defmodule Web.Clients.Index do
             <:col :let={client} label="USER">
               <.link
                 navigate={~p"/#{@account}/actors/#{client.actor.id}"}
-                class="font-medium text-accent-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <%= client.actor.name %>
               </.link>

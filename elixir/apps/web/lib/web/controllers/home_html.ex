@@ -55,7 +55,7 @@ defmodule Web.HomeHTML do
               class="py-2"
             >
               Don't have an account?
-              <a href={~p"/sign_up"} class="font-medium text-accent-600 hover:text-accent-500">
+              <a href={~p"/sign_up"} class={["font-medium", link_style()]}>
                 Sign up here.
               </a>
             </p>

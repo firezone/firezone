@@ -46,7 +46,7 @@ defmodule Web.Sites.Gateways.Index do
           <:col :let={gateway} label="INSTANCE">
             <.link
               navigate={~p"/#{@account}/gateways/#{gateway.id}"}
-              class="font-medium text-accent-600 hover:underline"
+              class={["font-medium", link_style()]}
             >
               <%= gateway.name %>
             </.link>
@@ -67,7 +67,7 @@ defmodule Web.Sites.Gateways.Index do
               <div class="pb-4">
                 No gateways to display.
                 <.link
-                  class="font-medium text-blue-600 hover:underline"
+                  class={["font-medium", link_style()]}
                   navigate={~p"/#{@account}/sites/#{@group}/new_token"}
                 >
                   Deploy a gateway to connect resources.

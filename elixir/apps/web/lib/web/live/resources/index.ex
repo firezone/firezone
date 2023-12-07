@@ -40,7 +40,7 @@ defmodule Web.Resources.Index do
             <:col :let={resource} label="NAME">
               <.link
                 navigate={~p"/#{@account}/resources/#{resource.id}"}
-                class="font-medium text-accent-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <%= resource.name %>
               </.link>
@@ -54,7 +54,7 @@ defmodule Web.Resources.Index do
               <.link
                 :for={gateway_group <- resource.gateway_groups}
                 navigate={~p"/#{@account}/sites/#{gateway_group}"}
-                class="font-medium text-accent-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <.badge type="info">
                   <%= gateway_group.name %>
@@ -66,7 +66,7 @@ defmodule Web.Resources.Index do
                 <:empty>
                   None,
                   <.link
-                    class={link_style() ++ ["px-1"]}
+                    class={["px-1", link_style()]}
                     navigate={~p"/#{@account}/policies/new?resource_id=#{resource}"}
                   >
                     create a Policy

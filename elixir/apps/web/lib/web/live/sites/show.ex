@@ -97,7 +97,7 @@ defmodule Web.Sites.Show do
             <:col :let={gateway} label="INSTANCE">
               <.link
                 navigate={~p"/#{@account}/gateways/#{gateway.id}"}
-                class="font-medium text-accent-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <%= gateway.name %>
               </.link>
@@ -119,7 +119,7 @@ defmodule Web.Sites.Show do
                   No gateways to display.
                   <span :if={is_nil(@group.deleted_at)}>
                     <.link
-                      class="font-medium text-blue-600 hover:underline"
+                      class={["font-medium", link_style()]}
                       navigate={~p"/#{@account}/sites/#{@group}/new_token"}
                     >
                       Deploy a gateway to connect resources.
@@ -152,7 +152,7 @@ defmodule Web.Sites.Show do
             <:col :let={resource} label="NAME">
               <.link
                 navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@group}"}
-                class="font-medium text-accent-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <%= resource.name %>
               </.link>
@@ -165,7 +165,7 @@ defmodule Web.Sites.Show do
                 <:empty>
                   None,
                   <.link
-                    class={link_style() ++ ["px-1"]}
+                    class={["px-1", link_style()]}
                     navigate={~p"/#{@account}/policies/new?resource_id=#{resource}&site_id=#{@group}"}
                   >
                     create a Policy

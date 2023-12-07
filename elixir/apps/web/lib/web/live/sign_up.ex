@@ -141,10 +141,7 @@ defmodule Web.SignUp do
                   Sign In URL:
                 </td>
                 <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
-                  <.link
-                    class="font-medium text-accent-600 hover:underline"
-                    navigate={~p"/#{@account}"}
-                  >
+                  <.link class={["font-medium", link_style()]} navigate={~p"/#{@account}"}>
                     <%= url(~p"/#{@account}") %>
                   </.link>
                 </td>
@@ -224,7 +221,7 @@ defmodule Web.SignUp do
       <p class="text-xs text-center">
         By signing up you agree to our <.link
           href="https://www.firezone.dev/terms"
-          class="text-accent-600 hover:underline"
+          class={link_style()}
         >Terms of Use</.link>.
       </p>
     </.simple_form>
@@ -247,7 +244,7 @@ defmodule Web.SignUp do
       <p class="text-xs text-center">
         By signing up you agree to our <.link
           href="https://www.firezone.dev/terms"
-          class="text-accent-600 hover:underline"
+          class={link_style()}
         >Terms of Use</.link>.
       </p>
     </div>

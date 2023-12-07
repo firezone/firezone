@@ -104,7 +104,7 @@ defmodule Web.SignIn do
             Meant to sign in from a client instead?
             <a
               href="https://firezone.dev/kb/user-guides?utm_source=product"
-              class="font-medium text-accent-600 hover:text-accent-500"
+              class={["font-medium", link_style()]}
             >
               Read the docs.
             </a>

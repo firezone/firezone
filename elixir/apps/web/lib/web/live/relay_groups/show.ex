@@ -68,7 +68,7 @@ defmodule Web.RelayGroups.Show do
             <:col :let={relay} label="INSTANCE">
               <.link
                 navigate={~p"/#{@account}/relays/#{relay.id}"}
-                class="font-medium text-accent-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <code :if={relay.name} class="block text-xs">
                   <%= relay.name %>

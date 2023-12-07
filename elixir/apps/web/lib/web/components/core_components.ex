@@ -918,8 +918,9 @@ defmodule Web.CoreComponents do
           text-xs font-medium
           rounded-l
           py-0.5 pl-2.5 pr-1.5
-          text-blue-800
-          bg-blue-100]}
+          text-neutral-800
+          bg-neutral-200
+        ]}
       >
         <%= @identity.provider.name %>
       </.link>
@@ -927,8 +928,8 @@ defmodule Web.CoreComponents do
         "text-xs font-medium",
         "rounded-r",
         "mr-2 py-0.5 pl-1.5 pr-2.5",
-        "text-blue-800",
-        "bg-blue-50"
+        "text-neutral-800",
+        "bg-neutral-100"
       ]}>
         <%= get_identity_email(@identity) %>
       </span>

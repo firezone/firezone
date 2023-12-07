@@ -43,7 +43,7 @@ defmodule Web.Settings.Account do
         <p class="ml-4 mb-4 font-medium text-neutral-600">
           <.icon name="hero-exclamation-circle" class="inline-block w-5 h-5 mr-1 text-red-500" />
           To disable your account and schedule it for deletion, please <.link
-            class="text-accent-600 hover:underline"
+            class={link_style()}
             href="mailto:support@firezone.dev"
           >
         contact support

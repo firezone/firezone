@@ -42,7 +42,7 @@ defmodule Web.Groups.Index do
             <:col :let={group} label="NAME" sortable="false">
               <.link
                 navigate={~p"/#{@account}/groups/#{group.id}"}
-                class="font-medium text-accent-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <%= group.name %>
               </.link>
@@ -64,7 +64,7 @@ defmodule Web.Groups.Index do
                 <:item :let={actor}>
                   <.link
                     navigate={~p"/#{@account}/actors/#{actor}"}
-                    class={["font-medium text-accent-600 hover:underline"]}
+                    class={["font-medium", link_style()]}
                   >
                     <%= actor.name %>
                   </.link>
