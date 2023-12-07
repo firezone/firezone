@@ -199,6 +199,8 @@ final class AuthStore: ObservableObject {
         }
       case .retryThenSignout:
         self.retryStartTunnel()
+      case .doNothing:
+        break
       }
     } else {
       self.logger.log("\(#function): Tunnel shutdown event not found")
