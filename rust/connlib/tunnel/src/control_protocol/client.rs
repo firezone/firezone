@@ -130,7 +130,7 @@ where
     }
 
     fn new_tunnel(
-        &self,
+        self: &Arc<Self>,
         resource_id: ResourceId,
         gateway_id: GatewayId,
         ice: Arc<RTCIceTransport>,
@@ -182,13 +182,12 @@ where
 
                 // TODO: we need to readd this routes when the fd changes
                 {
-                    let device = self.device.clone();
-                    let callbacks = self.callbacks.clone();
-                    let addrs = addrs.clone();
+                    let dev = Arc::clone(self);
+                    let ips = addrs.clone();
                     tokio::spawn(async move {
-                        if let Some(device) = device.load().as_deref() {
-                            for addr in addrs {
-                                device.add_route(addr.into(), &callbacks).await;
+                        for ip in ips {
+                            if let Err(e) = dev.add_route(ip.into()).await {
+                                tracing::error!(err = ?e, "add route failed");
                             }
                         }
                     });
