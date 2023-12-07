@@ -12,7 +12,7 @@ export default function Page() {
   return (
     <Post
       authorName="Jeff Spencer"
-      authorTitle="Interim Head of Marketing"
+      authorTitle="Head of Marketing"
       authorEmail="jeff@firezone.dev"
       title="Enterprises choose open source"
       date="December 6, 2023"

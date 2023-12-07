@@ -15,7 +15,7 @@ export default function Page() {
       <section className="bg-neutral-100">
         <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
           <div className="mx-auto max-w-screen-md sm:text-center">
-            <h1 className="justify-center mb-4 text-2xl font-extrabold text-center leading-none tracking-tight text-neutral-900 sm:text-4xl">
+            <h1 className="justify-center mb-4 text-2xl font-extrabold text-center leading-none tracking-tight text-neutral-900 sm:text-6xl">
               Plans & Pricing
             </h1>
           </div>
