@@ -1,20 +1,20 @@
-import Link from "next/link";
-import Image from "next/image";
 import gravatar from "@/lib/gravatar";
-import { LinkedInIcon, GitHubIcon, TwitterIcon } from "@/components/Icons";
+import { LinkedInIcon, GitHubIcon, XIcon } from "@/components/Icons";
+import Image from "next/image";
+import Link from "next/link";
 
-function renderTeamMember({
+function teamMember({
   name,
   title,
   imgSrc,
-  twitterUrl,
+  xUrl,
   githubUrl,
   linkedinUrl,
 }: {
   name: string;
   title: string;
   imgSrc: string;
-  twitterUrl?: URL;
+  xUrl?: URL;
   githubUrl?: URL;
   linkedinUrl?: URL;
 }) {
@@ -33,9 +33,9 @@ function renderTeamMember({
         </h3>
         <span className="text-neutral-800 text-sm">{title}</span>
         <ul className="flex justify-center space-x-4 mt-4">
-          {twitterUrl && (
+          {xUrl && (
             <li>
-              <TwitterIcon url={twitterUrl} />
+              <XIcon url={xUrl} />
             </li>
           )}
           {githubUrl && (
@@ -53,14 +53,13 @@ function renderTeamMember({
     </div>
   );
 }
-
-export default function Page() {
+export default function Team() {
   const team = [
     {
       name: "Jamil Bou Kheir",
       title: "CEO/Founder",
       imgSrc: gravatar("jamil@firezone.dev", 200),
-      twitterUrl: new URL("https://twitter.com/jamilbk"),
+      xUrl: new URL("https://x.com/jamilbk"),
       githubUrl: new URL("https://github.com/jamilbk"),
       linkedinUrl: new URL("https://linkedin.com/in/jamilbk"),
     },
@@ -68,14 +67,14 @@ export default function Page() {
       name: "Gabriel Steinberg",
       title: "Senior Backend Engineer",
       imgSrc: "/images/avatars/gabriel.png",
-      twitterUrl: new URL("https://twitter.com/tapingmemory"),
+      xUrl: new URL("https://x.com/tapingmemory"),
       githubUrl: new URL("https://github.com/conectado"),
     },
     {
       name: "Andrew Dryga",
       title: "Founding Engineer",
       imgSrc: "/images/avatars/andrew.jpg",
-      twitterUrl: new URL("https://twitter.com/andrew_dryga"),
+      xUrl: new URL("https://x.com/andrew_dryga"),
       githubUrl: new URL("https://github.com/andrewdryga"),
       linkedinUrl: new URL("https://linkedin.com/in/andrew-dryga-bb382557"),
     },
@@ -90,7 +89,7 @@ export default function Page() {
       name: "Thomas Eizinger",
       title: "Distributed Systems Engineer",
       imgSrc: "/images/avatars/thomas.jpeg",
-      twitterUrl: new URL("https://twitter.com/oetzn"),
+      xUrl: new URL("https://x.com/oetzn"),
       githubUrl: new URL("https://github.com/thomaseizinger"),
       linkedinUrl: new URL("https://www.linkedin.com/in/thomas-eizinger"),
     },
@@ -98,7 +97,7 @@ export default function Page() {
       name: "Roopesh Chander",
       title: "Apple Platform Engineer",
       imgSrc: gravatar("roop@roopc.net", 200),
-      twitterUrl: new URL("https://twitter.com/roopcnet"),
+      xUrl: new URL("https://x.com/roopcnet"),
       githubUrl: new URL("https://github.com/roop"),
     },
     {
@@ -126,30 +125,29 @@ export default function Page() {
   ];
 
   return (
-    <section className="bg-neutral-100 ">
+    <section className="border-t border-neutral-200 bg-neutral-100">
       <div className="py-8 px-4 mx-auto max-w-screen-lg text-center lg:py-16 lg:px-6">
-        <div className="text-neutral-800 sm:text-lg ">
-          <h1 className="mb-14 justify-center md:text-6xl text-5xl tracking-tight font-extrabold text-neutral-900 leading-none">
-            Meet the Firezone team.
-          </h1>
-          <h2 className="mb-8 text-xl tracking-tight text-neutral-800 sm:px-16 xl:px-48">
-            {/* FIXME: Make this less fluffy */}
-            See the driving force behind Firezone -- a team dedicated to
-            crafting secure and accessible software for a connected world.
-            Committed to transparency and innovation, our diverse group of
-            experts collaborates seamlessly to empower users with reliable and
-            security-focused technology, redefining the way we connect in the
-            digital landscape.
+        <div className="border-b text-neutral-800 sm:text-lg">
+          <h2 className="mb-14 justify-center md:text-5xl text-4xl tracking-tight font-extrabold text-neutral-900 leading-none">
+            Meet the team.
           </h2>
-        </div>
-        <div className="text-neutral-800 sm:text-lg ">
-          <h3 className="justify-center pb-4 pt-14 text-2xl tracking-tight font-bold text-neutral-900  border-b border-neutral-300">
-            THE FIREZONE TEAM
-          </h3>
+          <p className="mb-8 text-xl tracking-tight text-neutral-800 sm:px-16 xl:px-32">
+            Firezone is built by a global team of motivated individuals. Our
+            passion for security, reliability, and code quality permeates
+            everything we do, and since we’re open source, you can{" "}
+            <Link
+              href={new URL("https://github.com/firezone/firezone")}
+              className="hover:underline text-accent-500"
+            >
+              see for yourself
+            </Link>
+            . The team has experience building enterprise networking solutions
+            at companies like Cisco, Marqeta, Tailscale, and more.
+          </p>
         </div>
         <div className="mt-16 grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 lg:gap-16">
           {team.map((person) => {
-            return renderTeamMember(person);
+            return teamMember(person);
           })}
         </div>
       </div>
