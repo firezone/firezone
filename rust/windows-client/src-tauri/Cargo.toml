@@ -12,6 +12,7 @@ tauri-build = { version = "1.5", features = [] }
 anyhow = { version = "1.0" }
 clap = { version = "4.4", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
+connlib-shared = { workspace = true }
 firezone-cli-utils = { workspace = true }
 http-body-util = "0.1.0"
 hyper = { version = "1.0.1", features = ["http1", "server"] }
@@ -21,6 +22,7 @@ smbios-lib = "0.9"
 secrecy.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+thiserror = { version = "1.0", default-features = false }
 tokio = { version = "1.33.0", features = ["time"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
