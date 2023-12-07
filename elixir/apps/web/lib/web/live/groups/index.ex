@@ -42,12 +42,12 @@ defmodule Web.Groups.Index do
             <:col :let={group} label="NAME" sortable="false">
               <.link
                 navigate={~p"/#{@account}/groups/#{group.id}"}
-                class="font-medium text-blue-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <%= group.name %>
               </.link>
 
-              <span :if={Actors.group_deleted?(group)} class="text-xs text-gray-100">
+              <span :if={Actors.group_deleted?(group)} class="text-xs text-neutral-100">
                 (deleted)
               </span>
             </:col>
@@ -64,7 +64,7 @@ defmodule Web.Groups.Index do
                 <:item :let={actor}>
                   <.link
                     navigate={~p"/#{@account}/actors/#{actor}"}
-                    class={["font-medium text-blue-600 hover:underline"]}
+                    class={["font-medium", link_style()]}
                   >
                     <%= actor.name %>
                   </.link>
@@ -81,7 +81,7 @@ defmodule Web.Groups.Index do
               <.source account={@account} group={group} />
             </:col>
             <:empty>
-              <div class="flex justify-center text-center text-slate-500 p-4">
+              <div class="flex justify-center text-center text-neutral-500 p-4">
                 <div class="w-auto">
                   <div class="pb-4">
                     No groups to display

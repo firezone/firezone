@@ -12,7 +12,7 @@ defmodule Web.TableComponents do
 
   def table_header(assigns) do
     ~H"""
-    <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+    <thead class="text-xs text-neutral-700 uppercase bg-neutral-50">
       <tr>
         <th :for={col <- @columns} class={["px-4 py-3", Map.get(col, :class, "")]}>
           <%= col[:label] %>
@@ -67,7 +67,7 @@ defmodule Web.TableComponents do
           data-dropdown-toggle={"#{@id}-dropdown"}
           class={[
             "inline-flex items-center p-0.5 text-sm font-medium text-center",
-            "text-gray-500 hover:text-gray-800 rounded"
+            "text-neutral-500 hover:text-neutral-800 rounded"
           ]}
           type="button"
         >
@@ -76,11 +76,11 @@ defmodule Web.TableComponents do
         <div
           id={"#{@id}-dropdown"}
           class={[
-            "hidden z-10 w-44 bg-white rounded divide-y divide-gray-100",
-            "shadow border border-gray-300"
+            "hidden z-10 w-44 bg-white rounded divide-y divide-neutral-100",
+            "shadow border border-neutral-300"
           ]}
         >
-          <ul class="py-1 text-sm text-gray-700" aria-labelledby={"#{@id}-dropdown-button"}>
+          <ul class="py-1 text-sm text-neutral-700" aria-labelledby={"#{@id}-dropdown-button"}>
             <li :for={action <- @actions}>
               <%= render_slot(action, @mapper.(@row)) %>
             </li>
@@ -137,7 +137,7 @@ defmodule Web.TableComponents do
 
     ~H"""
     <div class="overflow-x-auto">
-      <table class="w-full text-sm text-left text-gray-500" id={@id}>
+      <table class="w-full text-sm text-left text-neutral-500" id={@id}>
         <.table_header columns={@col} actions={@action} />
         <tbody
           id={"#{@id}-rows"}
@@ -210,11 +210,11 @@ defmodule Web.TableComponents do
       end
 
     ~H"""
-    <table class="w-full text-sm text-left text-gray-500" id={@id}>
+    <table class="w-full text-sm text-left text-neutral-500" id={@id}>
       <.table_header columns={@col} actions={@action} />
 
       <tbody :for={group <- @groups} data-group-id={@group_id && @group_id.(group)}>
-        <tr class="bg-gray-100">
+        <tr class="bg-neutral-100">
           <td class="px-4 py-2" colspan={length(@col) + 1}>
             <%= render_slot(@group, group) %>
           </td>
@@ -269,7 +269,7 @@ defmodule Web.TableComponents do
 
   def vertical_table(assigns) do
     ~H"""
-    <table class={["w-full text-sm text-left text-gray-500", @class]} {@rest}>
+    <table class={["w-full text-sm text-left text-neutral-500", @class]} {@rest}>
       <tbody>
         <%= render_slot(@inner_block) %>
       </tbody>
@@ -302,12 +302,12 @@ defmodule Web.TableComponents do
 
   def vertical_table_row(assigns) do
     ~H"""
-    <tr class="border-b border-gray-200">
+    <tr class="border-b border-neutral-200">
       <th
         scope="row"
         class={[
-          "text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap",
-          "bg-gray-50",
+          "text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap",
+          "bg-neutral-50",
           @label_class
         ]}
       >
@@ -329,7 +329,7 @@ defmodule Web.TableComponents do
 
   def action_link(assigns) do
     ~H"""
-    <.link navigate={@navigate} class="block py-2 px-4 hover:bg-gray-100">
+    <.link navigate={@navigate} class="block py-2 px-4 hover:bg-neutral-100">
       <%= render_slot(@inner_block) %>
     </.link>
     """

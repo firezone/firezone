@@ -6,7 +6,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
     <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
       <.form for={@form} phx-change={:change} phx-submit={:submit}>
         <div class="mb-4">
-          <h2 class="mb-4 text-xl font-bold text-gray-900">
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">
             Step 1. Enable Admin SDK API
           </h2>
           Please visit following link and enable Admin SDK API for your Google Workspace account:
@@ -20,7 +20,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
         </div>
 
         <div class="mb-4">
-          <h2 class="mb-4 text-xl font-bold text-gray-900">
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">
             Step 2. Configure OAuth consent screen
           </h2>
           Please make sure that following scopes are added to the OAuth application permissions: <.code_block
@@ -41,7 +41,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
         </div>
 
         <div class="mb-4">
-          <h2 class="mb-4 text-xl font-bold text-gray-900">
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">
             Step 3: Create OAuth client
           </h2>
           Please make sure that OAuth client has following redirect URL's whitelisted: <.code_block
@@ -61,7 +61,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
         </div>
 
         <div class="mb-4">
-          <h2 class="mb-4 text-xl font-bold text-gray-900">
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">
             Step 4. Configure client
           </h2>
 
@@ -76,7 +76,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
                 placeholder="Name this identity provider"
                 required
               />
-              <p class="mt-2 text-xs text-gray-500">
+              <p class="mt-2 text-xs text-neutral-500">
                 A friendly name for this identity provider. This will be displayed to end-users.
               </p>
             </div>

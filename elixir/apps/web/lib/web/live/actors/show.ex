@@ -41,7 +41,7 @@ defmodule Web.Actors.Show do
     <.section>
       <:title>
         <%= actor_type(@actor.type) %>: <span class="font-bold"><%= @actor.name %></span>
-        <span :if={@actor.id == @subject.actor.id} class="text-gray-400">(you)</span>
+        <span :if={@actor.id == @subject.actor.id} class="text-neutral-400">(you)</span>
         <span :if={not is_nil(@actor.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@actor.deleted_at)}>
@@ -127,14 +127,14 @@ defmodule Web.Actors.Show do
               data-confirm="Are you sure want to delete this identity?"
               phx-value-id={identity.id}
               class={[
-                "block w-full py-2 px-4 hover:bg-gray-100"
+                "block w-full py-2 px-4 hover:bg-neutral-100"
               ]}
             >
               Delete
             </button>
           </:action>
           <:empty>
-            <div class="flex justify-center text-center text-slate-500 p-4">
+            <div class="flex justify-center text-center text-neutral-500 p-4">
               <div class="w-auto">
                 <div class="pb-4">
                   No authentication identities to display
@@ -166,7 +166,7 @@ defmodule Web.Actors.Show do
           <:col :let={client} label="NAME">
             <.link
               navigate={~p"/#{@account}/clients/#{client.id}"}
-              class="font-medium text-blue-600 hover:underline"
+              class={["font-medium", link_style()]}
             >
               <%= client.name %>
             </.link>
@@ -175,7 +175,7 @@ defmodule Web.Actors.Show do
             <.connection_status schema={client} />
           </:col>
           <:empty>
-            <div class="text-center text-slate-500 p-4">No clients to display</div>
+            <div class="text-center text-neutral-500 p-4">No clients to display</div>
           </:empty>
         </.table>
       </:content>
@@ -194,7 +194,7 @@ defmodule Web.Actors.Show do
           <:col :let={flow} label="POLICY">
             <.link
               navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
-              class="font-medium text-blue-600 hover:underline"
+              class={["font-medium", link_style()]}
             >
               <Web.Policies.Components.policy_name policy={flow.policy} />
             </.link>
@@ -208,22 +208,19 @@ defmodule Web.Actors.Show do
           <:col :let={flow} label="GATEWAY (IP)">
             <.link
               navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
-              class="font-medium text-blue-600 hover:underline"
+              class={["font-medium", link_style()]}
             >
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
-            <.link
-              navigate={~p"/#{@account}/flows/#{flow.id}"}
-              class="font-medium text-blue-600 hover:underline"
-            >
+            <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={["font-medium", link_style()]}>
               Show
             </.link>
           </:col>
           <:empty>
-            <div class="text-center text-slate-500 p-4">No authorizations to display</div>
+            <div class="text-center text-neutral-500 p-4">No authorizations to display</div>
           </:empty>
         </.table>
       </:content>

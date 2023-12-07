@@ -76,9 +76,9 @@ defmodule Web.FormComponents do
   def input(%{type: "radio"} = assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <label class="flex items-center gap-2 text-gray-900">
+      <label class="flex items-center gap-2 text-neutral-900">
         <input type="radio" id={@id} name={@name} value={@value} checked={@checked} class={~w[
-          w-4 h-4 border-gray-300]} {@rest} />
+          w-4 h-4 border-neutral-300]} {@rest} />
         <%= @label %>
         <%= if @inner_block, do: render_slot(@inner_block) %>
       </label>
@@ -118,7 +118,7 @@ defmodule Web.FormComponents do
     <div phx-feedback-for={@name}>
       <.label for={@id}><%= @label %></.label>
       <select id={@id} name={@name} class={~w[
-          bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded
+          bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded
           block w-full p-2.5]} multiple={@multiple} {@rest}>
         <option :if={@prompt} value=""><%= @prompt %></option>
         <%= Phoenix.HTML.Form.options_for_select(@options, @value) %>
@@ -167,10 +167,10 @@ defmodule Web.FormComponents do
           id={@id}
           value={value}
           class={[
-            "bg-gray-50 p-2.5 block w-full rounded border text-gray-900 text-sm",
-            "phx-no-feedback:border-gray-300",
-            "disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200 disabled:shadow-none",
-            "border-gray-300",
+            "bg-neutral-50 p-2.5 block w-full rounded border text-neutral-900 text-sm",
+            "phx-no-feedback:border-neutral-300",
+            "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
+            "border-neutral-300",
             @errors != [] && "border-rose-400"
           ]}
           {@rest}
@@ -212,19 +212,19 @@ defmodule Web.FormComponents do
       <.label :if={not is_nil(@label)} for={@id}><%= @label %></.label>
       <div class={[
         "flex items-center",
-        "text-sm text-gray-900 bg-gray-50",
-        "border-gray-300 border rounded",
+        "text-sm text-neutral-900 bg-neutral-50",
+        "border-neutral-300 border rounded",
         "w-full",
-        "phx-no-feedback:border-gray-300",
-        "focus-within:outline-none focus-within:border-blue-600",
-        "peer-disabled:bg-slate-50 peer-disabled:text-slate-500 peer-disabled:border-slate-200 peer-disabled:shadow-none",
+        "phx-no-feedback:border-neutral-300",
+        "focus-within:outline-none focus-within:border-accent-600",
+        "peer-disabled:bg-neutral-50 peer-disabled:text-neutral-500 peer-disabled:border-neutral-200 peer-disabled:shadow-none",
         @errors != [] && "border-rose-400"
       ]}>
         <div
           class={[
             "-mr-5",
             "select-none cursor-text",
-            "text-gray-500",
+            "text-neutral-500",
             "p-2.5 block"
           ]}
           id={"#{@id}-prefix"}
@@ -239,7 +239,7 @@ defmodule Web.FormComponents do
           id={@id}
           value={Phoenix.HTML.Form.normalize_value(@type, @value)}
           class={[
-            "text-sm text-gray-900 bg-transparent border-0",
+            "text-sm text-neutral-900 bg-transparent border-0",
             "p-2.5 block w-full",
             "focus:outline-none focus:border-0 focus:ring-0"
           ]}
@@ -261,10 +261,10 @@ defmodule Web.FormComponents do
         id={@id}
         value={Phoenix.HTML.Form.normalize_value(@type, @value)}
         class={[
-          "bg-gray-50 p-2.5 block w-full rounded border text-gray-900 text-sm",
-          "phx-no-feedback:border-gray-300",
-          "disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200 disabled:shadow-none",
-          "border-gray-300",
+          "bg-neutral-50 p-2.5 block w-full rounded border text-neutral-900 text-sm",
+          "phx-no-feedback:border-neutral-300",
+          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
+          "border-neutral-300",
           @errors != [] && "border-rose-400"
         ]}
         {@rest}
@@ -287,22 +287,22 @@ defmodule Web.FormComponents do
     ~H"""
     <div class="inline-flex rounded-md shadow-sm" role="group">
       <button type="button" class={~w[
-          px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200
-          rounded-l hover:bg-gray-100 hover:text-blue-700
+          px-4 py-2 text-sm font-medium text-neutral-900 bg-white border border-neutral-200
+          rounded-l hover:bg-neutral-100 hover:text-accent-700
         ]}>
         <%= render_slot(@first) %>
       </button>
       <%= for middle <- @middle do %>
         <button type="button" class={~w[
-            px-4 py-2 text-sm font-medium text-gray-900 bg-white border-t border-b
-            border-gray-200 hover:bg-gray-100 hover:text-blue-700
+            px-4 py-2 text-sm font-medium text-neutral-900 bg-white border-t border-b
+            border-neutral-200 hover:bg-neutral-100 hover:text-accent-700
           ]}>
           <%= render_slot(middle) %>
         </button>
       <% end %>
       <button type="button" class={~w[
-          px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200
-          rounded-r hover:bg-gray-100 hover:text-blue-700
+          px-4 py-2 text-sm font-medium text-neutral-900 bg-white border border-neutral-200
+          rounded-r hover:bg-neutral-100 hover:text-accent-700
         ]}>
         <%= render_slot(@last) %>
       </button>
@@ -465,7 +465,7 @@ defmodule Web.FormComponents do
     button_style() ++
       [
         "text-white",
-        "bg-accent-600",
+        "bg-accent-450",
         "hover:bg-accent-700"
       ]
   end
