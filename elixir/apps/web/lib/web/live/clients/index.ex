@@ -30,7 +30,7 @@ defmodule Web.Clients.Index do
             <:col :let={client} label="NAME">
               <.link
                 navigate={~p"/#{@account}/clients/#{client.id}"}
-                class="font-medium text-blue-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <%= client.name %>
               </.link>
@@ -38,7 +38,7 @@ defmodule Web.Clients.Index do
             <:col :let={client} label="USER">
               <.link
                 navigate={~p"/#{@account}/actors/#{client.actor.id}"}
-                class="font-medium text-blue-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <%= client.actor.name %>
               </.link>
@@ -47,8 +47,8 @@ defmodule Web.Clients.Index do
               <.connection_status schema={client} />
             </:col>
             <:empty>
-              <div class="text-center text-slate-500 p-4">No clients to display</div>
-              <div class="text-center text-slate-500 mb-4">
+              <div class="text-center text-neutral-500 p-4">No clients to display</div>
+              <div class="text-center text-neutral-500 mb-4">
                 Clients are created automatically when user connects to a resource.
               </div>
             </:empty>
@@ -68,14 +68,14 @@ defmodule Web.Clients.Index do
   #         <label for="simple-search" class="sr-only">Search</label>
   #         <div class="relative w-full">
   #           <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-  #             <.icon name="hero-magnifying-glass" class="w-5 h-5 text-gray-500" />
+  #             <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
   #           </div>
   #           <input
   #             type="text"
   #             id="simple-search"
   # class =
   #   {[
-  #      "bg-gray-50 border border-gray-300 text-gray-900",
+  #      "bg-neutral-50 border border-neutral-300 text-neutral-900",
   #      "text-sm rounded-lg",
   #      "block w-full pl-10 p-2"
   #    ]}

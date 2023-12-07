@@ -47,12 +47,12 @@ defmodule Web.Settings.IdentityProviders.SAML.Show do
         <.flash_group flash={@flash} />
 
         <div class="bg-white overflow-hidden">
-          <table class="w-full text-sm text-left text-gray-500">
+          <table class="w-full text-sm text-left text-neutral-500">
             <tbody>
-              <tr class="border-b border-gray-200">
+              <tr class="border-b border-neutral-200">
                 <th
                   scope="row"
-                  class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50"
+                  class="text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap bg-neutral-50"
                 >
                   Name
                 </th>
@@ -60,10 +60,10 @@ defmodule Web.Settings.IdentityProviders.SAML.Show do
                   <%= @provider.name %>
                 </td>
               </tr>
-              <tr class="border-b border-gray-200">
+              <tr class="border-b border-neutral-200">
                 <th
                   scope="row"
-                  class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50"
+                  class="text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap bg-neutral-50"
                 >
                   Type
                 </th>
@@ -71,10 +71,10 @@ defmodule Web.Settings.IdentityProviders.SAML.Show do
                   SAML 2.0
                 </td>
               </tr>
-              <tr class="border-b border-gray-200">
+              <tr class="border-b border-neutral-200">
                 <th
                   scope="row"
-                  class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50"
+                  class="text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap bg-neutral-50"
                 >
                   Sign requests
                 </th>
@@ -82,10 +82,10 @@ defmodule Web.Settings.IdentityProviders.SAML.Show do
                   Yes
                 </td>
               </tr>
-              <tr class="border-b border-gray-200">
+              <tr class="border-b border-neutral-200">
                 <th
                   scope="row"
-                  class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50"
+                  class="text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap bg-neutral-50"
                 >
                   Sign metadata
                 </th>
@@ -93,10 +93,10 @@ defmodule Web.Settings.IdentityProviders.SAML.Show do
                   Yes
                 </td>
               </tr>
-              <tr class="border-b border-gray-200">
+              <tr class="border-b border-neutral-200">
                 <th
                   scope="row"
-                  class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50"
+                  class="text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap bg-neutral-50"
                 >
                   Require signed assertions
                 </th>
@@ -104,10 +104,10 @@ defmodule Web.Settings.IdentityProviders.SAML.Show do
                   Yes
                 </td>
               </tr>
-              <tr class="border-b border-gray-200">
+              <tr class="border-b border-neutral-200">
                 <th
                   scope="row"
-                  class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50"
+                  class="text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap bg-neutral-50"
                 >
                   Require signed envelopes
                 </th>
@@ -115,10 +115,10 @@ defmodule Web.Settings.IdentityProviders.SAML.Show do
                   Yes
                 </td>
               </tr>
-              <tr class="border-b border-gray-200">
+              <tr class="border-b border-neutral-200">
                 <th
                   scope="row"
-                  class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50"
+                  class="text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap bg-neutral-50"
                 >
                   Base URL
                 </th>
@@ -126,10 +126,10 @@ defmodule Web.Settings.IdentityProviders.SAML.Show do
                   Yes
                 </td>
               </tr>
-              <tr class="border-b border-gray-200">
+              <tr class="border-b border-neutral-200">
                 <th
                   scope="row"
-                  class="text-right px-6 py-4 font-medium text-gray-900 whitespace-nowrap bg-gray-50"
+                  class="text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap bg-neutral-50"
                 >
                   Created
                 </th>

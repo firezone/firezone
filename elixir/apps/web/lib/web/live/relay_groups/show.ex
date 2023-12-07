@@ -68,7 +68,7 @@ defmodule Web.RelayGroups.Show do
             <:col :let={relay} label="INSTANCE">
               <.link
                 navigate={~p"/#{@account}/relays/#{relay.id}"}
-                class="font-medium text-blue-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <code :if={relay.name} class="block text-xs">
                   <%= relay.name %>
@@ -88,7 +88,7 @@ defmodule Web.RelayGroups.Show do
               <.connection_status schema={relay} />
             </:col>
             <:empty>
-              <div class="text-center text-slate-500 p-4">No relay instances to display</div>
+              <div class="text-center text-neutral-500 p-4">No relay instances to display</div>
             </:empty>
           </.table>
         </div>

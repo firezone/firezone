@@ -35,7 +35,7 @@ defmodule Web.Resources.New do
 
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-gray-900">Resource details</h2>
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">Resource details</h2>
           <.form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="change">
             <.input
               field={@form[:name]}

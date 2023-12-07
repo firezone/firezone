@@ -158,7 +158,7 @@ defmodule Web.Policies.Show do
             </.link>
           </:col>
           <:empty>
-            <div class="text-center text-slate-500 p-4">No authorizations to display</div>
+            <div class="text-center text-neutral-500 p-4">No authorizations to display</div>
           </:empty>
         </.table>
       </:content>

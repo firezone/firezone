@@ -3,19 +3,19 @@ defmodule Web.HomeHTML do
 
   def home(assigns) do
     ~H"""
-    <section class="bg-gray-50">
+    <section class="bg-neutral-50">
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.logo />
 
         <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-xl text-center font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl">
+            <h1 class="text-xl text-center font-bold leading-tight tracking-tight text-neutral-900 sm:text-2xl">
               Welcome to Firezone
             </h1>
 
             <h3
               :if={@accounts != []}
-              class="text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl"
+              class="text-m font-bold leading-tight tracking-tight text-neutral-900 sm:text-xl"
             >
               Recently used accounts
             </h3>
@@ -55,7 +55,7 @@ defmodule Web.HomeHTML do
               class="py-2"
             >
               Don't have an account?
-              <a href={~p"/sign_up"} class="font-medium text-blue-600 hover:text-blue-500">
+              <a href={~p"/sign_up"} class={["font-medium", link_style()]}>
                 Sign up here.
               </a>
             </p>
@@ -71,9 +71,9 @@ defmodule Web.HomeHTML do
     <a href={~p"/#{@account}?#{@redirect_params}"} class={~w[
           w-full inline-flex items-center justify-center py-2.5 px-5
           bg-white rounded
-          text-sm font-medium text-gray-900
-          border border-gray-200
-          hover:bg-gray-100 hover:text-gray-900
+          text-sm font-medium text-neutral-900
+          border border-neutral-200
+          hover:bg-neutral-100 hover:text-neutral-900
     ]}>
       <%= @account.name %>
     </a>
@@ -83,9 +83,9 @@ defmodule Web.HomeHTML do
   def separator(assigns) do
     ~H"""
     <div class="flex items-center">
-      <div class="w-full h-0.5 bg-gray-200"></div>
-      <div class="px-5 text-center text-gray-500">or</div>
-      <div class="w-full h-0.5 bg-gray-200"></div>
+      <div class="w-full h-0.5 bg-neutral-200"></div>
+      <div class="px-5 text-center text-neutral-500">or</div>
+      <div class="w-full h-0.5 bg-neutral-200"></div>
     </div>
     """
   end

@@ -37,13 +37,13 @@ defmodule Web.Settings.Account do
         Danger zone
       </:title>
       <:content>
-        <h3 class="ml-4 mb-4 font-bold text-gray-900">
+        <h3 class="ml-4 mb-4 font-bold text-neutral-900">
           Terminate account
         </h3>
-        <p class="ml-4 mb-4 font-medium text-gray-600">
+        <p class="ml-4 mb-4 font-medium text-neutral-600">
           <.icon name="hero-exclamation-circle" class="inline-block w-5 h-5 mr-1 text-red-500" />
           To disable your account and schedule it for deletion, please <.link
-            class="text-blue-600 hover:underline"
+            class={link_style()}
             href="mailto:support@firezone.dev"
           >
         contact support
