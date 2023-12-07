@@ -55,10 +55,6 @@ import SwiftUINavigationCore
 
       defer { bindDestination() }
 
-      if case .accountNotSetup = appStore.tunnel.tunnelAuthStatus {
-        destination = .undefinedSettingsAlert(.undefinedSettings)
-      }
-
       appStore.auth.$loginStatus
         .receive(on: mainQueue)
         .sink(receiveValue: { [weak self] loginStatus in
