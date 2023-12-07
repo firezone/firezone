@@ -180,7 +180,7 @@ where
                     })
                     .collect();
 
-                // TODO: we need to readd this routes when it changes
+                // TODO: we need to readd this routes when the fd changes
                 {
                     let device = self.device.clone();
                     let callbacks = self.callbacks.clone();
@@ -363,13 +363,12 @@ where
             ips.push(ip);
         }
         {
-            let device = self.device.clone();
-            let callbacks = self.callbacks.clone();
+            let dev = Arc::clone(self);
             let ips = ips.clone();
             tokio::spawn(async move {
-                if let Some(device) = device.load().as_deref() {
-                    for ip in ips {
-                        device.add_route(ip.into(), &callbacks).await;
+                for ip in ips {
+                    if let Err(e) = dev.add_route(ip).await {
+                        tracing::error!(err = ?e, "add route failed");
                     }
                 }
             });
@@ -394,7 +393,10 @@ where
             );
             if let Some(device) = self.device.load().clone() {
                 if let Some(packet) = packet {
-                    device.write(packet);
+                    if let Err(e) = device.write(packet) {
+                        // We can drop because then we will just recieve another query
+                        tracing::error!(err = ?e, "failed to write dns answer");
+                    }
                 }
             }
         }
@@ -411,7 +413,10 @@ where
             );
             if let Some(device) = self.device.load().clone() {
                 if let Some(packet) = packet {
-                    device.write(packet);
+                    if let Err(e) = device.write(packet) {
+                        // We can drop because then we will just recieve another query
+                        tracing::error!(err = ?e, "failed to write dns answer");
+                    }
                 }
             }
         }

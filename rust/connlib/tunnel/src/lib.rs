@@ -189,12 +189,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     no_device_waker: AtomicWaker,
 }
 
-#[inline(always)]
-fn update_packet(pkt: &mut MutableIpPacket, dst_addr: IpAddr) {
-    pkt.set_dst(dst_addr);
-    pkt.update_checksum();
-}
-
 impl<CB> Tunnel<CB, ClientState>
 where
     CB: Callbacks + 'static,
@@ -205,7 +199,7 @@ where
                 let guard = self.device.load();
 
                 if let Some(device) = guard.as_ref() {
-                    match self.poll_device(device, &self.device, cx) {
+                    match self.poll_device(device, cx) {
                         Poll::Ready(Ok(Some(event))) => return Poll::Ready(Ok(event)),
                         Poll::Ready(Ok(None)) => {
                             tracing::info!("Device stopped");
@@ -236,8 +230,6 @@ where
     pub(crate) fn poll_device(
         &self,
         device: &Device,
-        // TODO: this is ugly
-        device_wrapper: &Arc<ArcSwapOption<Device>>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<Option<Event<GatewayId>>>> {
         loop {
@@ -258,17 +250,6 @@ where
             let packet = match role_state.handle_dns(packet, dns_strategy) {
                 Ok(Some(response)) => {
                     device.write(response)?;
-                    // if let Some(ip) = ip {
-                    //     let device = device_wrapper.clone();
-                    //     let callbacks = self.callbacks().clone();
-                    //     tokio::spawn(async move {
-                    //         if let Some(device) = device.load().as_ref() {
-                    //             if let Err(err) = device.add_route(ip.into(), &callbacks).await {
-                    //                 tracing::warn!(?err, "add route failed: {err:#}");
-                    //             }
-                    //         }
-                    //     });
-                    // }
                     continue;
                 }
                 Ok(None) => continue,
@@ -281,9 +262,6 @@ where
                 role_state.on_connection_intent_cidr(dest);
                 continue;
             };
-
-            // TODO: it's better to move the translation inside the peer.
-            // for that it will be better to dup peer for gateway/client.
 
             self.encapsulate(write_buf, packet, peer);
 

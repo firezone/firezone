@@ -202,6 +202,7 @@ pub struct PacketTransformGateway {
 }
 
 pub struct PacketTransformClient {
+    // TODO: we need to refresh the translations ips periodically, just add a timer to resend allow access
     translations: RwLock<BiMap<IpAddr, IpAddr>>,
 }
 

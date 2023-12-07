@@ -136,7 +136,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn add_route(&self, route: IpNetwork) -> connlib_shared::Result<()> {
+    pub async fn add_route(&self, route: IpNetwork) -> connlib_shared::Result<()> {
         let maybe_new_device = self
             .device
             .load()
@@ -209,7 +209,10 @@ impl ClientState {
             resolve_strategy,
         ) {
             // TODO: what if the connection expires this will send LocalReponse and there will be no intent
-            Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
+            Some(dns::ResolveStrategy::LocalResponse(query)) => {
+                // TODO: to fix the comment above just call on_connection_intent_dns, this will just send the connection intent if it was expired.
+                Ok(Some(query))
+            }
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
                 self.add_pending_dns_query(query);
 
@@ -284,7 +287,7 @@ impl ClientState {
             return Ok(None);
         };
 
-        for ip in self.get_resoruce_ip(desc, &domain) {
+        for ip in self.get_resource_ip(desc, &domain) {
             peer.inner.add_allowed_ip(ip);
             self.peers_by_ip.insert(
                 ip,
@@ -315,8 +318,6 @@ impl ClientState {
     }
 
     fn is_awaiting_connection_to_dns(&self, resource: &DnsResource) -> bool {
-        // This does mean that we never generate 2 connection intents to the same resoruce id with different domain.
-        // This will be optimized in a separate PR.
         self.awaiting_connection.contains_key(&resource.id)
     }
 
@@ -440,7 +441,7 @@ impl ClientState {
             .get(&resource)
             .ok_or(Error::ControlProtocolError)?;
 
-        let ips = self.get_resoruce_ip(desc, domain);
+        let ips = self.get_resource_ip(desc, domain);
 
         let config = PeerConfig {
             persistent_keepalive: None,
@@ -507,18 +508,17 @@ impl ClientState {
             return false;
         };
 
-        let ips = self.get_resoruce_ip(resource, domain);
+        let ips = self.get_resource_ip(resource, domain);
         ips.iter()
             .any(|ip| connected_peers.exact_match(*ip).is_some())
     }
 
-    fn get_resoruce_ip(
+    fn get_resource_ip(
         &self,
         resource: &ResourceDescription,
         domain: &Option<Dname<Vec<u8>>>,
     ) -> Vec<IpNetwork> {
         match resource {
-            // TODO: this will be cleaned up as part of refactoring the way we store resources.
             ResourceDescription::Dns(dns_resource) => {
                 let Some(domain) = domain else {
                     return vec![];
