@@ -15,13 +15,13 @@
       "all": false,
       "shell": {
         "all": false,
-        "open": true
+        "open": false
       }
     },
     "bundle": {
       "active": true,
       "targets": "all",
-      "identifier": "dev.firezone",
+      "identifier": "dev.firezone.client",
       "icon": [
         "icons/firezone.ico"
       ]
@@ -35,12 +35,24 @@
     },
     "windows": [
       {
+        "label": "about",
+        "title": "About Firezone",
+        "url": "about.html",
         "fullscreen": false,
         "resizable": true,
-        "label": "main-window",
-        "title": "firezone-windows-client",
         "width": 640,
-        "height": 480
+        "height": 480,
+        "visible": true
+      },
+      {
+        "label": "settings",
+        "title": "Settings",
+        "url": "settings.html",
+        "fullscreen": false,
+        "resizable": true,
+        "width": 640,
+        "height": 480,
+        "visible": true
       }
     ]
   }
